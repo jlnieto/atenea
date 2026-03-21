@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: ${APP_NAME:atenea}
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: ${SERVER_PORT:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+atenea:
+  codex-app-server:
+    url: ${ATENEA_CODEX_APP_SERVER_URL:ws://127.0.0.1:8092}
+    prompt: ${ATENEA_CODEX_APP_SERVER_PROMPT:say hello}
+    cwd: ${ATENEA_CODEX_APP_SERVER_CWD:/srv/atenea/apps/atenea}
+    model: ${ATENEA_CODEX_APP_SERVER_MODEL:}
+    connect-timeout: ${ATENEA_CODEX_APP_SERVER_CONNECT_TIMEOUT:10s}
+    completion-timeout: ${ATENEA_CODEX_APP_SERVER_COMPLETION_TIMEOUT:300s}

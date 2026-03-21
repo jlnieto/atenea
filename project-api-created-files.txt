@@ -1,0 +1,195 @@
+/srv/atenea/apps/atenea/src/main/java/com/atenea/api/project/CreateProjectRequest.java
+```java
+package com.atenea.api.project;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+public record CreateProjectRequest(
+        @NotBlank @Size(max = 150) String name,
+        String description
+) {
+}
+```
+
+/srv/atenea/apps/atenea/src/main/java/com/atenea/api/project/ProjectResponse.java
+```java
+package com.atenea.api.project;
+
+import java.time.Instant;
+
+public record ProjectResponse(
+        Long id,
+        String name,
+        String description,
+        Instant createdAt,
+        Instant updatedAt
+) {
+}
+```
+
+/srv/atenea/apps/atenea/src/main/java/com/atenea/api/project/ProjectController.java
+```java
+package com.atenea.api.project;
+
+import com.atenea.service.project.ProjectService;
+import jakarta.validation.Valid;
+import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/projects")
+public class ProjectController {
+
+    private final ProjectService projectService;
+
+    public ProjectController(ProjectService projectService) {
+        this.projectService = projectService;
+    }
+
+    @GetMapping
+    public List<ProjectResponse> getProjects() {
+        return projectService.getProjects();
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public ProjectResponse createProject(@Valid @RequestBody CreateProjectRequest request) {
+        return projectService.createProject(request);
+    }
+}
+```
+
+/srv/atenea/apps/atenea/src/main/java/com/atenea/service/project/DuplicateProjectNameException.java
+```java
+package com.atenea.service.project;
+
+public class DuplicateProjectNameException extends RuntimeException {
+
+    public DuplicateProjectNameException(String name) {
+        super("Project with name '" + name + "' already exists");
+    }
+}
+```
+
+/srv/atenea/apps/atenea/src/main/java/com/atenea/service/project/ProjectService.java
+```java
+package com.atenea.service.project;
+
+import com.atenea.api.project.CreateProjectRequest;
+import com.atenea.api.project.ProjectResponse;
+import com.atenea.persistence.project.ProjectEntity;
+import com.atenea.persistence.project.ProjectRepository;
+import java.time.Instant;
+import java.util.List;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class ProjectService {
+
+    private final ProjectRepository projectRepository;
+
+    public ProjectService(ProjectRepository projectRepository) {
+        this.projectRepository = projectRepository;
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectResponse> getProjects() {
+        return projectRepository.findAll(Sort.by(Sort.Direction.ASC, "createdAt"))
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional
+    public ProjectResponse createProject(CreateProjectRequest request) {
+        String projectName = request.name().trim();
+
+        projectRepository.findByName(projectName)
+                .ifPresent(project -> {
+                    throw new DuplicateProjectNameException(projectName);
+                });
+
+        Instant now = Instant.now();
+
+        ProjectEntity project = new ProjectEntity();
+        project.setName(projectName);
+        project.setDescription(request.description());
+        project.setCreatedAt(now);
+        project.setUpdatedAt(now);
+
+        return toResponse(projectRepository.save(project));
+    }
+
+    private ProjectResponse toResponse(ProjectEntity project) {
+        return new ProjectResponse(
+                project.getId(),
+                project.getName(),
+                project.getDescription(),
+                project.getCreatedAt(),
+                project.getUpdatedAt()
+        );
+    }
+}
+```
+
+/srv/atenea/apps/atenea/src/main/java/com/atenea/api/ApiErrorResponse.java
+```java
+package com.atenea.api;
+
+import java.util.List;
+
+public record ApiErrorResponse(
+        String message,
+        List<String> details
+) {
+}
+```
+
+/srv/atenea/apps/atenea/src/main/java/com/atenea/api/ApiExceptionHandler.java
+```java
+package com.atenea.api;
+
+import com.atenea.service.project.DuplicateProjectNameException;
+import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice
+public class ApiExceptionHandler {
+
+    @ExceptionHandler(DuplicateProjectNameException.class)
+    public ResponseEntity<ApiErrorResponse> handleDuplicateProjectName(DuplicateProjectNameException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException exception) {
+        List<String> details = exception.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(ApiExceptionHandler::formatFieldError)
+                .toList();
+
+        return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse("Validation failed", details));
+    }
+
+    private static String formatFieldError(FieldError fieldError) {
+        return fieldError.getField() + ": " + fieldError.getDefaultMessage();
+    }
+}
+```
