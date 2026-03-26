@@ -1,6 +1,8 @@
 package com.atenea.api.project;
 
 import com.atenea.service.project.ProjectService;
+import com.atenea.service.project.ProjectBootstrapService;
+import com.atenea.service.project.ProjectOverviewService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -16,9 +18,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProjectController {
 
     private final ProjectService projectService;
+    private final ProjectBootstrapService projectBootstrapService;
+    private final ProjectOverviewService projectOverviewService;
 
-    public ProjectController(ProjectService projectService) {
+    public ProjectController(
+            ProjectService projectService,
+            ProjectBootstrapService projectBootstrapService,
+            ProjectOverviewService projectOverviewService
+    ) {
         this.projectService = projectService;
+        this.projectBootstrapService = projectBootstrapService;
+        this.projectOverviewService = projectOverviewService;
     }
 
     @GetMapping
@@ -26,9 +36,19 @@ public class ProjectController {
         return projectService.getProjects();
     }
 
+    @GetMapping("/overview")
+    public List<ProjectOverviewResponse> getProjectOverview() {
+        return projectOverviewService.getOverview();
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ProjectResponse createProject(@Valid @RequestBody CreateProjectRequest request) {
         return projectService.createProject(request);
+    }
+
+    @PostMapping("/bootstrap")
+    public ProjectBootstrapResponse bootstrapProjects() {
+        return projectBootstrapService.bootstrapCanonicalProjects();
     }
 }

@@ -1,9 +1,28 @@
 package com.atenea.api;
 
+import com.atenea.service.project.CanonicalProjectConflictException;
+import com.atenea.github.GitHubIntegrationException;
 import com.atenea.service.project.DuplicateProjectNameException;
+import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
+import com.atenea.service.project.ProjectRepoPathNotDirectoryException;
+import com.atenea.service.project.ProjectRepoPathNotFoundException;
+import com.atenea.service.project.ProjectRepoPathOutsideWorkspaceException;
 import com.atenea.service.task.DuplicateTaskTitleException;
 import com.atenea.service.task.ProjectNotFoundException;
+import com.atenea.service.task.TaskWorkflowTransitionNotAllowedException;
+import com.atenea.service.taskexecution.TaskExecutionNotFoundException;
+import com.atenea.service.taskexecution.TaskLaunchBlockedException;
 import com.atenea.service.taskexecution.TaskNotFoundException;
+import com.atenea.service.taskexecution.TaskRelaunchNotAllowedException;
+import com.atenea.service.worksession.AgentRunAlreadyRunningException;
+import com.atenea.service.worksession.AgentRunNotFoundException;
+import com.atenea.service.worksession.AgentRunTransitionNotAllowedException;
+import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
+import com.atenea.service.worksession.WorkSessionNotOpenException;
+import com.atenea.service.worksession.WorkSessionNotFoundException;
+import com.atenea.service.worksession.WorkSessionOperationBlockedException;
+import com.atenea.service.worksession.WorkSessionProjectNotFoundException;
+import com.atenea.service.worksession.WorkSessionTurnExecutionFailedException;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +40,23 @@ public class ApiExceptionHandler {
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 
+    @ExceptionHandler(CanonicalProjectConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleCanonicalProjectConflict(CanonicalProjectConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler({
+            ProjectRepoPathOutsideWorkspaceException.class,
+            ProjectRepoPathNotFoundException.class,
+            ProjectRepoPathNotDirectoryException.class,
+            ProjectRepoPathMissingGitDirectoryException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleProjectPathValidation(RuntimeException exception) {
+        return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
     @ExceptionHandler(DuplicateTaskTitleException.class)
     public ResponseEntity<ApiErrorResponse> handleDuplicateTaskTitle(DuplicateTaskTitleException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -33,9 +69,95 @@ public class ApiExceptionHandler {
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 
+    @ExceptionHandler(WorkSessionProjectNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleWorkSessionProjectNotFound(
+            WorkSessionProjectNotFoundException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(WorkSessionNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleWorkSessionNotFound(WorkSessionNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(AgentRunNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleAgentRunNotFound(AgentRunNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(OpenWorkSessionAlreadyExistsException.class)
+    public ResponseEntity<ApiErrorResponse> handleOpenWorkSessionAlreadyExists(
+            OpenWorkSessionAlreadyExistsException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(WorkSessionOperationBlockedException.class)
+    public ResponseEntity<ApiErrorResponse> handleWorkSessionOperationBlocked(
+            WorkSessionOperationBlockedException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler({
+            WorkSessionNotOpenException.class,
+            AgentRunAlreadyRunningException.class,
+            AgentRunTransitionNotAllowedException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleAgentRunConflict(RuntimeException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(WorkSessionTurnExecutionFailedException.class)
+    public ResponseEntity<ApiErrorResponse> handleWorkSessionTurnExecutionFailed(
+            WorkSessionTurnExecutionFailedException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
     @ExceptionHandler(TaskNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleTaskNotFound(TaskNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(TaskExecutionNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleTaskExecutionNotFound(TaskExecutionNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(TaskWorkflowTransitionNotAllowedException.class)
+    public ResponseEntity<ApiErrorResponse> handleTaskWorkflowTransitionNotAllowed(
+            TaskWorkflowTransitionNotAllowedException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(GitHubIntegrationException.class)
+    public ResponseEntity<ApiErrorResponse> handleGitHubIntegration(GitHubIntegrationException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(TaskLaunchBlockedException.class)
+    public ResponseEntity<ApiErrorResponse> handleTaskLaunchBlocked(TaskLaunchBlockedException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(TaskRelaunchNotAllowedException.class)
+    public ResponseEntity<ApiErrorResponse> handleTaskRelaunchNotAllowed(TaskRelaunchNotAllowedException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 
@@ -49,6 +171,12 @@ public class ApiExceptionHandler {
 
         return ResponseEntity.badRequest()
                 .body(new ApiErrorResponse("Validation failed", details));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 
     private static String formatFieldError(FieldError fieldError) {

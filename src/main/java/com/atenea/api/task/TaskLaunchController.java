@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/tasks/{taskId}/launch")
+@RequestMapping("/api/tasks/{taskId}")
 public class TaskLaunchController {
 
     private final TaskExecutionService taskExecutionService;
@@ -19,9 +19,15 @@ public class TaskLaunchController {
         this.taskExecutionService = taskExecutionService;
     }
 
-    @PostMapping
+    @PostMapping("/launch")
     @ResponseStatus(HttpStatus.CREATED)
     public TaskExecutionResponse launchTask(@PathVariable Long taskId) {
         return taskExecutionService.launchTask(taskId);
+    }
+
+    @PostMapping("/relaunch")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TaskExecutionResponse relaunchTask(@PathVariable Long taskId) {
+        return taskExecutionService.relaunchTask(taskId);
     }
 }

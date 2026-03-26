@@ -32,6 +32,30 @@ public class TaskEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "base_branch", nullable = false, length = 120)
+    private String baseBranch;
+
+    @Column(name = "branch_name", nullable = false, length = 180, unique = true)
+    private String branchName;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "branch_status", nullable = false, length = 32)
+    private TaskBranchStatus branchStatus;
+
+    @Column(name = "pull_request_url", length = 500)
+    private String pullRequestUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pull_request_status", nullable = false, length = 32)
+    private TaskPullRequestStatus pullRequestStatus;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "review_outcome", nullable = false, length = 32)
+    private TaskReviewOutcome reviewOutcome;
+
+    @Column(name = "review_notes", length = 1000)
+    private String reviewNotes;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private TaskStatus status;
@@ -76,6 +100,62 @@ public class TaskEntity {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getBaseBranch() {
+        return baseBranch;
+    }
+
+    public void setBaseBranch(String baseBranch) {
+        this.baseBranch = baseBranch;
+    }
+
+    public String getBranchName() {
+        return branchName;
+    }
+
+    public void setBranchName(String branchName) {
+        this.branchName = branchName;
+    }
+
+    public TaskBranchStatus getBranchStatus() {
+        return branchStatus;
+    }
+
+    public void setBranchStatus(TaskBranchStatus branchStatus) {
+        this.branchStatus = branchStatus;
+    }
+
+    public String getPullRequestUrl() {
+        return pullRequestUrl;
+    }
+
+    public void setPullRequestUrl(String pullRequestUrl) {
+        this.pullRequestUrl = pullRequestUrl;
+    }
+
+    public TaskPullRequestStatus getPullRequestStatus() {
+        return pullRequestStatus;
+    }
+
+    public void setPullRequestStatus(TaskPullRequestStatus pullRequestStatus) {
+        this.pullRequestStatus = pullRequestStatus;
+    }
+
+    public TaskReviewOutcome getReviewOutcome() {
+        return reviewOutcome;
+    }
+
+    public void setReviewOutcome(TaskReviewOutcome reviewOutcome) {
+        this.reviewOutcome = reviewOutcome;
+    }
+
+    public String getReviewNotes() {
+        return reviewNotes;
+    }
+
+    public void setReviewNotes(String reviewNotes) {
+        this.reviewNotes = reviewNotes;
     }
 
     public TaskStatus getStatus() {

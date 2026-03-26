@@ -1,6 +1,5 @@
 package com.atenea.service.taskexecution;
 
-import com.atenea.api.taskexecution.CreateTaskExecutionRequest;
 import com.atenea.api.taskexecution.TaskExecutionResponse;
 import com.atenea.codexappserver.CodexAppServerClient;
 import com.atenea.codexappserver.CodexAppServerExecutionRequest;
@@ -22,28 +21,31 @@ import org.springframework.transaction.annotation.Transactional;
 public class TaskExecutionService {
 
     private static final int SUMMARY_MAX_LENGTH = 1000;
-    private static final String STANDARD_SYSTEM_INSTRUCTIONS = """
-            Work carefully and keep the change set small.
-            Do not expand scope.
-            Operate only within the current repository path.
-            Keep the implementation minimal, production-clean, and easy to extend.
-            """;
 
     private final TaskRepository taskRepository;
     private final TaskExecutionRepository taskExecutionRepository;
     private final CodexAppServerClient codexAppServerClient;
     private final TaskExecutionProgressService taskExecutionProgressService;
+    private final ExecutionPlanningService executionPlanningService;
+    private final TaskBranchLaunchService taskBranchLaunchService;
+    private final TaskExecutionReadinessService taskExecutionReadinessService;
 
     public TaskExecutionService(
             TaskRepository taskRepository,
             TaskExecutionRepository taskExecutionRepository,
             CodexAppServerClient codexAppServerClient,
-            TaskExecutionProgressService taskExecutionProgressService
+            TaskExecutionProgressService taskExecutionProgressService,
+            ExecutionPlanningService executionPlanningService,
+            TaskBranchLaunchService taskBranchLaunchService,
+            TaskExecutionReadinessService taskExecutionReadinessService
     ) {
         this.taskRepository = taskRepository;
         this.taskExecutionRepository = taskExecutionRepository;
         this.codexAppServerClient = codexAppServerClient;
         this.taskExecutionProgressService = taskExecutionProgressService;
+        this.executionPlanningService = executionPlanningService;
+        this.taskBranchLaunchService = taskBranchLaunchService;
+        this.taskExecutionReadinessService = taskExecutionReadinessService;
     }
 
     @Transactional(readOnly = true)
@@ -56,48 +58,54 @@ public class TaskExecutionService {
                 .toList();
     }
 
-    @Transactional
-    public TaskExecutionResponse createExecution(Long taskId, CreateTaskExecutionRequest request) {
-        TaskEntity task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new TaskNotFoundException(taskId));
+    @Transactional(readOnly = true)
+    public TaskExecutionResponse getExecution(Long taskId, Long executionId) {
+        ensureTaskExists(taskId);
 
-        Instant now = Instant.now();
-        String outputSummary = normalizeNullableText(request.outputSummary());
-        String errorSummary = normalizeNullableText(request.errorSummary());
+        TaskExecutionEntity taskExecution = taskExecutionRepository.findById(executionId)
+                .filter(execution -> execution.getTask().getId().equals(taskId))
+                .orElseThrow(() -> new TaskExecutionNotFoundException(taskId, executionId));
 
-        TaskExecutionEntity taskExecution = new TaskExecutionEntity();
-        taskExecution.setTask(task);
-        taskExecution.setStatus(request.status());
-        taskExecution.setRunnerType(request.runnerType());
-        taskExecution.setStartedAt(request.startedAt());
-        taskExecution.setFinishedAt(request.finishedAt());
-        taskExecution.setOutputSummary(outputSummary);
-        taskExecution.setErrorSummary(errorSummary);
-        taskExecution.setExternalThreadId(null);
-        taskExecution.setExternalTurnId(null);
-        taskExecution.setCreatedAt(now);
-
-        return toResponse(taskExecutionRepository.save(taskExecution));
+        return toResponse(taskExecution);
     }
 
     public TaskExecutionResponse launchTask(Long taskId) {
+        return executeTask(taskId, false);
+    }
+
+    public TaskExecutionResponse relaunchTask(Long taskId) {
+        return executeTask(taskId, true);
+    }
+
+    private TaskExecutionResponse executeTask(Long taskId, boolean requirePreviousExecution) {
         TaskEntity task = taskRepository.findWithProjectById(taskId)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
 
-        Instant now = Instant.now();
-        TaskExecutionEntity taskExecution = createStartedCodexExecution(task, now);
-        taskExecutionRepository.saveAndFlush(taskExecution);
-
-        String repoPath = normalizeNullableText(task.getProject().getRepoPath());
-        if (repoPath == null) {
-            return markExecutionFailed(taskExecution, "Project repoPath is not configured");
+        if (requirePreviousExecution && !taskExecutionRepository.existsByTaskId(taskId)) {
+            throw new TaskRelaunchNotAllowedException(taskId, "no previous execution exists");
         }
 
-        String prompt = buildPrompt(task);
+        TaskExecutionReadiness readiness = taskExecutionReadinessService.assess(task);
+        if (!readiness.launchReady()) {
+            throw new TaskLaunchBlockedException(
+                    "Task requires clarification before launch: " + readiness.reason());
+        }
+
+        ExecutionPlan executionPlan = executionPlanningService.createPlan(task);
+
+        Instant now = Instant.now();
+        TaskExecutionEntity taskExecution = createStartedCodexExecution(executionPlan, now);
+        taskExecutionRepository.saveAndFlush(taskExecution);
+
+        if (executionPlan.planningError() != null) {
+            return markExecutionFailed(taskExecution, executionPlan.planningError());
+        }
 
         try {
+            taskBranchLaunchService.prepareLaunch(task, executionPlan.targetRepoPath());
+
             CodexAppServerExecutionResult executionResult = codexAppServerClient.execute(
-                    new CodexAppServerExecutionRequest(repoPath, prompt),
+                    new CodexAppServerExecutionRequest(executionPlan.targetRepoPath(), executionPlan.prompt()),
                     new TaskExecutionListener(taskExecution.getId())
             );
 
@@ -117,6 +125,8 @@ public class TaskExecutionService {
             }
 
             return toResponse(taskExecutionRepository.save(taskExecution));
+        } catch (TaskLaunchBlockedException exception) {
+            return markExecutionFailed(taskExecution, exception.getMessage());
         } catch (TimeoutException exception) {
             return markExecutionFailed(taskExecution, exception.getMessage());
         } catch (Exception exception) {
@@ -124,11 +134,12 @@ public class TaskExecutionService {
         }
     }
 
-    private TaskExecutionEntity createStartedCodexExecution(TaskEntity task, Instant now) {
+    private TaskExecutionEntity createStartedCodexExecution(ExecutionPlan executionPlan, Instant now) {
         TaskExecutionEntity taskExecution = new TaskExecutionEntity();
-        taskExecution.setTask(task);
+        taskExecution.setTask(executionPlan.task());
         taskExecution.setStatus(TaskExecutionStatus.RUNNING);
-        taskExecution.setRunnerType(TaskExecutionRunnerType.CODEX);
+        taskExecution.setRunnerType(executionPlan.runnerType());
+        taskExecution.setTargetRepoPath(resolveRecordedTargetRepoPath(executionPlan));
         taskExecution.setStartedAt(now);
         taskExecution.setFinishedAt(null);
         taskExecution.setOutputSummary(null);
@@ -137,6 +148,19 @@ public class TaskExecutionService {
         taskExecution.setExternalTurnId(null);
         taskExecution.setCreatedAt(now);
         return taskExecution;
+    }
+
+    private String resolveRecordedTargetRepoPath(ExecutionPlan executionPlan) {
+        if (executionPlan.targetRepoPath() != null) {
+            return executionPlan.targetRepoPath();
+        }
+
+        String projectRepoPath = normalizeNullableText(executionPlan.task().getProject().getRepoPath());
+        if (projectRepoPath != null) {
+            return projectRepoPath;
+        }
+
+        return "[unresolved]";
     }
 
     private void ensureTaskExists(Long taskId) {
@@ -161,29 +185,15 @@ public class TaskExecutionService {
                 taskExecution.getTask().getId(),
                 taskExecution.getStatus(),
                 taskExecution.getRunnerType(),
+                taskExecution.getTargetRepoPath(),
                 taskExecution.getStartedAt(),
                 taskExecution.getFinishedAt(),
                 taskExecution.getOutputSummary(),
                 taskExecution.getErrorSummary(),
+                taskExecution.getExternalThreadId(),
+                taskExecution.getExternalTurnId(),
                 taskExecution.getCreatedAt()
         );
-    }
-
-    private static String buildPrompt(TaskEntity task) {
-        StringBuilder prompt = new StringBuilder();
-        prompt.append(STANDARD_SYSTEM_INSTRUCTIONS.trim())
-                .append(System.lineSeparator())
-                .append(System.lineSeparator())
-                .append("Task title: ")
-                .append(task.getTitle());
-
-        if (task.getDescription() != null) {
-            prompt.append(System.lineSeparator())
-                    .append("Task description: ")
-                    .append(task.getDescription());
-        }
-
-        return prompt.toString();
     }
 
     private static String summarizeExecutionError(CodexAppServerExecutionResult executionResult) {

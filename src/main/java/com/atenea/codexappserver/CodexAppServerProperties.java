@@ -9,7 +9,7 @@ public class CodexAppServerProperties {
 
     private URI url = URI.create("ws://host.docker.internal:8092");
     private String prompt = "say hello";
-    private String cwd = "/srv/atenea/apps/atenea";
+    private String cwd = "/workspace/repos/internal/atenea";
     private String model;
     private Duration connectTimeout = Duration.ofSeconds(10);
     private Duration completionTimeout = Duration.ofSeconds(300);

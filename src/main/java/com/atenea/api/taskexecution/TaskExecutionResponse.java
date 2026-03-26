@@ -9,10 +9,13 @@ public record TaskExecutionResponse(
         Long taskId,
         TaskExecutionStatus status,
         TaskExecutionRunnerType runnerType,
+        String targetRepoPath,
         Instant startedAt,
         Instant finishedAt,
         String outputSummary,
         String errorSummary,
+        String externalThreadId,
+        String externalTurnId,
         Instant createdAt
 ) {
 }

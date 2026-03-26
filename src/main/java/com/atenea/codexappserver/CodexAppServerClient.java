@@ -22,10 +22,20 @@ public class CodexAppServerClient {
 
     private final ObjectMapper objectMapper;
     private final CodexAppServerProperties properties;
+    private final WebSocketConnector webSocketConnector;
 
     public CodexAppServerClient(ObjectMapper objectMapper, CodexAppServerProperties properties) {
+        this(objectMapper, properties, new DefaultWebSocketConnector());
+    }
+
+    CodexAppServerClient(
+            ObjectMapper objectMapper,
+            CodexAppServerProperties properties,
+            WebSocketConnector webSocketConnector
+    ) {
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.webSocketConnector = webSocketConnector;
     }
 
     public CodexAppServerPocResult runProofOfConcept() throws Exception {
@@ -50,14 +60,7 @@ public class CodexAppServerClient {
             CodexAppServerExecutionListener listener
     ) throws Exception {
         SessionState state = new SessionState();
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(properties.getConnectTimeout())
-                .build();
-
-        WebSocket webSocket = client.newWebSocketBuilder()
-                .connectTimeout(properties.getConnectTimeout())
-                .buildAsync(properties.getUrl(), new CodexAppServerListener(state))
-                .join();
+        WebSocket webSocket = webSocketConnector.connect(properties, new CodexAppServerListener(state));
 
         try {
             send(webSocket, initializeRequest());
@@ -66,15 +69,19 @@ public class CodexAppServerClient {
 
             send(webSocket, Map.of("method", "initialized"));
 
-            send(webSocket, threadStartRequest(request.repoPath()));
-            JsonNode threadStartResponse = waitForResponse(state, "thread/start", "thread-start");
-            state.threadId = firstNonBlank(
-                    state.threadId,
-                    textAt(threadStartResponse, "result", "thread", "id"));
-            if (hasText(state.threadId)) {
-                listener.onThreadStarted(state.threadId);
+            if (hasText(request.threadId())) {
+                state.threadId = request.threadId().trim();
+            } else {
+                send(webSocket, threadStartRequest(request.repoPath()));
+                JsonNode threadStartResponse = waitForResponse(state, "thread/start", "thread-start");
+                state.threadId = firstNonBlank(
+                        state.threadId,
+                        textAt(threadStartResponse, "result", "thread", "id"));
+                if (hasText(state.threadId)) {
+                    listener.onThreadStarted(state.threadId);
+                }
+                logInboundResponse("thread/start", threadStartResponse);
             }
-            logInboundResponse("thread/start", threadStartResponse);
 
             send(webSocket, turnStartRequest(state.threadId, request.prompt()));
             JsonNode turnStartResponse = waitForResponse(state, "turn/start", "turn-start");
@@ -367,6 +374,25 @@ public class CodexAppServerClient {
         public void onError(WebSocket webSocket, Throwable error) {
             state.failureMessage = error.getMessage();
             log.error("codex-app-server websocket error", error);
+        }
+    }
+
+    interface WebSocketConnector {
+        WebSocket connect(CodexAppServerProperties properties, WebSocket.Listener listener);
+    }
+
+    private static final class DefaultWebSocketConnector implements WebSocketConnector {
+
+        @Override
+        public WebSocket connect(CodexAppServerProperties properties, WebSocket.Listener listener) {
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(properties.getConnectTimeout())
+                    .build();
+
+            return client.newWebSocketBuilder()
+                    .connectTimeout(properties.getConnectTimeout())
+                    .buildAsync(properties.getUrl(), listener)
+                    .join();
         }
     }
 

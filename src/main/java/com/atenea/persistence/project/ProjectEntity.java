@@ -22,7 +22,7 @@ public class ProjectEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "repo_path", length = 500)
+    @Column(name = "repo_path", nullable = false, length = 500)
     private String repoPath;
 
     @Column(name = "created_at", nullable = false, updatable = false)

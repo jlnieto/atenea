@@ -34,6 +34,9 @@ public class TaskExecutionEntity {
     @Column(name = "runner_type", nullable = false, length = 16)
     private TaskExecutionRunnerType runnerType;
 
+    @Column(name = "target_repo_path", nullable = false, length = 500)
+    private String targetRepoPath;
+
     @Column(name = "started_at")
     private Instant startedAt;
 
@@ -85,6 +88,14 @@ public class TaskExecutionEntity {
 
     public void setRunnerType(TaskExecutionRunnerType runnerType) {
         this.runnerType = runnerType;
+    }
+
+    public String getTargetRepoPath() {
+        return targetRepoPath;
+    }
+
+    public void setTargetRepoPath(String targetRepoPath) {
+        this.targetRepoPath = targetRepoPath;
     }
 
     public Instant getStartedAt() {

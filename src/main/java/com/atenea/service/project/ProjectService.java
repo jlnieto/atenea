@@ -14,9 +14,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProjectService {
 
     private final ProjectRepository projectRepository;
+    private final WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator;
 
-    public ProjectService(ProjectRepository projectRepository) {
+    public ProjectService(
+            ProjectRepository projectRepository,
+            WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator
+    ) {
         this.projectRepository = projectRepository;
+        this.workspaceRepositoryPathValidator = workspaceRepositoryPathValidator;
     }
 
     @Transactional(readOnly = true)
@@ -30,8 +35,8 @@ public class ProjectService {
     @Transactional
     public ProjectResponse createProject(CreateProjectRequest request) {
         String projectName = request.name().trim();
-        String projectDescription = normalizeNullableText(request.description());
-        String projectRepoPath = normalizeNullableText(request.repoPath());
+        String projectDescription = workspaceRepositoryPathValidator.normalizeNullableText(request.description());
+        String projectRepoPath = workspaceRepositoryPathValidator.normalizeConfiguredRepoPath(request.repoPath());
 
         projectRepository.findByName(projectName)
                 .ifPresent(project -> {
@@ -59,14 +64,5 @@ public class ProjectService {
                 project.getCreatedAt(),
                 project.getUpdatedAt()
         );
-    }
-
-    private static String normalizeNullableText(String value) {
-        if (value == null) {
-            return null;
-        }
-
-        String normalizedValue = value.trim();
-        return normalizedValue.isEmpty() ? null : normalizedValue;
     }
 }

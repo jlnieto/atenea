@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16
+    container_name: atenea-db-dev
+    environment:
+      POSTGRES_DB: atenea
+      POSTGRES_USER: atenea
+      POSTGRES_PASSWORD: atenea
+    ports:
+      - "${ATENEA_DB_PORT:-5434}:5432"
+    volumes:
+      - atenea_db_data:/var/lib/postgresql/data
+
+  codex-app-server:
+    build:
+      context: .
+      dockerfile: docker/codex-app-server.Dockerfile
+    container_name: atenea-codex-app-server-dev
+    working_dir: /workspace/repos/internal/atenea
+    environment:
+      HOME: /workspace/codex-home/preview
+    volumes:
+      - /srv/atenea/workspace/repos:/workspace/repos
+      - /srv/atenea/workspace/context:/workspace/context:ro
+      - /srv/atenea/workspace/codex-home:/workspace/codex-home
+    expose:
+      - "8092"
+
+  atenea-dev:
+    build:
+      context: .
+      dockerfile: docker/atenea-dev.Dockerfile
+    container_name: atenea-dev
+    working_dir: /workspace/repos/internal/atenea
+    depends_on:
+      - db
+      - codex-app-server
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/atenea
+      SPRING_DATASOURCE_USERNAME: atenea
+      SPRING_DATASOURCE_PASSWORD: atenea
+      ATENEA_WORKSPACE_ROOT: /workspace/repos
+      ATENEA_CODEX_APP_SERVER_URL: ${ATENEA_CODEX_APP_SERVER_URL:-ws://codex-app-server:8092}
+      ATENEA_CODEX_APP_SERVER_CWD: /workspace/repos/internal/atenea
+      ATENEA_GITHUB_TOKEN: ${ATENEA_GITHUB_TOKEN:-}
+      ATENEA_GITHUB_TOKEN_EXPIRES_AT: ${ATENEA_GITHUB_TOKEN_EXPIRES_AT:-}
+    volumes:
+      - /srv/atenea/workspace/repos:/workspace/repos
+      - /srv/atenea/workspace/context:/workspace/context:ro
+      - atenea_m2_cache:/root/.m2
+    ports:
+      - "${ATENEA_APP_PORT:-8081}:8081"
+    command: ["/bin/sh", "-lc", "sleep infinity"]
+
+volumes:
+  atenea_db_data:
+  atenea_m2_cache:
