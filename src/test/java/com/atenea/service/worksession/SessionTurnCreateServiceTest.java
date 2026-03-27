@@ -7,14 +7,17 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 import com.atenea.api.worksession.AgentRunResponse;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.CreateSessionTurnResponse;
+import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionResult;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
@@ -30,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,10 +56,19 @@ class SessionTurnCreateServiceTest {
     private GitRepositoryService gitRepositoryService;
 
     @Mock
+    private AgentRunRepository agentRunRepository;
+
+    @Mock
     private AgentRunService agentRunService;
 
     @Mock
+    private AgentRunReconciliationService agentRunReconciliationService;
+
+    @Mock
     private SessionCodexOrchestrator sessionCodexOrchestrator;
+
+    @Mock
+    private SessionTurnCompletionService sessionTurnCompletionService;
 
     @TempDir
     Path tempDir;
@@ -70,9 +83,12 @@ class SessionTurnCreateServiceTest {
                 sessionTurnRepository,
                 new WorkspaceRepositoryPathValidator(workspaceRoot.toString()),
                 gitRepositoryService,
+                agentRunRepository,
                 agentRunService,
                 new AgentRunProgressService(),
-                sessionCodexOrchestrator
+                agentRunReconciliationService,
+                sessionCodexOrchestrator,
+                sessionTurnCompletionService
         );
     }
 
@@ -83,6 +99,7 @@ class SessionTurnCreateServiceTest {
         AtomicLong turnIds = new AtomicLong(100L);
 
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
         when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> {
             SessionTurnEntity turn = invocation.getArgument(0);
@@ -101,38 +118,15 @@ class SessionTurnCreateServiceTest {
             run.setCreatedAt(Instant.parse("2026-03-25T10:05:01Z"));
             return run;
         });
-        when(sessionCodexOrchestrator.executeTurn(eq(repoPath.toString()), eq("Inspect the project"), eq(null), any()))
-                .thenReturn(new CodexAppServerExecutionResult(
-                        "thread-1",
-                        "turn-1",
-                        CodexAppServerExecutionResult.Status.COMPLETED,
-                        "Current status summary",
-                        "commentary",
-                        null));
-        when(agentRunService.markSucceeded(eq(55L), eq("turn-1"), eq("Current status summary"), any(SessionTurnEntity.class)))
-                .thenAnswer(invocation -> {
-                    SessionTurnEntity resultTurn = invocation.getArgument(3);
-                    AgentRunEntity run = new AgentRunEntity();
-                    run.setId(55L);
-                    run.setSession(session);
-                    run.setStatus(AgentRunStatus.SUCCEEDED);
-                    run.setOriginTurn(buildTurn(101L, session, SessionTurnActor.OPERATOR, "Inspect the project"));
-                    run.setResultTurn(resultTurn);
-                    run.setTargetRepoPath(repoPath.toString());
-                    run.setExternalTurnId("turn-1");
-                    run.setStartedAt(Instant.parse("2026-03-25T10:05:01Z"));
-                    run.setFinishedAt(Instant.parse("2026-03-25T10:05:02Z"));
-                    run.setOutputSummary("Current status summary");
-                    run.setCreatedAt(Instant.parse("2026-03-25T10:05:01Z"));
-                    return run;
-                });
+        when(sessionCodexOrchestrator.startTurn(eq(repoPath.toString()), eq("Inspect the project"), eq(null), any()))
+                .thenReturn(handle("thread-1", "turn-1"));
         when(agentRunService.toResponse(any(AgentRunEntity.class))).thenAnswer(invocation -> {
             AgentRunEntity run = invocation.getArgument(0);
             return new AgentRunResponse(
                     run.getId(),
                     session.getId(),
                     run.getOriginTurn().getId(),
-                    run.getResultTurn().getId(),
+                    run.getResultTurn() == null ? null : run.getResultTurn().getId(),
                     run.getStatus(),
                     run.getTargetRepoPath(),
                     run.getExternalTurnId(),
@@ -150,9 +144,9 @@ class SessionTurnCreateServiceTest {
 
         assertEquals("thread-1", session.getExternalThreadId());
         assertEquals("Inspect the project", response.operatorTurn().messageText());
-        assertEquals("Current status summary", response.codexTurn().messageText());
         assertEquals("turn-1", response.run().externalTurnId());
-        assertEquals(AgentRunStatus.SUCCEEDED, response.run().status());
+        assertEquals(AgentRunStatus.RUNNING, response.run().status());
+        assertNull(response.codexTurn());
         assertNotNull(session.getLastActivityAt());
 
         ArgumentCaptor<SessionTurnEntity> originTurnCaptor = ArgumentCaptor.forClass(SessionTurnEntity.class);
@@ -169,6 +163,7 @@ class SessionTurnCreateServiceTest {
         AtomicLong turnIds = new AtomicLong(200L);
 
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
         when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> {
             SessionTurnEntity turn = invocation.getArgument(0);
@@ -187,42 +182,19 @@ class SessionTurnCreateServiceTest {
             run.setCreatedAt(Instant.parse("2026-03-25T10:06:01Z"));
             return run;
         });
-        when(sessionCodexOrchestrator.executeTurn(
+        when(sessionCodexOrchestrator.startTurn(
                 eq(repoPath.toString()),
                 eq("Continue with implementation"),
                 eq("thread-existing"),
                 any()))
-                .thenReturn(new CodexAppServerExecutionResult(
-                        "thread-existing",
-                        "turn-2",
-                        CodexAppServerExecutionResult.Status.COMPLETED,
-                        "Implemented next step",
-                        "commentary",
-                        null));
-        when(agentRunService.markSucceeded(eq(56L), eq("turn-2"), eq("Implemented next step"), any(SessionTurnEntity.class)))
-                .thenAnswer(invocation -> {
-                    SessionTurnEntity resultTurn = invocation.getArgument(3);
-                    AgentRunEntity run = new AgentRunEntity();
-                    run.setId(56L);
-                    run.setSession(session);
-                    run.setStatus(AgentRunStatus.SUCCEEDED);
-                    run.setOriginTurn(buildTurn(201L, session, SessionTurnActor.OPERATOR, "Continue with implementation"));
-                    run.setResultTurn(resultTurn);
-                    run.setTargetRepoPath(repoPath.toString());
-                    run.setExternalTurnId("turn-2");
-                    run.setStartedAt(Instant.parse("2026-03-25T10:06:01Z"));
-                    run.setFinishedAt(Instant.parse("2026-03-25T10:06:02Z"));
-                    run.setOutputSummary("Implemented next step");
-                    run.setCreatedAt(Instant.parse("2026-03-25T10:06:01Z"));
-                    return run;
-                });
+                .thenReturn(handle("thread-existing", "turn-2"));
         when(agentRunService.toResponse(any(AgentRunEntity.class))).thenAnswer(invocation -> {
             AgentRunEntity run = invocation.getArgument(0);
             return new AgentRunResponse(
                     run.getId(),
                     session.getId(),
                     run.getOriginTurn().getId(),
-                    run.getResultTurn().getId(),
+                    run.getResultTurn() == null ? null : run.getResultTurn().getId(),
                     run.getStatus(),
                     run.getTargetRepoPath(),
                     run.getExternalTurnId(),
@@ -240,8 +212,8 @@ class SessionTurnCreateServiceTest {
 
         assertEquals("thread-existing", session.getExternalThreadId());
         assertEquals("turn-2", response.run().externalTurnId());
-        assertEquals("Implemented next step", response.codexTurn().messageText());
-        verify(sessionCodexOrchestrator).executeTurn(
+        assertNull(response.codexTurn());
+        verify(sessionCodexOrchestrator).startTurn(
                 eq(repoPath.toString()),
                 eq("Continue with implementation"),
                 eq("thread-existing"),
@@ -256,6 +228,7 @@ class SessionTurnCreateServiceTest {
         AtomicLong runIds = new AtomicLong(60L);
 
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
         when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> {
             SessionTurnEntity turn = invocation.getArgument(0);
@@ -274,50 +247,17 @@ class SessionTurnCreateServiceTest {
             run.setCreatedAt(Instant.parse("2026-03-25T10:08:01Z"));
             return run;
         });
-        when(sessionCodexOrchestrator.executeTurn(eq(repoPath.toString()), eq("First turn"), eq(null), any()))
-                .thenReturn(new CodexAppServerExecutionResult(
-                        "thread-stable",
-                        "turn-a",
-                        CodexAppServerExecutionResult.Status.COMPLETED,
-                        "First answer",
-                        "commentary",
-                        null));
-        when(sessionCodexOrchestrator.executeTurn(eq(repoPath.toString()), eq("Second turn"), eq("thread-stable"), any()))
-                .thenReturn(new CodexAppServerExecutionResult(
-                        "thread-stable",
-                        "turn-b",
-                        CodexAppServerExecutionResult.Status.COMPLETED,
-                        "Second answer",
-                        "commentary",
-                        null));
-        when(agentRunService.markSucceeded(any(Long.class), any(), any(), any(SessionTurnEntity.class)))
-                .thenAnswer(invocation -> {
-                    Long runId = invocation.getArgument(0);
-                    String externalTurnId = invocation.getArgument(1);
-                    String outputSummary = invocation.getArgument(2);
-                    SessionTurnEntity resultTurn = invocation.getArgument(3);
-                    AgentRunEntity run = new AgentRunEntity();
-                    run.setId(runId);
-                    run.setSession(session);
-                    run.setStatus(AgentRunStatus.SUCCEEDED);
-                    run.setOriginTurn(buildTurn(runId == 61L ? 301L : 303L, session, SessionTurnActor.OPERATOR,
-                            runId == 61L ? "First turn" : "Second turn"));
-                    run.setResultTurn(resultTurn);
-                    run.setTargetRepoPath(repoPath.toString());
-                    run.setExternalTurnId(externalTurnId);
-                    run.setStartedAt(Instant.parse("2026-03-25T10:08:01Z"));
-                    run.setFinishedAt(Instant.parse("2026-03-25T10:08:02Z"));
-                    run.setOutputSummary(outputSummary);
-                    run.setCreatedAt(Instant.parse("2026-03-25T10:08:01Z"));
-                    return run;
-                });
+        when(sessionCodexOrchestrator.startTurn(eq(repoPath.toString()), eq("First turn"), eq(null), any()))
+                .thenReturn(handle("thread-stable", "turn-a"));
+        when(sessionCodexOrchestrator.startTurn(eq(repoPath.toString()), eq("Second turn"), eq("thread-stable"), any()))
+                .thenReturn(handle("thread-stable", "turn-b"));
         when(agentRunService.toResponse(any(AgentRunEntity.class))).thenAnswer(invocation -> {
             AgentRunEntity run = invocation.getArgument(0);
             return new AgentRunResponse(
                     run.getId(),
                     session.getId(),
                     run.getOriginTurn().getId(),
-                    run.getResultTurn().getId(),
+                    run.getResultTurn() == null ? null : run.getResultTurn().getId(),
                     run.getStatus(),
                     run.getTargetRepoPath(),
                     run.getExternalTurnId(),
@@ -350,23 +290,22 @@ class SessionTurnCreateServiceTest {
     }
 
     @Test
-    void createTurnFailsWhenRunIsAlreadyRunning() throws Exception {
+    void createTurnFailsWhenSessionIsAlreadyRunning() throws Exception {
         Path repoPath = createRepoPath("internal/atenea");
         WorkSessionEntity session = buildSession(12L, 7L, repoPath.toString(), WorkSessionStatus.OPEN, null);
 
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
-        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
-        when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> {
-            SessionTurnEntity turn = invocation.getArgument(0);
-            turn.setId(101L);
-            return turn;
-        });
-        when(agentRunService.createRunningRun(eq(session), any(SessionTurnEntity.class)))
-                .thenThrow(new AgentRunAlreadyRunningException(12L));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(true);
 
-        assertThrows(
-                AgentRunAlreadyRunningException.class,
+        WorkSessionAlreadyRunningException exception = assertThrows(
+                WorkSessionAlreadyRunningException.class,
                 () -> sessionTurnService.createTurn(12L, new CreateSessionTurnRequest("Inspect the project")));
+
+        assertEquals(
+                "WorkSession with id '12' is already RUNNING and does not accept a new executable turn",
+                exception.getMessage());
+        verify(sessionTurnRepository, never()).save(any(SessionTurnEntity.class));
+        verify(agentRunService, never()).createRunningRun(any(WorkSessionEntity.class), any(SessionTurnEntity.class));
     }
 
     @Test
@@ -376,6 +315,7 @@ class SessionTurnCreateServiceTest {
         AtomicLong turnIds = new AtomicLong(100L);
 
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
         when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> {
             SessionTurnEntity turn = invocation.getArgument(0);
@@ -394,7 +334,7 @@ class SessionTurnCreateServiceTest {
             run.setCreatedAt(Instant.parse("2026-03-25T10:07:01Z"));
             return run;
         });
-        when(sessionCodexOrchestrator.executeTurn(eq(repoPath.toString()), eq("Inspect the project"), eq(null), any()))
+        when(sessionCodexOrchestrator.startTurn(eq(repoPath.toString()), eq("Inspect the project"), eq(null), any()))
                 .thenThrow(new RuntimeException("Timed out waiting for Codex App Server completion"));
         when(agentRunService.markFailed(eq(57L), eq((String) null), eq("Timed out waiting for Codex App Server completion")))
                 .thenAnswer(invocation -> {
@@ -423,6 +363,7 @@ class SessionTurnCreateServiceTest {
         Path repoPath = createRepoPath("internal/atenea");
         WorkSessionEntity session = buildSession(12L, 7L, repoPath.toString(), WorkSessionStatus.OPEN, null);
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(gitRepositoryService.getCurrentBranch(repoPath.toString()))
                 .thenThrow(new TaskLaunchBlockedException("Git command failed: rev-parse"));
 
@@ -474,5 +415,18 @@ class SessionTurnCreateServiceTest {
         turn.setInternal(false);
         turn.setCreatedAt(Instant.parse("2026-03-25T10:05:01Z"));
         return turn;
+    }
+
+    private static CodexAppServerExecutionHandle handle(String threadId, String turnId) {
+        return new CodexAppServerExecutionHandle(
+                threadId,
+                turnId,
+                CompletableFuture.completedFuture(new CodexAppServerExecutionResult(
+                        threadId,
+                        turnId,
+                        CodexAppServerExecutionResult.Status.COMPLETED,
+                        "Completed later",
+                        "commentary",
+                        null)));
     }
 }

@@ -6,5 +6,13 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$REPO_DIR"
 
-docker compose -f docker-compose.dev.yml up -d --build db codex-app-server
-docker compose -f docker-compose.dev.yml run --rm --service-ports atenea-dev ./mvnw spring-boot:run "$@"
+STALE_RUN_CONTAINERS="$(
+  docker ps -aq --filter "name=^atenea-atenea-dev-run-" --filter "status=running"
+)"
+
+if [[ -n "$STALE_RUN_CONTAINERS" ]]; then
+  docker rm -f $STALE_RUN_CONTAINERS >/dev/null
+fi
+
+docker compose -f docker-compose.dev.yml up -d --build db codex-app-server atenea-dev
+docker compose -f docker-compose.dev.yml exec atenea-dev ./mvnw spring-boot:run "$@"

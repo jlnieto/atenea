@@ -2,17 +2,15 @@
 
 ## Purpose
 
-This document defines the architectural direction that is now guiding Atenea.
+This document defines the architectural direction that is guiding Atenea and distinguishes clearly between:
 
-It distinguishes clearly between:
+- the current backend architecture that is already implemented
+- the legacy workflow that still exists and remains operational
+- the target product direction that should guide future changes
 
-- what is already implemented in the backend
-- what still exists as legacy workflow
-- what the new product core is expected to become
+The core architectural decision remains unchanged:
 
-The main clarification is no longer optional:
-
-- the future core of Atenea must revolve around `WorkSession`
+- the future product core must revolve around `WorkSession`
 - `Task` remains implemented and operational, but it is legacy workflow for the future product direction
 - `Task` must not evolve linearly into `WorkSession`
 
@@ -28,7 +26,7 @@ That means:
 - Atenea persists operational and conversational state
 - Atenea should increasingly remove the need for the operator to work directly in the shell for normal flows
 
-This is no longer best understood as only:
+This system is no longer best understood only as:
 
 - create task
 - launch code change
@@ -36,9 +34,46 @@ This is no longer best understood as only:
 - create PR
 - close
 
-That legacy flow still exists in code, but it is no longer the intended center of the product.
+That legacy flow still exists in code, but it is no longer the intended architectural center of the product.
 
-## Current implemented state
+## Architectural direction vs current implementation
+
+### Direction that remains valid
+
+The direction that continues to make architectural sense is:
+
+- `Project` remains the stable repository anchor
+- `WorkSession` should be the future root of operator-facing workflows
+- `SessionTurn` should remain the persisted conversation history of a session
+- `AgentRun` should remain the persisted trace of a concrete Codex execution inside a session
+- the system should keep session state, conversation state, execution state and repository state clearly separated
+
+### Current backend reality
+
+The current backend is already in coexistence mode, not in a pre-conversational stage.
+
+Today the repository contains two real orchestration surfaces:
+
+- legacy surface:
+  - `Project`
+  - `Task`
+  - `TaskExecution`
+  - task-owned branch workflow
+  - review / PR / close flow
+- newer conversational surface:
+  - `WorkSession`
+  - `SessionTurn`
+  - `AgentRun`
+  - open session
+  - read session
+  - create turn
+  - execute Codex inside the session
+  - reuse external thread id across turns
+  - list turns
+  - list runs
+  - close session
+
+## Current implemented backend architecture
 
 ### Stable platform and repository model
 
@@ -65,11 +100,11 @@ This legacy model is still functional and must continue to work while the new co
 
 It is documented separately in [`docs/task-branch-workflow.md`](./task-branch-workflow.md).
 
-### New WorkSession slice already implemented
+### Current WorkSession architecture
 
 Implemented today in the backend:
 
-#### Slice 1
+#### Persistence and invariants
 
 New persistence model:
 
@@ -82,14 +117,15 @@ Implemented constraints:
 - only one `OPEN` `WorkSession` per `Project`
 - only one `RUNNING` `AgentRun` per `WorkSession`
 
-#### Slice 2
+#### Session lifecycle API
 
-New API for basic session lifecycle start and read:
+Implemented endpoints:
 
 - `POST /api/projects/{projectId}/sessions`
 - `GET /api/sessions/{sessionId}`
+- `POST /api/sessions/{sessionId}/close`
 
-Behavior already implemented:
+Implemented behavior:
 
 - validate `Project` existence
 - validate that `project.repoPath` is operational
@@ -100,10 +136,41 @@ Behavior already implemented:
   - `workspaceBranch = null`
   - `externalThreadId = null`
   - coherent `openedAt` / `lastActivityAt`
+- block close when the session is not `OPEN`
+- block close while a run is still `RUNNING`
 
-#### Slice 3
+#### Conversation and run API
 
-`WorkSessionResponse` now includes a minimal descriptive snapshot:
+Implemented endpoints:
+
+- `POST /api/sessions/{sessionId}/turns`
+- `GET /api/sessions/{sessionId}/turns`
+- `GET /api/sessions/{sessionId}/runs`
+
+Implemented behavior:
+
+- persist operator-visible turns with actor `OPERATOR`
+- execute Codex for the turn through the session flow
+- persist Codex-visible turns with actor `CODEX`
+- create and update `AgentRun`
+- list visible conversation turns in chronological order
+- list persisted runs in chronological order
+- filter internal technical turns out of the operator-visible history
+
+#### Thread continuity
+
+Thread continuity is already implemented in the current backend.
+
+Current behavior:
+
+- the session stores `externalThreadId`
+- the first turn may create the external thread
+- later turns reuse that same external thread id
+- each run persists its own `externalTurnId`
+
+#### Descriptive session snapshot
+
+`WorkSessionResponse` includes a minimal descriptive repository snapshot:
 
 - `repoValid`
 - `workingTreeClean`
@@ -127,14 +194,14 @@ Important current behavior:
 
 ## `Project`
 
-`Project` remains valid as the stable anchor for repository work.
+`Project` remains the stable anchor for repository work.
 
 Current responsibility:
 
 - identify a repository Atenea can operate on
 - persist canonical `repoPath`
 
-This part of the model remains reusable in both legacy and new flows.
+This part of the model remains reusable in both legacy and newer flows.
 
 ## `Task` and `TaskExecution`
 
@@ -142,6 +209,7 @@ Current role in code:
 
 - root of the legacy orchestration model
 - anchor for branch lifecycle, PR metadata, review outcome and execution history
+- current source for operational guidance in task and execution responses
 
 Architectural status:
 
@@ -154,23 +222,32 @@ Important decision:
 - `Task` must not be stretched into “session with extra fields”
 - `TaskExecution` must not be treated as the future conversational run root
 
+Current caution:
+
+- `TaskExecution` still matters operationally today
+- it still appears in legacy APIs and overview-oriented services
+- it cannot be ignored while the system remains in coexistence mode
+
 ## `WorkSession`
 
 Architectural role:
 
-- new root of the future operator workflow
+- root of the newer conversational workflow
 - line of work opened over a `Project`
-- owner of conversational continuity
+- owner of session-level continuity
 - owner of session-level operational state
 
 Current implementation status:
 
 - persistence implemented
-- open/read API implemented
+- open/read/close API implemented
+- turn execution implemented
+- thread continuity implemented
 - descriptive operational snapshot implemented
-- turn execution not implemented yet
-- thread continuity not implemented yet
-- close session not implemented yet
+- turns history implemented
+- runs history implemented
+
+`WorkSession` should therefore no longer be described as embryonic or persistence-only.
 
 ## `SessionTurn`
 
@@ -181,7 +258,9 @@ Architectural role:
 Current implementation status:
 
 - persistence exists
-- no API or service flow uses it yet
+- public API flow uses it
+- visible operator and Codex turns are returned through session history
+- internal technical turns also exist, but are filtered from the public history
 
 ## `AgentRun`
 
@@ -192,13 +271,33 @@ Architectural role:
 Current implementation status:
 
 - persistence exists
-- no API or service flow uses it yet
+- public and service flows use it
+- one running run per session is enforced
+- each run persists execution status and external turn traceability
+
+## Codex App Server in the current architecture
+
+Codex App Server integration is not only a future architectural dependency. It is already part of the implemented backend.
+
+Current role:
+
+- Atenea opens or reuses external Codex threads
+- Atenea starts turns against Codex App Server
+- Atenea persists external thread continuity at session level
+- Atenea persists external turn traceability at run level
+- Atenea stores summarized output or error state on runs
+
+Architectural meaning:
+
+- external Codex execution is already part of the current `WorkSession` runtime model
+- `AgentRun` is the internal trace of that execution
+- `SessionTurn` is the conversation-facing trace of that execution
 
 ## Core architectural decisions
 
 ### 1. `WorkSession` is the future root
 
-The future operator flow must be:
+The future operator flow should be:
 
 - open a session on a project
 - inspect
@@ -219,51 +318,31 @@ Not:
 The backend currently contains both:
 
 - a legacy task workflow
-- an emerging session workflow
+- a newer session workflow
 
-This is intentional during transition.
+This coexistence is intentional during transition.
 
 ### 3. Snapshot, not workflow advice
 
-The new `WorkSession` operational surface must remain descriptive for now.
+The `WorkSession` operational surface remains intentionally descriptive.
 
-Current `WorkSession` snapshot intentionally avoids:
+Current `WorkSession` snapshot avoids:
 
 - workflow advice
-- closure semantics
-- review semantics
-- PR semantics
+- legacy review semantics
+- legacy PR semantics
+- task-style closure guidance
 
-### 4. Conversation, run and repo state must stay separated
+### 4. Session, conversation, run and repo state must stay separated
 
-The future core should separate:
+The architecture should keep these concerns separated:
 
 - session state
 - conversation turns
 - execution runs
-- repo operations
+- repository state
 
-Slices 1 to 3 only establish the beginning of that separation.
-
-## Phase 1 status
-
-Phase 1 of the `WorkSession` reconduction is not complete yet.
-
-Completed:
-
-- Slice 1: persistence
-- Slice 2: open / read session
-- Slice 3: descriptive operational snapshot
-
-Pending inside Phase 1:
-
-- send turns to Codex inside a session
-- persist `SessionTurn` through the API flow
-- persist `AgentRun` through the API flow
-- reuse `externalThreadId` across turns
-- list turns
-- list runs
-- explicit session close
+The current backend already implements that separation at the main model level.
 
 ## What is still legacy
 
@@ -279,14 +358,26 @@ The following remain legacy-centered in the current backend:
 
 Those features are real and implemented, but they no longer define the target shape of Atenea.
 
+## What remains transitional or open
+
+The architecture still contains real open questions.
+
+Current transition points include:
+
+- how long legacy `Task` / `TaskExecution` remains first-class
+- which API surface should become canonical for future frontend work
+- how higher-level product views should represent coexistence between legacy executions and newer sessions
+- what should count as the stable product contract once coexistence ends
+
+These are still architectural and product decisions, not settled facts.
+
 ## What the backend is not claiming yet
 
-The backend does **not** yet implement in the new session model:
+The backend should still avoid stronger claims than the repository supports.
 
-- turn execution against Codex
-- continuity of external thread between turns
-- session close endpoint
-- PR or delivery artifacts attached to sessions
-- replacement of the legacy task UI surface
+It does not yet define:
 
-Those remain future slices, not current capabilities.
+- a completed migration away from the legacy task model
+- PR or delivery artifacts attached to `WorkSession`
+- a final replacement plan for all legacy task-centered UI surfaces
+- a final governance model for overview or operator-facing canonical views

@@ -22,6 +22,7 @@ import com.atenea.service.worksession.WorkSessionNotOpenException;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
 import com.atenea.service.worksession.WorkSessionOperationBlockedException;
 import com.atenea.service.worksession.WorkSessionProjectNotFoundException;
+import com.atenea.service.worksession.WorkSessionAlreadyRunningException;
 import com.atenea.service.worksession.WorkSessionTurnExecutionFailedException;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -107,6 +108,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler({
             WorkSessionNotOpenException.class,
+            WorkSessionAlreadyRunningException.class,
             AgentRunAlreadyRunningException.class,
             AgentRunTransitionNotAllowedException.class
     })

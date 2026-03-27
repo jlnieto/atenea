@@ -2,9 +2,11 @@ package com.atenea.codexappserver;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.WebSocket;
 import java.time.Duration;
@@ -26,7 +28,12 @@ class CodexAppServerClientTest {
                 objectMapper,
                 "thread-new",
                 "turn-1",
-                true
+                true,
+                false,
+                false,
+                false,
+                false,
+                false
         );
         ListenerProbe listenerProbe = new ListenerProbe();
         CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
@@ -51,7 +58,12 @@ class CodexAppServerClientTest {
                 objectMapper,
                 "thread-existing",
                 "turn-2",
-                true
+                true,
+                false,
+                false,
+                false,
+                false,
+                false
         );
         ListenerProbe listenerProbe = new ListenerProbe();
         CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
@@ -82,6 +94,11 @@ class CodexAppServerClientTest {
                 objectMapper,
                 "thread-new",
                 "turn-timeout",
+                false,
+                false,
+                false,
+                false,
+                false,
                 false
         );
         CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties, connector);
@@ -97,10 +114,140 @@ class CodexAppServerClientTest {
         assertEquals("Timed out waiting for Codex App Server completion", exception.getMessage());
     }
 
+    @Test
+    void startExecutionDoesNotLeaveCompletionFutureHungWhenSendCloseFails() throws Exception {
+        RecordingConnector connector = new RecordingConnector(
+                objectMapper,
+                "thread-new",
+                "turn-1",
+                false,
+                true,
+                false,
+                false,
+                false,
+                false
+        );
+        CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
+
+        CodexAppServerClient.CodexAppServerExecutionHandle handle = client.startExecution(
+                new CodexAppServerExecutionRequest("/workspace/repos/internal/atenea", "inspect repo", null),
+                CodexAppServerExecutionListener.NO_OP
+        );
+        connector.pushCloseBeforeCompletion();
+
+        CodexAppServerExecutionResult result = handle.completionFuture().get(1, java.util.concurrent.TimeUnit.SECONDS);
+
+        assertEquals(CodexAppServerExecutionResult.Status.FAILED, result.status());
+        assertTrue(handle.completionFuture().isDone());
+    }
+
+    @Test
+    void startExecutionDoesNotDegradeSuccessfulCompletionWhenSendCloseFails() throws Exception {
+        RecordingConnector connector = new RecordingConnector(
+                objectMapper,
+                "thread-new",
+                "turn-1",
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+        );
+        CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
+
+        CodexAppServerClient.CodexAppServerExecutionHandle handle = client.startExecution(
+                new CodexAppServerExecutionRequest("/workspace/repos/internal/atenea", "inspect repo", null),
+                CodexAppServerExecutionListener.NO_OP
+        );
+
+        CodexAppServerExecutionResult result = handle.completionFuture().get(1, java.util.concurrent.TimeUnit.SECONDS);
+
+        assertEquals(CodexAppServerExecutionResult.Status.COMPLETED, result.status());
+        assertEquals("Implemented from fake connector.", result.finalAnswer());
+    }
+
+    @Test
+    void startExecutionFailsWhenThreadReturnsToIdleWithoutTurnCompleted() throws Exception {
+        RecordingConnector connector = new RecordingConnector(
+                objectMapper,
+                "thread-existing",
+                "turn-3",
+                false,
+                false,
+                true,
+                false,
+                false,
+                false
+        );
+        CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
+
+        CodexAppServerClient.CodexAppServerExecutionHandle handle = client.startExecution(
+                new CodexAppServerExecutionRequest("/workspace/repos/internal/atenea", "continue work", "thread-existing"),
+                CodexAppServerExecutionListener.NO_OP
+        );
+
+        CodexAppServerExecutionResult result = handle.completionFuture().get(3, java.util.concurrent.TimeUnit.SECONDS);
+
+        assertEquals(CodexAppServerExecutionResult.Status.FAILED, result.status());
+        assertEquals("Codex App Server thread returned to idle before turn completion", result.errorMessage());
+    }
+
+    @Test
+    void startExecutionFailsWhenRealtimeTransportErrorsBeforeTurnCompleted() throws Exception {
+        RecordingConnector connector = new RecordingConnector(
+                objectMapper,
+                "thread-existing",
+                "turn-4",
+                false,
+                false,
+                false,
+                true,
+                false,
+                false
+        );
+        CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
+
+        CodexAppServerClient.CodexAppServerExecutionHandle handle = client.startExecution(
+                new CodexAppServerExecutionRequest("/workspace/repos/internal/atenea", "continue work", "thread-existing"),
+                CodexAppServerExecutionListener.NO_OP
+        );
+
+        CodexAppServerExecutionResult result = handle.completionFuture().get(1, java.util.concurrent.TimeUnit.SECONDS);
+
+        assertEquals(CodexAppServerExecutionResult.Status.FAILED, result.status());
+        assertEquals("Realtime transport exploded", result.errorMessage());
+    }
+
+    @Test
+    void executeIgnoresRetryableErrorNotificationAndCompletesTurn() throws Exception {
+        RecordingConnector connector = new RecordingConnector(
+                objectMapper,
+                "thread-existing",
+                "turn-5",
+                true,
+                false,
+                false,
+                false,
+                false,
+                true
+        );
+        CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
+
+        CodexAppServerExecutionResult result = client.execute(
+                new CodexAppServerExecutionRequest("/workspace/repos/internal/atenea", "continue work", "thread-existing"),
+                CodexAppServerExecutionListener.NO_OP
+        );
+
+        assertEquals(CodexAppServerExecutionResult.Status.COMPLETED, result.status());
+        assertEquals("Implemented from fake connector.", result.finalAnswer());
+    }
+
     private CodexAppServerProperties properties() {
         CodexAppServerProperties properties = new CodexAppServerProperties();
         properties.setUrl(URI.create("ws://fake"));
         properties.setConnectTimeout(Duration.ofMillis(100));
+        properties.setStartTimeout(Duration.ofMillis(100));
         properties.setCompletionTimeout(Duration.ofSeconds(1));
         return properties;
     }
@@ -127,24 +274,60 @@ class CodexAppServerClientTest {
         private final String threadId;
         private final String turnId;
         private final boolean completeTurn;
+        private final boolean failOnClose;
+        private final boolean idleWithoutCompletion;
+        private final boolean realtimeErrorBeforeCompletion;
+        private final boolean realtimeClosedBeforeCompletion;
+        private final boolean retryableErrorBeforeCompletion;
         private final List<String> outboundMethods = new CopyOnWriteArrayList<>();
+        private FakeWebSocket webSocket;
 
-        private RecordingConnector(ObjectMapper objectMapper, String threadId, String turnId, boolean completeTurn) {
+        private RecordingConnector(
+                ObjectMapper objectMapper,
+                String threadId,
+                String turnId,
+                boolean completeTurn,
+                boolean failOnClose,
+                boolean idleWithoutCompletion,
+                boolean realtimeErrorBeforeCompletion,
+                boolean realtimeClosedBeforeCompletion,
+                boolean retryableErrorBeforeCompletion
+        ) {
             this.objectMapper = objectMapper;
             this.threadId = threadId;
             this.turnId = turnId;
             this.completeTurn = completeTurn;
+            this.failOnClose = failOnClose;
+            this.idleWithoutCompletion = idleWithoutCompletion;
+            this.realtimeErrorBeforeCompletion = realtimeErrorBeforeCompletion;
+            this.realtimeClosedBeforeCompletion = realtimeClosedBeforeCompletion;
+            this.retryableErrorBeforeCompletion = retryableErrorBeforeCompletion;
         }
 
         @Override
         public WebSocket connect(CodexAppServerProperties properties, WebSocket.Listener listener) {
-            FakeWebSocket webSocket = new FakeWebSocket(objectMapper, listener, threadId, turnId, completeTurn, outboundMethods);
+            webSocket = new FakeWebSocket(
+                    objectMapper,
+                    listener,
+                    threadId,
+                    turnId,
+                    completeTurn,
+                    failOnClose,
+                    idleWithoutCompletion,
+                    realtimeErrorBeforeCompletion,
+                    realtimeClosedBeforeCompletion,
+                    retryableErrorBeforeCompletion,
+                    outboundMethods);
             listener.onOpen(webSocket);
             return webSocket;
         }
 
         private List<String> outboundMethods() {
             return outboundMethods;
+        }
+
+        private void pushCloseBeforeCompletion() {
+            webSocket.pushClose(1011, "transport failed");
         }
     }
 
@@ -155,6 +338,11 @@ class CodexAppServerClientTest {
         private final String threadId;
         private final String turnId;
         private final boolean completeTurn;
+        private final boolean failOnClose;
+        private final boolean idleWithoutCompletion;
+        private final boolean realtimeErrorBeforeCompletion;
+        private final boolean realtimeClosedBeforeCompletion;
+        private final boolean retryableErrorBeforeCompletion;
         private final List<String> outboundMethods;
 
         private FakeWebSocket(
@@ -163,6 +351,11 @@ class CodexAppServerClientTest {
                 String threadId,
                 String turnId,
                 boolean completeTurn,
+                boolean failOnClose,
+                boolean idleWithoutCompletion,
+                boolean realtimeErrorBeforeCompletion,
+                boolean realtimeClosedBeforeCompletion,
+                boolean retryableErrorBeforeCompletion,
                 List<String> outboundMethods
         ) {
             this.objectMapper = objectMapper;
@@ -170,6 +363,11 @@ class CodexAppServerClientTest {
             this.threadId = threadId;
             this.turnId = turnId;
             this.completeTurn = completeTurn;
+            this.failOnClose = failOnClose;
+            this.idleWithoutCompletion = idleWithoutCompletion;
+            this.realtimeErrorBeforeCompletion = realtimeErrorBeforeCompletion;
+            this.realtimeClosedBeforeCompletion = realtimeClosedBeforeCompletion;
+            this.retryableErrorBeforeCompletion = retryableErrorBeforeCompletion;
             this.outboundMethods = outboundMethods;
         }
 
@@ -193,7 +391,23 @@ class CodexAppServerClientTest {
                         push("""
                                 {"id":"turn-start","result":{"turn":{"id":"%s"}}}
                                 """.formatted(turnId));
-                        if (completeTurn) {
+                        if (retryableErrorBeforeCompletion) {
+                            push("""
+                                    {"method":"error","params":{"threadId":"%s","turnId":"%s","willRetry":true,"error":{"message":"Temporary upstream issue"}}}
+                                    """.formatted(threadId, turnId));
+                        }
+                        if (realtimeErrorBeforeCompletion) {
+                            push("""
+                                    {"method":"thread/realtime/error","params":{"threadId":"%s","message":"Realtime transport exploded"}}
+                                    """.formatted(threadId));
+                        } else if (realtimeClosedBeforeCompletion) {
+                            push("""
+                                    {"method":"thread/realtime/closed","params":{"threadId":"%s","reason":"Realtime transport closed"}}
+                                    """.formatted(threadId));
+                        } else if (completeTurn) {
+                            push("""
+                                    {"method":"thread/status/changed","params":{"threadId":"%s","status":{"type":"idle"}}}
+                                    """.formatted(threadId));
                             push("""
                                     {"method":"item/started","params":{"item":{"type":"agentMessage","id":"item-1","phase":"final_answer"}}}
                                     """);
@@ -203,6 +417,10 @@ class CodexAppServerClientTest {
                             push("""
                                     {"method":"turn/completed","params":{"turn":{"id":"%s","status":"completed"}}}
                                     """.formatted(turnId));
+                        } else if (idleWithoutCompletion) {
+                            push("""
+                                    {"method":"thread/status/changed","params":{"threadId":"%s","status":{"type":"idle"}}}
+                                    """.formatted(threadId));
                         }
                     }
                     case "initialized" -> {
@@ -220,8 +438,15 @@ class CodexAppServerClientTest {
             listener.onText(this, json, true);
         }
 
+        private void pushClose(int statusCode, String reason) {
+            listener.onClose(this, statusCode, reason);
+        }
+
         @Override
         public CompletableFuture<WebSocket> sendClose(int statusCode, String reason) {
+            if (failOnClose) {
+                return CompletableFuture.failedFuture(new IOException("Output closed"));
+            }
             return CompletableFuture.completedFuture(this);
         }
 

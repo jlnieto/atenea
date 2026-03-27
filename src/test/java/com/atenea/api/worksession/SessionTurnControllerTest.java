@@ -10,8 +10,8 @@ import com.atenea.api.ApiExceptionHandler;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.WorkSessionStatus;
-import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.SessionTurnService;
+import com.atenea.service.worksession.WorkSessionAlreadyRunningException;
 import com.atenea.service.worksession.WorkSessionNotOpenException;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
 import com.atenea.service.worksession.WorkSessionTurnExecutionFailedException;
@@ -47,7 +47,7 @@ class SessionTurnControllerTest {
 
     @Test
     void getTurnsReturnsVisibleConversationHistory() throws Exception {
-        when(sessionTurnService.getTurns(12L)).thenReturn(List.of(
+        when(sessionTurnService.getTurns(12L, null, null)).thenReturn(List.of(
                 new SessionTurnResponse(
                         101L,
                         SessionTurnActor.OPERATOR,
@@ -69,12 +69,45 @@ class SessionTurnControllerTest {
     }
 
     @Test
+    void getTurnsReturnsWindowWhenBeforeTurnIdAndLimitAreProvided() throws Exception {
+        when(sessionTurnService.getTurns(12L, 105L, 2)).thenReturn(List.of(
+                new SessionTurnResponse(
+                        103L,
+                        SessionTurnActor.OPERATOR,
+                        "Older question",
+                        Instant.parse("2026-03-25T10:03:00Z")),
+                new SessionTurnResponse(
+                        104L,
+                        SessionTurnActor.CODEX,
+                        "Older answer",
+                        Instant.parse("2026-03-25T10:04:00Z"))));
+
+        mockMvc.perform(get("/api/sessions/12/turns")
+                        .param("beforeTurnId", "105")
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(103))
+                .andExpect(jsonPath("$[1].id").value(104));
+    }
+
+    @Test
     void getTurnsReturnsNotFoundWhenSessionDoesNotExist() throws Exception {
-        when(sessionTurnService.getTurns(12L)).thenThrow(new WorkSessionNotFoundException(12L));
+        when(sessionTurnService.getTurns(12L, null, null)).thenThrow(new WorkSessionNotFoundException(12L));
 
         mockMvc.perform(get("/api/sessions/12/turns"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("WorkSession with id '12' was not found"));
+    }
+
+    @Test
+    void getTurnsReturnsBadRequestWhenLimitIsInvalid() throws Exception {
+        when(sessionTurnService.getTurns(12L, null, 0))
+                .thenThrow(new IllegalArgumentException("Turn limit must be greater than zero"));
+
+        mockMvc.perform(get("/api/sessions/12/turns")
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Turn limit must be greater than zero"));
     }
 
     @Test
@@ -138,9 +171,9 @@ class SessionTurnControllerTest {
     }
 
     @Test
-    void createTurnReturnsConflictWhenRunIsAlreadyRunning() throws Exception {
+    void createTurnReturnsConflictWhenSessionIsAlreadyRunning() throws Exception {
         when(sessionTurnService.createTurn(12L, new CreateSessionTurnRequest("Inspect the project")))
-                .thenThrow(new AgentRunAlreadyRunningException(12L));
+                .thenThrow(new WorkSessionAlreadyRunningException(12L));
 
         mockMvc.perform(post("/api/sessions/12/turns")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -151,7 +184,7 @@ class SessionTurnControllerTest {
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value(
-                        "WorkSession with id '12' already has a running AgentRun"));
+                        "WorkSession with id '12' is already RUNNING and does not accept a new executable turn"));
     }
 
     @Test

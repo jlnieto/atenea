@@ -3,13 +3,17 @@ package com.atenea.codexappserver;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.NullNode;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -19,6 +23,19 @@ import org.slf4j.LoggerFactory;
 public class CodexAppServerClient {
 
     private static final Logger log = LoggerFactory.getLogger(CodexAppServerClient.class);
+    private static final ExecutorService COMPLETION_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "codex-app-server-completion");
+        thread.setDaemon(true);
+        return thread;
+    });
+    // Allow a small window for servers that emit thread idle and turn completed almost back-to-back.
+    private static final long IDLE_WITHOUT_COMPLETION_GRACE_MILLIS = 1500L;
+    private static final String IDLE_BEFORE_COMPLETION_ERROR =
+            "Codex App Server thread returned to idle before turn completion";
+    private static final String REALTIME_ERROR_BEFORE_COMPLETION_ERROR =
+            "Codex App Server realtime transport failed before turn completion";
+    private static final String REALTIME_CLOSED_BEFORE_COMPLETION_ERROR =
+            "Codex App Server realtime transport closed before turn completion";
 
     private final ObjectMapper objectMapper;
     private final CodexAppServerProperties properties;
@@ -61,10 +78,9 @@ public class CodexAppServerClient {
     ) throws Exception {
         SessionState state = new SessionState();
         WebSocket webSocket = webSocketConnector.connect(properties, new CodexAppServerListener(state));
-
         try {
             send(webSocket, initializeRequest());
-            JsonNode initializeResponse = waitForResponse(state, "initialize", "init");
+            JsonNode initializeResponse = waitForResponse(state, "initialize", "init", properties.getStartTimeout());
             logInboundResponse("initialize", initializeResponse);
 
             send(webSocket, Map.of("method", "initialized"));
@@ -73,7 +89,11 @@ public class CodexAppServerClient {
                 state.threadId = request.threadId().trim();
             } else {
                 send(webSocket, threadStartRequest(request.repoPath()));
-                JsonNode threadStartResponse = waitForResponse(state, "thread/start", "thread-start");
+                JsonNode threadStartResponse = waitForResponse(
+                        state,
+                        "thread/start",
+                        "thread-start",
+                        properties.getStartTimeout());
                 state.threadId = firstNonBlank(
                         state.threadId,
                         textAt(threadStartResponse, "result", "thread", "id"));
@@ -84,23 +104,117 @@ public class CodexAppServerClient {
             }
 
             send(webSocket, turnStartRequest(state.threadId, request.prompt()));
-            JsonNode turnStartResponse = waitForResponse(state, "turn/start", "turn-start");
+            JsonNode turnStartResponse = waitForResponse(
+                    state,
+                    "turn/start",
+                    "turn-start",
+                    properties.getStartTimeout());
+            state.turnStarted = true;
             state.turnId = firstNonBlank(state.turnId, textAt(turnStartResponse, "result", "turn", "id"));
             if (hasText(state.threadId) && hasText(state.turnId)) {
                 listener.onTurnStarted(state.threadId, state.turnId);
             }
             logInboundResponse("turn/start", turnStartResponse);
 
-            waitForCompletion(state, listener);
+            waitForCompletion(state, listener, properties.getCompletionTimeout());
             return state.toExecutionResult();
         } finally {
-            webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "done").join();
+            closeWebSocket(webSocket, state);
         }
     }
 
-    private void waitForCompletion(SessionState state, CodexAppServerExecutionListener listener) throws Exception {
-        long deadline = System.nanoTime() + properties.getCompletionTimeout().toNanos();
+    public CodexAppServerExecutionHandle startExecution(
+            CodexAppServerExecutionRequest request,
+            CodexAppServerExecutionListener listener
+    ) throws Exception {
+        SessionState state = new SessionState();
+        WebSocket webSocket = webSocketConnector.connect(properties, new CodexAppServerListener(state));
+
+        try {
+            send(webSocket, initializeRequest());
+            JsonNode initializeResponse = waitForResponse(state, "initialize", "init", properties.getStartTimeout());
+            logInboundResponse("initialize", initializeResponse);
+
+            send(webSocket, Map.of("method", "initialized"));
+
+            if (hasText(request.threadId())) {
+                state.threadId = request.threadId().trim();
+            } else {
+                send(webSocket, threadStartRequest(request.repoPath()));
+                JsonNode threadStartResponse = waitForResponse(
+                        state,
+                        "thread/start",
+                        "thread-start",
+                        properties.getStartTimeout());
+                state.threadId = firstNonBlank(
+                        state.threadId,
+                        textAt(threadStartResponse, "result", "thread", "id"));
+                if (hasText(state.threadId)) {
+                    listener.onThreadStarted(state.threadId);
+                }
+                logInboundResponse("thread/start", threadStartResponse);
+            }
+
+            send(webSocket, turnStartRequest(state.threadId, request.prompt()));
+            JsonNode turnStartResponse = waitForResponse(
+                    state,
+                    "turn/start",
+                    "turn-start",
+                    properties.getStartTimeout());
+            state.turnStarted = true;
+            state.turnId = firstNonBlank(state.turnId, textAt(turnStartResponse, "result", "turn", "id"));
+            if (hasText(state.threadId) && hasText(state.turnId)) {
+                listener.onTurnStarted(state.threadId, state.turnId);
+            }
+            logInboundResponse("turn/start", turnStartResponse);
+
+            return new CodexAppServerExecutionHandle(
+                    state.threadId,
+                    state.turnId,
+                    awaitCompletionAsync(state, webSocket, listener));
+        } finally {
+            if (!state.turnStarted) {
+                closeWebSocket(webSocket, state);
+            }
+        }
+    }
+
+    private CompletableFuture<CodexAppServerExecutionResult> awaitCompletionAsync(
+            SessionState state,
+            WebSocket webSocket,
+            CodexAppServerExecutionListener listener
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                waitForCompletion(state, listener);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                state.failureMessage = firstNonBlank(
+                        state.failureMessage,
+                        "Interrupted while waiting for Codex App Server completion");
+            } catch (Exception exception) {
+                state.failureMessage = firstNonBlank(
+                        state.failureMessage,
+                        exception.getMessage(),
+                        "Codex App Server completion failed");
+            } finally {
+                closeWebSocket(webSocket, state);
+            }
+            return state.toExecutionResult();
+        }, COMPLETION_EXECUTOR);
+    }
+
+    private void waitForCompletion(
+            SessionState state,
+            CodexAppServerExecutionListener listener,
+            java.time.Duration timeout
+    ) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
         while (!state.completed && state.failureMessage == null) {
+            updateFailureIfThreadReturnedToIdle(state);
+            if (state.failureMessage != null) {
+                break;
+            }
             long remainingNanos = deadline - System.nanoTime();
             if (remainingNanos <= 0) {
                 throw new TimeoutException("Timed out waiting for Codex App Server completion");
@@ -115,8 +229,28 @@ public class CodexAppServerClient {
         }
     }
 
-    private JsonNode waitForResponse(SessionState state, String expectedMethod, String expectedId) throws Exception {
-        long deadline = System.nanoTime() + properties.getCompletionTimeout().toNanos();
+    private void waitForCompletion(SessionState state, CodexAppServerExecutionListener listener) throws Exception {
+        while (!state.completed && state.failureMessage == null) {
+            updateFailureIfThreadReturnedToIdle(state);
+            if (state.failureMessage != null) {
+                break;
+            }
+            JsonNode message = state.messages.poll(1, TimeUnit.SECONDS);
+            if (message == null) {
+                continue;
+            }
+
+            handleMessage(message, state, listener);
+        }
+    }
+
+    private JsonNode waitForResponse(
+            SessionState state,
+            String expectedMethod,
+            String expectedId,
+            java.time.Duration timeout
+    ) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
         while (true) {
             long remainingNanos = deadline - System.nanoTime();
             if (remainingNanos <= 0) {
@@ -155,6 +289,7 @@ public class CodexAppServerClient {
 
         switch (method) {
             case "thread/started" -> {
+                state.idleWithoutCompletionObservedAtNanos = null;
                 state.threadId = firstNonBlank(state.threadId, textAt(message, "params", "thread", "id"));
                 if (hasText(state.threadId)) {
                     listener.onThreadStarted(state.threadId);
@@ -162,6 +297,7 @@ public class CodexAppServerClient {
                 log.info("codex-app-server inbound method=thread/started threadId={}", state.threadId);
             }
             case "turn/started" -> {
+                state.idleWithoutCompletionObservedAtNanos = null;
                 state.turnStarted = true;
                 state.turnId = firstNonBlank(state.turnId, textAt(message, "params", "turn", "id"));
                 if (hasText(state.threadId) && hasText(state.turnId)) {
@@ -169,6 +305,13 @@ public class CodexAppServerClient {
                 }
                 log.info("codex-app-server inbound method=turn/started threadId={} turnId={}",
                         state.threadId, state.turnId);
+            }
+            case "thread/status/changed" -> {
+                String statusType = textAt(message, "params", "status", "type");
+                if ("idle".equals(statusType) && state.turnStarted && !state.completed) {
+                    state.idleWithoutCompletionObservedAtNanos = System.nanoTime();
+                }
+                log.info("codex-app-server inbound method=thread/status/changed payload={}", preview(message));
             }
             case "item/started" -> {
                 String itemType = textAt(message, "params", "item", "type");
@@ -194,6 +337,7 @@ public class CodexAppServerClient {
                     textAt(message, "params", "item", "type"));
             case "turn/completed" -> {
                 state.completed = true;
+                state.idleWithoutCompletionObservedAtNanos = null;
                 state.turnId = firstNonBlank(state.turnId, textAt(message, "params", "turn", "id"));
                 state.completionStatus = textAt(message, "params", "turn", "status");
                 state.failureMessage = textAt(message, "params", "turn", "error", "message");
@@ -207,14 +351,58 @@ public class CodexAppServerClient {
                         preview(state.failureMessage));
             }
             case "error" -> {
-                state.failureMessage = firstNonBlank(
+                boolean willRetry = message.path("params").path("willRetry").asBoolean(false);
+                String errorMessage = firstNonBlank(
                         textAt(message, "params", "message"),
                         textAt(message, "params", "error", "message"),
                         "Codex App Server sent an error notification");
-                log.error("codex-app-server inbound method=error message={}", preview(state.failureMessage));
+                if (willRetry) {
+                    log.warn("codex-app-server inbound method=error willRetry=true message={}",
+                            preview(errorMessage));
+                } else {
+                    state.failureMessage = errorMessage;
+                    log.error("codex-app-server inbound method=error willRetry=false message={}",
+                            preview(state.failureMessage));
+                }
+            }
+            case "thread/realtime/error" -> {
+                String errorMessage = firstNonBlank(
+                        textAt(message, "params", "message"),
+                        REALTIME_ERROR_BEFORE_COMPLETION_ERROR);
+                if (!state.completed && state.failureMessage == null) {
+                    state.failureMessage = errorMessage;
+                }
+                log.error("codex-app-server inbound method=thread/realtime/error threadId={} message={}",
+                        textAt(message, "params", "threadId"),
+                        preview(errorMessage));
+            }
+            case "thread/realtime/closed" -> {
+                String reason = textAt(message, "params", "reason");
+                if (!state.completed && state.failureMessage == null) {
+                    state.failureMessage = firstNonBlank(reason, REALTIME_CLOSED_BEFORE_COMPLETION_ERROR);
+                }
+                log.warn("codex-app-server inbound method=thread/realtime/closed threadId={} reason={}",
+                        textAt(message, "params", "threadId"),
+                        preview(reason));
             }
             default -> log.info("codex-app-server inbound method={} payload={}", method, preview(message));
         }
+    }
+
+    private void updateFailureIfThreadReturnedToIdle(SessionState state) {
+        if (state.completed || state.failureMessage != null || state.idleWithoutCompletionObservedAtNanos == null) {
+            return;
+        }
+        long elapsedNanos = System.nanoTime() - state.idleWithoutCompletionObservedAtNanos;
+        if (elapsedNanos < TimeUnit.MILLISECONDS.toNanos(IDLE_WITHOUT_COMPLETION_GRACE_MILLIS)) {
+            return;
+        }
+        state.failureMessage = IDLE_BEFORE_COMPLETION_ERROR;
+        log.warn(
+                "codex-app-server detected idle thread without turn completion threadId={} turnId={} graceMs={}",
+                state.threadId,
+                state.turnId,
+                IDLE_WITHOUT_COMPLETION_GRACE_MILLIS);
     }
 
     private void appendAgentMessageDelta(SessionState state, String phase, String delta) {
@@ -274,6 +462,18 @@ public class CodexAppServerClient {
         String json = objectMapper.writeValueAsString(payload);
         log.info("codex-app-server outbound payload={}", preview(json));
         webSocket.sendText(json, true).join();
+    }
+
+    private void closeWebSocket(WebSocket webSocket, SessionState state) {
+        try {
+            webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "done").join();
+        } catch (Exception exception) {
+            String closeMessage = firstNonBlank(exception.getMessage(), "Failed to close Codex App Server websocket");
+            log.warn("codex-app-server websocket close failed message={}", preview(closeMessage), exception);
+            if (!state.completed && state.failureMessage == null) {
+                state.failureMessage = closeMessage;
+            }
+        }
     }
 
     private void logInboundResponse(String label, JsonNode response) {
@@ -373,8 +573,25 @@ public class CodexAppServerClient {
         @Override
         public void onError(WebSocket webSocket, Throwable error) {
             state.failureMessage = error.getMessage();
+            state.messages.offer(NullNode.getInstance());
             log.error("codex-app-server websocket error", error);
         }
+
+        @Override
+        public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+            if (!state.completed && state.failureMessage == null) {
+                state.failureMessage = "Codex App Server connection closed before turn completion";
+            }
+            state.messages.offer(NullNode.getInstance());
+            log.warn("codex-app-server websocket closed status={} reason={}", statusCode, preview(reason));
+            return WebSocket.Listener.super.onClose(webSocket, statusCode, reason);
+        }
+    }
+
+    public record CodexAppServerExecutionHandle(
+            String threadId,
+            String turnId,
+            CompletableFuture<CodexAppServerExecutionResult> completionFuture) {
     }
 
     interface WebSocketConnector {
@@ -408,6 +625,7 @@ public class CodexAppServerClient {
         private boolean completed;
         private String completionStatus;
         private String failureMessage;
+        private Long idleWithoutCompletionObservedAtNanos;
 
         private CodexAppServerExecutionResult toExecutionResult() {
             return new CodexAppServerExecutionResult(

@@ -2,191 +2,207 @@
 
 ## Purpose
 
-This document tracks the current product direction and distinguishes:
+This document tracks the current product state based on the repository as it exists today.
 
-- what is implemented today
-- what is legacy but still active
-- what is being built as the future core
+It distinguishes clearly between:
 
-## Current Version
+- what is implemented and validated
+- what remains legacy but active
+- what gaps are still open
+- what the next recommended block of work is
 
-Current formal version state:
+## Current Version State
+
+Current formal version markers in the repository:
 
 - application artifact version: `0.0.1-SNAPSHOT`
-- product stage: `V0`
+- product stage label still used in documentation: `V0`
 
-This still counts as `V0` because the backend is in controlled architectural transition:
+This still reads as `V0` because the backend is not a fully consolidated product surface yet.
 
-- the legacy task workflow is operational
-- the new `WorkSession` core has started
-- the future root of the product is decided
-- but the new conversational session flow is not complete yet
+The reason is not lack of backend capability in `WorkSession`, but coexistence and incomplete consolidation:
 
-## Current Product Direction
+- legacy task workflow is still present and operational
+- the newer conversational `WorkSession` workflow is also operational
+- documentation and product guidance still need consolidation
 
-The main product shift is now explicit:
+## Current validated system state
 
-- Atenea should evolve toward a remote `WorkSession` orchestrator over repositories
-- `Task` remains implemented, but is no longer the target product core
-- the new frontend must not grow on top of `Task` endpoints
+The repository currently contains two real orchestration surfaces.
 
-This means current backend state is transitional by design.
+### Legacy operational surface
 
-## Architectural Transition Model
-
-### Legacy model still present
-
-Still implemented and in use:
+Still implemented and active:
 
 - `Project`
 - `Task`
 - `TaskExecution`
-- task branch workflow
-- review / PR / close path
+- task branch lifecycle
+- review / PR / close workflow
+- GitHub-backed pull request creation and synchronization
+- derived operational guidance on task and execution responses
 
-This is the current operational legacy surface.
+This remains the current legacy workflow.
 
-### New core under construction
+### New conversational surface
 
-Now introduced:
+Implemented and validated:
 
 - `WorkSession`
 - `SessionTurn`
 - `AgentRun`
-
-Current implemented slice of the new core:
-
-- persistence is in place
-- open/read session API is in place
-- descriptive operational snapshot is in place
-
-Not implemented yet in the new core:
-
-- turn execution
-- thread continuity
+- open session
+- read session
+- create turn
+- execute Codex turn inside the session
+- reuse `externalThreadId` across turns
 - list turns
 - list runs
 - close session
 
-## WorkSession Phase 1
+This is the implemented conversational core that now represents the intended product direction.
 
-Phase 1 is the first vertical validation of the new model.
+## Completed blocks
 
-Its goal is to prove:
-
-- a live session over a `Project`
-- separation between session, run and repo state
-- eventual conversational continuity with Codex
-
-Current status note:
-
-- Phase 1 has not yet validated real Codex turn execution inside the `WorkSession` flow
-- real conversational continuity is still pending until the later slices that introduce turns and Codex execution
-
-### Completed slices
-
-#### Slice 1. Persistence
+### Block 1. Repository and platform foundation
 
 Implemented:
 
-- `work_session`
-- `session_turn`
-- `agent_run`
+- `Project` with validated `repoPath`
+- platform-level `workspaceRoot`
+- repository validation through `WorkspaceRepositoryPathValidator`
+- Git inspection and branch operations through `GitRepositoryService`
+- Flyway-backed persistence foundation
+- Codex App Server client integration
 
-Constraints implemented:
+### Block 2. Legacy task execution model
 
+Implemented:
+
+- `Task`
+- `TaskExecution`
+- task launch / relaunch
+- branch ownership and project-level locking
+- launch-readiness heuristics
+- review-pending flow
+- pull request metadata and GitHub integration
+- explicit review outcome
+- strict branch closure rules
+- operational guidance fields such as:
+  - `projectBlocked`
+  - `hasReviewableChanges`
+  - `lastExecutionFailed`
+  - `launchReady`
+  - `launchReadinessReason`
+  - `blockingReason`
+  - `nextAction`
+  - `recoveryAction`
+
+### Block 3. WorkSession Phase 1
+
+Implemented:
+
+- persistence for `work_session`, `session_turn`, `agent_run`
 - one `OPEN` session per project
 - one `RUNNING` run per session
-
-#### Slice 2. Open and read session
-
-Implemented endpoints:
-
 - `POST /api/projects/{projectId}/sessions`
 - `GET /api/sessions/{sessionId}`
+- `POST /api/sessions/{sessionId}/turns`
+- `GET /api/sessions/{sessionId}/turns`
+- `GET /api/sessions/{sessionId}/runs`
+- `POST /api/sessions/{sessionId}/close`
+- descriptive `repoState` snapshot on session responses
+- real Codex execution inside the session flow
+- continuity through persisted `externalThreadId`
 
-Implemented behavior:
+Current conclusion:
 
-- validate project
-- validate repoPath
-- set `baseBranch` from request or current repo branch
-- persist session as `OPEN`
-- keep `workspaceBranch = null`
-- keep `externalThreadId = null`
+- `WorkSession Phase 1` is functionally complete in the backend
 
-#### Slice 3. Descriptive session snapshot
+## Open gaps that are real today
 
-Implemented on `WorkSessionResponse`:
+The main open gaps visible in the repository are now these:
 
-- `repoValid`
-- `workingTreeClean`
-- `currentBranch`
-- `runInProgress`
+### Gap 1. Canonical product surface is still split
 
-Important rule:
+The backend still exposes both:
 
-- this snapshot is descriptive only
-- it is not a workflow engine
+- a legacy task-centered workflow
+- a newer session-centered workflow
 
-### Pending slices in Phase 1
+What is not yet fully settled in the repository:
 
-Still pending:
+- which surface is canonical for operator-facing flows
+- how project overview and other higher-level views should represent `WorkSession` versus legacy `TaskExecution`
 
-1. create turns inside a session
-2. execute Codex turns inside a session
-3. reuse the same external thread between turns
-4. list session turns
-5. list session runs
-6. close session explicitly
+### Gap 2. Documentation and governance are behind the implementation
 
-## Legacy roadmap status
+The repository recently contained documentation that still described major `WorkSession` capabilities as pending even though they were already implemented.
 
-The legacy task workflow is still functional, but it is no longer the roadmap center.
+That means documentation governance is a real gap, not an editorial detail.
 
-Its role during transition is:
+### Gap 3. Product-next work after the now-functional session core is not yet explicitly defined
 
-- keep current operators unblocked
-- preserve branch-safe repository work
-- coexist while the `WorkSession` core becomes complete
+The code shows a working `WorkSession` core, but the repository does not yet define a precise post-Phase-1 product plan for:
 
-It should not define the future web or mobile surface.
+- frontend alignment
+- coexistence rules
+- operator workflow simplification
+- eventual de-emphasis or retirement path for legacy task-centered flows
 
-## Near-term target
+## Pending real work
 
-The next meaningful product milestone is not “more task workflow”.
+Based strictly on the repository, the pending work is not:
 
-It is:
+- basic `WorkSession` turn execution
+- basic thread continuity
+- basic turns/runs history
+- basic session close
 
-- complete `WorkSession Phase 1`
-- prove real session continuity with Codex
-- move the product center away from `Task`
+Those are already implemented.
 
-## V1 exit direction
+The pending real work is instead:
 
-`V1` should not be declared by the mere existence of the legacy task flow.
+- consolidate documentation around the true current state
+- make the coexistence rules between legacy and new model explicit
+- define which API surface should drive the next operator or frontend workflows
+- revisit higher-level project views that still summarize legacy execution state only
 
-The stable baseline should require at least:
+## Next recommended phase
 
-1. a usable `WorkSession` core
-2. clear coexistence rules between legacy task flow and new session flow
-3. stable API contracts for the new frontend direction
-4. documentation aligned with the real operating model
+The next recommended phase, justified by the current repository, is:
 
-## Atenea Web direction
+## Consolidation And Governance
 
-The first frontend aligned with the future product should target `WorkSession`, not `Task`.
+Goals:
 
-That means the web surface should eventually revolve around:
+- align documentation with code and tests
+- establish a local canonical guide for agents
+- make legacy-versus-new-model boundaries explicit
+- identify which surface should be treated as canonical for future product work
 
-- selecting a project
-- opening a session
-- consulting session state
-- sending turns
-- reviewing the evolving session
+Recommended outputs of this phase:
 
-Not around:
+1. documentation aligned with implemented `WorkSession`
+2. explicit coexistence guidance for `Task` / `TaskExecution` and `WorkSession` / `SessionTurn` / `AgentRun`
+3. local agent guidance in the repository itself
+4. clarified roadmap after the completion of the current `WorkSession` slice
 
-- creating task
-- forcing review/PR semantics from the first interaction
+## What remains uncertain
 
-That frontend direction is still blocked until the remaining pending slices of `WorkSession Phase 1` are implemented.
+The repository does not yet justify stronger claims than these:
+
+- it does not define a finalized migration plan away from legacy task flows
+- it does not define whether `TaskExecution` will be retired, reduced, or kept long-term
+- it does not define the final frontend contract beyond the fact that `WorkSession` is the intended future-centered model
+
+Those points should therefore remain explicit decisions, not assumptions.
+
+## Summary
+
+Current roadmap reading should be:
+
+- legacy task orchestration: implemented and still active
+- `WorkSession` conversational core: implemented and operational
+- immediate need: consolidation, documentation alignment and product-surface clarity
+- future planning beyond that: still requires explicit human decisions

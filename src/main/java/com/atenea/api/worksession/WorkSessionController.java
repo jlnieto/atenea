@@ -28,9 +28,43 @@ public class WorkSessionController {
         return workSessionService.openSession(projectId, request);
     }
 
+    @PostMapping("/api/projects/{projectId}/sessions/resolve")
+    public ResolveWorkSessionResponse resolveSession(
+            @PathVariable Long projectId,
+            @Valid @RequestBody(required = false) ResolveWorkSessionRequest request
+    ) {
+        return workSessionService.resolveSession(projectId, request);
+    }
+
+    @PostMapping("/api/projects/{projectId}/sessions/resolve/view")
+    public ResolveWorkSessionViewResponse resolveSessionView(
+            @PathVariable Long projectId,
+            @Valid @RequestBody(required = false) ResolveWorkSessionRequest request
+    ) {
+        return workSessionService.resolveSessionView(projectId, request);
+    }
+
+    @PostMapping("/api/projects/{projectId}/sessions/resolve/conversation-view")
+    public ResolveWorkSessionConversationViewResponse resolveSessionConversationView(
+            @PathVariable Long projectId,
+            @Valid @RequestBody(required = false) ResolveWorkSessionRequest request
+    ) {
+        return workSessionService.resolveSessionConversationView(projectId, request);
+    }
+
     @GetMapping("/api/sessions/{sessionId}")
     public WorkSessionResponse getSession(@PathVariable Long sessionId) {
         return workSessionService.getSession(sessionId);
+    }
+
+    @GetMapping("/api/sessions/{sessionId}/view")
+    public WorkSessionViewResponse getSessionView(@PathVariable Long sessionId) {
+        return workSessionService.getSessionView(sessionId);
+    }
+
+    @GetMapping("/api/sessions/{sessionId}/conversation-view")
+    public WorkSessionConversationViewResponse getSessionConversationView(@PathVariable Long sessionId) {
+        return workSessionService.getSessionConversationView(sessionId);
     }
 
     @PostMapping("/api/sessions/{sessionId}/close")

@@ -8,7 +8,11 @@ public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, 
 
     boolean existsByProjectIdAndStatus(Long projectId, WorkSessionStatus status);
 
+    @EntityGraph(attributePaths = "project")
     Optional<WorkSessionEntity> findByProjectIdAndStatus(Long projectId, WorkSessionStatus status);
+
+    @EntityGraph(attributePaths = "project")
+    Optional<WorkSessionEntity> findFirstByProjectIdOrderByLastActivityAtDesc(Long projectId);
 
     @EntityGraph(attributePaths = "project")
     Optional<WorkSessionEntity> findWithProjectById(Long id);

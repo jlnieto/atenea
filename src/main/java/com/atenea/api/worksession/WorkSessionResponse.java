@@ -7,6 +7,7 @@ public record WorkSessionResponse(
         Long id,
         Long projectId,
         WorkSessionStatus status,
+        WorkSessionOperationalState operationalState,
         String title,
         String baseBranch,
         String workspaceBranch,

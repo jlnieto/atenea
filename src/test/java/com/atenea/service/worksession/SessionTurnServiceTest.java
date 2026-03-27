@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.atenea.api.worksession.SessionTurnResponse;
 import com.atenea.persistence.project.ProjectEntity;
+import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
@@ -35,10 +36,19 @@ class SessionTurnServiceTest {
     private GitRepositoryService gitRepositoryService;
 
     @Mock
+    private AgentRunRepository agentRunRepository;
+
+    @Mock
     private AgentRunService agentRunService;
 
     @Mock
+    private AgentRunReconciliationService agentRunReconciliationService;
+
+    @Mock
     private SessionCodexOrchestrator sessionCodexOrchestrator;
+
+    @Mock
+    private SessionTurnCompletionService sessionTurnCompletionService;
 
     private SessionTurnService sessionTurnService;
 
@@ -49,9 +59,12 @@ class SessionTurnServiceTest {
                 sessionTurnRepository,
                 new WorkspaceRepositoryPathValidator("/workspace/repos"),
                 gitRepositoryService,
+                agentRunRepository,
                 agentRunService,
                 new AgentRunProgressService(),
-                sessionCodexOrchestrator
+                agentRunReconciliationService,
+                sessionCodexOrchestrator,
+                sessionTurnCompletionService
         );
     }
 
@@ -72,6 +85,35 @@ class SessionTurnServiceTest {
     }
 
     @Test
+    void getTurnsReturnsLatestWindowWhenLimitIsProvided() {
+        when(workSessionRepository.existsById(12L)).thenReturn(true);
+        when(sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(12L)).thenReturn(List.of(
+                buildTurn(101L, SessionTurnActor.OPERATOR, "Turn 1", false, "2026-03-25T10:01:00Z"),
+                buildTurn(102L, SessionTurnActor.CODEX, "Turn 2", false, "2026-03-25T10:02:00Z"),
+                buildTurn(103L, SessionTurnActor.OPERATOR, "Turn 3", false, "2026-03-25T10:03:00Z"),
+                buildTurn(104L, SessionTurnActor.CODEX, "Turn 4", false, "2026-03-25T10:04:00Z")));
+
+        List<SessionTurnResponse> turns = sessionTurnService.getTurns(12L, null, 2);
+
+        assertEquals(List.of(103L, 104L), turns.stream().map(SessionTurnResponse::id).toList());
+    }
+
+    @Test
+    void getTurnsReturnsOlderWindowBeforeTurnId() {
+        when(workSessionRepository.existsById(12L)).thenReturn(true);
+        when(sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(12L)).thenReturn(List.of(
+                buildTurn(101L, SessionTurnActor.OPERATOR, "Turn 1", false, "2026-03-25T10:01:00Z"),
+                buildTurn(102L, SessionTurnActor.CODEX, "Turn 2", false, "2026-03-25T10:02:00Z"),
+                buildTurn(103L, SessionTurnActor.OPERATOR, "Turn 3", false, "2026-03-25T10:03:00Z"),
+                buildTurn(104L, SessionTurnActor.CODEX, "Turn 4", false, "2026-03-25T10:04:00Z"),
+                buildTurn(105L, SessionTurnActor.OPERATOR, "Turn 5", false, "2026-03-25T10:05:00Z")));
+
+        List<SessionTurnResponse> turns = sessionTurnService.getTurns(12L, 105L, 2);
+
+        assertEquals(List.of(103L, 104L), turns.stream().map(SessionTurnResponse::id).toList());
+    }
+
+    @Test
     void getTurnsExcludesInternalTurnsFromPublicHistory() {
         when(workSessionRepository.existsById(12L)).thenReturn(true);
         when(sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(12L)).thenReturn(List.of(
@@ -86,10 +128,33 @@ class SessionTurnServiceTest {
     }
 
     @Test
+    void getTurnsReturnsEmptyWindowWhenNoVisibleTurnsExistBeforeCursor() {
+        when(workSessionRepository.existsById(12L)).thenReturn(true);
+        when(sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(12L)).thenReturn(List.of(
+                buildTurn(101L, SessionTurnActor.OPERATOR, "Turn 1", false, "2026-03-25T10:01:00Z"),
+                buildTurn(102L, SessionTurnActor.CODEX, "Turn 2", false, "2026-03-25T10:02:00Z")));
+
+        List<SessionTurnResponse> turns = sessionTurnService.getTurns(12L, 101L, 20);
+
+        assertEquals(List.of(), turns);
+    }
+
+    @Test
     void getTurnsThrowsWhenSessionDoesNotExist() {
         when(workSessionRepository.existsById(12L)).thenReturn(false);
 
         assertThrows(WorkSessionNotFoundException.class, () -> sessionTurnService.getTurns(12L));
+    }
+
+    @Test
+    void getTurnsThrowsWhenLimitIsInvalid() {
+        when(workSessionRepository.existsById(12L)).thenReturn(true);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> sessionTurnService.getTurns(12L, null, 0));
+
+        assertEquals("Turn limit must be greater than zero", exception.getMessage());
     }
 
     private static SessionTurnEntity buildTurn(

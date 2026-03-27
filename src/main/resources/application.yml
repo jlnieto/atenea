@@ -33,7 +33,9 @@ atenea:
     cwd: ${ATENEA_CODEX_APP_SERVER_CWD:/workspace/repos/internal/atenea}
     model: ${ATENEA_CODEX_APP_SERVER_MODEL:}
     connect-timeout: ${ATENEA_CODEX_APP_SERVER_CONNECT_TIMEOUT:10s}
+    start-timeout: ${ATENEA_CODEX_APP_SERVER_START_TIMEOUT:15s}
     completion-timeout: ${ATENEA_CODEX_APP_SERVER_COMPLETION_TIMEOUT:300s}
+    stale-timeout: ${ATENEA_CODEX_APP_SERVER_STALE_TIMEOUT:30m}
   github:
     api-base-url: ${ATENEA_GITHUB_API_BASE_URL:https://api.github.com}
     token: ${ATENEA_GITHUB_TOKEN:}

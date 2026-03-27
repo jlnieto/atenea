@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.atenea.api.ApiExceptionHandler;
+import com.atenea.api.project.ProjectOverviewResponse.LegacyProjectOverviewResponse;
+import com.atenea.api.project.ProjectOverviewResponse.WorkSessionOverviewResponse;
 import com.atenea.service.project.ProjectOverviewService;
 import com.atenea.service.project.ProjectBootstrapService;
 import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
@@ -14,6 +16,7 @@ import com.atenea.service.project.ProjectService;
 import com.atenea.persistence.task.TaskBranchStatus;
 import com.atenea.persistence.task.TaskPullRequestStatus;
 import com.atenea.persistence.task.TaskReviewOutcome;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -150,7 +153,7 @@ class ProjectControllerTest {
     }
 
     @Test
-    void getProjectOverviewReturnsLatestTaskAndExecution() throws Exception {
+    void getProjectOverviewReturnsCanonicalWorkSessionAndLegacyBlocks() throws Exception {
         when(projectOverviewService.getOverview()).thenReturn(java.util.List.of(new ProjectOverviewResponse(
                 new ProjectResponse(
                         1L,
@@ -159,50 +162,68 @@ class ProjectControllerTest {
                         "/workspace/repos/internal/atenea",
                         Instant.parse("2026-03-22T08:00:00Z"),
                         Instant.parse("2026-03-22T08:05:00Z")),
-                new com.atenea.api.task.TaskResponse(
-                        10L,
-                        1L,
-                        "Fix launch flow",
-                        "desc",
-                        "main",
-                        "task/10-fix-launch-flow",
-                        TaskBranchStatus.PLANNED,
-                        null,
-                        TaskPullRequestStatus.NOT_CREATED,
-                        TaskReviewOutcome.PENDING,
-                        null,
-                        false,
-                        false,
-                        false,
+                new WorkSessionOverviewResponse(
+                        50L,
                         true,
-                        "ready",
-                        "none",
-                        "launch",
-                        "none",
-                        com.atenea.persistence.task.TaskStatus.PENDING,
-                        com.atenea.persistence.task.TaskPriority.NORMAL,
-                        Instant.parse("2026-03-22T10:00:00Z"),
-                        Instant.parse("2026-03-22T10:01:00Z")),
-                new com.atenea.api.taskexecution.TaskExecutionResponse(
-                        100L,
-                        10L,
-                        com.atenea.persistence.taskexecution.TaskExecutionStatus.SUCCEEDED,
-                        com.atenea.persistence.taskexecution.TaskExecutionRunnerType.CODEX,
-                        "/workspace/repos/internal/atenea",
-                        Instant.parse("2026-03-22T10:02:00Z"),
-                        Instant.parse("2026-03-22T10:03:00Z"),
-                        "ok",
-                        null,
+                        WorkSessionStatus.OPEN,
+                        "Session title",
+                        "main",
                         "thread-1",
-                        "turn-1",
-                        Instant.parse("2026-03-22T10:02:00Z")))));
+                        true,
+                        true,
+                        "feature/session",
+                        true,
+                        Instant.parse("2026-03-22T10:00:00Z"),
+                        Instant.parse("2026-03-22T10:10:00Z"),
+                        null),
+                new LegacyProjectOverviewResponse(
+                        new com.atenea.api.task.TaskResponse(
+                                10L,
+                                1L,
+                                "Fix launch flow",
+                                "desc",
+                                "main",
+                                "task/10-fix-launch-flow",
+                                TaskBranchStatus.PLANNED,
+                                null,
+                                TaskPullRequestStatus.NOT_CREATED,
+                                TaskReviewOutcome.PENDING,
+                                null,
+                                false,
+                                false,
+                                false,
+                                true,
+                                "ready",
+                                "none",
+                                "launch",
+                                "none",
+                                com.atenea.persistence.task.TaskStatus.PENDING,
+                                com.atenea.persistence.task.TaskPriority.NORMAL,
+                                Instant.parse("2026-03-22T10:00:00Z"),
+                                Instant.parse("2026-03-22T10:01:00Z")),
+                        new com.atenea.api.taskexecution.TaskExecutionResponse(
+                                100L,
+                                10L,
+                                com.atenea.persistence.taskexecution.TaskExecutionStatus.SUCCEEDED,
+                                com.atenea.persistence.taskexecution.TaskExecutionRunnerType.CODEX,
+                                "/workspace/repos/internal/atenea",
+                                Instant.parse("2026-03-22T10:02:00Z"),
+                                Instant.parse("2026-03-22T10:03:00Z"),
+                                "ok",
+                                null,
+                                "thread-1",
+                                "turn-1",
+                                Instant.parse("2026-03-22T10:02:00Z"))))));
 
         mockMvc.perform(get("/api/projects/overview"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].project.name").value("Atenea"))
-                .andExpect(jsonPath("$[0].latestTask.title").value("Fix launch flow"))
-                .andExpect(jsonPath("$[0].latestTask.branchName").value("task/10-fix-launch-flow"))
-                .andExpect(jsonPath("$[0].latestExecution.id").value(100));
+                .andExpect(jsonPath("$[0].workSession.sessionId").value(50))
+                .andExpect(jsonPath("$[0].workSession.current").value(true))
+                .andExpect(jsonPath("$[0].workSession.runInProgress").value(true))
+                .andExpect(jsonPath("$[0].legacy.latestTask.title").value("Fix launch flow"))
+                .andExpect(jsonPath("$[0].legacy.latestTask.branchName").value("task/10-fix-launch-flow"))
+                .andExpect(jsonPath("$[0].legacy.latestExecution.id").value(100));
     }
 
 }

@@ -12,7 +12,9 @@ public class CodexAppServerProperties {
     private String cwd = "/workspace/repos/internal/atenea";
     private String model;
     private Duration connectTimeout = Duration.ofSeconds(10);
+    private Duration startTimeout = Duration.ofSeconds(15);
     private Duration completionTimeout = Duration.ofSeconds(300);
+    private Duration staleTimeout = Duration.ofMinutes(30);
 
     public URI getUrl() {
         return url;
@@ -60,5 +62,21 @@ public class CodexAppServerProperties {
 
     public void setCompletionTimeout(Duration completionTimeout) {
         this.completionTimeout = completionTimeout;
+    }
+
+    public Duration getStartTimeout() {
+        return startTimeout;
+    }
+
+    public void setStartTimeout(Duration startTimeout) {
+        this.startTimeout = startTimeout;
+    }
+
+    public Duration getStaleTimeout() {
+        return staleTimeout;
+    }
+
+    public void setStaleTimeout(Duration staleTimeout) {
+        this.staleTimeout = staleTimeout;
     }
 }

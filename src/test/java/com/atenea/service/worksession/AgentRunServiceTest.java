@@ -4,7 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,6 +20,7 @@ import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,10 +42,15 @@ class AgentRunServiceTest {
     @Mock
     private SessionTurnRepository sessionTurnRepository;
 
+    @Mock
+    private com.atenea.codexappserver.CodexAppServerProperties codexAppServerProperties;
+
     private AgentRunService agentRunService;
+    private AgentRunReconciliationService agentRunReconciliationService;
 
     @BeforeEach
     void setUp() {
+        agentRunReconciliationService = new AgentRunReconciliationService(agentRunRepository, codexAppServerProperties);
         agentRunService = new AgentRunService(
                 workSessionRepository,
                 agentRunRepository,
@@ -118,6 +126,16 @@ class AgentRunServiceTest {
     }
 
     @Test
+    void forceMarkFailedIfRunningUsesConditionalRepositoryUpdate() {
+        when(agentRunRepository.forceMarkFailedIfRunning(eq(55L), eq("turn_456"), eq("Codex execution failed"), any()))
+                .thenReturn(1);
+
+        boolean updated = agentRunService.forceMarkFailedIfRunning(55L, " turn_456 ", " Codex execution failed ");
+
+        assertTrue(updated);
+    }
+
+    @Test
     void createRunningRunFailsWhenSessionAlreadyHasRunningRun() {
         WorkSessionEntity session = buildSession(12L, 7L, "/workspace/repos/internal/atenea");
 
@@ -125,6 +143,65 @@ class AgentRunServiceTest {
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(true);
 
         assertThrows(AgentRunAlreadyRunningException.class, () -> agentRunService.createRunningRun(12L));
+    }
+
+    @Test
+    void reconcileSessionMarksRunningRunFailedWhenItExceededTimeoutWindow() {
+        AgentRunEntity run = buildRun(55L, AgentRunStatus.RUNNING);
+        run.setStartedAt(Instant.now().minus(Duration.ofMinutes(7)));
+
+        when(codexAppServerProperties.getStaleTimeout()).thenReturn(Duration.ofMinutes(5));
+        when(agentRunRepository.findBySessionIdAndStatusOrderByCreatedAtAsc(12L, AgentRunStatus.RUNNING))
+                .thenReturn(java.util.List.of(run));
+        when(agentRunRepository.saveAndFlush(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        boolean reconciled = agentRunReconciliationService.reconcileSession(12L);
+
+        assertEquals(true, reconciled);
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertEquals(
+                "Marked FAILED during reconciliation because the run stayed RUNNING past the stale timeout window",
+                run.getErrorSummary());
+        assertNotNull(run.getFinishedAt());
+        assertNull(run.getOutputSummary());
+    }
+
+    @Test
+    void reconcileSessionKeepsRecentRunningRunUntouched() {
+        AgentRunEntity run = buildRun(55L, AgentRunStatus.RUNNING);
+        run.setStartedAt(Instant.now().minus(Duration.ofMinutes(2)));
+
+        when(codexAppServerProperties.getStaleTimeout()).thenReturn(Duration.ofMinutes(5));
+        when(agentRunRepository.findBySessionIdAndStatusOrderByCreatedAtAsc(12L, AgentRunStatus.RUNNING))
+                .thenReturn(java.util.List.of(run));
+
+        boolean reconciled = agentRunReconciliationService.reconcileSession(12L);
+
+        assertEquals(false, reconciled);
+        assertEquals(AgentRunStatus.RUNNING, run.getStatus());
+        assertNull(run.getFinishedAt());
+        assertNull(run.getErrorSummary());
+    }
+
+    @Test
+    void reconcileRunningRunsAfterStartupMarksAllPersistedRunningRunsFailed() {
+        AgentRunEntity firstRun = buildRun(55L, AgentRunStatus.RUNNING);
+        AgentRunEntity secondRun = buildRun(56L, AgentRunStatus.RUNNING);
+
+        when(agentRunRepository.findByStatusOrderByCreatedAtAsc(AgentRunStatus.RUNNING))
+                .thenReturn(java.util.List.of(firstRun, secondRun));
+        when(agentRunRepository.saveAndFlush(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        int reconciledCount = agentRunReconciliationService.reconcileRunningRunsAfterStartup();
+
+        assertEquals(2, reconciledCount);
+        assertEquals(AgentRunStatus.FAILED, firstRun.getStatus());
+        assertEquals(AgentRunStatus.FAILED, secondRun.getStatus());
+        assertEquals(
+                "Marked FAILED during startup reconciliation because Atenea restarted while the run was still RUNNING",
+                firstRun.getErrorSummary());
+        assertNotNull(firstRun.getFinishedAt());
+        assertNull(firstRun.getOutputSummary());
     }
 
     private static WorkSessionEntity buildSession(Long sessionId, Long projectId, String repoPath) {

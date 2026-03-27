@@ -1,9 +1,12 @@
 package com.atenea.service.project;
 
 import com.atenea.api.project.ProjectOverviewResponse;
+import com.atenea.api.project.ProjectOverviewResponse.LegacyProjectOverviewResponse;
+import com.atenea.api.project.ProjectOverviewResponse.WorkSessionOverviewResponse;
 import com.atenea.api.project.ProjectResponse;
 import com.atenea.api.task.TaskResponse;
 import com.atenea.api.taskexecution.TaskExecutionResponse;
+import com.atenea.api.worksession.SessionOperationalSnapshotResponse;
 import com.atenea.service.task.TaskResponseMapper;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
@@ -11,6 +14,10 @@ import com.atenea.persistence.task.TaskEntity;
 import com.atenea.persistence.task.TaskRepository;
 import com.atenea.persistence.taskexecution.TaskExecutionEntity;
 import com.atenea.persistence.taskexecution.TaskExecutionRepository;
+import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.service.worksession.SessionOperationalSnapshotService;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -24,17 +31,23 @@ public class ProjectOverviewService {
     private final ProjectRepository projectRepository;
     private final TaskRepository taskRepository;
     private final TaskExecutionRepository taskExecutionRepository;
+    private final WorkSessionRepository workSessionRepository;
+    private final SessionOperationalSnapshotService sessionOperationalSnapshotService;
     private final TaskResponseMapper taskResponseMapper;
 
     public ProjectOverviewService(
             ProjectRepository projectRepository,
             TaskRepository taskRepository,
             TaskExecutionRepository taskExecutionRepository,
+            WorkSessionRepository workSessionRepository,
+            SessionOperationalSnapshotService sessionOperationalSnapshotService,
             TaskResponseMapper taskResponseMapper
     ) {
         this.projectRepository = projectRepository;
         this.taskRepository = taskRepository;
         this.taskExecutionRepository = taskExecutionRepository;
+        this.workSessionRepository = workSessionRepository;
+        this.sessionOperationalSnapshotService = sessionOperationalSnapshotService;
         this.taskResponseMapper = taskResponseMapper;
     }
 
@@ -47,6 +60,10 @@ public class ProjectOverviewService {
     }
 
     private ProjectOverviewResponse toOverview(ProjectEntity project) {
+        WorkSessionEntity canonicalSession = workSessionRepository.findByProjectIdAndStatus(project.getId(), WorkSessionStatus.OPEN)
+                .or(() -> workSessionRepository.findFirstByProjectIdOrderByLastActivityAtDesc(project.getId()))
+                .orElse(null);
+
         List<TaskEntity> tasks = taskRepository.findByProjectIdOrderByCreatedAtAsc(project.getId());
         TaskEntity latestTaskEntity = tasks.stream()
                 .max(Comparator.comparing(TaskEntity::getCreatedAt))
@@ -61,8 +78,10 @@ public class ProjectOverviewService {
 
         return new ProjectOverviewResponse(
                 toProjectResponse(project),
-                latestTaskEntity == null ? null : toTaskResponse(latestTaskEntity),
-                latestExecutionEntity == null ? null : toTaskExecutionResponse(latestExecutionEntity)
+                canonicalSession == null ? null : toWorkSessionOverview(canonicalSession),
+                new LegacyProjectOverviewResponse(
+                        latestTaskEntity == null ? null : toTaskResponse(latestTaskEntity),
+                        latestExecutionEntity == null ? null : toTaskExecutionResponse(latestExecutionEntity))
         );
     }
 
@@ -95,6 +114,25 @@ public class ProjectOverviewService {
                 taskExecution.getExternalThreadId(),
                 taskExecution.getExternalTurnId(),
                 taskExecution.getCreatedAt()
+        );
+    }
+
+    private WorkSessionOverviewResponse toWorkSessionOverview(WorkSessionEntity session) {
+        SessionOperationalSnapshotResponse snapshot = sessionOperationalSnapshotService.snapshot(session);
+        return new WorkSessionOverviewResponse(
+                session.getId(),
+                session.getStatus() == WorkSessionStatus.OPEN,
+                session.getStatus(),
+                session.getTitle(),
+                session.getBaseBranch(),
+                session.getExternalThreadId(),
+                snapshot.repoValid(),
+                snapshot.workingTreeClean(),
+                snapshot.currentBranch(),
+                snapshot.runInProgress(),
+                session.getOpenedAt(),
+                session.getLastActivityAt(),
+                session.getClosedAt()
         );
     }
 }

@@ -87,6 +87,17 @@ public class AgentRunService {
         return agentRunRepository.save(run);
     }
 
+    @Transactional
+    public boolean forceMarkFailedIfRunning(Long runId, String externalTurnId, String errorSummary) {
+        String normalizedTurnId = normalizeNullableText(externalTurnId);
+        String normalizedErrorSummary = normalizeNullableText(errorSummary);
+        return agentRunRepository.forceMarkFailedIfRunning(
+                runId,
+                normalizedTurnId,
+                normalizedErrorSummary,
+                Instant.now()) > 0;
+    }
+
     @Transactional(readOnly = true)
     public List<AgentRunResponse> getRuns(Long sessionId) {
         if (!workSessionRepository.existsById(sessionId)) {
@@ -106,6 +117,14 @@ public class AgentRunService {
     private AgentRunEntity getRun(Long runId) {
         return agentRunRepository.findById(runId)
                 .orElseThrow(() -> new AgentRunNotFoundException(runId));
+    }
+
+    private String normalizeNullableText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private void ensureRunning(AgentRunEntity run, AgentRunStatus targetStatus) {

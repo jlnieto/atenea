@@ -1,0 +1,3 @@
+atenea.yudri.es {
+    reverse_proxy atenea-dev:8081
+}

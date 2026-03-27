@@ -2,104 +2,203 @@
 
 ## Purpose
 
-This document records the real backend state of the new `WorkSession` core after completion of:
+This document records the real backend state of the `WorkSession` model as implemented today.
 
-- Slice 1
-- Slice 2
-- Slice 3
+The file name remains `worksession-phase1.md` because the current implementation corresponds to the first complete vertical slice of the new conversational core.
 
-It is intentionally narrow:
+Current precise meaning:
 
-- it describes what is already in code
-- it identifies what still belongs to the legacy task workflow
-- it lists what remains pending inside Phase 1
+- `WorkSession Phase 1` is functionally implemented in the backend
+- the legacy `Task` / `TaskExecution` flow still exists and remains operational
+- Atenea is still in coexistence mode, not in full migration completion
 
-## Architectural meaning
+## Current architectural position
 
-The key product decision is now fixed:
+The backend currently exposes two real orchestration models:
 
-- the future core of Atenea must revolve around `WorkSession`
-- `Task` must not evolve linearly into `WorkSession`
+- legacy model:
+  - `Project`
+  - `Task`
+  - `TaskExecution`
+  - task-owned branch workflow
+  - review / PR / close lifecycle
+- new conversational model:
+  - `WorkSession`
+  - `SessionTurn`
+  - `AgentRun`
 
-This does **not** mean the legacy task flow disappeared.
-
-Current backend reality is coexistence:
-
-- legacy `Task` workflow still exists and remains operational
-- new `WorkSession` core has started and is the direction for the future product
+The new product direction is centered on `WorkSession`, but the legacy task flow is still implemented and must not be ignored.
 
 ## Implemented in code today
 
-### Slice 1. Persistence
+### Persistence model
 
-Implemented:
+Implemented tables:
 
-- table `work_session`
-- table `session_turn`
-- table `agent_run`
+- `work_session`
+- `session_turn`
+- `agent_run`
 
 Implemented constraints:
 
 - only one `OPEN` `WorkSession` per `Project`
 - only one `RUNNING` `AgentRun` per `WorkSession`
 
-Current note:
+Persisted `WorkSession` state includes:
 
-- `session_turn` and `agent_run` persistence exists, but their API flow is not implemented yet
+- `status`
+- `title`
+- `baseBranch`
+- `workspaceBranch`
+- `externalThreadId`
+- `openedAt`
+- `lastActivityAt`
+- `closedAt`
 
-### Slice 2. Open and read session
+Persisted `SessionTurn` state includes:
+
+- `sessionId`
+- `actor`
+- `messageText`
+- `internal`
+- `createdAt`
+
+Persisted `AgentRun` state includes:
+
+- `sessionId`
+- `originTurnId`
+- `resultTurnId`
+- `status`
+- `targetRepoPath`
+- `externalTurnId`
+- `startedAt`
+- `finishedAt`
+- `outputSummary`
+- `errorSummary`
+
+### Current API surface
 
 Implemented endpoints:
 
 - `POST /api/projects/{projectId}/sessions`
 - `GET /api/sessions/{sessionId}`
+- `POST /api/sessions/{sessionId}/turns`
+- `GET /api/sessions/{sessionId}/turns`
+- `GET /api/sessions/{sessionId}/runs`
+- `POST /api/sessions/{sessionId}/close`
 
-Implemented behavior when opening a session:
+### Current open-session behavior
 
-- validate `Project` existence
-- validate `project.repoPath` through the existing workspace path validator
-- ensure the repository is operational
-- set `baseBranch` from `request.baseBranch` when provided
-- otherwise derive `baseBranch` from the repository current branch
-- persist:
-  - `status = OPEN`
+When opening a session, Atenea currently:
+
+- validates that the target `Project` exists
+- validates `project.repoPath` through `WorkspaceRepositoryPathValidator`
+- verifies that the repository is operational by resolving the current branch through `GitRepositoryService`
+- sets `baseBranch` from `request.baseBranch` when provided
+- otherwise derives `baseBranch` from the repository current branch
+- persists the session as `OPEN`
+- initializes:
   - `workspaceBranch = null`
   - `externalThreadId = null`
   - coherent `openedAt`
   - coherent `lastActivityAt`
 
-Current precise meaning of "repository is operational" in Slice 2:
+### Current turn execution flow
 
-- `project.repoPath` is valid according to `WorkspaceRepositoryPathValidator`
-- and Atenea can resolve the current repository branch through `GitRepositoryService.getCurrentBranch(...)`
+When creating a turn on an open session, Atenea currently:
 
-Not implemented in Slice 2:
+1. validates that the session exists and is `OPEN`
+2. validates that the project repository remains operational
+3. persists an operator-visible `SessionTurn` with actor `OPERATOR`
+4. creates a `RUNNING` `AgentRun` linked to the operator turn
+5. calls Codex through `SessionCodexOrchestrator`
+6. reuses `session.externalThreadId` when present
+7. persists execution progress:
+   - updates `WorkSession.externalThreadId`
+   - updates `AgentRun.externalTurnId`
+8. on success:
+   - persists a visible `SessionTurn` with actor `CODEX`
+   - marks the run as `SUCCEEDED`
+   - links the run to the resulting Codex turn
+9. on failure:
+   - marks the run as `FAILED`
+   - keeps the persisted operator turn and run trace
 
-- turn creation
-- run creation
-- Codex execution
-- thread continuity
-- session close
+This means the current `WorkSession` flow is already conversational and already integrated with Codex execution.
 
-### Slice 3. Descriptive operational snapshot
+## Continuity model
 
-`WorkSessionResponse` now includes:
+Thread continuity is implemented in the current backend.
 
-- `repoState.repoValid`
-- `repoState.workingTreeClean`
-- `repoState.currentBranch`
-- `repoState.runInProgress`
+Current behavior:
 
-Important decisions already implemented:
+- the first turn starts without `externalThreadId`
+- after Codex returns a thread id, Atenea persists it on `WorkSession`
+- the next turn sends that existing thread id back to Codex
+- the same `externalThreadId` is therefore reused across turns in the same session
+- each run still keeps its own `externalTurnId`
 
-- the snapshot is descriptive, not prescriptive
-- it does not expose:
+The implemented continuity root is:
+
+- session continuity -> `WorkSession.externalThreadId`
+- per-run traceability -> `AgentRun.externalTurnId`
+
+## Listing behavior
+
+### Session turns
+
+`GET /api/sessions/{sessionId}/turns` returns the visible conversation history.
+
+Current rules:
+
+- turns are ordered by `createdAt` ascending
+- internal technical turns are filtered out
+- operator and Codex turns are exposed
+
+This means the public conversation history is not polluted by internal technical markers used to support run tracking.
+
+### Session runs
+
+`GET /api/sessions/{sessionId}/runs` returns the persisted run history for the session.
+
+Current rules:
+
+- runs are ordered by `createdAt` ascending
+- the response includes origin turn, result turn, status, repo path and external turn id
+
+## Session close behavior
+
+`POST /api/sessions/{sessionId}/close` is implemented.
+
+Current rules:
+
+- only an `OPEN` session may be closed
+- a session cannot be closed while a run is still `RUNNING`
+- closing a session sets:
+  - `status = CLOSED`
+  - `closedAt`
+  - updated `updatedAt`
+
+Closed sessions do not accept new turns.
+
+## Descriptive session snapshot
+
+`WorkSessionResponse` includes a descriptive repository snapshot under `repoState`:
+
+- `repoValid`
+- `workingTreeClean`
+- `currentBranch`
+- `runInProgress`
+
+Current meaning:
+
+- the snapshot is descriptive, not a workflow engine
+- it does not expose legacy task-derived fields such as:
   - `nextAction`
   - `recoveryAction`
   - `blockingReason`
   - `launchReady`
-  - review-related state
-  - PR-related state
+  - review / PR state
 
 Current behavior if the repository becomes invalid after the session was opened:
 
@@ -108,109 +207,76 @@ Current behavior if the repository becomes invalid after the session was opened:
 - `repoState.workingTreeClean = false`
 - `repoState.currentBranch = null`
 
-`runInProgress` is derived from the new model only:
+`runInProgress` is derived from `agent_run.status = RUNNING`.
 
-- it is based on `agent_run.status = RUNNING`
-- it does not depend on legacy `TaskExecution`
-- `runInProgress` already exists in the snapshot even though the new `WorkSession` API flow for creating or listing `AgentRun` is not implemented yet
+It does not depend on legacy `TaskExecution`.
 
-## Current error surface for the implemented WorkSession API
+## Current restrictions and invariants
 
-Current behavior of the implemented endpoints:
+The following invariants are currently enforced:
+
+- only one `OPEN` session per project
+- only one `RUNNING` run per session
+- turns require the session to be `OPEN`
+- turns require an operational repository
+- closing requires the session to be `OPEN`
+- closing is blocked while a run is still `RUNNING`
+
+## Current error surface
+
+From code and tests, the currently relevant error behavior is:
 
 - `404`
-  - `Project` does not exist on `POST /api/projects/{projectId}/sessions`
-  - `WorkSession` does not exist on `GET /api/sessions/{sessionId}`
-- `409`
-  - a session `OPEN` already exists for the target project
+  - project does not exist on `POST /api/projects/{projectId}/sessions`
+  - session does not exist on:
+    - `GET /api/sessions/{sessionId}`
+    - `POST /api/sessions/{sessionId}/turns`
+    - `GET /api/sessions/{sessionId}/turns`
+    - `GET /api/sessions/{sessionId}/runs`
+    - `POST /api/sessions/{sessionId}/close`
 - `400`
   - request validation fails
-  - or `project.repoPath` is invalid according to the existing repository path validation rules
+  - or `project.repoPath` is invalid according to workspace path validation rules
+  - or turn message is blank
+- `409`
+  - a session `OPEN` already exists for the project
+  - a second run would start while another run is still `RUNNING`
+  - the session is not `OPEN`
 - `422`
-  - `project.repoPath` is valid
-  - but the repository is still not operational for session opening
+  - the repository path is valid but not operational for opening a session or executing a turn
+- `502`
+  - Codex execution fails during session turn execution
 
-## What still belongs to the legacy model
+## What this phase validates today
 
-The following are still implemented but remain outside `WorkSession Phase 1`:
-
-- `Task`
-- `TaskExecution`
-- task launch / relaunch
-- task branch lifecycle
-- review / PR / close flow
-- task-derived operational guidance
-
-Those are real backend capabilities, but they are legacy relative to the future product core.
-
-## What Phase 1 is trying to validate
-
-Phase 1 is meant to validate:
+The currently implemented `WorkSession` slice now validates all of the following:
 
 - a live session rooted in `WorkSession`
-- repository-oriented session state over a `Project`
 - separation between:
-  - session
-  - conversation
-  - execution run
-  - repository state
+  - session state
+  - conversation turns
+  - execution runs
+  - repository snapshot state
+- real Codex execution inside the session flow
+- conversational continuity through reused external thread ids
+- explicit session close
 
-Only the first part of that validation is implemented so far.
+## Remaining gaps after this phase
 
-## Pending inside Phase 1
+The main remaining gaps visible from the current repository are no longer the basics of `WorkSession Phase 1`.
 
-Still pending:
+The current gaps are instead about consolidation and product clarity:
 
-1. send turns to Codex inside a session
-2. persist `SessionTurn` through the API flow
-3. persist `AgentRun` through the API flow
-4. reuse the same external thread between turns
-5. list turns for a session
-6. list runs for a session
-7. close the session explicitly
-
-Phase 1 has therefore **not** yet validated:
-
-- real Codex turn execution inside `WorkSession`
-- real conversational continuity through reused external thread ids
-
-## Current API in the new model
-
-Already available:
-
-- `POST /api/projects/{projectId}/sessions`
-- `GET /api/sessions/{sessionId}`
-
-Not available yet:
-
-- `POST /api/sessions/{sessionId}/turns`
-- `GET /api/sessions/{sessionId}/turns`
-- `GET /api/sessions/{sessionId}/runs`
-- session close endpoint
-
-## Current operational boundaries
-
-What the new `WorkSession` slice already reuses from the existing backend:
-
-- `Project`
-- `WorkspaceRepositoryPathValidator`
-- `GitRepositoryService`
-
-What it does not use:
-
-- `TaskWorkflowService`
-- `TaskExecutionService`
-- `TaskExecutionReadinessService`
-- `TaskOperationalStateService`
-- `TaskOperationalStateResolver`
+- documentation alignment
+- roadmap clarity after the now-functional `WorkSession` core
+- explicit coexistence rules between legacy task flow and session flow at product level
+- definition of what should become canonical for frontend and operator workflows
 
 ## Summary
 
 Current state is:
 
-- `WorkSession` has started in the backend
-- its persistence and basic open/read API are already implemented
-- its operational snapshot exists and is intentionally minimal
-- the conversational core of Phase 1 is still pending
-
-So Atenea is already in architectural transition, but not yet at the point where `WorkSession` can replace the legacy task flow.
+- `WorkSession` is no longer an early persistence-only slice
+- it already supports open, turn execution, conversational continuity, turns history, runs history and close
+- the legacy `Task` / `TaskExecution` model still coexists and remains operational
+- the next gap is not basic `WorkSession` implementation, but consolidation of product contracts, documentation and migration strategy

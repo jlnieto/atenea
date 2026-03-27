@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.atenea.AteneaApplication;
+import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionResult;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
@@ -30,6 +31,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.concurrent.CompletableFuture;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -86,22 +88,10 @@ class WorkSessionFlowIntegrationTest {
     void endToEndHappyPathCoversOpenTurnsListsAndClose() throws Exception {
         ProjectEntity project = createProject("flow-happy-path");
 
-        when(sessionCodexOrchestrator.executeTurn(eq(project.getRepoPath()), eq("First turn"), eq(null), any()))
-                .thenReturn(new CodexAppServerExecutionResult(
-                        "thread-stable",
-                        "turn-a",
-                        CodexAppServerExecutionResult.Status.COMPLETED,
-                        "First answer",
-                        "commentary",
-                        null));
-        when(sessionCodexOrchestrator.executeTurn(eq(project.getRepoPath()), eq("Second turn"), eq("thread-stable"), any()))
-                .thenReturn(new CodexAppServerExecutionResult(
-                        "thread-stable",
-                        "turn-b",
-                        CodexAppServerExecutionResult.Status.COMPLETED,
-                        "Second answer",
-                        "commentary",
-                        null));
+        when(sessionCodexOrchestrator.startTurn(eq(project.getRepoPath()), eq("First turn"), eq(null), any()))
+                .thenReturn(completedHandle("thread-stable", "turn-a", "First answer"));
+        when(sessionCodexOrchestrator.startTurn(eq(project.getRepoPath()), eq("Second turn"), eq("thread-stable"), any()))
+                .thenReturn(completedHandle("thread-stable", "turn-b", "Second answer"));
 
         JsonNode openedSession = postJson("/api/projects/%d/sessions".formatted(project.getId()), """
                 {
@@ -120,7 +110,7 @@ class WorkSessionFlowIntegrationTest {
                 }
                 """, 201);
         assertEquals("turn-a", firstTurn.get("run").get("externalTurnId").asText());
-        assertEquals("First answer", firstTurn.get("codexTurn").get("messageText").asText());
+        assertTrue(firstTurn.get("codexTurn").isNull());
 
         JsonNode secondTurn = postJson("/api/sessions/%d/turns".formatted(sessionId), """
                 {
@@ -128,7 +118,12 @@ class WorkSessionFlowIntegrationTest {
                 }
                 """, 201);
         assertEquals("turn-b", secondTurn.get("run").get("externalTurnId").asText());
-        assertEquals("Second answer", secondTurn.get("codexTurn").get("messageText").asText());
+        assertTrue(secondTurn.get("codexTurn").isNull());
+
+        waitUntil(() -> sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(sessionId).size() == 4);
+        waitUntil(() -> agentRunRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)
+                .stream()
+                .allMatch(run -> run.getStatus() == AgentRunStatus.SUCCEEDED));
 
         JsonNode turns = getJson("/api/sessions/%d/turns".formatted(sessionId), 200);
         assertEquals(4, turns.size());
@@ -154,22 +149,10 @@ class WorkSessionFlowIntegrationTest {
     void continuityOfThreadIsStableAcrossTwoTurnsAndRunsUseDifferentTurnIds() throws Exception {
         ProjectEntity project = createProject("thread-continuity");
 
-        when(sessionCodexOrchestrator.executeTurn(eq(project.getRepoPath()), eq("First turn"), eq(null), any()))
-                .thenReturn(new CodexAppServerExecutionResult(
-                        "thread-stable",
-                        "turn-a",
-                        CodexAppServerExecutionResult.Status.COMPLETED,
-                        "First answer",
-                        "commentary",
-                        null));
-        when(sessionCodexOrchestrator.executeTurn(eq(project.getRepoPath()), eq("Second turn"), eq("thread-stable"), any()))
-                .thenReturn(new CodexAppServerExecutionResult(
-                        "thread-stable",
-                        "turn-b",
-                        CodexAppServerExecutionResult.Status.COMPLETED,
-                        "Second answer",
-                        "commentary",
-                        null));
+        when(sessionCodexOrchestrator.startTurn(eq(project.getRepoPath()), eq("First turn"), eq(null), any()))
+                .thenReturn(completedHandle("thread-stable", "turn-a", "First answer"));
+        when(sessionCodexOrchestrator.startTurn(eq(project.getRepoPath()), eq("Second turn"), eq("thread-stable"), any()))
+                .thenReturn(completedHandle("thread-stable", "turn-b", "Second answer"));
 
         long sessionId = postJson("/api/projects/%d/sessions".formatted(project.getId()), """
                 {
@@ -182,6 +165,10 @@ class WorkSessionFlowIntegrationTest {
                   "message": "First turn"
                 }
                 """, 201);
+        waitUntil(() -> workSessionRepository.findById(sessionId)
+                .map(WorkSessionEntity::getExternalThreadId)
+                .filter("thread-stable"::equals)
+                .isPresent());
         String threadAfterFirstTurn = getJson("/api/sessions/%d".formatted(sessionId), 200)
                 .get("externalThreadId").asText();
 
@@ -190,6 +177,8 @@ class WorkSessionFlowIntegrationTest {
                   "message": "Second turn"
                 }
                 """, 201);
+        waitUntil(() -> agentRunRepository.findAll().size() == 2
+                && agentRunRepository.findAll().stream().allMatch(run -> run.getStatus() == AgentRunStatus.SUCCEEDED));
         String threadAfterSecondTurn = getJson("/api/sessions/%d".formatted(sessionId), 200)
                 .get("externalThreadId").asText();
 
@@ -265,6 +254,46 @@ class WorkSessionFlowIntegrationTest {
     }
 
     @Test
+    void recoversStaleRunningRunWhenSessionStateIsLoadedAgain() throws Exception {
+        ProjectEntity project = createProject("stale-running-recovery");
+        long sessionId = postJson("/api/projects/%d/sessions".formatted(project.getId()), """
+                {
+                  "title": "Recover stale run"
+                }
+                """, 201).get("id").asLong();
+
+        AgentRunEntity staleRun = agentRunService.createRunningRun(sessionId);
+        staleRun.setStartedAt(Instant.now().minusSeconds(1900));
+        agentRunRepository.save(staleRun);
+
+        JsonNode conversationView = getJson("/api/sessions/%d/conversation-view".formatted(sessionId), 200);
+        assertEquals("IDLE", conversationView.get("view").get("session").get("operationalState").asText());
+        assertEquals("FAILED", conversationView.get("view").get("latestRun").get("status").asText());
+        assertEquals(
+                "Marked FAILED during reconciliation because the run stayed RUNNING past the stale timeout window",
+                conversationView.get("view").get("lastError").asText());
+
+        when(sessionCodexOrchestrator.startTurn(eq(project.getRepoPath()), eq("Recover now"), eq(null), any()))
+                .thenReturn(completedHandle("thread-recovered", "turn-recovered", "Recovered answer"));
+
+        JsonNode createTurn = postJson("/api/sessions/%d/turns".formatted(sessionId), """
+                {
+                  "message": "Recover now"
+                }
+                """, 201);
+        assertEquals("RUNNING", createTurn.get("run").get("status").asText());
+        assertTrue(createTurn.get("codexTurn").isNull());
+
+        waitUntil(() -> agentRunRepository.findAll().stream()
+                .filter(run -> !run.getId().equals(staleRun.getId()))
+                .anyMatch(run -> run.getStatus() == AgentRunStatus.SUCCEEDED));
+
+        AgentRunEntity reconciledRun = agentRunRepository.findById(staleRun.getId()).orElseThrow();
+        assertEquals(AgentRunStatus.FAILED, reconciledRun.getStatus());
+        assertNotNull(reconciledRun.getFinishedAt());
+    }
+
+    @Test
     void closedSessionDoesNotAcceptNewTurns() throws Exception {
         ProjectEntity project = createProject("closed-session-turns");
         long sessionId = postJson("/api/projects/%d/sessions".formatted(project.getId()), """
@@ -327,6 +356,35 @@ class WorkSessionFlowIntegrationTest {
         project.setCreatedAt(Instant.now());
         project.setUpdatedAt(Instant.now());
         return projectRepository.save(project);
+    }
+
+    private static CodexAppServerExecutionHandle completedHandle(String threadId, String turnId, String finalAnswer) {
+        return new CodexAppServerExecutionHandle(
+                threadId,
+                turnId,
+                CompletableFuture.completedFuture(new CodexAppServerExecutionResult(
+                        threadId,
+                        turnId,
+                        CodexAppServerExecutionResult.Status.COMPLETED,
+                        finalAnswer,
+                        "commentary",
+                        null)));
+    }
+
+    private static void waitUntil(CheckedCondition condition) throws Exception {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (condition.evaluate()) {
+                return;
+            }
+            Thread.sleep(50);
+        }
+        throw new AssertionError("Timed out waiting for asynchronous completion");
+    }
+
+    @FunctionalInterface
+    private interface CheckedCondition {
+        boolean evaluate() throws Exception;
     }
 
     private Path initializeGitRepository(String slug) throws IOException {

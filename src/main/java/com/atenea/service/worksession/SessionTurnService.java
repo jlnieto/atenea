@@ -3,9 +3,11 @@ package com.atenea.service.worksession;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.CreateSessionTurnResponse;
 import com.atenea.api.worksession.SessionTurnResponse;
+import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionListener;
-import com.atenea.codexappserver.CodexAppServerExecutionResult;
 import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.AgentRunRepository;
+import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
@@ -19,43 +21,61 @@ import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class SessionTurnService {
+
+    private static final int MAX_TURN_WINDOW_LIMIT = 100;
 
     private final WorkSessionRepository workSessionRepository;
     private final SessionTurnRepository sessionTurnRepository;
     private final WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator;
     private final GitRepositoryService gitRepositoryService;
+    private final AgentRunRepository agentRunRepository;
     private final AgentRunService agentRunService;
     private final AgentRunProgressService agentRunProgressService;
+    private final AgentRunReconciliationService agentRunReconciliationService;
     private final SessionCodexOrchestrator sessionCodexOrchestrator;
+    private final SessionTurnCompletionService sessionTurnCompletionService;
 
     public SessionTurnService(
             WorkSessionRepository workSessionRepository,
             SessionTurnRepository sessionTurnRepository,
             WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator,
             GitRepositoryService gitRepositoryService,
+            AgentRunRepository agentRunRepository,
             AgentRunService agentRunService,
             AgentRunProgressService agentRunProgressService,
-            SessionCodexOrchestrator sessionCodexOrchestrator
+            AgentRunReconciliationService agentRunReconciliationService,
+            SessionCodexOrchestrator sessionCodexOrchestrator,
+            SessionTurnCompletionService sessionTurnCompletionService
     ) {
         this.workSessionRepository = workSessionRepository;
         this.sessionTurnRepository = sessionTurnRepository;
         this.workspaceRepositoryPathValidator = workspaceRepositoryPathValidator;
         this.gitRepositoryService = gitRepositoryService;
+        this.agentRunRepository = agentRunRepository;
         this.agentRunService = agentRunService;
         this.agentRunProgressService = agentRunProgressService;
+        this.agentRunReconciliationService = agentRunReconciliationService;
         this.sessionCodexOrchestrator = sessionCodexOrchestrator;
+        this.sessionTurnCompletionService = sessionTurnCompletionService;
     }
 
     @Transactional(readOnly = true)
     public List<SessionTurnResponse> getTurns(Long sessionId) {
+        return getTurns(sessionId, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SessionTurnResponse> getTurns(Long sessionId, Long beforeTurnId, Integer limit) {
         if (!workSessionRepository.existsById(sessionId)) {
             throw new WorkSessionNotFoundException(sessionId);
         }
 
-        return sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)
+        List<SessionTurnResponse> visibleTurns = sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)
                 .stream()
                 // Some SessionTurn rows exist only as internal technical markers for the system.
                 // They are not part of the operator-visible conversation. Slice 7 should create
@@ -63,6 +83,20 @@ public class SessionTurnService {
                 .filter(turn -> !turn.isInternal())
                 .map(this::toResponse)
                 .toList();
+
+        Integer effectiveLimit = normalizeOptionalLimit(limit);
+        List<SessionTurnResponse> filteredTurns = beforeTurnId == null
+                ? visibleTurns
+                : visibleTurns.stream()
+                        .filter(turn -> turn.id() < beforeTurnId)
+                        .toList();
+
+        if (effectiveLimit == null) {
+            return filteredTurns;
+        }
+
+        int fromIndex = Math.max(0, filteredTurns.size() - effectiveLimit);
+        return filteredTurns.subList(fromIndex, filteredTurns.size());
     }
 
     @Transactional(noRollbackFor = WorkSessionTurnExecutionFailedException.class)
@@ -78,6 +112,10 @@ public class SessionTurnService {
         if (session.getStatus() != WorkSessionStatus.OPEN) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
+        agentRunReconciliationService.reconcileSession(sessionId);
+        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
+            throw new WorkSessionAlreadyRunningException(sessionId);
+        }
 
         String repoPath = resolveOperationalRepoPath(session);
         Instant now = Instant.now();
@@ -88,7 +126,7 @@ public class SessionTurnService {
         ExecutionProgress progress = new ExecutionProgress();
 
         try {
-            CodexAppServerExecutionResult executionResult = sessionCodexOrchestrator.executeTurn(
+            CodexAppServerExecutionHandle executionHandle = sessionCodexOrchestrator.startTurn(
                     repoPath,
                     operatorTurn.getMessageText(),
                     session.getExternalThreadId(),
@@ -102,42 +140,26 @@ public class SessionTurnService {
                         public void onTurnStarted(String threadId, String turnId) {
                             progress.threadId = threadId;
                             progress.turnId = turnId;
-                        }
+                            }
                     });
 
             String effectiveThreadId = firstNonBlank(
-                    executionResult.threadId(),
+                    executionHandle.threadId(),
                     progress.threadId,
                     session.getExternalThreadId());
-            String effectiveTurnId = firstNonBlank(executionResult.turnId(), progress.turnId);
+            String effectiveTurnId = firstNonBlank(executionHandle.turnId(), progress.turnId);
             persistExecutionProgress(session, run, effectiveThreadId, effectiveTurnId);
-
-            if (executionResult.status() != CodexAppServerExecutionResult.Status.COMPLETED) {
-                agentRunService.markFailed(run.getId(), effectiveTurnId, executionResult.errorMessage());
-                touchSession(session, Instant.now());
-                throw new WorkSessionTurnExecutionFailedException(firstNonBlank(
-                        executionResult.errorMessage(),
-                        "Codex execution failed"));
-            }
-
-            Instant completionTime = Instant.now();
-            SessionTurnEntity codexTurn = createVisibleTurn(
-                    session,
-                    SessionTurnActor.CODEX,
-                    firstNonBlank(executionResult.finalAnswer(), ""),
-                    completionTime);
-            touchSession(session, completionTime);
-
-            AgentRunEntity succeededRun = agentRunService.markSucceeded(
+            registerCompletionTracking(
+                    session.getId(),
                     run.getId(),
+                    effectiveThreadId,
                     effectiveTurnId,
-                    executionResult.finalAnswer(),
-                    codexTurn);
+                    executionHandle);
 
             return new CreateSessionTurnResponse(
                     toResponse(operatorTurn),
-                    agentRunService.toResponse(succeededRun),
-                    toResponse(codexTurn)
+                    agentRunService.toResponse(run),
+                    null
             );
         } catch (WorkSessionTurnExecutionFailedException exception) {
             throw exception;
@@ -202,6 +224,36 @@ public class SessionTurnService {
         session.setUpdatedAt(timestamp);
     }
 
+    private void registerCompletionTracking(
+            Long sessionId,
+            Long runId,
+            String externalThreadId,
+            String externalTurnId,
+            CodexAppServerExecutionHandle executionHandle
+    ) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            sessionTurnCompletionService.trackCompletion(
+                    sessionId,
+                    runId,
+                    externalThreadId,
+                    externalTurnId,
+                    executionHandle.completionFuture());
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                sessionTurnCompletionService.trackCompletion(
+                        sessionId,
+                        runId,
+                        externalThreadId,
+                        externalTurnId,
+                        executionHandle.completionFuture());
+            }
+        });
+    }
+
     private String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -209,6 +261,19 @@ public class SessionTurnService {
             }
         }
         return null;
+    }
+
+    private Integer normalizeOptionalLimit(Integer limit) {
+        if (limit == null) {
+            return null;
+        }
+        if (limit <= 0) {
+            throw new IllegalArgumentException("Turn limit must be greater than zero");
+        }
+        if (limit > MAX_TURN_WINDOW_LIMIT) {
+            throw new IllegalArgumentException("Turn limit must not exceed " + MAX_TURN_WINDOW_LIMIT);
+        }
+        return limit;
     }
 
     private static final class ExecutionProgress {
