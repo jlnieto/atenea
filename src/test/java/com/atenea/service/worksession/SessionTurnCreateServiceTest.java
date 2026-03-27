@@ -426,6 +426,7 @@ class SessionTurnCreateServiceTest {
                         turnId,
                         CodexAppServerExecutionResult.Status.COMPLETED,
                         "Completed later",
+                        "Completed later",
                         "commentary",
                         null)));
     }

@@ -388,8 +388,144 @@ button:disabled:focus-visible {
 
 .timeline-item__body {
     margin: 0;
-    white-space: pre-wrap;
-    line-height: 1.5;
+    line-height: 1.65;
+    overflow-wrap: anywhere;
+}
+
+.timeline-item__body h1,
+.timeline-item__body h2,
+.timeline-item__body h3,
+.timeline-item__body h4 {
+    margin: 1.1rem 0 0.7rem;
+    line-height: 1.25;
+    font-weight: 700;
+}
+
+.timeline-item__body h1 {
+    font-size: 1.35rem;
+}
+
+.timeline-item__body h2 {
+    font-size: 1.15rem;
+}
+
+.timeline-item__body h3,
+.timeline-item__body h4 {
+    font-size: 1rem;
+}
+
+.timeline-item__body > :first-child {
+    margin-top: 0;
+}
+
+.timeline-item__body > :last-child {
+    margin-bottom: 0;
+}
+
+.timeline-item__body p,
+.timeline-item__body ul,
+.timeline-item__body ol,
+.timeline-item__body pre,
+.timeline-item__body blockquote,
+.timeline-item__body table {
+    margin: 0 0 0.9rem;
+}
+
+.timeline-item__body ul,
+.timeline-item__body ol {
+    padding-left: 1.4rem;
+}
+
+.timeline-item__body li + li {
+    margin-top: 0.28rem;
+}
+
+.timeline-item__body strong {
+    font-weight: 700;
+}
+
+.timeline-item__body a {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+.timeline-item__body a:hover {
+    text-decoration-thickness: 2px;
+}
+
+.timeline-item__body a.technical-link {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.12rem;
+    text-decoration: none;
+    vertical-align: top;
+    max-width: 100%;
+    padding: 0.12rem 0;
+}
+
+.timeline-item__body a.technical-link:hover {
+    text-decoration: none;
+}
+
+.technical-link__label {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+}
+
+.technical-link__path {
+    font-family: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    color: var(--muted);
+    background: rgba(29, 28, 26, 0.05);
+    border-radius: 6px;
+    padding: 0.12rem 0.32rem;
+    overflow-wrap: anywhere;
+}
+
+.timeline-item__body code {
+    padding: 0.1rem 0.28rem;
+    border-radius: 6px;
+    background: rgba(29, 28, 26, 0.06);
+    font-size: 0.94em;
+}
+
+.timeline-item__body pre {
+    overflow-x: auto;
+    padding: 0.9rem 1rem;
+    border-radius: 14px;
+    background: rgba(29, 28, 26, 0.05);
+}
+
+.timeline-item__body pre code {
+    padding: 0;
+    background: transparent;
+}
+
+.timeline-item__body blockquote {
+    margin-left: 0;
+    padding-left: 1rem;
+    border-left: 3px solid rgba(17, 75, 63, 0.25);
+    color: var(--muted);
+}
+
+.timeline-item__body table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.94rem;
+}
+
+.timeline-item__body th,
+.timeline-item__body td {
+    padding: 0.55rem 0.7rem;
+    border: 1px solid rgba(29, 28, 26, 0.1);
+    text-align: left;
+    vertical-align: top;
+}
+
+.timeline-item__body th {
+    background: rgba(29, 28, 26, 0.04);
 }
 
 .conversation-empty {

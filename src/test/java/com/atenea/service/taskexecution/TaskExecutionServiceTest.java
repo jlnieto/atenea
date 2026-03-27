@@ -154,6 +154,7 @@ class TaskExecutionServiceTest {
                             "turn-final",
                             CodexAppServerExecutionResult.Status.COMPLETED,
                             "Implemented the launch flow and added tests.",
+                            "Implemented the launch flow and added tests.",
                             "Working on it",
                             null);
                 });
@@ -250,6 +251,7 @@ class TaskExecutionServiceTest {
                         "thread-final",
                         "turn-final",
                         CodexAppServerExecutionResult.Status.COMPLETED,
+                        "Retried successfully.",
                         "Retried successfully.",
                         "Working on it",
                         null));

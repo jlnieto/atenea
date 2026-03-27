@@ -5,17 +5,20 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.atenea.codexappserver.CodexAppServerExecutionResult;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -95,6 +98,7 @@ class SessionTurnCompletionServiceTest {
                         CodexAppServerExecutionResult.Status.FAILED,
                         null,
                         null,
+                        null,
                         "Codex App Server connection closed before turn completion"));
 
         sessionTurnCompletionService.trackCompletion(12L, 55L, "thread-1", "turn-1", completion);
@@ -120,12 +124,42 @@ class SessionTurnCompletionServiceTest {
                         "turn-1",
                         CodexAppServerExecutionResult.Status.COMPLETED,
                         "Done",
+                        "Done",
                         null,
                         null));
 
         sessionTurnCompletionService.trackCompletion(12L, 55L, "thread-1", "turn-1", completion);
 
         verify(agentRunService, never()).forceMarkFailedIfRunning(any(), any(), any());
+    }
+
+    @Test
+    void completionSucceededPersistsFullTurnTextAndShortRunSummary() {
+        WorkSessionEntity session = buildSession(12L);
+        AgentRunEntity run = buildRun(55L, session);
+
+        when(workSessionRepository.findById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.findById(55L)).thenReturn(Optional.of(run));
+        when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        String fullAnswer = "Linea 1\nLinea 2 con mucho detalle y una explicacion completa del cambio aplicado.";
+        String shortSummary = "Linea 1 Linea 2 con mucho detalle ...";
+        CompletableFuture<CodexAppServerExecutionResult> completion = CompletableFuture.completedFuture(
+                new CodexAppServerExecutionResult(
+                        "thread-1",
+                        "turn-1",
+                        CodexAppServerExecutionResult.Status.COMPLETED,
+                        fullAnswer,
+                        shortSummary,
+                        "commentary",
+                        null));
+
+        sessionTurnCompletionService.trackCompletion(12L, 55L, "thread-1", "turn-1", completion);
+
+        ArgumentCaptor<SessionTurnEntity> turnCaptor = ArgumentCaptor.forClass(SessionTurnEntity.class);
+        verify(sessionTurnRepository).save(turnCaptor.capture());
+        assertEquals(fullAnswer, turnCaptor.getValue().getMessageText());
+        verify(agentRunService).markSucceeded(55L, "turn-1", shortSummary, turnCaptor.getValue());
     }
 
     private static WorkSessionEntity buildSession(Long sessionId) {

@@ -132,7 +132,7 @@ public class SessionTurnCompletionService {
         codexTurn.setCreatedAt(now);
         codexTurn = sessionTurnRepository.save(codexTurn);
 
-        agentRunService.markSucceeded(runId, effectiveTurnId, result.finalAnswer(), codexTurn);
+        agentRunService.markSucceeded(runId, effectiveTurnId, result.outputSummary(), codexTurn);
     }
 
     private void handleCompletionPersistenceFailure(

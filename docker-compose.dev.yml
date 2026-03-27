@@ -11,6 +11,16 @@ services:
     volumes:
       - atenea_db_data:/var/lib/postgresql/data
 
+  db-test:
+    image: postgres:16
+    container_name: atenea-db-test
+    environment:
+      POSTGRES_DB: atenea_test
+      POSTGRES_USER: atenea
+      POSTGRES_PASSWORD: atenea
+    volumes:
+      - atenea_db_test_data:/var/lib/postgresql/data
+
   codex-app-server:
     build:
       context: .
@@ -54,4 +64,5 @@ services:
 
 volumes:
   atenea_db_data:
+  atenea_db_test_data:
   atenea_m2_cache:

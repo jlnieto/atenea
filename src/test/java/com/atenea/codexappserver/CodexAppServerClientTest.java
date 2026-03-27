@@ -20,6 +20,9 @@ import org.junit.jupiter.api.Test;
 
 class CodexAppServerClientTest {
 
+    private static final String COMPLETE_FINAL_ANSWER = "Implemented from fake connector.\n\nWith structured markdown.";
+    private static final String RECOVERED_FINAL_ANSWER = "## Punto actual\n\nRecovered final answer.";
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
@@ -47,7 +50,8 @@ class CodexAppServerClientTest {
         assertEquals("thread-new", result.threadId());
         assertEquals("turn-1", result.turnId());
         assertEquals(CodexAppServerExecutionResult.Status.COMPLETED, result.status());
-        assertEquals("Implemented from fake connector.", result.finalAnswer());
+        assertEquals(COMPLETE_FINAL_ANSWER, result.finalAnswer());
+        assertEquals("Implemented from fake connector. With structured markdown.", result.outputSummary());
         assertEquals(List.of("thread-new"), listenerProbe.threadIds);
         assertEquals(List.of("thread-new:turn-1"), listenerProbe.turnEvents);
     }
@@ -81,7 +85,7 @@ class CodexAppServerClientTest {
         assertEquals("thread-existing", result.threadId());
         assertEquals("turn-2", result.turnId());
         assertEquals(CodexAppServerExecutionResult.Status.COMPLETED, result.status());
-        assertEquals("Implemented from fake connector.", result.finalAnswer());
+        assertEquals(COMPLETE_FINAL_ANSWER, result.finalAnswer());
         assertEquals(List.of(), listenerProbe.threadIds);
         assertEquals(List.of("thread-existing:turn-2"), listenerProbe.turnEvents);
     }
@@ -164,7 +168,7 @@ class CodexAppServerClientTest {
         CodexAppServerExecutionResult result = handle.completionFuture().get(1, java.util.concurrent.TimeUnit.SECONDS);
 
         assertEquals(CodexAppServerExecutionResult.Status.COMPLETED, result.status());
-        assertEquals("Implemented from fake connector.", result.finalAnswer());
+        assertEquals(COMPLETE_FINAL_ANSWER, result.finalAnswer());
     }
 
     @Test
@@ -178,7 +182,67 @@ class CodexAppServerClientTest {
                 true,
                 false,
                 false,
+                false,
+                false,
                 false
+        );
+        CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
+
+        CodexAppServerClient.CodexAppServerExecutionHandle handle = client.startExecution(
+                new CodexAppServerExecutionRequest("/workspace/repos/internal/atenea", "continue work", "thread-existing"),
+                CodexAppServerExecutionListener.NO_OP
+        );
+
+        CodexAppServerExecutionResult result = handle.completionFuture().get(3, java.util.concurrent.TimeUnit.SECONDS);
+
+        assertEquals(CodexAppServerExecutionResult.Status.FAILED, result.status());
+        assertEquals("Codex App Server thread returned to idle before turn completion", result.errorMessage());
+    }
+
+    @Test
+    void startExecutionRecoversCompletedTurnViaThreadReadAfterIdleWithoutCompletion() throws Exception {
+        RecordingConnector connector = new RecordingConnector(
+                objectMapper,
+                "thread-existing",
+                "turn-3",
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                true,
+                false
+        );
+        CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
+
+        CodexAppServerClient.CodexAppServerExecutionHandle handle = client.startExecution(
+                new CodexAppServerExecutionRequest("/workspace/repos/internal/atenea", "continue work", "thread-existing"),
+                CodexAppServerExecutionListener.NO_OP
+        );
+
+        CodexAppServerExecutionResult result = handle.completionFuture().get(3, java.util.concurrent.TimeUnit.SECONDS);
+
+        assertEquals(CodexAppServerExecutionResult.Status.COMPLETED, result.status());
+        assertEquals(RECOVERED_FINAL_ANSWER, result.finalAnswer());
+        assertEquals("## Punto actual Recovered final answer.", result.outputSummary());
+        assertTrue(connector.outboundMethods().contains("thread/read"));
+    }
+
+    @Test
+    void startExecutionStillFailsWhenThreadReadRecoveryReturnsNonTerminalTurn() throws Exception {
+        RecordingConnector connector = new RecordingConnector(
+                objectMapper,
+                "thread-existing",
+                "turn-3",
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                true
         );
         CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
 
@@ -230,7 +294,9 @@ class CodexAppServerClientTest {
                 false,
                 false,
                 false,
-                true
+                true,
+                false,
+                false
         );
         CodexAppServerClient client = new CodexAppServerClient(objectMapper, properties(), connector);
 
@@ -240,7 +306,7 @@ class CodexAppServerClientTest {
         );
 
         assertEquals(CodexAppServerExecutionResult.Status.COMPLETED, result.status());
-        assertEquals("Implemented from fake connector.", result.finalAnswer());
+        assertEquals(COMPLETE_FINAL_ANSWER, result.finalAnswer());
     }
 
     private CodexAppServerProperties properties() {
@@ -279,6 +345,8 @@ class CodexAppServerClientTest {
         private final boolean realtimeErrorBeforeCompletion;
         private final boolean realtimeClosedBeforeCompletion;
         private final boolean retryableErrorBeforeCompletion;
+        private final boolean recoverViaThreadRead;
+        private final boolean threadReadReturnsNonTerminalTurn;
         private final List<String> outboundMethods = new CopyOnWriteArrayList<>();
         private FakeWebSocket webSocket;
 
@@ -291,7 +359,9 @@ class CodexAppServerClientTest {
                 boolean idleWithoutCompletion,
                 boolean realtimeErrorBeforeCompletion,
                 boolean realtimeClosedBeforeCompletion,
-                boolean retryableErrorBeforeCompletion
+                boolean retryableErrorBeforeCompletion,
+                boolean recoverViaThreadRead,
+                boolean threadReadReturnsNonTerminalTurn
         ) {
             this.objectMapper = objectMapper;
             this.threadId = threadId;
@@ -302,6 +372,34 @@ class CodexAppServerClientTest {
             this.realtimeErrorBeforeCompletion = realtimeErrorBeforeCompletion;
             this.realtimeClosedBeforeCompletion = realtimeClosedBeforeCompletion;
             this.retryableErrorBeforeCompletion = retryableErrorBeforeCompletion;
+            this.recoverViaThreadRead = recoverViaThreadRead;
+            this.threadReadReturnsNonTerminalTurn = threadReadReturnsNonTerminalTurn;
+        }
+
+        private RecordingConnector(
+                ObjectMapper objectMapper,
+                String threadId,
+                String turnId,
+                boolean completeTurn,
+                boolean failOnClose,
+                boolean idleWithoutCompletion,
+                boolean realtimeErrorBeforeCompletion,
+                boolean realtimeClosedBeforeCompletion,
+                boolean retryableErrorBeforeCompletion
+        ) {
+            this(
+                    objectMapper,
+                    threadId,
+                    turnId,
+                    completeTurn,
+                    failOnClose,
+                    idleWithoutCompletion,
+                    realtimeErrorBeforeCompletion,
+                    realtimeClosedBeforeCompletion,
+                    retryableErrorBeforeCompletion,
+                    false,
+                    false
+            );
         }
 
         @Override
@@ -317,6 +415,8 @@ class CodexAppServerClientTest {
                     realtimeErrorBeforeCompletion,
                     realtimeClosedBeforeCompletion,
                     retryableErrorBeforeCompletion,
+                    recoverViaThreadRead,
+                    threadReadReturnsNonTerminalTurn,
                     outboundMethods);
             listener.onOpen(webSocket);
             return webSocket;
@@ -343,6 +443,8 @@ class CodexAppServerClientTest {
         private final boolean realtimeErrorBeforeCompletion;
         private final boolean realtimeClosedBeforeCompletion;
         private final boolean retryableErrorBeforeCompletion;
+        private final boolean recoverViaThreadRead;
+        private final boolean threadReadReturnsNonTerminalTurn;
         private final List<String> outboundMethods;
 
         private FakeWebSocket(
@@ -356,6 +458,8 @@ class CodexAppServerClientTest {
                 boolean realtimeErrorBeforeCompletion,
                 boolean realtimeClosedBeforeCompletion,
                 boolean retryableErrorBeforeCompletion,
+                boolean recoverViaThreadRead,
+                boolean threadReadReturnsNonTerminalTurn,
                 List<String> outboundMethods
         ) {
             this.objectMapper = objectMapper;
@@ -368,6 +472,8 @@ class CodexAppServerClientTest {
             this.realtimeErrorBeforeCompletion = realtimeErrorBeforeCompletion;
             this.realtimeClosedBeforeCompletion = realtimeClosedBeforeCompletion;
             this.retryableErrorBeforeCompletion = retryableErrorBeforeCompletion;
+            this.recoverViaThreadRead = recoverViaThreadRead;
+            this.threadReadReturnsNonTerminalTurn = threadReadReturnsNonTerminalTurn;
             this.outboundMethods = outboundMethods;
         }
 
@@ -412,7 +518,7 @@ class CodexAppServerClientTest {
                                     {"method":"item/started","params":{"item":{"type":"agentMessage","id":"item-1","phase":"final_answer"}}}
                                     """);
                             push("""
-                                    {"method":"item/agentMessage/delta","params":{"itemId":"item-1","delta":"Implemented from fake connector."}}
+                                    {"method":"item/agentMessage/delta","params":{"itemId":"item-1","delta":"Implemented from fake connector.\\n\\nWith structured markdown."}}
                                     """);
                             push("""
                                     {"method":"turn/completed","params":{"turn":{"id":"%s","status":"completed"}}}
@@ -421,6 +527,21 @@ class CodexAppServerClientTest {
                             push("""
                                     {"method":"thread/status/changed","params":{"threadId":"%s","status":{"type":"idle"}}}
                                     """.formatted(threadId));
+                        }
+                    }
+                    case "thread/read" -> {
+                        if (recoverViaThreadRead) {
+                            push("""
+                                    {"id":"thread-read-%s","result":{"thread":{"id":"%s","turns":[{"id":"%s","status":"completed","items":[{"type":"agentMessage","id":"item-r1","phase":"final_answer","text":"## Punto actual\\n\\nRecovered final answer."}],"error":null}]}}}
+                                    """.formatted(turnId, threadId, turnId));
+                        } else if (threadReadReturnsNonTerminalTurn) {
+                            push("""
+                                    {"id":"thread-read-%s","result":{"thread":{"id":"%s","turns":[{"id":"%s","status":"inProgress","items":[],"error":null}]}}}
+                                    """.formatted(turnId, threadId, turnId));
+                        } else {
+                            push("""
+                                    {"id":"thread-read-%s","result":{"thread":{"id":"%s","turns":[]}}}
+                                    """.formatted(turnId, threadId));
                         }
                     }
                     case "initialized" -> {

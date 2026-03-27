@@ -5,6 +5,7 @@ public record CodexAppServerExecutionResult(
         String turnId,
         Status status,
         String finalAnswer,
+        String outputSummary,
         String commentaryPreview,
         String errorMessage
 ) {

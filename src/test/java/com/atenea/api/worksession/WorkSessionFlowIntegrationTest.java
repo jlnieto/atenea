@@ -367,6 +367,7 @@ class WorkSessionFlowIntegrationTest {
                         turnId,
                         CodexAppServerExecutionResult.Status.COMPLETED,
                         finalAnswer,
+                        finalAnswer,
                         "commentary",
                         null)));
     }

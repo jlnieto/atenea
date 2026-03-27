@@ -91,6 +91,65 @@
         handleHashChange();
     }
 
+    function renderTurnMessage(messageText) {
+        const normalizedText = messageText || "";
+        if (!window.marked || !window.DOMPurify) {
+            return escapeHtml(normalizedText).replace(/\n/g, "<br>");
+        }
+
+        const renderedHtml = window.marked.parse(normalizedText, {
+            breaks: true,
+            gfm: true,
+        });
+        const sanitizedHtml = window.DOMPurify.sanitize(renderedHtml);
+        const container = document.createElement("div");
+        container.innerHTML = sanitizedHtml;
+        container.querySelectorAll("a").forEach((link) => {
+            const rawHref = link.getAttribute("href") || "";
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            if (!isTechnicalLink(rawHref)) {
+                return;
+            }
+            decorateTechnicalLink(link, rawHref);
+        });
+        return container.innerHTML;
+    }
+
+    function isTechnicalLink(href) {
+        if (!href) {
+            return false;
+        }
+        return href.startsWith("/workspace/")
+            || href.startsWith("file://")
+            || /^\/.+#L\d+$/i.test(href)
+            || /^\/.+#L\d+C\d+$/i.test(href);
+    }
+
+    function decorateTechnicalLink(link, rawHref) {
+        const label = link.textContent || rawHref;
+        const destination = document.createElement("span");
+        destination.className = "technical-link__path";
+        destination.textContent = rawHref;
+
+        const labelSpan = document.createElement("span");
+        labelSpan.className = "technical-link__label";
+        labelSpan.textContent = label;
+
+        link.classList.add("technical-link");
+        link.textContent = "";
+        link.append(labelSpan, destination);
+    }
+
+    function escapeHtml(value) {
+        return value
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
     function handleHashChange() {
         const projectId = parseProjectIdFromHash();
         if (projectId) {
@@ -348,9 +407,9 @@
             meta.className = "timeline-item__meta";
             meta.innerHTML = `<strong>${turn.actor}</strong><span>${formatTimestamp(turn.createdAt)}</span>`;
 
-            const body = document.createElement("p");
+            const body = document.createElement("div");
             body.className = "timeline-item__body";
-            body.textContent = turn.messageText || "";
+            body.innerHTML = renderTurnMessage(turn.messageText);
 
             item.append(meta, body);
             elements.conversationTimeline.append(item);
