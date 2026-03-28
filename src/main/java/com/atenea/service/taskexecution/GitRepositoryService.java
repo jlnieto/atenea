@@ -36,6 +36,10 @@ public class GitRepositoryService {
                 "Could not create task branch '" + branchName + "' from '" + baseBranch + "'");
     }
 
+    public boolean branchExists(String repoPath, String branchName) {
+        return run(repoPath, List.of("git", "show-ref", "--verify", "--quiet", "refs/heads/" + branchName)) == 0;
+    }
+
     public String getOriginRemoteUrl(String repoPath) {
         return runAndRead(repoPath, List.of("git", "remote", "get-url", "origin"));
     }

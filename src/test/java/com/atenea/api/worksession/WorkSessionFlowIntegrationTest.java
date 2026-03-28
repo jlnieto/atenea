@@ -99,10 +99,13 @@ class WorkSessionFlowIntegrationTest {
                 }
                 """, 201);
         long sessionId = openedSession.get("id").asLong();
+        assertEquals("atenea/session-" + sessionId, openedSession.get("workspaceBranch").asText());
 
         JsonNode fetchedSession = getJson("/api/sessions/%d".formatted(sessionId), 200);
         assertEquals("OPEN", fetchedSession.get("status").asText());
         assertTrue(fetchedSession.get("externalThreadId").isNull());
+        assertEquals("atenea/session-" + sessionId, fetchedSession.get("workspaceBranch").asText());
+        assertEquals("atenea/session-" + sessionId, fetchedSession.get("repoState").get("currentBranch").asText());
 
         JsonNode firstTurn = postJson("/api/sessions/%d/turns".formatted(sessionId), """
                 {

@@ -5,6 +5,7 @@ import com.atenea.api.project.ProjectBootstrapSkippedProjectResponse;
 import com.atenea.api.project.ProjectResponse;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
+import com.atenea.service.taskexecution.GitRepositoryService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,13 +18,16 @@ public class ProjectBootstrapService {
 
     private final ProjectRepository projectRepository;
     private final WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator;
+    private final GitRepositoryService gitRepositoryService;
 
     public ProjectBootstrapService(
             ProjectRepository projectRepository,
-            WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator
+            WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator,
+            GitRepositoryService gitRepositoryService
     ) {
         this.projectRepository = projectRepository;
         this.workspaceRepositoryPathValidator = workspaceRepositoryPathValidator;
+        this.gitRepositoryService = gitRepositoryService;
     }
 
     @Transactional
@@ -75,6 +79,7 @@ public class ProjectBootstrapService {
             project.setName(definition.name());
             project.setDescription(definition.description());
             project.setRepoPath(canonicalRepoPath);
+            project.setDefaultBaseBranch(gitRepositoryService.getCurrentBranch(canonicalRepoPath));
             project.setCreatedAt(now);
             project.setUpdatedAt(now);
             createdProjects.add(toResponse(projectRepository.save(project)));
@@ -105,6 +110,7 @@ public class ProjectBootstrapService {
                 project.getName(),
                 project.getDescription(),
                 project.getRepoPath(),
+                project.getDefaultBaseBranch(),
                 project.getCreatedAt(),
                 project.getUpdatedAt()
         );

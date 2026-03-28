@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.atenea.api.project.ProjectBootstrapResponse;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
+import com.atenea.service.taskexecution.GitRepositoryService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,6 +28,9 @@ class ProjectBootstrapServiceTest {
     @Mock
     private ProjectRepository projectRepository;
 
+    @Mock
+    private GitRepositoryService gitRepositoryService;
+
     @TempDir
     Path tempDir;
 
@@ -44,10 +48,11 @@ class ProjectBootstrapServiceTest {
         createGitRepo(workspaceRoot.resolve("clients/edi"));
 
         WorkspaceRepositoryPathValidator validator = new WorkspaceRepositoryPathValidator(workspaceRoot.toString());
-        projectBootstrapService = new ProjectBootstrapService(projectRepository, validator);
+        projectBootstrapService = new ProjectBootstrapService(projectRepository, validator, gitRepositoryService);
 
         lenient().when(projectRepository.findByName(any())).thenReturn(Optional.empty());
         lenient().when(projectRepository.findByRepoPath(any())).thenReturn(Optional.empty());
+        lenient().when(gitRepositoryService.getCurrentBranch(any())).thenReturn("main");
         lenient().when(projectRepository.save(any(ProjectEntity.class))).thenAnswer(invocation -> {
             ProjectEntity entity = invocation.getArgument(0);
             entity.setId((long) entity.getName().hashCode());
@@ -63,6 +68,7 @@ class ProjectBootstrapServiceTest {
         assertEquals(0, response.existingProjects().size());
         assertEquals(0, response.skippedProjects().size());
         assertEquals("Atenea", response.createdProjects().get(0).name());
+        assertEquals("main", response.createdProjects().get(0).defaultBaseBranch());
         assertEquals("Atenea Preview", response.createdProjects().get(1).name());
     }
 
@@ -133,6 +139,7 @@ class ProjectBootstrapServiceTest {
         entity.setName(name);
         entity.setDescription(description);
         entity.setRepoPath(repoPath);
+        entity.setDefaultBaseBranch("main");
         entity.setCreatedAt(Instant.parse("2026-03-22T10:00:00Z"));
         entity.setUpdatedAt(Instant.parse("2026-03-22T10:01:00Z"));
         return entity;

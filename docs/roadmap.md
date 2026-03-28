@@ -52,13 +52,20 @@ Implemented and validated:
 - `SessionTurn`
 - `AgentRun`
 - open session
+- resolve session
 - read session
+- aggregated session view
+- aggregated conversation view
 - create turn
 - execute Codex turn inside the session
+- project-level `defaultBaseBranch`
+- session-owned `workspaceBranch`
+- strict session branch recovery policy
 - reuse `externalThreadId` across turns
 - list turns
 - list runs
 - close session
+- reconcile stale running runs on later reads
 
 This is the implemented conversational core that now represents the intended product direction.
 
@@ -105,19 +112,48 @@ Implemented:
 - persistence for `work_session`, `session_turn`, `agent_run`
 - one `OPEN` session per project
 - one `RUNNING` run per session
+- `defaultBaseBranch` persisted on `Project`
 - `POST /api/projects/{projectId}/sessions`
+- `POST /api/projects/{projectId}/sessions/resolve`
+- `POST /api/projects/{projectId}/sessions/resolve/view`
+- `POST /api/projects/{projectId}/sessions/resolve/conversation-view`
 - `GET /api/sessions/{sessionId}`
+- `GET /api/sessions/{sessionId}/view`
+- `GET /api/sessions/{sessionId}/conversation-view`
 - `POST /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/runs`
 - `POST /api/sessions/{sessionId}/close`
 - descriptive `repoState` snapshot on session responses
+- aggregated session and conversation views
 - real Codex execution inside the session flow
+- session-owned `workspaceBranch` with branch identity `atenea/session-{id}`
+- `baseBranch` fallback order:
+  - request value
+  - project `defaultBaseBranch`
+  - current repo branch
+- strict branch preparation policy:
+  - allow create / checkout of `workspaceBranch` only from `baseBranch` with clean worktree
+  - allow reuse when already on `workspaceBranch`
+  - block when the repo is on any third branch
 - continuity through persisted `externalThreadId`
+- stale `RUNNING` run reconciliation when session state is reloaded
+
+### Block 4. Mixed project overview
+
+Implemented:
+
+- `GET /api/projects/overview`
+- canonical `workSession` block per project:
+  - current open session when it exists
+  - otherwise latest session by `lastActivityAt`
+- `legacy` block per project:
+  - latest task
+  - latest execution
 
 Current conclusion:
 
-- `WorkSession Phase 1` is functionally complete in the backend
+- the backend already exposes a mixed overview that represents both orchestration models at once
 
 ## Open gaps that are real today
 
@@ -133,7 +169,11 @@ The backend still exposes both:
 What is not yet fully settled in the repository:
 
 - which surface is canonical for operator-facing flows
-- how project overview and other higher-level views should represent `WorkSession` versus legacy `TaskExecution`
+- which of the already-implemented session reads should anchor frontend flows:
+  - base session read
+  - session view
+  - conversation view
+- how much of the legacy block should remain prominent in future operator UX
 
 ### Gap 2. Documentation and governance are behind the implementation
 
@@ -166,27 +206,33 @@ The pending real work is instead:
 - consolidate documentation around the true current state
 - make the coexistence rules between legacy and new model explicit
 - define which API surface should drive the next operator or frontend workflows
-- revisit higher-level project views that still summarize legacy execution state only
+- define whether project overview should remain mixed long-term or become session-first with legacy secondary
+- implement the remaining session-first repository delivery flow described in `docs/worksession-target-flow.md`
 
 ## Next recommended phase
 
 The next recommended phase, justified by the current repository, is:
 
-## Consolidation And Governance
+## Session-First Delivery Workflow
 
 Goals:
 
-- align documentation with code and tests
-- establish a local canonical guide for agents
-- make legacy-versus-new-model boundaries explicit
-- identify which surface should be treated as canonical for future product work
+- keep documentation aligned with code and tests
+- make `WorkSession` the canonical unit of real repository work
+- absorb branch and PR workflow capability into the session-first model
+- establish `conversation-view` as the primary operator-facing session contract
+- define the path from open session to merged-and-reconciled repository state
 
 Recommended outputs of this phase:
 
-1. documentation aligned with implemented `WorkSession`
-2. explicit coexistence guidance for `Task` / `TaskExecution` and `WorkSession` / `SessionTurn` / `AgentRun`
-3. local agent guidance in the repository itself
-4. clarified roadmap after the completion of the current `WorkSession` slice
+1. publish and PR workflow for `WorkSession`
+2. pull request metadata and merge tracking on the session model
+3. post-merge reconciliation and true session close semantics
+4. explicit decision that frontend should anchor primarily on:
+   - `GET /api/sessions/{id}/conversation-view`
+   with `view` and base session reads kept as support surfaces
+5. clarified role of mixed `GET /api/projects/overview` during coexistence
+6. documentation aligned with the target flow defined in `docs/worksession-target-flow.md`
 
 ## What remains uncertain
 
@@ -203,6 +249,6 @@ Those points should therefore remain explicit decisions, not assumptions.
 Current roadmap reading should be:
 
 - legacy task orchestration: implemented and still active
-- `WorkSession` conversational core: implemented and operational
-- immediate need: consolidation, documentation alignment and product-surface clarity
+- `WorkSession` conversational core plus session-owned branch setup: implemented and operational
+- immediate next major step: session-first delivery workflow from session branch to PR, merge and repository reconciliation
 - future planning beyond that: still requires explicit human decisions

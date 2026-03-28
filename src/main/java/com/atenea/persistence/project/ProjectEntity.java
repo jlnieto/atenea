@@ -25,6 +25,9 @@ public class ProjectEntity {
     @Column(name = "repo_path", nullable = false, length = 500)
     private String repoPath;
 
+    @Column(name = "default_base_branch", length = 120)
+    private String defaultBaseBranch;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -61,6 +64,14 @@ public class ProjectEntity {
 
     public void setRepoPath(String repoPath) {
         this.repoPath = repoPath;
+    }
+
+    public String getDefaultBaseBranch() {
+        return defaultBaseBranch;
+    }
+
+    public void setDefaultBaseBranch(String defaultBaseBranch) {
+        this.defaultBaseBranch = defaultBaseBranch;
     }
 
     public Instant getCreatedAt() {

@@ -60,12 +60,14 @@ class ProjectControllerTest {
         when(projectService.createProject(new CreateProjectRequest(
                 "Atenea",
                 "Backend orchestration",
-                "/repos/internal/atenea"
+                "/repos/internal/atenea",
+                null
         ))).thenReturn(new ProjectResponse(
                 1L,
                 "Atenea",
                 "Backend orchestration",
                 "/repos/internal/atenea",
+                "main",
                 Instant.parse("2026-03-22T10:00:00Z"),
                 Instant.parse("2026-03-22T10:01:00Z")
         ));
@@ -81,7 +83,8 @@ class ProjectControllerTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.repoPath").value("/repos/internal/atenea"));
+                .andExpect(jsonPath("$.repoPath").value("/repos/internal/atenea"))
+                .andExpect(jsonPath("$.defaultBaseBranch").value("main"));
     }
 
     @Test
@@ -105,7 +108,8 @@ class ProjectControllerTest {
         when(projectService.createProject(new CreateProjectRequest(
                 "Atenea",
                 "Backend orchestration",
-                "/repos/internal/atenea"
+                "/repos/internal/atenea",
+                null
         ))).thenThrow(new ProjectRepoPathMissingGitDirectoryException("/repos/internal/atenea"));
 
         mockMvc.perform(post("/api/projects")
@@ -130,6 +134,7 @@ class ProjectControllerTest {
                         "Atenea",
                         "Self-hosted Atenea source repository",
                         "/workspace/repos/internal/atenea",
+                        "main",
                         null,
                         null)),
                 java.util.List.of(new ProjectResponse(
@@ -137,6 +142,7 @@ class ProjectControllerTest {
                         "WAB",
                         "Internal WAB development repository",
                         "/workspace/repos/internal/wab",
+                        "main",
                         null,
                         null)),
                 java.util.List.of(new ProjectBootstrapSkippedProjectResponse(
@@ -160,6 +166,7 @@ class ProjectControllerTest {
                         "Atenea",
                         "Self-hosted Atenea source repository",
                         "/workspace/repos/internal/atenea",
+                        "main",
                         Instant.parse("2026-03-22T08:00:00Z"),
                         Instant.parse("2026-03-22T08:05:00Z")),
                 new WorkSessionOverviewResponse(

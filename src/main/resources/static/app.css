@@ -563,6 +563,11 @@ button:disabled:focus-visible {
     gap: 8px;
 }
 
+.field__hint {
+    color: var(--muted);
+    line-height: 1.4;
+}
+
 .field input,
 .field textarea {
     width: 100%;

@@ -152,6 +152,7 @@ class ProjectOverviewServiceTest {
         project.setName(name);
         project.setDescription("desc");
         project.setRepoPath(repoPath);
+        project.setDefaultBaseBranch("main");
         project.setCreatedAt(Instant.parse("2026-03-22T08:00:00Z"));
         project.setUpdatedAt(Instant.parse("2026-03-22T08:05:00Z"));
         return project;

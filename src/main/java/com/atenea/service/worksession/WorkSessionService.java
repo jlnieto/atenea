@@ -41,6 +41,7 @@ public class WorkSessionService {
     private final AgentRunRepository agentRunRepository;
     private final SessionTurnService sessionTurnService;
     private final AgentRunReconciliationService agentRunReconciliationService;
+    private final SessionBranchService sessionBranchService;
 
     public WorkSessionService(
             ProjectRepository projectRepository,
@@ -50,7 +51,8 @@ public class WorkSessionService {
             SessionOperationalSnapshotService sessionOperationalSnapshotService,
             AgentRunRepository agentRunRepository,
             SessionTurnService sessionTurnService,
-            AgentRunReconciliationService agentRunReconciliationService
+            AgentRunReconciliationService agentRunReconciliationService,
+            SessionBranchService sessionBranchService
     ) {
         this.projectRepository = projectRepository;
         this.workSessionRepository = workSessionRepository;
@@ -60,6 +62,7 @@ public class WorkSessionService {
         this.agentRunRepository = agentRunRepository;
         this.sessionTurnService = sessionTurnService;
         this.agentRunReconciliationService = agentRunReconciliationService;
+        this.sessionBranchService = sessionBranchService;
     }
 
     @Transactional
@@ -74,7 +77,10 @@ public class WorkSessionService {
         String normalizedRepoPath = workspaceRepositoryPathValidator.normalizeConfiguredRepoPath(project.getRepoPath());
         String currentBranch = resolveCurrentBranch(normalizedRepoPath);
         String normalizedBaseBranch = normalizeNullableText(request.baseBranch());
-        String baseBranch = normalizedBaseBranch == null ? currentBranch : normalizedBaseBranch;
+        String projectDefaultBaseBranch = normalizeNullableText(project.getDefaultBaseBranch());
+        String baseBranch = normalizedBaseBranch != null
+                ? normalizedBaseBranch
+                : (projectDefaultBaseBranch != null ? projectDefaultBaseBranch : currentBranch);
 
         Instant now = Instant.now();
 
@@ -91,7 +97,11 @@ public class WorkSessionService {
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
 
-        return toResponse(workSessionRepository.save(session));
+        WorkSessionEntity persistedSession = workSessionRepository.save(session);
+        persistedSession.setWorkspaceBranch(sessionBranchService.prepareWorkspaceBranch(persistedSession, normalizedRepoPath));
+        persistedSession.setUpdatedAt(Instant.now());
+
+        return toResponse(workSessionRepository.save(persistedSession));
     }
 
     @Transactional
@@ -102,6 +112,7 @@ public class WorkSessionService {
         WorkSessionEntity openSession = workSessionRepository.findByProjectIdAndStatus(projectId, WorkSessionStatus.OPEN)
                 .orElse(null);
         if (openSession != null) {
+            prepareWorkspaceBranch(openSession);
             return new ResolveWorkSessionResponse(false, toResponse(openSession));
         }
 
@@ -203,6 +214,16 @@ public class WorkSessionService {
         } catch (TaskLaunchBlockedException exception) {
             throw new WorkSessionOperationBlockedException(
                     "Project repository is not operational for WorkSession opening: " + exception.getMessage());
+        }
+    }
+
+    private void prepareWorkspaceBranch(WorkSessionEntity session) {
+        String normalizedRepoPath = workspaceRepositoryPathValidator.normalizeConfiguredRepoPath(session.getProject().getRepoPath());
+        String workspaceBranch = sessionBranchService.prepareWorkspaceBranch(session, normalizedRepoPath);
+        if (!workspaceBranch.equals(session.getWorkspaceBranch())) {
+            session.setWorkspaceBranch(workspaceBranch);
+            session.setUpdatedAt(Instant.now());
+            workSessionRepository.save(session);
         }
     }
 

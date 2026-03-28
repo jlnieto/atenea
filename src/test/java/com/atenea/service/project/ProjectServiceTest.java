@@ -10,6 +10,7 @@ import com.atenea.api.project.CreateProjectRequest;
 import com.atenea.api.project.ProjectResponse;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
+import com.atenea.service.taskexecution.GitRepositoryService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,6 +32,9 @@ class ProjectServiceTest {
     @Mock
     private ProjectRepository projectRepository;
 
+    @Mock
+    private GitRepositoryService gitRepositoryService;
+
     @TempDir
     Path tempDir;
 
@@ -42,11 +46,42 @@ class ProjectServiceTest {
     void setUp() throws IOException {
         defaultWorkspaceRoot = Files.createDirectories(tempDir.resolve("repos"));
         workspaceRepositoryPathValidator = new WorkspaceRepositoryPathValidator(defaultWorkspaceRoot.toString());
-        projectService = new ProjectService(projectRepository, workspaceRepositoryPathValidator);
+        projectService = new ProjectService(projectRepository, workspaceRepositoryPathValidator, gitRepositoryService);
     }
 
     @Test
     void createProjectDefaultsWorkspaceRootNormalizesFieldsAndPersists() throws IOException {
+        Path repoPath = createGitRepo(defaultWorkspaceRoot.resolve("internal/atenea"));
+
+        when(projectRepository.findByName("Atenea")).thenReturn(Optional.empty());
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
+        when(projectRepository.save(any(ProjectEntity.class))).thenAnswer(invocation -> {
+            ProjectEntity entity = invocation.getArgument(0);
+            entity.setId(10L);
+            return entity;
+        });
+
+        ProjectResponse response = projectService.createProject(new CreateProjectRequest(
+                "  Atenea  ",
+                "   Backend orchestration  ",
+                "   " + repoPath + "   ",
+                null));
+
+        assertEquals(10L, response.id());
+        assertEquals("Atenea", response.name());
+        assertEquals("Backend orchestration", response.description());
+        assertEquals(repoPath.toString(), response.repoPath());
+        assertEquals("main", response.defaultBaseBranch());
+
+        ArgumentCaptor<ProjectEntity> captor = ArgumentCaptor.forClass(ProjectEntity.class);
+        verify(projectRepository).save(captor.capture());
+        ProjectEntity saved = captor.getValue();
+        assertEquals(repoPath.toString(), saved.getRepoPath());
+        assertEquals("main", saved.getDefaultBaseBranch());
+    }
+
+    @Test
+    void createProjectUsesProvidedDefaultBaseBranchWhenPresent() throws IOException {
         Path repoPath = createGitRepo(defaultWorkspaceRoot.resolve("internal/atenea"));
 
         when(projectRepository.findByName("Atenea")).thenReturn(Optional.empty());
@@ -57,19 +92,12 @@ class ProjectServiceTest {
         });
 
         ProjectResponse response = projectService.createProject(new CreateProjectRequest(
-                "  Atenea  ",
-                "   Backend orchestration  ",
-                "   " + repoPath + "   "));
+                "Atenea",
+                "Backend orchestration",
+                repoPath.toString(),
+                " release/2026-q2 "));
 
-        assertEquals(10L, response.id());
-        assertEquals("Atenea", response.name());
-        assertEquals("Backend orchestration", response.description());
-        assertEquals(repoPath.toString(), response.repoPath());
-
-        ArgumentCaptor<ProjectEntity> captor = ArgumentCaptor.forClass(ProjectEntity.class);
-        verify(projectRepository).save(captor.capture());
-        ProjectEntity saved = captor.getValue();
-        assertEquals(repoPath.toString(), saved.getRepoPath());
+        assertEquals("release/2026-q2", response.defaultBaseBranch());
     }
 
     @Test
@@ -78,7 +106,7 @@ class ProjectServiceTest {
         Path repoPath = createGitRepo(otherRoot.resolve("rogue"));
 
         assertThrows(ProjectRepoPathOutsideWorkspaceException.class, () -> projectService.createProject(
-                new CreateProjectRequest("Atenea", null, repoPath.toString())));
+                new CreateProjectRequest("Atenea", null, repoPath.toString(), null)));
     }
 
     @Test
@@ -86,7 +114,7 @@ class ProjectServiceTest {
         Path missingRepoPath = defaultWorkspaceRoot.resolve("internal/missing");
 
         assertThrows(ProjectRepoPathNotFoundException.class, () -> projectService.createProject(
-                new CreateProjectRequest("Atenea", null, missingRepoPath.toString())));
+                new CreateProjectRequest("Atenea", null, missingRepoPath.toString(), null)));
     }
 
     @Test
@@ -94,7 +122,7 @@ class ProjectServiceTest {
         Path repoPath = Files.createDirectories(defaultWorkspaceRoot.resolve("internal/no-git"));
 
         assertThrows(ProjectRepoPathMissingGitDirectoryException.class, () -> projectService.createProject(
-                new CreateProjectRequest("Atenea", null, repoPath.toString())));
+                new CreateProjectRequest("Atenea", null, repoPath.toString(), null)));
     }
 
     @Test
@@ -103,7 +131,7 @@ class ProjectServiceTest {
         when(projectRepository.findByName("Atenea")).thenReturn(Optional.of(new ProjectEntity()));
 
         assertThrows(DuplicateProjectNameException.class, () -> projectService.createProject(
-                new CreateProjectRequest("  Atenea  ", null, repoPath.toString())));
+                new CreateProjectRequest("  Atenea  ", null, repoPath.toString(), null)));
     }
 
     @Test
@@ -128,6 +156,7 @@ class ProjectServiceTest {
         assertEquals(List.of(1L, 2L), response.stream().map(ProjectResponse::id).toList());
         assertEquals("/repos/internal/alpha", response.get(0).repoPath());
         assertEquals("desc", response.get(1).description());
+        assertEquals("main", response.get(0).defaultBaseBranch());
     }
 
     private static ProjectEntity buildProject(
@@ -141,6 +170,7 @@ class ProjectServiceTest {
         entity.setName(name);
         entity.setDescription(description);
         entity.setRepoPath(repoPath);
+        entity.setDefaultBaseBranch("main");
         entity.setCreatedAt(createdAt);
         entity.setUpdatedAt(createdAt.plusSeconds(60));
         return entity;

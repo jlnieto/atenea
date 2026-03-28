@@ -63,6 +63,7 @@
         sendTurn: document.getElementById("send-turn"),
         sessionTitle: document.getElementById("session-title"),
         sessionBaseBranch: document.getElementById("session-base-branch"),
+        sessionBaseBranchHelp: document.getElementById("session-base-branch-help"),
         sessionClosedCta: document.getElementById("session-closed-cta"),
         startNewSession: document.getElementById("start-new-session"),
     };
@@ -305,6 +306,7 @@
             elements.projectKicker.textContent = "Select a project";
             elements.projectTitle.textContent = "Atenea";
             elements.projectSubtitle.textContent = "Choose a project to start or continue a WorkSession.";
+            elements.sessionBaseBranchHelp.textContent = "";
             elements.refreshSession.classList.add("hidden");
             elements.closeSession.classList.add("hidden");
             return;
@@ -313,6 +315,7 @@
         elements.projectKicker.textContent = "Project";
         elements.projectTitle.textContent = state.selectedProject.project.name;
         elements.projectSubtitle.textContent = state.selectedProject.project.repoPath;
+        renderSessionBaseBranchHelp();
         elements.refreshSession.classList.toggle("hidden", !state.sessionId);
         elements.closeSession.classList.toggle("hidden", !state.sessionOpen);
     }
@@ -347,6 +350,20 @@
             elements.sessionBootstrapCopy.textContent =
                 "This project has no WorkSession yet. Start the first session to open the conversational workflow.";
         }
+    }
+
+    function renderSessionBaseBranchHelp() {
+        const defaultBaseBranch = state.selectedProject?.project?.defaultBaseBranch;
+        if (defaultBaseBranch) {
+            elements.sessionBaseBranch.placeholder = defaultBaseBranch;
+            elements.sessionBaseBranchHelp.textContent =
+                `If left empty, Atenea will use the project's default base branch: ${defaultBaseBranch}.`;
+            return;
+        }
+
+        elements.sessionBaseBranch.placeholder = "main";
+        elements.sessionBaseBranchHelp.textContent =
+            "If left empty, Atenea will use the project's default base branch when it is configured.";
     }
 
     function renderSessionScreen() {

@@ -7,6 +7,7 @@ public record ProjectResponse(
         String name,
         String description,
         String repoPath,
+        String defaultBaseBranch,
         Instant createdAt,
         Instant updatedAt
 ) {

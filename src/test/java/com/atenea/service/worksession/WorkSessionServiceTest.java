@@ -97,7 +97,8 @@ class WorkSessionServiceTest {
                 snapshotService,
                 agentRunRepository,
                 sessionTurnService,
-                reconciliationService
+                reconciliationService,
+                new SessionBranchService(gitRepositoryService)
         );
     }
 
@@ -108,12 +109,16 @@ class WorkSessionServiceTest {
 
         when(projectRepository.findById(7L)).thenReturn(Optional.of(project));
         when(workSessionRepository.existsByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(false);
-        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("develop");
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString()))
+                .thenReturn("release/2026-q1", "release/2026-q1", "atenea/session-12");
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-12")).thenReturn(false);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> {
             WorkSessionEntity entity = invocation.getArgument(0);
-            entity.setId(12L);
+            if (entity.getId() == null) {
+                entity.setId(12L);
+            }
             return entity;
         });
 
@@ -127,30 +132,36 @@ class WorkSessionServiceTest {
         assertEquals(WorkSessionOperationalState.IDLE, response.operationalState());
         assertEquals("Review current status", response.title());
         assertEquals("release/2026-q1", response.baseBranch());
-        assertNull(response.workspaceBranch());
+        assertEquals("atenea/session-12", response.workspaceBranch());
         assertNull(response.externalThreadId());
         assertNull(response.closedAt());
         assertEquals(response.openedAt(), response.lastActivityAt());
-        assertEquals(new SessionOperationalSnapshotResponse(true, true, "develop", false), response.repoState());
+        assertEquals(new SessionOperationalSnapshotResponse(true, true, "atenea/session-12", false), response.repoState());
 
         ArgumentCaptor<WorkSessionEntity> captor = ArgumentCaptor.forClass(WorkSessionEntity.class);
-        verify(workSessionRepository).save(captor.capture());
+        verify(workSessionRepository, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
         assertEquals("release/2026-q1", captor.getValue().getBaseBranch());
+        assertEquals("atenea/session-12", captor.getValue().getWorkspaceBranch());
+        verify(gitRepositoryService).createAndCheckoutBranch(repoPath.toString(), "release/2026-q1", "atenea/session-12");
     }
 
     @Test
     void openSessionDefaultsBaseBranchToCurrentRepoBranch() throws IOException {
         Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
         ProjectEntity project = buildProject(7L, repoPath);
+        project.setDefaultBaseBranch(null);
 
         when(projectRepository.findById(7L)).thenReturn(Optional.of(project));
         when(workSessionRepository.existsByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(false);
         when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("feature/docs");
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-12")).thenReturn(false);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> {
             WorkSessionEntity entity = invocation.getArgument(0);
-            entity.setId(12L);
+            if (entity.getId() == null) {
+                entity.setId(12L);
+            }
             return entity;
         });
 
@@ -159,6 +170,34 @@ class WorkSessionServiceTest {
                 new CreateWorkSessionRequest("Inspect project state", "   "));
 
         assertEquals("feature/docs", response.baseBranch());
+        assertEquals("atenea/session-12", response.workspaceBranch());
+    }
+
+    @Test
+    void openSessionDefaultsBaseBranchToProjectDefaultBaseBranch() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
+        ProjectEntity project = buildProject(7L, repoPath);
+        project.setDefaultBaseBranch("release/2026-q3");
+
+        when(projectRepository.findById(7L)).thenReturn(Optional.of(project));
+        when(workSessionRepository.existsByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(false);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("release/2026-q3");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-12")).thenReturn(false);
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> {
+            WorkSessionEntity entity = invocation.getArgument(0);
+            if (entity.getId() == null) {
+                entity.setId(12L);
+            }
+            return entity;
+        });
+
+        WorkSessionResponse response = workSessionService.openSession(
+                7L,
+                new CreateWorkSessionRequest("Inspect project state", " "));
+
+        assertEquals("release/2026-q3", response.baseBranch());
     }
 
     @Test
@@ -212,6 +251,7 @@ class WorkSessionServiceTest {
         when(workSessionRepository.findByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(Optional.of(session));
         when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-12")).thenReturn(false);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
 
         ResolveWorkSessionResponse response = workSessionService.resolveSession(
@@ -221,7 +261,63 @@ class WorkSessionServiceTest {
         assertFalse(response.created());
         assertEquals(12L, response.session().id());
         assertEquals("main", response.session().baseBranch());
+        assertEquals("atenea/session-12", response.session().workspaceBranch());
         assertEquals(WorkSessionOperationalState.IDLE, response.session().operationalState());
+        verify(gitRepositoryService).createAndCheckoutBranch(repoPath.toString(), "main", "atenea/session-12");
+    }
+
+    @Test
+    void openSessionThrowsWhenRepositoryIsDirtyBeforePreparingWorkspaceBranch() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
+        ProjectEntity project = buildProject(7L, repoPath);
+
+        when(projectRepository.findById(7L)).thenReturn(Optional.of(project));
+        when(workSessionRepository.existsByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(false);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(false);
+        when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> {
+            WorkSessionEntity entity = invocation.getArgument(0);
+            if (entity.getId() == null) {
+                entity.setId(12L);
+            }
+            return entity;
+        });
+
+        WorkSessionOperationBlockedException exception = assertThrows(
+                WorkSessionOperationBlockedException.class,
+                () -> workSessionService.openSession(7L, new CreateWorkSessionRequest("Inspect project state", null)));
+
+        assertEquals(
+                "Repository '%s' is not clean; cannot prepare WorkSession '12'".formatted(repoPath),
+                exception.getMessage());
+    }
+
+    @Test
+    void openSessionThrowsWhenRepositoryIsOnThirdBranchInsteadOfBaseOrWorkspaceBranch() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
+        ProjectEntity project = buildProject(7L, repoPath);
+
+        when(projectRepository.findById(7L)).thenReturn(Optional.of(project));
+        when(workSessionRepository.existsByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(false);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("feature/random", "feature/random");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> {
+            WorkSessionEntity entity = invocation.getArgument(0);
+            if (entity.getId() == null) {
+                entity.setId(12L);
+            }
+            return entity;
+        });
+
+        WorkSessionOperationBlockedException exception = assertThrows(
+                WorkSessionOperationBlockedException.class,
+                () -> workSessionService.openSession(7L, new CreateWorkSessionRequest("Inspect project state", "main")));
+
+        assertEquals(
+                "Repository is on branch 'feature/random' but WorkSession '12' can only prepare workspace branch " +
+                        "'atenea/session-12' from base branch 'main' or from the workspace branch itself. " +
+                        "Switch branches manually and retry.",
+                exception.getMessage());
     }
 
     @Test
@@ -232,12 +328,15 @@ class WorkSessionServiceTest {
         when(projectRepository.findById(7L)).thenReturn(Optional.of(project));
         when(workSessionRepository.findByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(Optional.empty());
         when(workSessionRepository.existsByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(false);
-        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("develop");
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("release/2026");
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-15")).thenReturn(false);
         when(agentRunRepository.existsBySessionIdAndStatus(15L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> {
             WorkSessionEntity entity = invocation.getArgument(0);
-            entity.setId(15L);
+            if (entity.getId() == null) {
+                entity.setId(15L);
+            }
             return entity;
         });
 
@@ -249,6 +348,7 @@ class WorkSessionServiceTest {
         assertEquals(15L, response.session().id());
         assertEquals("Create canonical session", response.session().title());
         assertEquals("release/2026", response.session().baseBranch());
+        assertEquals("atenea/session-15", response.session().workspaceBranch());
         assertEquals(WorkSessionOperationalState.IDLE, response.session().operationalState());
     }
 
@@ -314,15 +414,20 @@ class WorkSessionServiceTest {
         when(projectRepository.findById(7L)).thenReturn(Optional.of(project));
         when(workSessionRepository.findByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(Optional.empty());
         when(workSessionRepository.existsByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(false);
-        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("develop");
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("release/2026");
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-15")).thenReturn(false);
         when(agentRunRepository.existsBySessionIdAndStatus(15L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> {
             WorkSessionEntity entity = invocation.getArgument(0);
-            entity.setId(15L);
+            if (entity.getId() == null) {
+                entity.setId(15L);
+            }
             return entity;
         });
-        when(workSessionRepository.findWithProjectById(15L)).thenReturn(Optional.of(buildSession(15L, 7L, repoPath, "release/2026")));
+        WorkSessionEntity persistedSession = buildSession(15L, 7L, repoPath, "release/2026");
+        persistedSession.setWorkspaceBranch("atenea/session-15");
+        when(workSessionRepository.findWithProjectById(15L)).thenReturn(Optional.of(persistedSession));
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(15L)).thenReturn(Optional.empty());
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(15L, AgentRunStatus.FAILED))
                 .thenReturn(Optional.empty());
@@ -336,6 +441,7 @@ class WorkSessionServiceTest {
         assertTrue(response.created());
         assertEquals(15L, response.view().session().id());
         assertEquals("release/2026", response.view().session().baseBranch());
+        assertEquals("atenea/session-15", response.view().session().workspaceBranch());
         assertEquals(WorkSessionOperationalState.IDLE, response.view().session().operationalState());
     }
 
@@ -734,6 +840,7 @@ class WorkSessionServiceTest {
         project.setName("Atenea");
         project.setDescription("Self-hosted Atenea");
         project.setRepoPath(repoPath.toString());
+        project.setDefaultBaseBranch("main");
         project.setCreatedAt(Instant.parse("2026-03-25T10:00:00Z"));
         project.setUpdatedAt(Instant.parse("2026-03-25T10:01:00Z"));
         return project;

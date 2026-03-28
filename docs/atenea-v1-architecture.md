@@ -14,6 +14,10 @@ The core architectural decision remains unchanged:
 - `Task` remains implemented and operational, but it is legacy workflow for the future product direction
 - `Task` must not evolve linearly into `WorkSession`
 
+The current near-term target flow for that direction is documented in:
+
+- [`docs/worksession-target-flow.md`](./worksession-target-flow.md)
+
 ## System role
 
 Atenea is a remote orchestration backend for repository work on this VPS.
@@ -80,6 +84,7 @@ Today the repository contains two real orchestration surfaces:
 Already implemented and still valid:
 
 - `Project` with validated `repoPath`
+- `Project.defaultBaseBranch`
 - workspace-root validation through platform configuration
 - Git inspection and branch operations through `GitRepositoryService`
 - Codex App Server integration
@@ -122,7 +127,12 @@ Implemented constraints:
 Implemented endpoints:
 
 - `POST /api/projects/{projectId}/sessions`
+- `POST /api/projects/{projectId}/sessions/resolve`
+- `POST /api/projects/{projectId}/sessions/resolve/view`
+- `POST /api/projects/{projectId}/sessions/resolve/conversation-view`
 - `GET /api/sessions/{sessionId}`
+- `GET /api/sessions/{sessionId}/view`
+- `GET /api/sessions/{sessionId}/conversation-view`
 - `POST /api/sessions/{sessionId}/close`
 
 Implemented behavior:
@@ -130,12 +140,18 @@ Implemented behavior:
 - validate `Project` existence
 - validate that `project.repoPath` is operational
 - set `baseBranch` from request when provided
+- otherwise use `project.defaultBaseBranch` when present
 - otherwise derive `baseBranch` from the repository current branch
 - persist:
   - `status = OPEN`
-  - `workspaceBranch = null`
+  - real `workspaceBranch`
   - `externalThreadId = null`
   - coherent `openedAt` / `lastActivityAt`
+- resolve-or-create semantics at project scope when an operator wants the current live session
+- prepare or recover the session workspace branch only from:
+  - the session `workspaceBranch`
+  - the session `baseBranch` with clean worktree
+- block the operation when the repository is on any third branch
 - block close when the session is not `OPEN`
 - block close while a run is still `RUNNING`
 
@@ -156,6 +172,24 @@ Implemented behavior:
 - list visible conversation turns in chronological order
 - list persisted runs in chronological order
 - filter internal technical turns out of the operator-visible history
+
+#### Aggregated read models
+
+The current backend also exposes higher-level read models above the base session record.
+
+Implemented read models:
+
+- `WorkSessionViewResponse`
+- `WorkSessionConversationViewResponse`
+
+Implemented behavior:
+
+- aggregate base session state, repo snapshot and latest run information
+- expose whether the session can currently accept a new turn
+- expose latest error summary from failed runs
+- expose latest agent response summary from succeeded runs
+- expose a recent visible-turn window for conversation-oriented clients
+- expose truncation metadata for longer histories
 
 #### Thread continuity
 
@@ -189,6 +223,19 @@ Important current behavior:
   - `repoValid = false`
   - `workingTreeClean = false`
   - `currentBranch = null`
+
+#### Reconciliation of stale runs
+
+The current implementation includes reconciliation for stale `RUNNING` `AgentRun` records.
+
+Current behavior:
+
+- loading session state or attempting close triggers reconciliation
+- a stale `RUNNING` run may be marked `FAILED`
+- the run then receives `finishedAt` and an error summary
+- the session may return from operational `RUNNING` to operational `IDLE`
+
+This means operational session state is not derived only from raw persisted status, but also from reconciliation on read paths.
 
 ## Domain model in transition
 
@@ -241,13 +288,26 @@ Current implementation status:
 
 - persistence implemented
 - open/read/close API implemented
+- resolve-or-create API implemented
+- aggregated session view API implemented
+- session-owned branch setup implemented
 - turn execution implemented
 - thread continuity implemented
 - descriptive operational snapshot implemented
 - turns history implemented
 - runs history implemented
+- stale-run reconciliation implemented
 
 `WorkSession` should therefore no longer be described as embryonic or persistence-only.
+
+Near-term target state:
+
+- `WorkSession` should become the root of:
+  - branch ownership
+  - conversation
+  - publish to pull request
+  - merge tracking
+  - repository reconciliation
 
 ## `SessionTurn`
 

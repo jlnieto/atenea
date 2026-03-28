@@ -91,6 +91,7 @@ public class ProjectOverviewService {
                 project.getName(),
                 project.getDescription(),
                 project.getRepoPath(),
+                project.getDefaultBaseBranch(),
                 project.getCreatedAt(),
                 project.getUpdatedAt()
         );
