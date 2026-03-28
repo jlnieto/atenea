@@ -52,8 +52,16 @@ Persisted `WorkSession` state includes:
 - `baseBranch`
 - `workspaceBranch`
 - `externalThreadId`
+- `pullRequestUrl`
+- `pullRequestStatus`
+- `finalCommitSha`
 - `openedAt`
 - `lastActivityAt`
+- `publishedAt`
+- `closeBlockedState`
+- `closeBlockedReason`
+- `closeBlockedAction`
+- `closeRetryable`
 - `closedAt`
 
 Persisted `SessionTurn` state includes:
@@ -91,6 +99,8 @@ Implemented endpoints:
 - `POST /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/runs`
+- `POST /api/sessions/{sessionId}/publish`
+- `POST /api/sessions/{sessionId}/pull-request/sync`
 - `POST /api/sessions/{sessionId}/close`
 
 Implemented response families:
@@ -272,14 +282,49 @@ This behavior is already validated by integration tests and is part of the real 
 
 Current rules:
 
-- only an `OPEN` session may be closed
-- a session cannot be closed while a run is still `RUNNING`
-- closing a session sets:
+- only an active session may enter close reconciliation
+- closing first moves the session to `CLOSING`
+- stale runs are reconciled before deciding whether close may continue
+- close is blocked while a run is still `RUNNING`
+- close is blocked when repository state is unsafe
+- close is blocked when unpublished session commits still exist
+- close is blocked when a published session pull request is not merged
+- close only succeeds when Atenea can leave the repository:
+  - on the project main/base branch
+  - aligned with remote without local merge
+  - with clean worktree
+  - without local session branch
+  - without remote session branch when it applies
+- if close fails midway:
+  - the session remains `CLOSING`
+  - close-block diagnostics are persisted on the session
+- successful close sets:
   - `status = CLOSED`
   - `closedAt`
   - updated `updatedAt`
 
 Closed sessions do not accept new turns.
+
+## Session publish and pull request behavior
+
+The backend now implements session-first delivery behavior.
+
+Implemented:
+
+- `POST /api/sessions/{sessionId}/publish`
+- `POST /api/sessions/{sessionId}/pull-request/sync`
+- publish validation that blocks when there are no reviewable changes
+- stage / commit / push through `GitRepositoryService`
+- GitHub pull request creation
+- pull request metadata persisted directly on `WorkSession`
+- merge tracking through synchronized `pullRequestStatus`
+
+Current persisted delivery fields are:
+
+- `pullRequestUrl`
+- `pullRequestStatus`
+- `finalCommitSha`
+- `publishedAt`
 
 ## Descriptive session snapshot
 
@@ -324,6 +369,10 @@ The following invariants are currently enforced:
 - turns require an operational repository
 - closing requires the session to be `OPEN`
 - closing is blocked while a run is still `RUNNING`
+- closing may leave the session in `CLOSING` until reconciliation can finish
+- only one active session per project means:
+  - `OPEN`
+  - or `CLOSING`
 
 ## Current project defaults
 
@@ -365,8 +414,11 @@ From code and tests, the currently relevant error behavior is:
   - or turn message is blank
 - `409`
   - a session `OPEN` already exists for the project
+  - or a session `CLOSING` already exists for the project
   - a second run would start while another run is still `RUNNING`
   - the session is not `OPEN`
+  - publish is blocked by session delivery rules
+  - close is blocked by session reconciliation rules
 - `422`
   - the repository path is valid but not operational for opening a session or executing a turn
 - `502`
@@ -384,7 +436,9 @@ The currently implemented `WorkSession` slice now validates all of the following
   - repository snapshot state
 - real Codex execution inside the session flow
 - conversational continuity through reused external thread ids
-- explicit session close
+- explicit publish-to-PR flow
+- pull request metadata and merge-state visibility
+- explicit session close with repository reconciliation
 - project-scoped resolve semantics for open-or-create flows
 - aggregated session and conversation views for frontend-oriented reads
 - stale `RUNNING` run reconciliation on later state reads
@@ -396,7 +450,7 @@ The main remaining gaps visible from the current repository are no longer the ba
 The current gaps are instead about consolidation and product clarity:
 
 - documentation alignment
-- roadmap clarity after the now-functional `WorkSession` core
+- roadmap clarity after the now-functional session-first delivery workflow
 - explicit coexistence rules between legacy task flow and session flow at product level
 - definition of what should become canonical for frontend and operator workflows
 
@@ -405,6 +459,6 @@ The current gaps are instead about consolidation and product clarity:
 Current state is:
 
 - `WorkSession` is no longer an early persistence-only slice
-- it already supports open, resolve, aggregated reads, turn execution, conversational continuity, turns history, runs history and close
+- it already supports open, resolve, aggregated reads, turn execution, conversational continuity, turns history, runs history, publish, PR sync and reconciled close
 - the legacy `Task` / `TaskExecution` model still coexists and remains operational
-- the next gap is not basic `WorkSession` implementation, but consolidation of product contracts, documentation and migration strategy
+- the next gap is not basic `WorkSession` implementation, but consolidation of operator contracts, documentation and migration strategy

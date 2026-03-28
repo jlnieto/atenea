@@ -16,6 +16,7 @@ import com.atenea.service.project.ProjectService;
 import com.atenea.persistence.task.TaskBranchStatus;
 import com.atenea.persistence.task.TaskPullRequestStatus;
 import com.atenea.persistence.task.TaskReviewOutcome;
+import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -176,10 +177,17 @@ class ProjectControllerTest {
                         "Session title",
                         "main",
                         "thread-1",
+                        null,
+                        WorkSessionPullRequestStatus.NOT_CREATED,
+                        null,
+                        null,
+                        null,
+                        false,
                         true,
                         true,
                         "feature/session",
                         true,
+                        null,
                         Instant.parse("2026-03-22T10:00:00Z"),
                         Instant.parse("2026-03-22T10:10:00Z"),
                         null),
@@ -228,6 +236,7 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].workSession.sessionId").value(50))
                 .andExpect(jsonPath("$[0].workSession.current").value(true))
                 .andExpect(jsonPath("$[0].workSession.runInProgress").value(true))
+                .andExpect(jsonPath("$[0].workSession.closeBlockedState").doesNotExist())
                 .andExpect(jsonPath("$[0].legacy.latestTask.title").value("Fix launch flow"))
                 .andExpect(jsonPath("$[0].legacy.latestTask.branchName").value("task/10-fix-launch-flow"))
                 .andExpect(jsonPath("$[0].legacy.latestExecution.id").value(100));

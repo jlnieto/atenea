@@ -22,6 +22,7 @@ import com.atenea.persistence.taskexecution.TaskExecutionRunnerType;
 import com.atenea.persistence.taskexecution.TaskExecutionStatus;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.task.TaskResponseMapper;
 import com.atenea.service.worksession.SessionOperationalSnapshotService;
@@ -73,7 +74,9 @@ class ProjectOverviewServiceTest {
         TaskExecutionEntity latestExecution = execution(101L, latestTask, Instant.parse("2026-03-22T10:05:00Z"));
 
         when(projectRepository.findAll(Sort.by(Sort.Direction.ASC, "createdAt"))).thenReturn(List.of(project));
-        when(workSessionRepository.findByProjectIdAndStatus(1L, WorkSessionStatus.OPEN)).thenReturn(Optional.of(session));
+        when(workSessionRepository.findFirstByProjectIdAndStatusInOrderByCreatedAtAsc(
+                1L,
+                java.util.Set.of(WorkSessionStatus.OPEN, WorkSessionStatus.CLOSING))).thenReturn(Optional.of(session));
         when(sessionOperationalSnapshotService.snapshot(session)).thenReturn(
                 new SessionOperationalSnapshotResponse(true, true, "feature/session", true));
         when(taskRepository.findByProjectIdOrderByCreatedAtAsc(1L)).thenReturn(List.of(olderTask, latestTask));
@@ -88,6 +91,8 @@ class ProjectOverviewServiceTest {
         assertEquals(50L, response.get(0).workSession().sessionId());
         assertEquals(true, response.get(0).workSession().current());
         assertEquals(true, response.get(0).workSession().runInProgress());
+        assertEquals(WorkSessionPullRequestStatus.NOT_CREATED, response.get(0).workSession().pullRequestStatus());
+        assertNull(response.get(0).workSession().closeBlockedState());
         assertEquals("Latest task", response.get(0).legacy().latestTask().title());
         assertEquals("launch", response.get(0).legacy().latestTask().nextAction());
         assertEquals(101L, response.get(0).legacy().latestExecution().id());
@@ -107,7 +112,9 @@ class ProjectOverviewServiceTest {
         WorkSessionEntity session = closedSession(project, 70L, "Closed session");
 
         when(projectRepository.findAll(Sort.by(Sort.Direction.ASC, "createdAt"))).thenReturn(List.of(project));
-        when(workSessionRepository.findByProjectIdAndStatus(1L, WorkSessionStatus.OPEN)).thenReturn(Optional.empty());
+        when(workSessionRepository.findFirstByProjectIdAndStatusInOrderByCreatedAtAsc(
+                1L,
+                java.util.Set.of(WorkSessionStatus.OPEN, WorkSessionStatus.CLOSING))).thenReturn(Optional.empty());
         when(workSessionRepository.findFirstByProjectIdOrderByLastActivityAtDesc(1L)).thenReturn(Optional.of(session));
         when(sessionOperationalSnapshotService.snapshot(session)).thenReturn(
                 new SessionOperationalSnapshotResponse(true, false, "main", false));
@@ -135,7 +142,9 @@ class ProjectOverviewServiceTest {
         ProjectEntity project = project(1L, "WAB", "/workspace/repos/internal/wab");
 
         when(projectRepository.findAll(Sort.by(Sort.Direction.ASC, "createdAt"))).thenReturn(List.of(project));
-        when(workSessionRepository.findByProjectIdAndStatus(1L, WorkSessionStatus.OPEN)).thenReturn(Optional.empty());
+        when(workSessionRepository.findFirstByProjectIdAndStatusInOrderByCreatedAtAsc(
+                1L,
+                java.util.Set.of(WorkSessionStatus.OPEN, WorkSessionStatus.CLOSING))).thenReturn(Optional.empty());
         when(workSessionRepository.findFirstByProjectIdOrderByLastActivityAtDesc(1L)).thenReturn(Optional.empty());
         when(taskRepository.findByProjectIdOrderByCreatedAtAsc(1L)).thenReturn(List.of());
 
@@ -144,6 +153,45 @@ class ProjectOverviewServiceTest {
         assertNull(response.get(0).workSession());
         assertNull(response.get(0).legacy().latestTask());
         assertNull(response.get(0).legacy().latestExecution());
+    }
+
+    @Test
+    void getOverviewPrioritizesClosingSessionAsCurrentWhenPresent() {
+        ProjectOverviewService projectOverviewService =
+                new ProjectOverviewService(
+                        projectRepository,
+                        taskRepository,
+                        taskExecutionRepository,
+                        workSessionRepository,
+                        sessionOperationalSnapshotService,
+                        taskResponseMapper);
+        ProjectEntity project = project(1L, "Atenea", "/workspace/repos/internal/atenea");
+        WorkSessionEntity closingSession = openSession(project, 51L, "Closing session");
+        closingSession.setStatus(WorkSessionStatus.CLOSING);
+        closingSession.setCloseBlockedState("dirty_worktree");
+        closingSession.setCloseBlockedReason("Repository working tree is not clean");
+        closingSession.setCloseBlockedAction("Clean or discard local changes manually before retrying close");
+        closingSession.setCloseRetryable(false);
+
+        when(projectRepository.findAll(Sort.by(Sort.Direction.ASC, "createdAt"))).thenReturn(List.of(project));
+        when(workSessionRepository.findFirstByProjectIdAndStatusInOrderByCreatedAtAsc(
+                1L,
+                java.util.Set.of(WorkSessionStatus.OPEN, WorkSessionStatus.CLOSING))).thenReturn(Optional.of(closingSession));
+        when(sessionOperationalSnapshotService.snapshot(closingSession)).thenReturn(
+                new SessionOperationalSnapshotResponse(true, true, "main", false));
+        when(taskRepository.findByProjectIdOrderByCreatedAtAsc(1L)).thenReturn(List.of());
+
+        List<ProjectOverviewResponse> response = projectOverviewService.getOverview();
+
+        assertEquals(51L, response.get(0).workSession().sessionId());
+        assertEquals(true, response.get(0).workSession().current());
+        assertEquals(WorkSessionStatus.CLOSING, response.get(0).workSession().status());
+        assertEquals("dirty_worktree", response.get(0).workSession().closeBlockedState());
+        assertEquals("Repository working tree is not clean", response.get(0).workSession().closeBlockedReason());
+        assertEquals(
+                "Clean or discard local changes manually before retrying close",
+                response.get(0).workSession().closeBlockedAction());
+        assertEquals(false, response.get(0).workSession().closeRetryable());
     }
 
     private static ProjectEntity project(Long id, String name, String repoPath) {
@@ -204,8 +252,12 @@ class ProjectOverviewServiceTest {
         session.setBaseBranch("main");
         session.setWorkspaceBranch(null);
         session.setExternalThreadId("thread-stable");
+        session.setPullRequestUrl(null);
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
+        session.setFinalCommitSha(null);
         session.setOpenedAt(Instant.parse("2026-03-22T10:00:00Z"));
         session.setLastActivityAt(Instant.parse("2026-03-22T10:10:00Z"));
+        session.setPublishedAt(null);
         session.setClosedAt(null);
         session.setCreatedAt(Instant.parse("2026-03-22T10:00:00Z"));
         session.setUpdatedAt(Instant.parse("2026-03-22T10:10:00Z"));

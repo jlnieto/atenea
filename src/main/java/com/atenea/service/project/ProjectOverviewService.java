@@ -21,12 +21,16 @@ import com.atenea.service.worksession.SessionOperationalSnapshotService;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProjectOverviewService {
+
+    private static final Set<WorkSessionStatus> ACTIVE_SESSION_STATUSES =
+            Set.of(WorkSessionStatus.OPEN, WorkSessionStatus.CLOSING);
 
     private final ProjectRepository projectRepository;
     private final TaskRepository taskRepository;
@@ -60,7 +64,9 @@ public class ProjectOverviewService {
     }
 
     private ProjectOverviewResponse toOverview(ProjectEntity project) {
-        WorkSessionEntity canonicalSession = workSessionRepository.findByProjectIdAndStatus(project.getId(), WorkSessionStatus.OPEN)
+        WorkSessionEntity canonicalSession = workSessionRepository.findFirstByProjectIdAndStatusInOrderByCreatedAtAsc(
+                        project.getId(),
+                        ACTIVE_SESSION_STATUSES)
                 .or(() -> workSessionRepository.findFirstByProjectIdOrderByLastActivityAtDesc(project.getId()))
                 .orElse(null);
 
@@ -122,15 +128,22 @@ public class ProjectOverviewService {
         SessionOperationalSnapshotResponse snapshot = sessionOperationalSnapshotService.snapshot(session);
         return new WorkSessionOverviewResponse(
                 session.getId(),
-                session.getStatus() == WorkSessionStatus.OPEN,
+                session.getStatus() == WorkSessionStatus.OPEN || session.getStatus() == WorkSessionStatus.CLOSING,
                 session.getStatus(),
                 session.getTitle(),
                 session.getBaseBranch(),
                 session.getExternalThreadId(),
+                session.getPullRequestUrl(),
+                session.getPullRequestStatus(),
+                session.getCloseBlockedState(),
+                session.getCloseBlockedReason(),
+                session.getCloseBlockedAction(),
+                session.isCloseRetryable(),
                 snapshot.repoValid(),
                 snapshot.workingTreeClean(),
                 snapshot.currentBranch(),
                 snapshot.runInProgress(),
+                session.getPublishedAt(),
                 session.getOpenedAt(),
                 session.getLastActivityAt(),
                 session.getClosedAt()

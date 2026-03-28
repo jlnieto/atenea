@@ -143,9 +143,14 @@ class WorkSessionFlowIntegrationTest {
         JsonNode closedSession = postJson("/api/sessions/%d/close".formatted(sessionId), null, 200);
         assertEquals("CLOSED", closedSession.get("status").asText());
         assertNotNull(closedSession.get("closedAt"));
+        assertEquals("main", closedSession.get("repoState").get("currentBranch").asText());
 
         WorkSessionEntity persistedSession = workSessionRepository.findById(sessionId).orElseThrow();
         assertEquals(WorkSessionStatus.CLOSED, persistedSession.getStatus());
+        assertEquals("main", runAndRead(Path.of(project.getRepoPath()), "git", "rev-parse", "--abbrev-ref", "HEAD"));
+        assertEquals("missing", runAndReadAllowingFailure(
+                Path.of(project.getRepoPath()),
+                "git", "rev-parse", "--verify", "--quiet", "refs/heads/atenea/session-" + sessionId));
     }
 
     @Test
@@ -253,7 +258,8 @@ class WorkSessionFlowIntegrationTest {
                 .andExpect(status().isConflict());
 
         WorkSessionEntity session = workSessionRepository.findById(sessionId).orElseThrow();
-        assertEquals(WorkSessionStatus.OPEN, session.getStatus());
+        assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
+        assertEquals("running_run", session.getCloseBlockedState());
     }
 
     @Test
@@ -393,14 +399,56 @@ class WorkSessionFlowIntegrationTest {
 
     private Path initializeGitRepository(String slug) throws IOException {
         Path repoPath = WORKSPACE_ROOT.resolve("integration-tests").resolve(slug);
+        Path remotePath = WORKSPACE_ROOT.resolve("integration-tests-remotes").resolve(slug + ".git");
         Files.createDirectories(repoPath);
+        Files.createDirectories(remotePath.getParent());
         Files.writeString(repoPath.resolve("README.md"), "# " + slug + System.lineSeparator());
         runOrThrow(repoPath, "git", "init", "-b", "main");
+        runOrThrow(remotePath.getParent(), "git", "init", "--bare", remotePath.toString());
         runOrThrow(repoPath, "git", "config", "user.email", "integration@atenea.local");
         runOrThrow(repoPath, "git", "config", "user.name", "Atenea Integration");
         runOrThrow(repoPath, "git", "add", "README.md");
         runOrThrow(repoPath, "git", "commit", "-m", "Initial commit");
+        runOrThrow(repoPath, "git", "remote", "add", "origin", remotePath.toString());
+        runOrThrow(repoPath, "git", "push", "-u", "origin", "main");
         return repoPath;
+    }
+
+    private static String runAndRead(Path directory, String... command) {
+        try {
+            Process process = new ProcessBuilder(command)
+                    .directory(directory.toFile())
+                    .redirectErrorStream(true)
+                    .start();
+            String output = new String(process.getInputStream().readAllBytes());
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new IllegalStateException("Command failed: " + String.join(" ", command));
+            }
+            return output.trim();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Command interrupted: " + String.join(" ", command), exception);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not run command: " + String.join(" ", command), exception);
+        }
+    }
+
+    private static String runAndReadAllowingFailure(Path directory, String... command) {
+        try {
+            Process process = new ProcessBuilder(command)
+                    .directory(directory.toFile())
+                    .redirectErrorStream(true)
+                    .start();
+            String output = new String(process.getInputStream().readAllBytes()).trim();
+            int exitCode = process.waitFor();
+            return exitCode == 0 ? output : "missing";
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Command interrupted: " + String.join(" ", command), exception);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not run command: " + String.join(" ", command), exception);
+        }
     }
 
     private void runOrThrow(Path directory, String... command) {

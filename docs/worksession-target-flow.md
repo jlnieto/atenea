@@ -106,7 +106,12 @@ Those may be added later, but they are not the foundation of the session-first w
 - continuity through `externalThreadId`
 - session turns history
 - session runs history
-- session close at model level
+- session publish flow
+- session pull request synchronization
+- delivery metadata on the session model
+- merge-aware close flow
+- post-merge repository reconciliation
+- close-block diagnostics on the session model
 - aggregated reads:
   - session view
   - conversation view
@@ -121,13 +126,12 @@ Those may be added later, but they are not the foundation of the session-first w
 - branch closure after merged review flow
 - derived operational guidance fields
 
-### Not yet implemented in the target model
+### Still to consolidate after the target model backend slice
 
-- publish-on-close flow for `WorkSession`
-- session commit and push lifecycle
-- PR metadata persisted directly as part of session delivery state
-- post-merge session reconciliation to base branch
-- project-ready-for-next-session end state in the `WorkSession` model
+- explicit frontend decision that `conversation-view` is the primary session contract
+- stronger end-to-end validation of publish / merge / reconciled close happy path
+- clearer operator flows for blocked close recovery
+- clarified long-term role of mixed project overview during coexistence
 
 ## Canonical frontend contract
 
@@ -187,6 +191,8 @@ The next major backend additions should likely include:
 - session delivery state resolver
   - exposes next action, blocking reason and publish readiness
 
+Most of these backend additions are now implemented. The remaining work is mainly consolidation, stricter validation and operator/frontend contract definition.
+
 ## Invariants for the target flow
 
 The target product flow should keep these invariants:
@@ -218,6 +224,8 @@ Legacy can begin to be de-emphasized only when `WorkSession` supports:
 
 without needing task-centered workflow to finish the job.
 
+From the current repository state, that backend threshold has effectively been reached. The remaining question is product consolidation, not absence of session-first delivery primitives.
+
 ## What should be asked in future repo reviews
 
 When reviewing Atenea progress in future sessions, the key questions should be:
@@ -242,4 +250,5 @@ In short:
 
 - `WorkSession` should become the root of branch, conversation, publish and reconciliation
 - legacy should remain only until that workflow is complete
-- the first strong product milestone is a full session-to-PR happy path
+- the first strong product milestone has been reached in backend form
+- the next milestone is to consolidate that session-first workflow as the canonical operator product surface

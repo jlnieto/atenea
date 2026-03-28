@@ -21,6 +21,7 @@ import com.atenea.api.worksession.WorkSessionConversationViewResponse;
 import com.atenea.api.worksession.WorkSessionOperationalState;
 import com.atenea.api.worksession.WorkSessionResponse;
 import com.atenea.api.worksession.WorkSessionViewResponse;
+import com.atenea.github.GitHubClient;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
@@ -69,6 +70,9 @@ class WorkSessionServiceTest {
     @Mock
     private CodexAppServerProperties codexAppServerProperties;
 
+    @Mock
+    private GitHubClient gitHubClient;
+
     @TempDir
     Path tempDir;
 
@@ -98,7 +102,8 @@ class WorkSessionServiceTest {
                 agentRunRepository,
                 sessionTurnService,
                 reconciliationService,
-                new SessionBranchService(gitRepositoryService)
+                new SessionBranchService(gitRepositoryService),
+                gitHubClient
         );
     }
 
@@ -768,11 +773,14 @@ class WorkSessionServiceTest {
     void closeSessionClosesOpenSessionWithoutRunningRun() throws IOException {
         Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
         WorkSessionEntity session = buildSession(12L, 7L, repoPath, "main");
+        session.setWorkspaceBranch("atenea/session-12");
 
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
-        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
-        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("atenea/session-12", "main", "main");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true, true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-12")).thenReturn(true, false);
+        when(gitRepositoryService.remoteBranchExists(repoPath.toString(), "atenea/session-12")).thenReturn(false, false);
 
         WorkSessionResponse response = workSessionService.closeSession(12L);
 
@@ -781,6 +789,10 @@ class WorkSessionServiceTest {
         assertEquals(WorkSessionStatus.CLOSED, session.getStatus());
         assertEquals(response.closedAt(), session.getClosedAt());
         assertEquals(response.closedAt(), session.getUpdatedAt());
+        verify(gitRepositoryService).checkoutBranch(repoPath.toString(), "main");
+        verify(gitRepositoryService).fetchOrigin(repoPath.toString());
+        verify(gitRepositoryService).fastForwardCurrentBranchToOrigin(repoPath.toString(), "main");
+        verify(gitRepositoryService).deleteLocalBranch(repoPath.toString(), "atenea/session-12");
     }
 
     @Test
@@ -803,13 +815,21 @@ class WorkSessionServiceTest {
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(true);
 
-        assertThrows(AgentRunAlreadyRunningException.class, () -> workSessionService.closeSession(12L));
+        WorkSessionCloseBlockedException exception = assertThrows(
+                WorkSessionCloseBlockedException.class,
+                () -> workSessionService.closeSession(12L));
+
+        assertEquals(
+                "WorkSession '12' cannot finish closing: WorkSession still has a running AgentRun",
+                exception.getMessage());
+        assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
     }
 
     @Test
     void closeSessionAllowsClosingWhenOnlyStaleRunningRunExists() throws IOException {
         Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
         WorkSessionEntity session = buildSession(12L, 7L, repoPath, "main");
+        session.setWorkspaceBranch("atenea/session-12");
         AgentRunEntity staleRun = buildRun(55L, session, AgentRunStatus.RUNNING, null, null);
         staleRun.setStartedAt(Instant.now().minus(Duration.ofMinutes(7)));
 
@@ -818,8 +838,10 @@ class WorkSessionServiceTest {
                 .thenReturn(List.of(staleRun));
         when(agentRunRepository.saveAndFlush(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
-        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
-        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("atenea/session-12", "main", "main");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true, true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-12")).thenReturn(true, false);
+        when(gitRepositoryService.remoteBranchExists(repoPath.toString(), "atenea/session-12")).thenReturn(false, false);
 
         WorkSessionResponse response = workSessionService.closeSession(12L);
 
@@ -855,8 +877,16 @@ class WorkSessionServiceTest {
         session.setBaseBranch(baseBranch);
         session.setWorkspaceBranch(null);
         session.setExternalThreadId(null);
+        session.setPullRequestUrl(null);
+        session.setPullRequestStatus(com.atenea.persistence.worksession.WorkSessionPullRequestStatus.NOT_CREATED);
+        session.setFinalCommitSha(null);
         session.setOpenedAt(Instant.parse("2026-03-25T10:05:00Z"));
         session.setLastActivityAt(Instant.parse("2026-03-25T10:05:00Z"));
+        session.setPublishedAt(null);
+        session.setCloseBlockedState(null);
+        session.setCloseBlockedReason(null);
+        session.setCloseBlockedAction(null);
+        session.setCloseRetryable(false);
         session.setClosedAt(null);
         session.setCreatedAt(Instant.parse("2026-03-25T10:05:00Z"));
         session.setUpdatedAt(Instant.parse("2026-03-25T10:05:00Z"));

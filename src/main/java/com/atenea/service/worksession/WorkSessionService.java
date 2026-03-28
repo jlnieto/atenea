@@ -12,12 +12,17 @@ import com.atenea.api.worksession.WorkSessionResponse;
 import com.atenea.api.worksession.WorkSessionOperationalState;
 import com.atenea.api.worksession.WorkSessionViewLatestRunResponse;
 import com.atenea.api.worksession.WorkSessionViewResponse;
+import com.atenea.github.GitHubClient;
+import com.atenea.github.GitHubIntegrationException;
+import com.atenea.github.GitHubPullRequest;
+import com.atenea.github.GitHubRepositoryRef;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
@@ -42,6 +47,7 @@ public class WorkSessionService {
     private final SessionTurnService sessionTurnService;
     private final AgentRunReconciliationService agentRunReconciliationService;
     private final SessionBranchService sessionBranchService;
+    private final GitHubClient gitHubClient;
 
     public WorkSessionService(
             ProjectRepository projectRepository,
@@ -52,7 +58,8 @@ public class WorkSessionService {
             AgentRunRepository agentRunRepository,
             SessionTurnService sessionTurnService,
             AgentRunReconciliationService agentRunReconciliationService,
-            SessionBranchService sessionBranchService
+            SessionBranchService sessionBranchService,
+            GitHubClient gitHubClient
     ) {
         this.projectRepository = projectRepository;
         this.workSessionRepository = workSessionRepository;
@@ -63,6 +70,7 @@ public class WorkSessionService {
         this.sessionTurnService = sessionTurnService;
         this.agentRunReconciliationService = agentRunReconciliationService;
         this.sessionBranchService = sessionBranchService;
+        this.gitHubClient = gitHubClient;
     }
 
     @Transactional
@@ -70,7 +78,8 @@ public class WorkSessionService {
         ProjectEntity project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new WorkSessionProjectNotFoundException(projectId));
 
-        if (workSessionRepository.existsByProjectIdAndStatus(projectId, WorkSessionStatus.OPEN)) {
+        if (workSessionRepository.existsByProjectIdAndStatus(projectId, WorkSessionStatus.OPEN)
+                || workSessionRepository.existsByProjectIdAndStatus(projectId, WorkSessionStatus.CLOSING)) {
             throw new OpenWorkSessionAlreadyExistsException(projectId);
         }
 
@@ -91,8 +100,16 @@ public class WorkSessionService {
         session.setBaseBranch(baseBranch);
         session.setWorkspaceBranch(null);
         session.setExternalThreadId(null);
+        session.setPullRequestUrl(null);
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
+        session.setFinalCommitSha(null);
         session.setOpenedAt(now);
         session.setLastActivityAt(now);
+        session.setPublishedAt(null);
+        session.setCloseBlockedState(null);
+        session.setCloseBlockedReason(null);
+        session.setCloseBlockedAction(null);
+        session.setCloseRetryable(false);
         session.setClosedAt(null);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
@@ -109,10 +126,13 @@ public class WorkSessionService {
         projectRepository.findById(projectId)
                 .orElseThrow(() -> new WorkSessionProjectNotFoundException(projectId));
 
-        WorkSessionEntity openSession = workSessionRepository.findByProjectIdAndStatus(projectId, WorkSessionStatus.OPEN)
-                .orElse(null);
+        WorkSessionEntity openSession = nullSafe(workSessionRepository.findByProjectIdAndStatus(projectId, WorkSessionStatus.OPEN))
+                .orElseGet(() -> nullSafe(workSessionRepository.findByProjectIdAndStatus(projectId, WorkSessionStatus.CLOSING))
+                        .orElse(null));
         if (openSession != null) {
-            prepareWorkspaceBranch(openSession);
+            if (openSession.getStatus() == WorkSessionStatus.OPEN) {
+                prepareWorkspaceBranch(openSession);
+            }
             return new ResolveWorkSessionResponse(false, toResponse(openSession));
         }
 
@@ -187,23 +207,30 @@ public class WorkSessionService {
         );
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = WorkSessionCloseBlockedException.class)
     public WorkSessionResponse closeSession(Long sessionId) {
         WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
 
-        if (session.getStatus() != WorkSessionStatus.OPEN) {
+        if (session.getStatus() == WorkSessionStatus.CLOSED) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
 
-        agentRunReconciliationService.reconcileSession(sessionId);
-        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
-            throw new AgentRunAlreadyRunningException(sessionId);
+        Instant now = Instant.now();
+        session.setStatus(WorkSessionStatus.CLOSING);
+        session.setClosedAt(null);
+        clearCloseBlock(session);
+        session.setUpdatedAt(now);
+
+        try {
+            reconcileClose(session);
+        } catch (WorkSessionCloseBlockedException exception) {
+            throw exception;
         }
 
-        Instant now = Instant.now();
         session.setStatus(WorkSessionStatus.CLOSED);
         session.setClosedAt(now);
+        clearCloseBlock(session);
         session.setUpdatedAt(now);
         return toResponse(session);
     }
@@ -227,7 +254,7 @@ public class WorkSessionService {
         }
     }
 
-    private WorkSessionResponse toResponse(WorkSessionEntity session) {
+    WorkSessionResponse toResponse(WorkSessionEntity session) {
         SessionOperationalSnapshotResponse snapshot = sessionOperationalSnapshotService.snapshot(session);
         return new WorkSessionResponse(
                 session.getId(),
@@ -238,9 +265,17 @@ public class WorkSessionService {
                 session.getBaseBranch(),
                 session.getWorkspaceBranch(),
                 session.getExternalThreadId(),
+                session.getPullRequestUrl(),
+                session.getPullRequestStatus(),
+                session.getFinalCommitSha(),
                 session.getOpenedAt(),
                 session.getLastActivityAt(),
+                session.getPublishedAt(),
                 session.getClosedAt(),
+                session.getCloseBlockedState(),
+                session.getCloseBlockedReason(),
+                session.getCloseBlockedAction(),
+                session.isCloseRetryable(),
                 snapshot
         );
     }
@@ -266,6 +301,9 @@ public class WorkSessionService {
         if (session.getStatus() == WorkSessionStatus.CLOSED) {
             return WorkSessionOperationalState.CLOSED;
         }
+        if (session.getStatus() == WorkSessionStatus.CLOSING) {
+            return WorkSessionOperationalState.CLOSING;
+        }
         if (snapshot.runInProgress()) {
             return WorkSessionOperationalState.RUNNING;
         }
@@ -276,7 +314,305 @@ public class WorkSessionService {
         return session.operationalState() == WorkSessionOperationalState.IDLE;
     }
 
+    private void reconcileClose(WorkSessionEntity session) {
+        Long sessionId = session.getId();
+        agentRunReconciliationService.reconcileSession(sessionId);
+        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
+            blockClose(
+                    session,
+                    "running_run",
+                    "WorkSession still has a running AgentRun",
+                    "Wait for the run to finish or reconcile it before retrying close",
+                    true);
+        }
+
+        String repoPath;
+        try {
+            repoPath = workspaceRepositoryPathValidator.normalizeConfiguredRepoPath(session.getProject().getRepoPath());
+        } catch (RuntimeException exception) {
+            blockClose(
+                    session,
+                    "repo_invalid",
+                    exception.getMessage(),
+                    "Fix the project repository path and retry close",
+                    false);
+            return;
+        }
+
+        String workspaceBranch = normalizeNullableText(session.getWorkspaceBranch());
+        String baseBranch = session.getBaseBranch();
+
+        String currentBranch;
+        boolean workingTreeClean;
+        try {
+            currentBranch = gitRepositoryService.getCurrentBranch(repoPath);
+            workingTreeClean = gitRepositoryService.isWorkingTreeClean(repoPath);
+        } catch (TaskLaunchBlockedException exception) {
+            blockClose(
+                    session,
+                    "repo_unavailable",
+                    "Could not inspect repository state: " + exception.getMessage(),
+                    "Resolve the repository problem and retry close",
+                    true);
+            return;
+        }
+
+        if (workspaceBranch != null
+                && !currentBranch.equals(baseBranch)
+                && !currentBranch.equals(workspaceBranch)) {
+            blockClose(
+                    session,
+                    "unexpected_branch",
+                    "Repository is on branch '%s' but close only supports '%s' or '%s'"
+                            .formatted(currentBranch, baseBranch, workspaceBranch),
+                    "Checkout the session branch or the project base branch and retry close",
+                    false);
+        }
+
+        if (!workingTreeClean) {
+            blockClose(
+                    session,
+                    "dirty_worktree",
+                    "Repository working tree is not clean",
+                    "Clean or discard local changes manually before retrying close",
+                    false);
+        }
+
+        boolean localWorkspaceBranchExists = workspaceBranch != null && gitRepositoryService.branchExists(repoPath, workspaceBranch);
+        boolean sessionHasPublishedPullRequest = hasPublishedPullRequest(session);
+
+        try {
+            gitRepositoryService.fetchOrigin(repoPath);
+        } catch (TaskLaunchBlockedException exception) {
+            blockClose(
+                    session,
+                    "fetch_failed",
+                    "Could not fetch origin: " + exception.getMessage(),
+                    "Verify the repository remote configuration and retry close",
+                    true);
+        }
+
+        boolean remoteWorkspaceBranchExists = workspaceBranch != null && gitRepositoryService.remoteBranchExists(repoPath, workspaceBranch);
+
+        if (sessionHasPublishedPullRequest) {
+            syncPullRequestStateForClose(session, repoPath);
+            if (session.getPullRequestStatus() != WorkSessionPullRequestStatus.MERGED) {
+                blockClose(
+                        session,
+                        "pull_request_not_merged",
+                        "WorkSession pull request is not merged yet",
+                        "Merge the pull request and retry close",
+                        true);
+            }
+        } else {
+            if (remoteWorkspaceBranchExists) {
+                blockClose(
+                        session,
+                        "unexpected_remote_branch",
+                        "Session branch still exists on origin even though the WorkSession was never published",
+                        "Inspect the remote branch manually and remove it or publish properly before retrying close",
+                        false);
+            }
+            if (localWorkspaceBranchExists
+                    && gitRepositoryService.branchContainsCommitsBeyond(repoPath, baseBranch, workspaceBranch)) {
+                blockClose(
+                        session,
+                        "unpublished_commits",
+                        "Session branch contains commits that were never published",
+                        "Publish the WorkSession or discard the branch changes manually before retrying close",
+                        false);
+            }
+        }
+
+        if (!currentBranch.equals(baseBranch)) {
+            try {
+                gitRepositoryService.checkoutBranch(repoPath, baseBranch);
+                currentBranch = baseBranch;
+            } catch (TaskLaunchBlockedException exception) {
+                blockClose(
+                        session,
+                        "checkout_base_failed",
+                        "Could not switch back to base branch '%s': %s".formatted(baseBranch, exception.getMessage()),
+                        "Fix the branch state manually and retry close",
+                        false);
+            }
+        }
+
+        try {
+            gitRepositoryService.fastForwardCurrentBranchToOrigin(repoPath, baseBranch);
+        } catch (TaskLaunchBlockedException exception) {
+            blockClose(
+                    session,
+                    "base_not_aligned",
+                    "Base branch '%s' could not be aligned with origin/%s without a local merge"
+                            .formatted(baseBranch, baseBranch),
+                    "Align the base branch manually without creating a local merge and retry close",
+                    false);
+        }
+
+        if (localWorkspaceBranchExists) {
+            try {
+                gitRepositoryService.deleteLocalBranch(repoPath, workspaceBranch);
+            } catch (TaskLaunchBlockedException exception) {
+                blockClose(
+                        session,
+                        "delete_local_branch_failed",
+                        "Could not delete local session branch '%s': %s".formatted(workspaceBranch, exception.getMessage()),
+                        "Delete the local session branch manually and retry close",
+                        false);
+            }
+        }
+
+        if (remoteWorkspaceBranchExists) {
+            try {
+                gitRepositoryService.deleteRemoteBranch(repoPath, workspaceBranch);
+            } catch (TaskLaunchBlockedException exception) {
+                blockClose(
+                        session,
+                        "delete_remote_branch_failed",
+                        "Could not delete remote session branch '%s': %s".formatted(workspaceBranch, exception.getMessage()),
+                        "Delete the remote session branch manually and retry close",
+                        false);
+            }
+        }
+
+        try {
+            if (!gitRepositoryService.getCurrentBranch(repoPath).equals(baseBranch)) {
+                blockClose(
+                        session,
+                        "final_branch_mismatch",
+                        "Repository did not end on the base branch after close reconciliation",
+                        "Switch to the base branch manually and retry close",
+                        false);
+            }
+            if (!gitRepositoryService.isWorkingTreeClean(repoPath)) {
+                blockClose(
+                        session,
+                        "final_dirty_worktree",
+                        "Repository is still dirty after close reconciliation",
+                        "Clean the worktree manually and retry close",
+                        false);
+            }
+            if (workspaceBranch != null && gitRepositoryService.branchExists(repoPath, workspaceBranch)) {
+                blockClose(
+                        session,
+                        "local_branch_still_exists",
+                        "Local session branch still exists after close reconciliation",
+                        "Delete the local session branch manually and retry close",
+                        false);
+            }
+            if (workspaceBranch != null && gitRepositoryService.remoteBranchExists(repoPath, workspaceBranch)) {
+                blockClose(
+                        session,
+                        "remote_branch_still_exists",
+                        "Remote session branch still exists after close reconciliation",
+                        "Delete the remote session branch manually and retry close",
+                        false);
+            }
+        } catch (TaskLaunchBlockedException exception) {
+            blockClose(
+                    session,
+                    "final_verification_failed",
+                    "Could not verify final repository state: " + exception.getMessage(),
+                    "Inspect the repository manually and retry close",
+                    true);
+        }
+    }
+
+    private void syncPullRequestStateForClose(WorkSessionEntity session, String repoPath) {
+        String pullRequestUrl = normalizeNullableText(session.getPullRequestUrl());
+        if (pullRequestUrl == null) {
+            blockClose(
+                    session,
+                    "published_without_pull_request_url",
+                    "WorkSession is marked as published but has no pullRequestUrl",
+                    "Inspect the WorkSession delivery metadata manually before retrying close",
+                    false);
+        }
+
+        GitHubRepositoryRef repository;
+        try {
+            repository = gitHubClient.resolveRepository(gitRepositoryService.getOriginRemoteUrl(repoPath));
+        } catch (GitHubIntegrationException | TaskLaunchBlockedException exception) {
+            blockClose(
+                    session,
+                    "github_repository_unavailable",
+                    "Could not resolve the GitHub repository during close: " + exception.getMessage(),
+                    "Restore GitHub access and retry close",
+                    true);
+            return;
+        }
+
+        try {
+            long pullRequestNumber = gitHubClient.extractPullRequestNumber(pullRequestUrl);
+            GitHubPullRequest pullRequest = gitHubClient.getPullRequest(repository, pullRequestNumber);
+            session.setPullRequestUrl(pullRequest.htmlUrl());
+            session.setPullRequestStatus(mapPullRequestStatus(pullRequest));
+            session.setUpdatedAt(Instant.now());
+        } catch (GitHubIntegrationException exception) {
+            blockClose(
+                    session,
+                    "github_pull_request_unavailable",
+                    "Could not verify the WorkSession pull request during close: " + exception.getMessage(),
+                    "Restore GitHub access or inspect the pull request manually before retrying close",
+                    true);
+        }
+    }
+
+    private boolean hasPublishedPullRequest(WorkSessionEntity session) {
+        return session.getPublishedAt() != null
+                || normalizeNullableText(session.getPullRequestUrl()) != null
+                || session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED;
+    }
+
+    private WorkSessionPullRequestStatus mapPullRequestStatus(GitHubPullRequest pullRequest) {
+        if (pullRequest.merged()) {
+            return WorkSessionPullRequestStatus.MERGED;
+        }
+        if ("open".equalsIgnoreCase(pullRequest.state())) {
+            return WorkSessionPullRequestStatus.OPEN;
+        }
+        return WorkSessionPullRequestStatus.DECLINED;
+    }
+
+    private void clearCloseBlock(WorkSessionEntity session) {
+        session.setCloseBlockedState(null);
+        session.setCloseBlockedReason(null);
+        session.setCloseBlockedAction(null);
+        session.setCloseRetryable(false);
+    }
+
+    private void blockClose(
+            WorkSessionEntity session,
+            String state,
+            String reason,
+            String action,
+            boolean retryable
+    ) {
+        session.setStatus(WorkSessionStatus.CLOSING);
+        session.setCloseBlockedState(state);
+        session.setCloseBlockedReason(reason);
+        session.setCloseBlockedAction(action);
+        session.setCloseRetryable(retryable);
+        session.setUpdatedAt(Instant.now());
+        throw new WorkSessionCloseBlockedException(
+                "WorkSession '%s' cannot finish closing: %s".formatted(session.getId(), reason),
+                state,
+                reason,
+                action,
+                retryable,
+                List.of(
+                        "state: " + state,
+                        "reason: " + reason,
+                        "action: " + action,
+                        "retryable: " + retryable));
+    }
+
     private String normalizeNullableText(String value) {
         return workspaceRepositoryPathValidator.normalizeNullableText(value);
+    }
+
+    private <T> java.util.Optional<T> nullSafe(java.util.Optional<T> value) {
+        return value == null ? java.util.Optional.empty() : value;
     }
 }

@@ -23,6 +23,8 @@ import com.atenea.service.worksession.WorkSessionNotFoundException;
 import com.atenea.service.worksession.WorkSessionOperationBlockedException;
 import com.atenea.service.worksession.WorkSessionProjectNotFoundException;
 import com.atenea.service.worksession.WorkSessionAlreadyRunningException;
+import com.atenea.service.worksession.WorkSessionCloseBlockedException;
+import com.atenea.service.worksession.WorkSessionPublishConflictException;
 import com.atenea.service.worksession.WorkSessionTurnExecutionFailedException;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -106,11 +108,26 @@ public class ApiExceptionHandler {
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 
+    @ExceptionHandler(WorkSessionCloseBlockedException.class)
+    public ResponseEntity<ApiErrorResponse> handleWorkSessionCloseBlocked(
+            WorkSessionCloseBlockedException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(
+                        exception.getMessage(),
+                        exception.getDetails(),
+                        exception.getState(),
+                        exception.getReason(),
+                        exception.getAction(),
+                        exception.isRetryable()));
+    }
+
     @ExceptionHandler({
             WorkSessionNotOpenException.class,
             WorkSessionAlreadyRunningException.class,
             AgentRunAlreadyRunningException.class,
-            AgentRunTransitionNotAllowedException.class
+            AgentRunTransitionNotAllowedException.class,
+            WorkSessionPublishConflictException.class
     })
     public ResponseEntity<ApiErrorResponse> handleAgentRunConflict(RuntimeException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT)

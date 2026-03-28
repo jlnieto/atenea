@@ -40,6 +40,57 @@ public class GitRepositoryService {
         return run(repoPath, List.of("git", "show-ref", "--verify", "--quiet", "refs/heads/" + branchName)) == 0;
     }
 
+    public void stageAll(String repoPath) {
+        runOrThrow(repoPath, List.of("git", "add", "-A"),
+                "Could not stage repository changes");
+    }
+
+    public void commit(String repoPath, String message) {
+        runOrThrow(repoPath, List.of("git", "commit", "-m", message),
+                "Could not commit repository changes");
+    }
+
+    public void pushBranchSetUpstream(String repoPath, String branchName) {
+        runOrThrow(repoPath, List.of("git", "push", "-u", "origin", branchName),
+                "Could not push branch '" + branchName + "' to origin");
+    }
+
+    public void fetchOrigin(String repoPath) {
+        runOrThrow(repoPath, List.of("git", "fetch", "origin", "--prune"),
+                "Could not fetch origin");
+    }
+
+    public void fastForwardCurrentBranchToOrigin(String repoPath, String branchName) {
+        runOrThrow(repoPath, List.of("git", "merge", "--ff-only", "origin/" + branchName),
+                "Could not fast-forward branch '" + branchName + "' to origin/" + branchName);
+    }
+
+    public void deleteLocalBranch(String repoPath, String branchName) {
+        runOrThrow(repoPath, List.of("git", "branch", "-d", branchName),
+                "Could not delete local branch '" + branchName + "'");
+    }
+
+    public boolean remoteBranchExists(String repoPath, String branchName) {
+        return !runAndReadAllowingEmpty(repoPath, List.of("git", "ls-remote", "--heads", "origin", branchName)).isBlank();
+    }
+
+    public void deleteRemoteBranch(String repoPath, String branchName) {
+        runOrThrow(repoPath, List.of("git", "push", "origin", "--delete", branchName),
+                "Could not delete remote branch '" + branchName + "'");
+    }
+
+    public boolean branchContainsCommitsBeyond(String repoPath, String baseBranch, String branchName) {
+        if (!branchExists(repoPath, branchName)) {
+            return false;
+        }
+        String count = runAndRead(repoPath, List.of("git", "rev-list", "--count", baseBranch + ".." + branchName));
+        return !"0".equals(count);
+    }
+
+    public String getHeadCommitSha(String repoPath) {
+        return runAndRead(repoPath, List.of("git", "rev-parse", "HEAD"));
+    }
+
     public String getOriginRemoteUrl(String repoPath) {
         return runAndRead(repoPath, List.of("git", "remote", "get-url", "origin"));
     }
@@ -87,6 +138,15 @@ public class GitRepositoryService {
                     + ": " + summarize(result.stderr()));
         }
         return result.stdout().trim();
+    }
+
+    private String runAndReadAllowingEmpty(String repoPath, List<String> command) {
+        CommandResult result = execute(repoPath, command);
+        if (result.exitCode() != 0) {
+            throw new TaskLaunchBlockedException("Git command failed: " + String.join(" ", command)
+                    + ": " + summarize(result.stderr()));
+        }
+        return result.stdout() == null ? "" : result.stdout().trim();
     }
 
     private int run(String repoPath, List<String> command) {

@@ -73,7 +73,9 @@ Hoy conviven dos modelos reales:
   - turnos con Codex
   - continuidad de thread
   - listado de turns y runs
-  - cierre de sesión
+  - publish a pull request
+  - sync de pull request
+  - cierre fuerte con reconciliación
 
 La dirección del producto está centrada en `WorkSession`, pero el flujo `Task` / `TaskExecution` sigue implementado y operativo.
 
@@ -98,7 +100,9 @@ Hoy el backend expone tres superficies funcionales reales:
   - turnos conversacionales con Codex
   - continuidad de thread
   - historial de turns y runs
-  - cierre de sesión
+  - publish a PR
+  - sync de PR
+  - cierre fuerte con reconciliación final
 
 Referencias:
 
@@ -143,6 +147,8 @@ Actualmente ya implementa:
 - `POST /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/runs`
+- `POST /api/sessions/{sessionId}/publish`
+- `POST /api/sessions/{sessionId}/pull-request/sync`
 - `POST /api/sessions/{sessionId}/close`
 - `workspaceBranch` real por sesión con convención `atenea/session-{id}`
 - fallback de `baseBranch`:
@@ -155,6 +161,27 @@ Actualmente ya implementa:
   - bloqueada si el repo está en una tercera rama
 - continuidad de `externalThreadId` entre turns
 - reconciliación de runs `RUNNING` stale al recargar estado de sesión
+- metadatos de delivery persistidos en sesión:
+  - `pullRequestUrl`
+  - `pullRequestStatus`
+  - `finalCommitSha`
+  - `publishedAt`
+- estados de cierre:
+  - `OPEN`
+  - `CLOSING`
+  - `CLOSED`
+- cierre fuerte:
+  - bloqueo si hay runs activos
+  - bloqueo si hay cambios no publicados
+  - bloqueo si la PR no está mergeada
+  - vuelta obligatoria a rama principal del proyecto alineada con remoto
+  - eliminación de rama local de sesión
+  - eliminación de rama remota cuando aplica
+- estado persistido de bloqueo de cierre:
+  - `closeBlockedState`
+  - `closeBlockedReason`
+  - `closeBlockedAction`
+  - `closeRetryable`
 - vistas agregadas para frontend:
   - `WorkSessionViewResponse`
   - `WorkSessionConversationViewResponse`
@@ -169,7 +196,7 @@ Actualmente ya implementa:
 `GET /api/projects/overview` ya expone coexistencia explícita entre ambos modelos:
 
 - bloque `workSession` con la sesión canónica del proyecto
-  - `OPEN` si existe una abierta
+  - `OPEN` o `CLOSING` si existe una activa
   - o la más reciente por `lastActivityAt`
 - bloque `legacy` con:
   - `latestTask`

@@ -64,7 +64,11 @@ Implemented and validated:
 - reuse `externalThreadId` across turns
 - list turns
 - list runs
-- close session
+- publish session to pull request
+- synchronize pull request state
+- delivery metadata on the session model
+- strong close semantics with repository reconciliation
+- `CLOSING` transitional state with persisted close-block diagnostics
 - reconcile stale running runs on later reads
 
 This is the implemented conversational core that now represents the intended product direction.
@@ -123,6 +127,8 @@ Implemented:
 - `POST /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/runs`
+- `POST /api/sessions/{sessionId}/publish`
+- `POST /api/sessions/{sessionId}/pull-request/sync`
 - `POST /api/sessions/{sessionId}/close`
 - descriptive `repoState` snapshot on session responses
 - aggregated session and conversation views
@@ -138,6 +144,41 @@ Implemented:
   - block when the repo is on any third branch
 - continuity through persisted `externalThreadId`
 - stale `RUNNING` run reconciliation when session state is reloaded
+- persisted delivery metadata:
+  - `pullRequestUrl`
+  - `pullRequestStatus`
+  - `finalCommitSha`
+  - `publishedAt`
+- strong close lifecycle:
+  - `OPEN`
+  - `CLOSING`
+  - `CLOSED`
+- persisted close-block metadata:
+  - `closeBlockedState`
+  - `closeBlockedReason`
+  - `closeBlockedAction`
+  - `closeRetryable`
+
+### Block 5. Session-first delivery workflow
+
+Implemented:
+
+- `WorkSession` publish flow:
+  - stage
+  - commit
+  - push
+  - GitHub pull request creation
+- pull request metadata persisted directly on the session
+- pull request state synchronization
+- merge-aware close flow
+- post-merge repository reconciliation to the project main/base branch
+- local session branch deletion on successful close
+- remote session branch deletion when it applies
+- blocking close semantics when repository or GitHub state is unsafe
+- operator-facing close diagnostics in:
+  - session reads
+  - project overview
+  - `409` close responses
 
 ### Block 4. Mixed project overview
 
@@ -181,9 +222,9 @@ The repository recently contained documentation that still described major `Work
 
 That means documentation governance is a real gap, not an editorial detail.
 
-### Gap 3. Product-next work after the now-functional session core is not yet explicitly defined
+### Gap 3. Session-first operator contract is not yet fully consolidated
 
-The code shows a working `WorkSession` core, but the repository does not yet define a precise post-Phase-1 product plan for:
+The code now shows a working session-first delivery workflow in the backend, but the repository still does not fully settle:
 
 - frontend alignment
 - coexistence rules
@@ -207,32 +248,35 @@ The pending real work is instead:
 - make the coexistence rules between legacy and new model explicit
 - define which API surface should drive the next operator or frontend workflows
 - define whether project overview should remain mixed long-term or become session-first with legacy secondary
-- implement the remaining session-first repository delivery flow described in `docs/worksession-target-flow.md`
+- harden the now-implemented session-first repository delivery flow as the primary product contract
 
 ## Next recommended phase
 
 The next recommended phase, justified by the current repository, is:
 
-## Session-First Delivery Workflow
+## Session-First Operator Consolidation
 
 Goals:
 
 - keep documentation aligned with code and tests
-- make `WorkSession` the canonical unit of real repository work
-- absorb branch and PR workflow capability into the session-first model
+- make `WorkSession` the canonical operator-facing unit of real repository work
 - establish `conversation-view` as the primary operator-facing session contract
-- define the path from open session to merged-and-reconciled repository state
+- clarify the long-term role of mixed project overview during coexistence
+- formalize how frontend and operator UX consume publish, merge and close-block states
 
 Recommended outputs of this phase:
 
-1. publish and PR workflow for `WorkSession`
-2. pull request metadata and merge tracking on the session model
-3. post-merge reconciliation and true session close semantics
-4. explicit decision that frontend should anchor primarily on:
+1. explicit decision that frontend should anchor primarily on:
    - `GET /api/sessions/{id}/conversation-view`
    with `view` and base session reads kept as support surfaces
-5. clarified role of mixed `GET /api/projects/overview` during coexistence
-6. documentation aligned with the target flow defined in `docs/worksession-target-flow.md`
+2. clarified role of mixed `GET /api/projects/overview` during coexistence
+3. documentation aligned with the target flow defined in `docs/worksession-target-flow.md`
+4. stronger end-to-end validation of:
+   - publish
+   - merge detection
+   - remote branch cleanup
+   - reconciled close
+5. clearer operator guidance for blocked close and manual recovery paths
 
 ## What remains uncertain
 
@@ -249,6 +293,6 @@ Those points should therefore remain explicit decisions, not assumptions.
 Current roadmap reading should be:
 
 - legacy task orchestration: implemented and still active
-- `WorkSession` conversational core plus session-owned branch setup: implemented and operational
-- immediate next major step: session-first delivery workflow from session branch to PR, merge and repository reconciliation
+- `WorkSession` conversational core plus session-first delivery workflow: implemented in backend
+- immediate next major step: operator/frontend consolidation around the session-first model
 - future planning beyond that: still requires explicit human decisions

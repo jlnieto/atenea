@@ -1,6 +1,7 @@
 package com.atenea.api.worksession;
 
 import com.atenea.service.worksession.WorkSessionService;
+import com.atenea.service.worksession.WorkSessionGitHubService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,9 +15,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorkSessionController {
 
     private final WorkSessionService workSessionService;
+    private final WorkSessionGitHubService workSessionGitHubService;
 
-    public WorkSessionController(WorkSessionService workSessionService) {
+    public WorkSessionController(
+            WorkSessionService workSessionService,
+            WorkSessionGitHubService workSessionGitHubService
+    ) {
         this.workSessionService = workSessionService;
+        this.workSessionGitHubService = workSessionGitHubService;
     }
 
     @PostMapping("/api/projects/{projectId}/sessions")
@@ -70,5 +76,18 @@ public class WorkSessionController {
     @PostMapping("/api/sessions/{sessionId}/close")
     public WorkSessionResponse closeSession(@PathVariable Long sessionId) {
         return workSessionService.closeSession(sessionId);
+    }
+
+    @PostMapping("/api/sessions/{sessionId}/publish")
+    public WorkSessionResponse publishSession(
+            @PathVariable Long sessionId,
+            @Valid @RequestBody(required = false) PublishWorkSessionRequest request
+    ) {
+        return workSessionGitHubService.publishSession(sessionId, request);
+    }
+
+    @PostMapping("/api/sessions/{sessionId}/pull-request/sync")
+    public WorkSessionResponse syncPullRequest(@PathVariable Long sessionId) {
+        return workSessionGitHubService.syncPullRequest(sessionId);
     }
 }

@@ -42,11 +42,36 @@ public class WorkSessionEntity {
     @Column(name = "external_thread_id", length = 100)
     private String externalThreadId;
 
+    @Column(name = "pull_request_url", length = 500)
+    private String pullRequestUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pull_request_status", nullable = false, length = 32)
+    private WorkSessionPullRequestStatus pullRequestStatus;
+
+    @Column(name = "final_commit_sha", length = 64)
+    private String finalCommitSha;
+
     @Column(name = "opened_at", nullable = false)
     private Instant openedAt;
 
     @Column(name = "last_activity_at", nullable = false)
     private Instant lastActivityAt;
+
+    @Column(name = "published_at")
+    private Instant publishedAt;
+
+    @Column(name = "close_blocked_state", length = 120)
+    private String closeBlockedState;
+
+    @Column(name = "close_blocked_reason")
+    private String closeBlockedReason;
+
+    @Column(name = "close_blocked_action")
+    private String closeBlockedAction;
+
+    @Column(name = "close_retryable", nullable = false)
+    private boolean closeRetryable;
 
     @Column(name = "closed_at")
     private Instant closedAt;
@@ -113,6 +138,30 @@ public class WorkSessionEntity {
         this.externalThreadId = externalThreadId;
     }
 
+    public String getPullRequestUrl() {
+        return pullRequestUrl;
+    }
+
+    public void setPullRequestUrl(String pullRequestUrl) {
+        this.pullRequestUrl = pullRequestUrl;
+    }
+
+    public WorkSessionPullRequestStatus getPullRequestStatus() {
+        return pullRequestStatus;
+    }
+
+    public void setPullRequestStatus(WorkSessionPullRequestStatus pullRequestStatus) {
+        this.pullRequestStatus = pullRequestStatus;
+    }
+
+    public String getFinalCommitSha() {
+        return finalCommitSha;
+    }
+
+    public void setFinalCommitSha(String finalCommitSha) {
+        this.finalCommitSha = finalCommitSha;
+    }
+
     public Instant getOpenedAt() {
         return openedAt;
     }
@@ -127,6 +176,46 @@ public class WorkSessionEntity {
 
     public void setLastActivityAt(Instant lastActivityAt) {
         this.lastActivityAt = lastActivityAt;
+    }
+
+    public Instant getPublishedAt() {
+        return publishedAt;
+    }
+
+    public void setPublishedAt(Instant publishedAt) {
+        this.publishedAt = publishedAt;
+    }
+
+    public String getCloseBlockedState() {
+        return closeBlockedState;
+    }
+
+    public void setCloseBlockedState(String closeBlockedState) {
+        this.closeBlockedState = closeBlockedState;
+    }
+
+    public String getCloseBlockedReason() {
+        return closeBlockedReason;
+    }
+
+    public void setCloseBlockedReason(String closeBlockedReason) {
+        this.closeBlockedReason = closeBlockedReason;
+    }
+
+    public String getCloseBlockedAction() {
+        return closeBlockedAction;
+    }
+
+    public void setCloseBlockedAction(String closeBlockedAction) {
+        this.closeBlockedAction = closeBlockedAction;
+    }
+
+    public boolean isCloseRetryable() {
+        return closeRetryable;
+    }
+
+    public void setCloseRetryable(boolean closeRetryable) {
+        this.closeRetryable = closeRetryable;
     }
 
     public Instant getClosedAt() {
