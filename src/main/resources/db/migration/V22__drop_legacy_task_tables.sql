@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS task_execution;
+
+DROP TABLE IF EXISTS task;

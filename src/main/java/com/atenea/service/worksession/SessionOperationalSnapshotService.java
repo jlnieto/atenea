@@ -5,7 +5,7 @@ import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
-import com.atenea.service.taskexecution.GitRepositoryService;
+import com.atenea.service.git.GitRepositoryService;
 import org.springframework.stereotype.Service;
 
 @Service

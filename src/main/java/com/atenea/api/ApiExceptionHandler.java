@@ -7,13 +7,7 @@ import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotFoundException;
 import com.atenea.service.project.ProjectRepoPathOutsideWorkspaceException;
-import com.atenea.service.task.DuplicateTaskTitleException;
-import com.atenea.service.task.ProjectNotFoundException;
-import com.atenea.service.task.TaskWorkflowTransitionNotAllowedException;
-import com.atenea.service.taskexecution.TaskExecutionNotFoundException;
-import com.atenea.service.taskexecution.TaskLaunchBlockedException;
-import com.atenea.service.taskexecution.TaskNotFoundException;
-import com.atenea.service.taskexecution.TaskRelaunchNotAllowedException;
+import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.AgentRunNotFoundException;
 import com.atenea.service.worksession.AgentRunTransitionNotAllowedException;
@@ -57,18 +51,6 @@ public class ApiExceptionHandler {
     })
     public ResponseEntity<ApiErrorResponse> handleProjectPathValidation(RuntimeException exception) {
         return ResponseEntity.badRequest()
-                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
-    }
-
-    @ExceptionHandler(DuplicateTaskTitleException.class)
-    public ResponseEntity<ApiErrorResponse> handleDuplicateTaskTitle(DuplicateTaskTitleException exception) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
-    }
-
-    @ExceptionHandler(ProjectNotFoundException.class)
-    public ResponseEntity<ApiErrorResponse> handleProjectNotFound(ProjectNotFoundException exception) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 
@@ -142,40 +124,14 @@ public class ApiExceptionHandler {
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 
-    @ExceptionHandler(TaskNotFoundException.class)
-    public ResponseEntity<ApiErrorResponse> handleTaskNotFound(TaskNotFoundException exception) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
-    }
-
-    @ExceptionHandler(TaskExecutionNotFoundException.class)
-    public ResponseEntity<ApiErrorResponse> handleTaskExecutionNotFound(TaskExecutionNotFoundException exception) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
-    }
-
-    @ExceptionHandler(TaskWorkflowTransitionNotAllowedException.class)
-    public ResponseEntity<ApiErrorResponse> handleTaskWorkflowTransitionNotAllowed(
-            TaskWorkflowTransitionNotAllowedException exception
-    ) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
-    }
-
     @ExceptionHandler(GitHubIntegrationException.class)
     public ResponseEntity<ApiErrorResponse> handleGitHubIntegration(GitHubIntegrationException exception) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 
-    @ExceptionHandler(TaskLaunchBlockedException.class)
-    public ResponseEntity<ApiErrorResponse> handleTaskLaunchBlocked(TaskLaunchBlockedException exception) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
-    }
-
-    @ExceptionHandler(TaskRelaunchNotAllowedException.class)
-    public ResponseEntity<ApiErrorResponse> handleTaskRelaunchNotAllowed(TaskRelaunchNotAllowedException exception) {
+    @ExceptionHandler(GitRepositoryOperationException.class)
+    public ResponseEntity<ApiErrorResponse> handleTaskLaunchBlocked(GitRepositoryOperationException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }

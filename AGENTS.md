@@ -4,34 +4,35 @@
 
 Atenea es un backend que orquesta trabajo sobre repositorios registrados.
 
-Hoy expone dos modelos reales:
+El modelo activo del producto y del backend es:
 
-- legacy:
-  - `Project`
-  - `Task`
-  - `TaskExecution`
-- nuevo modelo conversacional:
-  - `WorkSession`
-  - `SessionTurn`
-  - `AgentRun`
+- `Project`
+- `WorkSession`
+- `SessionTurn`
+- `AgentRun`
+
+El antiguo flujo `Task` / `TaskExecution` ya fue retirado del código runtime, de la API pública y de la base de datos. Su documentación sólo debe tratarse como referencia histórica.
 
 ## Mapa conceptual mínimo
 
 - `Project` identifica un repositorio operable por Atenea
-- `Task` y `TaskExecution` forman el flujo legacy centrado en branch por tarea
-- `WorkSession` es la unidad conversacional nueva
-- `SessionTurn` persiste historial visible de conversación
+- `WorkSession` es la unidad canónica de trabajo conversacional y de delivery
+- `SessionTurn` persiste el historial visible de conversación de una sesión
 - `AgentRun` persiste una ejecución concreta de Codex dentro de una sesión
 
-## Legacy vs nuevo modelo
+## Estado actual del sistema
 
-No asumas que uno sustituyó completamente al otro.
+Hoy el backend implementa y expone:
 
-Estado actual:
-
-- `Task` / `TaskExecution` sigue implementado y operativo
-- `WorkSession` / `SessionTurn` / `AgentRun` también está implementado y operativo
-- el producto está en coexistencia, no en migración cerrada
+- apertura o resolución de `WorkSession`
+- branch de trabajo propio por sesión
+- turnos conversacionales con Codex
+- continuidad de `externalThreadId` entre turns
+- historial de turns y runs
+- publish a pull request
+- sincronización de estado de pull request
+- cierre fuerte con reconciliación del repositorio
+- overview de proyecto session-first
 
 ## Fuentes de verdad recomendadas
 
@@ -46,6 +47,7 @@ Referencias útiles:
 
 - `README.md`
 - `docs/worksession-phase1.md`
+- `docs/worksession-target-flow.md`
 - `docs/roadmap.md`
 - `docs/task-branch-workflow.md`
 
@@ -80,13 +82,13 @@ Resumen de scripts:
 
 - no inventes funcionalidades no visibles en código o tests
 - no trates documentación antigua como fuente superior al código
-- no mezcles `TaskExecution` y `WorkSession` en una misma solución sin revisar primero el flujo real
-- antes de asumir que algo es legacy o canónico, verifica controladores, servicios y tests
-- cuando haya conflicto entre documentación antigua y código, prevalecen código y tests
+- no reintroduzcas `Task` / `TaskExecution` al razonar sobre el flujo actual salvo como contexto histórico
+- antes de asumir que algo es canónico, verifica controladores, servicios y tests
+- cuando haya conflicto entre documentación y código, prevalecen código y tests
 - cuando necesites ejecutar pruebas o build, prioriza `./scripts/test.sh` y el resto de scripts de `scripts/` sobre invocaciones directas a `mvnw`
 
 ## Advertencias concretas
 
 - `WorkSession` ya implementa más que persistencia y snapshot: revisa endpoints y tests antes de asumir gaps
-- `TaskExecution` sigue siendo relevante en overview y en el flujo legacy
-- la coexistencia actual es intencionada; no la simplifiques mentalmente a un único modelo sin evidencia
+- `GET /api/projects/overview` ya no expone bloque `legacy`; es session-first
+- `docs/task-branch-workflow.md` es referencia histórica, no contrato funcional actual

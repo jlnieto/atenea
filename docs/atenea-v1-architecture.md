@@ -2,17 +2,20 @@
 
 ## Purpose
 
-This document defines the architectural direction that is guiding Atenea and distinguishes clearly between:
+This document defines the architectural direction that is guiding Atenea and the current backend shape that already exists in the repository.
 
-- the current backend architecture that is already implemented
-- the legacy workflow that still exists and remains operational
-- the target product direction that should guide future changes
+It distinguishes clearly between:
 
-The core architectural decision remains unchanged:
+- the implemented backend architecture
+- the product contract that is already stable enough to build around
+- the historical workflow that has been retired
 
-- the future product core must revolve around `WorkSession`
-- `Task` remains implemented and operational, but it is legacy workflow for the future product direction
-- `Task` must not evolve linearly into `WorkSession`
+The core architectural decision is:
+
+- the product core revolves around `WorkSession`
+- `Project` remains the repository anchor
+- `SessionTurn` remains the persisted visible conversation history
+- `AgentRun` remains the persisted trace of a concrete Codex execution inside a session
 
 The current near-term target flow for that direction is documented in:
 
@@ -28,261 +31,62 @@ That means:
 - Atenea protects repository state
 - Atenea coordinates Codex execution
 - Atenea persists operational and conversational state
-- Atenea should increasingly remove the need for the operator to work directly in the shell for normal flows
+- Atenea reduces the need for the operator to work directly in the shell for normal flows
 
-This system is no longer best understood only as:
+The system is best understood as:
 
-- create task
-- launch code change
-- move to review
-- create PR
-- close
+- register a project
+- open or resolve a session
+- interact with Codex through session turns
+- publish the session work to a pull request
+- synchronize merge state
+- close the session only after repository reconciliation is safe
 
-That legacy flow still exists in code, but it is no longer the intended architectural center of the product.
+## Current backend reality
 
-## Architectural direction vs current implementation
+The current backend contains one real orchestration surface:
 
-### Direction that remains valid
+- `Project`
+- `WorkSession`
+- `SessionTurn`
+- `AgentRun`
 
-The direction that continues to make architectural sense is:
-
-- `Project` remains the stable repository anchor
-- `WorkSession` should be the future root of operator-facing workflows
-- `SessionTurn` should remain the persisted conversation history of a session
-- `AgentRun` should remain the persisted trace of a concrete Codex execution inside a session
-- the system should keep session state, conversation state, execution state and repository state clearly separated
-
-### Current backend reality
-
-The current backend is already in coexistence mode, not in a pre-conversational stage.
-
-Today the repository contains two real orchestration surfaces:
-
-- legacy surface:
-  - `Project`
-  - `Task`
-  - `TaskExecution`
-  - task-owned branch workflow
-  - review / PR / close flow
-- newer conversational surface:
-  - `WorkSession`
-  - `SessionTurn`
-  - `AgentRun`
-  - open session
-  - read session
-  - create turn
-  - execute Codex inside the session
-  - reuse external thread id across turns
-  - list turns
-  - list runs
-  - close session
+The former `Task` / `TaskExecution` workflow is retired from runtime. It should only be referenced as historical context.
 
 ## Current implemented backend architecture
 
 ### Stable platform and repository model
 
-Already implemented and still valid:
+Implemented and active:
 
 - `Project` with validated `repoPath`
 - `Project.defaultBaseBranch`
 - workspace-root validation through platform configuration
 - Git inspection and branch operations through `GitRepositoryService`
 - Codex App Server integration
-- GitHub integration for the legacy task workflow
+- GitHub integration for session publish and pull request synchronization
 
-### Legacy orchestration model still present
+### `Project`
 
-Still implemented today:
+Architectural role:
 
-- `Project`
-- `Task`
-- `TaskExecution`
-- task-owned branch workflow
-- review / PR / close flow
-- derived operational signals on tasks and execution listings
-
-This legacy model is still functional and must continue to work while the new core is introduced.
-
-It is documented separately in [`docs/task-branch-workflow.md`](./task-branch-workflow.md).
-
-### Current WorkSession architecture
-
-Implemented today in the backend:
-
-#### Persistence and invariants
-
-New persistence model:
-
-- `work_session`
-- `session_turn`
-- `agent_run`
-
-Implemented constraints:
-
-- only one `OPEN` `WorkSession` per `Project`
-- only one `RUNNING` `AgentRun` per `WorkSession`
-
-#### Session lifecycle API
-
-Implemented endpoints:
-
-- `POST /api/projects/{projectId}/sessions`
-- `POST /api/projects/{projectId}/sessions/resolve`
-- `POST /api/projects/{projectId}/sessions/resolve/view`
-- `POST /api/projects/{projectId}/sessions/resolve/conversation-view`
-- `GET /api/sessions/{sessionId}`
-- `GET /api/sessions/{sessionId}/view`
-- `GET /api/sessions/{sessionId}/conversation-view`
-- `POST /api/sessions/{sessionId}/close`
-
-Implemented behavior:
-
-- validate `Project` existence
-- validate that `project.repoPath` is operational
-- set `baseBranch` from request when provided
-- otherwise use `project.defaultBaseBranch` when present
-- otherwise derive `baseBranch` from the repository current branch
-- persist:
-  - `status = OPEN`
-  - real `workspaceBranch`
-  - `externalThreadId = null`
-  - coherent `openedAt` / `lastActivityAt`
-- resolve-or-create semantics at project scope when an operator wants the current live session
-- prepare or recover the session workspace branch only from:
-  - the session `workspaceBranch`
-  - the session `baseBranch` with clean worktree
-- block the operation when the repository is on any third branch
-- block close when the session is not `OPEN`
-- block close while a run is still `RUNNING`
-
-#### Conversation and run API
-
-Implemented endpoints:
-
-- `POST /api/sessions/{sessionId}/turns`
-- `GET /api/sessions/{sessionId}/turns`
-- `GET /api/sessions/{sessionId}/runs`
-
-Implemented behavior:
-
-- persist operator-visible turns with actor `OPERATOR`
-- execute Codex for the turn through the session flow
-- persist Codex-visible turns with actor `CODEX`
-- create and update `AgentRun`
-- list visible conversation turns in chronological order
-- list persisted runs in chronological order
-- filter internal technical turns out of the operator-visible history
-
-#### Aggregated read models
-
-The current backend also exposes higher-level read models above the base session record.
-
-Implemented read models:
-
-- `WorkSessionViewResponse`
-- `WorkSessionConversationViewResponse`
-
-Implemented behavior:
-
-- aggregate base session state, repo snapshot and latest run information
-- expose whether the session can currently accept a new turn
-- expose latest error summary from failed runs
-- expose latest agent response summary from succeeded runs
-- expose a recent visible-turn window for conversation-oriented clients
-- expose truncation metadata for longer histories
-
-#### Thread continuity
-
-Thread continuity is already implemented in the current backend.
-
-Current behavior:
-
-- the session stores `externalThreadId`
-- the first turn may create the external thread
-- later turns reuse that same external thread id
-- each run persists its own `externalTurnId`
-
-#### Descriptive session snapshot
-
-`WorkSessionResponse` includes a minimal descriptive repository snapshot:
-
-- `repoValid`
-- `workingTreeClean`
-- `currentBranch`
-- `runInProgress`
-
-Important constraint:
-
-- this snapshot is descriptive only
-- it does not expose workflow advice such as `nextAction`, `recoveryAction`, `blockingReason`, `launchReady`, review state or PR state
-
-Important current behavior:
-
-- `GET /api/sessions/{id}` does not fail if the repository became non-operational after the session was opened
-- in that case it returns:
-  - `repoValid = false`
-  - `workingTreeClean = false`
-  - `currentBranch = null`
-
-#### Reconciliation of stale runs
-
-The current implementation includes reconciliation for stale `RUNNING` `AgentRun` records.
-
-Current behavior:
-
-- loading session state or attempting close triggers reconciliation
-- a stale `RUNNING` run may be marked `FAILED`
-- the run then receives `finishedAt` and an error summary
-- the session may return from operational `RUNNING` to operational `IDLE`
-
-This means operational session state is not derived only from raw persisted status, but also from reconciliation on read paths.
-
-## Domain model in transition
-
-## `Project`
-
-`Project` remains the stable anchor for repository work.
+- stable anchor for repository work
+- owner of repository identity and default base-branch policy
 
 Current responsibility:
 
 - identify a repository Atenea can operate on
 - persist canonical `repoPath`
+- persist `defaultBaseBranch`
 
-This part of the model remains reusable in both legacy and newer flows.
-
-## `Task` and `TaskExecution`
-
-Current role in code:
-
-- root of the legacy orchestration model
-- anchor for branch lifecycle, PR metadata, review outcome and execution history
-- current source for operational guidance in task and execution responses
-
-Architectural status:
-
-- still implemented
-- still supported
-- legacy for the future product core
-
-Important decision:
-
-- `Task` must not be stretched into “session with extra fields”
-- `TaskExecution` must not be treated as the future conversational run root
-
-Current caution:
-
-- `TaskExecution` still matters operationally today
-- it still appears in legacy APIs and overview-oriented services
-- it cannot be ignored while the system remains in coexistence mode
-
-## `WorkSession`
+### `WorkSession`
 
 Architectural role:
 
-- root of the newer conversational workflow
-- line of work opened over a `Project`
+- root of the operator-facing workflow
+- owner of the session working branch
 - owner of session-level continuity
-- owner of session-level operational state
+- owner of session-level delivery state
 
 Current implementation status:
 
@@ -296,33 +100,25 @@ Current implementation status:
 - descriptive operational snapshot implemented
 - turns history implemented
 - runs history implemented
+- publish-to-PR implemented
+- pull request sync implemented
+- merge-aware close implemented
 - stale-run reconciliation implemented
 
-`WorkSession` should therefore no longer be described as embryonic or persistence-only.
-
-Near-term target state:
-
-- `WorkSession` should become the root of:
-  - branch ownership
-  - conversation
-  - publish to pull request
-  - merge tracking
-  - repository reconciliation
-
-## `SessionTurn`
+### `SessionTurn`
 
 Architectural role:
 
-- persist conversation history for the session
+- persist visible conversation history for the session
 
 Current implementation status:
 
 - persistence exists
 - public API flow uses it
 - visible operator and Codex turns are returned through session history
-- internal technical turns also exist, but are filtered from the public history
+- internal technical turns exist but are filtered from the public history
 
-## `AgentRun`
+### `AgentRun`
 
 Architectural role:
 
@@ -335,9 +131,9 @@ Current implementation status:
 - one running run per session is enforced
 - each run persists execution status and external turn traceability
 
-## Codex App Server in the current architecture
+### Codex App Server in the current architecture
 
-Codex App Server integration is not only a future architectural dependency. It is already part of the implemented backend.
+Codex App Server integration is part of the implemented backend.
 
 Current role:
 
@@ -349,87 +145,105 @@ Current role:
 
 Architectural meaning:
 
-- external Codex execution is already part of the current `WorkSession` runtime model
+- external Codex execution is part of the current `WorkSession` runtime model
 - `AgentRun` is the internal trace of that execution
 - `SessionTurn` is the conversation-facing trace of that execution
 
+## Implemented runtime flows
+
+### Session lifecycle
+
+Implemented:
+
+- open session
+- resolve or create session per project
+- project-level single active-session policy
+- branch preparation from `baseBranch` or existing `workspaceBranch`
+- protection against opening or recovering from an unrelated branch
+
+### Conversation and execution
+
+Implemented:
+
+- operator turn creation
+- Codex execution inside the session
+- persisted operator and Codex turns
+- persisted run lifecycle
+- reuse of `externalThreadId` across turns
+
+### Delivery lifecycle
+
+Implemented:
+
+- publish session changes
+- stage, commit and push through `GitRepositoryService`
+- GitHub pull request creation
+- pull request state synchronization
+- merge-aware close flow
+- repository reconciliation back to base branch
+- session branch cleanup, including remote cleanup when it applies
+
+### Read models
+
+Implemented:
+
+- base session read
+- aggregated session view
+- aggregated conversation view
+- project overview with a session-first `workSession` block
+
 ## Core architectural decisions
 
-### 1. `WorkSession` is the future root
+### 1. `WorkSession` is the root of the product workflow
 
-The future operator flow should be:
+The operator flow is:
 
-- open a session on a project
-- inspect
-- ask
-- refine
-- implement
-- summarize
-- close when the operator decides
+- open or resolve a session on a project
+- inspect state
+- ask Codex to work
+- refine through conversation turns
+- publish when ready
+- close only when repository and pull request state allow safe reconciliation
 
-Not:
+### 2. Session, conversation, run and repo state stay separated
 
-- create task
-- launch
-- force workflow through review / PR / close
-
-### 2. `Task` and `WorkSession` must coexist temporarily
-
-The backend currently contains both:
-
-- a legacy task workflow
-- a newer session workflow
-
-This coexistence is intentional during transition.
-
-### 3. Snapshot, not workflow advice
-
-The `WorkSession` operational surface remains intentionally descriptive.
-
-Current `WorkSession` snapshot avoids:
-
-- workflow advice
-- legacy review semantics
-- legacy PR semantics
-- task-style closure guidance
-
-### 4. Session, conversation, run and repo state must stay separated
-
-The architecture should keep these concerns separated:
+The architecture keeps these concerns separated:
 
 - session state
 - conversation turns
 - execution runs
 - repository state
 
-The current backend already implements that separation at the main model level.
+The current backend implements that separation at the main model level.
 
-## What is still legacy
+### 3. Repository snapshot remains descriptive
 
-The following remain legacy-centered in the current backend:
+The `WorkSession` operational surface is descriptive.
 
-- task launch / relaunch
-- task branch lifecycle
-- review-pending
-- PR synchronization and creation
-- review outcome
-- branch closure
-- task-derived workflow guidance
+Current `repoState` exposes repository facts such as:
 
-Those features are real and implemented, but they no longer define the target shape of Atenea.
+- `repoValid`
+- `workingTreeClean`
+- `currentBranch`
+- `runInProgress`
 
-## What remains transitional or open
+It does not try to reintroduce legacy task-style workflow advice.
 
-The architecture still contains real open questions.
+### 4. Historical task workflow is not part of the current architecture
 
-Current transition points include:
+The retired `Task` / `TaskExecution` model should not guide new design decisions.
 
-- how long legacy `Task` / `TaskExecution` remains first-class
-- which API surface should become canonical for future frontend work
-- how higher-level product views should represent coexistence between legacy executions and newer sessions
-- what should count as the stable product contract once coexistence ends
+Its historical branch workflow may still be useful as background context, but it is no longer a runtime concern for the backend.
 
-These are still architectural and product decisions, not settled facts.
+## Current architectural gaps
+
+The remaining architecture gaps are not about missing session fundamentals.
+
+They are:
+
+- deciding the primary frontend/operator session contract
+- tightening end-to-end validation around publish, merge detection and reconciled close
+- keeping documentation and product language aligned with the codebase
 
 ## What the backend is not claiming yet
 
@@ -437,7 +251,6 @@ The backend should still avoid stronger claims than the repository supports.
 
 It does not yet define:
 
-- a completed migration away from the legacy task model
-- PR or delivery artifacts attached to `WorkSession`
-- a final replacement plan for all legacy task-centered UI surfaces
-- a final governance model for overview or operator-facing canonical views
+- the final frontend contract beyond the currently available session reads
+- the final long-term operator UX around blocked close recovery
+- every future reporting or higher-level product surface that may be built on top of `WorkSession`

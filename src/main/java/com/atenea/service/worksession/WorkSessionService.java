@@ -26,8 +26,8 @@ import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
-import com.atenea.service.taskexecution.GitRepositoryService;
-import com.atenea.service.taskexecution.TaskLaunchBlockedException;
+import com.atenea.service.git.GitRepositoryService;
+import com.atenea.service.git.GitRepositoryOperationException;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -238,7 +238,7 @@ public class WorkSessionService {
     private String resolveCurrentBranch(String repoPath) {
         try {
             return gitRepositoryService.getCurrentBranch(repoPath);
-        } catch (TaskLaunchBlockedException exception) {
+        } catch (GitRepositoryOperationException exception) {
             throw new WorkSessionOperationBlockedException(
                     "Project repository is not operational for WorkSession opening: " + exception.getMessage());
         }
@@ -347,7 +347,7 @@ public class WorkSessionService {
         try {
             currentBranch = gitRepositoryService.getCurrentBranch(repoPath);
             workingTreeClean = gitRepositoryService.isWorkingTreeClean(repoPath);
-        } catch (TaskLaunchBlockedException exception) {
+        } catch (GitRepositoryOperationException exception) {
             blockClose(
                     session,
                     "repo_unavailable",
@@ -383,7 +383,7 @@ public class WorkSessionService {
 
         try {
             gitRepositoryService.fetchOrigin(repoPath);
-        } catch (TaskLaunchBlockedException exception) {
+        } catch (GitRepositoryOperationException exception) {
             blockClose(
                     session,
                     "fetch_failed",
@@ -428,7 +428,7 @@ public class WorkSessionService {
             try {
                 gitRepositoryService.checkoutBranch(repoPath, baseBranch);
                 currentBranch = baseBranch;
-            } catch (TaskLaunchBlockedException exception) {
+            } catch (GitRepositoryOperationException exception) {
                 blockClose(
                         session,
                         "checkout_base_failed",
@@ -440,7 +440,7 @@ public class WorkSessionService {
 
         try {
             gitRepositoryService.fastForwardCurrentBranchToOrigin(repoPath, baseBranch);
-        } catch (TaskLaunchBlockedException exception) {
+        } catch (GitRepositoryOperationException exception) {
             blockClose(
                     session,
                     "base_not_aligned",
@@ -453,7 +453,7 @@ public class WorkSessionService {
         if (localWorkspaceBranchExists) {
             try {
                 gitRepositoryService.deleteLocalBranch(repoPath, workspaceBranch);
-            } catch (TaskLaunchBlockedException exception) {
+            } catch (GitRepositoryOperationException exception) {
                 blockClose(
                         session,
                         "delete_local_branch_failed",
@@ -466,7 +466,7 @@ public class WorkSessionService {
         if (remoteWorkspaceBranchExists) {
             try {
                 gitRepositoryService.deleteRemoteBranch(repoPath, workspaceBranch);
-            } catch (TaskLaunchBlockedException exception) {
+            } catch (GitRepositoryOperationException exception) {
                 blockClose(
                         session,
                         "delete_remote_branch_failed",
@@ -509,7 +509,7 @@ public class WorkSessionService {
                         "Delete the remote session branch manually and retry close",
                         false);
             }
-        } catch (TaskLaunchBlockedException exception) {
+        } catch (GitRepositoryOperationException exception) {
             blockClose(
                     session,
                     "final_verification_failed",
@@ -533,7 +533,7 @@ public class WorkSessionService {
         GitHubRepositoryRef repository;
         try {
             repository = gitHubClient.resolveRepository(gitRepositoryService.getOriginRemoteUrl(repoPath));
-        } catch (GitHubIntegrationException | TaskLaunchBlockedException exception) {
+        } catch (GitHubIntegrationException | GitRepositoryOperationException exception) {
             blockClose(
                     session,
                     "github_repository_unavailable",

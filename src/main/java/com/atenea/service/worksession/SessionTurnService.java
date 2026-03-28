@@ -15,8 +15,8 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
-import com.atenea.service.taskexecution.GitRepositoryService;
-import com.atenea.service.taskexecution.TaskLaunchBlockedException;
+import com.atenea.service.git.GitRepositoryService;
+import com.atenea.service.git.GitRepositoryOperationException;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -187,7 +187,7 @@ public class SessionTurnService {
         try {
             gitRepositoryService.getCurrentBranch(repoPath);
             return repoPath;
-        } catch (TaskLaunchBlockedException exception) {
+        } catch (GitRepositoryOperationException exception) {
             throw new WorkSessionOperationBlockedException(
                     "Project repository is not operational for WorkSession turn execution: "
                             + exception.getMessage());

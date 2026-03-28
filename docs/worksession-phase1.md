@@ -4,30 +4,24 @@
 
 This document records the real backend state of the `WorkSession` model as implemented today.
 
-The file name remains `worksession-phase1.md` because the current implementation corresponds to the first complete vertical slice of the new conversational core.
+The file name remains `worksession-phase1.md` because this repository already contains the first complete vertical slice of the session-first backend model.
 
 Current precise meaning:
 
 - `WorkSession Phase 1` is functionally implemented in the backend
-- the legacy `Task` / `TaskExecution` flow still exists and remains operational
-- Atenea is still in coexistence mode, not in full migration completion
+- `WorkSession` is the only active orchestration workflow in runtime
+- the retired `Task` / `TaskExecution` model no longer exists in the backend API or database
 
 ## Current architectural position
 
-The backend currently exposes two real orchestration models:
+The backend currently exposes one real orchestration model:
 
-- legacy model:
-  - `Project`
-  - `Task`
-  - `TaskExecution`
-  - task-owned branch workflow
-  - review / PR / close lifecycle
-- new conversational model:
-  - `WorkSession`
-  - `SessionTurn`
-  - `AgentRun`
+- `Project`
+- `WorkSession`
+- `SessionTurn`
+- `AgentRun`
 
-The new product direction is centered on `WorkSession`, but the legacy task flow is still implemented and must not be ignored.
+This is already a session-first delivery backend, not a coexistence stage.
 
 ## Implemented in code today
 
@@ -35,6 +29,7 @@ The new product direction is centered on `WorkSession`, but the legacy task flow
 
 Implemented tables:
 
+- `project`
 - `work_session`
 - `session_turn`
 - `agent_run`
@@ -93,6 +88,7 @@ Implemented endpoints:
 - `POST /api/projects/{projectId}/sessions/resolve`
 - `POST /api/projects/{projectId}/sessions/resolve/view`
 - `POST /api/projects/{projectId}/sessions/resolve/conversation-view`
+- `GET /api/projects/overview`
 - `GET /api/sessions/{sessionId}`
 - `GET /api/sessions/{sessionId}/view`
 - `GET /api/sessions/{sessionId}/conversation-view`
@@ -105,6 +101,7 @@ Implemented endpoints:
 
 Implemented response families:
 
+- `ProjectOverviewResponse`
 - `WorkSessionResponse`
 - `ResolveWorkSessionResponse`
 - `WorkSessionViewResponse`
@@ -209,8 +206,6 @@ Current rules:
 - internal technical turns are filtered out
 - operator and Codex turns are exposed
 
-This means the public conversation history is not polluted by internal technical markers used to support run tracking.
-
 ### Session runs
 
 `GET /api/sessions/{sessionId}/runs` returns the persisted run history for the session.
@@ -243,8 +238,6 @@ Current contents:
 - `lastAgentResponse`
   - latest succeeded run output summary, if any
 
-This view is already intended as an operator-facing or frontend-facing aggregation.
-
 ### Conversation view
 
 `GET /api/sessions/{sessionId}/conversation-view` returns a `WorkSessionConversationViewResponse`.
@@ -274,7 +267,26 @@ Current behavior:
   - `finishedAt` is persisted
   - the session can return to an idle operational state
 
-This behavior is already validated by integration tests and is part of the real operational model.
+## Session publish and pull request behavior
+
+The backend implements session-first delivery behavior.
+
+Implemented:
+
+- `POST /api/sessions/{sessionId}/publish`
+- `POST /api/sessions/{sessionId}/pull-request/sync`
+- publish validation that blocks when there are no reviewable changes
+- stage / commit / push through `GitRepositoryService`
+- GitHub pull request creation
+- pull request metadata persisted directly on `WorkSession`
+- merge tracking through synchronized `pullRequestStatus`
+
+Current persisted delivery fields are:
+
+- `pullRequestUrl`
+- `pullRequestStatus`
+- `finalCommitSha`
+- `publishedAt`
 
 ## Session close behavior
 
@@ -305,27 +317,6 @@ Current rules:
 
 Closed sessions do not accept new turns.
 
-## Session publish and pull request behavior
-
-The backend now implements session-first delivery behavior.
-
-Implemented:
-
-- `POST /api/sessions/{sessionId}/publish`
-- `POST /api/sessions/{sessionId}/pull-request/sync`
-- publish validation that blocks when there are no reviewable changes
-- stage / commit / push through `GitRepositoryService`
-- GitHub pull request creation
-- pull request metadata persisted directly on `WorkSession`
-- merge tracking through synchronized `pullRequestStatus`
-
-Current persisted delivery fields are:
-
-- `pullRequestUrl`
-- `pullRequestStatus`
-- `finalCommitSha`
-- `publishedAt`
-
 ## Descriptive session snapshot
 
 `WorkSessionResponse` includes a descriptive repository snapshot under `repoState`:
@@ -338,12 +329,7 @@ Current persisted delivery fields are:
 Current meaning:
 
 - the snapshot is descriptive, not a workflow engine
-- it does not expose legacy task-derived fields such as:
-  - `nextAction`
-  - `recoveryAction`
-  - `blockingReason`
-  - `launchReady`
-  - review / PR state
+- it does not expose derived task-style guidance fields
 
 Current behavior if the repository becomes invalid after the session was opened:
 
@@ -354,7 +340,16 @@ Current behavior if the repository becomes invalid after the session was opened:
 
 `runInProgress` is derived from `agent_run.status = RUNNING`.
 
-It does not depend on legacy `TaskExecution`.
+## Project overview behavior
+
+`GET /api/projects/overview` is now session-first only.
+
+Current behavior:
+
+- returns one `workSession` block per project
+- prefers the active session when one exists
+- otherwise returns the most recent session by `lastActivityAt`
+- does not expose any legacy block
 
 ## Current restrictions and invariants
 
@@ -376,18 +371,13 @@ The following invariants are currently enforced:
 
 ## Current project defaults
 
-`Project` now persists `defaultBaseBranch`.
+`Project` persists `defaultBaseBranch`.
 
 Current meaning:
 
 - it is the default base branch policy for new sessions on that project
 - it is exposed in `ProjectResponse`
-- the current frontend form should explain that leaving `baseBranch` empty on session creation uses this project default when present
-
-Important nuance:
-
-- `WorkSession.baseBranch` still remains persisted per session
-- changing the project default later does not retroactively rewrite existing sessions
+- leaving `baseBranch` empty on session creation uses this project default when present
 
 ## Current error surface
 
@@ -426,7 +416,7 @@ From code and tests, the currently relevant error behavior is:
 
 ## What this phase validates today
 
-The currently implemented `WorkSession` slice now validates all of the following:
+The currently implemented `WorkSession` slice validates all of the following:
 
 - a live session rooted in `WorkSession`
 - separation between:
@@ -441,18 +431,17 @@ The currently implemented `WorkSession` slice now validates all of the following
 - explicit session close with repository reconciliation
 - project-scoped resolve semantics for open-or-create flows
 - aggregated session and conversation views for frontend-oriented reads
+- session-first project overview
 - stale `RUNNING` run reconciliation on later state reads
 
 ## Remaining gaps after this phase
 
-The main remaining gaps visible from the current repository are no longer the basics of `WorkSession Phase 1`.
-
-The current gaps are instead about consolidation and product clarity:
+The main remaining gaps visible from the current repository are now about consolidation and product clarity:
 
 - documentation alignment
-- roadmap clarity after the now-functional session-first delivery workflow
-- explicit coexistence rules between legacy task flow and session flow at product level
-- definition of what should become canonical for frontend and operator workflows
+- explicit frontend/operator choice of primary session read
+- stronger end-to-end validation of publish, merge detection and reconciled close
+- clearer operator guidance for blocked close recovery
 
 ## Summary
 
@@ -460,5 +449,5 @@ Current state is:
 
 - `WorkSession` is no longer an early persistence-only slice
 - it already supports open, resolve, aggregated reads, turn execution, conversational continuity, turns history, runs history, publish, PR sync and reconciled close
-- the legacy `Task` / `TaskExecution` model still coexists and remains operational
-- the next gap is not basic `WorkSession` implementation, but consolidation of operator contracts, documentation and migration strategy
+- the backend runtime is session-first only
+- the next gap is consolidation of operator contracts, documentation and validation depth

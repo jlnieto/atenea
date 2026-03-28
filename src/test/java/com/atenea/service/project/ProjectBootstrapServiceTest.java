@@ -9,7 +9,7 @@ import static org.mockito.Mockito.when;
 import com.atenea.api.project.ProjectBootstrapResponse;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
-import com.atenea.service.taskexecution.GitRepositoryService;
+import com.atenea.service.git.GitRepositoryService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

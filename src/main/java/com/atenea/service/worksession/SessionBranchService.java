@@ -1,8 +1,8 @@
 package com.atenea.service.worksession;
 
 import com.atenea.persistence.worksession.WorkSessionEntity;
-import com.atenea.service.taskexecution.GitRepositoryService;
-import com.atenea.service.taskexecution.TaskLaunchBlockedException;
+import com.atenea.service.git.GitRepositoryService;
+import com.atenea.service.git.GitRepositoryOperationException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -42,7 +42,7 @@ public class SessionBranchService {
             }
 
             return workspaceBranch;
-        } catch (TaskLaunchBlockedException exception) {
+        } catch (GitRepositoryOperationException exception) {
             throw new WorkSessionOperationBlockedException(
                     "Project repository is not operational for WorkSession branch preparation: "
                             + exception.getMessage());

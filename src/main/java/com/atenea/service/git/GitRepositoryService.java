@@ -1,4 +1,4 @@
-package com.atenea.service.taskexecution;
+package com.atenea.service.git;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -127,14 +127,14 @@ public class GitRepositoryService {
     private void runOrThrow(String repoPath, List<String> command, String failurePrefix) {
         CommandResult result = execute(repoPath, command);
         if (result.exitCode() != 0) {
-            throw new TaskLaunchBlockedException(failurePrefix + ": " + summarize(result.stderr()));
+            throw new GitRepositoryOperationException(failurePrefix + ": " + summarize(result.stderr()));
         }
     }
 
     private String runAndRead(String repoPath, List<String> command) {
         CommandResult result = execute(repoPath, command);
         if (result.exitCode() != 0) {
-            throw new TaskLaunchBlockedException("Git command failed: " + String.join(" ", command)
+            throw new GitRepositoryOperationException("Git command failed: " + String.join(" ", command)
                     + ": " + summarize(result.stderr()));
         }
         return result.stdout().trim();
@@ -143,7 +143,7 @@ public class GitRepositoryService {
     private String runAndReadAllowingEmpty(String repoPath, List<String> command) {
         CommandResult result = execute(repoPath, command);
         if (result.exitCode() != 0) {
-            throw new TaskLaunchBlockedException("Git command failed: " + String.join(" ", command)
+            throw new GitRepositoryOperationException("Git command failed: " + String.join(" ", command)
                     + ": " + summarize(result.stderr()));
         }
         return result.stdout() == null ? "" : result.stdout().trim();
@@ -173,9 +173,9 @@ public class GitRepositoryService {
             return new CommandResult(exitCode, stdout, stderr);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new TaskLaunchBlockedException("Git command interrupted");
+            throw new GitRepositoryOperationException("Git command interrupted");
         } catch (Exception exception) {
-            throw new TaskLaunchBlockedException("Failed to inspect git repository: " + exception.getMessage());
+            throw new GitRepositoryOperationException("Failed to inspect git repository: " + exception.getMessage());
         }
     }
 

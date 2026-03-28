@@ -1,29 +1,33 @@
-# Atenea Task Branch Workflow
+# Atenea Historical Task Branch Workflow
+
+> Historical note:
+> this document describes the retired `Task` / `TaskExecution` workflow that used to exist in Atenea.
+> That backend surface and its database tables are no longer present in the repository runtime.
+> It is historical reference only and must not be treated as the current API or product contract.
 
 ## Purpose
 
 This document defines the intended branch workflow for Atenea tasks.
 
-It now serves two roles:
+It now serves one role:
 
-- record the branch workflow policy already implemented in the backend
-- document the legacy workflow that still exists while `WorkSession` becomes the future core
+- preserve the historical branch workflow that existed before Atenea became session-first
 
 ## Status In The Current Architecture
 
-This document is about the **legacy task-centered workflow**.
+This document is about the **retired task-centered workflow**.
 
 That means:
 
-- it still describes real implemented backend behavior
-- it is still relevant for the current `Task` / `TaskExecution` API surface
-- but it no longer defines the target core of Atenea
+- it describes historical backend behavior
+- it is no longer relevant to the current runtime API surface
+- it does not define the current core of Atenea
 
-The architectural direction now decided is:
+The architectural direction now implemented is:
 
-- the future product core must revolve around `WorkSession`
-- `Task` remains a coexistence model during transition
-- the new frontend must not be built on top of this task workflow as its long-term foundation
+- the product core revolves around `WorkSession`
+- `Task` is no longer part of the active backend model
+- frontend and operator flows must use `WorkSession`
 
 For the current `WorkSession` implementation status, see [`docs/worksession-phase1.md`](./worksession-phase1.md).
 
@@ -136,9 +140,9 @@ Current implementation status:
   - `REJECTED`
   - `CLOSED_WITHOUT_REVIEW`
 
-## Current Backend Endpoints
+## Historical Backend Endpoints
 
-The current backend task workflow now exposes these relevant actions:
+The retired backend task workflow used to expose these actions:
 
 - `POST /api/tasks/{taskId}/launch`
 - `POST /api/tasks/{taskId}/relaunch`
@@ -150,17 +154,7 @@ The current backend task workflow now exposes these relevant actions:
 - `POST /api/tasks/{taskId}/review-outcome`
 - `POST /api/tasks/{taskId}/close-branch`
 
-This means Atenea already supports the basic end-to-end branch lifecycle in the API:
-
-1. create task
-2. launch work on the task branch
-3. relaunch on the same branch if needed
-4. move the task to `REVIEW_PENDING`
-5. record PR metadata
-6. record explicit review outcome
-7. close the branch and release the project when policy allows it
-
-In addition, current task and execution responses already expose derived operational signals:
+Task and execution responses also used to expose derived operational signals:
 
 - `projectBlocked`
 - `hasReviewableChanges`

@@ -4,7 +4,7 @@ import com.atenea.api.project.CreateProjectRequest;
 import com.atenea.api.project.ProjectResponse;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
-import com.atenea.service.taskexecution.GitRepositoryService;
+import com.atenea.service.git.GitRepositoryService;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.data.domain.Sort;

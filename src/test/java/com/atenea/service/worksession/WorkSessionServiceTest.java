@@ -31,8 +31,8 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
-import com.atenea.service.taskexecution.GitRepositoryService;
-import com.atenea.service.taskexecution.TaskLaunchBlockedException;
+import com.atenea.service.git.GitRepositoryService;
+import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.codexappserver.CodexAppServerProperties;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -235,7 +235,7 @@ class WorkSessionServiceTest {
         when(projectRepository.findById(7L)).thenReturn(Optional.of(project));
         when(workSessionRepository.existsByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(false);
         when(gitRepositoryService.getCurrentBranch(repoPath.toString()))
-                .thenThrow(new TaskLaunchBlockedException("Git command failed: rev-parse"));
+                .thenThrow(new GitRepositoryOperationException("Git command failed: rev-parse"));
 
         WorkSessionOperationBlockedException exception = assertThrows(
                 WorkSessionOperationBlockedException.class,

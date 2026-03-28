@@ -7,7 +7,6 @@ This document tracks the current product state based on the repository as it exi
 It distinguishes clearly between:
 
 - what is implemented and validated
-- what remains legacy but active
 - what gaps are still open
 - what the next recommended block of work is
 
@@ -18,33 +17,13 @@ Current formal version markers in the repository:
 - application artifact version: `0.0.1-SNAPSHOT`
 - product stage label still used in documentation: `V0`
 
-This still reads as `V0` because the backend is not a fully consolidated product surface yet.
-
-The reason is not lack of backend capability in `WorkSession`, but coexistence and incomplete consolidation:
-
-- legacy task workflow is still present and operational
-- the newer conversational `WorkSession` workflow is also operational
-- documentation and product guidance still need consolidation
+This still reads as `V0` because product and documentation consolidation are still in progress, even though the backend is now centered on a single orchestration model.
 
 ## Current validated system state
 
-The repository currently contains two real orchestration surfaces.
+The repository currently contains one real orchestration surface.
 
-### Legacy operational surface
-
-Still implemented and active:
-
-- `Project`
-- `Task`
-- `TaskExecution`
-- task branch lifecycle
-- review / PR / close workflow
-- GitHub-backed pull request creation and synchronization
-- derived operational guidance on task and execution responses
-
-This remains the current legacy workflow.
-
-### New conversational surface
+### Conversational surface
 
 Implemented and validated:
 
@@ -71,7 +50,7 @@ Implemented and validated:
 - `CLOSING` transitional state with persisted close-block diagnostics
 - reconcile stale running runs on later reads
 
-This is the implemented conversational core that now represents the intended product direction.
+This is the implemented conversational core and the only active workflow surface in the backend.
 
 ## Completed blocks
 
@@ -88,7 +67,7 @@ Implemented:
 
 ### Block 2. Legacy task execution model
 
-Implemented:
+Implemented historically, now removed from backend runtime:
 
 - `Task`
 - `TaskExecution`
@@ -99,15 +78,7 @@ Implemented:
 - pull request metadata and GitHub integration
 - explicit review outcome
 - strict branch closure rules
-- operational guidance fields such as:
-  - `projectBlocked`
-  - `hasReviewableChanges`
-  - `lastExecutionFailed`
-  - `launchReady`
-  - `launchReadinessReason`
-  - `blockingReason`
-  - `nextAction`
-  - `recoveryAction`
+- operational guidance fields
 
 ### Block 3. WorkSession Phase 1
 
@@ -180,41 +151,30 @@ Implemented:
   - project overview
   - `409` close responses
 
-### Block 4. Mixed project overview
+### Block 4. Session-first project overview
 
 Implemented:
 
 - `GET /api/projects/overview`
-- canonical `workSession` block per project:
-  - current open session when it exists
-  - otherwise latest session by `lastActivityAt`
-- `legacy` block per project:
-  - latest task
-  - latest execution
+- canonical `workSession` block per project
 
 Current conclusion:
 
-- the backend already exposes a mixed overview that represents both orchestration models at once
+- the backend now exposes a session-first overview only
 
 ## Open gaps that are real today
 
 The main open gaps visible in the repository are now these:
 
-### Gap 1. Canonical product surface is still split
-
-The backend still exposes both:
-
-- a legacy task-centered workflow
-- a newer session-centered workflow
+### Gap 1. Session-first frontend/operator contract is not fully settled
 
 What is not yet fully settled in the repository:
 
-- which surface is canonical for operator-facing flows
 - which of the already-implemented session reads should anchor frontend flows:
   - base session read
   - session view
   - conversation view
-- how much of the legacy block should remain prominent in future operator UX
+- how much of the remaining low-level session reads should remain operator-visible
 
 ### Gap 2. Documentation and governance are behind the implementation
 
@@ -227,9 +187,8 @@ That means documentation governance is a real gap, not an editorial detail.
 The code now shows a working session-first delivery workflow in the backend, but the repository still does not fully settle:
 
 - frontend alignment
-- coexistence rules
 - operator workflow simplification
-- eventual de-emphasis or retirement path for legacy task-centered flows
+- final product contract around session views
 
 ## Pending real work
 
@@ -245,9 +204,7 @@ Those are already implemented.
 The pending real work is instead:
 
 - consolidate documentation around the true current state
-- make the coexistence rules between legacy and new model explicit
 - define which API surface should drive the next operator or frontend workflows
-- define whether project overview should remain mixed long-term or become session-first with legacy secondary
 - harden the now-implemented session-first repository delivery flow as the primary product contract
 
 ## Next recommended phase
@@ -261,7 +218,6 @@ Goals:
 - keep documentation aligned with code and tests
 - make `WorkSession` the canonical operator-facing unit of real repository work
 - establish `conversation-view` as the primary operator-facing session contract
-- clarify the long-term role of mixed project overview during coexistence
 - formalize how frontend and operator UX consume publish, merge and close-block states
 
 Recommended outputs of this phase:
@@ -269,21 +225,18 @@ Recommended outputs of this phase:
 1. explicit decision that frontend should anchor primarily on:
    - `GET /api/sessions/{id}/conversation-view`
    with `view` and base session reads kept as support surfaces
-2. clarified role of mixed `GET /api/projects/overview` during coexistence
-3. documentation aligned with the target flow defined in `docs/worksession-target-flow.md`
-4. stronger end-to-end validation of:
+2. documentation aligned with the target flow defined in `docs/worksession-target-flow.md`
+3. stronger end-to-end validation of:
    - publish
    - merge detection
    - remote branch cleanup
    - reconciled close
-5. clearer operator guidance for blocked close and manual recovery paths
+4. clearer operator guidance for blocked close and manual recovery paths
 
 ## What remains uncertain
 
 The repository does not yet justify stronger claims than these:
 
-- it does not define a finalized migration plan away from legacy task flows
-- it does not define whether `TaskExecution` will be retired, reduced, or kept long-term
 - it does not define the final frontend contract beyond the fact that `WorkSession` is the intended future-centered model
 
 Those points should therefore remain explicit decisions, not assumptions.
@@ -292,7 +245,7 @@ Those points should therefore remain explicit decisions, not assumptions.
 
 Current roadmap reading should be:
 
-- legacy task orchestration: implemented and still active
+- legacy task orchestration: removed from backend runtime
 - `WorkSession` conversational core plus session-first delivery workflow: implemented in backend
 - immediate next major step: operator/frontend consolidation around the session-first model
 - future planning beyond that: still requires explicit human decisions

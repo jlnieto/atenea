@@ -26,8 +26,8 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
-import com.atenea.service.taskexecution.GitRepositoryService;
-import com.atenea.service.taskexecution.TaskLaunchBlockedException;
+import com.atenea.service.git.GitRepositoryService;
+import com.atenea.service.git.GitRepositoryOperationException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -365,7 +365,7 @@ class SessionTurnCreateServiceTest {
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(gitRepositoryService.getCurrentBranch(repoPath.toString()))
-                .thenThrow(new TaskLaunchBlockedException("Git command failed: rev-parse"));
+                .thenThrow(new GitRepositoryOperationException("Git command failed: rev-parse"));
 
         assertThrows(
                 WorkSessionOperationBlockedException.class,

@@ -1,26 +1,16 @@
 package com.atenea.service.project;
 
 import com.atenea.api.project.ProjectOverviewResponse;
-import com.atenea.api.project.ProjectOverviewResponse.LegacyProjectOverviewResponse;
 import com.atenea.api.project.ProjectOverviewResponse.WorkSessionOverviewResponse;
 import com.atenea.api.project.ProjectResponse;
-import com.atenea.api.task.TaskResponse;
-import com.atenea.api.taskexecution.TaskExecutionResponse;
 import com.atenea.api.worksession.SessionOperationalSnapshotResponse;
-import com.atenea.service.task.TaskResponseMapper;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
-import com.atenea.persistence.task.TaskEntity;
-import com.atenea.persistence.task.TaskRepository;
-import com.atenea.persistence.taskexecution.TaskExecutionEntity;
-import com.atenea.persistence.taskexecution.TaskExecutionRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.worksession.SessionOperationalSnapshotService;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -33,26 +23,17 @@ public class ProjectOverviewService {
             Set.of(WorkSessionStatus.OPEN, WorkSessionStatus.CLOSING);
 
     private final ProjectRepository projectRepository;
-    private final TaskRepository taskRepository;
-    private final TaskExecutionRepository taskExecutionRepository;
     private final WorkSessionRepository workSessionRepository;
     private final SessionOperationalSnapshotService sessionOperationalSnapshotService;
-    private final TaskResponseMapper taskResponseMapper;
 
     public ProjectOverviewService(
             ProjectRepository projectRepository,
-            TaskRepository taskRepository,
-            TaskExecutionRepository taskExecutionRepository,
             WorkSessionRepository workSessionRepository,
-            SessionOperationalSnapshotService sessionOperationalSnapshotService,
-            TaskResponseMapper taskResponseMapper
+            SessionOperationalSnapshotService sessionOperationalSnapshotService
     ) {
         this.projectRepository = projectRepository;
-        this.taskRepository = taskRepository;
-        this.taskExecutionRepository = taskExecutionRepository;
         this.workSessionRepository = workSessionRepository;
         this.sessionOperationalSnapshotService = sessionOperationalSnapshotService;
-        this.taskResponseMapper = taskResponseMapper;
     }
 
     @Transactional(readOnly = true)
@@ -70,24 +51,9 @@ public class ProjectOverviewService {
                 .or(() -> workSessionRepository.findFirstByProjectIdOrderByLastActivityAtDesc(project.getId()))
                 .orElse(null);
 
-        List<TaskEntity> tasks = taskRepository.findByProjectIdOrderByCreatedAtAsc(project.getId());
-        TaskEntity latestTaskEntity = tasks.stream()
-                .max(Comparator.comparing(TaskEntity::getCreatedAt))
-                .orElse(null);
-
-        TaskExecutionEntity latestExecutionEntity = tasks.stream()
-                .map(TaskEntity::getId)
-                .map(taskExecutionRepository::findFirstByTaskIdOrderByCreatedAtDesc)
-                .flatMap(Optional::stream)
-                .max(Comparator.comparing(TaskExecutionEntity::getCreatedAt))
-                .orElse(null);
-
         return new ProjectOverviewResponse(
                 toProjectResponse(project),
-                canonicalSession == null ? null : toWorkSessionOverview(canonicalSession),
-                new LegacyProjectOverviewResponse(
-                        latestTaskEntity == null ? null : toTaskResponse(latestTaskEntity),
-                        latestExecutionEntity == null ? null : toTaskExecutionResponse(latestExecutionEntity))
+                canonicalSession == null ? null : toWorkSessionOverview(canonicalSession)
         );
     }
 
@@ -100,27 +66,6 @@ public class ProjectOverviewService {
                 project.getDefaultBaseBranch(),
                 project.getCreatedAt(),
                 project.getUpdatedAt()
-        );
-    }
-
-    private TaskResponse toTaskResponse(TaskEntity task) {
-        return taskResponseMapper.toResponse(task);
-    }
-
-    private TaskExecutionResponse toTaskExecutionResponse(TaskExecutionEntity taskExecution) {
-        return new TaskExecutionResponse(
-                taskExecution.getId(),
-                taskExecution.getTask().getId(),
-                taskExecution.getStatus(),
-                taskExecution.getRunnerType(),
-                taskExecution.getTargetRepoPath(),
-                taskExecution.getStartedAt(),
-                taskExecution.getFinishedAt(),
-                taskExecution.getOutputSummary(),
-                taskExecution.getErrorSummary(),
-                taskExecution.getExternalThreadId(),
-                taskExecution.getExternalTurnId(),
-                taskExecution.getCreatedAt()
         );
     }
 

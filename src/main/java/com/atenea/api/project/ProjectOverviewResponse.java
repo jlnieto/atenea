@@ -1,15 +1,12 @@
 package com.atenea.api.project;
 
-import com.atenea.api.task.TaskResponse;
-import com.atenea.api.taskexecution.TaskExecutionResponse;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import java.time.Instant;
 
 public record ProjectOverviewResponse(
         ProjectResponse project,
-        WorkSessionOverviewResponse workSession,
-        LegacyProjectOverviewResponse legacy
+        WorkSessionOverviewResponse workSession
 ) {
 
     public record WorkSessionOverviewResponse(
@@ -36,9 +33,4 @@ public record ProjectOverviewResponse(
     ) {
     }
 
-    public record LegacyProjectOverviewResponse(
-            TaskResponse latestTask,
-            TaskExecutionResponse latestExecution
-    ) {
-    }
 }

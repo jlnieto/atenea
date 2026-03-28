@@ -6,7 +6,7 @@ Documentos clave:
 - `docs/atenea-v1-architecture.md`: dirección arquitectónica general
 - `docs/worksession-phase1.md`: estado real actual del core `WorkSession`
 - `docs/worksession-target-flow.md`: objetivo canónico de producto para el siguiente gran bloque `WorkSession`
-- `docs/task-branch-workflow.md`: flujo legacy `Task` / `TaskExecution`
+- `docs/task-branch-workflow.md`: referencia histórica del flujo retirado `Task` / `TaskExecution`
 - `AGENTS.md`: guía local canónica para agentes/Codex
 
 Workflow de desarrollo para este VPS:
@@ -57,42 +57,31 @@ Workflow de desarrollo para este VPS:
 
 Atenea es un backend Spring Boot que orquesta trabajo sobre repositorios registrados.
 
-Hoy conviven dos modelos reales:
+El producto backend hoy está centrado únicamente en `WorkSession`:
 
-- flujo legacy:
-  - `Project`
-  - `Task`
-  - `TaskExecution`
-  - branch por tarea
-  - review / pull request / cierre
-- nuevo core conversacional:
-  - `WorkSession`
-  - `SessionTurn`
-  - `AgentRun`
-  - apertura de sesión
-  - turnos con Codex
-  - continuidad de thread
-  - listado de turns y runs
-  - publish a pull request
-  - sync de pull request
-  - cierre fuerte con reconciliación
+- `Project`
+- `WorkSession`
+- `SessionTurn`
+- `AgentRun`
+- apertura o resolución de sesión
+- turnos conversacionales con Codex
+- continuidad de thread
+- historial de turns y runs
+- publish a pull request
+- sync de pull request
+- cierre fuerte con reconciliación
 
-La dirección del producto está centrada en `WorkSession`, pero el flujo `Task` / `TaskExecution` sigue implementado y operativo.
+El flujo legacy `Task` / `TaskExecution` ya fue retirado del backend y de la base de datos.
 
 ## Superficies API actuales
 
-Hoy el backend expone tres superficies funcionales reales:
+Hoy el backend expone dos superficies funcionales reales:
 
 - `Project`
   - registro y listado de repositorios operables
   - bootstrap de proyectos canónicos
   - `defaultBaseBranch` por proyecto
   - overview agregado del estado de proyecto
-- legacy `Task` / `TaskExecution`
-  - flujo por branch de tarea
-  - launch / relaunch
-  - review / pull request / cierre
-  - señales operativas derivadas para UI
 - `WorkSession` / `SessionTurn` / `AgentRun`
   - apertura o resolución de sesión
   - branch de trabajo propio por sesión
@@ -106,30 +95,13 @@ Hoy el backend expone tres superficies funcionales reales:
 
 Referencias:
 
-- `docs/task-branch-workflow.md`: superficie legacy `Task` / `TaskExecution`
 - `docs/worksession-phase1.md`: superficie conversacional `WorkSession`
 - `docs/worksession-target-flow.md`: ruta objetivo de `WorkSession` como flujo completo de trabajo
 - `docs/roadmap.md`: estado consolidado y gaps reales abiertos
 
 ## Arquitectura funcional actual
 
-### Legacy `Task` / `TaskExecution`
-
-Sigue existiendo y cubre:
-
-- creación y listado de tareas
-- launch / relaunch
-- branch safety y project lock
-- validación de readiness basada en `description`
-- paso a `REVIEW_PENDING`
-- `abandon`
-- metadatos de pull request
-- integración básica con GitHub
-- review outcome explícito
-- cierre de branch
-- visibilidad operativa derivada
-
-### Nuevo core `WorkSession`
+### Core `WorkSession`
 
 Actualmente ya implementa:
 
@@ -193,16 +165,13 @@ Actualmente ya implementa:
 
 ## Overview de proyecto
 
-`GET /api/projects/overview` ya expone coexistencia explícita entre ambos modelos:
+`GET /api/projects/overview` ya es session-first:
 
 - bloque `workSession` con la sesión canónica del proyecto
   - `OPEN` o `CLOSING` si existe una activa
   - o la más reciente por `lastActivityAt`
-- bloque `legacy` con:
-  - `latestTask`
-  - `latestExecution`
 
-El gap actual no es ausencia de overview mixto en backend, sino decidir qué superficie debe ser la canónica para frontend y flujos operador.
+El overview ya no expone bloques legacy.
 
 ## Notas operativas
 

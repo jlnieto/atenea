@@ -1,4 +1,4 @@
-package com.atenea.service.taskexecution;
+package com.atenea.service.git;
 
 public record GitRepositoryState(
         String currentBranch,
