@@ -93,11 +93,23 @@ Implemented endpoints:
 - `GET /api/sessions/{sessionId}/view`
 - `GET /api/sessions/{sessionId}/conversation-view`
 - `POST /api/sessions/{sessionId}/turns`
+- `POST /api/sessions/{sessionId}/turns/conversation-view`
 - `GET /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/runs`
 - `POST /api/sessions/{sessionId}/publish`
+- `POST /api/sessions/{sessionId}/publish/conversation-view`
 - `POST /api/sessions/{sessionId}/pull-request/sync`
+- `POST /api/sessions/{sessionId}/pull-request/sync/conversation-view`
 - `POST /api/sessions/{sessionId}/close`
+- `POST /api/sessions/{sessionId}/close/conversation-view`
+- `GET /api/sessions/{sessionId}/deliverables`
+- `GET /api/sessions/{sessionId}/deliverables/approved`
+- `GET /api/sessions/{sessionId}/deliverables/price-estimate/approved-summary`
+- `GET /api/sessions/{sessionId}/deliverables/types/{type}/history`
+- `GET /api/sessions/{sessionId}/deliverables/{deliverableId}`
+- `POST /api/sessions/{sessionId}/deliverables/{type}/generate`
+- `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/approve`
+- `GET /api/projects/{projectId}/approved-price-estimates`
 
 Implemented response families:
 
@@ -254,6 +266,12 @@ Current contents:
   - whether older visible turns exist outside that window
 
 This endpoint is currently the most conversation-ready payload in the backend.
+
+`POST /api/sessions/{sessionId}/turns/conversation-view` now extends that contract to turn creation itself:
+
+- it creates the operator turn and starts the Codex execution
+- it returns a conversation-oriented payload immediately after the action
+- frontend flows can therefore remain anchored on `WorkSessionConversationViewResponse` instead of posting a turn and then forcing a separate session refresh
 
 ## Reconciliation behavior
 
@@ -443,11 +461,114 @@ The main remaining gaps visible from the current repository are now about consol
 - stronger end-to-end validation of publish, merge detection and reconciled close
 - clearer operator guidance for blocked close recovery
 
+Current operator guidance for blocked close is now explicit in the payload model:
+
+- `closeBlockedState` identifies the close-block category
+- `closeBlockedReason` explains the immediate problem
+- `closeBlockedAction` tells the operator what to do next
+- `closeRetryable` distinguishes retry-after-fix cases from manual recovery cases
+
+The conversation-oriented close flow should therefore prefer:
+
+- `POST /api/sessions/{sessionId}/close/conversation-view` as the operator action
+- the returned `409` payload for immediate recovery guidance
+- `GET /api/sessions/{sessionId}/conversation-view` for the persisted `CLOSING` state and follow-up retries
+
+## Session deliverables
+
+The backend now implements a persisted and operator-facing session deliverables subsystem.
+
+Current implemented scope:
+
+- persistence for `session_deliverable`
+- latest-per-type deliverables view by session
+- detailed deliverable read by `deliverableId`
+- full history read by deliverable type
+- explicit generation per deliverable type
+- manual approval per deliverable version
+- latest approved set by session
+
+Current deliverable types:
+
+- `WORK_TICKET`
+- `WORK_BREAKDOWN`
+- `PRICE_ESTIMATE`
+
+Current status model:
+
+- `PENDING`
+- `RUNNING`
+- `SUCCEEDED`
+- `FAILED`
+- `SUPERSEDED`
+
+Current behavior:
+
+- deliverables are versioned per `sessionId + type`
+- regenerating a deliverable creates a new version
+- older non-approved versions of the same type are marked `SUPERSEDED`
+- approving a new version supersedes the previously approved version of the same type
+- the session list endpoint returns the latest generated version per type
+- the approved list endpoint returns the latest approved version per type
+
+Implemented session deliverable endpoints:
+
+- `GET /api/sessions/{sessionId}/deliverables`
+- `GET /api/sessions/{sessionId}/deliverables/approved`
+- `GET /api/sessions/{sessionId}/deliverables/types/{type}/history`
+- `GET /api/sessions/{sessionId}/deliverables/{deliverableId}`
+- `POST /api/sessions/{sessionId}/deliverables/{type}/generate`
+- `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/approve`
+
+### Pricing-specific implementation
+
+`PRICE_ESTIMATE` is now stronger than a generic Markdown artifact.
+
+Current implemented behavior:
+
+- generation uses an explicit pricing policy snapshot embedded in `inputSnapshotJson`
+- Codex must return:
+  - Markdown
+  - structured JSON
+- backend validates the structured JSON before marking the deliverable `SUCCEEDED`
+- valid structured output is normalized into `contentJson`
+
+Current required structured fields include:
+
+- `currency`
+- `baseHourlyRate`
+- `equivalentHours`
+- `minimumPrice`
+- `recommendedPrice`
+- `maximumPrice`
+- `commercialPositioning`
+- `riskLevel`
+- `confidence`
+- `assumptions`
+- `exclusions`
+
+Implemented pricing reads:
+
+- `GET /api/sessions/{sessionId}/deliverables/price-estimate/approved-summary`
+  - returns the approved pricing baseline for one session
+- `GET /api/projects/{projectId}/approved-price-estimates`
+  - returns approved pricing baselines across the project's sessions
+
+The frontend now uses this subsystem to:
+
+- generate deliverables
+- inspect version history
+- compare latest generated vs latest approved
+- approve versions
+- inspect structured pricing summaries in-session
+- inspect approved pricing per project without opening each session
+
 ## Summary
 
 Current state is:
 
 - `WorkSession` is no longer an early persistence-only slice
 - it already supports open, resolve, aggregated reads, turn execution, conversational continuity, turns history, runs history, publish, PR sync and reconciled close
+- it also supports generated, versioned and approved session deliverables
 - the backend runtime is session-first only
-- the next gap is consolidation of operator contracts, documentation and validation depth
+- the next gap is no longer basic deliverables generation, but commercial workflow consolidation on top of approved pricing data

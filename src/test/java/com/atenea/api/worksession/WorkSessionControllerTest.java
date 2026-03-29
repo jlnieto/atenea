@@ -298,6 +298,31 @@ class WorkSessionControllerTest {
     }
 
     @Test
+    void closeSessionConversationViewReturnsClosedConversationState() throws Exception {
+        when(workSessionService.closeSessionConversationView(12L)).thenReturn(new CloseWorkSessionConversationViewResponse(
+                new WorkSessionConversationViewResponse(
+                        new WorkSessionViewResponse(
+                                sessionResponse(
+                                        WorkSessionStatus.CLOSED,
+                                        WorkSessionOperationalState.CLOSED,
+                                        "thread-1",
+                                        null,
+                                        Instant.parse("2026-03-25T10:07:00Z")),
+                                false,
+                                false,
+                                null,
+                                null,
+                                "Current status summary"),
+                        List.of(),
+                        20,
+                        false)));
+
+        mockMvc.perform(post("/api/sessions/12/close/conversation-view"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.view.view.session.status").value("CLOSED"));
+    }
+
+    @Test
     void closeSessionReturnsConflictWhenRunIsRunning() throws Exception {
         when(workSessionService.closeSession(12L)).thenThrow(new AgentRunAlreadyRunningException(12L));
 
@@ -324,6 +349,28 @@ class WorkSessionControllerTest {
                 .andExpect(jsonPath("$.message").value(
                         "WorkSession '12' cannot finish closing: Repository working tree is not clean"))
                 .andExpect(jsonPath("$.details[0]").value("state: dirty_worktree"))
+                .andExpect(jsonPath("$.state").value("dirty_worktree"))
+                .andExpect(jsonPath("$.reason").value("Repository working tree is not clean"))
+                .andExpect(jsonPath("$.action").value("Clean or discard local changes manually before retrying close"))
+                .andExpect(jsonPath("$.retryable").value(false));
+    }
+
+    @Test
+    void closeSessionConversationViewReturnsConflictWhenReconciliationBlocksClosing() throws Exception {
+        when(workSessionService.closeSessionConversationView(12L)).thenThrow(new WorkSessionCloseBlockedException(
+                "WorkSession '12' cannot finish closing: Repository working tree is not clean",
+                "dirty_worktree",
+                "Repository working tree is not clean",
+                "Clean or discard local changes manually before retrying close",
+                false,
+                List.of(
+                        "state: dirty_worktree",
+                        "reason: Repository working tree is not clean",
+                        "action: Clean or discard local changes manually before retrying close",
+                        "retryable: false")));
+
+        mockMvc.perform(post("/api/sessions/12/close/conversation-view"))
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.state").value("dirty_worktree"))
                 .andExpect(jsonPath("$.reason").value("Repository working tree is not clean"))
                 .andExpect(jsonPath("$.action").value("Clean or discard local changes manually before retrying close"))
@@ -366,6 +413,58 @@ class WorkSessionControllerTest {
                 .andExpect(jsonPath("$.pullRequestUrl").value("https://github.com/acme/atenea/pull/42"))
                 .andExpect(jsonPath("$.pullRequestStatus").value("OPEN"))
                 .andExpect(jsonPath("$.finalCommitSha").value("abc123"));
+    }
+
+    @Test
+    void publishSessionConversationViewReturnsPublishedConversationState() throws Exception {
+        when(workSessionGitHubService.publishSessionConversationView(12L, new PublishWorkSessionRequest("Ship current work")))
+                .thenReturn(new PublishWorkSessionConversationViewResponse(
+                        new WorkSessionConversationViewResponse(
+                                new WorkSessionViewResponse(
+                                        new WorkSessionResponse(
+                                                12L,
+                                                7L,
+                                                WorkSessionStatus.OPEN,
+                                                WorkSessionOperationalState.IDLE,
+                                                "Inspect project state",
+                                                "main",
+                                                "atenea/session-12",
+                                                "thread-1",
+                                                "https://github.com/acme/atenea/pull/42",
+                                                WorkSessionPullRequestStatus.OPEN,
+                                                "abc123",
+                                                Instant.parse("2026-03-25T10:05:00Z"),
+                                                Instant.parse("2026-03-25T10:06:00Z"),
+                                                Instant.parse("2026-03-25T10:07:00Z"),
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                false,
+                                                new SessionOperationalSnapshotResponse(
+                                                        true,
+                                                        true,
+                                                        "atenea/session-12",
+                                                        false)),
+                                        false,
+                                        true,
+                                        null,
+                                        null,
+                                        "Current status summary"),
+                                List.of(),
+                                20,
+                                false)));
+
+        mockMvc.perform(post("/api/sessions/12/publish/conversation-view")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "commitMessage": "Ship current work"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.view.view.session.pullRequestStatus").value("OPEN"))
+                .andExpect(jsonPath("$.view.view.session.finalCommitSha").value("abc123"));
     }
 
     @Test
@@ -413,6 +512,51 @@ class WorkSessionControllerTest {
         mockMvc.perform(post("/api/sessions/12/pull-request/sync"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.pullRequestStatus").value("MERGED"));
+    }
+
+    @Test
+    void syncPullRequestConversationViewReturnsUpdatedConversationState() throws Exception {
+        when(workSessionGitHubService.syncPullRequestConversationView(12L))
+                .thenReturn(new SyncWorkSessionPullRequestConversationViewResponse(
+                        new WorkSessionConversationViewResponse(
+                                new WorkSessionViewResponse(
+                                        new WorkSessionResponse(
+                                                12L,
+                                                7L,
+                                                WorkSessionStatus.OPEN,
+                                                WorkSessionOperationalState.IDLE,
+                                                "Inspect project state",
+                                                "main",
+                                                "atenea/session-12",
+                                                "thread-1",
+                                                "https://github.com/acme/atenea/pull/42",
+                                                WorkSessionPullRequestStatus.MERGED,
+                                                "abc123",
+                                                Instant.parse("2026-03-25T10:05:00Z"),
+                                                Instant.parse("2026-03-25T10:06:00Z"),
+                                                Instant.parse("2026-03-25T10:07:00Z"),
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                false,
+                                                new SessionOperationalSnapshotResponse(
+                                                        true,
+                                                        true,
+                                                        "atenea/session-12",
+                                                        false)),
+                                        false,
+                                        true,
+                                        null,
+                                        null,
+                                        "Current status summary"),
+                                List.of(),
+                                20,
+                                false)));
+
+        mockMvc.perform(post("/api/sessions/12/pull-request/sync/conversation-view"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.view.view.session.pullRequestStatus").value("MERGED"));
     }
 
     private static WorkSessionResponse sessionResponse(

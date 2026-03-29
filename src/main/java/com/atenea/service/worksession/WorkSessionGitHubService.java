@@ -1,6 +1,8 @@
 package com.atenea.service.worksession;
 
+import com.atenea.api.worksession.PublishWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.PublishWorkSessionRequest;
+import com.atenea.api.worksession.SyncWorkSessionPullRequestConversationViewResponse;
 import com.atenea.api.worksession.WorkSessionResponse;
 import com.atenea.github.GitHubClient;
 import com.atenea.github.GitHubIntegrationException;
@@ -99,6 +101,15 @@ public class WorkSessionGitHubService {
     }
 
     @Transactional
+    public PublishWorkSessionConversationViewResponse publishSessionConversationView(
+            Long sessionId,
+            PublishWorkSessionRequest request
+    ) {
+        publishSession(sessionId, request);
+        return new PublishWorkSessionConversationViewResponse(workSessionService.getSessionConversationView(sessionId));
+    }
+
+    @Transactional
     public WorkSessionResponse syncPullRequest(Long sessionId) {
         WorkSessionEntity session = findSession(sessionId);
         if (normalizeNullableText(session.getPullRequestUrl()) == null) {
@@ -116,6 +127,13 @@ public class WorkSessionGitHubService {
         session.setPullRequestStatus(mapPullRequestStatus(pullRequest));
         session.setUpdatedAt(now);
         return workSessionService.toResponse(workSessionRepository.save(session));
+    }
+
+    @Transactional
+    public SyncWorkSessionPullRequestConversationViewResponse syncPullRequestConversationView(Long sessionId) {
+        syncPullRequest(sessionId);
+        return new SyncWorkSessionPullRequestConversationViewResponse(
+                workSessionService.getSessionConversationView(sessionId));
     }
 
     private WorkSessionEntity findSession(Long sessionId) {

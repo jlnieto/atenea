@@ -1,6 +1,7 @@
 package com.atenea.service.worksession;
 
 import com.atenea.api.worksession.CreateWorkSessionRequest;
+import com.atenea.api.worksession.CloseWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.ResolveWorkSessionRequest;
 import com.atenea.api.worksession.ResolveWorkSessionResponse;
@@ -233,6 +234,12 @@ public class WorkSessionService {
         clearCloseBlock(session);
         session.setUpdatedAt(now);
         return toResponse(session);
+    }
+
+    @Transactional(noRollbackFor = WorkSessionCloseBlockedException.class)
+    public CloseWorkSessionConversationViewResponse closeSessionConversationView(Long sessionId) {
+        closeSession(sessionId);
+        return new CloseWorkSessionConversationViewResponse(getSessionConversationView(sessionId));
     }
 
     private String resolveCurrentBranch(String repoPath) {

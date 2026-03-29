@@ -25,4 +25,7 @@ public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, 
 
     @EntityGraph(attributePaths = "project")
     Optional<WorkSessionEntity> findWithProjectById(Long id);
+
+    @EntityGraph(attributePaths = "project")
+    java.util.List<WorkSessionEntity> findByProjectIdOrderByLastActivityAtDesc(Long projectId);
 }

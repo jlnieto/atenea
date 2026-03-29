@@ -49,6 +49,9 @@ Implemented and validated:
 - strong close semantics with repository reconciliation
 - `CLOSING` transitional state with persisted close-block diagnostics
 - reconcile stale running runs on later reads
+- generated, versioned and approved session deliverables
+- structured pricing output for `PRICE_ESTIMATE`
+- approved pricing reads by session and by project
 
 This is the implemented conversational core and the only active workflow surface in the backend.
 
@@ -96,6 +99,7 @@ Implemented:
 - `GET /api/sessions/{sessionId}/view`
 - `GET /api/sessions/{sessionId}/conversation-view`
 - `POST /api/sessions/{sessionId}/turns`
+- `POST /api/sessions/{sessionId}/turns/conversation-view`
 - `GET /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/runs`
 - `POST /api/sessions/{sessionId}/publish`
@@ -151,6 +155,40 @@ Implemented:
   - project overview
   - `409` close responses
 
+### Block 6. Session deliverables and commercial baseline
+
+Implemented:
+
+- `SessionDeliverable` persistence
+- deliverable types:
+  - `WORK_TICKET`
+  - `WORK_BREAKDOWN`
+  - `PRICE_ESTIMATE`
+- versioning per `sessionId + type`
+- session deliverable generation:
+  - `POST /api/sessions/{sessionId}/deliverables/{type}/generate`
+- session deliverable approval:
+  - `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/approve`
+- latest generated view:
+  - `GET /api/sessions/{sessionId}/deliverables`
+- latest approved view:
+  - `GET /api/sessions/{sessionId}/deliverables/approved`
+- history by type:
+  - `GET /api/sessions/{sessionId}/deliverables/types/{type}/history`
+- detailed read by version:
+  - `GET /api/sessions/{sessionId}/deliverables/{deliverableId}`
+- `SUPERSEDED` handling for regenerated or replaced versions
+- `PRICE_ESTIMATE` structured output validation
+- approved pricing read by session:
+  - `GET /api/sessions/{sessionId}/deliverables/price-estimate/approved-summary`
+- approved pricing read by project:
+  - `GET /api/projects/{projectId}/approved-price-estimates`
+- frontend support for:
+  - generate
+  - inspect history
+  - approve
+  - inspect approved pricing baselines
+
 ### Block 4. Session-first project overview
 
 Implemented:
@@ -166,15 +204,20 @@ Current conclusion:
 
 The main open gaps visible in the repository are now these:
 
-### Gap 1. Session-first frontend/operator contract is not fully settled
+### Gap 1. Commercial workflow above approved pricing is not yet consolidated
 
-What is not yet fully settled in the repository:
+What is now settled in the repository:
 
-- which of the already-implemented session reads should anchor frontend flows:
-  - base session read
-  - session view
-  - conversation view
-- how much of the remaining low-level session reads should remain operator-visible
+- `conversation-view` is the primary frontend/operator session contract
+- create turn now also has a conversation-oriented action response
+- session deliverables are generated and approved through the operator surface
+- approved pricing can already be consulted by session and by project
+
+What still needs consolidation:
+
+- a global billing queue
+- persistence of billing state such as `READY` / `BILLED`
+- invoice references and billed timestamps
 
 ### Gap 2. Documentation and governance are behind the implementation
 
@@ -182,13 +225,13 @@ The repository recently contained documentation that still described major `Work
 
 That means documentation governance is a real gap, not an editorial detail.
 
-### Gap 3. Session-first operator contract is not yet fully consolidated
+### Gap 3. Session-first operator contract still needs cleanup
 
 The code now shows a working session-first delivery workflow in the backend, but the repository still does not fully settle:
 
 - frontend alignment
 - operator workflow simplification
-- final product contract around session views
+- final product contract around session views and commercial follow-up
 
 ## Pending real work
 
@@ -206,12 +249,13 @@ The pending real work is instead:
 - consolidate documentation around the true current state
 - define which API surface should drive the next operator or frontend workflows
 - harden the now-implemented session-first repository delivery flow as the primary product contract
+- evolve the approved pricing baseline into a true billing workflow
 
 ## Next recommended phase
 
 The next recommended phase, justified by the current repository, is:
 
-## Session-First Operator Consolidation
+## Session-First Commercial Consolidation
 
 Goals:
 
@@ -219,19 +263,19 @@ Goals:
 - make `WorkSession` the canonical operator-facing unit of real repository work
 - establish `conversation-view` as the primary operator-facing session contract
 - formalize how frontend and operator UX consume publish, merge and close-block states
+- formalize how approved pricing moves into billing operations
 
 Recommended outputs of this phase:
 
-1. explicit decision that frontend should anchor primarily on:
-   - `GET /api/sessions/{id}/conversation-view`
-   with `view` and base session reads kept as support surfaces
-2. documentation aligned with the target flow defined in `docs/worksession-target-flow.md`
-3. stronger end-to-end validation of:
+1. documentation aligned with the target flow defined in `docs/worksession-target-flow.md`
+2. stronger end-to-end validation of:
    - publish
    - merge detection
    - remote branch cleanup
    - reconciled close
-4. clearer operator guidance for blocked close and manual recovery paths
+3. clearer operator guidance for blocked close and manual recovery paths
+4. global billing queue surface built on approved pricing baselines
+5. billing status persistence once the queue exists
 
 ## What remains uncertain
 
@@ -247,5 +291,6 @@ Current roadmap reading should be:
 
 - legacy task orchestration: removed from backend runtime
 - `WorkSession` conversational core plus session-first delivery workflow: implemented in backend
-- immediate next major step: operator/frontend consolidation around the session-first model
+- session deliverables and approved pricing baselines: implemented in backend
+- immediate next major step: commercial consolidation above approved pricing
 - future planning beyond that: still requires explicit human decisions

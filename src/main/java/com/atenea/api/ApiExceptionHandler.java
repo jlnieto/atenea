@@ -11,6 +11,7 @@ import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.AgentRunNotFoundException;
 import com.atenea.service.worksession.AgentRunTransitionNotAllowedException;
+import com.atenea.service.worksession.ApprovedPriceEstimateNotFoundException;
 import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
 import com.atenea.service.worksession.WorkSessionNotOpenException;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
@@ -18,6 +19,7 @@ import com.atenea.service.worksession.WorkSessionOperationBlockedException;
 import com.atenea.service.worksession.WorkSessionProjectNotFoundException;
 import com.atenea.service.worksession.WorkSessionAlreadyRunningException;
 import com.atenea.service.worksession.WorkSessionCloseBlockedException;
+import com.atenea.service.worksession.SessionDeliverableNotFoundException;
 import com.atenea.service.worksession.WorkSessionPublishConflictException;
 import com.atenea.service.worksession.WorkSessionTurnExecutionFailedException;
 import java.util.List;
@@ -70,6 +72,22 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(AgentRunNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleAgentRunNotFound(AgentRunNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(SessionDeliverableNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleSessionDeliverableNotFound(
+            SessionDeliverableNotFoundException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(ApprovedPriceEstimateNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleApprovedPriceEstimateNotFound(
+            ApprovedPriceEstimateNotFoundException exception
+    ) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }

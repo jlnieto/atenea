@@ -55,10 +55,12 @@ The target happy path is this:
    - pushes the branch with upstream
    - creates the pull request
 10. Atenea persists the resulting delivery metadata on the session
-11. later, Atenea detects that the pull request was merged
-12. operator closes the session
-13. Atenea reconciles the repository back to the base branch and updates local state
-14. the session ends fully closed and the project is ready for another session
+11. operator generates session deliverables when the work is commercially ready
+12. operator reviews and approves the deliverables that should become the reporting and billing baseline
+13. later, Atenea detects that the pull request was merged
+14. operator closes the session
+15. Atenea reconciles the repository back to the base branch and updates local state
+16. the session ends fully closed and the project is ready for another session
 
 ## Scope of the current strong product slice
 
@@ -75,6 +77,8 @@ Included in this slice:
   - push
   - pull request creation
 - pull request status visibility
+- session deliverables generation and approval
+- structured pricing output for internal billing use
 - post-merge repository reconciliation
 - project ready for next session
 
@@ -103,14 +107,24 @@ Included in this slice:
 - aggregated reads:
   - session view
   - conversation view
+- conversation-oriented action responses for:
+  - resolve
+  - create turn
+  - publish
+  - pull-request sync
+  - close
 - session-first project overview
 - stale running-run reconciliation
+- generated and approved session deliverables
+- deliverable history by type
+- approved pricing read model by session
+- approved pricing read model by project
 
 ### Still to consolidate
 
-- explicit frontend decision that `conversation-view` is the primary session contract
 - stronger end-to-end validation of publish, merge and reconciled close happy path
 - clearer operator flows for blocked close recovery
+- global commercial workflow above project-level approved pricing
 - tighter documentation governance so architecture docs do not lag behind code
 
 ## Canonical frontend contract
@@ -132,6 +146,81 @@ Supporting reads may still exist:
 
 But they should be treated as support or lower-level reads, not as the primary product surface.
 
+Primary session actions should also prefer conversation-oriented responses when exposed to the operator UI, so the main flow does not need to recompose state from lower-level payloads after publish, pull-request sync or close.
+
+The current canonical frontend flow should therefore anchor on:
+
+- `POST /api/projects/{projectId}/sessions/resolve/conversation-view`
+- `GET /api/sessions/{sessionId}/conversation-view`
+- `POST /api/sessions/{sessionId}/turns/conversation-view`
+- `POST /api/sessions/{sessionId}/publish/conversation-view`
+- `POST /api/sessions/{sessionId}/pull-request/sync/conversation-view`
+- `POST /api/sessions/{sessionId}/close/conversation-view`
+
+Supporting endpoints may still exist for lower-level reads, compatibility or operational tooling, but they should not be treated as the primary frontend contract.
+
+## Deliverables and billing contract
+
+The operator/frontend contract now also includes a deliverables workflow attached to the same `WorkSession`.
+
+Implemented session-level contract:
+
+- `GET /api/sessions/{sessionId}/deliverables`
+- `GET /api/sessions/{sessionId}/deliverables/approved`
+- `GET /api/sessions/{sessionId}/deliverables/types/{type}/history`
+- `GET /api/sessions/{sessionId}/deliverables/{deliverableId}`
+- `POST /api/sessions/{sessionId}/deliverables/{type}/generate`
+- `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/approve`
+
+Implemented pricing-specific contract:
+
+- `GET /api/sessions/{sessionId}/deliverables/price-estimate/approved-summary`
+- `GET /api/projects/{projectId}/approved-price-estimates`
+
+Current operator meaning:
+
+- deliverables are generated explicitly, not implicitly during `close`
+- versions remain auditable
+- approval marks the commercial baseline to use
+- `PRICE_ESTIMATE` is available both as Markdown and as structured JSON-backed summaries
+- project-level pricing reads are already usable as a pre-billing consultation surface
+
+## Close-block guidance
+
+When `close` cannot complete, the operator-facing contract should rely on these fields from the session payload or the `409` API error:
+
+- `closeBlockedState`
+- `closeBlockedReason`
+- `closeBlockedAction`
+- `closeRetryable`
+
+The intended operator meaning is:
+
+- `closeBlockedState`
+  - stable machine-readable category for UI decisions and diagnostics
+- `closeBlockedReason`
+  - short explanation of why close stopped
+- `closeBlockedAction`
+  - next operator step to unblock or recover
+- `closeRetryable`
+  - whether retrying close is expected after resolving the reported condition
+
+Typical close-block categories currently exposed by the backend include:
+
+- `running_run`
+- `dirty_worktree`
+- `pull_request_not_merged`
+- `unexpected_branch`
+- `unpublished_commits`
+- `repo_unavailable`
+
+Operator/frontend UX should therefore:
+
+- surface `closeBlockedReason` prominently
+- show `closeBlockedAction` as the immediate next step
+- distinguish retryable blocks from manual recovery cases
+- keep the session visible as `CLOSING` until reconciliation can finish
+
 ## Required service and product consolidation
 
 The next major work should likely focus on:
@@ -140,6 +229,10 @@ The next major work should likely focus on:
 - stronger test coverage for publish, merge detection, remote branch cleanup and reconciled close
 - explicit operator guidance for close-block states and manual recovery paths
 - continued documentation alignment around the session-first model
+- decide the next commercial surface above project pricing baselines:
+  - global billing queue
+  - invoice/reference persistence
+  - billed vs not-yet-billed state
 
 ## Invariants for the target flow
 

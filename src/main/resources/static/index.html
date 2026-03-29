@@ -43,6 +43,20 @@
             <p>The main product flow is project → WorkSession → conversation.</p>
         </section>
 
+        <section id="project-pricing-panel" class="panel hidden">
+            <div class="panel__header">
+                <div>
+                    <p class="eyebrow">Approved Pricing</p>
+                    <h3>Project billing baseline</h3>
+                </div>
+            </div>
+            <p class="panel__copy">Approved price estimates across this project's sessions.</p>
+            <div id="project-pricing-empty" class="deliverables-empty hidden">
+                No approved pricing has been recorded for this project yet.
+            </div>
+            <div id="project-pricing-list" class="project-pricing-list"></div>
+        </section>
+
         <section id="session-bootstrap" class="panel hidden">
             <div class="panel__header">
                 <div>
@@ -152,6 +166,34 @@
                 <div id="session-closed-cta" class="session-closed-cta hidden">
                     <p class="panel__copy">This WorkSession is closed. Start a new session for this project without leaving the screen.</p>
                     <button id="start-new-session" class="secondary-button" type="button">Start new session</button>
+                </div>
+            </section>
+
+            <section class="panel deliverables-panel">
+                <div class="panel__header">
+                    <div>
+                        <p class="eyebrow">Deliverables</p>
+                        <h3>Session evidence</h3>
+                    </div>
+                    <button id="refresh-deliverables" class="secondary-button" type="button">Refresh deliverables</button>
+                </div>
+                <p class="panel__copy">
+                    Generate, review, and approve the internal deliverables used to justify work and pricing for this session.
+                </p>
+                <div id="deliverables-error" class="inline-error hidden"></div>
+                <div id="deliverables-summary" class="deliverables-summary"></div>
+                <div class="deliverables-actions">
+                    <button id="generate-work-ticket" class="secondary-button" type="button">Generate ticket</button>
+                    <button id="generate-work-breakdown" class="secondary-button" type="button">Generate breakdown</button>
+                    <button id="generate-price-estimate" class="secondary-button" type="button">Generate pricing</button>
+                </div>
+                <div class="deliverables-layout">
+                    <div id="deliverables-list" class="deliverables-list"></div>
+                    <article id="deliverable-detail" class="deliverable-detail">
+                        <div class="deliverable-detail__empty">
+                            Select a deliverable version to inspect its full content and approval status.
+                        </div>
+                    </article>
                 </div>
             </section>
         </section>

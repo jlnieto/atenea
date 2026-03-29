@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.atenea.api.ApiExceptionHandler;
 import com.atenea.api.project.ProjectOverviewResponse.WorkSessionOverviewResponse;
 import com.atenea.service.project.ProjectBootstrapService;
+import com.atenea.service.project.ProjectApprovedPriceEstimateService;
 import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
 import com.atenea.service.project.ProjectOverviewService;
 import com.atenea.service.project.ProjectService;
@@ -38,6 +39,9 @@ class ProjectControllerTest {
     @Mock
     private ProjectOverviewService projectOverviewService;
 
+    @Mock
+    private ProjectApprovedPriceEstimateService projectApprovedPriceEstimateService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -45,7 +49,8 @@ class ProjectControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new ProjectController(
                         projectService,
                         projectBootstrapService,
-                        projectOverviewService))
+                        projectOverviewService,
+                        projectApprovedPriceEstimateService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -196,6 +201,37 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].workSession.runInProgress").value(true))
                 .andExpect(jsonPath("$[0].workSession.closeBlockedState").doesNotExist())
                 .andExpect(jsonPath("$[0].legacy").doesNotExist());
+    }
+
+    @Test
+    void getProjectApprovedPriceEstimatesReturnsApprovedPricingAcrossSessions() throws Exception {
+        when(projectApprovedPriceEstimateService.getApprovedPriceEstimates(1L))
+                .thenReturn(new ProjectApprovedPriceEstimatesResponse(
+                        1L,
+                        java.util.List.of(new com.atenea.api.worksession.ApprovedPriceEstimateSummaryResponse(
+                                50L,
+                                82L,
+                                2,
+                                "Price estimate v2",
+                                "EUR",
+                                43.0,
+                                6.5,
+                                240.0,
+                                279.0,
+                                320.0,
+                                "competitive",
+                                "low",
+                                "medium",
+                                java.util.List.of("Solo trabajo de la session"),
+                                java.util.List.of("No incluye soporte posterior"),
+                                Instant.parse("2026-03-22T10:20:00Z"),
+                                Instant.parse("2026-03-22T10:20:00Z")))));
+
+        mockMvc.perform(get("/api/projects/1/approved-price-estimates"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projectId").value(1))
+                .andExpect(jsonPath("$.approvedPriceEstimates[0].sessionId").value(50))
+                .andExpect(jsonPath("$.approvedPriceEstimates[0].recommendedPrice").value(279.0));
     }
 
 }

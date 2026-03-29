@@ -11,6 +11,7 @@ import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.worksession.SessionTurnService;
+import com.atenea.service.worksession.WorkSessionService;
 import com.atenea.service.worksession.WorkSessionAlreadyRunningException;
 import com.atenea.service.worksession.WorkSessionNotOpenException;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
@@ -34,11 +35,14 @@ class SessionTurnControllerTest {
     @Mock
     private SessionTurnService sessionTurnService;
 
+    @Mock
+    private WorkSessionService workSessionService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new SessionTurnController(sessionTurnService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new SessionTurnController(sessionTurnService, workSessionService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -151,6 +155,90 @@ class SessionTurnControllerTest {
                 .andExpect(jsonPath("$.run.id").value(55))
                 .andExpect(jsonPath("$.run.externalTurnId").value("turn-1"))
                 .andExpect(jsonPath("$.codexTurn.actor").value("CODEX"));
+    }
+
+    @Test
+    void createTurnConversationViewReturnsCanonicalConversationView() throws Exception {
+        when(sessionTurnService.createTurn(12L, new CreateSessionTurnRequest("Inspect the project")))
+                .thenReturn(new CreateSessionTurnResponse(
+                        new SessionTurnResponse(
+                                101L,
+                                SessionTurnActor.OPERATOR,
+                                "Inspect the project",
+                                Instant.parse("2026-03-25T10:05:00Z")),
+                        new AgentRunResponse(
+                                55L,
+                                12L,
+                                101L,
+                                null,
+                                AgentRunStatus.RUNNING,
+                                "/workspace/repos/internal/atenea",
+                                "turn-1",
+                                Instant.parse("2026-03-25T10:05:01Z"),
+                                null,
+                                null,
+                                null,
+                                Instant.parse("2026-03-25T10:05:01Z")),
+                        null));
+        when(workSessionService.getSessionConversationView(12L)).thenReturn(new WorkSessionConversationViewResponse(
+                new WorkSessionViewResponse(
+                        new WorkSessionResponse(
+                                12L,
+                                7L,
+                                WorkSessionStatus.OPEN,
+                                WorkSessionOperationalState.RUNNING,
+                                "Inspect status",
+                                "main",
+                                "atenea/session-12",
+                                "thread-1",
+                                null,
+                                null,
+                                null,
+                                Instant.parse("2026-03-25T10:00:00Z"),
+                                Instant.parse("2026-03-25T10:05:01Z"),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                false,
+                                new SessionOperationalSnapshotResponse(true, true, "atenea/session-12", true)),
+                        true,
+                        false,
+                        new WorkSessionViewLatestRunResponse(
+                                55L,
+                                AgentRunStatus.RUNNING,
+                                101L,
+                                null,
+                                "turn-1",
+                                Instant.parse("2026-03-25T10:05:01Z"),
+                                null,
+                                null,
+                                null),
+                        null,
+                        null),
+                List.of(
+                        new SessionTurnResponse(
+                                101L,
+                                SessionTurnActor.OPERATOR,
+                                "Inspect the project",
+                                Instant.parse("2026-03-25T10:05:00Z"))),
+                20,
+                false));
+
+        mockMvc.perform(post("/api/sessions/12/turns/conversation-view")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "Inspect the project"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.view.view.session.id").value(12))
+                .andExpect(jsonPath("$.view.view.runInProgress").value(true))
+                .andExpect(jsonPath("$.view.recentTurns[0].actor").value("OPERATOR"))
+                .andExpect(jsonPath("$.view.recentTurnLimit").value(20))
+                .andExpect(jsonPath("$.view.historyTruncated").value(false));
     }
 
     @Test

@@ -6,6 +6,7 @@ Documentos clave:
 - `docs/atenea-v1-architecture.md`: dirección arquitectónica general
 - `docs/worksession-phase1.md`: estado real actual del core `WorkSession`
 - `docs/worksession-target-flow.md`: objetivo canónico de producto para el siguiente gran bloque `WorkSession`
+- `docs/session-deliverables-design.md`: diseño objetivo para deliverables persistidos, reporting y pricing de sesión
 - `docs/task-branch-workflow.md`: referencia histórica del flujo retirado `Task` / `TaskExecution`
 - `AGENTS.md`: guía local canónica para agentes/Codex
 
@@ -117,11 +118,23 @@ Actualmente ya implementa:
 - `GET /api/sessions/{sessionId}/view`
 - `GET /api/sessions/{sessionId}/conversation-view`
 - `POST /api/sessions/{sessionId}/turns`
+- `POST /api/sessions/{sessionId}/turns/conversation-view`
 - `GET /api/sessions/{sessionId}/turns`
 - `GET /api/sessions/{sessionId}/runs`
 - `POST /api/sessions/{sessionId}/publish`
+- `POST /api/sessions/{sessionId}/publish/conversation-view`
 - `POST /api/sessions/{sessionId}/pull-request/sync`
+- `POST /api/sessions/{sessionId}/pull-request/sync/conversation-view`
 - `POST /api/sessions/{sessionId}/close`
+- `POST /api/sessions/{sessionId}/close/conversation-view`
+- `GET /api/sessions/{sessionId}/deliverables`
+- `GET /api/sessions/{sessionId}/deliverables/approved`
+- `GET /api/sessions/{sessionId}/deliverables/price-estimate/approved-summary`
+- `GET /api/sessions/{sessionId}/deliverables/types/{type}/history`
+- `GET /api/sessions/{sessionId}/deliverables/{deliverableId}`
+- `POST /api/sessions/{sessionId}/deliverables/{type}/generate`
+- `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/approve`
+- `GET /api/projects/{projectId}/approved-price-estimates`
 - `workspaceBranch` real por sesión con convención `atenea/session-{id}`
 - fallback de `baseBranch`:
   - `request.baseBranch`
@@ -154,6 +167,19 @@ Actualmente ya implementa:
   - `closeBlockedReason`
   - `closeBlockedAction`
   - `closeRetryable`
+- subsistema de deliverables de sesión:
+  - `WORK_TICKET`
+  - `WORK_BREAKDOWN`
+  - `PRICE_ESTIMATE`
+- versionado por tipo de deliverable
+- generación explícita por deliverable con snapshot persistido
+- aprobación manual de una versión concreta
+- `SUPERSEDED` para versiones anteriores regeneradas o reemplazadas
+- `PRICE_ESTIMATE` con:
+  - Markdown revisable
+  - `contentJson` estructurado y validado
+  - lectura rápida de pricing aprobado por sesión
+  - lectura agregada de pricing aprobado por proyecto
 - vistas agregadas para frontend:
   - `WorkSessionViewResponse`
   - `WorkSessionConversationViewResponse`
@@ -172,6 +198,38 @@ Actualmente ya implementa:
   - o la más reciente por `lastActivityAt`
 
 El overview ya no expone bloques legacy.
+
+## Deliverables y pricing
+
+El backend ya no está sólo en fase de read model para deliverables. Hoy implementa:
+
+- generación explícita de:
+  - `WORK_TICKET`
+  - `WORK_BREAKDOWN`
+  - `PRICE_ESTIMATE`
+- snapshot persistido de evidencia de sesión por versión
+- historial por tipo:
+  - `GET /api/sessions/{sessionId}/deliverables/types/{type}/history`
+- aprobación manual:
+  - `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/approve`
+- latest approved set:
+  - `GET /api/sessions/{sessionId}/deliverables/approved`
+
+`PRICE_ESTIMATE` tiene además una capa estructurada para explotación operativa:
+
+- `contentJson` validado en backend
+- resumen aprobado por sesión:
+  - `GET /api/sessions/{sessionId}/deliverables/price-estimate/approved-summary`
+- lista de pricing aprobado por proyecto:
+  - `GET /api/projects/{projectId}/approved-price-estimates`
+
+La UI web ya consume estas superficies para:
+
+- generar deliverables
+- revisar versiones
+- aprobar versiones
+- consultar baseline de pricing aprobado de la sesión
+- consultar pricing aprobado histórico del proyecto
 
 ## Notas operativas
 

@@ -78,6 +78,11 @@ public class WorkSessionController {
         return workSessionService.closeSession(sessionId);
     }
 
+    @PostMapping("/api/sessions/{sessionId}/close/conversation-view")
+    public CloseWorkSessionConversationViewResponse closeSessionConversationView(@PathVariable Long sessionId) {
+        return workSessionService.closeSessionConversationView(sessionId);
+    }
+
     @PostMapping("/api/sessions/{sessionId}/publish")
     public WorkSessionResponse publishSession(
             @PathVariable Long sessionId,
@@ -86,8 +91,21 @@ public class WorkSessionController {
         return workSessionGitHubService.publishSession(sessionId, request);
     }
 
+    @PostMapping("/api/sessions/{sessionId}/publish/conversation-view")
+    public PublishWorkSessionConversationViewResponse publishSessionConversationView(
+            @PathVariable Long sessionId,
+            @Valid @RequestBody(required = false) PublishWorkSessionRequest request
+    ) {
+        return workSessionGitHubService.publishSessionConversationView(sessionId, request);
+    }
+
     @PostMapping("/api/sessions/{sessionId}/pull-request/sync")
     public WorkSessionResponse syncPullRequest(@PathVariable Long sessionId) {
         return workSessionGitHubService.syncPullRequest(sessionId);
+    }
+
+    @PostMapping("/api/sessions/{sessionId}/pull-request/sync/conversation-view")
+    public SyncWorkSessionPullRequestConversationViewResponse syncPullRequestConversationView(@PathVariable Long sessionId) {
+        return workSessionGitHubService.syncPullRequestConversationView(sessionId);
     }
 }
