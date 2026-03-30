@@ -101,6 +101,9 @@ public class WorkSessionGitHubService {
                 workspaceBranch,
                 session.getBaseBranch()
         );
+        if (pullRequest == null) {
+            throw new GitHubIntegrationException("GitHub did not return pull request metadata after publish");
+        }
 
         Instant now = Instant.now();
         session.setWorkspaceBranch(workspaceBranch);
@@ -134,6 +137,9 @@ public class WorkSessionGitHubService {
         GitHubRepositoryRef repository = resolveRepository(session, repoPath);
         long pullRequestNumber = gitHubClient.extractPullRequestNumber(session.getPullRequestUrl());
         GitHubPullRequest pullRequest = gitHubClient.getPullRequest(repository, pullRequestNumber);
+        if (pullRequest == null) {
+            throw new GitHubIntegrationException("GitHub did not return pull request metadata during synchronization");
+        }
 
         Instant now = Instant.now();
         session.setPullRequestUrl(pullRequest.htmlUrl());

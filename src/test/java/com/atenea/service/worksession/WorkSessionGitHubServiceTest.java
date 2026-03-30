@@ -14,6 +14,7 @@ import com.atenea.api.worksession.SessionOperationalSnapshotResponse;
 import com.atenea.api.worksession.WorkSessionOperationalState;
 import com.atenea.api.worksession.WorkSessionResponse;
 import com.atenea.github.GitHubClient;
+import com.atenea.github.GitHubIntegrationException;
 import com.atenea.github.GitHubPullRequest;
 import com.atenea.github.GitHubRepositoryRef;
 import com.atenea.mobilepush.MobilePushDispatchService;
@@ -204,6 +205,36 @@ class WorkSessionGitHubServiceTest {
         WorkSessionResponse response = workSessionGitHubService.syncPullRequest(12L);
 
         assertEquals(WorkSessionPullRequestStatus.MERGED, response.pullRequestStatus());
+    }
+
+    @Test
+    void publishSessionRejectsNullPullRequestMetadataFromGitHub() throws Exception {
+        Path repoPath = createRepoPath();
+        WorkSessionEntity session = buildSession(repoPath);
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(sessionBranchService.prepareWorkspaceBranch(session, repoPath.toString())).thenReturn("atenea/session-12");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(false);
+        when(gitRepositoryService.hasReviewableChanges(repoPath.toString(), "main", "atenea/session-12")).thenReturn(true);
+        when(gitRepositoryService.getWorkingTreeStatusEntries(repoPath.toString()))
+                .thenReturn(List.of("M  mobile/src/screens/ConversationScreen.tsx"));
+        when(gitRepositoryService.getOriginRemoteUrl(repoPath.toString())).thenReturn("git@github.com:acme/atenea.git");
+        when(gitHubClient.resolveRepository("git@github.com:acme/atenea.git"))
+                .thenReturn(new GitHubRepositoryRef("acme", "atenea"));
+        when(gitHubClient.createPullRequest(
+                eq(new GitHubRepositoryRef("acme", "atenea")),
+                anyString(),
+                anyString(),
+                eq("atenea/session-12"),
+                eq("main")
+        )).thenReturn(null);
+
+        GitHubIntegrationException exception = assertThrows(
+                GitHubIntegrationException.class,
+                () -> workSessionGitHubService.publishSession(12L, new PublishWorkSessionRequest(null)));
+
+        assertEquals("GitHub did not return pull request metadata after publish", exception.getMessage());
     }
 
     private Path createRepoPath() throws Exception {

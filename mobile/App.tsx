@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppShell, AppTabId } from './src/AppShell';
+import { PendingActionCenterProvider } from './src/actions/PendingActionCenter';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { NotificationCenterProvider, useNotificationCenter } from './src/notifications/NotificationCenter';
 import { LoginScreen } from './src/screens/LoginScreen';
@@ -11,9 +12,11 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <NotificationCenterProvider>
-          <RootApp />
-        </NotificationCenterProvider>
+        <PendingActionCenterProvider>
+          <NotificationCenterProvider>
+            <RootApp />
+          </NotificationCenterProvider>
+        </PendingActionCenterProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

@@ -12,6 +12,8 @@ import {
   MobileSessionSummary,
   SessionDeliverablesView,
 } from '../api/types';
+import { usePendingActionCenter } from '../actions/PendingActionCenter';
+import { confirmAction } from '../actions/confirm';
 import { ActionButton } from '../components/ActionButton';
 import { Card } from '../components/Card';
 import { LoadingBlock } from '../components/LoadingBlock';
@@ -45,6 +47,7 @@ export function SessionScreen({
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [mutationStatus, setMutationStatus] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const { pendingAction: recoveredPendingAction, startPendingAction, clearPendingAction } = usePendingActionCenter();
   const pendingApprovalIds = useMemo(
     () =>
       new Set(
@@ -59,8 +62,15 @@ export function SessionScreen({
     await Promise.all([reload(), reloadDeliverables()]);
   };
 
-  const runAction = async (label: string, action: () => Promise<void>) => {
+  const runAction = async (label: string, recoveryHint: string, action: () => Promise<void>) => {
     setPendingAction(label);
+    startPendingAction({
+      label,
+      scope: 'session',
+      sessionId: sessionId ?? undefined,
+      startedAt: new Date().toISOString(),
+      recoveryHint,
+    });
     setMutationError(null);
     setMutationStatus(null);
     try {
@@ -70,6 +80,7 @@ export function SessionScreen({
     } catch (actionError) {
       setMutationError(actionError instanceof Error ? actionError.message : `${label} failed`);
     } finally {
+      clearPendingAction();
       setPendingAction(null);
     }
   };
@@ -89,6 +100,24 @@ export function SessionScreen({
   const session = data.conversation.view.session;
   const actions = data.actions;
   const pending = (name: string) => pendingAction === name;
+  const sessionPendingRecovery = recoveredPendingAction?.scope === 'session'
+    && recoveredPendingAction.sessionId === sessionId
+    ? recoveredPendingAction
+    : null;
+
+  const runConfirmedAction = async (
+    label: string,
+    confirmationTitle: string,
+    confirmationMessage: string,
+    recoveryHint: string,
+    action: () => Promise<void>
+  ) => {
+    const confirmed = await confirmAction(confirmationTitle, confirmationMessage);
+    if (!confirmed) {
+      return;
+    }
+    await runAction(label, recoveryHint, action);
+  };
 
   return (
     <View style={styles.container}>
@@ -110,10 +139,22 @@ export function SessionScreen({
             <Text style={styles.meta}>Blocked: {session.closeBlockedState}</Text>
             {session.closeBlockedReason ? <Text style={styles.meta}>{session.closeBlockedReason}</Text> : null}
             {session.closeBlockedAction ? <Text style={styles.action}>Next: {session.closeBlockedAction}</Text> : null}
+            <Text style={styles.meta}>
+              Retry guidance: {session.closeRetryable ? 'safe to retry after unblocking' : 'manual recovery required first'}
+            </Text>
           </>
         ) : null}
         {data.conversation.view.lastAgentResponse ? (
           <Text style={styles.response}>{data.conversation.view.lastAgentResponse}</Text>
+        ) : null}
+        {sessionPendingRecovery ? (
+          <View style={styles.recoveryBox}>
+            <Text style={styles.recoveryTitle}>Recovered pending action: {sessionPendingRecovery.label}</Text>
+            <Text style={styles.meta}>{sessionPendingRecovery.recoveryHint}</Text>
+            <Pressable onPress={clearPendingAction}>
+              <Text style={styles.link}>Dismiss recovery notice</Text>
+            </Pressable>
+          </View>
         ) : null}
       </Card>
 
@@ -134,28 +175,49 @@ export function SessionScreen({
             label={pending('Sync PR') ? 'Syncing...' : 'Sync PR'}
             disabled={!actions.canSyncPullRequest || pendingAction != null}
             onPress={() =>
-              void runAction('Sync PR', async () => {
+              void runAction(
+                'Sync PR',
+                'Refresh the session before retrying pull request synchronization so you do not act on stale PR state.',
+                async () => {
                 await postJson(`/api/mobile/sessions/${sessionId}/pull-request/sync`);
-              })
+                }
+              )
             }
           />
           <ActionButton
             label={pending('Close') ? 'Closing...' : 'Close'}
             disabled={!actions.canClose || pendingAction != null}
             onPress={() =>
-              void runAction('Close', async () => {
-                await postJson(`/api/mobile/sessions/${sessionId}/close`);
-              })
+              void runConfirmedAction(
+                'Close',
+                'Close session?',
+                'Use this only after the pull request is merged and the repository is ready to reconcile back to the base branch.',
+                'Refresh the session before retrying close so the latest merge and repository state are visible.',
+                async () => {
+                  await postJson(`/api/mobile/sessions/${sessionId}/close`);
+                }
+              )
             }
           />
         </View>
+        {pendingAction ? (
+          <Text style={styles.pendingNotice}>
+            Action in progress: {pendingAction}. If connectivity drops, reopen the session and refresh state before retrying.
+          </Text>
+        ) : null}
         <ActionButton
           label={pending('Publish') ? 'Publishing...' : 'Publish'}
           disabled={!actions.canPublish || pendingAction != null}
           onPress={() =>
-            void runAction('Publish', async () => {
-              await postJson(`/api/mobile/sessions/${sessionId}/publish`);
-            })
+            void runConfirmedAction(
+              'Publish',
+              'Publish to pull request?',
+              'This will stage the current workspace changes, create a commit, push the session branch and open or update the delivery flow in GitHub.',
+              'Refresh the session before retrying publish so you can confirm whether the branch or pull request was already updated.',
+              async () => {
+                await postJson(`/api/mobile/sessions/${sessionId}/publish`);
+              }
+            )
           }
         />
         {mutationStatus ? <Text style={styles.success}>{mutationStatus}</Text> : null}
@@ -169,9 +231,15 @@ export function SessionScreen({
               label={pending(`Generate ${type}`) ? 'Generating...' : type}
               disabled={!actions.canGenerateDeliverables || pendingAction != null}
               onPress={() =>
-                void runAction(`Generate ${type}`, async () => {
-                  await postJson(`/api/mobile/sessions/${sessionId}/deliverables/${type}/generate`);
-                })
+                void runConfirmedAction(
+                  `Generate ${type}`,
+                  'Generate deliverable?',
+                  `This will ask Atenea to generate the latest ${type} draft for this session.`,
+                  `Refresh deliverables before retrying ${type} generation so you do not create confusion about the latest draft.`,
+                  async () => {
+                    await postJson(`/api/mobile/sessions/${sessionId}/deliverables/${type}/generate`);
+                  }
+                )
               }
             />
           ))}
@@ -191,9 +259,15 @@ export function SessionScreen({
             {pendingApprovalIds.has(deliverable.id) && actions.canApproveDeliverables ? (
               <Pressable
                 onPress={() =>
-                  void runAction(`Approve ${deliverable.id}`, async () => {
-                    await postJson(`/api/mobile/sessions/${sessionId}/deliverables/${deliverable.id}/approve`);
-                  })
+                  void runConfirmedAction(
+                    `Approve ${deliverable.id}`,
+                    'Approve deliverable?',
+                    `This will mark ${deliverable.type} v${deliverable.version} as the approved baseline for the session.`,
+                    'Refresh deliverables before retrying approval so you can confirm which version is currently the latest approved baseline.',
+                    async () => {
+                      await postJson(`/api/mobile/sessions/${sessionId}/deliverables/${deliverable.id}/approve`);
+                    }
+                  )
                 }
               >
                 <Text style={styles.link}>Approve deliverable</Text>
@@ -232,13 +306,19 @@ export function SessionScreen({
                   label={pending('Mark billed') ? 'Marking...' : 'Mark billed'}
                   disabled={!billingReference.trim() || pendingAction != null}
                   onPress={() =>
-                    void runAction('Mark billed', async () => {
-                      await postJson<unknown, MarkPriceEstimateBilledRequest>(
-                        `/api/mobile/sessions/${sessionId}/deliverables/${data.approvedPriceEstimate!.deliverableId}/billing/mark-billed`,
-                        { billingReference: billingReference.trim() }
-                      );
-                      setBillingReference('');
-                    })
+                    void runConfirmedAction(
+                      'Mark billed',
+                      'Mark approved price estimate as billed?',
+                      `This will persist billing reference ${billingReference.trim()} for the approved pricing baseline.`,
+                      'Refresh the session before retrying billing so you can verify whether the approved price estimate is already marked billed.',
+                      async () => {
+                        await postJson<unknown, MarkPriceEstimateBilledRequest>(
+                          `/api/mobile/sessions/${sessionId}/deliverables/${data.approvedPriceEstimate!.deliverableId}/billing/mark-billed`,
+                          { billingReference: billingReference.trim() }
+                        );
+                        setBillingReference('');
+                      }
+                    )
                   }
                 />
               </>
@@ -275,6 +355,19 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: '#2d2218',
   },
+  recoveryBox: {
+    gap: 6,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#fff7eb',
+    borderWidth: 1,
+    borderColor: '#e6d2b2',
+  },
+  recoveryTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#7b4f1d',
+  },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -303,6 +396,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#9f3024',
+  },
+  pendingNotice: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: '#6a4d1f',
   },
   turn: {
     gap: 6,

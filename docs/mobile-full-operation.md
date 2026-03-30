@@ -125,6 +125,8 @@ Current client status:
 - Expo push-token registration baseline
 - backend Expo push dispatch baseline for key operator events
 - in-app notification capture and recent notification rail
+- local persistence of the recent notification rail across app restarts per operator session
+- persisted pending-action recovery hints for interrupted mobile mutations
 - push-open routing into `Session` and `Billing`
 - TypeScript validation passing for the current client code
 
@@ -137,7 +139,9 @@ Current client intent:
 Current client limitations:
 
 - no persisted notification inbox or richer background action UX yet
-- no full mutation workflows yet
+- no dedicated confirmation UX coverage for every sensitive action yet
+- no interruption/resume UX around long-running mutations yet
+- no true resume semantics for interrupted long-running mutations yet
 - Expo Go cannot exercise real remote push delivery and therefore runs with push initialization disabled
 
 ## Principles
@@ -179,24 +183,25 @@ Concretely, a mobile operator should be able to:
 
 The main gaps are not in core orchestration, but in operator experience and transport behavior.
 
-The main missing pieces are:
+The main missing pieces are now concentrated in hardening and operator safety:
 
-- a mobile-first operator shell
-- a compact cross-session inbox surface
-- state/event delivery suitable for mobile
+- dedicated confirmation UX for sensitive actions
 - stronger support for asynchronous operator workflows
-- explicit mobile safety patterns for sensitive actions
+- richer notification behavior outside currently open screens
+- richer persisted notification workflow beyond the local recent rail
+- recovery UX that remembers the last in-flight action and routes the operator back to the right context
+- interruption-safe action handling and resumability
+- more explicit mobile safety patterns for sensitive actions
 
 In practical terms, the repository still needs:
 
-- mobile-oriented aggregated reads
-- event or notification delivery for state changes
-- compact list/read models for inbox-style navigation
 - UX-oriented action flows for:
   - publish
   - close
   - deliverable approval
   - billing actions
+- richer notification inbox and background follow-up behavior
+- stronger transport and retry semantics around mobile connectivity changes
 
 ## Recommended backend direction
 
@@ -339,8 +344,15 @@ Current repository status:
   - bearer-token consumption from the native client
   - secure local session persistence
   - Expo push-token registration against protected backend endpoints
+  - explicit confirmations now present for:
+    - resolve session
+    - publish
+    - close
+    - generate deliverable
+    - approve deliverable
+    - mark billed
 - still open:
-  - dedicated confirmation UX
+  - fuller confirmation UX coverage and polish
   - stronger retry and interruption handling
   - clearer read-only presentation for closed-session historical conversation
 

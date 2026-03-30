@@ -95,9 +95,10 @@ That stack expects a newer Node runtime than the one currently installed in this
 
 ## Scope of this phase
 
-This phase does not yet implement:
+This phase does not yet fully implement:
 
-- richer action UX with dedicated confirmations and retries
+- dedicated confirmation UX for every sensitive action
+- stronger interruption and retry UX across long-running operator flows
 
 This phase already implements:
 
@@ -110,6 +111,8 @@ This phase already implements:
 - backend push dispatch baseline for key operator events
 - foreground notification capture in the native shell
 - in-app recent notification rail with manual dismiss
+- secure local persistence of recent notifications per operator session
+- persisted pending-action recovery hints across app restarts
 - internal routing from push open into `Session` or `Billing`
 - direct SSE consumption for the session conversation workspace
 - conversation UI split from session control UI

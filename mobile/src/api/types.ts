@@ -130,6 +130,7 @@ export type WorkSessionConversationView = {
       closeBlockedState: string | null;
       closeBlockedReason: string | null;
       closeBlockedAction: string | null;
+      closeRetryable: boolean;
     };
     runInProgress: boolean;
     canCreateTurn: boolean;

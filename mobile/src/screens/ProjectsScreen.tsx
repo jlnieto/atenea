@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { usePendingActionCenter } from '../actions/PendingActionCenter';
+import { confirmAction } from '../actions/confirm';
 import { fetchJson, postJson } from '../api/client';
 import {
   MobileProjectOverview,
@@ -21,6 +23,7 @@ export function ProjectsScreen({ onOpenSession }: { onOpenSession: (sessionId: n
   const [drafts, setDrafts] = useState<Record<number, ResolveSessionRequest>>({});
   const [pendingProjectId, setPendingProjectId] = useState<number | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const { pendingAction, startPendingAction, clearPendingAction } = usePendingActionCenter();
 
   const updateDraft = (projectId: number, patch: ResolveSessionRequest) => {
     setDrafts((current) => ({
@@ -33,11 +36,26 @@ export function ProjectsScreen({ onOpenSession }: { onOpenSession: (sessionId: n
   };
 
   const resolveSession = async (projectId: number) => {
+    const draft = drafts[projectId];
+    const confirmed = await confirmAction(
+      'Resolve session?',
+      `This will open or reuse the active WorkSession for this project${draft?.baseBranch ? ` on base branch ${draft.baseBranch.trim()}` : ''}.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
     setPendingProjectId(projectId);
     setMutationError(null);
+    startPendingAction({
+      label: 'Resolve session',
+      scope: 'project',
+      projectId,
+      startedAt: new Date().toISOString(),
+      recoveryHint: 'Refresh Projects before retrying resolve so you can confirm whether the project already has an active session.',
+    });
 
     try {
-      const draft = drafts[projectId];
       const response = await postJson<ResolveSessionResponse, ResolveSessionRequest>(
         `/api/mobile/projects/${projectId}/sessions/resolve`,
         draft
@@ -47,9 +65,12 @@ export function ProjectsScreen({ onOpenSession }: { onOpenSession: (sessionId: n
     } catch (resolveError) {
       setMutationError(resolveError instanceof Error ? resolveError.message : 'Resolve failed');
     } finally {
+      clearPendingAction();
       setPendingProjectId(null);
     }
   };
+
+  const projectPendingRecovery = pendingAction?.scope === 'project' ? pendingAction : null;
 
   if (loading) {
     return <LoadingBlock label="Loading projects..." />;
@@ -67,6 +88,20 @@ export function ProjectsScreen({ onOpenSession }: { onOpenSession: (sessionId: n
           <Text style={styles.link}>Refresh</Text>
         </Pressable>
       </View>
+      {pendingProjectId != null ? (
+        <Text style={styles.pendingNotice}>
+          Resolving session for project {pendingProjectId}. If the app is interrupted, refresh Projects before trying again.
+        </Text>
+      ) : null}
+      {projectPendingRecovery ? (
+        <View style={styles.recoveryCard}>
+          <Text style={styles.recoveryTitle}>Recovered pending action: {projectPendingRecovery.label}</Text>
+          <Text style={styles.meta}>{projectPendingRecovery.recoveryHint}</Text>
+          <Pressable onPress={clearPendingAction}>
+            <Text style={styles.link}>Dismiss recovery notice</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {data?.map((project) => (
         <Card
           key={project.projectId}
@@ -163,5 +198,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#9f3024',
+  },
+  pendingNotice: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: '#6a4d1f',
+  },
+  recoveryCard: {
+    gap: 6,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#fff7eb',
+    borderWidth: 1,
+    borderColor: '#e6d2b2',
+  },
+  recoveryTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#7b4f1d',
   },
 });

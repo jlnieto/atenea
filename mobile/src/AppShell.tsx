@@ -6,14 +6,16 @@ import {
   Text,
   View,
 } from 'react-native';
+import { usePendingActionCenter } from './actions/PendingActionCenter';
 import { useNotificationCenter } from './notifications/NotificationCenter';
 import { BillingScreen } from './screens/BillingScreen';
 import { ConversationScreen } from './screens/ConversationScreen';
 import { InboxScreen } from './screens/InboxScreen';
+import { NotificationsScreen } from './screens/NotificationsScreen';
 import { ProjectsScreen } from './screens/ProjectsScreen';
 import { SessionScreen } from './screens/SessionScreen';
 
-export type AppTabId = 'inbox' | 'projects' | 'session' | 'conversation' | 'billing';
+export type AppTabId = 'inbox' | 'notifications' | 'projects' | 'session' | 'conversation' | 'billing';
 
 type AppShellProps = {
   activeTab: AppTabId;
@@ -26,6 +28,7 @@ type AppShellProps = {
 
 const TABS: Array<{ id: AppTabId; label: string }> = [
   { id: 'inbox', label: 'Inbox' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'projects', label: 'Projects' },
   { id: 'session', label: 'Session' },
   { id: 'billing', label: 'Billing' },
@@ -39,7 +42,8 @@ export function AppShell({
   operatorName,
   onLogout,
 }: AppShellProps) {
-  const { notifications, routeToNotification, dismissNotification } = useNotificationCenter();
+  const { notifications, routeToNotification, dismissNotification, clearNotifications } = useNotificationCenter();
+  const { pendingAction, clearPendingAction } = usePendingActionCenter();
 
   const sessionHint = useMemo(() => {
     if (selectedSessionId == null) {
@@ -57,8 +61,8 @@ export function AppShell({
     onChangeTab('conversation');
   };
 
-  const openNotification = (index: number) => {
-    const notification = notifications[index];
+  const openNotificationById = (notificationId: string) => {
+    const notification = notifications.find((entry) => entry.id === notificationId);
     if (!notification) {
       return;
     }
@@ -71,6 +75,23 @@ export function AppShell({
       return;
     }
     onChangeTab('inbox');
+  };
+
+  const openNotification = (index: number) => {
+    const notification = notifications[index];
+    if (!notification) {
+      return;
+    }
+    openNotificationById(notification.id);
+  };
+
+  const recoverPendingAction = () => {
+    if (pendingAction?.sessionId != null) {
+      onSelectSession(pendingAction.sessionId);
+      onChangeTab('session');
+      return;
+    }
+    onChangeTab('projects');
   };
 
   return (
@@ -114,11 +135,35 @@ export function AppShell({
             <Text style={styles.operatorValue}>Operator: {operatorName}</Text>
           </View>
 
+          {pendingAction ? (
+            <View style={styles.pendingActionCard}>
+              <Text style={styles.pendingActionLabel}>Pending recovery</Text>
+              <Text style={styles.pendingActionTitle}>{pendingAction.label}</Text>
+              <Text style={styles.pendingActionMeta}>
+                Started {new Date(pendingAction.startedAt).toLocaleString()}
+              </Text>
+              <Text style={styles.pendingActionHint}>{pendingAction.recoveryHint}</Text>
+              <View style={styles.pendingActionButtons}>
+                <Pressable onPress={recoverPendingAction} style={styles.pendingPrimaryButton}>
+                  <Text style={styles.pendingPrimaryLabel}>Open context</Text>
+                </Pressable>
+                <Pressable onPress={clearPendingAction} style={styles.pendingSecondaryButton}>
+                  <Text style={styles.pendingSecondaryLabel}>Dismiss</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
           {notifications.length > 0 ? (
             <View style={styles.notificationRail}>
               <View style={styles.notificationRailHeader}>
                 <Text style={styles.notificationRailTitle}>Recent notifications</Text>
-                <Text style={styles.notificationRailMeta}>{notifications.length} cached</Text>
+                <View style={styles.notificationRailActions}>
+                  <Text style={styles.notificationRailMeta}>{notifications.length} stored</Text>
+                  <Pressable onPress={clearNotifications} style={styles.notificationRailClear}>
+                    <Text style={styles.notificationRailClearLabel}>Clear</Text>
+                  </Pressable>
+                </View>
               </View>
               {notifications.slice(0, 3).map((notification, index) => (
                 <View key={notification.id} style={styles.notificationCard}>
@@ -149,6 +194,9 @@ export function AppShell({
         <ScrollView contentContainerStyle={styles.content}>
           {activeTab === 'inbox' ? (
             <InboxScreen onOpenSession={openSession} />
+          ) : null}
+          {activeTab === 'notifications' ? (
+            <NotificationsScreen onOpenNotification={openNotificationById} />
           ) : null}
           {activeTab === 'projects' ? (
             <ProjectsScreen onOpenSession={openSession} />
@@ -259,6 +307,64 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#705b42',
   },
+  pendingActionCard: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#fff5e5',
+    borderWidth: 1,
+    borderColor: '#e8cfa5',
+    gap: 8,
+  },
+  pendingActionLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#8a5b1f',
+    textTransform: 'uppercase',
+    letterSpacing: 0.9,
+  },
+  pendingActionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#2e2117',
+  },
+  pendingActionMeta: {
+    fontSize: 12,
+    color: '#8a6c4a',
+  },
+  pendingActionHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#5d4a35',
+  },
+  pendingActionButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  pendingPrimaryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: '#2e6a57',
+  },
+  pendingPrimaryLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#f6f1e8',
+  },
+  pendingSecondaryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: '#f0e1c8',
+  },
+  pendingSecondaryLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#6d4f2f',
+  },
   notificationRail: {
     marginHorizontal: 16,
     marginTop: 14,
@@ -274,6 +380,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  notificationRailActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   notificationRailTitle: {
     fontSize: 13,
     fontWeight: '800',
@@ -284,6 +395,17 @@ const styles = StyleSheet.create({
   notificationRailMeta: {
     fontSize: 12,
     color: '#8a6c4a',
+  },
+  notificationRailClear: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#f0e1c8',
+  },
+  notificationRailClearLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#6d4f2f',
   },
   notificationCard: {
     gap: 8,
