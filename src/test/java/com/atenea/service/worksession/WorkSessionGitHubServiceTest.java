@@ -1,10 +1,12 @@
 package com.atenea.service.worksession;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.atenea.api.worksession.PublishWorkSessionRequest;
@@ -14,9 +16,11 @@ import com.atenea.api.worksession.WorkSessionResponse;
 import com.atenea.github.GitHubClient;
 import com.atenea.github.GitHubPullRequest;
 import com.atenea.github.GitHubRepositoryRef;
+import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
@@ -26,12 +30,14 @@ import com.atenea.service.git.GitRepositoryService;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,6 +56,9 @@ class WorkSessionGitHubServiceTest {
     private AgentRunRepository agentRunRepository;
 
     @Mock
+    private SessionTurnRepository sessionTurnRepository;
+
+    @Mock
     private SessionBranchService sessionBranchService;
 
     @Mock
@@ -57,6 +66,9 @@ class WorkSessionGitHubServiceTest {
 
     @Mock
     private GitHubClient gitHubClient;
+
+    @Mock
+    private MobilePushDispatchService mobilePushDispatchService;
 
     @TempDir
     Path tempDir;
@@ -71,10 +83,12 @@ class WorkSessionGitHubServiceTest {
                 workSessionService,
                 agentRunReconciliationService,
                 agentRunRepository,
+                sessionTurnRepository,
                 new WorkspaceRepositoryPathValidator(workspaceRoot.toString()),
                 sessionBranchService,
                 gitRepositoryService,
-                gitHubClient
+                gitHubClient,
+                mobilePushDispatchService
         );
     }
 
@@ -88,14 +102,17 @@ class WorkSessionGitHubServiceTest {
         when(sessionBranchService.prepareWorkspaceBranch(session, repoPath.toString())).thenReturn("atenea/session-12");
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(false);
         when(gitRepositoryService.hasReviewableChanges(repoPath.toString(), "main", "atenea/session-12")).thenReturn(true);
+        when(gitRepositoryService.getWorkingTreeStatusEntries(repoPath.toString()))
+                .thenReturn(List.of("M  mobile/src/screens/ConversationScreen.tsx"));
         when(gitRepositoryService.getOriginRemoteUrl(repoPath.toString())).thenReturn("git@github.com:acme/atenea.git");
         when(gitRepositoryService.getHeadCommitSha(repoPath.toString())).thenReturn("abc123");
         when(gitHubClient.resolveRepository("git@github.com:acme/atenea.git"))
                 .thenReturn(new GitHubRepositoryRef("acme", "atenea"));
+        ArgumentCaptor<String> prBodyCaptor = ArgumentCaptor.forClass(String.class);
         when(gitHubClient.createPullRequest(
                 eq(new GitHubRepositoryRef("acme", "atenea")),
-                eq("Inspect project state"),
-                anyString(),
+                eq("Ship current work"),
+                prBodyCaptor.capture(),
                 eq("atenea/session-12"),
                 eq("main")
         )).thenReturn(new GitHubPullRequest(42L, "https://github.com/acme/atenea/pull/42", "open", false));
@@ -109,6 +126,11 @@ class WorkSessionGitHubServiceTest {
         assertEquals("https://github.com/acme/atenea/pull/42", response.pullRequestUrl());
         assertEquals(WorkSessionPullRequestStatus.OPEN, response.pullRequestStatus());
         assertEquals("abc123", response.finalCommitSha());
+        assertTrue(prBodyCaptor.getValue().contains("## Summary"));
+        assertTrue(prBodyCaptor.getValue().contains("## What changed"));
+        assertTrue(prBodyCaptor.getValue().contains("## How to review"));
+        assertTrue(prBodyCaptor.getValue().contains("## Notes"));
+        assertTrue(prBodyCaptor.getValue().contains("## Atenea metadata"));
     }
 
     @Test
@@ -129,6 +151,37 @@ class WorkSessionGitHubServiceTest {
         assertEquals(
                 "WorkSession '12' cannot be published: publish requires reviewable changes in the workspace branch",
                 exception.getMessage());
+    }
+
+    @Test
+    void publishSessionGeneratesCommitMessageWhenClientDoesNotProvideOne() throws Exception {
+        Path repoPath = createRepoPath();
+        WorkSessionEntity session = buildSession(repoPath);
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(sessionBranchService.prepareWorkspaceBranch(session, repoPath.toString())).thenReturn("atenea/session-12");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(false);
+        when(gitRepositoryService.hasReviewableChanges(repoPath.toString(), "main", "atenea/session-12")).thenReturn(true);
+        when(gitRepositoryService.getWorkingTreeStatusEntries(repoPath.toString()))
+                .thenReturn(List.of("A  index.html", "A  styles.css"));
+        when(gitRepositoryService.getOriginRemoteUrl(repoPath.toString())).thenReturn("git@github.com:acme/atenea.git");
+        when(gitRepositoryService.getHeadCommitSha(repoPath.toString())).thenReturn("abc123");
+        when(gitHubClient.resolveRepository("git@github.com:acme/atenea.git"))
+                .thenReturn(new GitHubRepositoryRef("acme", "atenea"));
+        when(gitHubClient.createPullRequest(
+                eq(new GitHubRepositoryRef("acme", "atenea")),
+                eq("Add landing page assets"),
+                anyString(),
+                eq("atenea/session-12"),
+                eq("main")
+        )).thenReturn(new GitHubPullRequest(42L, "https://github.com/acme/atenea/pull/42", "open", false));
+        when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionService.toResponse(any(WorkSessionEntity.class))).thenAnswer(invocation -> responseFor(invocation.getArgument(0)));
+
+        workSessionGitHubService.publishSession(12L, new PublishWorkSessionRequest(null));
+
+        verify(gitRepositoryService).commit(repoPath.toString(), "Add landing page assets");
     }
 
     @Test

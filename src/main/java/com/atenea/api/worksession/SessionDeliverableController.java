@@ -3,10 +3,12 @@ package com.atenea.api.worksession;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
 import com.atenea.service.worksession.SessionDeliverableService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -70,5 +72,14 @@ public class SessionDeliverableController {
             @PathVariable Long deliverableId
     ) {
         return sessionDeliverableService.approveDeliverable(sessionId, deliverableId);
+    }
+
+    @PostMapping("/api/sessions/{sessionId}/deliverables/{deliverableId}/billing/mark-billed")
+    public SessionDeliverableResponse markPriceEstimateBilled(
+            @PathVariable Long sessionId,
+            @PathVariable Long deliverableId,
+            @Valid @RequestBody MarkPriceEstimateBilledRequest request
+    ) {
+        return sessionDeliverableService.markPriceEstimateBilled(sessionId, deliverableId, request);
     }
 }

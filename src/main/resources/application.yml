@@ -42,3 +42,17 @@ atenea:
     token-expires-at: ${ATENEA_GITHUB_TOKEN_EXPIRES_AT:}
     connect-timeout: ${ATENEA_GITHUB_CONNECT_TIMEOUT:10s}
     read-timeout: ${ATENEA_GITHUB_READ_TIMEOUT:20s}
+  auth:
+    jwt:
+      issuer: ${ATENEA_AUTH_JWT_ISSUER:atenea-mobile}
+      secret: ${ATENEA_AUTH_JWT_SECRET:atenea-dev-mobile-secret-change-me-2026}
+      access-token-ttl: ${ATENEA_AUTH_ACCESS_TOKEN_TTL:15m}
+      refresh-token-ttl: ${ATENEA_AUTH_REFRESH_TOKEN_TTL:30d}
+    bootstrap:
+      enabled: ${ATENEA_AUTH_BOOTSTRAP_ENABLED:false}
+      email: ${ATENEA_AUTH_BOOTSTRAP_EMAIL:}
+      password: ${ATENEA_AUTH_BOOTSTRAP_PASSWORD:}
+      display-name: ${ATENEA_AUTH_BOOTSTRAP_DISPLAY_NAME:Default Operator}
+  mobile-push:
+    enabled: ${ATENEA_MOBILE_PUSH_ENABLED:false}
+    expo-push-url: ${ATENEA_MOBILE_PUSH_EXPO_PUSH_URL:https://exp.host/--/api/v2/push/send}

@@ -109,7 +109,10 @@ Implemented endpoints:
 - `GET /api/sessions/{sessionId}/deliverables/{deliverableId}`
 - `POST /api/sessions/{sessionId}/deliverables/{type}/generate`
 - `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/approve`
+- `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/billing/mark-billed`
 - `GET /api/projects/{projectId}/approved-price-estimates`
+- `GET /api/billing/queue`
+- `GET /api/billing/queue/summary`
 
 Implemented response families:
 
@@ -378,6 +381,61 @@ The following invariants are currently enforced:
 - each session owns a real `workspaceBranch`
 - session branch preparation is allowed only from `baseBranch` with clean worktree or from the session `workspaceBranch` itself
 - session branch preparation is blocked from any third branch
+
+When the repository is already on the session `workspaceBranch`, branch preparation is allowed even with a dirty worktree so publish can stage and commit real session work.
+
+## Current pricing baseline and billing state
+
+Approved `PRICE_ESTIMATE` deliverables already persist a minimal commercial tracking state.
+
+Persisted billing fields on the approved pricing baseline include:
+
+- `billingStatus`
+- `billingReference`
+- `billedAt`
+
+Current implemented semantics:
+
+- approving a `PRICE_ESTIMATE` establishes the current pricing baseline and sets `billingStatus = READY`
+- `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/billing/mark-billed`
+  - requires an approved `PRICE_ESTIMATE`
+  - persists `billingStatus = BILLED`
+  - persists `billingReference`
+  - persists `billedAt`
+- `GET /api/sessions/{sessionId}/deliverables/price-estimate/approved-summary`
+  - returns the approved pricing baseline plus billing state
+- `GET /api/projects/{projectId}/approved-price-estimates`
+  - returns approved pricing baselines across the project's sessions including billing state
+
+## Current global billing queue
+
+The backend now exposes a first global commercial read model on top of approved pricing baselines.
+
+Implemented endpoints:
+
+- `GET /api/billing/queue`
+- `GET /api/billing/queue/summary`
+
+Current behavior:
+
+- the queue is built from approved `PRICE_ESTIMATE` deliverables only
+- each queue item represents the current approved pricing baseline of one session
+- queue filters support:
+  - `billingStatus`
+  - `projectId`
+  - `sessionId`
+  - `q`
+- `q` matches project name, session title or `billingReference`
+- queue items expose:
+  - project and session identity
+  - pricing range and recommendation
+  - publish / pull-request delivery context
+  - billing state
+- summary exposes:
+  - `readyCount`
+  - `billedCount`
+  - totals by currency for `READY`
+  - totals by currency for `BILLED`
 - turns require the session to be `OPEN`
 - turns require an operational repository
 - closing requires the session to be `OPEN`

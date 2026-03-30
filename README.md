@@ -6,6 +6,8 @@ Documentos clave:
 - `docs/atenea-v1-architecture.md`: dirección arquitectónica general
 - `docs/worksession-phase1.md`: estado real actual del core `WorkSession`
 - `docs/worksession-target-flow.md`: objetivo canónico de producto para el siguiente gran bloque `WorkSession`
+- `docs/mobile-full-operation.md`: objetivo estratégico, alcance y fases para operar Atenea end-to-end desde móvil
+- `mobile/README.md`: estado y guía operativa de la app nativa React Native
 - `docs/session-deliverables-design.md`: diseño objetivo para deliverables persistidos, reporting y pricing de sesión
 - `docs/task-branch-workflow.md`: referencia histórica del flujo retirado `Task` / `TaskExecution`
 - `AGENTS.md`: guía local canónica para agentes/Codex
@@ -20,6 +22,28 @@ Workflow de desarrollo para este VPS:
 ./scripts/logs-db.sh
 ./scripts/logs-codex.sh
 ./scripts/down.sh
+```
+
+Cliente móvil nativo:
+
+```bash
+cd mobile
+EXPO_PUBLIC_ATENEA_API_BASE_URL=http://localhost:8081 npm start
+```
+
+Bootstrap local de operador móvil:
+
+```bash
+ATENEA_AUTH_BOOTSTRAP_ENABLED=true \
+ATENEA_AUTH_BOOTSTRAP_EMAIL=operator@atenea.local \
+ATENEA_AUTH_BOOTSTRAP_PASSWORD=secret-pass \
+./scripts/run.sh
+```
+
+Habilitar envío real de push móvil a Expo:
+
+```bash
+ATENEA_MOBILE_PUSH_ENABLED=true ./scripts/run.sh
 ```
 
 ## Qué hace cada script
@@ -74,6 +98,27 @@ El producto backend hoy está centrado únicamente en `WorkSession`:
 
 El flujo legacy `Task` / `TaskExecution` ya fue retirado del backend y de la base de datos.
 
+El repo incluye además una app nativa base en `mobile/`:
+
+- React Native sobre Expo
+- shell operatorio móvil para Inbox, Projects, Session y Billing
+- workspace de conversación separado con UX tipo terminal para operar Codex desde móvil
+- login nativo contra `/api/mobile/auth/*`
+- persistencia local de sesión con `expo-secure-store`
+- captura en app de notificaciones push recientes y routing interno por payload
+- SSE consumido directamente en la vista de conversación, con polling como fallback
+- acciones móviles ya cableadas para:
+  - resolve session
+  - turn
+  - publish
+  - pull-request sync
+  - close
+  - generate deliverable
+  - approve deliverable
+  - mark billed
+- conectada contra la superficie `/api/mobile/*`
+- pensada como base de full mobile operation ya operable, con gaps aún abiertos en confirmaciones, notificaciones y hardening
+
 ## Superficies API actuales
 
 Hoy el backend expone dos superficies funcionales reales:
@@ -83,6 +128,18 @@ Hoy el backend expone dos superficies funcionales reales:
   - bootstrap de proyectos canónicos
   - `defaultBaseBranch` por proyecto
   - overview agregado del estado de proyecto
+- `Billing`
+  - cola comercial global sobre `PRICE_ESTIMATE` aprobado
+  - filtros por estado, proyecto, sesión y búsqueda textual
+  - summary de pendientes y facturados por moneda
+- `Mobile`
+  - auth móvil de operador con login, refresh, logout y `me`
+  - registro de dispositivos push Expo por operador
+  - dispatch backend de notificaciones Expo para eventos clave de operación móvil
+  - overview móvil de proyectos
+  - inbox móvil de atención operativa
+  - summary y feed de eventos por sesión
+  - aliases móviles para operación completa de sesión, deliverables y billing
 - `WorkSession` / `SessionTurn` / `AgentRun`
   - apertura o resolución de sesión
   - branch de trabajo propio por sesión
@@ -134,7 +191,41 @@ Actualmente ya implementa:
 - `GET /api/sessions/{sessionId}/deliverables/{deliverableId}`
 - `POST /api/sessions/{sessionId}/deliverables/{type}/generate`
 - `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/approve`
+- `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/billing/mark-billed`
 - `GET /api/projects/{projectId}/approved-price-estimates`
+- `GET /api/billing/queue`
+- `GET /api/billing/queue/summary`
+- `GET /api/mobile/projects/overview`
+- `POST /api/mobile/auth/login`
+- `POST /api/mobile/auth/refresh`
+- `POST /api/mobile/auth/logout`
+- `GET /api/mobile/auth/me`
+- `POST /api/mobile/notifications/push-token`
+- `POST /api/mobile/notifications/push-token/unregister`
+- `GET /api/mobile/notifications/push-devices`
+- dispatch backend a Expo para:
+  - `RUN_SUCCEEDED`
+  - `CLOSE_BLOCKED`
+  - `PULL_REQUEST_MERGED`
+  - `BILLING_READY`
+- `GET /api/mobile/inbox`
+- `GET /api/mobile/inbox/stream`
+- `GET /api/mobile/sessions/{sessionId}/summary`
+- `GET /api/mobile/sessions/{sessionId}/events`
+- `GET /api/mobile/sessions/{sessionId}/events/stream`
+- `POST /api/mobile/projects/{projectId}/sessions/resolve`
+- `GET /api/mobile/sessions/{sessionId}/conversation`
+- `POST /api/mobile/sessions/{sessionId}/turns`
+- `POST /api/mobile/sessions/{sessionId}/publish`
+- `POST /api/mobile/sessions/{sessionId}/pull-request/sync`
+- `POST /api/mobile/sessions/{sessionId}/close`
+- `GET /api/mobile/sessions/{sessionId}/deliverables`
+- `GET /api/mobile/sessions/{sessionId}/deliverables/approved`
+- `POST /api/mobile/sessions/{sessionId}/deliverables/{type}/generate`
+- `POST /api/mobile/sessions/{sessionId}/deliverables/{deliverableId}/approve`
+- `POST /api/mobile/sessions/{sessionId}/deliverables/{deliverableId}/billing/mark-billed`
+- `GET /api/mobile/billing/queue`
+- `GET /api/mobile/billing/queue/summary`
 - `workspaceBranch` real por sesión con convención `atenea/session-{id}`
 - fallback de `baseBranch`:
   - `request.baseBranch`
@@ -180,9 +271,15 @@ Actualmente ya implementa:
   - `contentJson` estructurado y validado
   - lectura rápida de pricing aprobado por sesión
   - lectura agregada de pricing aprobado por proyecto
+  - estado comercial persistido:
+    - `READY`
+    - `BILLED`
+  - `billingReference` y `billedAt` sobre la baseline aprobada
 - vistas agregadas para frontend:
   - `WorkSessionViewResponse`
   - `WorkSessionConversationViewResponse`
+  - contrato primario recomendado para operador/frontend:
+    - `WorkSessionConversationViewResponse`
 - snapshot descriptivo de repositorio en `WorkSessionResponse` con:
   - `repoValid`
   - `workingTreeClean`
@@ -218,6 +315,7 @@ El backend ya no está sólo en fase de read model para deliverables. Hoy implem
 `PRICE_ESTIMATE` tiene además una capa estructurada para explotación operativa:
 
 - `contentJson` validado en backend
+- `billingStatus`, `billingReference` y `billedAt` persistidos sobre la versión aprobada
 - resumen aprobado por sesión:
   - `GET /api/sessions/{sessionId}/deliverables/price-estimate/approved-summary`
 - lista de pricing aprobado por proyecto:

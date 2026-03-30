@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.atenea.api.ApiExceptionHandler;
+import com.atenea.persistence.worksession.SessionDeliverableBillingStatus;
 import com.atenea.persistence.worksession.SessionDeliverableStatus;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
@@ -133,6 +134,9 @@ class SessionDeliverableControllerTest {
                         "medium",
                         List.of("Solo trabajo de esta session"),
                         List.of("No incluye soporte posterior"),
+                        SessionDeliverableBillingStatus.READY,
+                        null,
+                        null,
                         Instant.parse("2026-03-29T09:10:00Z"),
                         Instant.parse("2026-03-29T09:10:00Z")));
 
@@ -140,6 +144,7 @@ class SessionDeliverableControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sessionId").value(12))
                 .andExpect(jsonPath("$.deliverableId").value(82))
+                .andExpect(jsonPath("$.billingStatus").value("READY"))
                 .andExpect(jsonPath("$.recommendedPrice").value(279.0))
                 .andExpect(jsonPath("$.equivalentHours").value(6.5))
                 .andExpect(jsonPath("$.currency").value("EUR"));
@@ -172,6 +177,9 @@ class SessionDeliverableControllerTest {
                 "gpt-5.4",
                 "pricing-v1",
                 false,
+                null,
+                null,
+                null,
                 null,
                 Instant.parse("2026-03-29T08:00:00Z"),
                 Instant.parse("2026-03-29T08:05:00Z")));
@@ -257,6 +265,9 @@ class SessionDeliverableControllerTest {
                         "session-deliverables-work-ticket-v1",
                         false,
                         null,
+                        null,
+                        null,
+                        null,
                         Instant.parse("2026-03-29T09:00:00Z"),
                         Instant.parse("2026-03-29T09:01:00Z")));
 
@@ -288,6 +299,9 @@ class SessionDeliverableControllerTest {
                         "session-deliverables-work-breakdown-v1",
                         false,
                         null,
+                        null,
+                        null,
+                        null,
                         Instant.parse("2026-03-29T09:05:00Z"),
                         Instant.parse("2026-03-29T09:06:00Z")));
 
@@ -317,6 +331,9 @@ class SessionDeliverableControllerTest {
                         "codex-app-server",
                         "session-deliverables-price-estimate-v2",
                         false,
+                        null,
+                        null,
+                        null,
                         null,
                         Instant.parse("2026-03-29T09:07:00Z"),
                         Instant.parse("2026-03-29T09:08:00Z")));
@@ -348,6 +365,9 @@ class SessionDeliverableControllerTest {
                 "session-deliverables-price-estimate-v2",
                 true,
                 Instant.parse("2026-03-29T09:15:00Z"),
+                SessionDeliverableBillingStatus.READY,
+                null,
+                null,
                 Instant.parse("2026-03-29T09:07:00Z"),
                 Instant.parse("2026-03-29T09:15:00Z")));
 
@@ -355,6 +375,45 @@ class SessionDeliverableControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(84))
                 .andExpect(jsonPath("$.approved").value(true))
+                .andExpect(jsonPath("$.billingStatus").value("READY"))
                 .andExpect(jsonPath("$.approvedAt").isNotEmpty());
+    }
+
+    @Test
+    void markPriceEstimateBilledPersistsBillingReference() throws Exception {
+        when(sessionDeliverableService.markPriceEstimateBilled(12L, 84L, new MarkPriceEstimateBilledRequest("INV-2026-001")))
+                .thenReturn(new SessionDeliverableResponse(
+                        84L,
+                        12L,
+                        SessionDeliverableType.PRICE_ESTIMATE,
+                        SessionDeliverableStatus.SUCCEEDED,
+                        1,
+                        "Price estimate v1",
+                        "# Price Estimate",
+                        "{\"currency\":\"EUR\",\"recommendedPrice\":279.0}",
+                        "{\"pricingPolicy\":{\"baseHourlyRate\":43.0}}",
+                        "Generated from persisted session evidence snapshot",
+                        null,
+                        "codex-app-server",
+                        "session-deliverables-price-estimate-v2",
+                        true,
+                        Instant.parse("2026-03-29T09:15:00Z"),
+                        SessionDeliverableBillingStatus.BILLED,
+                        "INV-2026-001",
+                        Instant.parse("2026-03-29T10:00:00Z"),
+                        Instant.parse("2026-03-29T09:07:00Z"),
+                        Instant.parse("2026-03-29T10:00:00Z")));
+
+        mockMvc.perform(post("/api/sessions/12/deliverables/84/billing/mark-billed")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "billingReference": "INV-2026-001"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.billingStatus").value("BILLED"))
+                .andExpect(jsonPath("$.billingReference").value("INV-2026-001"))
+                .andExpect(jsonPath("$.billedAt").isNotEmpty());
     }
 }

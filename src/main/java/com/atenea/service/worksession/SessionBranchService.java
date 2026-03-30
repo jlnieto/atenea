@@ -19,14 +19,14 @@ public class SessionBranchService {
 
         try {
             String currentBranch = gitRepositoryService.getCurrentBranch(repoPath);
+            if (workspaceBranch.equals(currentBranch)) {
+                return workspaceBranch;
+            }
+
             if (!gitRepositoryService.isWorkingTreeClean(repoPath)) {
                 throw new WorkSessionOperationBlockedException(
                         "Repository '%s' is not clean; cannot prepare WorkSession '%s'"
                                 .formatted(repoPath, session.getId()));
-            }
-
-            if (workspaceBranch.equals(currentBranch)) {
-                return workspaceBranch;
             }
 
             if (!session.getBaseBranch().equals(currentBranch)) {

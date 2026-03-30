@@ -14,6 +14,7 @@ import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
 import com.atenea.service.project.ProjectOverviewService;
 import com.atenea.service.project.ProjectService;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
+import com.atenea.persistence.worksession.SessionDeliverableBillingStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -224,6 +225,9 @@ class ProjectControllerTest {
                                 "medium",
                                 java.util.List.of("Solo trabajo de la session"),
                                 java.util.List.of("No incluye soporte posterior"),
+                                SessionDeliverableBillingStatus.READY,
+                                null,
+                                null,
                                 Instant.parse("2026-03-22T10:20:00Z"),
                                 Instant.parse("2026-03-22T10:20:00Z")))));
 
@@ -231,6 +235,7 @@ class ProjectControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.projectId").value(1))
                 .andExpect(jsonPath("$.approvedPriceEstimates[0].sessionId").value(50))
+                .andExpect(jsonPath("$.approvedPriceEstimates[0].billingStatus").value("READY"))
                 .andExpect(jsonPath("$.approvedPriceEstimates[0].recommendedPrice").value(279.0));
     }
 

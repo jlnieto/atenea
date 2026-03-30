@@ -10,6 +10,11 @@ It distinguishes clearly between:
 - what gaps are still open
 - what the next recommended block of work is
 
+This document should be read together with:
+
+- `docs/worksession-target-flow.md`
+- `docs/mobile-full-operation.md`
+
 ## Current Version State
 
 Current formal version markers in the repository:
@@ -189,6 +194,71 @@ Implemented:
   - approve
   - inspect approved pricing baselines
 
+### Block 7. Mobile backend surface and native operator shell baseline
+
+Implemented:
+
+- mobile backend aggregate reads:
+  - `GET /api/mobile/projects/overview`
+  - `GET /api/mobile/inbox`
+  - `GET /api/mobile/sessions/{sessionId}/summary`
+  - `GET /api/mobile/sessions/{sessionId}/events`
+- mobile backend action aliases for:
+  - resolve session
+  - conversation read
+  - create turn
+  - publish
+  - pull request sync
+  - close
+  - deliverables
+  - billing queue
+- SSE baseline for:
+  - `GET /api/mobile/inbox/stream`
+  - `GET /api/mobile/sessions/{sessionId}/events/stream`
+- native client bootstrap in `mobile/`
+- React Native operator shell for:
+  - Inbox
+  - Projects
+  - Session
+  - Billing
+- dedicated conversation workspace for session operation
+- TypeScript-valid mobile API client against `/api/mobile/*`
+- native write flows already wired for:
+  - resolve session
+  - turn
+  - publish
+  - pull request sync
+  - close
+  - generate deliverable
+  - approve deliverable
+  - mark billed
+- periodic refresh and session event feed in the native client
+- direct SSE consumption in the conversation workspace with polling fallback
+- mobile auth baseline:
+  - `POST /api/mobile/auth/login`
+  - `POST /api/mobile/auth/refresh`
+  - `POST /api/mobile/auth/logout`
+  - `GET /api/mobile/auth/me`
+  - JWT access token + persisted refresh token rotation
+  - native login screen in `mobile/`
+  - secure local session persistence with `expo-secure-store`
+- Expo notifications registration baseline:
+  - `POST /api/mobile/notifications/push-token`
+  - `POST /api/mobile/notifications/push-token/unregister`
+  - `GET /api/mobile/notifications/push-devices`
+  - native Expo push-token acquisition and backend registration
+  - backend Expo dispatch baseline for:
+    - `RUN_SUCCEEDED`
+    - `CLOSE_BLOCKED`
+    - `PULL_REQUEST_MERGED`
+    - `BILLING_READY`
+  - push deduplication log in persistence
+  - delivery disabled by default behind `ATENEA_MOBILE_PUSH_ENABLED`
+  - in-app notification capture and recent notification rail
+  - push-open routing into `Session` and `Billing`
+  - Expo Go protection:
+    - push initialization disabled intentionally in Expo Go because SDK 53+ does not support remote push there
+
 ### Block 4. Session-first project overview
 
 Implemented:
@@ -212,12 +282,16 @@ What is now settled in the repository:
 - create turn now also has a conversation-oriented action response
 - session deliverables are generated and approved through the operator surface
 - approved pricing can already be consulted by session and by project
+- approved pricing already persists minimal billing state:
+  - `READY`
+  - `BILLED`
+- invoice/reference and billed timestamp can already be persisted on the approved baseline
 
 What still needs consolidation:
 
 - a global billing queue
-- persistence of billing state such as `READY` / `BILLED`
-- invoice references and billed timestamps
+- cross-project billing aggregation and operator workflow
+- richer invoicing workflow beyond per-baseline `billingReference`
 
 ### Gap 2. Documentation and governance are behind the implementation
 
@@ -232,6 +306,14 @@ The code now shows a working session-first delivery workflow in the backend, but
 - frontend alignment
 - operator workflow simplification
 - final product contract around session views and commercial follow-up
+
+### Gap 4. Native mobile production concerns are still pending
+
+The repository now has both a mobile backend surface and a native client baseline, but it still does not settle:
+
+- richer mobile notification UX and routing
+- stronger mutation-oriented UX with confirmations, retries and interruption handling
+- stronger production hardening around secure local credential/token handling
 
 ## Pending real work
 
@@ -249,39 +331,54 @@ The pending real work is instead:
 - consolidate documentation around the true current state
 - define which API surface should drive the next operator or frontend workflows
 - harden the now-implemented session-first repository delivery flow as the primary product contract
+- harden the native mobile client from read shell into full production operator app
 - evolve the approved pricing baseline into a true billing workflow
 
 ## Next recommended phase
 
 The next recommended phase, justified by the current repository, is:
 
-## Session-First Commercial Consolidation
+## Mobile Full Operation
 
 Goals:
 
 - keep documentation aligned with code and tests
-- make `WorkSession` the canonical operator-facing unit of real repository work
-- establish `conversation-view` as the primary operator-facing session contract
-- formalize how frontend and operator UX consume publish, merge and close-block states
-- formalize how approved pricing moves into billing operations
+- preserve `WorkSession` as the canonical operator-facing unit of real repository work
+- carry that same session-first contract into mobile as a first-class operator surface
+- establish the mobile product target as full operation, not just responsive monitoring
+- formalize the backend additions needed for mobile-safe async work, alerts and navigation
 
 Recommended outputs of this phase:
 
-1. documentation aligned with the target flow defined in `docs/worksession-target-flow.md`
-2. stronger end-to-end validation of:
+1. documentation aligned around `docs/mobile-full-operation.md`
+2. mobile-oriented aggregate reads for operator inbox/navigation
+3. stronger support for asynchronous session-state updates suitable for mobile use
+4. full mobile operation flows over:
+   - conversation
    - publish
-   - merge detection
-   - remote branch cleanup
-   - reconciled close
-3. clearer operator guidance for blocked close and manual recovery paths
-4. global billing queue surface built on approved pricing baselines
-5. billing status persistence once the queue exists
+   - pull-request sync
+   - close
+   - deliverables
+   - billing
+5. explicit mobile safety patterns for sensitive actions
+
+Current repository reading after recent changes:
+
+- mobile backend contract baseline: implemented
+- mobile inbox and mobile session event feed: implemented
+- mobile operation aliases for session, deliverables and billing: implemented
+- conversation-first terminal workspace in native client: implemented
+- client-side SSE consumption for session conversation: implemented
+- remaining major mobile gaps:
+  - mobile auth/session hardening
+  - stronger confirmation and retry UX
+  - richer notification/product workflow
 
 ## What remains uncertain
 
 The repository does not yet justify stronger claims than these:
 
-- it does not define the final frontend contract beyond the fact that `WorkSession` is the intended future-centered model
+- it does not yet settle the final notification UX model or audit contract for sensitive mobile actions
 
 Those points should therefore remain explicit decisions, not assumptions.
 
@@ -292,5 +389,6 @@ Current roadmap reading should be:
 - legacy task orchestration: removed from backend runtime
 - `WorkSession` conversational core plus session-first delivery workflow: implemented in backend
 - session deliverables and approved pricing baselines: implemented in backend
-- immediate next major step: commercial consolidation above approved pricing
+- global billing queue baseline: implemented in backend
+- immediate next major step: mobile full operation over the existing session-first backend
 - future planning beyond that: still requires explicit human decisions

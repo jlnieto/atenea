@@ -16,12 +16,14 @@ This document should be used together with:
 - `docs/roadmap.md`
 - `docs/atenea-v1-architecture.md`
 - `docs/worksession-phase1.md`
+- `docs/mobile-full-operation.md`
 
 ## Product direction
 
 The next major Atenea objective is:
 
 - make `WorkSession` the canonical unit of real repository work and the canonical operator/frontend contract
+- make that same contract operable end-to-end from mobile
 
 That means a session is not only:
 
@@ -176,6 +178,9 @@ Implemented pricing-specific contract:
 
 - `GET /api/sessions/{sessionId}/deliverables/price-estimate/approved-summary`
 - `GET /api/projects/{projectId}/approved-price-estimates`
+- `POST /api/sessions/{sessionId}/deliverables/{deliverableId}/billing/mark-billed`
+- `GET /api/billing/queue`
+- `GET /api/billing/queue/summary`
 
 Current operator meaning:
 
@@ -183,7 +188,12 @@ Current operator meaning:
 - versions remain auditable
 - approval marks the commercial baseline to use
 - `PRICE_ESTIMATE` is available both as Markdown and as structured JSON-backed summaries
-- project-level pricing reads are already usable as a pre-billing consultation surface
+- approved pricing now persists minimal commercial state:
+  - `READY`
+  - `BILLED`
+- `billingReference` and `billedAt` are stored once the approved baseline is marked billed
+- project-level pricing reads are already usable as a pre-billing consultation surface and lightweight billing tracking surface
+- a first global billing queue already exists as a cross-project operator read model
 
 ## Close-block guidance
 
@@ -231,8 +241,12 @@ The next major work should likely focus on:
 - continued documentation alignment around the session-first model
 - decide the next commercial surface above project pricing baselines:
   - global billing queue
-  - invoice/reference persistence
-  - billed vs not-yet-billed state
+  - billing aggregation across projects
+  - richer invoicing workflow beyond baseline `billingReference`
+- mobile full operation over the same session-first contract:
+  - mobile inbox/navigation
+  - mobile-safe async updates
+  - mobile operator action flows
 
 ## Invariants for the target flow
 

@@ -66,6 +66,16 @@ public class SessionDeliverableEntity {
     @Column(name = "approved_at")
     private Instant approvedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "billing_status", length = 32)
+    private SessionDeliverableBillingStatus billingStatus;
+
+    @Column(name = "billing_reference", length = 160)
+    private String billingReference;
+
+    @Column(name = "billed_at")
+    private Instant billedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -190,6 +200,30 @@ public class SessionDeliverableEntity {
 
     public void setApprovedAt(Instant approvedAt) {
         this.approvedAt = approvedAt;
+    }
+
+    public SessionDeliverableBillingStatus getBillingStatus() {
+        return billingStatus;
+    }
+
+    public void setBillingStatus(SessionDeliverableBillingStatus billingStatus) {
+        this.billingStatus = billingStatus;
+    }
+
+    public String getBillingReference() {
+        return billingReference;
+    }
+
+    public void setBillingReference(String billingReference) {
+        this.billingReference = billingReference;
+    }
+
+    public Instant getBilledAt() {
+        return billedAt;
+    }
+
+    public void setBilledAt(Instant billedAt) {
+        this.billedAt = billedAt;
     }
 
     public Instant getCreatedAt() {

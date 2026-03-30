@@ -9,6 +9,7 @@ import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.mobilepush.MobilePushDispatchService;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -23,17 +24,20 @@ public class AgentRunService {
     private final AgentRunRepository agentRunRepository;
     private final SessionTurnRepository sessionTurnRepository;
     private final AgentRunProgressService agentRunProgressService;
+    private final MobilePushDispatchService mobilePushDispatchService;
 
     public AgentRunService(
             WorkSessionRepository workSessionRepository,
             AgentRunRepository agentRunRepository,
             SessionTurnRepository sessionTurnRepository,
-            AgentRunProgressService agentRunProgressService
+            AgentRunProgressService agentRunProgressService,
+            MobilePushDispatchService mobilePushDispatchService
     ) {
         this.workSessionRepository = workSessionRepository;
         this.agentRunRepository = agentRunRepository;
         this.sessionTurnRepository = sessionTurnRepository;
         this.agentRunProgressService = agentRunProgressService;
+        this.mobilePushDispatchService = mobilePushDispatchService;
     }
 
     @Transactional
@@ -71,7 +75,9 @@ public class AgentRunService {
         run.setOutputSummary(outputSummary);
         run.setErrorSummary(null);
         run.setResultTurn(resultTurn);
-        return agentRunRepository.save(run);
+        AgentRunEntity savedRun = agentRunRepository.save(run);
+        mobilePushDispatchService.notifyRunSucceeded(savedRun);
+        return savedRun;
     }
 
     @Transactional
@@ -115,7 +121,7 @@ public class AgentRunService {
     }
 
     private AgentRunEntity getRun(Long runId) {
-        return agentRunRepository.findById(runId)
+        return agentRunRepository.findWithSessionById(runId)
                 .orElseThrow(() -> new AgentRunNotFoundException(runId));
     }
 

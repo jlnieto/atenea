@@ -26,6 +26,7 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
@@ -41,6 +42,7 @@ public class WorkSessionService {
 
     private final ProjectRepository projectRepository;
     private final WorkSessionRepository workSessionRepository;
+    private final MobilePushDispatchService mobilePushDispatchService;
     private final WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator;
     private final GitRepositoryService gitRepositoryService;
     private final SessionOperationalSnapshotService sessionOperationalSnapshotService;
@@ -53,6 +55,7 @@ public class WorkSessionService {
     public WorkSessionService(
             ProjectRepository projectRepository,
             WorkSessionRepository workSessionRepository,
+            MobilePushDispatchService mobilePushDispatchService,
             WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator,
             GitRepositoryService gitRepositoryService,
             SessionOperationalSnapshotService sessionOperationalSnapshotService,
@@ -64,6 +67,7 @@ public class WorkSessionService {
     ) {
         this.projectRepository = projectRepository;
         this.workSessionRepository = workSessionRepository;
+        this.mobilePushDispatchService = mobilePushDispatchService;
         this.workspaceRepositoryPathValidator = workspaceRepositoryPathValidator;
         this.gitRepositoryService = gitRepositoryService;
         this.sessionOperationalSnapshotService = sessionOperationalSnapshotService;
@@ -387,20 +391,23 @@ public class WorkSessionService {
 
         boolean localWorkspaceBranchExists = workspaceBranch != null && gitRepositoryService.branchExists(repoPath, workspaceBranch);
         boolean sessionHasPublishedPullRequest = hasPublishedPullRequest(session);
-
-        try {
-            gitRepositoryService.fetchOrigin(repoPath);
-        } catch (GitRepositoryOperationException exception) {
-            blockClose(
-                    session,
-                    "fetch_failed",
-                    "Could not fetch origin: " + exception.getMessage(),
-                    "Verify the repository remote configuration and retry close",
-                    true);
+        boolean remoteChecksAvailable = sessionHasPublishedPullRequest;
+        if (remoteChecksAvailable) {
+            try {
+                gitRepositoryService.fetchOrigin(repoPath);
+            } catch (GitRepositoryOperationException exception) {
+                blockClose(
+                        session,
+                        "fetch_failed",
+                        "Could not fetch origin: " + exception.getMessage(),
+                        "Verify the repository remote configuration and retry close",
+                        true);
+            }
         }
 
-        boolean remoteWorkspaceBranchExists = workspaceBranch != null && gitRepositoryService.remoteBranchExists(repoPath, workspaceBranch);
-
+        boolean remoteWorkspaceBranchExists = remoteChecksAvailable
+                && workspaceBranch != null
+                && gitRepositoryService.remoteBranchExists(repoPath, workspaceBranch);
         if (sessionHasPublishedPullRequest) {
             syncPullRequestStateForClose(session, repoPath);
             if (session.getPullRequestStatus() != WorkSessionPullRequestStatus.MERGED) {
@@ -445,16 +452,18 @@ public class WorkSessionService {
             }
         }
 
-        try {
-            gitRepositoryService.fastForwardCurrentBranchToOrigin(repoPath, baseBranch);
-        } catch (GitRepositoryOperationException exception) {
-            blockClose(
-                    session,
-                    "base_not_aligned",
-                    "Base branch '%s' could not be aligned with origin/%s without a local merge"
-                            .formatted(baseBranch, baseBranch),
-                    "Align the base branch manually without creating a local merge and retry close",
-                    false);
+        if (remoteChecksAvailable) {
+            try {
+                gitRepositoryService.fastForwardCurrentBranchToOrigin(repoPath, baseBranch);
+            } catch (GitRepositoryOperationException exception) {
+                blockClose(
+                        session,
+                        "base_not_aligned",
+                        "Base branch '%s' could not be aligned with origin/%s without a local merge"
+                                .formatted(baseBranch, baseBranch),
+                        "Align the base branch manually without creating a local merge and retry close",
+                        false);
+            }
         }
 
         if (localWorkspaceBranchExists) {
@@ -602,6 +611,7 @@ public class WorkSessionService {
         session.setCloseBlockedAction(action);
         session.setCloseRetryable(retryable);
         session.setUpdatedAt(Instant.now());
+        mobilePushDispatchService.notifyCloseBlocked(session, state, reason);
         throw new WorkSessionCloseBlockedException(
                 "WorkSession '%s' cannot finish closing: %s".formatted(session.getId(), reason),
                 state,

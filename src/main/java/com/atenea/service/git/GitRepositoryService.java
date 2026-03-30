@@ -3,6 +3,7 @@ package com.atenea.service.git;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +16,17 @@ public class GitRepositoryService {
 
     public boolean isWorkingTreeClean(String repoPath) {
         return runAndRead(repoPath, List.of("git", "status", "--porcelain")).isBlank();
+    }
+
+    public List<String> getWorkingTreeStatusEntries(String repoPath) {
+        String output = runAndReadAllowingEmpty(repoPath, List.of("git", "status", "--porcelain"));
+        if (output.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(output.split("\\R"))
+                .map(String::trim)
+                .filter(line -> !line.isBlank())
+                .toList();
     }
 
     public GitRepositoryState inspect(String repoPath, String baseBranch, String taskBranch) {

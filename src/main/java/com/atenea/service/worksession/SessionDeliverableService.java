@@ -1,15 +1,18 @@
 package com.atenea.service.worksession;
 
 import com.atenea.api.worksession.ApprovedPriceEstimateSummaryResponse;
+import com.atenea.api.worksession.MarkPriceEstimateBilledRequest;
 import com.atenea.api.worksession.SessionDeliverableResponse;
 import com.atenea.api.worksession.SessionDeliverableHistoryResponse;
 import com.atenea.api.worksession.SessionDeliverableSummaryResponse;
 import com.atenea.api.worksession.SessionDeliverablesViewResponse;
+import com.atenea.persistence.worksession.SessionDeliverableBillingStatus;
 import com.atenea.persistence.worksession.SessionDeliverableEntity;
 import com.atenea.persistence.worksession.SessionDeliverableRepository;
 import com.atenea.persistence.worksession.SessionDeliverableStatus;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.mobilepush.MobilePushDispatchService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -27,15 +30,18 @@ public class SessionDeliverableService {
     private final SessionDeliverableRepository sessionDeliverableRepository;
     private final WorkSessionRepository workSessionRepository;
     private final ObjectMapper objectMapper;
+    private final MobilePushDispatchService mobilePushDispatchService;
 
     public SessionDeliverableService(
             SessionDeliverableRepository sessionDeliverableRepository,
             WorkSessionRepository workSessionRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            MobilePushDispatchService mobilePushDispatchService
     ) {
         this.sessionDeliverableRepository = sessionDeliverableRepository;
         this.workSessionRepository = workSessionRepository;
         this.objectMapper = objectMapper;
+        this.mobilePushDispatchService = mobilePushDispatchService;
     }
 
     @Transactional(readOnly = true)
@@ -76,7 +82,7 @@ public class SessionDeliverableService {
         );
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = ApprovedPriceEstimateNotFoundException.class)
     public ApprovedPriceEstimateSummaryResponse getApprovedPriceEstimateSummary(Long sessionId) {
         ensureSessionExists(sessionId);
         SessionDeliverableEntity deliverable = sessionDeliverableRepository
@@ -102,6 +108,9 @@ public class SessionDeliverableService {
                 requireText(content, "confidence"),
                 requireStringList(content, "assumptions"),
                 requireStringList(content, "exclusions"),
+                deliverable.getBillingStatus(),
+                deliverable.getBillingReference(),
+                deliverable.getBilledAt(),
                 deliverable.getApprovedAt(),
                 deliverable.getUpdatedAt()
         );
@@ -120,15 +129,56 @@ public class SessionDeliverableService {
 
         supersedeOtherApprovedVersions(sessionId, deliverable);
 
+        boolean billingReadyTransition = false;
         if (!deliverable.isApproved()) {
             Instant now = Instant.now();
             deliverable.setApproved(true);
             deliverable.setApprovedAt(now);
+            if (deliverable.getType() == SessionDeliverableType.PRICE_ESTIMATE
+                    && deliverable.getBillingStatus() == null) {
+                deliverable.setBillingStatus(SessionDeliverableBillingStatus.READY);
+                billingReadyTransition = true;
+            }
             deliverable.setUpdatedAt(now);
             deliverable = sessionDeliverableRepository.save(deliverable);
         }
 
+        if (billingReadyTransition) {
+            mobilePushDispatchService.notifyBillingReady(deliverable);
+        }
+
         return toResponse(deliverable);
+    }
+
+    @Transactional
+    public SessionDeliverableResponse markPriceEstimateBilled(
+            Long sessionId,
+            Long deliverableId,
+            MarkPriceEstimateBilledRequest request
+    ) {
+        ensureSessionExists(sessionId);
+        SessionDeliverableEntity deliverable = sessionDeliverableRepository.findByIdAndSessionId(deliverableId, sessionId)
+                .orElseThrow(() -> new SessionDeliverableNotFoundException(sessionId, deliverableId));
+
+        if (deliverable.getType() != SessionDeliverableType.PRICE_ESTIMATE) {
+            throw new IllegalArgumentException(
+                    "SessionDeliverable '%s' cannot be billed because it is not PRICE_ESTIMATE".formatted(deliverableId));
+        }
+        if (!deliverable.isApproved()) {
+            throw new IllegalArgumentException(
+                    "SessionDeliverable '%s' cannot be billed because it is not approved".formatted(deliverableId));
+        }
+        if (deliverable.getBillingStatus() == SessionDeliverableBillingStatus.BILLED) {
+            throw new IllegalArgumentException(
+                    "SessionDeliverable '%s' is already marked as billed".formatted(deliverableId));
+        }
+
+        Instant now = Instant.now();
+        deliverable.setBillingStatus(SessionDeliverableBillingStatus.BILLED);
+        deliverable.setBillingReference(normalizeRequiredText(request.billingReference()));
+        deliverable.setBilledAt(now);
+        deliverable.setUpdatedAt(now);
+        return toResponse(sessionDeliverableRepository.save(deliverable));
     }
 
     private void supersedeOtherApprovedVersions(Long sessionId, SessionDeliverableEntity approvedDeliverable) {
@@ -235,9 +285,19 @@ public class SessionDeliverableService {
                 deliverable.getPromptVersion(),
                 deliverable.isApproved(),
                 deliverable.getApprovedAt(),
+                deliverable.getBillingStatus(),
+                deliverable.getBillingReference(),
+                deliverable.getBilledAt(),
                 deliverable.getCreatedAt(),
                 deliverable.getUpdatedAt()
         );
+    }
+
+    private String normalizeRequiredText(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("billingReference must not be blank");
+        }
+        return value.trim();
     }
 
     private String preview(String markdown, String errorMessage) {

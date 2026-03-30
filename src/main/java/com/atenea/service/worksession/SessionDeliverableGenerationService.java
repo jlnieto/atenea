@@ -334,6 +334,9 @@ public class SessionDeliverableGenerationService {
                 deliverable.getPromptVersion(),
                 deliverable.isApproved(),
                 deliverable.getApprovedAt(),
+                deliverable.getBillingStatus(),
+                deliverable.getBillingReference(),
+                deliverable.getBilledAt(),
                 deliverable.getCreatedAt(),
                 deliverable.getUpdatedAt()
         );

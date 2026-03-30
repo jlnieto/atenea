@@ -78,6 +78,9 @@ public class ProjectApprovedPriceEstimateService {
                 content.get("confidence").asText(),
                 toStringList(content.get("assumptions")),
                 toStringList(content.get("exclusions")),
+                deliverable.getBillingStatus(),
+                deliverable.getBillingReference(),
+                deliverable.getBilledAt(),
                 deliverable.getApprovedAt(),
                 deliverable.getUpdatedAt()
         );

@@ -24,4 +24,7 @@ public interface SessionDeliverableRepository extends JpaRepository<SessionDeliv
 
     @EntityGraph(attributePaths = "session")
     Optional<SessionDeliverableEntity> findByIdAndSessionId(Long id, Long sessionId);
+
+    @EntityGraph(attributePaths = {"session", "session.project"})
+    List<SessionDeliverableEntity> findByTypeAndApprovedTrueOrderByApprovedAtDesc(SessionDeliverableType type);
 }

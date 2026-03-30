@@ -1,5 +1,6 @@
 package com.atenea.api.worksession;
 
+import com.atenea.persistence.worksession.SessionDeliverableBillingStatus;
 import java.time.Instant;
 import java.util.List;
 
@@ -19,6 +20,9 @@ public record ApprovedPriceEstimateSummaryResponse(
         String confidence,
         List<String> assumptions,
         List<String> exclusions,
+        SessionDeliverableBillingStatus billingStatus,
+        String billingReference,
+        Instant billedAt,
         Instant approvedAt,
         Instant updatedAt
 ) {

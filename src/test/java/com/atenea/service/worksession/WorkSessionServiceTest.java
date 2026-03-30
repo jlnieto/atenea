@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
@@ -22,6 +23,7 @@ import com.atenea.api.worksession.WorkSessionOperationalState;
 import com.atenea.api.worksession.WorkSessionResponse;
 import com.atenea.api.worksession.WorkSessionViewResponse;
 import com.atenea.github.GitHubClient;
+import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
@@ -73,6 +75,9 @@ class WorkSessionServiceTest {
     @Mock
     private GitHubClient gitHubClient;
 
+    @Mock
+    private MobilePushDispatchService mobilePushDispatchService;
+
     @TempDir
     Path tempDir;
 
@@ -96,6 +101,7 @@ class WorkSessionServiceTest {
         workSessionService = new WorkSessionService(
                 projectRepository,
                 workSessionRepository,
+                mobilePushDispatchService,
                 validator,
                 gitRepositoryService,
                 snapshotService,
@@ -269,6 +275,26 @@ class WorkSessionServiceTest {
         assertEquals("atenea/session-12", response.session().workspaceBranch());
         assertEquals(WorkSessionOperationalState.IDLE, response.session().operationalState());
         verify(gitRepositoryService).createAndCheckoutBranch(repoPath.toString(), "main", "atenea/session-12");
+    }
+
+    @Test
+    void resolveSessionAllowsExistingWorkspaceBranchEvenWhenDirty() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
+        ProjectEntity project = buildProject(7L, repoPath);
+        WorkSessionEntity session = buildSession(12L, 7L, repoPath, "main");
+
+        when(projectRepository.findById(7L)).thenReturn(Optional.of(project));
+        when(workSessionRepository.findByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(Optional.of(session));
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("atenea/session-12");
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+
+        ResolveWorkSessionResponse response = workSessionService.resolveSession(
+                7L,
+                new ResolveWorkSessionRequest("Ignored title", "develop"));
+
+        assertFalse(response.created());
+        assertEquals(12L, response.session().id());
+        assertEquals("atenea/session-12", response.session().workspaceBranch());
     }
 
     @Test
@@ -790,9 +816,26 @@ class WorkSessionServiceTest {
         assertEquals(response.closedAt(), session.getClosedAt());
         assertEquals(response.closedAt(), session.getUpdatedAt());
         verify(gitRepositoryService).checkoutBranch(repoPath.toString(), "main");
-        verify(gitRepositoryService).fetchOrigin(repoPath.toString());
-        verify(gitRepositoryService).fastForwardCurrentBranchToOrigin(repoPath.toString(), "main");
+        verify(gitRepositoryService, never()).fetchOrigin(repoPath.toString());
+        verify(gitRepositoryService, never()).fastForwardCurrentBranchToOrigin(repoPath.toString(), "main");
         verify(gitRepositoryService).deleteLocalBranch(repoPath.toString(), "atenea/session-12");
+    }
+
+    @Test
+    void closeSessionAllowsUnpublishedSessionWithoutOriginRemote() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
+        WorkSessionEntity session = buildSession(12L, 7L, repoPath, "main");
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main", "main");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true, true);
+
+        WorkSessionResponse response = workSessionService.closeSession(12L);
+
+        assertEquals(WorkSessionStatus.CLOSED, response.status());
+        verify(gitRepositoryService, never()).fetchOrigin(repoPath.toString());
+        verify(gitRepositoryService, never()).fastForwardCurrentBranchToOrigin(repoPath.toString(), "main");
     }
 
     @Test

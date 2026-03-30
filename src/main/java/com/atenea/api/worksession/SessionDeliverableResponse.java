@@ -1,5 +1,6 @@
 package com.atenea.api.worksession;
 
+import com.atenea.persistence.worksession.SessionDeliverableBillingStatus;
 import com.atenea.persistence.worksession.SessionDeliverableStatus;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import java.time.Instant;
@@ -20,6 +21,9 @@ public record SessionDeliverableResponse(
         String promptVersion,
         boolean approved,
         Instant approvedAt,
+        SessionDeliverableBillingStatus billingStatus,
+        String billingReference,
+        Instant billedAt,
         Instant createdAt,
         Instant updatedAt
 ) {

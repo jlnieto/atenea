@@ -20,6 +20,7 @@ import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.mobilepush.MobilePushDispatchService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -45,6 +46,9 @@ class AgentRunServiceTest {
     @Mock
     private com.atenea.codexappserver.CodexAppServerProperties codexAppServerProperties;
 
+    @Mock
+    private MobilePushDispatchService mobilePushDispatchService;
+
     private AgentRunService agentRunService;
     private AgentRunReconciliationService agentRunReconciliationService;
 
@@ -55,7 +59,8 @@ class AgentRunServiceTest {
                 workSessionRepository,
                 agentRunRepository,
                 sessionTurnRepository,
-                new AgentRunProgressService()
+                new AgentRunProgressService(),
+                mobilePushDispatchService
         );
     }
 
@@ -97,7 +102,7 @@ class AgentRunServiceTest {
     void markSucceededTransitionsRunningRunAndStoresExternalTurnId() {
         AgentRunEntity run = buildRun(55L, AgentRunStatus.RUNNING);
 
-        when(agentRunRepository.findById(55L)).thenReturn(Optional.of(run));
+        when(agentRunRepository.findWithSessionById(55L)).thenReturn(Optional.of(run));
         when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AgentRunEntity updated = agentRunService.markSucceeded(55L, " turn_123 ", "Completed successfully");
@@ -113,7 +118,7 @@ class AgentRunServiceTest {
     void markFailedTransitionsRunningRunAndStoresErrorSummary() {
         AgentRunEntity run = buildRun(55L, AgentRunStatus.RUNNING);
 
-        when(agentRunRepository.findById(55L)).thenReturn(Optional.of(run));
+        when(agentRunRepository.findWithSessionById(55L)).thenReturn(Optional.of(run));
         when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AgentRunEntity updated = agentRunService.markFailed(55L, "turn_456", "Codex execution failed");

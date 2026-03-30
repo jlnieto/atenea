@@ -1,5 +1,6 @@
 package com.atenea.api;
 
+import com.atenea.auth.OperatorAuthenticationException;
 import com.atenea.service.project.CanonicalProjectConflictException;
 import com.atenea.github.GitHubIntegrationException;
 import com.atenea.service.project.DuplicateProjectNameException;
@@ -169,6 +170,14 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException exception) {
         return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(OperatorAuthenticationException.class)
+    public ResponseEntity<ApiErrorResponse> handleOperatorAuthentication(
+            OperatorAuthenticationException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 

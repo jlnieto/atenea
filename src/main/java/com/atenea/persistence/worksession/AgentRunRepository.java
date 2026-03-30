@@ -17,6 +17,9 @@ public interface AgentRunRepository extends JpaRepository<AgentRunEntity, Long> 
     Optional<AgentRunEntity> findFirstBySessionIdOrderByCreatedAtDesc(Long sessionId);
 
     @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
+    Optional<AgentRunEntity> findWithSessionById(Long id);
+
+    @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
     Optional<AgentRunEntity> findFirstBySessionIdAndStatusOrderByCreatedAtDesc(Long sessionId, AgentRunStatus status);
 
     @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})

@@ -15,17 +15,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.atenea.AteneaApplication;
 import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionResult;
+import com.atenea.github.GitHubClient;
+import com.atenea.github.GitHubPullRequest;
+import com.atenea.github.GitHubRepositoryRef;
+import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.SessionDeliverableBillingStatus;
 import com.atenea.persistence.worksession.SessionDeliverableEntity;
 import com.atenea.persistence.worksession.SessionDeliverableRepository;
 import com.atenea.persistence.worksession.SessionDeliverableStatus;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.worksession.AgentRunService;
@@ -48,11 +54,19 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest(classes = AteneaApplication.class)
 @AutoConfigureMockMvc
+@TestPropertySource(properties = {
+        "atenea.auth.bootstrap.enabled=true",
+        "atenea.auth.bootstrap.email=operator@atenea.local",
+        "atenea.auth.bootstrap.password=secret-pass",
+        "atenea.auth.bootstrap.display-name=Integration Operator",
+        "atenea.auth.jwt.secret=integration-mobile-secret-2026"
+})
 class WorkSessionFlowIntegrationTest {
 
     private static final Path WORKSPACE_ROOT = Path.of("/workspace/repos");
@@ -79,7 +93,12 @@ class WorkSessionFlowIntegrationTest {
     private SessionDeliverableRepository sessionDeliverableRepository;
 
     @Autowired
+    private OperatorRepository operatorRepository;
+
+    @Autowired
     private AgentRunService agentRunService;
+
+    private String mobileAccessToken;
 
     @MockBean
     private SessionCodexOrchestrator sessionCodexOrchestrator;
@@ -87,15 +106,20 @@ class WorkSessionFlowIntegrationTest {
     @MockBean
     private SessionDeliverableCodexOrchestrator sessionDeliverableCodexOrchestrator;
 
+    @MockBean
+    private GitHubClient gitHubClient;
+
     @BeforeEach
     void setUp() {
         reset(sessionCodexOrchestrator);
         reset(sessionDeliverableCodexOrchestrator);
+        reset(gitHubClient);
         agentRunRepository.deleteAll();
         sessionDeliverableRepository.deleteAll();
         sessionTurnRepository.deleteAll();
         workSessionRepository.deleteAll();
         projectRepository.deleteAll();
+        mobileAccessToken = null;
     }
 
     @Test
@@ -394,6 +418,61 @@ class WorkSessionFlowIntegrationTest {
                                 }
                                 """))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void publishSyncMergedAndCloseConversationViewCompletesCanonicalDeliveryFlow() throws Exception {
+        ProjectEntity project = createProject("publish-sync-close-flow");
+        long sessionId = postJson("/api/projects/%d/sessions".formatted(project.getId()), """
+                {
+                  "title": "Publish flow"
+                }
+                """, 201).get("id").asLong();
+
+        Files.writeString(Path.of(project.getRepoPath()).resolve("feature.txt"), "session work" + System.lineSeparator());
+
+        when(gitHubClient.resolveRepository(projectRemoteUrl(project)))
+                .thenReturn(new GitHubRepositoryRef("acme", "publish-sync-close-flow"));
+        when(gitHubClient.createPullRequest(
+                eq(new GitHubRepositoryRef("acme", "publish-sync-close-flow")),
+                eq("Publish flow"),
+                any(),
+                eq("atenea/session-" + sessionId),
+                eq("main")))
+                .thenReturn(new GitHubPullRequest(
+                        42L,
+                        "https://github.com/acme/publish-sync-close-flow/pull/42",
+                        "open",
+                        false));
+        when(gitHubClient.extractPullRequestNumber("https://github.com/acme/publish-sync-close-flow/pull/42"))
+                .thenReturn(42L);
+        when(gitHubClient.getPullRequest(new GitHubRepositoryRef("acme", "publish-sync-close-flow"), 42L))
+                .thenReturn(new GitHubPullRequest(
+                        42L,
+                        "https://github.com/acme/publish-sync-close-flow/pull/42",
+                        "closed",
+                        true));
+
+        JsonNode published = postJson("/api/sessions/%d/publish/conversation-view".formatted(sessionId), "{}", 200);
+        assertEquals("OPEN", published.get("view").get("view").get("session").get("status").asText());
+        assertEquals("OPEN", published.get("view").get("view").get("session").get("pullRequestStatus").asText());
+        assertTrue(!published.get("view").get("view").get("session").get("publishedAt").isNull());
+
+        JsonNode synced = postJson("/api/sessions/%d/pull-request/sync/conversation-view".formatted(sessionId), null, 200);
+        assertEquals("MERGED", synced.get("view").get("view").get("session").get("pullRequestStatus").asText());
+
+        JsonNode closed = postJson("/api/sessions/%d/close/conversation-view".formatted(sessionId), null, 200);
+        assertEquals("CLOSED", closed.get("view").get("view").get("session").get("status").asText());
+        assertEquals("MERGED", closed.get("view").get("view").get("session").get("pullRequestStatus").asText());
+        assertEquals("main", closed.get("view").get("view").get("session").get("repoState").get("currentBranch").asText());
+
+        WorkSessionEntity persistedSession = workSessionRepository.findById(sessionId).orElseThrow();
+        assertEquals(WorkSessionStatus.CLOSED, persistedSession.getStatus());
+        assertEquals(WorkSessionPullRequestStatus.MERGED, persistedSession.getPullRequestStatus());
+        assertEquals("main", runAndRead(Path.of(project.getRepoPath()), "git", "rev-parse", "--abbrev-ref", "HEAD"));
+        assertEquals("missing", runAndReadAllowingFailure(
+                Path.of(project.getRepoPath()),
+                "git", "rev-parse", "--verify", "--quiet", "refs/heads/atenea/session-" + sessionId));
     }
 
     @Test
@@ -762,7 +841,223 @@ class WorkSessionFlowIntegrationTest {
         assertEquals(279.0d, summary.get("recommendedPrice").asDouble());
         assertEquals(6.5d, summary.get("equivalentHours").asDouble());
         assertEquals("competitive", summary.get("commercialPositioning").asText());
+        assertEquals("READY", summary.get("billingStatus").asText());
         assertEquals(1, summary.get("assumptions").size());
+    }
+
+    @Test
+    void markPriceEstimateBilledExposesCommercialTrackingInSessionAndProjectReads() throws Exception {
+        ProjectEntity project = createProject("billing-state");
+        long sessionId = postJson("/api/projects/%d/sessions".formatted(project.getId()), """
+                {
+                  "title": "Billing state"
+                }
+                """, 201).get("id").asLong();
+
+        WorkSessionEntity session = workSessionRepository.findById(sessionId).orElseThrow();
+        SessionDeliverableEntity estimate = persistDeliverable(
+                session,
+                SessionDeliverableType.PRICE_ESTIMATE,
+                SessionDeliverableStatus.SUCCEEDED,
+                1,
+                "Price estimate v1",
+                "# Price Estimate",
+                """
+                {"currency":"EUR","baseHourlyRate":43.0,"equivalentHours":6.5,"minimumPrice":240.0,
+                "recommendedPrice":279.0,"maximumPrice":320.0,"commercialPositioning":"competitive",
+                "riskLevel":"low","confidence":"medium","assumptions":["Billing test"],"exclusions":["No soporte"]}
+                """,
+                true);
+
+        JsonNode billed = postJson("/api/sessions/%d/deliverables/%d/billing/mark-billed".formatted(sessionId, estimate.getId()), """
+                {
+                  "billingReference": "INV-2026-001"
+                }
+                """, 200);
+        assertEquals("BILLED", billed.get("billingStatus").asText());
+        assertEquals("INV-2026-001", billed.get("billingReference").asText());
+        assertTrue(!billed.get("billedAt").isNull());
+
+        JsonNode sessionSummary = getJson("/api/sessions/%d/deliverables/price-estimate/approved-summary".formatted(sessionId), 200);
+        assertEquals("BILLED", sessionSummary.get("billingStatus").asText());
+        assertEquals("INV-2026-001", sessionSummary.get("billingReference").asText());
+
+        JsonNode projectSummary = getJson("/api/projects/%d/approved-price-estimates".formatted(project.getId()), 200);
+        assertEquals("BILLED", projectSummary.get("approvedPriceEstimates").get(0).get("billingStatus").asText());
+        assertEquals("INV-2026-001", projectSummary.get("approvedPriceEstimates").get(0).get("billingReference").asText());
+    }
+
+    @Test
+    void billingQueueReturnsCurrentApprovedBaselinesWithFiltersAndSummary() throws Exception {
+        ProjectEntity projectOne = createProject("billing-queue-one");
+        ProjectEntity projectTwo = createProject("billing-queue-two");
+
+        WorkSessionEntity sessionOne = workSessionRepository.findById(postJson("/api/projects/%d/sessions".formatted(projectOne.getId()), """
+                {
+                  "title": "Ready baseline"
+                }
+                """, 201).get("id").asLong()).orElseThrow();
+        WorkSessionEntity sessionTwo = workSessionRepository.findById(postJson("/api/projects/%d/sessions".formatted(projectTwo.getId()), """
+                {
+                  "title": "Already billed baseline"
+                }
+                """, 201).get("id").asLong()).orElseThrow();
+
+        SessionDeliverableEntity readyEstimate = persistDeliverable(
+                sessionOne,
+                SessionDeliverableType.PRICE_ESTIMATE,
+                SessionDeliverableStatus.SUCCEEDED,
+                1,
+                "Price estimate ready",
+                "# Price Estimate",
+                """
+                {"currency":"EUR","baseHourlyRate":43.0,"equivalentHours":6.5,"minimumPrice":240.0,
+                "recommendedPrice":279.0,"maximumPrice":320.0,"commercialPositioning":"competitive",
+                "riskLevel":"low","confidence":"medium","assumptions":["Queue ready"],"exclusions":["No soporte"]}
+                """,
+                true);
+        SessionDeliverableEntity billedEstimate = persistDeliverable(
+                sessionTwo,
+                SessionDeliverableType.PRICE_ESTIMATE,
+                SessionDeliverableStatus.SUCCEEDED,
+                1,
+                "Price estimate billed",
+                "# Price Estimate",
+                """
+                {"currency":"EUR","baseHourlyRate":43.0,"equivalentHours":8.0,"minimumPrice":300.0,
+                "recommendedPrice":360.0,"maximumPrice":420.0,"commercialPositioning":"premium",
+                "riskLevel":"medium","confidence":"medium","assumptions":["Queue billed"],"exclusions":["No soporte"]}
+                """,
+                true);
+
+        postJson("/api/sessions/%d/deliverables/%d/billing/mark-billed".formatted(sessionTwo.getId(), billedEstimate.getId()), """
+                {
+                  "billingReference": "INV-2026-002"
+                }
+                """, 200);
+
+        JsonNode queue = getJson("/api/billing/queue", 200);
+        assertEquals(2, queue.get("items").size());
+        assertEquals("READY", queue.get("items").get(0).get("billingStatus").asText());
+        assertEquals(readyEstimate.getId(), queue.get("items").get(0).get("deliverableId").asLong());
+        assertEquals("BILLED", queue.get("items").get(1).get("billingStatus").asText());
+        assertEquals("INV-2026-002", queue.get("items").get(1).get("billingReference").asText());
+
+        JsonNode readyOnly = getJson("/api/billing/queue?billingStatus=READY", 200);
+        assertEquals(1, readyOnly.get("items").size());
+        assertEquals(sessionOne.getId(), readyOnly.get("items").get(0).get("sessionId").asLong());
+
+        JsonNode search = getJson("/api/billing/queue?q=INV-2026-002", 200);
+        assertEquals(1, search.get("items").size());
+        assertEquals("BILLED", search.get("items").get(0).get("billingStatus").asText());
+
+        JsonNode summary = getJson("/api/billing/queue/summary", 200);
+        assertEquals(1, summary.get("readyCount").asInt());
+        assertEquals(1, summary.get("billedCount").asInt());
+        assertEquals(279.0d, summary.get("readyAmounts").get(0).get("total").asDouble());
+        assertEquals(360.0d, summary.get("billedAmounts").get(0).get("total").asDouble());
+    }
+
+    @Test
+    void mobileSessionSummaryAndEventsExposeConversationDeliveryAndCommercialState() throws Exception {
+        ProjectEntity project = createProject("mobile-session-summary");
+        when(sessionCodexOrchestrator.startTurn(eq(project.getRepoPath()), eq("Summarize for mobile"), eq(null), any()))
+                .thenReturn(completedHandle("thread-mobile", "turn-mobile", "Mobile summary answer"));
+
+        long sessionId = postJson("/api/projects/%d/sessions".formatted(project.getId()), """
+                {
+                  "title": "Mobile summary"
+                }
+                """, 201).get("id").asLong();
+
+        postJson("/api/sessions/%d/turns".formatted(sessionId), """
+                {
+                  "message": "Summarize for mobile"
+                }
+                """, 201);
+        waitUntil(() -> agentRunRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)
+                .stream()
+                .anyMatch(run -> run.getStatus() == AgentRunStatus.SUCCEEDED));
+
+        WorkSessionEntity session = workSessionRepository.findById(sessionId).orElseThrow();
+        SessionDeliverableEntity estimate = persistDeliverable(
+                session,
+                SessionDeliverableType.PRICE_ESTIMATE,
+                SessionDeliverableStatus.SUCCEEDED,
+                1,
+                "Price estimate mobile",
+                "# Price Estimate",
+                """
+                {"currency":"EUR","baseHourlyRate":43.0,"equivalentHours":6.5,"minimumPrice":240.0,
+                "recommendedPrice":279.0,"maximumPrice":320.0,"commercialPositioning":"competitive",
+                "riskLevel":"low","confidence":"medium","assumptions":["Mobile"],"exclusions":["No soporte"]}
+                """,
+                true);
+
+        JsonNode mobileSummary = getMobileJson("/api/mobile/sessions/%d/summary".formatted(sessionId), 200);
+        assertEquals(sessionId, mobileSummary.get("conversation").get("view").get("session").get("id").asLong());
+        assertEquals("READY", mobileSummary.get("approvedPriceEstimate").get("billingStatus").asText());
+        assertEquals(true, mobileSummary.get("actions").get("canMarkApprovedPriceEstimateBilled").asBoolean());
+
+        postMobileJson("/api/mobile/sessions/%d/deliverables/%d/billing/mark-billed".formatted(sessionId, estimate.getId()), """
+                {
+                  "billingReference": "INV-MOBILE-1"
+                }
+                """, 200);
+
+        JsonNode events = getMobileJson("/api/mobile/sessions/%d/events".formatted(sessionId), 200);
+        assertEquals(sessionId, events.get("sessionId").asLong());
+        assertTrue(events.get("events").size() >= 4);
+        assertEquals("DELIVERABLE_BILLED", events.get("events").get(0).get("type").asText());
+    }
+
+    @Test
+    void mobileInboxHighlightsRunningBlockedAndBillingAttention() throws Exception {
+        ProjectEntity runningProject = createProject("mobile-inbox-running");
+        long runningSessionId = postJson("/api/projects/%d/sessions".formatted(runningProject.getId()), """
+                {
+                  "title": "Running session"
+                }
+                """, 201).get("id").asLong();
+        agentRunService.createRunningRun(runningSessionId);
+
+        ProjectEntity blockedProject = createProject("mobile-inbox-blocked");
+        long blockedSessionId = postJson("/api/projects/%d/sessions".formatted(blockedProject.getId()), """
+                {
+                  "title": "Blocked session"
+                }
+                """, 201).get("id").asLong();
+        agentRunService.createRunningRun(blockedSessionId);
+        mockMvc.perform(post("/api/sessions/%d/close".formatted(blockedSessionId)))
+                .andExpect(status().isConflict());
+
+        ProjectEntity billingProject = createProject("mobile-inbox-billing");
+        long billingSessionId = postJson("/api/projects/%d/sessions".formatted(billingProject.getId()), """
+                {
+                  "title": "Billing session"
+                }
+                """, 201).get("id").asLong();
+        WorkSessionEntity billingSession = workSessionRepository.findById(billingSessionId).orElseThrow();
+        persistDeliverable(
+                billingSession,
+                SessionDeliverableType.PRICE_ESTIMATE,
+                SessionDeliverableStatus.SUCCEEDED,
+                1,
+                "Price estimate inbox",
+                "# Price Estimate",
+                """
+                {"currency":"EUR","baseHourlyRate":43.0,"equivalentHours":5.0,"minimumPrice":200.0,
+                "recommendedPrice":240.0,"maximumPrice":280.0,"commercialPositioning":"competitive",
+                "riskLevel":"low","confidence":"medium","assumptions":["Inbox"],"exclusions":["No soporte"]}
+                """,
+                true);
+
+        JsonNode inbox = getMobileJson("/api/mobile/inbox", 200);
+        assertTrue(inbox.get("items").size() >= 3);
+        assertEquals(2, inbox.get("summary").get("runInProgressCount").asInt());
+        assertEquals(1, inbox.get("summary").get("closeBlockedCount").asInt());
+        assertEquals(1, inbox.get("summary").get("billingReadyCount").asInt());
+        assertEquals("CLOSE_BLOCKED", inbox.get("items").get(0).get("type").asText());
     }
 
     @Test
@@ -898,6 +1193,45 @@ class WorkSessionFlowIntegrationTest {
         return objectMapper.readTree(result.getResponse().getContentAsString());
     }
 
+    private JsonNode postMobileJson(String path, String body, int expectedStatus) throws Exception {
+        var builder = post(path)
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer " + getMobileAccessToken());
+        if (body != null) {
+            builder.content(body);
+        }
+
+        MvcResult result = mockMvc.perform(builder)
+                .andExpect(status().is(expectedStatus))
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private JsonNode getMobileJson(String path, int expectedStatus) throws Exception {
+        MvcResult result = mockMvc.perform(get(path)
+                        .header("Authorization", "Bearer " + getMobileAccessToken()))
+                .andExpect(status().is(expectedStatus))
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private String getMobileAccessToken() throws Exception {
+        if (mobileAccessToken != null) {
+            return mobileAccessToken;
+        }
+        if (operatorRepository.findByEmailIgnoreCase("operator@atenea.local").isEmpty()) {
+            throw new IllegalStateException("Bootstrap operator was not created");
+        }
+        JsonNode login = postJson("/api/mobile/auth/login", """
+                {
+                  "email": "operator@atenea.local",
+                  "password": "secret-pass"
+                }
+                """, 200);
+        mobileAccessToken = login.get("accessToken").asText();
+        return mobileAccessToken;
+    }
+
     private ProjectEntity createProject(String slug) throws IOException {
         String unique = slug + "-" + UUID.randomUUID();
         Path repoPath = initializeGitRepository(unique);
@@ -984,9 +1318,16 @@ class WorkSessionFlowIntegrationTest {
         deliverable.setPromptVersion("deliverables-v1");
         deliverable.setApproved(approved);
         deliverable.setApprovedAt(approved ? now : null);
+        if (approved && type == SessionDeliverableType.PRICE_ESTIMATE) {
+            deliverable.setBillingStatus(SessionDeliverableBillingStatus.READY);
+        }
         deliverable.setCreatedAt(now);
         deliverable.setUpdatedAt(now);
         return sessionDeliverableRepository.save(deliverable);
+    }
+
+    private String projectRemoteUrl(ProjectEntity project) {
+        return runAndRead(Path.of(project.getRepoPath()), "git", "remote", "get-url", "origin");
     }
 
     private static String runAndRead(Path directory, String... command) {
