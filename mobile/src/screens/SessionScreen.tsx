@@ -8,12 +8,20 @@ import {
 } from 'react-native';
 import { fetchJson, postJson } from '../api/client';
 import {
+  CoreCommandResponse,
   MarkPriceEstimateBilledRequest,
   MobileSessionSummary,
   SessionDeliverablesView,
 } from '../api/types';
 import { usePendingActionCenter } from '../actions/PendingActionCenter';
 import { confirmAction } from '../actions/confirm';
+import {
+  buildCloseSessionCommand,
+  buildGenerateDeliverableCommand,
+  buildPublishCommand,
+  buildSyncPullRequestCommand,
+} from '../core/phrases';
+import { RunCoreCommandOptions } from '../core/useCoreCommandCenter';
 import { ActionButton } from '../components/ActionButton';
 import { Card } from '../components/Card';
 import { LoadingBlock } from '../components/LoadingBlock';
@@ -21,11 +29,17 @@ import { StatePill } from '../components/StatePill';
 import { useRemoteResource } from '../hooks/useRemoteResource';
 
 export function SessionScreen({
+  projectId,
   sessionId,
   onOpenConversation,
+  onOpenSession,
+  onRunCommand,
 }: {
+  projectId: number | null;
   sessionId: number | null;
   onOpenConversation: () => void;
+  onOpenSession: (sessionId: number) => void;
+  onRunCommand: (options: RunCoreCommandOptions) => Promise<CoreCommandResponse>;
 }) {
   const { data, error, loading, reload } = useRemoteResource(
     () =>
@@ -62,7 +76,29 @@ export function SessionScreen({
     await Promise.all([reload(), reloadDeliverables()]);
   };
 
-  const runAction = async (label: string, recoveryHint: string, action: () => Promise<void>) => {
+  const runCoreMutation = async (input: string) => {
+    const response = await onRunCommand({
+      input,
+      projectId,
+      workSessionId: sessionId,
+      onSucceeded: (commandResponse) => {
+        if (commandResponse.result?.targetId != null) {
+          onOpenSession(commandResponse.result.targetId);
+        }
+      },
+    });
+    if (response.status === 'NEEDS_CONFIRMATION') {
+      setMutationStatus('Atenea Core is waiting for confirmation in the Core tab.');
+      return false;
+    }
+    if (response.status === 'NEEDS_CLARIFICATION') {
+      setMutationStatus('Atenea Core needs clarification in the Core tab.');
+      return false;
+    }
+    return true;
+  };
+
+  const runAction = async (label: string, recoveryHint: string, action: () => Promise<boolean | void>) => {
     setPendingAction(label);
     startPendingAction({
       label,
@@ -74,9 +110,11 @@ export function SessionScreen({
     setMutationError(null);
     setMutationStatus(null);
     try {
-      await action();
-      await refreshAll();
-      setMutationStatus(`${label} completed.`);
+      const completed = await action();
+      if (completed !== false) {
+        await refreshAll();
+        setMutationStatus(`${label} completed.`);
+      }
     } catch (actionError) {
       setMutationError(actionError instanceof Error ? actionError.message : `${label} failed`);
     } finally {
@@ -179,7 +217,7 @@ export function SessionScreen({
                 'Sync PR',
                 'Refresh the session before retrying pull request synchronization so you do not act on stale PR state.',
                 async () => {
-                await postJson(`/api/mobile/sessions/${sessionId}/pull-request/sync`);
+                  await runCoreMutation(buildSyncPullRequestCommand());
                 }
               )
             }
@@ -194,7 +232,7 @@ export function SessionScreen({
                 'Use this only after the pull request is merged and the repository is ready to reconcile back to the base branch.',
                 'Refresh the session before retrying close so the latest merge and repository state are visible.',
                 async () => {
-                  await postJson(`/api/mobile/sessions/${sessionId}/close`);
+                  await runCoreMutation(buildCloseSessionCommand());
                 }
               )
             }
@@ -215,7 +253,7 @@ export function SessionScreen({
               'This will stage the current workspace changes, create a commit, push the session branch and open or update the delivery flow in GitHub.',
               'Refresh the session before retrying publish so you can confirm whether the branch or pull request was already updated.',
               async () => {
-                await postJson(`/api/mobile/sessions/${sessionId}/publish`);
+                await runCoreMutation(buildPublishCommand());
               }
             )
           }
@@ -237,7 +275,7 @@ export function SessionScreen({
                   `This will ask Atenea to generate the latest ${type} draft for this session.`,
                   `Refresh deliverables before retrying ${type} generation so you do not create confusion about the latest draft.`,
                   async () => {
-                    await postJson(`/api/mobile/sessions/${sessionId}/deliverables/${type}/generate`);
+                    await runCoreMutation(buildGenerateDeliverableCommand(type));
                   }
                 )
               }

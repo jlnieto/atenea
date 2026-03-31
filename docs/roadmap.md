@@ -12,6 +12,8 @@ It distinguishes clearly between:
 
 This document should be read together with:
 
+- `docs/atenea-core.md`
+- `docs/atenea-core-foundation-design.md`
 - `docs/worksession-target-flow.md`
 - `docs/mobile-full-operation.md`
 
@@ -26,12 +28,21 @@ This still reads as `V0` because product and documentation consolidation are sti
 
 ## Current validated system state
 
-The repository currently contains one real orchestration surface.
+The repository currently contains:
+
+- one real implemented domain workflow in `development`
+- one initial top-level `Atenea Core Foundation` runtime slice above that workflow
 
 ### Conversational surface
 
 Implemented and validated:
 
+- `POST /api/core/commands`
+- `core_command` persistence
+- hybrid core intent routing for `development`
+- enabled typed capabilities in runtime:
+  - `create_work_session`
+  - `continue_work_session`
 - `WorkSession`
 - `SessionTurn`
 - `AgentRun`
@@ -58,7 +69,10 @@ Implemented and validated:
 - structured pricing output for `PRICE_ESTIMATE`
 - approved pricing reads by session and by project
 
-This is the implemented conversational core and the only active workflow surface in the backend.
+This means the backend now has:
+
+- an initial top-level core entrypoint
+- one real implemented domain workflow under it: `development`
 
 ## Completed blocks
 
@@ -270,11 +284,48 @@ Current conclusion:
 
 - the backend now exposes a session-first overview only
 
+### Block 8. Atenea Core Foundation initial slice
+
+Implemented:
+
+- `POST /api/core/commands`
+- `core_command` persistence
+- typed core request DTOs and response envelope
+- hybrid interpreter for the current development-only slice
+- persisted interpreter telemetry:
+  - deterministic
+  - llm
+  - deterministic fallback
+- capability registry with runtime-enabled `development` capabilities
+- domain router with first adapter:
+  - `development -> WorkSession`
+- initial traceability for:
+  - raw input
+  - interpreted intent
+  - routed capability
+  - execution result summary
+
+Current conclusion:
+
+- `Atenea Core Foundation` exists in runtime, but only for the `development` domain
+
 ## Open gaps that are real today
 
 The main open gaps visible in the repository are now these:
 
-### Gap 1. Commercial workflow above approved pricing is not yet consolidated
+### Gap 1. `Atenea Core` exists only as a narrow foundation slice
+
+The repository now has a strong `development` workflow, but it still does not implement:
+
+- runtime execution for `operations`
+- runtime execution for `communications`
+- app-level voice transport on top of the core contract
+- a core-first client/operator flow fully migrated off direct session-first calls
+- cross-domain conversational context resolution
+
+This is now the main architectural gap.
+
+### Gap 2. Commercial workflow above approved pricing is not yet consolidated
 
 What is now settled in the repository:
 
@@ -293,13 +344,13 @@ What still needs consolidation:
 - cross-project billing aggregation and operator workflow
 - richer invoicing workflow beyond per-baseline `billingReference`
 
-### Gap 2. Documentation and governance are behind the implementation
+### Gap 3. Documentation and governance are behind the implementation
 
 The repository recently contained documentation that still described major `WorkSession` capabilities as pending even though they were already implemented.
 
 That means documentation governance is a real gap, not an editorial detail.
 
-### Gap 3. Session-first operator contract still needs cleanup
+### Gap 4. Session-first operator contract still needs cleanup
 
 The code now shows a working session-first delivery workflow in the backend, but the repository still does not fully settle:
 
@@ -307,7 +358,7 @@ The code now shows a working session-first delivery workflow in the backend, but
 - operator workflow simplification
 - final product contract around session views and commercial follow-up
 
-### Gap 4. Native mobile production concerns are still pending
+### Gap 5. Native mobile production concerns are still pending
 
 The repository now has both a mobile backend surface and a native client baseline, but it still does not settle:
 
@@ -328,6 +379,7 @@ Those are already implemented.
 
 The pending real work is instead:
 
+- migrate operator-facing clients toward the implemented `development` core surface
 - consolidate documentation around the true current state
 - define which API surface should drive the next operator or frontend workflows
 - harden the now-implemented session-first repository delivery flow as the primary product contract
@@ -338,38 +390,61 @@ The pending real work is instead:
 
 The next recommended phase, justified by the current repository, is:
 
-## Mobile Full Operation
+## Core-First Voice App Integration
 
 Goals:
 
 - keep documentation aligned with code and tests
-- preserve `WorkSession` as the canonical operator-facing unit of real repository work
-- carry that same session-first contract into mobile as a first-class operator surface
-- establish the mobile product target as full operation, not just responsive monitoring
-- formalize the backend additions needed for mobile-safe async work, alerts and navigation
+- keep `Atenea Core` as the top-level operator contract for `development`
+- move client and channel work onto that contract
+- add real app-level speech-to-text and text-to-speech
+- expose clarification, confirmation and command events cleanly in the operator UX
 
 Recommended outputs of this phase:
 
-1. documentation aligned around `docs/mobile-full-operation.md`
-2. mobile-oriented aggregate reads for operator inbox/navigation
-3. stronger support for asynchronous session-state updates suitable for mobile use
-4. full mobile operation flows over:
-   - conversation
-   - publish
-   - pull-request sync
-   - close
-   - deliverables
-   - billing
-5. explicit mobile safety patterns for sensitive actions
+1. extend app-level STT beyond the current `Core` tab
+2. hardening of app-level TTS from `speakableMessage`
+3. finish migrating the remaining client flows that still bypass `Core`
+4. client UX for:
+   - `NEEDS_CLARIFICATION`
+   - `NEEDS_CONFIRMATION`
+   - command event timelines
+5. regression and product validation of the operator surface before adding non-`development` domains
+
+Already implemented outputs of this phase:
+
+1. app-level TTS from `speakableMessage`
+2. core-first client flows for:
+   - project status
+   - project selection
+   - session lifecycle actions
+   - conversation prompts
+3. client UX for:
+   - `NEEDS_CLARIFICATION`
+   - `NEEDS_CONFIRMATION`
+   - command event timelines
+4. app-level voice capture in the `Core` tab with backend transcription through `POST /api/core/voice/commands`
 
 Current repository reading after recent changes:
 
+- core runtime layer: implemented for the `development` domain
+- development workflow through `WorkSession`: implemented
+- project-aware development core capabilities: implemented
+- active operator context in core: implemented
+- clarification outcome in core: implemented
+- voice-ready responses and command-event timeline in core: implemented
 - mobile backend contract baseline: implemented
 - mobile inbox and mobile session event feed: implemented
 - mobile operation aliases for session, deliverables and billing: implemented
 - conversation-first terminal workspace in native client: implemented
 - client-side SSE consumption for session conversation: implemented
-- remaining major mobile gaps:
+- core-first operator console in native client: implemented
+- core command history and command-event stream in native client: implemented
+- app-level TTS from `speakableMessage`: implemented
+- app-level STT in the `Core` tab through backend transcription: implemented
+- remaining major mobile gaps after core foundation:
+  - extension of app-level speech-to-text beyond the `Core` tab
+  - migration of the remaining approval/billing actions to core
   - mobile auth/session hardening
   - stronger confirmation and retry UX
   - richer notification/product workflow
@@ -387,8 +462,11 @@ Those points should therefore remain explicit decisions, not assumptions.
 Current roadmap reading should be:
 
 - legacy task orchestration: removed from backend runtime
-- `WorkSession` conversational core plus session-first delivery workflow: implemented in backend
+- `Atenea Core Foundation` plus development operator surface: implemented in backend
+- first core-first native client slice plus TTS: implemented
+- `WorkSession` conversational core plus session-first delivery workflow: implemented in backend as the `development` workflow
 - session deliverables and approved pricing baselines: implemented in backend
 - global billing queue baseline: implemented in backend
-- immediate next major step: mobile full operation over the existing session-first backend
+- immediate next major step: extend voice capture cleanly beyond the `Core` tab and finish the remaining client hardening on top of the implemented core contract
+- mobile full operation remains important, now over the implemented core contract
 - future planning beyond that: still requires explicit human decisions

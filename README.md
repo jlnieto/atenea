@@ -2,6 +2,9 @@
 
 Documentos clave:
 
+- `docs/atenea-core.md`: definición canónica de `Atenea Core`, su relación con `WorkSession` y el siguiente bloque recomendado
+- `docs/atenea-core-foundation-design.md`: diseño técnico implementable para el primer contrato de `Atenea Core Foundation`
+- `docs/atenea-core-development-operator-surface.md`: siguiente bloque recomendado para convertir `Atenea Core` en la superficie operativa del dominio `development`
 - `docs/roadmap.md`: estado real actual, bloques completados y gaps abiertos
 - `docs/atenea-v1-architecture.md`: dirección arquitectónica general
 - `docs/worksession-phase1.md`: estado real actual del core `WorkSession`
@@ -46,6 +49,14 @@ Habilitar envío real de push móvil a Expo:
 ATENEA_MOBILE_PUSH_ENABLED=true ./scripts/run.sh
 ```
 
+Habilitar transcripción de voz para `Atenea Core`:
+
+```bash
+ATENEA_CORE_VOICE_ENABLED=true \
+ATENEA_CORE_VOICE_API_KEY=sk-... \
+./scripts/run.sh
+```
+
 ## Qué hace cada script
 
 - `./scripts/test.sh`
@@ -80,14 +91,29 @@ ATENEA_MOBILE_PUSH_ENABLED=true ./scripts/run.sh
 
 ## Estado actual
 
-Atenea es un backend Spring Boot que orquesta trabajo sobre repositorios registrados.
+Atenea hoy tiene dos lecturas que deben mantenerse separadas para no mezclar objetivo con runtime.
 
-El producto backend hoy está centrado únicamente en `WorkSession`:
+Lectura de producto objetivo:
+
+- `Atenea Core` es la futura capa superior conversacional
+- `Atenea Core` debe enrutar entre dominios como `development`, `operations` y `communications`
+- `WorkSession` debe quedar como workflow del dominio `development`
+
+Lectura de runtime actual del repo:
+
+- el backend Spring Boot implementado hoy sigue siendo development-first
+- existe un primer slice runtime de `Atenea Core Foundation`
+- ese slice sólo enruta el dominio `development`
+- `WorkSession` sigue siendo la única superficie de workflow real por debajo del core
+
+El modelo backend activo hoy es:
 
 - `Project`
+- `CoreCommand`
 - `WorkSession`
 - `SessionTurn`
 - `AgentRun`
+- `POST /api/core/commands` como entrada top-level inicial
 - apertura o resolución de sesión
 - turnos conversacionales con Codex
 - continuidad de thread
@@ -98,26 +124,51 @@ El producto backend hoy está centrado únicamente en `WorkSession`:
 
 El flujo legacy `Task` / `TaskExecution` ya fue retirado del backend y de la base de datos.
 
-El repo incluye además una app nativa base en `mobile/`:
+Conclusión operativa:
+
+- hoy el repo implementa el dominio `development`
+- `Atenea Core Foundation` más la superficie operativa de `development` ya existen en backend
+- el backend de core ya soporta:
+  - estado de proyectos
+  - selección de proyecto activo
+  - apertura y continuidad de `WorkSession`
+  - publish
+  - sync PR
+  - deliverables
+  - close
+  - aclaraciones
+  - confirmaciones
+  - `speakableMessage`
+  - timeline de comandos
+- el siguiente bloque ya no es “crear core”, sino endurecer la migración de la app y cerrar STT sobre esta superficie ya implementada
+- no debe documentarse como si ya soportara `operations` o `communications` en runtime
+
+El repo incluye además una app nativa en `mobile/`:
 
 - React Native sobre Expo
-- shell operatorio móvil para Inbox, Projects, Session y Billing
+- shell operatorio móvil para Core, Inbox, Projects, Session y Billing
 - workspace de conversación separado con UX tipo terminal para operar Codex desde móvil
 - login nativo contra `/api/mobile/auth/*`
 - persistencia local de sesión con `expo-secure-store`
 - captura en app de notificaciones push recientes y routing interno por payload
 - SSE consumido directamente en la vista de conversación, con polling como fallback
-- acciones móviles ya cableadas para:
-  - resolve session
-  - turn
+- entrada principal conversacional a través de `Atenea Core`
+- historial y stream de eventos de comandos de core en la app
+- captura de voz en la pestaña `Core` con transcripción server-side
+- mutaciones principales de `development` ya cableadas a `Core`:
+  - activación de proyecto
+  - apertura de sesión
+  - prompts de conversación
   - publish
   - pull-request sync
-  - close
   - generate deliverable
+  - close
+- salida por voz desde `speakableMessage` con `expo-speech`
+- acciones móviles ya cableadas para:
   - approve deliverable
   - mark billed
-- conectada contra la superficie `/api/mobile/*`
-- pensada como base de full mobile operation ya operable, con gaps aún abiertos en confirmaciones, notificaciones y hardening
+- conectada de forma híbrida contra `/api/core/*` y `/api/mobile/*`
+- pensada como base de full mobile operation ya operable, con gap principal abierto en hardening de UX sensible y extensión de voz al resto de superficies
 
 ## Superficies API actuales
 
@@ -158,6 +209,11 @@ Referencias:
 - `docs/roadmap.md`: estado consolidado y gaps reales abiertos
 
 ## Arquitectura funcional actual
+
+`WorkSession` debe leerse en este README como:
+
+- la superficie runtime actual del backend
+- el workflow del dominio `development` que más adelante será orquestado por `Atenea Core`
 
 ### Core `WorkSession`
 

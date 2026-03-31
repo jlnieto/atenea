@@ -6,19 +6,22 @@ This document defines the architectural direction that is guiding Atenea and the
 
 It distinguishes clearly between:
 
+- the target top-level architecture centered on `Atenea Core`
 - the implemented backend architecture
 - the product contract that is already stable enough to build around
 - the historical workflow that has been retired
 
 The core architectural decision is:
 
-- the product core revolves around `WorkSession`
+- the product should evolve toward `Atenea Core` as the top-level conversational orchestrator
+- the current implemented runtime is still centered on `WorkSession`
 - `Project` remains the repository anchor
 - `SessionTurn` remains the persisted visible conversation history
 - `AgentRun` remains the persisted trace of a concrete Codex execution inside a session
 
 The current near-term target flow for that direction is documented in:
 
+- [`docs/atenea-core.md`](./atenea-core.md)
 - [`docs/worksession-target-flow.md`](./worksession-target-flow.md)
 
 ## System role
@@ -33,7 +36,15 @@ That means:
 - Atenea persists operational and conversational state
 - Atenea reduces the need for the operator to work directly in the shell for normal flows
 
-The system is best understood as:
+In the target product architecture, the system should be understood as:
+
+- receive operator input through `Atenea Core`
+- interpret intent
+- route to a domain workflow or typed capability
+- execute safely with governance and traceability
+- return an aggregated response
+
+In the currently implemented runtime, the system is best understood as:
 
 - register a project
 - open or resolve a session
@@ -42,9 +53,30 @@ The system is best understood as:
 - synchronize merge state
 - close the session only after repository reconciliation is safe
 
+## Target architecture
+
+The intended top-level architecture is:
+
+- `Atenea Core`
+  - single conversational entrypoint
+  - intent interpretation
+  - routing
+  - confirmation and governance
+  - traceability across domains
+- domain workflows and capabilities
+  - `development`
+  - `operations`
+  - `communications`
+
+In that target model:
+
+- `WorkSession` belongs to `development`
+- `WorkSession` is not the top-level product entrypoint
+- `Atenea Core` is the layer that decides when `WorkSession` should be created, resolved or continued
+
 ## Current backend reality
 
-The current backend contains one real orchestration surface:
+The current backend contains one real implemented domain workflow:
 
 - `Project`
 - `WorkSession`
@@ -83,10 +115,14 @@ Current responsibility:
 
 Architectural role:
 
-- root of the operator-facing workflow
+- current runtime root of the operator-facing workflow
 - owner of the session working branch
 - owner of session-level continuity
 - owner of session-level delivery state
+
+Target architectural role:
+
+- workflow of the `development` domain under `Atenea Core`
 
 Current implementation status:
 
@@ -194,9 +230,20 @@ Implemented:
 
 ## Core architectural decisions
 
-### 1. `WorkSession` is the root of the product workflow
+### 1. `Atenea Core` is the target top-level orchestrator
 
-The operator flow is:
+The intended long-term operator flow is:
+
+- talk to `Atenea Core`
+- let `Atenea Core` interpret the request
+- let `Atenea Core` route to the correct domain workflow or capability
+- receive a governed and traceable result
+
+This is not fully implemented yet in the repository.
+
+### 2. `WorkSession` is the implemented root of the current development workflow
+
+The current implemented operator flow is:
 
 - open or resolve a session on a project
 - inspect state
@@ -205,7 +252,9 @@ The operator flow is:
 - publish when ready
 - close only when repository and pull request state allow safe reconciliation
 
-### 2. Session, conversation, run and repo state stay separated
+This remains the real runtime contract today.
+
+### 3. Session, conversation, run and repo state stay separated
 
 The architecture keeps these concerns separated:
 
@@ -214,9 +263,9 @@ The architecture keeps these concerns separated:
 - execution runs
 - repository state
 
-The current backend implements that separation at the main model level.
+The current backend implements that separation at the `development` workflow level.
 
-### 3. Repository snapshot remains descriptive
+### 4. Repository snapshot remains descriptive
 
 The `WorkSession` operational surface is descriptive.
 
@@ -229,7 +278,7 @@ Current `repoState` exposes repository facts such as:
 
 It does not try to reintroduce legacy task-style workflow advice.
 
-### 4. Historical task workflow is not part of the current architecture
+### 5. Historical task workflow is not part of the current architecture
 
 The retired `Task` / `TaskExecution` model should not guide new design decisions.
 
@@ -237,11 +286,13 @@ Its historical branch workflow may still be useful as background context, but it
 
 ## Current architectural gaps
 
-The remaining architecture gaps are not about missing session fundamentals.
+The remaining architecture gaps are no longer about missing `WorkSession` fundamentals.
 
 They are:
 
-- deciding the primary frontend/operator session contract
+- implementing `Atenea Core` as a real top-level layer
+- defining the first explicit core contract above direct `WorkSession` usage
+- deciding how governance, confirmation and typed capabilities should be modeled across domains
 - tightening end-to-end validation around publish, merge detection and reconciled close
 - keeping documentation and product language aligned with the codebase
 
@@ -251,6 +302,8 @@ The backend should still avoid stronger claims than the repository supports.
 
 It does not yet define:
 
+- the final `Atenea Core` API contract
 - the final frontend contract beyond the currently available session reads
 - the final long-term operator UX around blocked close recovery
+- the final execution model for `operations` or `communications`
 - every future reporting or higher-level product surface that may be built on top of `WorkSession`

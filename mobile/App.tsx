@@ -24,8 +24,9 @@ export default function App() {
 
 function RootApp() {
   const insets = useSafeAreaInsets();
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<AppTabId>('inbox');
+  const [activeTab, setActiveTab] = useState<AppTabId>('core');
   const { session, logout } = useAuth();
   const { consumePendingRoute, clearNotifications } = useNotificationCenter();
 
@@ -44,8 +45,9 @@ function RootApp() {
     if (session != null) {
       return;
     }
+    setSelectedProjectId(null);
     setSelectedSessionId(null);
-    setActiveTab('inbox');
+    setActiveTab('core');
     clearNotifications();
   }, [session, clearNotifications]);
 
@@ -60,8 +62,11 @@ function RootApp() {
           <AppShell
             activeTab={activeTab}
             onChangeTab={setActiveTab}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={setSelectedProjectId}
             selectedSessionId={selectedSessionId}
             onSelectSession={setSelectedSessionId}
+            operatorKey={session.operator.email}
             operatorName={session.operator.displayName}
             onLogout={() => void logout()}
           />

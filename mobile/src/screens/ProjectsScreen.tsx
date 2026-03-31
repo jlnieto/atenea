@@ -1,31 +1,40 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { usePendingActionCenter } from '../actions/PendingActionCenter';
-import { confirmAction } from '../actions/confirm';
-import { fetchJson, postJson } from '../api/client';
+import { fetchJson } from '../api/client';
 import {
   MobileProjectOverview,
-  ResolveSessionRequest,
-  ResolveSessionResponse,
 } from '../api/types';
+import { buildActivateProjectCommand, buildOpenSessionCommand } from '../core/phrases';
+import { RunCoreCommandOptions } from '../core/useCoreCommandCenter';
 import { ActionButton } from '../components/ActionButton';
 import { Card } from '../components/Card';
 import { LoadingBlock } from '../components/LoadingBlock';
 import { StatePill } from '../components/StatePill';
 import { useRemoteResource } from '../hooks/useRemoteResource';
 
-export function ProjectsScreen({ onOpenSession }: { onOpenSession: (sessionId: number) => void }) {
+export function ProjectsScreen({
+  selectedProjectId,
+  onOpenSession,
+  onSelectProject,
+  onRunCommand,
+}: {
+  selectedProjectId: number | null;
+  onOpenSession: (sessionId: number) => void;
+  onSelectProject: (projectId: number | null) => void;
+  onRunCommand: (options: RunCoreCommandOptions) => Promise<unknown>;
+}) {
   const { data, error, loading, reload } = useRemoteResource(
     () => fetchJson<MobileProjectOverview[]>('/api/mobile/projects/overview'),
     [],
     { refreshIntervalMs: 15000 }
   );
-  const [drafts, setDrafts] = useState<Record<number, ResolveSessionRequest>>({});
-  const [pendingProjectId, setPendingProjectId] = useState<number | null>(null);
+  const [drafts, setDrafts] = useState<Record<number, { title?: string }>>({});
+  const [pendingProjectAction, setPendingProjectAction] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const { pendingAction, startPendingAction, clearPendingAction } = usePendingActionCenter();
 
-  const updateDraft = (projectId: number, patch: ResolveSessionRequest) => {
+  const updateDraft = (projectId: number, patch: { title?: string }) => {
     setDrafts((current) => ({
       ...current,
       [projectId]: {
@@ -35,38 +44,63 @@ export function ProjectsScreen({ onOpenSession }: { onOpenSession: (sessionId: n
     }));
   };
 
-  const resolveSession = async (projectId: number) => {
-    const draft = drafts[projectId];
-    const confirmed = await confirmAction(
-      'Resolve session?',
-      `This will open or reuse the active WorkSession for this project${draft?.baseBranch ? ` on base branch ${draft.baseBranch.trim()}` : ''}.`
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    setPendingProjectId(projectId);
+  const activateProject = async (project: MobileProjectOverview) => {
+    setPendingProjectAction(`activate-${project.projectId}`);
     setMutationError(null);
     startPendingAction({
-      label: 'Resolve session',
+      label: 'Activate project context',
+      scope: 'project',
+      projectId: project.projectId,
+      startedAt: new Date().toISOString(),
+      recoveryHint: 'Refresh Projects before retrying project activation so the latest active session and project status are visible.',
+    });
+    try {
+      await onRunCommand({
+        input: buildActivateProjectCommand(project.projectName),
+        projectId: project.projectId,
+        workSessionId: null,
+      });
+      onSelectProject(project.projectId);
+      await reload();
+    } catch (resolveError) {
+      setMutationError(resolveError instanceof Error ? resolveError.message : 'Project activation failed');
+    } finally {
+      clearPendingAction();
+      setPendingProjectAction(null);
+    }
+  };
+
+  const resolveSession = async (project: MobileProjectOverview) => {
+    const projectId = project.projectId;
+    const draft = drafts[projectId];
+    setPendingProjectAction(`session-${projectId}`);
+    setMutationError(null);
+    startPendingAction({
+      label: 'Resolve session through Atenea Core',
       scope: 'project',
       projectId,
       startedAt: new Date().toISOString(),
-      recoveryHint: 'Refresh Projects before retrying resolve so you can confirm whether the project already has an active session.',
+      recoveryHint: 'Refresh Projects before retrying session open so you can confirm whether the project already has an active session.',
     });
 
     try {
-      const response = await postJson<ResolveSessionResponse, ResolveSessionRequest>(
-        `/api/mobile/projects/${projectId}/sessions/resolve`,
-        draft
-      );
-      onOpenSession(response.view.view.session.id);
+      await onRunCommand({
+        input: buildOpenSessionCommand(project.projectName, draft?.title),
+        projectId,
+        workSessionId: null,
+        onSucceeded: (response) => {
+          if (response.result?.targetId != null) {
+            onSelectProject(projectId);
+            onOpenSession(response.result.targetId);
+          }
+        },
+      });
       await reload();
     } catch (resolveError) {
       setMutationError(resolveError instanceof Error ? resolveError.message : 'Resolve failed');
     } finally {
       clearPendingAction();
-      setPendingProjectId(null);
+      setPendingProjectAction(null);
     }
   };
 
@@ -88,9 +122,9 @@ export function ProjectsScreen({ onOpenSession }: { onOpenSession: (sessionId: n
           <Text style={styles.link}>Refresh</Text>
         </Pressable>
       </View>
-      {pendingProjectId != null ? (
+      {pendingProjectAction != null ? (
         <Text style={styles.pendingNotice}>
-          Resolving session for project {pendingProjectId}. If the app is interrupted, refresh Projects before trying again.
+          Project action in progress. If the app is interrupted, refresh Projects before trying again.
         </Text>
       ) : null}
       {projectPendingRecovery ? (
@@ -108,6 +142,17 @@ export function ProjectsScreen({ onOpenSession }: { onOpenSession: (sessionId: n
           title={project.projectName}
           subtitle={project.description || project.defaultBaseBranch || 'No project description'}
         >
+          <View style={styles.headerRow}>
+            <StatePill
+              label={selectedProjectId === project.projectId ? 'ACTIVE PROJECT' : 'PROJECT'}
+              tone={selectedProjectId === project.projectId ? 'good' : 'default'}
+            />
+            <Pressable onPress={() => void activateProject(project)}>
+              <Text style={styles.link}>
+                {selectedProjectId === project.projectId ? 'Refresh project context' : 'Work on this project'}
+              </Text>
+            </Pressable>
+          </View>
           {project.session && project.session.status !== 'CLOSED' ? (
             <>
               <View style={styles.sessionRow}>
@@ -117,7 +162,12 @@ export function ProjectsScreen({ onOpenSession }: { onOpenSession: (sessionId: n
                 ) : null}
               </View>
               <Text style={styles.meta}>{project.session.title}</Text>
-              <Pressable onPress={() => onOpenSession(project.session!.sessionId)}>
+              <Pressable
+                onPress={() => {
+                  onSelectProject(project.projectId);
+                  onOpenSession(project.session!.sessionId);
+                }}
+              >
                 <Text style={styles.link}>Open session {project.session.sessionId}</Text>
               </Pressable>
             </>
@@ -137,19 +187,10 @@ export function ProjectsScreen({ onOpenSession }: { onOpenSession: (sessionId: n
                 placeholderTextColor="#8b7c6b"
                 style={styles.input}
               />
-              <TextInput
-                value={drafts[project.projectId]?.baseBranch ?? project.defaultBaseBranch ?? ''}
-                onChangeText={(baseBranch) => updateDraft(project.projectId, { baseBranch })}
-                placeholder={project.defaultBaseBranch || 'Base branch'}
-                placeholderTextColor="#8b7c6b"
-                style={styles.input}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
               <ActionButton
-                label={pendingProjectId === project.projectId ? 'Resolving...' : 'Resolve session'}
-                onPress={() => void resolveSession(project.projectId)}
-                disabled={pendingProjectId != null}
+                label={pendingProjectAction === `session-${project.projectId}` ? 'Opening...' : 'Open session via Core'}
+                onPress={() => void resolveSession(project)}
+                disabled={pendingProjectAction != null}
               />
             </>
           )}

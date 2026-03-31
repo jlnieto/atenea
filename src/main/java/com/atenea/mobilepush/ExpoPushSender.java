@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -21,6 +22,7 @@ public class ExpoPushSender {
     private final MobilePushProperties properties;
 
     public ExpoPushSender(
+            @Qualifier("mobilePushHttpClient")
             HttpClient httpClient,
             ObjectMapper objectMapper,
             MobilePushProperties properties

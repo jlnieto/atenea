@@ -13,6 +13,8 @@ Its purpose is to make the following explicit:
 
 This document should be used together with:
 
+- `docs/atenea-core.md`
+- `docs/atenea-core-development-operator-surface.md`
 - `docs/roadmap.md`
 - `docs/atenea-v1-architecture.md`
 - `docs/worksession-phase1.md`
@@ -20,10 +22,15 @@ This document should be used together with:
 
 ## Product direction
 
-The next major Atenea objective is:
+Within the current repository, the next major `WorkSession` objective is:
 
-- make `WorkSession` the canonical unit of real repository work and the canonical operator/frontend contract
-- make that same contract operable end-to-end from mobile
+- keep `WorkSession` as the canonical unit of repository work inside the `development` domain
+- make that same contract operable end-to-end through `Atenea Core`
+- make that same contract operable end-to-end from mobile over that top-level core surface
+
+At system level, the broader architectural objective is now:
+
+- introduce `Atenea Core` as the top-level conversational orchestrator above `WorkSession`
 
 That means a session is not only:
 
@@ -31,13 +38,18 @@ That means a session is not only:
 - run Codex
 - show turns
 
-The intended product meaning of `WorkSession` is:
+The intended product meaning of `WorkSession` remains:
 
 - open a controlled line of work over a repository
 - own the working branch for that line of work
 - persist the full conversation and execution trace
 - publish the resulting work through a pull request
 - track the session until the repository is ready for the next one
+
+But this document should now be read with one boundary in mind:
+
+- `WorkSession` is the target workflow for `development`
+- it is no longer the whole future system story by itself
 
 ## Canonical operator flow
 
@@ -129,7 +141,7 @@ Included in this slice:
 - global commercial workflow above project-level approved pricing
 - tighter documentation governance so architecture docs do not lag behind code
 
-## Canonical frontend contract
+## Canonical frontend contract for the current `development` workflow
 
 The canonical frontend and operator contract should be:
 
@@ -235,6 +247,8 @@ Operator/frontend UX should therefore:
 
 The next major work should likely focus on:
 
+- keeping `WorkSession` clearly positioned as the `development` workflow under `Atenea Core`
+- expanding `Atenea Core` so it can operate project status, project selection and the full `WorkSession` lifecycle
 - frontend/operator consolidation around `conversation-view`
 - stronger test coverage for publish, merge detection, remote branch cleanup and reconciled close
 - explicit operator guidance for close-block states and manual recovery paths
@@ -274,19 +288,21 @@ That document should be treated as background history, not as current product co
 
 When reviewing Atenea progress in future sessions, the key questions should be:
 
-1. is `WorkSession` already the canonical delivery workflow
-2. does the frontend contract already use `conversation-view` as the primary surface
-3. can a session go from open to merged-and-reconciled without manual backend workaround
-4. are blocked close scenarios understandable and actionable for operators
-5. does the documentation still match code and tests
+1. does `Atenea Core` already exist as a real runtime layer above direct `WorkSession` usage
+2. is `WorkSession` clearly positioned as the `development` workflow under that core
+3. does the frontend contract already use `conversation-view` as the primary development surface
+4. can a session go from open to merged-and-reconciled without manual backend workaround
+5. are blocked close scenarios understandable and actionable for operators
+6. does the documentation still match code and tests
 
 ## Summary
 
-The target near-term product is:
+The target near-term `development` product is:
 
 - a session-first repository delivery workflow
 
 In short:
 
 - `WorkSession` is already the root of branch, conversation, publish and reconciliation in backend terms
-- the next milestone is to consolidate that workflow as the canonical operator and frontend surface
+- `Atenea Core` is the next architectural layer that should sit above that workflow
+- the next milestone for this document's scope is to consolidate the `development` workflow as the canonical operator and frontend surface under that future core

@@ -13,6 +13,8 @@ It exists to make the following explicit:
 
 This document should be used together with:
 
+- `docs/atenea-core.md`
+- `docs/atenea-core-development-operator-surface.md`
 - `docs/roadmap.md`
 - `docs/worksession-target-flow.md`
 - `docs/worksession-phase1.md`
@@ -51,7 +53,7 @@ This means the repository is no longer planning mobile only as:
 
 Those can still exist later, but the primary product direction is now a native operator app.
 
-For this repository, `full operation` means that an operator can complete the real `WorkSession` lifecycle from a phone:
+For the current repository, `full operation` means that an operator can complete the real `WorkSession` lifecycle from a phone:
 
 - open or resolve a session
 - continue the Codex conversation
@@ -69,9 +71,11 @@ Mobile is not a secondary presentation layer over desktop.
 
 The intended product meaning is:
 
-- Atenea remains session-first
-- `WorkSession` remains the canonical unit of repository work
+- Atenea should evolve toward `Atenea Core` as the single conversational entrypoint
+- `WorkSession` remains the canonical unit of repository work inside the `development` domain
 - mobile becomes a first-class operator surface over that same model
+- mobile should eventually operate projects and sessions primarily through `Atenea Core`
+- voice should be a first-class channel of that same top-level interaction
 - mobile operator UX must support both:
   - active execution
   - asynchronous follow-up work
@@ -99,7 +103,16 @@ The current backend already provides a strong foundation for mobile:
 - approved pricing summaries
 - global billing queue and billing summary
 
-This means the backend does not need a second orchestration model for mobile.
+This means the backend does not need a second `development` orchestration model for mobile.
+
+Current boundary:
+
+- today the mobile client is already hybrid:
+  - `Atenea Core` is the primary operator entrypoint
+  - `/api/mobile/*` remains the compact read layer
+- the `Core` tab already supports voice capture with backend transcription and voice playback from `speakableMessage`
+- the backend now also provides a project-aware `Atenea Core` surface for the full `development` workflow
+- the remaining target is to finish migrating the remaining actions and extend voice capture across the operator UX
 
 ## Current repository status for the native client
 
@@ -109,10 +122,14 @@ Current client status:
 
 - React Native project bootstrapped with Expo
 - operator shell with tabs for:
+  - core
   - inbox
   - projects
   - session
   - billing
+- core-first operator console with command input, command history and command-event follow-up
+- voice recording in the `Core` tab through `expo-audio`
+- backend transcription through `POST /api/core/voice/commands`
 - dedicated conversation workspace reached from the session view
 - terminal-style conversation workspace optimized for Codex-like mobile operation
 - live reads wired to the mobile backend surface
@@ -128,12 +145,13 @@ Current client status:
 - local persistence of the recent notification rail across app restarts per operator session
 - persisted pending-action recovery hints for interrupted mobile mutations
 - push-open routing into `Session` and `Billing`
+- `speakableMessage` playback through `expo-speech`
 - TypeScript validation passing for the current client code
 
 Current client intent:
 
-- validate the backend mobile contract in a native runtime
-- create a stable shell for future action flows
+- operate the implemented `development` core surface from a native runtime
+- keep dense read models while consolidating operator mutations behind `Core`
 - avoid premature domain duplication in the mobile layer
 
 Current client limitations:
@@ -142,6 +160,10 @@ Current client limitations:
 - no dedicated confirmation UX coverage for every sensitive action yet
 - no interruption/resume UX around long-running mutations yet
 - no true resume semantics for interrupted long-running mutations yet
+- no voice capture yet outside the `Core` tab
+- some remaining actions still use direct session-first aliases:
+  - deliverable approval
+  - billing mark-billed
 - Expo Go cannot exercise real remote push delivery and therefore runs with push initialization disabled
 
 ## Principles
@@ -181,10 +203,17 @@ Concretely, a mobile operator should be able to:
 
 ## What is still missing for full mobile operation
 
-The main gaps are not in core orchestration, but in operator experience and transport behavior.
+The main gaps are no longer only in operator experience and transport behavior.
+
+The repository no longer lacks the backend core surface for project-aware `development` work.
+
+The remaining gap is finishing the migration of the mobile/operator experience onto that core surface cleanly.
 
 The main missing pieces are now concentrated in hardening and operator safety:
 
+- mobile migration toward project-aware operation through `Atenea Core`
+- extension and hardening of speech-to-text over the implemented core contract
+- stronger UI handling for clarification and confirmation outcomes
 - dedicated confirmation UX for sensitive actions
 - stronger support for asynchronous operator workflows
 - richer notification behavior outside currently open screens
@@ -216,6 +245,8 @@ The canonical mobile session contract should continue to anchor on:
 - `POST /api/sessions/{sessionId}/pull-request/sync/conversation-view`
 - `POST /api/sessions/{sessionId}/close/conversation-view`
 
+Inside the next `Atenea Core` phase, these contracts should remain the execution-layer source under the `development` domain, even when mobile starts entering through core.
+
 ### 2. Add mobile-oriented aggregate reads
 
 The next backend additions should likely be:
@@ -246,6 +277,19 @@ The mobile action model should preserve explicit confirmations around:
 - mark billed
 
 The backend should remain idempotent and safe to retry.
+
+### 5. Prepare voice as a channel over core
+
+Voice should not fork the mobile domain model.
+
+The recommended direction is:
+
+- speech-to-text in the client or channel layer
+- `POST /api/core/commands` with `channel=VOICE`
+- voice-ready text returned by core
+- text-to-speech in the client
+
+This keeps the mobile app aligned with the same operator contract used for text.
 
 ## Recommended product phases
 
@@ -449,4 +493,5 @@ The current repository direction should therefore be read as:
 - a first mobile backend contract now exists over the same session-first backend
 - a first native React Native shell now exists in `mobile/`
 - a first mobile auth baseline now exists for protected `/api/mobile/*`
-- the remaining mobile work is concentrated on stronger mutation-oriented UX, notification/product hardening and documentation discipline
+- the backend now already includes the `Atenea Core` development operator surface
+- the remaining mobile work is concentrated on stronger mutation-oriented UX, migration toward core-first interaction, voice transport and notification/product hardening

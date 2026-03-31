@@ -10,23 +10,29 @@ import { usePendingActionCenter } from './actions/PendingActionCenter';
 import { useNotificationCenter } from './notifications/NotificationCenter';
 import { BillingScreen } from './screens/BillingScreen';
 import { ConversationScreen } from './screens/ConversationScreen';
+import { CoreConsoleScreen } from './screens/CoreConsoleScreen';
 import { InboxScreen } from './screens/InboxScreen';
 import { NotificationsScreen } from './screens/NotificationsScreen';
 import { ProjectsScreen } from './screens/ProjectsScreen';
 import { SessionScreen } from './screens/SessionScreen';
+import { useCoreCommandCenter } from './core/useCoreCommandCenter';
 
-export type AppTabId = 'inbox' | 'notifications' | 'projects' | 'session' | 'conversation' | 'billing';
+export type AppTabId = 'core' | 'inbox' | 'notifications' | 'projects' | 'session' | 'conversation' | 'billing';
 
 type AppShellProps = {
   activeTab: AppTabId;
   onChangeTab: (tab: AppTabId) => void;
+  selectedProjectId: number | null;
+  onSelectProject: (projectId: number | null) => void;
   selectedSessionId: number | null;
   onSelectSession: (sessionId: number | null) => void;
+  operatorKey: string;
   operatorName: string;
   onLogout: () => void;
 };
 
 const TABS: Array<{ id: AppTabId; label: string }> = [
+  { id: 'core', label: 'Core' },
   { id: 'inbox', label: 'Inbox' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'projects', label: 'Projects' },
@@ -37,20 +43,44 @@ const TABS: Array<{ id: AppTabId; label: string }> = [
 export function AppShell({
   activeTab,
   onChangeTab,
+  selectedProjectId,
+  onSelectProject,
   selectedSessionId,
   onSelectSession,
+  operatorKey,
   operatorName,
   onLogout,
 }: AppShellProps) {
   const { notifications, routeToNotification, dismissNotification, clearNotifications } = useNotificationCenter();
   const { pendingAction, clearPendingAction } = usePendingActionCenter();
+  const {
+    activeCommand,
+    clearActiveCommand,
+    confirmActiveCommand,
+    historyVersion,
+    resolveClarification,
+    runCommand,
+    runVoiceCommand,
+  } = useCoreCommandCenter({
+    operatorKey,
+    selectedProjectId,
+    selectedSessionId,
+    onSelectProject,
+    onSelectSession,
+    onAttentionRequired: () => onChangeTab('core'),
+  });
 
-  const sessionHint = useMemo(() => {
-    if (selectedSessionId == null) {
-      return 'Select a session from Inbox or Projects.';
-    }
-    return `Session ${selectedSessionId}`;
-  }, [selectedSessionId]);
+  const sessionHint = useMemo(() => (
+    selectedSessionId == null
+      ? 'No active session selected.'
+      : `Session ${selectedSessionId}`
+  ), [selectedSessionId]);
+
+  const projectHint = useMemo(() => (
+    selectedProjectId == null
+      ? 'No active project selected.'
+      : `Project ${selectedProjectId}`
+  ), [selectedProjectId]);
 
   const openSession = (sessionId: number) => {
     onSelectSession(sessionId);
@@ -132,6 +162,7 @@ export function AppShell({
           <View style={styles.sessionHintCard}>
             <Text style={styles.sessionHintLabel}>Current session</Text>
             <Text style={styles.sessionHintValue}>{sessionHint}</Text>
+            <Text style={styles.operatorValue}>{projectHint}</Text>
             <Text style={styles.operatorValue}>Operator: {operatorName}</Text>
           </View>
 
@@ -188,10 +219,30 @@ export function AppShell({
 
       {activeTab === 'conversation' ? (
         <View style={styles.conversationContent}>
-          <ConversationScreen sessionId={selectedSessionId} onBackToSession={() => onChangeTab('session')} />
+          <ConversationScreen
+            projectId={selectedProjectId}
+            sessionId={selectedSessionId}
+            onBackToSession={() => onChangeTab('session')}
+            onRunCommand={runCommand}
+          />
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
+          {activeTab === 'core' ? (
+            <CoreConsoleScreen
+              activeCommand={activeCommand}
+              historyVersion={historyVersion}
+              operatorKey={operatorKey}
+              selectedProjectId={selectedProjectId}
+              selectedSessionId={selectedSessionId}
+              onClearActiveCommand={clearActiveCommand}
+              onConfirmActiveCommand={confirmActiveCommand}
+              onOpenSession={openSession}
+              onResolveClarification={resolveClarification}
+              onRunCommand={runCommand}
+              onRunVoiceCommand={runVoiceCommand}
+            />
+          ) : null}
           {activeTab === 'inbox' ? (
             <InboxScreen onOpenSession={openSession} />
           ) : null}
@@ -199,10 +250,21 @@ export function AppShell({
             <NotificationsScreen onOpenNotification={openNotificationById} />
           ) : null}
           {activeTab === 'projects' ? (
-            <ProjectsScreen onOpenSession={openSession} />
+            <ProjectsScreen
+              selectedProjectId={selectedProjectId}
+              onOpenSession={openSession}
+              onSelectProject={onSelectProject}
+              onRunCommand={runCommand}
+            />
           ) : null}
           {activeTab === 'session' ? (
-            <SessionScreen sessionId={selectedSessionId} onOpenConversation={openConversation} />
+            <SessionScreen
+              projectId={selectedProjectId}
+              sessionId={selectedSessionId}
+              onOpenConversation={openConversation}
+              onOpenSession={openSession}
+              onRunCommand={runCommand}
+            />
           ) : null}
           {activeTab === 'billing' ? (
             <BillingScreen onOpenSession={openSession} />

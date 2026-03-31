@@ -9,19 +9,29 @@ The file name remains `worksession-phase1.md` because this repository already co
 Current precise meaning:
 
 - `WorkSession Phase 1` is functionally implemented in the backend
-- `WorkSession` is the only active orchestration workflow in runtime
+- `WorkSession` is the only active domain workflow in runtime
 - the retired `Task` / `TaskExecution` model no longer exists in the backend API or database
+- `Atenea Core Foundation` now exists as an initial top-level runtime layer above `development`
 
 ## Current architectural position
 
-The backend currently exposes one real orchestration model:
+The backend currently exposes one real implemented workflow model:
 
 - `Project`
 - `WorkSession`
 - `SessionTurn`
 - `AgentRun`
 
-This is already a session-first delivery backend, not a coexistence stage.
+This is already a session-first delivery backend for the `development` domain, not a coexistence stage.
+
+In the target architecture described by `docs/atenea-core.md`, this model should be read as:
+
+- current runtime surface for repository work
+- future `development` domain workflow under `Atenea Core`
+
+The next recommended step above this implemented runtime is described in:
+
+- `docs/atenea-core-development-operator-surface.md`
 
 ## Implemented in code today
 
@@ -628,5 +638,9 @@ Current state is:
 - `WorkSession` is no longer an early persistence-only slice
 - it already supports open, resolve, aggregated reads, turn execution, conversational continuity, turns history, runs history, publish, PR sync and reconciled close
 - it also supports generated, versioned and approved session deliverables
-- the backend runtime is session-first only
-- the next gap is no longer basic deliverables generation, but commercial workflow consolidation on top of approved pricing data
+- the backend runtime is development-domain only and session-first within that domain
+- `Atenea Core Foundation` is implemented only as a development-first slice, not yet as a full cross-domain layer
+- the next gaps for this slice are:
+  - stronger end-to-end hardening of the session workflow
+  - commercial workflow consolidation on top of approved pricing data
+  - clean positioning of `WorkSession` under the future `Atenea Core`

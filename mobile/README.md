@@ -4,8 +4,20 @@ Native operator shell for Atenea mobile full operation.
 
 ## Current status
 
-The repository now contains a first React Native client bootstrapped with Expo and wired to the backend mobile surface:
+The repository now contains a React Native client bootstrapped with Expo and split into:
 
+- a `Core` tab as the primary operator entrypoint
+- live read surfaces still using the mobile/session-first contracts where they remain useful
+
+Current client outcomes:
+
+- core-first operator console with free-text command input
+- voice capture in the `Core` tab with backend transcription
+- project and session active context kept in app state and sent to `Atenea Core`
+- recent core command history
+- core command-event SSE consumption with polling fallback
+- clarification and confirmation follow-up routed through the `Core` tab
+- `speakableMessage` playback through `expo-speech`
 - inbox
 - projects overview
 - session summary
@@ -15,30 +27,37 @@ The repository now contains a first React Native client bootstrapped with Expo a
 - periodic auto-refresh for inbox, projects, billing and session state
 - session event feed
 - direct SSE consumption in the conversation workspace with polling fallback
-- resolve session from project cards
-- session actions for:
+- project context activation from project cards through `Atenea Core`
+- session open from project cards through `Atenea Core`
+- session actions through `Atenea Core` for:
   - publish
   - pull-request sync
   - close
-- conversation actions for:
-  - read turns
-  - send prompts
-  - return to the session control view
-- deliverable actions for:
-  - generate
-  - approve
+  - generate deliverable
+- conversation prompts sent through `Atenea Core`
+- direct mobile actions still retained for:
+  - approve deliverable
   - mark billed
 
 Current implementation focus:
 
-- validate the mobile backend contract in a real native client
-- provide a compact operator shell for future session, delivery and billing flows
-- keep the client thin while the backend remains the source of truth
-- keep live operational visibility without introducing native infra too early
+- operate the `development` domain through `Atenea Core` from the native app
+- keep read models dense while mutating actions consolidate behind `Core`
+- harden clarification, confirmation and interruption UX
+- add real speech-to-text on top of the existing core contract
 
 ## Backend contract used
 
-The current client reads from:
+The current client uses these core endpoints:
+
+- `POST /api/core/commands`
+- `POST /api/core/commands/{commandId}/confirm`
+- `POST /api/core/voice/commands`
+- `GET /api/core/commands`
+- `GET /api/core/commands/{commandId}/events`
+- `GET /api/core/commands/{commandId}/events/stream`
+
+It also still reads from:
 
 - `POST /api/mobile/auth/login`
 - `POST /api/mobile/auth/refresh`
@@ -52,7 +71,10 @@ The current client reads from:
 - `GET /api/mobile/sessions/{sessionId}/summary`
 - `GET /api/mobile/billing/queue`
 
-The client is intentionally aligned with the session-first mobile backend already present in the repository.
+The client is now hybrid by design:
+
+- `Atenea Core` is the operator entrypoint for project/session actions
+- `/api/mobile/*` remains the compact read layer for inbox, summaries, conversation rendering and billing
 
 ## Configuration
 
@@ -87,6 +109,20 @@ ATENEA_AUTH_BOOTSTRAP_PASSWORD=secret-pass \
 ./scripts/run.sh
 ```
 
+Voice transcription backend for the `Core` tab:
+
+- `ATENEA_CORE_VOICE_ENABLED=true`
+- `ATENEA_CORE_VOICE_API_KEY=...`
+- optional: `ATENEA_CORE_VOICE_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe`
+
+Example:
+
+```bash
+ATENEA_CORE_VOICE_ENABLED=true \
+ATENEA_CORE_VOICE_API_KEY=sk-... \
+./scripts/run.sh
+```
+
 ## Environment note
 
 The scaffold currently uses Expo 54 / React Native 0.81.
@@ -99,6 +135,8 @@ This phase does not yet fully implement:
 
 - dedicated confirmation UX for every sensitive action
 - stronger interruption and retry UX across long-running operator flows
+- full migration of deliverable approval and billing actions to `Atenea Core`
+- voice capture outside the `Core` tab
 
 This phase already implements:
 
@@ -114,6 +152,12 @@ This phase already implements:
 - secure local persistence of recent notifications per operator session
 - persisted pending-action recovery hints across app restarts
 - internal routing from push open into `Session` or `Billing`
+- `Core` tab as the primary conversational entrypoint
+- `Atenea Core` command history and command-event stream in the app
+- app-managed project/session context passed to `Atenea Core`
+- audio recording with `expo-audio`
+- server-side transcription through `POST /api/core/voice/commands`
+- text-to-speech playback from `speakableMessage` through `expo-speech`
 - direct SSE consumption for the session conversation workspace
 - conversation UI split from session control UI
 - terminal-like conversation rendering:
@@ -132,6 +176,8 @@ The native client now uses:
 - `expo-notifications`
 - `expo-device`
 - `expo-secure-store`
+- `expo-audio`
+- `expo-speech`
 
 Current behavior:
 

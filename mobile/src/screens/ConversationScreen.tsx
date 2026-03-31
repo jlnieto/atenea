@@ -13,13 +13,13 @@ import {
   View,
 } from 'react-native';
 import { API_BASE_URL } from '../api/config';
-import { fetchJson, postJson } from '../api/client';
+import { fetchJson } from '../api/client';
 import {
-  CreateSessionTurnConversationViewResponse,
-  CreateSessionTurnRequest,
+  CoreCommandResponse,
   MobileSessionEventsResponse,
   WorkSessionConversationView,
 } from '../api/types';
+import { RunCoreCommandOptions } from '../core/useCoreCommandCenter';
 import { ActionButton } from '../components/ActionButton';
 import { useAuth } from '../auth/AuthContext';
 import { Card } from '../components/Card';
@@ -33,14 +33,18 @@ const MONO_FONT = Platform.select({
 });
 
 export function ConversationScreen({
+  projectId,
   sessionId,
   onBackToSession,
+  onRunCommand,
 }: {
+  projectId: number | null;
   sessionId: number | null;
   onBackToSession: () => void;
+  onRunCommand: (options: RunCoreCommandOptions) => Promise<CoreCommandResponse>;
 }) {
   const { session: authSession } = useAuth();
-  const { data, error, loading, refreshing, reload, setData } = useRemoteResource(
+  const { data, error, loading, refreshing, reload } = useRemoteResource(
     () =>
       sessionId == null
         ? Promise.resolve(null)
@@ -123,12 +127,24 @@ export function ConversationScreen({
     setPending(true);
     setMutationError(null);
     try {
-      const response = await postJson<CreateSessionTurnConversationViewResponse, CreateSessionTurnRequest>(
-        `/api/mobile/sessions/${sessionId}/turns`,
-        { message: turnMessage.trim() }
-      );
-      setData(response.view);
-      setTurnMessage('');
+      const response = await onRunCommand({
+        input: turnMessage.trim(),
+        projectId,
+        workSessionId: sessionId,
+        openCoreOnAttention: true,
+      });
+      if (response.status === 'SUCCEEDED') {
+        await reload({ silent: true });
+        setTurnMessage('');
+        return;
+      }
+      if (response.status === 'NEEDS_CONFIRMATION') {
+        setMutationError('Atenea Core needs confirmation in the Core tab before continuing.');
+        return;
+      }
+      if (response.status === 'NEEDS_CLARIFICATION') {
+        setMutationError('Atenea Core needs clarification in the Core tab before continuing.');
+      }
     } catch (actionError) {
       setMutationError(actionError instanceof Error ? actionError.message : 'Turn failed');
     } finally {

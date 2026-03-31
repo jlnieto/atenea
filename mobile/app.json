@@ -9,7 +9,13 @@
     "newArchEnabled": true,
     "plugins": [
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Atenea Mobile to capture operator voice commands."
+        }
+      ]
     ],
     "splash": {
       "image": "./assets/splash-icon.png",

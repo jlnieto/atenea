@@ -3,6 +3,10 @@ package com.atenea.api;
 import com.atenea.auth.OperatorAuthenticationException;
 import com.atenea.service.project.CanonicalProjectConflictException;
 import com.atenea.github.GitHubIntegrationException;
+import com.atenea.service.core.CoreCommandNotFoundException;
+import com.atenea.service.core.CoreCommandRejectedException;
+import com.atenea.service.core.CoreVoiceTranscriptionException;
+import com.atenea.service.core.CoreVoiceUnavailableException;
 import com.atenea.service.project.DuplicateProjectNameException;
 import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotDirectoryException;
@@ -67,6 +71,12 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(WorkSessionNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleWorkSessionNotFound(WorkSessionNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(CoreCommandNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleCoreCommandNotFound(CoreCommandNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
@@ -178,6 +188,30 @@ public class ApiExceptionHandler {
             OperatorAuthenticationException exception
     ) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(CoreCommandRejectedException.class)
+    public ResponseEntity<ApiErrorResponse> handleCoreCommandRejected(
+            CoreCommandRejectedException exception
+    ) {
+        return ResponseEntity.status(exception.getHttpStatus())
+                .body(new ApiErrorResponse(exception.getMessage(), List.of(exception.getCode())));
+    }
+
+    @ExceptionHandler(CoreVoiceUnavailableException.class)
+    public ResponseEntity<ApiErrorResponse> handleCoreVoiceUnavailable(
+            CoreVoiceUnavailableException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(CoreVoiceTranscriptionException.class)
+    public ResponseEntity<ApiErrorResponse> handleCoreVoiceTranscription(
+            CoreVoiceTranscriptionException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 

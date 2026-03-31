@@ -10,6 +10,15 @@ type RequestOptions = {
   allowAuthRefresh?: boolean;
 };
 
+type MultipartValue =
+  | string
+  | number
+  | {
+    uri: string;
+    name: string;
+    type: string;
+  };
+
 let authAdapter: AuthAdapter = {
   getAccessToken: () => null,
   refreshAccessToken: async () => null,
@@ -25,9 +34,11 @@ export function configureAuthAdapter(nextAdapter: Partial<AuthAdapter>) {
 
 async function performRequest(path: string, init?: RequestInit): Promise<Response> {
   const accessToken = authAdapter.getAccessToken();
+  const requestHeaders = (init?.headers as Record<string, string> | undefined) ?? {};
+  const isMultipart = typeof FormData !== 'undefined' && init?.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(init?.headers as Record<string, string> | undefined),
+    ...(!isMultipart ? { 'Content-Type': 'application/json' } : {}),
+    ...requestHeaders,
   };
 
   if (accessToken) {
@@ -103,4 +114,46 @@ export async function postEmpty<TBody = unknown>(
     const text = await response.text();
     throw new Error(text || `HTTP ${response.status}`);
   }
+}
+
+export async function postMultipart<TResponse>(
+  path: string,
+  fields: Record<string, MultipartValue | null | undefined>,
+  options?: RequestOptions
+): Promise<TResponse> {
+  const formData = new FormData();
+  Object.entries(fields).forEach(([key, value]) => {
+    if (value == null) {
+      return;
+    }
+    if (typeof value === 'string' || typeof value === 'number') {
+      formData.append(key, String(value));
+      return;
+    }
+    formData.append(key, value as never);
+  });
+
+  let response = await performRequest(path, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (response.status === 401 && options?.allowAuthRefresh !== false) {
+    const refreshedAccessToken = await authAdapter.refreshAccessToken();
+    if (refreshedAccessToken) {
+      response = await performRequest(path, {
+        method: 'POST',
+        body: formData,
+      });
+    } else {
+      authAdapter.onAuthFailure();
+    }
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+
+  return response.json() as Promise<TResponse>;
 }
