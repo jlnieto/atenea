@@ -19,13 +19,16 @@ public class MobileSessionService {
 
     private final WorkSessionService workSessionService;
     private final SessionDeliverableService sessionDeliverableService;
+    private final MobileSessionInsightsService mobileSessionInsightsService;
 
     public MobileSessionService(
             WorkSessionService workSessionService,
-            SessionDeliverableService sessionDeliverableService
+            SessionDeliverableService sessionDeliverableService,
+            MobileSessionInsightsService mobileSessionInsightsService
     ) {
         this.workSessionService = workSessionService;
         this.sessionDeliverableService = sessionDeliverableService;
+        this.mobileSessionInsightsService = mobileSessionInsightsService;
     }
 
     @Transactional(readOnly = true)
@@ -33,12 +36,14 @@ public class MobileSessionService {
         WorkSessionConversationViewResponse conversation = workSessionService.getSessionConversationView(sessionId);
         SessionDeliverablesViewResponse approvedDeliverables = sessionDeliverableService.getApprovedDeliverablesView(sessionId);
         ApprovedPriceEstimateSummaryResponse approvedPriceEstimate = getApprovedPriceEstimateOrNull(sessionId);
+        MobileSessionActionsResponse actions = toActions(conversation, approvedPriceEstimate);
 
         return new MobileSessionSummaryResponse(
                 conversation,
                 approvedDeliverables,
                 approvedPriceEstimate,
-                toActions(conversation, approvedPriceEstimate)
+                actions,
+                mobileSessionInsightsService.buildInsights(conversation, actions)
         );
     }
 

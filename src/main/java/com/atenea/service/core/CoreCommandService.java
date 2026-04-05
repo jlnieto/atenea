@@ -290,8 +290,8 @@ public class CoreCommandService {
         if (command.getConfirmationToken() == null || command.getConfirmationToken().isBlank()) {
             command.setConfirmationToken(UUID.randomUUID().toString());
         }
-        command.setOperatorMessage("This Core capability requires explicit confirmation before execution.");
-        command.setSpeakableMessage("I need your confirmation before executing this action.");
+        command.setOperatorMessage("Esta capacidad requiere confirmación explícita antes de ejecutarse.");
+        command.setSpeakableMessage("Necesito tu confirmación antes de ejecutar esta acción.");
         command.setFinishedAt(Instant.now());
         coreCommandRepository.save(command);
         coreCommandEventService.record(
@@ -368,8 +368,8 @@ public class CoreCommandService {
         command.setClarificationJson(null);
         command.setErrorCode("EXECUTION_FAILED");
         command.setErrorMessage(exception.getMessage());
-        command.setOperatorMessage("The Core command failed during execution.");
-        command.setSpeakableMessage("The command failed during execution.");
+        command.setOperatorMessage("El comando de Atenea Core ha fallado durante la ejecución.");
+        command.setSpeakableMessage("El comando ha fallado durante la ejecución.");
         command.setFinishedAt(Instant.now());
         coreCommandRepository.save(command);
         coreCommandEventService.record(command.getId(), CoreCommandEventPhase.FAILED, command.getOperatorMessage(), null);
@@ -432,7 +432,7 @@ public class CoreCommandService {
                 command.getStatus() == CoreCommandStatus.NEEDS_CONFIRMATION
                         ? new CoreConfirmationResponse(
                                 command.getConfirmationToken(),
-                                "Explicit confirmation is required before this command can execute.")
+                                "Esta acción necesita confirmación explícita antes de ejecutarse.")
                         : null,
                 command.getOperatorMessage(),
                 command.getSpeakableMessage());

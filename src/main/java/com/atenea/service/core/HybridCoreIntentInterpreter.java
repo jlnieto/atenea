@@ -46,6 +46,6 @@ public class HybridCoreIntentInterpreter implements CoreIntentInterpreter {
 
     private boolean hasExplicitExecutionContext(CreateCoreCommandRequest request) {
         return request.context() != null
-                && (request.context().projectId() != null || request.context().workSessionId() != null);
+                && request.context().workSessionId() != null;
     }
 }

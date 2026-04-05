@@ -78,8 +78,8 @@ class CoreCommandConfirmationServiceTest {
                         44L,
                         Map.of("ok", true),
                         "Resolved conversation",
-                        "The active WorkSession was continued successfully.",
-                        "The active work session was continued successfully."));
+                        "He continuado la WorkSession activa correctamente.",
+                        "He continuado la sesión activa correctamente."));
 
         CoreCommandResponse response = coreCommandService.confirmCommand(
                 101L,
@@ -134,7 +134,7 @@ class CoreCommandConfirmationServiceTest {
         command.setInterpretedIntentJson("{\"intent\":\"CONTINUE_WORK_SESSION\"}");
         command.setInterpreterSource(CoreInterpreterSource.LLM);
         command.setInterpreterDetail("llm_structured_classification");
-        command.setSpeakableMessage("The active work session was continued successfully.");
+        command.setSpeakableMessage("He continuado la sesión activa correctamente.");
         command.setCreatedAt(Instant.parse("2026-03-30T20:00:00Z"));
         command.setFinishedAt(Instant.parse("2026-03-30T20:00:01Z"));
         return command;

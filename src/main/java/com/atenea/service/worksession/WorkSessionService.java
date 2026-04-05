@@ -182,9 +182,6 @@ public class WorkSessionService {
 
         WorkSessionResponse sessionResponse = toResponse(session);
         AgentRunEntity latestRun = agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(sessionId).orElse(null);
-        AgentRunEntity latestFailedRun = agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(
-                sessionId,
-                AgentRunStatus.FAILED).orElse(null);
         AgentRunEntity latestSucceededRun = agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(
                 sessionId,
                 AgentRunStatus.SUCCEEDED).orElse(null);
@@ -194,7 +191,9 @@ public class WorkSessionService {
                 sessionResponse.repoState().runInProgress(),
                 canCreateTurn(sessionResponse),
                 latestRun == null ? null : toLatestRunResponse(latestRun),
-                latestFailedRun == null ? null : latestFailedRun.getErrorSummary(),
+                latestRun != null && latestRun.getStatus() == AgentRunStatus.FAILED
+                        ? latestRun.getErrorSummary()
+                        : null,
                 latestSucceededRun == null ? null : latestSucceededRun.getOutputSummary()
         );
     }

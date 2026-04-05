@@ -28,6 +28,7 @@ What is implemented today:
 - `POST /api/core/commands`
 - `POST /api/core/commands/{commandId}/confirm`
 - `POST /api/core/voice/commands`
+- `GET /api/core/commands/{commandId}/speech`
 - `GET /api/core/commands`
 - `GET /api/core/commands/{commandId}`
 - `GET /api/core/commands/{commandId}/events`
@@ -50,7 +51,7 @@ What is implemented today:
   - `close_work_session`
 - clarification outcome through `NEEDS_CLARIFICATION`
 - confirmation roundtrip for sensitive `development` capabilities
-- voice-ready core responses through `speakableMessage`
+- voice-ready core responses through `speakableMessage` and per-command speech audio
 - server-side voice transcription path into `Core` for the app channel
 - `Project`
 - `WorkSession`
@@ -332,7 +333,7 @@ The next step should focus on using it as the real operator surface from the cli
 Recommended outputs:
 
 1. app-level speech-to-text feeding `POST /api/core/commands` with `channel=VOICE`
-2. app-level text-to-speech consuming `speakableMessage`
+2. app-level playback consuming backend speech audio generated from `speakableMessage`
 3. migration of project/session operator flows from direct session-first calls toward the core contract
 4. client UX for `NEEDS_CLARIFICATION`, `NEEDS_CONFIRMATION` and command-event timelines
 5. only after that, evaluation of the first non-`development` domain

@@ -36,6 +36,29 @@ services:
     expose:
       - "8092"
 
+  expo-dev:
+    image: node:20-bookworm-slim
+    container_name: atenea-expo-dev
+    working_dir: /workspace/repos/internal/atenea/mobile
+    environment:
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_PACKAGER_PROXY_URL: https://ateneatest.yudri.es
+      EXPO_PUBLIC_ATENEA_API_BASE_URL: ${EXPO_PUBLIC_ATENEA_API_BASE_URL:-https://atenea.yudri.es}
+    stdin_open: true
+    tty: true
+    volumes:
+      - /srv/atenea/workspace/repos:/workspace/repos
+    expose:
+      - "8083"
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        if [ ! -d node_modules ]; then
+          npm ci
+        fi
+        npx expo start --host lan --port 8083 --clear
+
   atenea-dev:
     build:
       context: .
@@ -54,6 +77,14 @@ services:
       ATENEA_CODEX_APP_SERVER_CWD: /workspace/repos/internal/atenea
       ATENEA_GITHUB_TOKEN: ${ATENEA_GITHUB_TOKEN:-}
       ATENEA_GITHUB_TOKEN_EXPIRES_AT: ${ATENEA_GITHUB_TOKEN_EXPIRES_AT:-}
+      ATENEA_AUTH_BOOTSTRAP_ENABLED: ${ATENEA_AUTH_BOOTSTRAP_ENABLED:-true}
+      ATENEA_AUTH_BOOTSTRAP_EMAIL: ${ATENEA_AUTH_BOOTSTRAP_EMAIL:-operator@atenea.local}
+      ATENEA_AUTH_BOOTSTRAP_PASSWORD: ${ATENEA_AUTH_BOOTSTRAP_PASSWORD:-secret-pass}
+      ATENEA_AUTH_BOOTSTRAP_DISPLAY_NAME: ${ATENEA_AUTH_BOOTSTRAP_DISPLAY_NAME:-Mobile Operator}
+      ATENEA_CORE_VOICE_ENABLED: ${ATENEA_CORE_VOICE_ENABLED:-false}
+      ATENEA_CORE_VOICE_API_KEY: ${ATENEA_CORE_VOICE_API_KEY:-}
+      ATENEA_CORE_LLM_ENABLED: ${ATENEA_CORE_LLM_ENABLED:-true}
+      ATENEA_CORE_LLM_PROMPT_VERSION: ${ATENEA_CORE_LLM_PROMPT_VERSION:-core-intent-v6}
     volumes:
       - /srv/atenea/workspace/repos:/workspace/repos
       - /srv/atenea/workspace/context:/workspace/context:ro

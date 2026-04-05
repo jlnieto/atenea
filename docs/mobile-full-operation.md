@@ -110,9 +110,10 @@ Current boundary:
 - today the mobile client is already hybrid:
   - `Atenea Core` is the primary operator entrypoint
   - `/api/mobile/*` remains the compact read layer
-- the `Core` tab already supports voice capture with backend transcription and voice playback from `speakableMessage`
+- the `Core` tab already supports voice capture with backend transcription and backend-generated Spanish voice playback from `speakableMessage`
 - the backend now also provides a project-aware `Atenea Core` surface for the full `development` workflow
-- the remaining target is to finish migrating the remaining actions and extend voice capture across the operator UX
+- direct mobile mutation aliases still exist in backend for compatibility, but they are no longer the preferred operator path
+- the remaining target is to harden the operator UX on top of that split and extend voice capture across the operator UX
 
 ## Current repository status for the native client
 
@@ -145,7 +146,7 @@ Current client status:
 - local persistence of the recent notification rail across app restarts per operator session
 - persisted pending-action recovery hints for interrupted mobile mutations
 - push-open routing into `Session` and `Billing`
-- `speakableMessage` playback through `expo-speech`
+- backend-generated `speakableMessage` playback through remote audio, with local `expo-speech` fallback
 - TypeScript validation passing for the current client code
 
 Current client intent:
@@ -161,9 +162,6 @@ Current client limitations:
 - no interruption/resume UX around long-running mutations yet
 - no true resume semantics for interrupted long-running mutations yet
 - no voice capture yet outside the `Core` tab
-- some remaining actions still use direct session-first aliases:
-  - deliverable approval
-  - billing mark-billed
 - Expo Go cannot exercise real remote push delivery and therefore runs with push initialization disabled
 
 ## Principles

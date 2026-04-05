@@ -17,7 +17,7 @@ Current client outcomes:
 - recent core command history
 - core command-event SSE consumption with polling fallback
 - clarification and confirmation follow-up routed through the `Core` tab
-- `speakableMessage` playback through `expo-speech`
+- backend-generated speech playback for `speakableMessage` via `expo-av`, with local `expo-speech` fallback
 - inbox
 - projects overview
 - session summary
@@ -35,9 +35,7 @@ Current client outcomes:
   - close
   - generate deliverable
 - conversation prompts sent through `Atenea Core`
-- direct mobile actions still retained for:
-  - approve deliverable
-  - mark billed
+- deliverable approval and billing actions sent through `Atenea Core`
 
 Current implementation focus:
 
@@ -53,6 +51,7 @@ The current client uses these core endpoints:
 - `POST /api/core/commands`
 - `POST /api/core/commands/{commandId}/confirm`
 - `POST /api/core/voice/commands`
+- `GET /api/core/commands/{commandId}/speech`
 - `GET /api/core/commands`
 - `GET /api/core/commands/{commandId}/events`
 - `GET /api/core/commands/{commandId}/events/stream`
@@ -75,6 +74,7 @@ The client is now hybrid by design:
 
 - `Atenea Core` is the operator entrypoint for project/session actions
 - `/api/mobile/*` remains the compact read layer for inbox, summaries, conversation rendering and billing
+- direct mobile mutation aliases still exist in backend for compatibility, but they are no longer the primary client contract
 
 ## Configuration
 
@@ -84,9 +84,22 @@ The API base URL is controlled through:
 
 Default:
 
-- `http://localhost:8081`
+- `https://atenea.yudri.es`
 
 Example:
+
+```bash
+cd mobile
+EXPO_PUBLIC_ATENEA_API_BASE_URL=https://atenea.yudri.es npm start
+```
+
+For Expo Go / Metro delivery in this environment:
+
+- `https://ateneatest.yudri.es` serves the Expo development bundle entrypoint
+- `https://ateneatest.yudri.es:8083` serves the Metro bundle/assets referenced by the manifest
+- `https://atenea.yudri.es` remains the backend API base URL consumed by the app
+
+For local backend testing from a simulator or LAN-connected device, override it explicitly, for example:
 
 ```bash
 cd mobile
@@ -135,7 +148,6 @@ This phase does not yet fully implement:
 
 - dedicated confirmation UX for every sensitive action
 - stronger interruption and retry UX across long-running operator flows
-- full migration of deliverable approval and billing actions to `Atenea Core`
 - voice capture outside the `Core` tab
 
 This phase already implements:
@@ -157,7 +169,8 @@ This phase already implements:
 - app-managed project/session context passed to `Atenea Core`
 - audio recording with `expo-audio`
 - server-side transcription through `POST /api/core/voice/commands`
-- text-to-speech playback from `speakableMessage` through `expo-speech`
+- server-side speech synthesis through `GET /api/core/commands/{commandId}/speech`
+- backend-generated playback for `speakableMessage` via `expo-av`, with local `expo-speech` fallback
 - direct SSE consumption for the session conversation workspace
 - conversation UI split from session control UI
 - terminal-like conversation rendering:
@@ -177,6 +190,7 @@ The native client now uses:
 - `expo-device`
 - `expo-secure-store`
 - `expo-audio`
+- `expo-av`
 - `expo-speech`
 
 Current behavior:

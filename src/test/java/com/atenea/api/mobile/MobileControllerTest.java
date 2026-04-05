@@ -11,6 +11,8 @@ import com.atenea.api.ApiExceptionHandler;
 import com.atenea.api.billing.BillingQueueResponse;
 import com.atenea.api.billing.BillingQueueSummaryResponse;
 import com.atenea.api.mobile.MobileProjectOverviewResponse.MobileProjectSessionSummaryResponse;
+import com.atenea.api.mobile.MobileSessionBlockerResponse;
+import com.atenea.api.mobile.MobileSessionInsightsResponse;
 import com.atenea.api.worksession.ApprovedPriceEstimateSummaryResponse;
 import com.atenea.api.worksession.CloseWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.CreateSessionTurnConversationViewResponse;
@@ -162,12 +164,18 @@ class MobileControllerTest {
                         "competitive", "low", "medium", List.of("A"), List.of("B"),
                         SessionDeliverableBillingStatus.READY, null, null,
                         Instant.parse("2026-03-29T10:00:00Z"), Instant.parse("2026-03-29T10:00:00Z")),
-                new MobileSessionActionsResponse(true, true, true, true, true, true, true)));
+                new MobileSessionActionsResponse(true, true, true, true, true, true, true),
+                new MobileSessionInsightsResponse(
+                        "Flujo de voz operativo",
+                        new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),
+                        "Publicar la pull request de la sesión")));
 
         mockMvc.perform(get("/api/mobile/sessions/12/summary"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.conversation.view.session.id").value(12))
                 .andExpect(jsonPath("$.actions.canPublish").value(true))
+                .andExpect(jsonPath("$.insights.latestProgress").value("Flujo de voz operativo"))
+                .andExpect(jsonPath("$.insights.currentBlocker.category").value("NONE"))
                 .andExpect(jsonPath("$.approvedPriceEstimate.billingStatus").value("READY"));
     }
 
@@ -204,7 +212,7 @@ class MobileControllerTest {
     }
 
     @Test
-    void mobileAliasesDelegateToConversationAndBillingFlows() throws Exception {
+    void mobileCompatibilityAliasesRemainAvailableForLegacyMutationFlows() throws Exception {
         when(workSessionService.resolveSessionConversationView(7L, new ResolveWorkSessionRequest("Title", null)))
                 .thenReturn(new ResolveWorkSessionConversationViewResponse(true, conversation()));
         when(workSessionService.getSessionConversationView(12L)).thenReturn(conversation());

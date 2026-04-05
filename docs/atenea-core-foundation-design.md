@@ -183,7 +183,7 @@ Recommended uniform response:
     "targetId": 44,
     "payload": {}
   },
-  "operatorMessage": "The active WorkSession was continued successfully."
+  "operatorMessage": "He continuado la WorkSession activa correctamente."
 }
 ```
 

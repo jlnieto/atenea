@@ -114,6 +114,14 @@ export type MobileSessionSummary = {
     canApproveDeliverables: boolean;
     canMarkApprovedPriceEstimateBilled: boolean;
   };
+  insights: {
+    latestProgress: string;
+    currentBlocker: {
+      category: 'NONE' | 'TECHNICAL' | 'BUSINESS';
+      summary: string;
+    };
+    nextStepRecommended: string;
+  } | null;
 };
 
 export type CreateSessionTurnRequest = {

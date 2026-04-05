@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 
 import com.atenea.api.ApiExceptionHandler;
 import com.atenea.persistence.core.CoreChannel;
@@ -15,6 +16,8 @@ import com.atenea.persistence.core.CoreResultType;
 import com.atenea.persistence.core.CoreRiskLevel;
 import com.atenea.persistence.core.CoreTargetType;
 import com.atenea.service.core.CoreCommandService;
+import com.atenea.service.core.CoreSpeechAudioResponse;
+import com.atenea.service.core.CoreSpeechSynthesisService;
 import com.atenea.service.core.CoreStreamService;
 import com.atenea.service.core.CoreVoiceCommandService;
 import com.atenea.service.core.CoreUnknownIntentException;
@@ -27,6 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.ByteArrayHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.mock.web.MockMultipartFile;
@@ -46,17 +50,22 @@ class CoreControllerTest {
     @Mock
     private CoreVoiceCommandService coreVoiceCommandService;
 
+    @Mock
+    private CoreSpeechSynthesisService coreSpeechSynthesisService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(new CoreController(
                         coreCommandService,
+                        coreSpeechSynthesisService,
                         coreVoiceCommandService,
                         coreStreamService))
                 .setControllerAdvice(new ApiExceptionHandler())
-                .setMessageConverters(new MappingJackson2HttpMessageConverter(
-                        Jackson2ObjectMapperBuilder.json().build()))
+                .setMessageConverters(
+                        new ByteArrayHttpMessageConverter(),
+                        new MappingJackson2HttpMessageConverter(Jackson2ObjectMapperBuilder.json().build()))
                 .build();
     }
 
@@ -85,8 +94,8 @@ class CoreControllerTest {
                         new CreateSessionTurnPayload("ok")),
                 null,
                 null,
-                "The active WorkSession was continued successfully.",
-                "The active work session was continued successfully."));
+                "He continuado la WorkSession activa correctamente.",
+                "He continuado la sesión activa correctamente."));
 
         mockMvc.perform(post("/api/core/commands")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -174,6 +183,24 @@ class CoreControllerTest {
     }
 
     @Test
+    void getVoicePreviewReturnsSynthesizedAudio() throws Exception {
+        when(coreSpeechSynthesisService.synthesizePreview(
+                "Hola desde Atenea",
+                "coral",
+                1.05d)).thenReturn(new CoreSpeechAudioResponse(
+                        "preview".getBytes(),
+                        MediaType.parseMediaType("audio/mpeg")));
+
+        mockMvc.perform(get("/api/core/voice/preview")
+                        .param("text", "Hola desde Atenea")
+                        .param("voice", "coral")
+                        .param("speed", "1.05"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("audio/mpeg"))
+                .andExpect(content().bytes("preview".getBytes()));
+    }
+
+    @Test
     void getCommandReturnsDetailedTrace() throws Exception {
         when(coreCommandService.getCommand(101L)).thenReturn(new CoreCommandDetailResponse(
                 101L,
@@ -233,8 +260,8 @@ class CoreControllerTest {
                         new CreateSessionTurnPayload("ok")),
                 null,
                 null,
-                "The active WorkSession was continued successfully.",
-                "The active work session was continued successfully."));
+                "He continuado la WorkSession activa correctamente.",
+                "He continuado la sesión activa correctamente."));
 
         mockMvc.perform(post("/api/core/commands/101/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -295,8 +322,8 @@ class CoreControllerTest {
                                         new CreateSessionTurnPayload("ok")),
                                 null,
                                 null,
-                                "The active WorkSession was continued successfully.",
-                                "The active work session was continued successfully.")));
+                                "He continuado la WorkSession activa correctamente.",
+                                "He continuado la sesión activa correctamente.")));
 
         mockMvc.perform(multipart("/api/core/voice/commands")
                         .file(audio)
@@ -307,6 +334,31 @@ class CoreControllerTest {
                 .andExpect(jsonPath("$.transcript").value("continua con la sesion"))
                 .andExpect(jsonPath("$.command.commandId").value(101))
                 .andExpect(jsonPath("$.command.result.targetId").value(12));
+    }
+
+    @Test
+    void getCommandSpeechReturnsAudio() throws Exception {
+        when(coreSpeechSynthesisService.synthesizeCommandSpeech(101L)).thenReturn(new CoreSpeechAudioResponse(
+                "fake-mp3".getBytes(),
+                MediaType.parseMediaType("audio/mpeg")));
+
+        mockMvc.perform(get("/api/core/commands/101/speech"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("audio/mpeg"))
+                .andExpect(content().bytes("fake-mp3".getBytes()));
+    }
+
+    @Test
+    void getLatestSessionResponseSpeechReturnsAudio() throws Exception {
+        when(coreSpeechSynthesisService.synthesizeLatestSessionResponse(12L, com.atenea.service.core.SessionSpeechMode.BRIEF))
+                .thenReturn(new CoreSpeechAudioResponse(
+                "session-mp3".getBytes(),
+                MediaType.parseMediaType("audio/mpeg")));
+
+        mockMvc.perform(get("/api/core/work-sessions/12/latest-response/speech").param("mode", "brief"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("audio/mpeg"))
+                .andExpect(content().bytes("session-mp3".getBytes()));
     }
 
     private record CreateSessionTurnPayload(String state) {

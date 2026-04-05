@@ -19,6 +19,8 @@ import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
 import java.time.Instant;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -28,6 +30,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class SessionTurnService {
 
     private static final int MAX_TURN_WINDOW_LIMIT = 100;
+    private static final Logger log = LoggerFactory.getLogger(SessionTurnService.class);
 
     private final WorkSessionRepository workSessionRepository;
     private final SessionTurnRepository sessionTurnRepository;
@@ -126,22 +129,11 @@ public class SessionTurnService {
         ExecutionProgress progress = new ExecutionProgress();
 
         try {
-            CodexAppServerExecutionHandle executionHandle = sessionCodexOrchestrator.startTurn(
+            CodexAppServerExecutionHandle executionHandle = startTurnWithThreadRecovery(
+                    session,
                     repoPath,
                     operatorTurn.getMessageText(),
-                    session.getExternalThreadId(),
-                    new CodexAppServerExecutionListener() {
-                        @Override
-                        public void onThreadStarted(String threadId) {
-                            progress.threadId = threadId;
-                        }
-
-                        @Override
-                        public void onTurnStarted(String threadId, String turnId) {
-                            progress.threadId = threadId;
-                            progress.turnId = turnId;
-                            }
-                    });
+                    progress);
 
             String effectiveThreadId = firstNonBlank(
                     executionHandle.threadId(),
@@ -171,6 +163,71 @@ public class SessionTurnService {
                     "Codex execution failed for WorkSession turn",
                     exception);
         }
+    }
+
+    private CodexAppServerExecutionHandle startTurnWithThreadRecovery(
+            WorkSessionEntity session,
+            String repoPath,
+            String message,
+            ExecutionProgress progress
+    ) throws Exception {
+        try {
+            return startTurn(repoPath, message, session.getExternalThreadId(), progress);
+        } catch (Exception exception) {
+            if (!shouldRetryWithFreshThread(session.getExternalThreadId(), exception)) {
+                throw exception;
+            }
+
+            log.warn(
+                    "retrying WorkSession turn with a fresh Codex thread after stale externalThreadId sessionId={} threadId={}",
+                    session.getId(),
+                    session.getExternalThreadId());
+            clearPersistedThread(session);
+            progress.threadId = null;
+            progress.turnId = null;
+            return startTurn(repoPath, message, null, progress);
+        }
+    }
+
+    private CodexAppServerExecutionHandle startTurn(
+            String repoPath,
+            String message,
+            String threadId,
+            ExecutionProgress progress
+    ) throws Exception {
+        return sessionCodexOrchestrator.startTurn(
+                repoPath,
+                message,
+                threadId,
+                new CodexAppServerExecutionListener() {
+                    @Override
+                    public void onThreadStarted(String newThreadId) {
+                        progress.threadId = newThreadId;
+                    }
+
+                    @Override
+                    public void onTurnStarted(String newThreadId, String turnId) {
+                        progress.threadId = newThreadId;
+                        progress.turnId = turnId;
+                    }
+                });
+    }
+
+    private boolean shouldRetryWithFreshThread(String externalThreadId, Exception exception) {
+        if (externalThreadId == null || externalThreadId.isBlank()) {
+            return false;
+        }
+        String message = exception.getMessage();
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String normalized = message.toLowerCase();
+        return normalized.contains("turn/start") && normalized.contains("thread not found");
+    }
+
+    private void clearPersistedThread(WorkSessionEntity session) {
+        session.setExternalThreadId(null);
+        session.setUpdatedAt(Instant.now());
     }
 
     private SessionTurnResponse toResponse(SessionTurnEntity turn) {

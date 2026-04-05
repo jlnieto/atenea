@@ -6,8 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.atenea.api.worksession.AgentRunResponse;
@@ -217,6 +218,81 @@ class SessionTurnCreateServiceTest {
                 eq(repoPath.toString()),
                 eq("Continue with implementation"),
                 eq("thread-existing"),
+                any());
+    }
+
+    @Test
+    void createTurnRetriesWithFreshThreadWhenStoredThreadNoLongerExists() throws Exception {
+        Path repoPath = createRepoPath("internal/atenea");
+        WorkSessionEntity session = buildSession(12L, 7L, repoPath.toString(), WorkSessionStatus.OPEN, "thread-stale");
+        AtomicLong turnIds = new AtomicLong(220L);
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
+        when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> {
+            SessionTurnEntity turn = invocation.getArgument(0);
+            turn.setId(turnIds.incrementAndGet());
+            return turn;
+        });
+        when(agentRunService.createRunningRun(eq(session), any(SessionTurnEntity.class))).thenAnswer(invocation -> {
+            SessionTurnEntity originTurn = invocation.getArgument(1);
+            AgentRunEntity run = new AgentRunEntity();
+            run.setId(58L);
+            run.setSession(session);
+            run.setOriginTurn(originTurn);
+            run.setStatus(AgentRunStatus.RUNNING);
+            run.setTargetRepoPath(repoPath.toString());
+            run.setStartedAt(Instant.parse("2026-03-25T10:06:01Z"));
+            run.setCreatedAt(Instant.parse("2026-03-25T10:06:01Z"));
+            return run;
+        });
+        when(sessionCodexOrchestrator.startTurn(
+                eq(repoPath.toString()),
+                eq("Continue with implementation"),
+                eq("thread-stale"),
+                any()))
+                .thenThrow(new IllegalStateException(
+                        "Codex App Server returned an error for turn/start: thread not found: thread-stale"));
+        when(sessionCodexOrchestrator.startTurn(
+                eq(repoPath.toString()),
+                eq("Continue with implementation"),
+                eq(null),
+                any()))
+                .thenReturn(handle("thread-fresh", "turn-3"));
+        when(agentRunService.toResponse(any(AgentRunEntity.class))).thenAnswer(invocation -> {
+            AgentRunEntity run = invocation.getArgument(0);
+            return new AgentRunResponse(
+                    run.getId(),
+                    session.getId(),
+                    run.getOriginTurn().getId(),
+                    run.getResultTurn() == null ? null : run.getResultTurn().getId(),
+                    run.getStatus(),
+                    run.getTargetRepoPath(),
+                    run.getExternalTurnId(),
+                    run.getStartedAt(),
+                    run.getFinishedAt(),
+                    run.getOutputSummary(),
+                    run.getErrorSummary(),
+                    run.getCreatedAt()
+            );
+        });
+
+        CreateSessionTurnResponse response = sessionTurnService.createTurn(
+                12L,
+                new CreateSessionTurnRequest("Continue with implementation"));
+
+        assertEquals("thread-fresh", session.getExternalThreadId());
+        assertEquals("turn-3", response.run().externalTurnId());
+        verify(sessionCodexOrchestrator, times(1)).startTurn(
+                eq(repoPath.toString()),
+                eq("Continue with implementation"),
+                eq("thread-stale"),
+                any());
+        verify(sessionCodexOrchestrator, times(1)).startTurn(
+                eq(repoPath.toString()),
+                eq("Continue with implementation"),
+                eq(null),
                 any());
     }
 

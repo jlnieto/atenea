@@ -140,6 +140,11 @@ public class MobileController {
         return new CreateSessionTurnConversationViewResponse(workSessionService.getSessionConversationView(sessionId));
     }
 
+    /**
+     * Compatibility alias for older/mobile-direct clients.
+     * Prefer Atenea Core for publish operations.
+     */
+    @Deprecated(since = "2026-04", forRemoval = false)
     @PostMapping("/sessions/{sessionId}/publish")
     public PublishWorkSessionConversationViewResponse publishSession(
             @PathVariable Long sessionId,
@@ -148,11 +153,21 @@ public class MobileController {
         return workSessionGitHubService.publishSessionConversationView(sessionId, request);
     }
 
+    /**
+     * Compatibility alias for older/mobile-direct clients.
+     * Prefer Atenea Core for pull-request synchronization.
+     */
+    @Deprecated(since = "2026-04", forRemoval = false)
     @PostMapping("/sessions/{sessionId}/pull-request/sync")
     public SyncWorkSessionPullRequestConversationViewResponse syncPullRequest(@PathVariable Long sessionId) {
         return workSessionGitHubService.syncPullRequestConversationView(sessionId);
     }
 
+    /**
+     * Compatibility alias for older/mobile-direct clients.
+     * Prefer Atenea Core for close operations.
+     */
+    @Deprecated(since = "2026-04", forRemoval = false)
     @PostMapping("/sessions/{sessionId}/close")
     public CloseWorkSessionConversationViewResponse closeSession(@PathVariable Long sessionId) {
         return workSessionService.closeSessionConversationView(sessionId);
@@ -168,6 +183,11 @@ public class MobileController {
         return sessionDeliverableService.getApprovedDeliverablesView(sessionId);
     }
 
+    /**
+     * Compatibility alias for older/mobile-direct clients.
+     * Prefer Atenea Core for deliverable generation.
+     */
+    @Deprecated(since = "2026-04", forRemoval = false)
     @PostMapping("/sessions/{sessionId}/deliverables/{type}/generate")
     @ResponseStatus(HttpStatus.CREATED)
     public SessionDeliverableResponse generateDeliverable(
@@ -177,6 +197,11 @@ public class MobileController {
         return sessionDeliverableGenerationService.generateDeliverable(sessionId, type);
     }
 
+    /**
+     * Compatibility alias for older/mobile-direct clients.
+     * Prefer Atenea Core for deliverable approval.
+     */
+    @Deprecated(since = "2026-04", forRemoval = false)
     @PostMapping("/sessions/{sessionId}/deliverables/{deliverableId}/approve")
     public SessionDeliverableResponse approveDeliverable(
             @PathVariable Long sessionId,
@@ -185,6 +210,11 @@ public class MobileController {
         return sessionDeliverableService.approveDeliverable(sessionId, deliverableId);
     }
 
+    /**
+     * Compatibility alias for older/mobile-direct clients.
+     * Prefer Atenea Core for billing mutations.
+     */
+    @Deprecated(since = "2026-04", forRemoval = false)
     @PostMapping("/sessions/{sessionId}/deliverables/{deliverableId}/billing/mark-billed")
     public SessionDeliverableResponse markPriceEstimateBilled(
             @PathVariable Long sessionId,

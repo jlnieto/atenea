@@ -1,6 +1,8 @@
 package com.atenea.api.core;
 
 import com.atenea.service.core.CoreCommandService;
+import com.atenea.service.core.CoreSpeechAudioResponse;
+import com.atenea.service.core.CoreSpeechSynthesisService;
 import com.atenea.service.core.CoreVoiceCommandService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,21 +22,25 @@ import com.atenea.service.core.CoreStreamService;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.ResponseEntity;
 
 @RestController
 @RequestMapping("/api/core")
 public class CoreController {
 
     private final CoreCommandService coreCommandService;
+    private final CoreSpeechSynthesisService coreSpeechSynthesisService;
     private final CoreVoiceCommandService coreVoiceCommandService;
     private final CoreStreamService coreStreamService;
 
     public CoreController(
             CoreCommandService coreCommandService,
+            CoreSpeechSynthesisService coreSpeechSynthesisService,
             CoreVoiceCommandService coreVoiceCommandService,
             CoreStreamService coreStreamService
     ) {
         this.coreCommandService = coreCommandService;
+        this.coreSpeechSynthesisService = coreSpeechSynthesisService;
         this.coreVoiceCommandService = coreVoiceCommandService;
         this.coreStreamService = coreStreamService;
     }
@@ -62,6 +68,39 @@ public class CoreController {
             @RequestParam(required = false) String operatorKey
     ) {
         return coreVoiceCommandService.createVoiceCommand(audio, projectId, workSessionId, operatorKey);
+    }
+
+    @GetMapping("/commands/{commandId}/speech")
+    public ResponseEntity<byte[]> getCommandSpeech(@PathVariable Long commandId) {
+        CoreSpeechAudioResponse response = coreSpeechSynthesisService.synthesizeCommandSpeech(commandId);
+        return ResponseEntity.ok()
+                .contentType(response.mediaType())
+                .body(response.audio());
+    }
+
+    @GetMapping("/work-sessions/{sessionId}/latest-response/speech")
+    public ResponseEntity<byte[]> getLatestSessionResponseSpeech(
+            @PathVariable Long sessionId,
+            @RequestParam(defaultValue = "brief") String mode
+    ) {
+        CoreSpeechAudioResponse response = coreSpeechSynthesisService.synthesizeLatestSessionResponse(
+                sessionId,
+                com.atenea.service.core.SessionSpeechMode.fromQueryParam(mode));
+        return ResponseEntity.ok()
+                .contentType(response.mediaType())
+                .body(response.audio());
+    }
+
+    @GetMapping("/voice/preview")
+    public ResponseEntity<byte[]> getVoicePreview(
+            @RequestParam String text,
+            @RequestParam(required = false) String voice,
+            @RequestParam(required = false) Double speed
+    ) {
+        CoreSpeechAudioResponse response = coreSpeechSynthesisService.synthesizePreview(text, voice, speed);
+        return ResponseEntity.ok()
+                .contentType(response.mediaType())
+                .body(response.audio());
     }
 
     @GetMapping("/commands")

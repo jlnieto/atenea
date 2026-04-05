@@ -40,7 +40,7 @@ class HybridCoreIntentInterpreterTest {
     }
 
     @Test
-    void interpretUsesDeterministicInterpreterWhenExplicitContextExists() {
+    void interpretUsesDeterministicInterpreterWhenExplicitWorkSessionContextExists() {
         CreateCoreCommandRequest request = new CreateCoreCommandRequest(
                 "sigue con esto",
                 CoreChannel.TEXT,
@@ -62,6 +62,32 @@ class HybridCoreIntentInterpreterTest {
         assertEquals(proposal, result);
         verify(defaultCoreIntentInterpreter).interpret(request);
         verifyNoInteractions(llmCoreIntentInterpreter);
+    }
+
+    @Test
+    void interpretUsesLlmWhenOnlyProjectContextExists() {
+        coreLlmProperties.setEnabled(true);
+        CreateCoreCommandRequest request = new CreateCoreCommandRequest(
+                "estado del proyecto pruebas inicial",
+                CoreChannel.TEXT,
+                new CoreRequestContext(7L, null),
+                null);
+        CoreInterpretationResult proposal = new CoreInterpretationResult(
+                new CoreIntentProposal(
+                        "GET_PROJECT_OVERVIEW",
+                        CoreDomain.DEVELOPMENT,
+                        "get_project_overview",
+                        Map.of("projectId", 7L),
+                        BigDecimal.valueOf(0.84)),
+                CoreInterpreterSource.LLM,
+                "llm_structured_classification");
+        when(llmCoreIntentInterpreter.interpret(request)).thenReturn(proposal);
+
+        CoreInterpretationResult result = interpreter.interpret(request);
+
+        assertEquals(proposal, result);
+        verify(llmCoreIntentInterpreter).interpret(request);
+        verifyNoInteractions(defaultCoreIntentInterpreter);
     }
 
     @Test

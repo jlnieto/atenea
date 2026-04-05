@@ -1,23 +1,25 @@
 import { useMemo, useState } from 'react';
 import {
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { fetchJson, postJson } from '../api/client';
+import { fetchJson } from '../api/client';
 import {
   CoreCommandResponse,
-  MarkPriceEstimateBilledRequest,
   MobileSessionSummary,
   SessionDeliverablesView,
 } from '../api/types';
 import { usePendingActionCenter } from '../actions/PendingActionCenter';
 import { confirmAction } from '../actions/confirm';
 import {
+  buildApproveDeliverableCommand,
   buildCloseSessionCommand,
   buildGenerateDeliverableCommand,
+  buildMarkPriceEstimateBilledCommand,
   buildPublishCommand,
   buildSyncPullRequestCommand,
 } from '../core/phrases';
@@ -32,12 +34,14 @@ export function SessionScreen({
   projectId,
   sessionId,
   onOpenConversation,
+  onOpenCore,
   onOpenSession,
   onRunCommand,
 }: {
   projectId: number | null;
   sessionId: number | null;
   onOpenConversation: () => void;
+  onOpenCore: () => void;
   onOpenSession: (sessionId: number) => void;
   onRunCommand: (options: RunCoreCommandOptions) => Promise<CoreCommandResponse>;
 }) {
@@ -87,14 +91,16 @@ export function SessionScreen({
         }
       },
     });
+    onOpenCore();
     if (response.status === 'NEEDS_CONFIRMATION') {
-      setMutationStatus('Atenea Core is waiting for confirmation in the Core tab.');
+      setMutationStatus('Atenea Core está esperando confirmación en la pestaña Core.');
       return false;
     }
     if (response.status === 'NEEDS_CLARIFICATION') {
-      setMutationStatus('Atenea Core needs clarification in the Core tab.');
+      setMutationStatus('Atenea Core necesita una aclaración en la pestaña Core.');
       return false;
     }
+    setMutationStatus('Acción enviada a Atenea Core.');
     return true;
   };
 
@@ -113,7 +119,7 @@ export function SessionScreen({
       const completed = await action();
       if (completed !== false) {
         await refreshAll();
-        setMutationStatus(`${label} completed.`);
+        setMutationStatus(`Operación completada: ${label}.`);
       }
     } catch (actionError) {
       setMutationError(actionError instanceof Error ? actionError.message : `${label} failed`);
@@ -124,19 +130,20 @@ export function SessionScreen({
   };
 
   if (sessionId == null) {
-    return <Card title="No session selected" subtitle="Choose a session from Inbox or Projects to operate it from mobile." ><Text style={styles.meta}>This screen is wired to the mobile session summary contract.</Text></Card>;
+    return <Card title="Ninguna sesión seleccionada" subtitle="Elige una sesión desde Inbox o Projects para revisarla aquí." ><Text style={styles.meta}>Esta pantalla usa el contrato de resumen móvil de sesión.</Text></Card>;
   }
 
   if (loading) {
-    return <LoadingBlock label={`Loading session ${sessionId}...`} />;
+    return <LoadingBlock label={`Cargando sesión ${sessionId}...`} />;
   }
 
   if (error || data == null) {
-    return <Card title="Session unavailable" subtitle={error || 'No session data returned.'}><Text style={styles.meta}>Check backend connectivity.</Text></Card>;
+    return <Card title="Sesión no disponible" subtitle={error || 'No se han recibido datos de la sesión.'}><Text style={styles.meta}>Revisa la conectividad con el backend.</Text></Card>;
   }
 
   const session = data.conversation.view.session;
   const actions = data.actions;
+  const insights = data.insights;
   const pending = (name: string) => pendingAction === name;
   const sessionPendingRecovery = recoveredPendingAction?.scope === 'session'
     && recoveredPendingAction.sessionId === sessionId
@@ -158,7 +165,11 @@ export function SessionScreen({
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
       <Card title={session.title} subtitle={`Session ${session.id}`}>
         <View style={styles.row}>
           <StatePill label={session.status} />
@@ -166,56 +177,79 @@ export function SessionScreen({
         </View>
         <View style={styles.headerRow}>
           <Text style={[styles.meta, styles.headerMeta]}>
-            Conversation, turns and Codex replies now live in a dedicated workspace.
+            Usa esta vista para revisar estado. Las operaciones de sesión pasan por Atenea Core.
           </Text>
-          <Pressable onPress={onOpenConversation} style={styles.headerLinkButton}>
-            <Text style={styles.link}>Open conversation</Text>
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable onPress={onOpenConversation} style={styles.headerLinkButton}>
+              <Text style={styles.link}>Abrir conversación</Text>
+            </Pressable>
+            <Pressable onPress={onOpenCore} style={styles.headerLinkButton}>
+              <Text style={styles.link}>Abrir Core</Text>
+            </Pressable>
+          </View>
         </View>
         {session.closeBlockedState ? (
           <>
-            <Text style={styles.meta}>Blocked: {session.closeBlockedState}</Text>
+            <Text style={styles.meta}>Bloqueado: {session.closeBlockedState}</Text>
             {session.closeBlockedReason ? <Text style={styles.meta}>{session.closeBlockedReason}</Text> : null}
-            {session.closeBlockedAction ? <Text style={styles.action}>Next: {session.closeBlockedAction}</Text> : null}
+            {session.closeBlockedAction ? <Text style={styles.action}>Siguiente: {session.closeBlockedAction}</Text> : null}
             <Text style={styles.meta}>
-              Retry guidance: {session.closeRetryable ? 'safe to retry after unblocking' : 'manual recovery required first'}
+              Reintento: {session.closeRetryable ? 'seguro tras desbloquear' : 'requiere recuperación manual primero'}
             </Text>
           </>
+        ) : null}
+        {insights ? (
+          <View style={styles.insightsBox}>
+            <View style={styles.insightsHeader}>
+              <Text style={styles.insightsTitle}>Resumen de sesión</Text>
+              <StatePill
+                label={blockerLabel(insights.currentBlocker.category)}
+                tone={blockerTone(insights.currentBlocker.category)}
+              />
+            </View>
+            <InsightRow label="Último avance" value={insights.latestProgress} />
+            <InsightRow label="Bloqueo actual" value={insights.currentBlocker.summary} />
+            <InsightRow label="Siguiente paso" value={insights.nextStepRecommended} />
+          </View>
         ) : null}
         {data.conversation.view.lastAgentResponse ? (
           <Text style={styles.response}>{data.conversation.view.lastAgentResponse}</Text>
         ) : null}
         {sessionPendingRecovery ? (
           <View style={styles.recoveryBox}>
-            <Text style={styles.recoveryTitle}>Recovered pending action: {sessionPendingRecovery.label}</Text>
+            <Text style={styles.recoveryTitle}>Acción recuperada: {sessionPendingRecovery.label}</Text>
             <Text style={styles.meta}>{sessionPendingRecovery.recoveryHint}</Text>
             <Pressable onPress={clearPendingAction}>
-              <Text style={styles.link}>Dismiss recovery notice</Text>
+              <Text style={styles.link}>Ocultar aviso</Text>
             </Pressable>
           </View>
         ) : null}
       </Card>
 
-      <Card title="Delivery Actions" subtitle="Operate publish, sync and close from the session control view.">
+      <Card title="Operaciones vía Core" subtitle="Estas acciones se envían a Atenea Core para mantener confirmaciones, aclaraciones e historial en un solo sitio.">
         <View style={styles.headerRow}>
-          <Text style={[styles.meta, styles.headerMeta]}>Session refreshes automatically every 5s.</Text>
+          <Text style={[styles.meta, styles.headerMeta]}>La sesión se actualiza automáticamente cada 5s.</Text>
           <Pressable onPress={() => void refreshAll()} style={styles.headerLinkButton}>
-            <Text style={styles.link}>Refresh</Text>
+            <Text style={styles.link}>Actualizar</Text>
           </Pressable>
         </View>
         <View style={styles.actions}>
           <ActionButton
-            label="Open conversation"
+            label="Abrir conversación"
             disabled={!actions.canCreateTurn && !data.conversation.view.lastAgentResponse}
             onPress={onOpenConversation}
           />
           <ActionButton
-            label={pending('Sync PR') ? 'Syncing...' : 'Sync PR'}
+            label="Abrir Core"
+            onPress={onOpenCore}
+          />
+          <ActionButton
+            label={pending('Sync PR') ? 'Enviando sync...' : 'Sync PR vía Core'}
             disabled={!actions.canSyncPullRequest || pendingAction != null}
             onPress={() =>
               void runAction(
                 'Sync PR',
-                'Refresh the session before retrying pull request synchronization so you do not act on stale PR state.',
+                'Actualiza la sesión antes de reintentar la sincronización de PR para no operar con estado obsoleto.',
                 async () => {
                   await runCoreMutation(buildSyncPullRequestCommand());
                 }
@@ -223,14 +257,14 @@ export function SessionScreen({
             }
           />
           <ActionButton
-            label={pending('Close') ? 'Closing...' : 'Close'}
+            label={pending('Close') ? 'Enviando cierre...' : 'Cerrar vía Core'}
             disabled={!actions.canClose || pendingAction != null}
             onPress={() =>
               void runConfirmedAction(
                 'Close',
-                'Close session?',
-                'Use this only after the pull request is merged and the repository is ready to reconcile back to the base branch.',
-                'Refresh the session before retrying close so the latest merge and repository state are visible.',
+                '¿Cerrar sesión?',
+                'Usa esto sólo cuando la pull request esté fusionada y el repositorio listo para reconciliar contra la rama base.',
+                'Actualiza la sesión antes de reintentar el cierre para ver el último estado de merge y repositorio.',
                 async () => {
                   await runCoreMutation(buildCloseSessionCommand());
                 }
@@ -240,18 +274,18 @@ export function SessionScreen({
         </View>
         {pendingAction ? (
           <Text style={styles.pendingNotice}>
-            Action in progress: {pendingAction}. If connectivity drops, reopen the session and refresh state before retrying.
+            Acción en curso: {pendingAction}. Si cae la conectividad, vuelve a abrir la sesión y actualiza estado antes de reintentar.
           </Text>
         ) : null}
         <ActionButton
-          label={pending('Publish') ? 'Publishing...' : 'Publish'}
+          label={pending('Publish') ? 'Enviando publish...' : 'Publicar vía Core'}
           disabled={!actions.canPublish || pendingAction != null}
           onPress={() =>
             void runConfirmedAction(
               'Publish',
-              'Publish to pull request?',
-              'This will stage the current workspace changes, create a commit, push the session branch and open or update the delivery flow in GitHub.',
-              'Refresh the session before retrying publish so you can confirm whether the branch or pull request was already updated.',
+              '¿Publicar en pull request?',
+              'Esto preparará los cambios, creará commit, empujará la rama de sesión y abrirá o actualizará el flujo de entrega en GitHub.',
+              'Actualiza la sesión antes de reintentar publish para confirmar si la rama o la pull request ya se actualizaron.',
               async () => {
                 await runCoreMutation(buildPublishCommand());
               }
@@ -261,19 +295,19 @@ export function SessionScreen({
         {mutationStatus ? <Text style={styles.success}>{mutationStatus}</Text> : null}
         {mutationError ? <Text style={styles.error}>{mutationError}</Text> : null}
       </Card>
-      <Card title="Deliverables" subtitle="Latest deliverables, approvals and pricing baseline">
+      <Card title="Entregables" subtitle="Consulta entregables, aprobaciones y pricing base. La generación se envía vía Core.">
         <View style={styles.actions}>
           {['WORK_TICKET', 'WORK_BREAKDOWN', 'PRICE_ESTIMATE'].map((type) => (
             <ActionButton
               key={type}
-              label={pending(`Generate ${type}`) ? 'Generating...' : type}
+              label={pending(`Generate ${type}`) ? 'Enviando...' : `${type} vía Core`}
               disabled={!actions.canGenerateDeliverables || pendingAction != null}
               onPress={() =>
                 void runConfirmedAction(
                   `Generate ${type}`,
-                  'Generate deliverable?',
-                  `This will ask Atenea to generate the latest ${type} draft for this session.`,
-                  `Refresh deliverables before retrying ${type} generation so you do not create confusion about the latest draft.`,
+                  '¿Generar entregable?',
+                  `Esto pedirá a Atenea generar el último borrador de ${type} para esta sesión.`,
+                  `Actualiza entregables antes de reintentar ${type} para no crear confusión sobre el último borrador.`,
                   async () => {
                     await runCoreMutation(buildGenerateDeliverableCommand(type));
                   }
@@ -293,22 +327,22 @@ export function SessionScreen({
                 tone={deliverable.approved ? 'good' : 'warning'}
               />
             </View>
-            <Text style={styles.meta}>{deliverable.title || deliverable.preview || 'No preview'}</Text>
+            <Text style={styles.meta}>{deliverable.title || deliverable.preview || 'Sin vista previa'}</Text>
             {pendingApprovalIds.has(deliverable.id) && actions.canApproveDeliverables ? (
               <Pressable
                 onPress={() =>
                   void runConfirmedAction(
                     `Approve ${deliverable.id}`,
-                    'Approve deliverable?',
-                    `This will mark ${deliverable.type} v${deliverable.version} as the approved baseline for the session.`,
-                    'Refresh deliverables before retrying approval so you can confirm which version is currently the latest approved baseline.',
+                    '¿Aprobar entregable?',
+                    `Esto marcará ${deliverable.type} v${deliverable.version} como baseline aprobado de la sesión.`,
+                    'Actualiza entregables antes de reintentar la aprobación para confirmar qué versión es la última baseline aprobada.',
                     async () => {
-                      await postJson(`/api/mobile/sessions/${sessionId}/deliverables/${deliverable.id}/approve`);
+                      await runCoreMutation(buildApproveDeliverableCommand(deliverable.id));
                     }
                   )
                 }
               >
-                <Text style={styles.link}>Approve deliverable</Text>
+                <Text style={styles.link}>Aprobar entregable</Text>
               </Pressable>
             ) : null}
           </View>
@@ -326,7 +360,7 @@ export function SessionScreen({
             </View>
             {data.approvedPriceEstimate.billingReference ? (
               <Text style={styles.meta}>
-                Billing reference: {data.approvedPriceEstimate.billingReference}
+                Referencia de facturación: {data.approvedPriceEstimate.billingReference}
               </Text>
             ) : null}
             {actions.canMarkApprovedPriceEstimateBilled ? (
@@ -334,26 +368,26 @@ export function SessionScreen({
                 <TextInput
                   value={billingReference}
                   onChangeText={setBillingReference}
-                  placeholder="Billing reference"
+                  placeholder="Referencia de facturación"
                   placeholderTextColor="#8b7c6b"
                   style={styles.input}
                   autoCapitalize="characters"
                   autoCorrect={false}
                 />
                 <ActionButton
-                  label={pending('Mark billed') ? 'Marking...' : 'Mark billed'}
+                  label={pending('Mark billed') ? 'Marcando...' : 'Marcar facturado'}
                   disabled={!billingReference.trim() || pendingAction != null}
                   onPress={() =>
                     void runConfirmedAction(
                       'Mark billed',
-                      'Mark approved price estimate as billed?',
-                      `This will persist billing reference ${billingReference.trim()} for the approved pricing baseline.`,
-                      'Refresh the session before retrying billing so you can verify whether the approved price estimate is already marked billed.',
+                      '¿Marcar como facturado el presupuesto aprobado?',
+                      `Esto guardará la referencia ${billingReference.trim()} para el baseline de pricing aprobado.`,
+                      'Actualiza la sesión antes de reintentar facturación para verificar si el presupuesto aprobado ya quedó marcado.',
                       async () => {
-                        await postJson<unknown, MarkPriceEstimateBilledRequest>(
-                          `/api/mobile/sessions/${sessionId}/deliverables/${data.approvedPriceEstimate!.deliverableId}/billing/mark-billed`,
-                          { billingReference: billingReference.trim() }
-                        );
+                        await runCoreMutation(buildMarkPriceEstimateBilledCommand(
+                          data.approvedPriceEstimate!.deliverableId,
+                          billingReference.trim()
+                        ));
                         setBillingReference('');
                       }
                     )
@@ -363,16 +397,62 @@ export function SessionScreen({
             ) : null}
           </>
         ) : (
-          <Text style={styles.meta}>No approved pricing baseline.</Text>
+          <Text style={styles.meta}>No hay baseline de pricing aprobado.</Text>
         )}
       </Card>
+    </ScrollView>
+  );
+}
+
+function InsightRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null | undefined;
+}) {
+  if (!value) {
+    return null;
+  }
+  return (
+    <View style={styles.insightRow}>
+      <Text style={styles.insightLabel}>{label}</Text>
+      <Text style={styles.insightValue}>{value}</Text>
     </View>
   );
 }
 
+function blockerTone(category: 'NONE' | 'TECHNICAL' | 'BUSINESS') {
+  switch (category) {
+    case 'NONE':
+      return 'good' as const;
+    case 'BUSINESS':
+      return 'warning' as const;
+    case 'TECHNICAL':
+    default:
+      return 'danger' as const;
+  }
+}
+
+function blockerLabel(category: 'NONE' | 'TECHNICAL' | 'BUSINESS') {
+  switch (category) {
+    case 'NONE':
+      return 'Sin bloqueo';
+    case 'BUSINESS':
+      return 'Bloqueo negocio';
+    case 'TECHNICAL':
+    default:
+      return 'Bloqueo técnico';
+  }
+}
+
 const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+  },
   container: {
     gap: 14,
+    paddingBottom: 28,
   },
   row: {
     flexDirection: 'row',
@@ -381,6 +461,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     fontSize: 13,
+    lineHeight: 18,
     color: '#705b42',
   },
   action: {
@@ -390,7 +471,42 @@ const styles = StyleSheet.create({
   },
   response: {
     fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 23,
+    color: '#2d2218',
+  },
+  insightsBox: {
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#fff5e7',
+    borderWidth: 1,
+    borderColor: '#ead7b8',
+  },
+  insightsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  insightsTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#2d2218',
+  },
+  insightRow: {
+    gap: 4,
+  },
+  insightLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    color: '#7a6244',
+  },
+  insightValue: {
+    fontSize: 14,
+    lineHeight: 21,
     color: '#2d2218',
   },
   recoveryBox: {
@@ -416,7 +532,7 @@ const styles = StyleSheet.create({
     borderColor: '#dccfb8',
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
     backgroundColor: '#fffdf8',
     fontSize: 14,
     color: '#2d2218',
@@ -460,6 +576,12 @@ const styles = StyleSheet.create({
   },
   headerLinkButton: {
     alignSelf: 'flex-start',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
   },
   turnText: {
     fontSize: 14,

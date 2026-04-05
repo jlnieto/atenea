@@ -46,6 +46,14 @@ export function buildCloseSessionCommand() {
   return 'cierra la sesion';
 }
 
+export function buildApproveDeliverableCommand(deliverableId: number) {
+  return `aprueba el deliverable ${deliverableId}`;
+}
+
+export function buildMarkPriceEstimateBilledCommand(deliverableId: number, billingReference: string) {
+  return `marca el deliverable ${deliverableId} como facturado con referencia ${billingReference.trim()}`;
+}
+
 export function humanizeDeliverableType(deliverableType: string) {
   return deliverableType
     .replace(/_/g, ' ')

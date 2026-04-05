@@ -20,6 +20,12 @@ type NotificationCenterValue = {
   routeToNotification: (notification: MobileNotificationItem) => NotificationRouteTarget | null;
   dismissNotification: (id: string) => void;
   clearNotifications: () => void;
+  publishAppNotification: (notification: {
+    id?: string;
+    title: string;
+    body?: string | null;
+    route: NotificationRouteTarget | null;
+  }) => Promise<void>;
 };
 
 const NotificationCenterContext = createContext<NotificationCenterValue | null>(null);
@@ -37,7 +43,7 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
 
   const appendNotification = useCallback((notification: Notifications.Notification) => {
     const payload = parseAteneaPushPayload(notification.request.content.data);
-    const route = resolveNotificationRoute(payload);
+    const route = resolveNotificationRoute(payload) ?? parseRouteFromNotificationData(notification.request.content.data);
     const body =
       typeof notification.request.content.body === 'string' ? notification.request.content.body : null;
     const item: MobileNotificationItem = {
@@ -54,6 +60,13 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       return next.slice(0, MAX_NOTIFICATIONS);
     });
     return route;
+  }, []);
+
+  const appendNotificationItem = useCallback((item: MobileNotificationItem) => {
+    setNotifications((current) => {
+      const next = [item, ...current.filter((entry) => entry.id !== item.id)];
+      return next.slice(0, MAX_NOTIFICATIONS);
+    });
   }, []);
 
   useEffect(() => {
@@ -177,6 +190,43 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     setNotifications([]);
   }, []);
 
+  const publishAppNotification = useCallback(async (notification: {
+    id?: string;
+    title: string;
+    body?: string | null;
+    route: NotificationRouteTarget | null;
+  }) => {
+    const item: MobileNotificationItem = {
+      id: notification.id ?? `app-${Date.now()}`,
+      title: notification.title,
+      body: notification.body ?? null,
+      receivedAt: new Date().toISOString(),
+      payload: null,
+      route: notification.route,
+    };
+    appendNotificationItem(item);
+
+    if (isRunningInExpoGo) {
+      return;
+    }
+
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: item.title,
+          body: item.body ?? undefined,
+          data: {
+            route: item.route,
+            appNotificationId: item.id,
+          },
+        },
+        trigger: null,
+      });
+    } catch {
+      // Keep the in-app notification even if system scheduling is unavailable.
+    }
+  }, [appendNotificationItem]);
+
   const value = useMemo<NotificationCenterValue>(
     () => ({
       notifications,
@@ -184,8 +234,9 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       routeToNotification,
       dismissNotification,
       clearNotifications,
+      publishAppNotification,
     }),
-    [notifications, consumePendingRoute, routeToNotification, dismissNotification, clearNotifications]
+    [notifications, consumePendingRoute, routeToNotification, dismissNotification, clearNotifications, publishAppNotification]
   );
 
   return (
@@ -201,4 +252,45 @@ export function useNotificationCenter() {
     throw new Error('useNotificationCenter must be used inside NotificationCenterProvider');
   }
   return context;
+}
+
+function parseRouteFromNotificationData(data: unknown): NotificationRouteTarget | null {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) {
+    return null;
+  }
+  const candidate = data as Record<string, unknown>;
+  const rawRoute = candidate.route;
+  if (rawRoute == null || typeof rawRoute !== 'object' || Array.isArray(rawRoute)) {
+    return null;
+  }
+  const route = rawRoute as Record<string, unknown>;
+  const tab = typeof route.tab === 'string' ? route.tab : null;
+  if (
+    tab !== 'inbox'
+    && tab !== 'projects'
+    && tab !== 'session'
+    && tab !== 'conversation'
+    && tab !== 'billing'
+  ) {
+    return null;
+  }
+  return {
+    tab,
+    projectId: toOptionalNumber(route.projectId),
+    sessionId: toOptionalNumber(route.sessionId),
+    autoReadMode: route.autoReadMode === 'full' ? 'full' : route.autoReadMode === 'brief' ? 'brief' : undefined,
+  };
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
 }

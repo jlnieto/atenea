@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 
@@ -31,41 +32,50 @@ public class LlmCoreIntentInterpreter {
             WorkSessionStatus.CLOSING);
 
     private static final String INTERPRETATION_PROMPT = """
-            You are classifying an Atenea Core command.
+            You are routing one Atenea Core command to exactly one capability from the provided catalog.
 
             Return exactly one JSON object and nothing else.
             Do not use Markdown.
             Do not use code fences.
 
-            Allowed values:
-            - intent: CREATE_WORK_SESSION, CONTINUE_WORK_SESSION, UNKNOWN
-            - domain: DEVELOPMENT, UNKNOWN
-            - capability: create_work_session, continue_work_session, unknown
-
             Rules:
-            - Only classify development-domain intents.
-            - Use the provided projects and active sessions to resolve ids when possible.
-            - If you cannot determine a valid development action confidently, return UNKNOWN.
-            - For CONTINUE_WORK_SESSION, prefer a concrete workSessionId when one is inferable.
-            - For CREATE_WORK_SESSION, prefer a concrete projectId when one is inferable.
-            - Put identifiers inside parameters.
-            - Do not invent projectId or workSessionId values not present in the provided context.
+            - Only choose a capability that exists in the provided capability catalog.
+            - Treat the catalog as the source of truth for what each capability means.
+            - Do not invent projectId or workSessionId values that are not present in the provided context.
+            - Prefer selecting the right capability over guessing identifiers.
+            - Use arguments only for values that are explicit or strongly inferable.
+            - Use resolutionHints for names or labels that help the backend resolve the final target.
+            - If the operator asks what point the development is at, latest progress, blocker, advancement, next step, or "en que punto estamos", prefer get_session_summary when an active session is inferable.
+            - If the operator asks for administrative or structural status of one project, prefer get_project_overview.
+            - If the operator asks about projects in plural or the whole portfolio, prefer list_projects_overview.
+            - If the operator is instructing execution in an active session, prefer continue_work_session.
+            - If the command is ambiguous, set needsClarification to true and explain the ambiguity in reasoning.
+            - If no supported capability fits confidently, return capability "unknown" and domain "UNKNOWN".
             - confidence must be a number between 0 and 1.
 
             Required JSON shape:
             {
-              "intent": "...",
-              "domain": "...",
-              "capability": "...",
-              "parameters": {
+              "domain": "DEVELOPMENT",
+              "capability": "create_work_session",
+              "confidence": 0.0,
+              "arguments": {
                 "projectId": 0,
                 "workSessionId": 0,
-                "title": ""
+                "title": "",
+                "message": "",
+                "deliverableType": ""
               },
-              "confidence": 0.0
+              "resolutionHints": {
+                "projectName": "",
+                "workSessionTitle": "",
+                "deliverableType": ""
+              },
+              "needsClarification": false,
+              "missing": [],
+              "reasoning": ""
             }
 
-            Classification context:
+            Routing context:
             """;
 
     private final CodexAppServerClient codexAppServerClient;
@@ -75,6 +85,8 @@ public class LlmCoreIntentInterpreter {
     private final WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator;
     private final ObjectMapper objectMapper;
     private final CoreLlmProperties coreLlmProperties;
+    private final CoreCapabilityRegistry coreCapabilityRegistry;
+    private final CoreCapabilityArgumentResolver coreCapabilityArgumentResolver;
 
     public LlmCoreIntentInterpreter(
             CodexAppServerClient codexAppServerClient,
@@ -83,7 +95,9 @@ public class LlmCoreIntentInterpreter {
             WorkSessionRepository workSessionRepository,
             WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator,
             ObjectMapper objectMapper,
-            CoreLlmProperties coreLlmProperties
+            CoreLlmProperties coreLlmProperties,
+            CoreCapabilityRegistry coreCapabilityRegistry,
+            CoreCapabilityArgumentResolver coreCapabilityArgumentResolver
     ) {
         this.codexAppServerClient = codexAppServerClient;
         this.codexAppServerProperties = codexAppServerProperties;
@@ -92,6 +106,8 @@ public class LlmCoreIntentInterpreter {
         this.workspaceRepositoryPathValidator = workspaceRepositoryPathValidator;
         this.objectMapper = objectMapper;
         this.coreLlmProperties = coreLlmProperties;
+        this.coreCapabilityRegistry = coreCapabilityRegistry;
+        this.coreCapabilityArgumentResolver = coreCapabilityArgumentResolver;
     }
 
     public CoreInterpretationResult interpret(CreateCoreCommandRequest request) {
@@ -140,6 +156,9 @@ public class LlmCoreIntentInterpreter {
         promptContext.put("promptVersion", coreLlmProperties.getPromptVersion());
         promptContext.put("operatorInput", request.input().trim());
         promptContext.put("explicitContext", request.context());
+        promptContext.put("capabilityCatalog", coreCapabilityRegistry.listEnabledDefinitions(CoreDomain.DEVELOPMENT).stream()
+                .map(this::toCatalogPromptView)
+                .toList());
         promptContext.put("availableProjects", projectRepository.findAll().stream()
                 .map(project -> Map.of(
                         "projectId", project.getId(),
@@ -169,133 +188,106 @@ public class LlmCoreIntentInterpreter {
     }
 
     private CoreInterpretationResult toInterpretationResult(CreateCoreCommandRequest request, JsonNode node) {
-        String intent = text(node, "intent");
         String domain = text(node, "domain");
         String capability = text(node, "capability");
         if (!"DEVELOPMENT".equalsIgnoreCase(domain) || capability == null || "unknown".equalsIgnoreCase(capability)) {
             throw new CoreUnknownIntentException("Core LLM could not determine a supported development capability");
         }
 
-        Map<String, Object> parameters = new LinkedHashMap<>();
-        JsonNode parametersNode = node.path("parameters");
-        if (parametersNode.isObject()) {
-            putLong(parameters, "projectId", parametersNode.get("projectId"));
-            putLong(parameters, "workSessionId", parametersNode.get("workSessionId"));
-            putText(parameters, "title", parametersNode.get("title"));
+        CapabilityDefinition definition = coreCapabilityRegistry.requireEnabled(CoreDomain.DEVELOPMENT, capability);
+        Map<String, Object> rawArguments = readObjectNode(node.path("arguments"));
+        if (rawArguments.isEmpty()) {
+            rawArguments = readObjectNode(node.path("parameters"));
         }
-
-        if ("continue_work_session".equals(capability)) {
-            parameters.put("message", request.input().trim());
-            if (!parameters.containsKey("workSessionId")) {
-                throw new CoreUnknownIntentException(
-                        "Core LLM could not determine the target WorkSession for the current request");
-            }
-        } else if ("create_work_session".equals(capability) && !parameters.containsKey("title")) {
-            parameters.put("title", request.input().trim());
-        }
-
-        if ("create_work_session".equals(capability) && !parameters.containsKey("projectId")) {
-            throw new CoreUnknownIntentException(
-                    "Core LLM could not determine the target project for the current request");
-        }
-
-        String interpretationDetail = completeImplicitResolution(request, capability, parameters);
+        Map<String, Object> resolutionHints = readObjectNode(node.path("resolutionHints"));
+        Map<String, Object> resolvedArguments = coreCapabilityArgumentResolver.resolve(
+                request,
+                definition,
+                rawArguments,
+                resolutionHints);
         BigDecimal confidence = node.hasNonNull("confidence")
                 ? node.get("confidence").decimalValue()
                 : BigDecimal.valueOf(0.50);
+        String reasoning = text(node, "reasoning");
+        boolean needsClarification = node.path("needsClarification").asBoolean(false);
+        String interpretationDetail = buildInterpretationDetail(reasoning, needsClarification, resolutionHints);
 
         return new CoreInterpretationResult(
                 new CoreIntentProposal(
-                        intent == null ? capability.toUpperCase() : intent,
+                        capability.toUpperCase(Locale.ROOT),
                         CoreDomain.DEVELOPMENT,
                         capability,
-                        parameters,
+                        resolvedArguments,
                         confidence),
                 CoreInterpreterSource.LLM,
                 interpretationDetail);
     }
 
-    private String completeImplicitResolution(
-            CreateCoreCommandRequest request,
-            String capability,
-            Map<String, Object> parameters
-    ) {
-        if ("continue_work_session".equals(capability) && !parameters.containsKey("workSessionId")) {
-            WorkSessionEntity resolvedSession = resolveImplicitSession(request.input().trim(), parameters);
-            if (resolvedSession != null) {
-                parameters.put("workSessionId", resolvedSession.getId());
-                parameters.putIfAbsent("projectId", resolvedSession.getProject().getId());
-                return "llm_interpretation_with_implicit_session_resolution";
-            }
-        }
-
-        if ("create_work_session".equals(capability) && !parameters.containsKey("projectId")) {
-            ProjectEntity resolvedProject = resolveImplicitProject(request.input().trim());
-            if (resolvedProject != null) {
-                parameters.put("projectId", resolvedProject.getId());
-                return "llm_interpretation_with_implicit_project_resolution";
-            }
-        }
-
-        return "llm_structured_classification";
+    private Map<String, Object> toCatalogPromptView(CapabilityDefinition definition) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("domain", definition.domain().name());
+        view.put("capability", definition.capability());
+        view.put("riskLevel", definition.riskLevel().name());
+        view.put("requiresConfirmation", definition.requiresConfirmation());
+        view.put("summary", definition.summary());
+        view.put("whenToUse", definition.whenToUse());
+        view.put("whenNotToUse", definition.whenNotToUse());
+        view.put("parameters", definition.parameters().stream()
+                .map(parameter -> Map.of(
+                        "name", parameter.name(),
+                        "type", parameter.type(),
+                        "required", parameter.required(),
+                        "description", parameter.description()))
+                .toList());
+        view.put("examples", definition.examples().stream()
+                .map(example -> Map.of(
+                        "input", example.input(),
+                        "explanation", example.explanation()))
+                .toList());
+        return view;
     }
 
-    private WorkSessionEntity resolveImplicitSession(String input, Map<String, Object> parameters) {
-        Long projectId = parameters.get("projectId") instanceof Number number ? number.longValue() : null;
-        List<WorkSessionEntity> sessions = projectId == null
-                ? workSessionRepository.findByStatusInOrderByLastActivityAtDesc(ACTIVE_SESSION_STATUSES)
-                : workSessionRepository.findByProjectIdOrderByLastActivityAtDesc(projectId).stream()
-                        .filter(session -> ACTIVE_SESSION_STATUSES.contains(session.getStatus()))
-                        .toList();
-        if (sessions.size() == 1) {
-            return sessions.getFirst();
+    private Map<String, Object> readObjectNode(JsonNode node) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        if (!node.isObject()) {
+            return values;
         }
-
-        List<WorkSessionEntity> byProjectName = sessions.stream()
-                .filter(session -> input.toLowerCase().contains(session.getProject().getName().toLowerCase()))
-                .toList();
-        if (byProjectName.size() == 1) {
-            return byProjectName.getFirst();
-        }
-
-        List<WorkSessionEntity> byTitle = sessions.stream()
-                .filter(session -> input.toLowerCase().contains(session.getTitle().toLowerCase()))
-                .toList();
-        if (byTitle.size() == 1) {
-            return byTitle.getFirst();
-        }
-
-        return null;
+        putLong(values, "projectId", node.get("projectId"));
+        putLong(values, "workSessionId", node.get("workSessionId"));
+        putLong(values, "deliverableId", node.get("deliverableId"));
+        putText(values, "title", node.get("title"));
+        putText(values, "message", node.get("message"));
+        putText(values, "deliverableType", node.get("deliverableType"));
+        putText(values, "billingReference", node.get("billingReference"));
+        putText(values, "projectName", node.get("projectName"));
+        putText(values, "workSessionTitle", node.get("workSessionTitle"));
+        return values;
     }
 
-    private ProjectEntity resolveImplicitProject(String input) {
-        List<ProjectEntity> projects = projectRepository.findAll();
-        if (projects.size() == 1) {
-            return projects.getFirst();
+    private String buildInterpretationDetail(String reasoning, boolean needsClarification, Map<String, Object> resolutionHints) {
+        StringBuilder detail = new StringBuilder("llm_capability_router");
+        if (needsClarification) {
+            detail.append(":clarification");
         }
-
-        List<ProjectEntity> matchingByName = projects.stream()
-                .filter(project -> input.toLowerCase().contains(project.getName().toLowerCase()))
-                .toList();
-        if (matchingByName.size() == 1) {
-            return matchingByName.getFirst();
+        if (resolutionHints != null && !resolutionHints.isEmpty()) {
+            detail.append(":hinted");
         }
-
-        List<ProjectEntity> matchingByDescription = projects.stream()
-                .filter(project -> project.getDescription() != null
-                        && !project.getDescription().isBlank()
-                        && input.toLowerCase().contains(project.getDescription().toLowerCase()))
-                .toList();
-        if (matchingByDescription.size() == 1) {
-            return matchingByDescription.getFirst();
+        String normalizedReasoning = reasoning == null ? null : reasoning.trim();
+        if (normalizedReasoning != null && !normalizedReasoning.isBlank()) {
+            if (normalizedReasoning.length() > 120) {
+                normalizedReasoning = normalizedReasoning.substring(0, 117).trim() + "...";
+            }
+            detail.append(":").append(normalizedReasoning.replaceAll("\\s+", " "));
         }
-
-        return null;
+        return detail.toString();
     }
 
     private void putLong(Map<String, Object> parameters, String key, JsonNode value) {
         if (value != null && value.isNumber()) {
-            parameters.put(key, value.longValue());
+            long longValue = value.longValue();
+            if (longValue > 0) {
+                parameters.put(key, longValue);
+            }
         }
     }
 

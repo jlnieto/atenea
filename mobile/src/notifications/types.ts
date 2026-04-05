@@ -13,8 +13,10 @@ export type AteneaPushPayload = {
 };
 
 export type NotificationRouteTarget = {
-  tab: 'inbox' | 'projects' | 'session' | 'billing';
+  tab: 'inbox' | 'projects' | 'session' | 'conversation' | 'billing';
+  projectId?: number;
   sessionId?: number;
+  autoReadMode?: 'brief' | 'full';
 };
 
 export type MobileNotificationItem = {

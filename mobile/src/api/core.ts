@@ -1,4 +1,4 @@
-import { fetchJson, postJson, postMultipart } from './client';
+import { fetchJson, postJson, uploadMultipartFile } from './client';
 import {
   ConfirmCoreCommandRequest,
   CoreCommandEventsResponse,
@@ -42,10 +42,18 @@ export function createCoreVoiceCommand(params: {
   workSessionId?: number | null;
   operatorKey?: string | null;
 }): Promise<CoreVoiceCommandResponse> {
-  return postMultipart<CoreVoiceCommandResponse>('/api/core/voice/commands', {
-    audio: params.audio,
-    projectId: params.projectId ?? null,
-    workSessionId: params.workSessionId ?? null,
-    operatorKey: params.operatorKey ?? null,
-  });
+  return uploadMultipartFile<CoreVoiceCommandResponse>(
+    '/api/core/voice/commands',
+    {
+      fieldName: 'audio',
+      name: params.audio.name,
+      type: params.audio.type,
+      uri: params.audio.uri,
+    },
+    {
+      operatorKey: params.operatorKey ?? null,
+      projectId: params.projectId ?? null,
+      workSessionId: params.workSessionId ?? null,
+    }
+  );
 }

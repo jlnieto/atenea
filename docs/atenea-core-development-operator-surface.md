@@ -33,12 +33,12 @@ Implemented runtime outcomes:
 - persisted operator context through `core_operator_context`
 - clarification outcome through `NEEDS_CLARIFICATION`
 - confirmation roundtrip on sensitive `development` mutations
-- voice-ready responses through `speakableMessage`
+- voice-ready responses through `speakableMessage` and per-command speech audio
 - command timeline reads and SSE through core-command events
 - core-first operator console in the native app
 - project/session active context kept in app state and sent to core
 - main `development` mutations routed through `Atenea Core` from mobile
-- app-level text-to-speech playback from `speakableMessage`
+- app-level playback from backend-generated speech audio for `speakableMessage`
 - app-level voice capture in the `Core` tab with server-side transcription
 
 What still remains outside this implemented slice:
@@ -257,7 +257,7 @@ Recommended model:
 5. the core returns:
    - `operatorMessage`
    - `speakableMessage`
-6. the app plays text-to-speech using `speakableMessage`
+6. the app plays backend-generated speech audio for `speakableMessage`
 
 This means:
 
@@ -275,6 +275,7 @@ This next phase should therefore introduce a core-level event stream.
 Recommended additive endpoint:
 
 - `GET /api/core/commands/{commandId}/events/stream`
+- `GET /api/core/commands/{commandId}/speech`
 
 Recommended event phases:
 
@@ -409,7 +410,7 @@ The next coding target for the repository should be:
 That should include:
 
 - using `channel=VOICE` through `POST /api/core/commands`
-- keeping `speakableMessage` as the TTS source
+- keeping `speakableMessage` as the canonical speech source for backend-generated audio
 - extending speech-to-text capture beyond the `Core` tab
 - using command-event reads and SSE in the client
 - migrating the remaining non-core client mutations

@@ -421,8 +421,6 @@ class WorkSessionServiceTest {
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(12L)).thenReturn(Optional.of(latestRun));
-        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.FAILED))
-                .thenReturn(Optional.empty());
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.of(latestRun));
 
@@ -460,8 +458,6 @@ class WorkSessionServiceTest {
         persistedSession.setWorkspaceBranch("atenea/session-15");
         when(workSessionRepository.findWithProjectById(15L)).thenReturn(Optional.of(persistedSession));
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(15L)).thenReturn(Optional.empty());
-        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(15L, AgentRunStatus.FAILED))
-                .thenReturn(Optional.empty());
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(15L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.empty());
 
@@ -510,8 +506,6 @@ class WorkSessionServiceTest {
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(12L)).thenReturn(Optional.empty());
-        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.FAILED))
-                .thenReturn(Optional.empty());
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.empty());
         when(sessionTurnService.getTurns(12L, null, 20)).thenReturn(List.of());
@@ -545,8 +539,6 @@ class WorkSessionServiceTest {
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(true);
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(12L)).thenReturn(Optional.of(latestRun));
-        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.FAILED))
-                .thenReturn(Optional.empty());
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.empty());
         when(sessionTurnService.getTurns(12L, null, 20)).thenReturn(turns.subList(5, 25));
@@ -580,8 +572,6 @@ class WorkSessionServiceTest {
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(false);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(12L)).thenReturn(Optional.of(latestFailedRun));
-        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.FAILED))
-                .thenReturn(Optional.of(latestFailedRun));
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.empty());
         when(sessionTurnService.getTurns(12L, null, 20)).thenReturn(turns);
@@ -621,8 +611,6 @@ class WorkSessionServiceTest {
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(12L)).thenReturn(Optional.of(latestRun));
-        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.FAILED))
-                .thenReturn(Optional.empty());
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.of(latestRun));
         when(sessionTurnService.getTurns(12L, null, 20)).thenReturn(turns);
@@ -688,8 +676,6 @@ class WorkSessionServiceTest {
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(12L)).thenReturn(Optional.empty());
-        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.FAILED))
-                .thenReturn(Optional.empty());
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.empty());
 
@@ -714,8 +700,6 @@ class WorkSessionServiceTest {
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(true);
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(12L)).thenReturn(Optional.of(latestRun));
-        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.FAILED))
-                .thenReturn(Optional.empty());
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.empty());
 
@@ -726,6 +710,28 @@ class WorkSessionServiceTest {
         assertFalse(response.canCreateTurn());
         assertEquals(55L, response.latestRun().id());
         assertEquals(AgentRunStatus.RUNNING, response.latestRun().status());
+    }
+
+    @Test
+    void getSessionViewDoesNotExposeStaleLastErrorWhileNewRunIsRunning() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
+        WorkSessionEntity session = buildSession(12L, 7L, repoPath, "main");
+        AgentRunEntity latestRun = buildRun(57L, session, AgentRunStatus.RUNNING, null, null);
+        AgentRunEntity latestSucceededRun = buildRun(55L, session, AgentRunStatus.SUCCEEDED, "Previous answer", null);
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(true);
+        when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(12L)).thenReturn(Optional.of(latestRun));
+        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
+                .thenReturn(Optional.of(latestSucceededRun));
+
+        WorkSessionViewResponse response = workSessionService.getSessionView(12L);
+
+        assertEquals(AgentRunStatus.RUNNING, response.latestRun().status());
+        assertNull(response.lastError());
+        assertEquals("Previous answer", response.lastAgentResponse());
     }
 
     @Test
@@ -743,8 +749,6 @@ class WorkSessionServiceTest {
         when(agentRunRepository.saveAndFlush(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(12L)).thenReturn(Optional.of(staleRun));
-        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.FAILED))
-                .thenReturn(Optional.of(staleRun));
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.empty());
 
@@ -772,8 +776,6 @@ class WorkSessionServiceTest {
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(false);
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(12L)).thenReturn(Optional.of(latestFailedRun));
-        when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.FAILED))
-                .thenReturn(Optional.of(latestFailedRun));
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.of(latestSucceededRun));
 

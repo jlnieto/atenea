@@ -15,11 +15,13 @@ import { useRemoteResource } from '../hooks/useRemoteResource';
 
 export function ProjectsScreen({
   selectedProjectId,
+  onOpenCore,
   onOpenSession,
   onSelectProject,
   onRunCommand,
 }: {
   selectedProjectId: number | null;
+  onOpenCore: () => void;
   onOpenSession: (sessionId: number) => void;
   onSelectProject: (projectId: number | null) => void;
   onRunCommand: (options: RunCoreCommandOptions) => Promise<unknown>;
@@ -107,32 +109,37 @@ export function ProjectsScreen({
   const projectPendingRecovery = pendingAction?.scope === 'project' ? pendingAction : null;
 
   if (loading) {
-    return <LoadingBlock label="Loading projects..." />;
+    return <LoadingBlock label="Cargando proyectos..." />;
   }
 
   if (error) {
-    return <Card title="Projects unavailable" subtitle={error}><Text style={styles.meta}>Check backend connectivity.</Text></Card>;
+    return <Card title="Proyectos no disponibles" subtitle={error}><Text style={styles.meta}>Revisa la conectividad con el backend.</Text></Card>;
   }
 
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.meta}>Projects refresh automatically every 15s.</Text>
-        <Pressable onPress={() => void reload()}>
-          <Text style={styles.link}>Refresh</Text>
-        </Pressable>
+        <Text style={styles.meta}>La activación de contexto y la apertura de sesión pasan por Atenea Core.</Text>
+        <View style={styles.headerActions}>
+          <Pressable onPress={() => void reload()}>
+            <Text style={styles.link}>Actualizar</Text>
+          </Pressable>
+          <Pressable onPress={onOpenCore}>
+            <Text style={styles.link}>Abrir Core</Text>
+          </Pressable>
+        </View>
       </View>
       {pendingProjectAction != null ? (
         <Text style={styles.pendingNotice}>
-          Project action in progress. If the app is interrupted, refresh Projects before trying again.
+          Acción de proyecto en curso. Si la app se interrumpe, actualiza Projects antes de reintentar.
         </Text>
       ) : null}
       {projectPendingRecovery ? (
         <View style={styles.recoveryCard}>
-          <Text style={styles.recoveryTitle}>Recovered pending action: {projectPendingRecovery.label}</Text>
+          <Text style={styles.recoveryTitle}>Acción recuperada: {projectPendingRecovery.label}</Text>
           <Text style={styles.meta}>{projectPendingRecovery.recoveryHint}</Text>
           <Pressable onPress={clearPendingAction}>
-            <Text style={styles.link}>Dismiss recovery notice</Text>
+            <Text style={styles.link}>Ocultar aviso</Text>
           </Pressable>
         </View>
       ) : null}
@@ -144,12 +151,12 @@ export function ProjectsScreen({
         >
           <View style={styles.headerRow}>
             <StatePill
-              label={selectedProjectId === project.projectId ? 'ACTIVE PROJECT' : 'PROJECT'}
+              label={selectedProjectId === project.projectId ? 'PROYECTO ACTIVO' : 'PROYECTO'}
               tone={selectedProjectId === project.projectId ? 'good' : 'default'}
             />
             <Pressable onPress={() => void activateProject(project)}>
               <Text style={styles.link}>
-                {selectedProjectId === project.projectId ? 'Refresh project context' : 'Work on this project'}
+                {selectedProjectId === project.projectId ? 'Refrescar contexto' : 'Activar en Core'}
               </Text>
             </Pressable>
           </View>
@@ -168,27 +175,27 @@ export function ProjectsScreen({
                   onOpenSession(project.session!.sessionId);
                 }}
               >
-                <Text style={styles.link}>Open session {project.session.sessionId}</Text>
+                <Text style={styles.link}>Abrir sesión {project.session.sessionId}</Text>
               </Pressable>
             </>
           ) : (
             <>
               {project.session?.status === 'CLOSED' ? (
                 <Text style={styles.meta}>
-                  Last session {project.session.sessionId} is closed. Resolve a new session to continue working.
+                  La última sesión {project.session.sessionId} está cerrada. Abre una nueva sesión vía Core para continuar.
                 </Text>
               ) : (
-                <Text style={styles.meta}>No session yet.</Text>
+                <Text style={styles.meta}>Todavía no hay sesión activa.</Text>
               )}
               <TextInput
                 value={drafts[project.projectId]?.title ?? ''}
                 onChangeText={(title) => updateDraft(project.projectId, { title })}
-                placeholder="Session title"
+                placeholder="Título de sesión"
                 placeholderTextColor="#8b7c6b"
                 style={styles.input}
               />
               <ActionButton
-                label={pendingProjectAction === `session-${project.projectId}` ? 'Opening...' : 'Open session via Core'}
+                label={pendingProjectAction === `session-${project.projectId}` ? 'Abriendo...' : 'Abrir sesión vía Core'}
                 onPress={() => void resolveSession(project)}
                 disabled={pendingProjectAction != null}
               />
@@ -215,9 +222,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
   },
   meta: {
     fontSize: 13,
+    lineHeight: 18,
     color: '#705b42',
   },
   input: {
@@ -225,7 +240,7 @@ const styles = StyleSheet.create({
     borderColor: '#dccfb8',
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
     backgroundColor: '#fffdf8',
     fontSize: 14,
     color: '#2d2218',
@@ -248,7 +263,7 @@ const styles = StyleSheet.create({
   },
   recoveryCard: {
     gap: 6,
-    padding: 12,
+    padding: 13,
     borderRadius: 12,
     backgroundColor: '#fff7eb',
     borderWidth: 1,

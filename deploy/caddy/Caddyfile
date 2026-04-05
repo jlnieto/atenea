@@ -2,6 +2,6 @@ atenea.yudri.es {
     reverse_proxy atenea-dev:8081
 }
 
-http://ateneatest.yudri.es {
-    reverse_proxy atenea-codex-app-server-dev:80
+ateneatest.yudri.es, https://ateneatest.yudri.es:8083 {
+    reverse_proxy expo-dev:8083
 }

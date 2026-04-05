@@ -71,6 +71,33 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                     "deliverable_generation_request");
         }
 
+        if (looksLikeApproveDeliverable(normalized)) {
+            WorkSessionEntity session = resolveSession(context, input);
+            return proposal(
+                    "APPROVE_SESSION_DELIVERABLE",
+                    "approve_session_deliverable",
+                    Map.of(
+                            "projectId", session.getProject().getId(),
+                            "workSessionId", session.getId(),
+                            "deliverableId", extractDeliverableId(input)),
+                    BigDecimal.valueOf(0.95),
+                    "deliverable_approval_request");
+        }
+
+        if (looksLikeMarkPriceEstimateBilled(normalized)) {
+            WorkSessionEntity session = resolveSession(context, input);
+            return proposal(
+                    "MARK_PRICE_ESTIMATE_BILLED",
+                    "mark_price_estimate_billed",
+                    Map.of(
+                            "projectId", session.getProject().getId(),
+                            "workSessionId", session.getId(),
+                            "deliverableId", extractDeliverableId(input),
+                            "billingReference", extractBillingReference(input)),
+                    BigDecimal.valueOf(0.96),
+                    "price_estimate_billing_request");
+        }
+
         if (looksLikeDeliverablesRead(normalized)) {
             WorkSessionEntity session = resolveSession(context, input);
             return proposal(
@@ -292,17 +319,26 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
     }
 
     private boolean looksLikePortfolioStatus(String normalized) {
-        return (normalized.contains("estado") || normalized.contains("status") || normalized.contains("overview")
-                || normalized.contains("como estan") || normalized.contains("how are"))
-                && normalized.contains("proyecto");
+        boolean asksForStatus = normalized.contains("estado")
+                || normalized.contains("status")
+                || normalized.contains("overview")
+                || normalized.contains("como estan")
+                || normalized.contains("how are");
+        boolean mentionsPortfolio = normalized.contains("proyectos")
+                || normalized.contains("todos los proyectos")
+                || normalized.contains("all projects")
+                || normalized.contains("portfolio");
+        return asksForStatus && mentionsPortfolio;
     }
 
     private boolean looksLikeProjectStatus(String normalized) {
-        return normalized.contains("estado")
+        return (normalized.contains("estado")
                 || normalized.contains("status")
                 || normalized.contains("overview")
                 || normalized.contains("como esta")
-                || normalized.contains("how is");
+                || normalized.contains("how is"))
+                && !looksLikePortfolioStatus(normalized)
+                && !looksLikeSessionSummary(normalized);
     }
 
     private boolean looksLikeActivateProject(String normalized) {
@@ -340,7 +376,16 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
         return normalized.contains("session summary")
                 || normalized.contains("resumen de la sesion")
                 || normalized.contains("estado de la sesion")
-                || normalized.contains("como va la sesion");
+                || normalized.contains("como va la sesion")
+                || normalized.contains("en que punto estamos")
+                || normalized.contains("en que punto va")
+                || normalized.contains("como vamos")
+                || normalized.contains("como va el desarrollo")
+                || normalized.contains("progreso")
+                || normalized.contains("avance")
+                || normalized.contains("avances")
+                || normalized.contains("how far along")
+                || normalized.contains("where are we");
     }
 
     private boolean looksLikePublish(String normalized) {
@@ -374,6 +419,41 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
     private boolean looksLikeGenerateDeliverable(String normalized) {
         return (normalized.contains("generate") || normalized.contains("genera"))
                 && looksLikeDeliverablesRead(normalized);
+    }
+
+    private boolean looksLikeApproveDeliverable(String normalized) {
+        return (normalized.contains("aprueba") || normalized.contains("approve"))
+                && looksLikeDeliverablesRead(normalized);
+    }
+
+    private boolean looksLikeMarkPriceEstimateBilled(String normalized) {
+        return (normalized.contains("facturado")
+                || normalized.contains("mark billed")
+                || normalized.contains("marca")
+                || normalized.contains("billing reference"))
+                && (normalized.contains("referencia")
+                || normalized.contains("invoice")
+                || normalized.contains("factura")
+                || normalized.contains("billed"));
+    }
+
+    private Long extractDeliverableId(String input) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?i)deliverable\\s+(\\d+)|entregable\\s+(\\d+)")
+                .matcher(input);
+        if (matcher.find()) {
+            String raw = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+            return Long.parseLong(raw);
+        }
+        throw new CoreInvalidContextException("Missing or invalid Core parameter: deliverableId");
+    }
+
+    private String extractBillingReference(String input) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?i)(?:referencia|invoice(?: number)?|ref(?:erence)?)\\s+([A-Za-z0-9._\\-/]+)")
+                .matcher(input);
+        if (matcher.find()) {
+            return matcher.group(1).trim();
+        }
+        throw new CoreInvalidContextException("Missing or invalid Core parameter: billingReference");
     }
 
     private String normalize(String value) {

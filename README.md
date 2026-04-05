@@ -31,7 +31,7 @@ Cliente móvil nativo:
 
 ```bash
 cd mobile
-EXPO_PUBLIC_ATENEA_API_BASE_URL=http://localhost:8081 npm start
+EXPO_PUBLIC_ATENEA_API_BASE_URL=https://atenea.yudri.es npm start
 ```
 
 Bootstrap local de operador móvil:
@@ -163,7 +163,7 @@ El repo incluye además una app nativa en `mobile/`:
   - pull-request sync
   - generate deliverable
   - close
-- salida por voz desde `speakableMessage` con `expo-speech`
+- salida por voz desde audio backend generado a partir de `speakableMessage`, con fallback local
 - acciones móviles ya cableadas para:
   - approve deliverable
   - mark billed
@@ -272,14 +272,16 @@ Actualmente ya implementa:
 - `POST /api/mobile/projects/{projectId}/sessions/resolve`
 - `GET /api/mobile/sessions/{sessionId}/conversation`
 - `POST /api/mobile/sessions/{sessionId}/turns`
-- `POST /api/mobile/sessions/{sessionId}/publish`
-- `POST /api/mobile/sessions/{sessionId}/pull-request/sync`
-- `POST /api/mobile/sessions/{sessionId}/close`
+- compatibility aliases only:
+  - `POST /api/mobile/sessions/{sessionId}/publish`
+  - `POST /api/mobile/sessions/{sessionId}/pull-request/sync`
+  - `POST /api/mobile/sessions/{sessionId}/close`
 - `GET /api/mobile/sessions/{sessionId}/deliverables`
 - `GET /api/mobile/sessions/{sessionId}/deliverables/approved`
-- `POST /api/mobile/sessions/{sessionId}/deliverables/{type}/generate`
-- `POST /api/mobile/sessions/{sessionId}/deliverables/{deliverableId}/approve`
-- `POST /api/mobile/sessions/{sessionId}/deliverables/{deliverableId}/billing/mark-billed`
+- compatibility aliases only:
+  - `POST /api/mobile/sessions/{sessionId}/deliverables/{type}/generate`
+  - `POST /api/mobile/sessions/{sessionId}/deliverables/{deliverableId}/approve`
+  - `POST /api/mobile/sessions/{sessionId}/deliverables/{deliverableId}/billing/mark-billed`
 - `GET /api/mobile/billing/queue`
 - `GET /api/mobile/billing/queue/summary`
 - `workspaceBranch` real por sesión con convención `atenea/session-{id}`

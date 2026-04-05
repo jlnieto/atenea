@@ -8,6 +8,7 @@ public record MobileSessionSummaryResponse(
         WorkSessionConversationViewResponse conversation,
         SessionDeliverablesViewResponse approvedDeliverables,
         ApprovedPriceEstimateSummaryResponse approvedPriceEstimate,
-        MobileSessionActionsResponse actions
+        MobileSessionActionsResponse actions,
+        MobileSessionInsightsResponse insights
 ) {
 }

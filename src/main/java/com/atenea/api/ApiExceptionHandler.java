@@ -7,6 +7,7 @@ import com.atenea.service.core.CoreCommandNotFoundException;
 import com.atenea.service.core.CoreCommandRejectedException;
 import com.atenea.service.core.CoreVoiceTranscriptionException;
 import com.atenea.service.core.CoreVoiceUnavailableException;
+import com.atenea.service.core.CoreSpeechSynthesisException;
 import com.atenea.service.project.DuplicateProjectNameException;
 import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotDirectoryException;
@@ -210,6 +211,14 @@ public class ApiExceptionHandler {
     @ExceptionHandler(CoreVoiceTranscriptionException.class)
     public ResponseEntity<ApiErrorResponse> handleCoreVoiceTranscription(
             CoreVoiceTranscriptionException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(CoreSpeechSynthesisException.class)
+    public ResponseEntity<ApiErrorResponse> handleCoreSpeechSynthesis(
+            CoreSpeechSynthesisException exception
     ) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));

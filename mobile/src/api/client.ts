@@ -1,4 +1,5 @@
 import { API_BASE_URL } from './config';
+import * as FileSystem from 'expo-file-system/legacy';
 
 type AuthAdapter = {
   getAccessToken: () => string | null;
@@ -156,4 +157,60 @@ export async function postMultipart<TResponse>(
   }
 
   return response.json() as Promise<TResponse>;
+}
+
+export async function uploadMultipartFile<TResponse>(
+  path: string,
+  file: {
+    uri: string;
+    name?: string;
+    type?: string;
+    fieldName?: string;
+  },
+  parameters?: Record<string, string | number | null | undefined>,
+  options?: RequestOptions
+): Promise<TResponse> {
+  const resolvedFieldName = file.fieldName ?? 'file';
+  const resolvedFileName = file.name ?? 'upload.bin';
+  const resolvedMimeType = file.type ?? 'application/octet-stream';
+
+  const fileInfo = await FileSystem.getInfoAsync(file.uri);
+  if (!fileInfo.exists) {
+    throw new Error(`Upload file does not exist at ${file.uri}`);
+  }
+
+  const upload = async () => {
+    const accessToken = authAdapter.getAccessToken();
+    return FileSystem.uploadAsync(`${API_BASE_URL}${path}`, file.uri, {
+      fieldName: resolvedFieldName,
+      headers: accessToken
+        ? { Authorization: `Bearer ${accessToken}` }
+        : undefined,
+      httpMethod: 'POST',
+      mimeType: resolvedMimeType,
+      parameters: Object.fromEntries(
+        Object.entries(parameters ?? {})
+          .filter(([, value]) => value != null)
+          .map(([key, value]) => [key, String(value)])
+      ),
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+    });
+  };
+
+  let response = await upload();
+
+  if (response.status === 401 && options?.allowAuthRefresh !== false) {
+    const refreshedAccessToken = await authAdapter.refreshAccessToken();
+    if (refreshedAccessToken) {
+      response = await upload();
+    } else {
+      authAdapter.onAuthFailure();
+    }
+  }
+
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(response.body || `HTTP ${response.status}`);
+  }
+
+  return JSON.parse(response.body) as TResponse;
 }

@@ -94,8 +94,8 @@ class CoreCommandServiceTest {
                         44L,
                         Map.of("created", true),
                         "Resolved WorkSession conversation view for project 7",
-                        "A WorkSession was created and the conversation view is ready.",
-                        "A WorkSession was created and the conversation view is ready."));
+                        "He creado una WorkSession y la conversación ya está lista.",
+                        "He creado una WorkSession y la conversación ya está lista."));
 
         CoreCommandResponse response = coreCommandService.createCommand(new CreateCoreCommandRequest(
                 "Arranca una nueva sesion",
