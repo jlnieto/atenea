@@ -11,6 +11,7 @@ import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -25,7 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SessionDeliverableGenerationService {
 
-    private static final String WORK_TICKET_PROMPT_VERSION = "session-deliverables-work-ticket-v1";
+    private static final String WORK_TICKET_PROMPT_VERSION = "session-deliverables-work-ticket-v2";
     private static final String WORK_BREAKDOWN_PROMPT_VERSION = "session-deliverables-work-breakdown-v1";
     private static final String PRICE_ESTIMATE_PROMPT_VERSION = "session-deliverables-price-estimate-v2";
     private static final double PRICE_ESTIMATE_BASE_HOURLY_RATE_EUR = 43.0d;
@@ -60,6 +61,9 @@ public class SessionDeliverableGenerationService {
     public SessionDeliverableResponse generateDeliverable(Long sessionId, SessionDeliverableType type) {
         WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        if (session.getStatus() == WorkSessionStatus.CLOSED) {
+            throw new WorkSessionNotOpenException(sessionId, session.getStatus());
+        }
         String repoPath = workspaceRepositoryPathValidator.normalizeConfiguredRepoPath(session.getProject().getRepoPath());
 
         String snapshotJson = buildSnapshotJson(session, type);

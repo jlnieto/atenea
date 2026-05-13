@@ -17,10 +17,14 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
+ARG CODEX_CLI_VERSION=0.130.0
+
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nodejs npm \
-    && npm install -g @openai/codex@0.116.0 \
+    && apt-get install -y --no-install-recommends git openssh-client nodejs npm \
+    && npm install -g @openai/codex@${CODEX_CLI_VERSION} \
     && rm -rf /var/lib/apt/lists/*
+
+RUN git config --system --add safe.directory '*'
 
 RUN useradd -r -u 1001 -g root appuser
 

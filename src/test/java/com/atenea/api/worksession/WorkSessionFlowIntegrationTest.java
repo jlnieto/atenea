@@ -58,6 +58,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @SpringBootTest(classes = AteneaApplication.class)
 @AutoConfigureMockMvc
@@ -251,7 +252,7 @@ class WorkSessionFlowIntegrationTest {
                 }
                 """, 201);
 
-        mockMvc.perform(post("/api/projects/%d/sessions".formatted(project.getId()))
+        mockMvc.perform(authenticated(post("/api/projects/%d/sessions".formatted(project.getId())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -272,7 +273,7 @@ class WorkSessionFlowIntegrationTest {
 
         agentRunService.createRunningRun(sessionId);
 
-        mockMvc.perform(post("/api/sessions/%d/turns".formatted(sessionId))
+        mockMvc.perform(authenticated(post("/api/sessions/%d/turns".formatted(sessionId)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -293,7 +294,7 @@ class WorkSessionFlowIntegrationTest {
 
         agentRunService.createRunningRun(sessionId);
 
-        mockMvc.perform(post("/api/sessions/%d/close".formatted(sessionId)))
+        mockMvc.perform(authenticated(post("/api/sessions/%d/close".formatted(sessionId))))
                 .andExpect(status().isConflict());
 
         WorkSessionEntity session = workSessionRepository.findById(sessionId).orElseThrow();
@@ -312,7 +313,7 @@ class WorkSessionFlowIntegrationTest {
 
         agentRunService.createRunningRun(sessionId);
 
-        mockMvc.perform(post("/api/sessions/%d/close/conversation-view".formatted(sessionId)))
+        mockMvc.perform(authenticated(post("/api/sessions/%d/close/conversation-view".formatted(sessionId))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.state").value("running_run"))
                 .andExpect(jsonPath("$.reason").value("WorkSession still has a running AgentRun"))
@@ -411,7 +412,7 @@ class WorkSessionFlowIntegrationTest {
 
         postJson("/api/sessions/%d/close".formatted(sessionId), null, 200);
 
-        mockMvc.perform(post("/api/sessions/%d/turns".formatted(sessionId))
+        mockMvc.perform(authenticated(post("/api/sessions/%d/turns".formatted(sessionId)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -478,16 +479,16 @@ class WorkSessionFlowIntegrationTest {
 
     @Test
     void newFlowReturnsNotFoundForMissingSessionEndpoints() throws Exception {
-        mockMvc.perform(get("/api/sessions/999999/turns"))
+        mockMvc.perform(authenticated(get("/api/sessions/999999/turns")))
                 .andExpect(status().isNotFound());
 
-        mockMvc.perform(get("/api/sessions/999999/runs"))
+        mockMvc.perform(authenticated(get("/api/sessions/999999/runs")))
                 .andExpect(status().isNotFound());
 
-        mockMvc.perform(get("/api/sessions/999999/deliverables"))
+        mockMvc.perform(authenticated(get("/api/sessions/999999/deliverables")))
                 .andExpect(status().isNotFound());
 
-        mockMvc.perform(post("/api/sessions/999999/close"))
+        mockMvc.perform(authenticated(post("/api/sessions/999999/close")))
                 .andExpect(status().isNotFound());
     }
 
@@ -582,7 +583,7 @@ class WorkSessionFlowIntegrationTest {
         assertEquals(1, generated.get("version").asInt());
         assertTrue(generated.get("contentMarkdown").asText().contains("# Work Ticket"));
         assertTrue(generated.get("inputSnapshotJson").asText().contains("\"turns\""));
-        assertEquals("session-deliverables-work-ticket-v1", generated.get("promptVersion").asText());
+        assertEquals("session-deliverables-work-ticket-v2", generated.get("promptVersion").asText());
 
         JsonNode listed = getJson("/api/sessions/%d/deliverables".formatted(sessionId), 200);
         assertEquals(1, listed.get("deliverables").size());
@@ -1029,7 +1030,7 @@ class WorkSessionFlowIntegrationTest {
                 }
                 """, 201).get("id").asLong();
         agentRunService.createRunningRun(blockedSessionId);
-        mockMvc.perform(post("/api/sessions/%d/close".formatted(blockedSessionId)))
+        mockMvc.perform(authenticated(post("/api/sessions/%d/close".formatted(blockedSessionId))))
                 .andExpect(status().isConflict());
 
         ProjectEntity billingProject = createProject("mobile-inbox-billing");
@@ -1181,14 +1182,14 @@ class WorkSessionFlowIntegrationTest {
             builder.content(body);
         }
 
-        MvcResult result = mockMvc.perform(builder)
+        MvcResult result = mockMvc.perform(authenticatedIfRequired(path, builder))
                 .andExpect(status().is(expectedStatus))
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString());
     }
 
     private JsonNode getJson(String path, int expectedStatus) throws Exception {
-        MvcResult result = mockMvc.perform(get(path))
+        MvcResult result = mockMvc.perform(authenticatedIfRequired(path, get(path)))
                 .andExpect(status().is(expectedStatus))
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString());
@@ -1231,6 +1232,26 @@ class WorkSessionFlowIntegrationTest {
                 """, 200);
         mobileAccessToken = login.get("accessToken").asText();
         return mobileAccessToken;
+    }
+
+    private MockHttpServletRequestBuilder authenticated(MockHttpServletRequestBuilder builder) throws Exception {
+        return builder.header("Authorization", "Bearer " + getMobileAccessToken());
+    }
+
+    private MockHttpServletRequestBuilder authenticatedIfRequired(
+            String path,
+            MockHttpServletRequestBuilder builder) throws Exception {
+        if (requiresAuth(path)) {
+            return authenticated(builder);
+        }
+        return builder;
+    }
+
+    private boolean requiresAuth(String path) {
+        return path.startsWith("/api/")
+                && !path.equals("/api/mobile/auth/login")
+                && !path.equals("/api/mobile/auth/refresh")
+                && !path.equals("/api/mobile/auth/logout");
     }
 
     private ProjectEntity createProject(String slug) throws IOException {

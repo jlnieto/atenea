@@ -3,12 +3,12 @@ import { Alert } from 'react-native';
 export function confirmAction(
   title: string,
   message: string,
-  continueLabel = 'Continue'
+  continueLabel = 'Continuar'
 ) {
   return new Promise<boolean>((resolve) => {
     Alert.alert(title, message, [
       {
-        text: 'Cancel',
+        text: 'Cancelar',
         style: 'cancel',
         onPress: () => resolve(false),
       },

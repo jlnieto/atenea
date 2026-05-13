@@ -255,6 +255,7 @@ public class LlmCoreIntentInterpreter {
         putLong(values, "projectId", node.get("projectId"));
         putLong(values, "workSessionId", node.get("workSessionId"));
         putLong(values, "deliverableId", node.get("deliverableId"));
+        putBoolean(values, "forceClosePendingDeliverables", node.get("forceClosePendingDeliverables"));
         putText(values, "title", node.get("title"));
         putText(values, "message", node.get("message"));
         putText(values, "deliverableType", node.get("deliverableType"));
@@ -294,6 +295,12 @@ public class LlmCoreIntentInterpreter {
     private void putText(Map<String, Object> parameters, String key, JsonNode value) {
         if (value != null && value.isTextual() && !value.asText().isBlank()) {
             parameters.put(key, value.asText().trim());
+        }
+    }
+
+    private void putBoolean(Map<String, Object> parameters, String key, JsonNode value) {
+        if (value != null && value.isBoolean()) {
+            parameters.put(key, value.asBoolean());
         }
     }
 

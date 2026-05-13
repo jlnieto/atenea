@@ -2,6 +2,13 @@ package com.atenea.api.mobile;
 
 import com.atenea.api.billing.BillingQueueResponse;
 import com.atenea.api.billing.BillingQueueSummaryResponse;
+import com.atenea.api.rescue.CloseRescueSessionResponse;
+import com.atenea.api.rescue.CreateRescueTurnRequest;
+import com.atenea.api.rescue.CreateRescueTurnResponse;
+import com.atenea.api.rescue.ResolveRescueSessionRequest;
+import com.atenea.api.rescue.ResolveRescueSessionResponse;
+import com.atenea.api.rescue.RescueSessionConversationViewResponse;
+import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.api.worksession.CloseWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.CreateSessionTurnConversationViewResponse;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
@@ -19,9 +26,11 @@ import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.service.billing.BillingQueueService;
 import com.atenea.service.mobile.MobileInboxService;
 import com.atenea.service.mobile.MobileProjectOverviewService;
+import com.atenea.service.mobile.MobileSessionReadStateService;
 import com.atenea.service.mobile.MobileSessionEventService;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.mobile.MobileStreamService;
+import com.atenea.service.rescue.RescueSessionService;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
 import com.atenea.service.worksession.SessionDeliverableService;
 import com.atenea.service.worksession.SessionTurnService;
@@ -31,6 +40,7 @@ import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,6 +58,7 @@ public class MobileController {
     private final MobileProjectOverviewService mobileProjectOverviewService;
     private final MobileInboxService mobileInboxService;
     private final MobileSessionService mobileSessionService;
+    private final MobileSessionReadStateService mobileSessionReadStateService;
     private final MobileSessionEventService mobileSessionEventService;
     private final MobileStreamService mobileStreamService;
     private final WorkSessionService workSessionService;
@@ -56,11 +67,13 @@ public class MobileController {
     private final SessionDeliverableService sessionDeliverableService;
     private final SessionDeliverableGenerationService sessionDeliverableGenerationService;
     private final BillingQueueService billingQueueService;
+    private final RescueSessionService rescueSessionService;
 
     public MobileController(
             MobileProjectOverviewService mobileProjectOverviewService,
             MobileInboxService mobileInboxService,
             MobileSessionService mobileSessionService,
+            MobileSessionReadStateService mobileSessionReadStateService,
             MobileSessionEventService mobileSessionEventService,
             MobileStreamService mobileStreamService,
             WorkSessionService workSessionService,
@@ -68,11 +81,13 @@ public class MobileController {
             WorkSessionGitHubService workSessionGitHubService,
             SessionDeliverableService sessionDeliverableService,
             SessionDeliverableGenerationService sessionDeliverableGenerationService,
-            BillingQueueService billingQueueService
+            BillingQueueService billingQueueService,
+            RescueSessionService rescueSessionService
     ) {
         this.mobileProjectOverviewService = mobileProjectOverviewService;
         this.mobileInboxService = mobileInboxService;
         this.mobileSessionService = mobileSessionService;
+        this.mobileSessionReadStateService = mobileSessionReadStateService;
         this.mobileSessionEventService = mobileSessionEventService;
         this.mobileStreamService = mobileStreamService;
         this.workSessionService = workSessionService;
@@ -81,6 +96,7 @@ public class MobileController {
         this.sessionDeliverableService = sessionDeliverableService;
         this.sessionDeliverableGenerationService = sessionDeliverableGenerationService;
         this.billingQueueService = billingQueueService;
+        this.rescueSessionService = rescueSessionService;
     }
 
     @GetMapping("/projects/overview")
@@ -103,6 +119,21 @@ public class MobileController {
         return mobileSessionService.getSessionSummary(sessionId);
     }
 
+    @GetMapping("/session-read-states")
+    public List<MobileSessionReadStateResponse> getSessionReadStates(
+            @AuthenticationPrincipal AuthenticatedOperator operator
+    ) {
+        return mobileSessionReadStateService.getReadStates(operator);
+    }
+
+    @PostMapping("/sessions/{sessionId}/mark-read")
+    public MobileSessionReadStateResponse markSessionRead(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable Long sessionId
+    ) {
+        return mobileSessionReadStateService.markRead(operator, sessionId);
+    }
+
     @GetMapping("/sessions/{sessionId}/events")
     public MobileSessionEventsResponse getSessionEvents(
             @PathVariable Long sessionId,
@@ -123,6 +154,33 @@ public class MobileController {
             @Valid @RequestBody(required = false) ResolveWorkSessionRequest request
     ) {
         return workSessionService.resolveSessionConversationView(projectId, request);
+    }
+
+    @PostMapping("/projects/{projectId}/rescue-sessions/resolve")
+    public ResolveRescueSessionResponse resolveRescueSession(
+            @PathVariable Long projectId,
+            @Valid @RequestBody(required = false) ResolveRescueSessionRequest request
+    ) {
+        return rescueSessionService.resolveSession(projectId, request);
+    }
+
+    @GetMapping("/rescue-sessions/{rescueSessionId}/conversation")
+    public RescueSessionConversationViewResponse getRescueSessionConversation(@PathVariable Long rescueSessionId) {
+        return rescueSessionService.getConversation(rescueSessionId);
+    }
+
+    @PostMapping("/rescue-sessions/{rescueSessionId}/turns")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CreateRescueTurnResponse createRescueTurn(
+            @PathVariable Long rescueSessionId,
+            @Valid @RequestBody CreateRescueTurnRequest request
+    ) {
+        return rescueSessionService.createTurn(rescueSessionId, request);
+    }
+
+    @PostMapping("/rescue-sessions/{rescueSessionId}/close")
+    public CloseRescueSessionResponse closeRescueSession(@PathVariable Long rescueSessionId) {
+        return rescueSessionService.closeSession(rescueSessionId);
     }
 
     @GetMapping("/sessions/{sessionId}/conversation")
@@ -176,6 +234,14 @@ public class MobileController {
     @GetMapping("/sessions/{sessionId}/deliverables")
     public SessionDeliverablesViewResponse getDeliverables(@PathVariable Long sessionId) {
         return sessionDeliverableService.getDeliverablesView(sessionId);
+    }
+
+    @GetMapping("/sessions/{sessionId}/deliverables/{deliverableId}")
+    public SessionDeliverableResponse getDeliverable(
+            @PathVariable Long sessionId,
+            @PathVariable Long deliverableId
+    ) {
+        return sessionDeliverableService.getDeliverable(sessionId, deliverableId);
     }
 
     @GetMapping("/sessions/{sessionId}/deliverables/approved")

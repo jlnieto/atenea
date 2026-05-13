@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -8,10 +8,31 @@ import {
 } from 'expo-audio';
 
 export function useVoiceRecorder() {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(recorder);
+  const recorderOptions = useMemo(
+    () => ({
+      ...RecordingPresets.HIGH_QUALITY,
+      isMeteringEnabled: true,
+    }),
+    []
+  );
+  const recorder = useAudioRecorder(recorderOptions);
+  const recorderState = useAudioRecorderState(recorder, 80);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [normalizedLevel, setNormalizedLevel] = useState(0);
+
+  useEffect(() => {
+    if (!recorderState.isRecording) {
+      setNormalizedLevel(0);
+      return;
+    }
+
+    const targetLevel = normalizeMetering(recorderState.metering);
+    setNormalizedLevel((currentLevel) => {
+      const smoothing = targetLevel > currentLevel ? 0.65 : 0.22;
+      return currentLevel + (targetLevel - currentLevel) * smoothing;
+    });
+  }, [recorderState.isRecording, recorderState.metering]);
 
   const start = async () => {
     setBusy(true);
@@ -61,7 +82,20 @@ export function useVoiceRecorder() {
     durationSeconds: recorderState.durationMillis / 1000,
     error,
     isRecording: recorderState.isRecording,
+    metering: recorderState.metering ?? null,
+    normalizedLevel,
     start,
     stop,
   };
+}
+
+function normalizeMetering(metering: number | null | undefined) {
+  if (metering == null || Number.isNaN(metering)) {
+    return 0;
+  }
+
+  const floorDb = -60;
+  const clamped = Math.max(floorDb, Math.min(0, metering));
+  const linear = (clamped - floorDb) / Math.abs(floorDb);
+  return Math.pow(linear, 0.75);
 }

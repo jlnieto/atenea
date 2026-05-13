@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 type StatePillProps = {
   label: string;
-  tone?: 'default' | 'good' | 'warning' | 'danger';
+  tone?: 'default' | 'good' | 'warning' | 'danger' | 'info';
 };
 
 export function StatePill({ label, tone = 'default' }: StatePillProps) {
@@ -38,6 +38,10 @@ const toneStyles = {
   warning: StyleSheet.create({
     pill: { backgroundColor: '#f5e0bb' },
     text: { color: '#7a4c06' },
+  }),
+  info: StyleSheet.create({
+    pill: { backgroundColor: '#d7ece7' },
+    text: { color: '#1f5d4e' },
   }),
   danger: StyleSheet.create({
     pill: { backgroundColor: '#f0d1cb' },

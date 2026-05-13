@@ -4,6 +4,7 @@ import com.atenea.service.core.CoreCommandService;
 import com.atenea.service.core.CoreSpeechAudioResponse;
 import com.atenea.service.core.CoreSpeechSynthesisService;
 import com.atenea.service.core.CoreVoiceCommandService;
+import com.atenea.service.core.CoreVoiceTranscriptionService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,17 +32,20 @@ public class CoreController {
     private final CoreCommandService coreCommandService;
     private final CoreSpeechSynthesisService coreSpeechSynthesisService;
     private final CoreVoiceCommandService coreVoiceCommandService;
+    private final CoreVoiceTranscriptionService coreVoiceTranscriptionService;
     private final CoreStreamService coreStreamService;
 
     public CoreController(
             CoreCommandService coreCommandService,
             CoreSpeechSynthesisService coreSpeechSynthesisService,
             CoreVoiceCommandService coreVoiceCommandService,
+            CoreVoiceTranscriptionService coreVoiceTranscriptionService,
             CoreStreamService coreStreamService
     ) {
         this.coreCommandService = coreCommandService;
         this.coreSpeechSynthesisService = coreSpeechSynthesisService;
         this.coreVoiceCommandService = coreVoiceCommandService;
+        this.coreVoiceTranscriptionService = coreVoiceTranscriptionService;
         this.coreStreamService = coreStreamService;
     }
 
@@ -68,6 +72,12 @@ public class CoreController {
             @RequestParam(required = false) String operatorKey
     ) {
         return coreVoiceCommandService.createVoiceCommand(audio, projectId, workSessionId, operatorKey);
+    }
+
+    @PostMapping(value = "/voice/transcriptions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public CoreVoiceTranscriptionResponse createVoiceTranscription(@RequestPart("audio") MultipartFile audio) {
+        return new CoreVoiceTranscriptionResponse(coreVoiceTranscriptionService.transcribe(audio));
     }
 
     @GetMapping("/commands/{commandId}/speech")

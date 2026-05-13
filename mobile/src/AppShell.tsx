@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -7,8 +10,8 @@ import {
   View,
 } from 'react-native';
 import { usePendingActionCenter } from './actions/PendingActionCenter';
-import { fetchJson } from './api/client';
-import { MobileInboxResponse, MobileProjectOverview } from './api/types';
+import { fetchJson, postJson } from './api/client';
+import { MobileInboxResponse, MobileProjectOverview, MobileSessionReadState } from './api/types';
 import { useNotificationCenter } from './notifications/NotificationCenter';
 import { BillingScreen } from './screens/BillingScreen';
 import { ConversationScreen } from './screens/ConversationScreen';
@@ -16,12 +19,16 @@ import { CoreConsoleScreen } from './screens/CoreConsoleScreen';
 import { InboxScreen } from './screens/InboxScreen';
 import { NotificationsScreen } from './screens/NotificationsScreen';
 import { ProjectsScreen } from './screens/ProjectsScreen';
+import { RescueScreen } from './screens/RescueScreen';
 import { SessionScreen } from './screens/SessionScreen';
+import { AppIcon } from './components/AppIcon';
+import { IconActionLink } from './components/IconActionLink';
 import { StatePill } from './components/StatePill';
+import { labelPullRequestStatus, tonePullRequestStatus } from './core/presentation';
 import { useCoreCommandCenter } from './core/useCoreCommandCenter';
 import { useRemoteResource } from './hooks/useRemoteResource';
 
-export type AppTabId = 'core' | 'inbox' | 'notifications' | 'projects' | 'session' | 'conversation' | 'billing';
+export type AppTabId = 'core' | 'inbox' | 'notifications' | 'projects' | 'session' | 'conversation' | 'billing' | 'rescue';
 
 type AppShellProps = {
   activeTab: AppTabId;
@@ -46,14 +53,16 @@ type RecentQueueEvent = {
   createdAt: string;
 };
 
-const TABS: Array<{ id: AppTabId; label: string }> = [
-  { id: 'core', label: 'Core' },
-  { id: 'session', label: 'Sesión' },
-  { id: 'projects', label: 'Proyectos' },
-  { id: 'inbox', label: 'Inbox' },
-  { id: 'billing', label: 'Facturación' },
-  { id: 'notifications', label: 'Alertas' },
-];
+const SCREEN_TITLES: Record<AppTabId, string> = {
+  core: 'Core',
+  projects: 'Proyectos',
+  inbox: 'Inbox',
+  session: 'Sesión',
+  conversation: 'Conversación',
+  rescue: 'Rescate',
+  billing: 'Facturación',
+  notifications: 'Alertas',
+};
 
 export function AppShell({
   activeTab,
@@ -75,11 +84,12 @@ export function AppShell({
     publishAppNotification,
   } = useNotificationCenter();
   const { pendingAction, clearPendingAction } = usePendingActionCenter();
-  const [seenSessionActivity, setSeenSessionActivity] = useState<Record<number, string>>({});
+  const [bootstrapSeenActivity, setBootstrapSeenActivity] = useState<Record<number, string>>({});
   const [announcedSessionState, setAnnouncedSessionState] = useState<Record<number, string>>({});
+  const [conversationReadReceipt, setConversationReadReceipt] = useState<{ sessionId: number; token: number } | null>(null);
   const [conversationAutoReadRequest, setConversationAutoReadRequest] = useState<{ token: number; mode: 'brief' | 'full' } | null>(null);
   const [recentQueueEvents, setRecentQueueEvents] = useState<RecentQueueEvent[]>([]);
-  const hydratedSeenSessionsRef = useRef(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const hydratedAnnouncementStateRef = useRef(false);
   const { data: workQueueProjects, reload: reloadWorkQueue } = useRemoteResource(
     () => fetchJson<MobileProjectOverview[]>('/api/mobile/projects/overview'),
@@ -90,6 +100,15 @@ export function AppShell({
     () => fetchJson<MobileInboxResponse>('/api/mobile/inbox'),
     [],
     { refreshIntervalMs: 10000 }
+  );
+  const {
+    data: sessionReadStates,
+    reload: reloadSessionReadStates,
+    setData: setSessionReadStates,
+  } = useRemoteResource(
+    () => fetchJson<MobileSessionReadState[]>('/api/mobile/session-read-states'),
+    [],
+    { refreshIntervalMs: 15000 }
   );
   const {
     activeCommand,
@@ -109,38 +128,76 @@ export function AppShell({
   });
 
   useEffect(() => {
-    if (hydratedSeenSessionsRef.current || !workQueueProjects?.length) {
+    if (!workQueueProjects?.length) {
       return;
     }
-    const initialSeen: Record<number, string> = {};
-    for (const project of workQueueProjects) {
-      if (project.session?.sessionId != null && project.session.lastActivityAt) {
-        initialSeen[project.session.sessionId] = project.session.lastActivityAt;
+    setBootstrapSeenActivity((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const project of workQueueProjects) {
+        const session = project.session;
+        if (session?.sessionId == null || !session.lastActivityAt || next[session.sessionId] != null) {
+          continue;
+        }
+        next[session.sessionId] = session.lastActivityAt;
+        changed = true;
       }
-    }
-    hydratedSeenSessionsRef.current = true;
-    setSeenSessionActivity(initialSeen);
+      return changed ? next : current;
+    });
   }, [workQueueProjects]);
 
-  useEffect(() => {
-    if (selectedSessionId == null || !workQueueProjects?.length) {
+  const seenSessionActivity = useMemo(() => ({
+    ...bootstrapSeenActivity,
+    ...Object.fromEntries(
+      (sessionReadStates ?? []).map((entry) => [entry.sessionId, entry.lastSeenActivityAt])
+    ) as Record<number, string>,
+  }), [bootstrapSeenActivity, sessionReadStates]);
+
+  const markSessionRead = useCallback(async (
+    sessionId: number,
+    lastActivityAt?: string | null,
+    options?: { announceInConversation?: boolean }
+  ) => {
+    if (!lastActivityAt) {
       return;
     }
-    const activeSession = workQueueProjects.find((project) => project.session?.sessionId === selectedSessionId)?.session;
-    if (!activeSession?.lastActivityAt) {
-      return;
+    const isUnread = seenSessionActivity[sessionId] !== lastActivityAt;
+    if (isUnread && options?.announceInConversation) {
+      setConversationReadReceipt({
+        sessionId,
+        token: Date.now(),
+      });
     }
-    const latestActivityAt = activeSession.lastActivityAt;
-    setSeenSessionActivity((current) => {
-      if (current[selectedSessionId] === latestActivityAt) {
-        return current;
-      }
-      return {
-        ...current,
-        [selectedSessionId]: latestActivityAt,
-      };
+
+    const optimisticState: MobileSessionReadState = {
+      sessionId,
+      lastSeenActivityAt: lastActivityAt,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setSessionReadStates((current) => {
+      const existing = current ?? [];
+      const next = [
+        optimisticState,
+        ...existing.filter((entry) => entry.sessionId !== sessionId),
+      ];
+      return next.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     });
-  }, [selectedSessionId, workQueueProjects]);
+
+    try {
+      const persistedState = await postJson<MobileSessionReadState>(`/api/mobile/sessions/${sessionId}/mark-read`);
+      setSessionReadStates((current) => {
+        const existing = current ?? [];
+        const next = [
+          persistedState,
+          ...existing.filter((entry) => entry.sessionId !== sessionId),
+        ];
+        return next.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+      });
+    } catch {
+      void reloadSessionReadStates({ silent: true });
+    }
+  }, [reloadSessionReadStates, seenSessionActivity, setSessionReadStates]);
 
   const sessionHint = useMemo(() => (
     selectedSessionId == null
@@ -168,12 +225,7 @@ export function AppShell({
     const sessionActivity = workQueueProjects
       ?.find((project) => project.session?.sessionId === sessionId)
       ?.session?.lastActivityAt;
-    if (sessionActivity) {
-      setSeenSessionActivity((current) => ({
-        ...current,
-        [sessionId]: sessionActivity,
-      }));
-    }
+    void markSessionRead(sessionId, sessionActivity);
     onSelectSession(sessionId);
     onChangeTab('session');
   };
@@ -182,16 +234,30 @@ export function AppShell({
     const sessionActivity = workQueueProjects
       ?.find((project) => project.session?.sessionId === sessionId)
       ?.session?.lastActivityAt;
-    if (sessionActivity) {
-      setSeenSessionActivity((current) => ({
-        ...current,
-        [sessionId]: sessionActivity,
-      }));
-    }
+    void markSessionRead(sessionId, sessionActivity, { announceInConversation: true });
     onSelectProject(projectId);
     onSelectSession(sessionId);
     onChangeTab('conversation');
   };
+
+  useEffect(() => {
+    if (selectedSessionId == null || !workQueueProjects?.length) {
+      return;
+    }
+    if (activeTab !== 'session' && activeTab !== 'conversation') {
+      return;
+    }
+    const activeSession = workQueueProjects.find((project) => project.session?.sessionId === selectedSessionId)?.session;
+    if (!activeSession?.lastActivityAt) {
+      return;
+    }
+    if (seenSessionActivity[selectedSessionId] === activeSession.lastActivityAt) {
+      return;
+    }
+    void markSessionRead(selectedSessionId, activeSession.lastActivityAt, {
+      announceInConversation: activeTab === 'conversation',
+    });
+  }, [activeTab, markSessionRead, seenSessionActivity, selectedSessionId, workQueueProjects]);
 
   useEffect(() => {
     const route = consumePendingRoute();
@@ -328,6 +394,55 @@ export function AppShell({
       });
   }, [inboxSummary, workQueueProjects, selectedSessionId, seenSessionActivity]);
 
+  const menuItems = useMemo(() => {
+    const items: Array<{ id: AppTabId; label: string; detail?: string }> = [
+      { id: 'core', label: 'Core', detail: 'Operar por conversación' },
+      { id: 'projects', label: 'Proyectos', detail: 'Abrir o elegir trabajo' },
+      { id: 'inbox', label: 'Inbox', detail: 'Atención pendiente' },
+    ];
+
+    if (selectedSessionId != null) {
+      items.splice(2, 0,
+        { id: 'session', label: 'Sesión actual', detail: `Sesión ${selectedSessionId}` },
+        { id: 'conversation', label: 'Conversación', detail: 'Continuar el trabajo' }
+      );
+    }
+
+    if (selectedProjectId != null || activeTab === 'rescue') {
+      items.splice(2, 0, {
+        id: 'rescue',
+        label: 'Rescate',
+        detail: selectedProjectId != null ? `Proyecto ${selectedProjectId}` : 'Sin proyecto',
+      });
+    }
+
+    const billingReadyCount = inboxSummary?.summary?.billingReadyCount ?? 0;
+    if (billingReadyCount > 0 || activeTab === 'billing') {
+      items.push({
+        id: 'billing',
+        label: 'Facturación',
+        detail: billingReadyCount > 0 ? `${billingReadyCount} listas` : 'Sin pendientes',
+      });
+    }
+
+    if (notifications.length > 0 || activeTab === 'notifications') {
+      items.push({
+        id: 'notifications',
+        label: 'Alertas',
+        detail: notifications.length > 0 ? `${notifications.length} recientes` : 'Sin alertas',
+      });
+    }
+
+    return items;
+  }, [activeTab, inboxSummary?.summary?.billingReadyCount, notifications.length, selectedProjectId, selectedSessionId]);
+
+  const navigateFromMenu = (tab: AppTabId) => {
+    setMenuOpen(false);
+    onChangeTab(tab);
+  };
+
+  const screenTitle = SCREEN_TITLES[activeTab];
+
   useEffect(() => {
     if (!hydratedAnnouncementStateRef.current) {
       const baseline: Record<number, string> = {};
@@ -394,38 +509,80 @@ export function AppShell({
 
   return (
     <View style={styles.container}>
-      {activeTab !== 'conversation' ? (
-        <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <View style={styles.headerCopy}>
-              <Text style={styles.eyebrow}>Atenea Mobile</Text>
-              <Text style={styles.title}>Consola operador</Text>
-              <Text style={styles.subtitle}>
-                Superficie móvil para revisar contexto y operar sesiones a través de Atenea Core.
-              </Text>
-            </View>
-            <Pressable onPress={onLogout} style={styles.logoutButton}>
-              <Text style={styles.logoutLabel}>Cerrar sesión</Text>
-            </Pressable>
+      {activeTab !== 'rescue' && activeTab !== 'conversation' ? (
+        <View style={styles.topBar}>
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            style={styles.menuButton}
+            accessibilityRole="button"
+            accessibilityLabel="Abrir menú"
+          >
+            <AppIcon name="menu" size={22} color="#f8f4ec" />
+          </Pressable>
+          <View style={styles.topBarTitleBlock}>
+            <Text style={styles.topBarTitle}>{screenTitle}</Text>
+            <Text style={styles.topBarMeta} numberOfLines={1}>
+              {selectedSessionId != null ? `Sesión ${selectedSessionId}` : operatorName}
+            </Text>
           </View>
         </View>
       ) : null}
 
-      {activeTab !== 'conversation' ? (
-        <View style={styles.tabBar}>
-          {TABS.map((tab) => (
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable style={styles.menuOverlay} onPress={() => setMenuOpen(false)}>
+          <Pressable style={styles.menuPanel}>
+            <View style={styles.menuHeader}>
+              <View>
+                <Text style={styles.menuTitle}>Atenea</Text>
+                <Text style={styles.menuMeta} numberOfLines={1}>{operatorName}</Text>
+              </View>
+              <Pressable
+                onPress={() => setMenuOpen(false)}
+                style={styles.menuCloseButton}
+                accessibilityRole="button"
+                accessibilityLabel="Cerrar menú"
+              >
+                <AppIcon name="close" size={20} color="#2e2117" />
+              </Pressable>
+            </View>
+
+            <View style={styles.menuList}>
+              {menuItems.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => navigateFromMenu(item.id)}
+                  style={[styles.menuItem, activeTab === item.id && styles.menuItemActive]}
+                >
+                  <Text style={[styles.menuItemLabel, activeTab === item.id && styles.menuItemLabelActive]}>
+                    {item.label}
+                  </Text>
+                  {item.detail ? (
+                    <Text style={[styles.menuItemDetail, activeTab === item.id && styles.menuItemDetailActive]} numberOfLines={1}>
+                      {item.detail}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              ))}
+            </View>
+
             <Pressable
-              key={tab.id}
-              onPress={() => onChangeTab(tab.id)}
-              style={[styles.tab, activeTab === tab.id && styles.tabActive]}
+              onPress={() => {
+                setMenuOpen(false);
+                onLogout();
+              }}
+              style={styles.menuLogout}
             >
-              <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>
-                {tab.label}
-              </Text>
+              <AppIcon name="logout" size={18} color="#ffffff" />
+              <Text style={styles.menuLogoutLabel}>Cerrar sesión</Text>
             </Pressable>
-          ))}
-        </View>
-      ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {activeTab === 'conversation' ? (
         <View style={styles.conversationContent}>
@@ -434,14 +591,23 @@ export function AppShell({
             projectId={selectedProjectId}
             sessionId={selectedSessionId}
             autoReadRequest={conversationAutoReadRequest}
+            readReceiptToken={
+              conversationReadReceipt?.sessionId === selectedSessionId
+                ? conversationReadReceipt.token
+                : null
+            }
             onBackToSession={() => onChangeTab('session')}
             onOpenCore={() => onChangeTab('core')}
             onRunCommand={runCommand}
-            onRunVoiceCommand={runVoiceCommand}
           />
         </View>
       ) : activeTab === 'session' ? (
-        <View key={`session-${selectedSessionId ?? 'none'}`} style={styles.sessionContent}>
+        <KeyboardAvoidingView
+          key={`session-${selectedSessionId ?? 'none'}`}
+          style={styles.keyboardFrame}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+        <View style={styles.sessionContent}>
           <SessionScreen
             projectId={selectedProjectId}
             sessionId={selectedSessionId}
@@ -451,19 +617,32 @@ export function AppShell({
             onRunCommand={runCommand}
           />
         </View>
+        </KeyboardAvoidingView>
+      ) : activeTab === 'rescue' ? (
+        <View
+          key={`rescue-${selectedProjectId ?? 'none'}`}
+          style={styles.conversationContent}
+        >
+          <RescueScreen
+            projectId={selectedProjectId}
+            onOpenProjects={() => onChangeTab('projects')}
+          />
+        </View>
       ) : activeTab === 'core' ? (
+        <KeyboardAvoidingView
+          style={styles.keyboardFrame}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <ScrollView
           key="tab-core"
           style={styles.contentScroll}
           contentContainerStyle={styles.content}
+          keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.sessionHintCard}>
-            <Text style={styles.sessionHintLabel}>Contexto activo</Text>
             <Text style={styles.sessionHintValue}>{sessionHint}</Text>
             <Text style={styles.operatorValue}>{projectHint}</Text>
-            <Text style={styles.operatorValue}>{workflowHint}</Text>
-            <Text style={styles.operatorValue}>Operador: {operatorName}</Text>
           </View>
 
           {workQueue.length > 0 ? (
@@ -475,9 +654,7 @@ export function AppShell({
                     Tus sesiones activas para alternar entre proyectos sin perder contexto.
                   </Text>
                 </View>
-                <Pressable onPress={() => void reloadWorkQueue()}>
-                  <Text style={styles.workQueueRefresh}>Actualizar</Text>
-                </Pressable>
+                <IconActionLink label="Actualizar" icon="refresh" onPress={() => void reloadWorkQueue()} />
               </View>
               <View style={styles.workQueueSummaryRow}>
                 <StatePill label={`${workQueue.filter((item) => item.queueState === 'NECESITA_REVISION').length} revisión`} tone="warning" />
@@ -515,7 +692,12 @@ export function AppShell({
                               : 'default'
                         }
                       />
-                      {item.pullRequestStatus ? <StatePill label={item.pullRequestStatus} /> : null}
+                      {item.pullRequestStatus ? (
+                        <StatePill
+                          label={labelPullRequestStatus(item.pullRequestStatus)}
+                          tone={tonePullRequestStatus(item.pullRequestStatus)}
+                        />
+                      ) : null}
                     </View>
                   </View>
                   <Text style={styles.workQueueMeta}>
@@ -533,21 +715,19 @@ export function AppShell({
                       : 'Sin actividad reciente registrada.'}
                   </Text>
                   <View style={styles.workQueueActions}>
-                    <Pressable
+                    <IconActionLink
+                      label="Abrir sesión"
+                      icon="arrow-right"
                       onPress={() => {
                         onSelectProject(item.projectId);
                         openSession(item.sessionId);
                       }}
-                      style={styles.workQueuePrimary}
-                    >
-                      <Text style={styles.workQueuePrimaryLabel}>Abrir sesión</Text>
-                    </Pressable>
-                    <Pressable
+                    />
+                    <IconActionLink
+                      label="Ir a conversación"
+                      icon="conversation"
                       onPress={() => openQueueConversation(item.projectId, item.sessionId)}
-                      style={styles.workQueueSecondary}
-                    >
-                      <Text style={styles.workQueueSecondaryLabel}>Ir a conversación</Text>
-                    </Pressable>
+                    />
                   </View>
                 </View>
               ))}
@@ -580,21 +760,19 @@ export function AppShell({
                   </View>
                   <Text style={styles.recentQueueSummary}>{event.summary}</Text>
                   <View style={styles.recentQueueActions}>
-                    <Pressable
+                    <IconActionLink
+                      label="Abrir sesión"
+                      icon="arrow-right"
                       onPress={() => {
                         onSelectProject(event.projectId);
                         openSession(event.sessionId);
                       }}
-                      style={styles.recentQueuePrimary}
-                    >
-                      <Text style={styles.recentQueuePrimaryLabel}>Abrir sesión</Text>
-                    </Pressable>
-                    <Pressable
+                    />
+                    <IconActionLink
+                      label="Ir a conversación"
+                      icon="conversation"
                       onPress={() => openQueueConversation(event.projectId, event.sessionId)}
-                      style={styles.recentQueueSecondary}
-                    >
-                      <Text style={styles.recentQueueSecondaryLabel}>Ir a conversación</Text>
-                    </Pressable>
+                    />
                   </View>
                 </View>
               ))}
@@ -662,32 +840,69 @@ export function AppShell({
             onRunVoiceCommand={runVoiceCommand}
           />
         </ScrollView>
+        </KeyboardAvoidingView>
+      ) : activeTab === 'projects' ? (
+        <KeyboardAvoidingView
+          style={styles.keyboardFrame}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ProjectsScreen
+            selectedProjectId={selectedProjectId}
+            sessionSignals={Object.fromEntries(
+              workQueue.map((item) => [
+                item.sessionId,
+                {
+                  queueState: item.queueState,
+                  hasNewResponse: item.hasNewResponse,
+                  attentionLabel: item.attentionLabel,
+                  lastActivityAt: item.lastActivityAt,
+                },
+              ])
+            )}
+            onOpenCore={() => onChangeTab('core')}
+            onOpenRescue={(projectId) => {
+              onSelectProject(projectId);
+              onChangeTab('rescue');
+            }}
+            onOpenSession={openSession}
+            onSelectProject={onSelectProject}
+            onRunCommand={runCommand}
+          />
+        </KeyboardAvoidingView>
       ) : (
+        <KeyboardAvoidingView
+          style={styles.keyboardFrame}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <ScrollView
           key={`tab-${activeTab}`}
           style={styles.contentScroll}
           contentContainerStyle={styles.content}
+          keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
         >
           {activeTab === 'inbox' ? (
-            <InboxScreen onOpenSession={openSession} />
+            <InboxScreen
+              onOpenSession={openSession}
+              pendingResponses={workQueue
+                .filter((item) => item.queueState === 'RESPUESTA_NUEVA')
+                .map((item) => ({
+                  projectId: item.projectId,
+                  projectName: item.projectName,
+                  sessionId: item.sessionId,
+                  sessionTitle: item.sessionTitle,
+                  updatedAt: item.lastActivityAt,
+                }))}
+            />
           ) : null}
           {activeTab === 'notifications' ? (
             <NotificationsScreen onOpenNotification={openNotificationById} />
-          ) : null}
-          {activeTab === 'projects' ? (
-            <ProjectsScreen
-              selectedProjectId={selectedProjectId}
-              onOpenCore={() => onChangeTab('core')}
-              onOpenSession={openSession}
-              onSelectProject={onSelectProject}
-              onRunCommand={runCommand}
-            />
           ) : null}
           {activeTab === 'billing' ? (
             <BillingScreen onOpenSession={openSession} />
           ) : null}
         </ScrollView>
+        </KeyboardAvoidingView>
       )}
     </View>
   );
@@ -697,6 +912,130 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f3efe6',
+  },
+  topBar: {
+    minHeight: 58,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#fffdf8',
+    borderBottomWidth: 1,
+    borderBottomColor: '#dfd2bd',
+  },
+  menuButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#164b3f',
+  },
+  topBarTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  topBarTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#1f1a14',
+  },
+  topBarMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6f5d45',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(31, 26, 20, 0.36)',
+    justifyContent: 'flex-start',
+  },
+  menuPanel: {
+    width: '82%',
+    maxWidth: 340,
+    minHeight: '100%',
+    paddingTop: 18,
+    paddingHorizontal: 14,
+    paddingBottom: 24,
+    gap: 14,
+    backgroundColor: '#fffdf8',
+    borderRightWidth: 1,
+    borderRightColor: '#dfd2bd',
+  },
+  menuHeader: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  menuTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: '#1f1a14',
+  },
+  menuMeta: {
+    marginTop: 3,
+    maxWidth: 230,
+    fontSize: 12,
+    color: '#6f5d45',
+  },
+  menuCloseButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f1e7d7',
+  },
+  menuList: {
+    gap: 8,
+  },
+  menuItem: {
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#f7efe2',
+    borderWidth: 1,
+    borderColor: '#eadcc7',
+  },
+  menuItemActive: {
+    backgroundColor: '#164b3f',
+    borderColor: '#164b3f',
+  },
+  menuItemLabel: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#2e2419',
+  },
+  menuItemLabelActive: {
+    color: '#ffffff',
+  },
+  menuItemDetail: {
+    marginTop: 3,
+    fontSize: 12,
+    color: '#745f43',
+  },
+  menuItemDetailActive: {
+    color: '#e7f3ee',
+  },
+  menuLogout: {
+    marginTop: 'auto',
+    minHeight: 46,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#8e2c24',
+  },
+  menuLogoutLabel: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#ffffff',
   },
   header: {
     paddingHorizontal: 20,
@@ -1119,8 +1458,11 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 28,
+    paddingBottom: 120,
     gap: 16,
+  },
+  keyboardFrame: {
+    flex: 1,
   },
   contentScroll: {
     flex: 1,

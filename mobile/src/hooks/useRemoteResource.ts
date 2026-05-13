@@ -39,7 +39,7 @@ export function useRemoteResource<T>(
       setData(result);
       hasLoadedRef.current = true;
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unknown error');
+      setError(loadError instanceof Error ? loadError.message : 'Error desconocido');
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -35,6 +35,7 @@ public class CoreCapabilityArgumentResolver {
         copyPositiveLong(rawArguments, resolved, "projectId");
         copyPositiveLong(rawArguments, resolved, "workSessionId");
         copyPositiveLong(rawArguments, resolved, "deliverableId");
+        copyBoolean(rawArguments, resolved, "forceClosePendingDeliverables");
         copyTrimmedText(rawArguments, resolved, "title");
         copyTrimmedText(rawArguments, resolved, "message");
         copyTrimmedText(rawArguments, resolved, "deliverableType");
@@ -182,6 +183,13 @@ public class CoreCapabilityArgumentResolver {
         String text = text(source, key);
         if (text != null) {
             target.put(key, text);
+        }
+    }
+
+    private void copyBoolean(Map<String, Object> source, Map<String, Object> target, String key) {
+        Object value = source.get(key);
+        if (value instanceof Boolean bool) {
+            target.put(key, bool);
         }
     }
 

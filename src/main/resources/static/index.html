@@ -7,12 +7,35 @@
     <link rel="stylesheet" href="/app.css">
 </head>
 <body>
+<section id="auth-screen" class="auth-screen hidden">
+    <form id="auth-form" class="auth-panel">
+        <p class="eyebrow">Atenea</p>
+        <h1>Operator access</h1>
+        <p class="auth-panel__copy">Sign in with an operator account to access project sessions.</p>
+        <label class="field">
+            <span>Operator</span>
+            <input id="auth-email" name="email" type="text" autocomplete="username" placeholder="operator@atenea.local" required>
+        </label>
+        <label class="field">
+            <span>Password</span>
+            <input id="auth-password" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <div id="auth-error" class="inline-error hidden"></div>
+        <div class="form-actions">
+            <button id="auth-submit" class="primary-button" type="submit">Sign in</button>
+        </div>
+    </form>
+</section>
 <div class="shell">
     <aside class="sidebar">
         <div class="sidebar__header">
             <p class="eyebrow">Atenea</p>
             <h1>Projects</h1>
             <p class="sidebar__copy">Conversational work sessions per repository.</p>
+        </div>
+        <div class="operator-session">
+            <span id="auth-operator-email" class="operator-session__email"></span>
+            <button id="auth-logout" class="secondary-button operator-session__logout" type="button">Sign out</button>
         </div>
         <button id="refresh-projects" class="secondary-button sidebar__refresh" type="button">Refresh projects</button>
         <div id="project-filters" class="project-filters" aria-label="Project filters">

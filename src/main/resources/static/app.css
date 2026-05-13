@@ -57,6 +57,34 @@ textarea {
     min-height: 100vh;
 }
 
+.auth-screen {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+}
+
+.auth-panel {
+    width: min(100%, 420px);
+    display: grid;
+    gap: 18px;
+    padding: 28px;
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    background: rgba(255, 253, 248, 0.96);
+    box-shadow: var(--shadow);
+}
+
+.auth-panel h1 {
+    margin: 0;
+}
+
+.auth-panel__copy {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.45;
+}
+
 .sidebar {
     border-right: 1px solid var(--line);
     background: rgba(255, 250, 241, 0.82);
@@ -90,6 +118,27 @@ textarea {
 .sidebar__refresh {
     width: 100%;
     margin: 16px 0 18px;
+}
+
+.operator-session {
+    display: grid;
+    gap: 10px;
+    margin: 16px 0 0;
+    padding: 12px;
+    border: 1px solid rgba(217, 207, 191, 0.78);
+    border-radius: 18px;
+    background: rgba(255, 253, 248, 0.72);
+}
+
+.operator-session__email {
+    overflow-wrap: anywhere;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.operator-session__logout {
+    width: 100%;
+    padding: 8px 12px;
 }
 
 .project-filters {

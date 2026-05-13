@@ -8,6 +8,7 @@ import com.atenea.api.core.CoreRequestContext;
 import com.atenea.api.core.CreateCoreCommandRequest;
 import com.atenea.persistence.core.CoreChannel;
 import com.atenea.persistence.project.ProjectEntity;
+import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -144,6 +145,52 @@ class DefaultCoreIntentInterpreterTest {
     }
 
     @Test
+    void interpretRoutesGenerateWorkTicketWithoutExplicitEntregableKeyword() {
+        WorkSessionEntity session = new WorkSessionEntity();
+        session.setId(44L);
+        session.setProject(project(9L, "pruebas-inicial"));
+        when(coreWorkSessionResolver.resolveActiveSession("genera ticket de trabajo", 44L, 9L))
+                .thenReturn(session);
+
+        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
+                "genera ticket de trabajo",
+                CoreChannel.TEXT,
+                new CoreRequestContext(9L, 44L),
+                null));
+
+        assertEquals("generate_session_deliverable", result.proposal().capability());
+        assertEquals(
+                Map.of(
+                        "projectId", 9L,
+                        "workSessionId", 44L,
+                        "deliverableType", SessionDeliverableType.WORK_TICKET.name()),
+                result.proposal().parameters());
+    }
+
+    @Test
+    void interpretRoutesPreparePriceEstimateWithoutExplicitEntregableKeyword() {
+        WorkSessionEntity session = new WorkSessionEntity();
+        session.setId(44L);
+        session.setProject(project(9L, "pruebas-inicial"));
+        when(coreWorkSessionResolver.resolveActiveSession("prepara un presupuesto para la sesión actual", 44L, 9L))
+                .thenReturn(session);
+
+        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
+                "prepara un presupuesto para la sesión actual",
+                CoreChannel.TEXT,
+                new CoreRequestContext(9L, 44L),
+                null));
+
+        assertEquals("generate_session_deliverable", result.proposal().capability());
+        assertEquals(
+                Map.of(
+                        "projectId", 9L,
+                        "workSessionId", 44L,
+                        "deliverableType", SessionDeliverableType.PRICE_ESTIMATE.name()),
+                result.proposal().parameters());
+    }
+
+    @Test
     void interpretRoutesBillingReferenceRequestToCoreCapability() {
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(44L);
@@ -166,6 +213,31 @@ class DefaultCoreIntentInterpreterTest {
                         "workSessionId", 44L,
                         "deliverableId", 501L,
                         "billingReference", "INV-1"),
+                result.proposal().parameters());
+    }
+
+    @Test
+    void interpretRoutesForceCloseRequestToCoreCapabilityWithForceFlag() {
+        WorkSessionEntity session = new WorkSessionEntity();
+        session.setId(44L);
+        session.setProject(project(9L, "pruebas-inicial"));
+        when(coreWorkSessionResolver.resolveActiveSession(
+                "cierra la sesion igualmente aunque falten entregables",
+                44L,
+                9L)).thenReturn(session);
+
+        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
+                "cierra la sesion igualmente aunque falten entregables",
+                CoreChannel.TEXT,
+                new CoreRequestContext(9L, 44L),
+                null));
+
+        assertEquals("close_work_session", result.proposal().capability());
+        assertEquals(
+                Map.of(
+                        "projectId", 9L,
+                        "workSessionId", 44L,
+                        "forceClosePendingDeliverables", true),
                 result.proposal().parameters());
     }
 

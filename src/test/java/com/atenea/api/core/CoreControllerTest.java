@@ -20,6 +20,7 @@ import com.atenea.service.core.CoreSpeechAudioResponse;
 import com.atenea.service.core.CoreSpeechSynthesisService;
 import com.atenea.service.core.CoreStreamService;
 import com.atenea.service.core.CoreVoiceCommandService;
+import com.atenea.service.core.CoreVoiceTranscriptionService;
 import com.atenea.service.core.CoreUnknownIntentException;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -51,6 +52,9 @@ class CoreControllerTest {
     private CoreVoiceCommandService coreVoiceCommandService;
 
     @Mock
+    private CoreVoiceTranscriptionService coreVoiceTranscriptionService;
+
+    @Mock
     private CoreSpeechSynthesisService coreSpeechSynthesisService;
 
     private MockMvc mockMvc;
@@ -61,6 +65,7 @@ class CoreControllerTest {
                         coreCommandService,
                         coreSpeechSynthesisService,
                         coreVoiceCommandService,
+                        coreVoiceTranscriptionService,
                         coreStreamService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(
@@ -334,6 +339,21 @@ class CoreControllerTest {
                 .andExpect(jsonPath("$.transcript").value("continua con la sesion"))
                 .andExpect(jsonPath("$.command.commandId").value(101))
                 .andExpect(jsonPath("$.command.result.targetId").value(12));
+    }
+
+    @Test
+    void createVoiceTranscriptionReturnsCreatedResponse() throws Exception {
+        MockMultipartFile audio = new MockMultipartFile(
+                "audio",
+                "voice-command.m4a",
+                "audio/mp4",
+                "fake-audio".getBytes());
+        when(coreVoiceTranscriptionService.transcribe(audio)).thenReturn("revisa el último cambio de login");
+
+        mockMvc.perform(multipart("/api/core/voice/transcriptions")
+                        .file(audio))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.transcript").value("revisa el último cambio de login"));
     }
 
     @Test

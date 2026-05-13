@@ -1,8 +1,10 @@
 FROM node:20-bookworm-slim
 
+ARG CODEX_CLI_VERSION=0.130.0
+
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bubblewrap ca-certificates \
-    && npm install -g @openai/codex@0.116.0 \
+    && apt-get install -y --no-install-recommends bubblewrap ca-certificates git openssh-client \
+    && npm install -g @openai/codex@${CODEX_CLI_VERSION} \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /workspace/codex-home \

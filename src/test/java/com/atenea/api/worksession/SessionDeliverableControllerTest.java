@@ -262,7 +262,7 @@ class SessionDeliverableControllerTest {
                         "Generated from persisted session evidence snapshot",
                         null,
                         "codex-app-server",
-                        "session-deliverables-work-ticket-v1",
+                        "session-deliverables-work-ticket-v2",
                         false,
                         null,
                         null,
@@ -277,7 +277,7 @@ class SessionDeliverableControllerTest {
                 .andExpect(jsonPath("$.type").value("WORK_TICKET"))
                 .andExpect(jsonPath("$.status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.version").value(3))
-                .andExpect(jsonPath("$.promptVersion").value("session-deliverables-work-ticket-v1"));
+                .andExpect(jsonPath("$.promptVersion").value("session-deliverables-work-ticket-v2"));
     }
 
     @Test

@@ -20,6 +20,40 @@ type MultipartValue =
     type: string;
   };
 
+type ApiErrorBody = {
+  message?: string | null;
+  details?: string[] | null;
+  state?: string | null;
+  reason?: string | null;
+  action?: string | null;
+  retryable?: boolean | null;
+};
+
+export class AteneaApiError extends Error {
+  readonly status: number;
+  readonly title: string;
+  readonly detail: string | null;
+  readonly action: string | null;
+  readonly technicalMessage: string | null;
+
+  constructor(params: {
+    status: number;
+    title: string;
+    message: string;
+    detail?: string | null;
+    action?: string | null;
+    technicalMessage?: string | null;
+  }) {
+    super(params.message);
+    this.name = 'AteneaApiError';
+    this.status = params.status;
+    this.title = params.title;
+    this.detail = params.detail ?? null;
+    this.action = params.action ?? null;
+    this.technicalMessage = params.technicalMessage ?? null;
+  }
+}
+
 let authAdapter: AuthAdapter = {
   getAccessToken: () => null,
   refreshAccessToken: async () => null,
@@ -71,8 +105,7 @@ export async function fetchJson<T>(
   }
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
+    throw await buildApiError(response);
   }
 
   return response.json() as Promise<T>;
@@ -112,8 +145,7 @@ export async function postEmpty<TBody = unknown>(
   }
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
+    throw await buildApiError(response);
   }
 }
 
@@ -152,8 +184,7 @@ export async function postMultipart<TResponse>(
   }
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
+    throw await buildApiError(response);
   }
 
   return response.json() as Promise<TResponse>;
@@ -209,8 +240,118 @@ export async function uploadMultipartFile<TResponse>(
   }
 
   if (response.status < 200 || response.status >= 300) {
-    throw new Error(response.body || `HTTP ${response.status}`);
+    throw buildApiErrorFromText(response.status, response.body);
   }
 
   return JSON.parse(response.body) as TResponse;
+}
+
+async function buildApiError(response: Response): Promise<AteneaApiError> {
+  return buildApiErrorFromText(response.status, await response.text());
+}
+
+function buildApiErrorFromText(status: number, text: string): AteneaApiError {
+  const body = parseApiErrorBody(text);
+  const message = normalizeBackendMessage(body?.message ?? text, status);
+  const reason = normalizeBackendMessage(body?.reason ?? null, status);
+  const action = normalizeBackendMessage(body?.action ?? null, status);
+  const detail = action ?? reason ?? normalizeDetails(body?.details);
+  return new AteneaApiError({
+    status,
+    title: titleForStatus(status),
+    message,
+    detail,
+    action,
+    technicalMessage: body?.message ?? (text || null),
+  });
+}
+
+function parseApiErrorBody(text: string): ApiErrorBody | null {
+  if (!text.trim()) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      return parsed as ApiErrorBody;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function normalizeDetails(details?: string[] | null) {
+  if (!details?.length) {
+    return null;
+  }
+  return details.map((detail) => humanizeBackendText(detail)).join('\n');
+}
+
+function normalizeBackendMessage(value: string | null, status: number) {
+  const normalized = value == null ? '' : humanizeBackendText(value);
+  if (normalized) {
+    return normalized;
+  }
+  if (status === 401) {
+    return 'Tu sesión no está activa. Vuelve a iniciar sesión.';
+  }
+  if (status === 403) {
+    return 'No tienes permiso para realizar esta operación.';
+  }
+  if (status === 404) {
+    return 'No he encontrado el recurso solicitado.';
+  }
+  if (status === 409) {
+    return 'La operación no puede continuar porque el estado actual no lo permite.';
+  }
+  if (status === 422) {
+    return 'Atenea no puede preparar esta operación con el estado actual del repositorio.';
+  }
+  if (status >= 500) {
+    return 'Atenea no ha podido completar la operación en el servidor.';
+  }
+  return `La operación ha fallado. Código ${status}.`;
+}
+
+function titleForStatus(status: number) {
+  if (status === 401) {
+    return 'Sesión no autorizada';
+  }
+  if (status === 403) {
+    return 'Acceso restringido';
+  }
+  if (status === 404) {
+    return 'No encontrado';
+  }
+  if (status === 409) {
+    return 'Estado incompatible';
+  }
+  if (status === 422) {
+    return 'Operación bloqueada';
+  }
+  if (status >= 500) {
+    return 'Error del servidor';
+  }
+  return 'No se pudo completar';
+}
+
+function humanizeBackendText(value: string) {
+  let text = value.trim();
+  if (!text) {
+    return '';
+  }
+
+  text = text
+    .replace(/Project repository is not operational for WorkSession branch preparation:\s*/i, '')
+    .replace(/Repository '([^']+)' is not clean; cannot prepare WorkSession '([^']+)'/i,
+      'El repositorio tiene cambios pendientes. Limpia, guarda o revisa esos cambios antes de abrir esta sesión.')
+    .replace(/Repository is on branch '([^']+)' but WorkSession '([^']+)' can only prepare workspace branch '([^']+)' from base branch '([^']+)' or from the workspace branch itself\. Switch branches manually and retry\./i,
+      'El repositorio está en una rama distinta de la rama base esperada. Cambia a la rama base o revisa la sesión anterior antes de continuar.')
+    .replace(/Full authentication is required to access this resource/i,
+      'Tu sesión no está activa. Vuelve a iniciar sesión.')
+    .replace(/Invalid operator credentials/i,
+      'Operador o contraseña incorrectos.');
+
+  return text;
 }

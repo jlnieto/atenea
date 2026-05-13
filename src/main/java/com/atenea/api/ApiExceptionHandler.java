@@ -13,6 +13,10 @@ import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotFoundException;
 import com.atenea.service.project.ProjectRepoPathOutsideWorkspaceException;
+import com.atenea.service.rescue.RescueSessionAlreadyRunningException;
+import com.atenea.service.rescue.RescueSessionClosedException;
+import com.atenea.service.rescue.RescueSessionExecutionFailedException;
+import com.atenea.service.rescue.RescueSessionNotFoundException;
 import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.AgentRunNotFoundException;
@@ -72,6 +76,12 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(WorkSessionNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleWorkSessionNotFound(WorkSessionNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(RescueSessionNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleRescueSessionNotFound(RescueSessionNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
@@ -137,6 +147,8 @@ public class ApiExceptionHandler {
     @ExceptionHandler({
             WorkSessionNotOpenException.class,
             WorkSessionAlreadyRunningException.class,
+            RescueSessionAlreadyRunningException.class,
+            RescueSessionClosedException.class,
             AgentRunAlreadyRunningException.class,
             AgentRunTransitionNotAllowedException.class,
             WorkSessionPublishConflictException.class
@@ -149,6 +161,14 @@ public class ApiExceptionHandler {
     @ExceptionHandler(WorkSessionTurnExecutionFailedException.class)
     public ResponseEntity<ApiErrorResponse> handleWorkSessionTurnExecutionFailed(
             WorkSessionTurnExecutionFailedException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(RescueSessionExecutionFailedException.class)
+    public ResponseEntity<ApiErrorResponse> handleRescueSessionExecutionFailed(
+            RescueSessionExecutionFailedException exception
     ) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));

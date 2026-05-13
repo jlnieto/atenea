@@ -9,26 +9,49 @@ import org.springframework.stereotype.Service;
 public class SessionDeliverableCodexOrchestrator {
 
     private static final String WORK_TICKET_PROMPT = """
-            You are generating a professional work ticket for a completed repository work session.
+            You are generating the Markdown content of a plausible work ticket that could have existed before the
+            completed repository work session.
 
             Return the final answer in disciplined Markdown.
 
             Requirements:
             - write in the same language as the session content when it is clear, otherwise use Spanish
-            - be factual and auditable
-            - do not invent work that is not supported by the snapshot
+            - this must read like a work ticket or issue description, not like a retrospective report
+            - reconstruct the ticket from the actual work evidenced in the snapshot
+            - do not invent scope, requirements or acceptance criteria that are not reasonably supported by the snapshot
             - if information is uncertain, state that explicitly
-            - optimize for client justification and internal traceability
+            - be useful for later review by an operator or a client-facing internal workflow
+            - do not mention Jira, Linear, GitHub Issues or tool limitations
+            - do not explain that you cannot create a real ticket
+
+            Important semantic rule:
+            - this is a reconstructed possible ticket for the work that was actually done
+            - it must be written as ticket content in Markdown
+            - it must not be written as "what we did", "repository delivery", or "validation evidence" report prose
+            - when evidence is weak, phrase the item cautiously instead of fabricating certainty
 
             Use this structure when it applies:
             # Work Ticket
-            ## Session
-            ## Completed Work
-            ## Repository Delivery
-            ## Validation Evidence
-            ## Risks Or Follow-ups
+            ## Title
+            ## Context
+            ## Objective
+            ## Scope
+            ## Acceptance Criteria
+            ## Technical Notes
+            ## Risks Or Dependencies
+            ## Reconstruction Notes
 
             Keep each section concise and specific.
+
+            Additional guidance:
+            - Title should be short and plausible as a ticket title
+            - Context should explain the problem or need that likely motivated the work
+            - Objective should describe the intended outcome
+            - Scope should list the expected implementation or product changes
+            - Acceptance Criteria should be concrete and testable
+            - Technical Notes should only include details that are useful for implementation or review
+            - Reconstruction Notes should explicitly state any uncertainty or assumptions inferred from the snapshot
+            - avoid retrospective wording such as "completed work", "delivered", "what was done", or "repository delivery"
 
             Session evidence snapshot as JSON:
             """;

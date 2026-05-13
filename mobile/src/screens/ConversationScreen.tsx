@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import EventSource from 'react-native-sse';
 import {
+  Keyboard,
   KeyboardAvoidingView,
+  KeyboardEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
@@ -13,19 +15,20 @@ import {
   View,
 } from 'react-native';
 import { API_BASE_URL } from '../api/config';
+import { createCoreVoiceTranscription } from '../api/core';
 import { fetchJson } from '../api/client';
 import {
   CoreCommandResponse,
-  MobileSessionSummary,
   MobileSessionEventsResponse,
   WorkSessionConversationView,
 } from '../api/types';
-import { RunCoreCommandOptions, RunCoreVoiceCommandOptions } from '../core/useCoreCommandCenter';
+import { RunCoreCommandOptions } from '../core/useCoreCommandCenter';
 import { ActionButton } from '../components/ActionButton';
+import { AppIcon } from '../components/AppIcon';
+import { IconActionLink } from '../components/IconActionLink';
 import { useAuth } from '../auth/AuthContext';
 import { Card } from '../components/Card';
 import { LoadingBlock } from '../components/LoadingBlock';
-import { playSessionLatestResponseSpeech, stopSpeechPlayback } from '../core/speech';
 import { useVoiceRecorder } from '../core/useVoiceRecorder';
 import { useRemoteResource } from '../hooks/useRemoteResource';
 
@@ -38,91 +41,234 @@ const MONO_FONT = Platform.select({
 export function ConversationScreen({
   projectId,
   sessionId,
-  autoReadRequest,
+  autoReadRequest: _autoReadRequest,
+  readReceiptToken,
   onBackToSession,
   onOpenCore,
   onRunCommand,
-  onRunVoiceCommand,
 }: {
   projectId: number | null;
   sessionId: number | null;
   autoReadRequest?: { token: number; mode: 'brief' | 'full' } | null;
+  readReceiptToken?: number | null;
   onBackToSession: () => void;
   onOpenCore: () => void;
   onRunCommand: (options: RunCoreCommandOptions) => Promise<CoreCommandResponse>;
-  onRunVoiceCommand: (options: RunCoreVoiceCommandOptions) => Promise<{ transcript: string; command: CoreCommandResponse }>;
 }) {
+  const composerMinHeight = 56;
+  const composerMaxHeight = 156;
   const { session: authSession } = useAuth();
   const voiceRecorder = useVoiceRecorder();
   const [streamHealthy, setStreamHealthy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const fallbackRefreshIntervalMs = streamHealthy ? undefined : 5000;
   const { data, error, loading, refreshing, reload } = useRemoteResource(
     () =>
       sessionId == null
         ? Promise.resolve(null)
         : fetchJson<WorkSessionConversationView>(`/api/mobile/sessions/${sessionId}/conversation`),
     [sessionId],
-    { refreshIntervalMs: streamHealthy ? undefined : 15000 }
+    { refreshIntervalMs: fallbackRefreshIntervalMs }
   );
-  const { data: summaryData, reload: reloadSummary } = useRemoteResource(
+  const {
+    data: eventsData,
+    reload: reloadEvents,
+    setData: setEventsData,
+  } = useRemoteResource(
     () =>
       sessionId == null
         ? Promise.resolve(null)
-        : fetchJson<MobileSessionSummary>(`/api/mobile/sessions/${sessionId}/summary`),
+        : fetchJson<MobileSessionEventsResponse>(`/api/mobile/sessions/${sessionId}/events?limit=10`),
     [sessionId],
-    { refreshIntervalMs: streamHealthy ? undefined : 15000 }
+    { refreshIntervalMs: fallbackRefreshIntervalMs }
   );
   const [turnMessage, setTurnMessage] = useState('');
   const [pending, setPending] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
   const [lastTranscript, setLastTranscript] = useState<string | null>(null);
-  const [speechStatus, setSpeechStatus] = useState<string | null>(null);
-  const [autoReadEnabled, setAutoReadEnabled] = useState(true);
-  const [speechActive, setSpeechActive] = useState(false);
-  const [speechPending, setSpeechPending] = useState(false);
+  const [showVoiceDetails, setShowVoiceDetails] = useState(false);
+  const [composerInputHeight, setComposerInputHeight] = useState(composerMinHeight);
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const scrollRef = useRef<ScrollView | null>(null);
   const stickToBottomRef = useRef(true);
+  const contentHeightRef = useRef(0);
   const lastStreamEventAtRef = useRef<string | null>(null);
-  const latestSpokenTurnIdRef = useRef<number | null>(null);
-  const consumedAutoReadTokenRef = useRef<number | null>(null);
-  const speechRequestIdRef = useRef(0);
+  const lastSeenLatestTurnIdRef = useRef<number | null>(null);
+  const lastSeenOutputSignatureRef = useRef<string | null>(null);
+  const voicePeakLevelRef = useRef(0);
+  const voiceLevelSumRef = useRef(0);
+  const voiceLevelSamplesRef = useRef(0);
 
   const session = data?.view.session ?? null;
   const turns = data?.recentTurns ?? [];
+  const latestSessionEvent = useMemo(() => eventsData?.events.at(0) ?? null, [eventsData]);
+  const latestOperatorTurn = useMemo(
+    () => [...turns].reverse().find((turn) => turn.actor === 'OPERATOR') ?? null,
+    [turns]
+  );
   const latestAgentTurn = useMemo(
     () => [...turns].reverse().find((turn) => turn.actor === 'CODEX' || turn.actor === 'ATENEA') ?? null,
     [turns]
   );
-  const quickSummary = useMemo(
-    () => buildQuickSummary(summaryData, data, latestAgentTurn?.messageText ?? null),
-    [summaryData, data, latestAgentTurn]
-  );
-  const speechBusy = speechPending || speechActive;
+  const currentRun = data?.view.latestRun ?? null;
+  const runStartedAt = currentRun?.startedAt
+    ?? latestOperatorTurn?.createdAt
+    ?? session?.lastActivityAt
+    ?? null;
+  const runElapsed = data?.view.runInProgress ? formatElapsed(runStartedAt, now) : null;
+  const latestEventLabel = latestSessionEvent ? describeSessionEvent(latestSessionEvent) : null;
+  const liveStatusLabel = streamHealthy ? 'En vivo' : 'Fallback cada 5s';
+  const liveStatusDetail = streamHealthy
+    ? 'La sesión está recibiendo eventos en directo.'
+    : 'Sin SSE activo; la conversación se refresca por polling.';
   const interactionPending = pending || voiceRecorder.busy || voiceRecorder.isRecording;
   const composerDisabled = interactionPending || sessionId == null || !data?.view.canCreateTurn;
+  const composerHasText = turnMessage.trim().length > 0;
+  const composerInputScrollEnabled = composerInputHeight >= composerMaxHeight;
+  const voiceWaveHeights = useMemo(
+    () => buildVoiceWaveHeights(voiceRecorder.normalizedLevel, voiceRecorder.durationSeconds),
+    [voiceRecorder.durationSeconds, voiceRecorder.normalizedLevel]
+  );
+  const consoleStatusLabel = data?.view.runInProgress
+    ? runElapsed
+      ? `Codex trabajando · ${runElapsed}`
+      : 'Codex trabajando'
+    : null;
+  const consoleStatusMeta = data?.view.runInProgress
+    ? latestEventLabel ?? 'La sesión sigue en curso.'
+    : null;
+  const hasVoiceDetails = voiceStatus != null || lastTranscript != null;
+  const latestOutputSignature = latestAgentTurn
+    ? `${latestAgentTurn.id}:${latestAgentTurn.messageText.length}:${data?.view.lastAgentResponse?.length ?? 0}`
+    : data?.view.lastAgentResponse?.length
+      ? `response:${data.view.lastAgentResponse.length}`
+      : null;
+
+  const refreshConversationState = useCallback(async (options?: { silent?: boolean }) => {
+    await Promise.all([
+      reload(options),
+      reloadEvents(options),
+    ]);
+  }, [reload, reloadEvents]);
 
   const scrollToBottom = () => {
     scrollRef.current?.scrollToEnd({ animated: true });
   };
 
   useEffect(() => {
-    if (!loading && stickToBottomRef.current) {
+    if (loading) {
+      return;
+    }
+    if (stickToBottomRef.current) {
       requestAnimationFrame(scrollToBottom);
     }
   }, [loading, turns.length]);
 
   useEffect(() => {
+    if (!latestAgentTurn) {
+      return;
+    }
+    if (lastSeenLatestTurnIdRef.current == null) {
+      lastSeenLatestTurnIdRef.current = latestAgentTurn.id;
+      return;
+    }
+    if (lastSeenLatestTurnIdRef.current === latestAgentTurn.id) {
+      return;
+    }
+    lastSeenLatestTurnIdRef.current = latestAgentTurn.id;
+    if (stickToBottomRef.current) {
+      requestAnimationFrame(scrollToBottom);
+    }
+  }, [latestAgentTurn]);
+
+  useEffect(() => {
+    if (latestOutputSignature == null) {
+      return;
+    }
+    if (lastSeenOutputSignatureRef.current == null) {
+      lastSeenOutputSignatureRef.current = latestOutputSignature;
+      return;
+    }
+    if (lastSeenOutputSignatureRef.current === latestOutputSignature) {
+      return;
+    }
+    lastSeenOutputSignatureRef.current = latestOutputSignature;
+    if (stickToBottomRef.current) {
+      requestAnimationFrame(scrollToBottom);
+    }
+  }, [latestOutputSignature]);
+
+  useEffect(() => {
     setStreamHealthy(false);
+    lastStreamEventAtRef.current = null;
+    setNow(Date.now());
   }, [sessionId, authSession]);
 
   useEffect(() => {
-    latestSpokenTurnIdRef.current = null;
-    consumedAutoReadTokenRef.current = null;
-    setSpeechStatus(null);
-    setSpeechActive(false);
-    setSpeechPending(false);
-    speechRequestIdRef.current += 1;
+    if (!data?.view.runInProgress) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [data?.view.runInProgress]);
+
+  useEffect(() => {
+    contentHeightRef.current = 0;
+    lastSeenLatestTurnIdRef.current = null;
+    lastSeenOutputSignatureRef.current = null;
   }, [sessionId]);
+
+  useEffect(() => {
+    const handleKeyboardShow = (event: KeyboardEvent) => {
+      if (Platform.OS !== 'android') {
+        return;
+      }
+      setKeyboardInset(event.endCoordinates.height);
+      requestAnimationFrame(scrollToBottom);
+    };
+
+    const handleKeyboardHide = () => {
+      if (Platform.OS !== 'android') {
+        return;
+      }
+      setKeyboardInset(0);
+    };
+
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      handleKeyboardShow
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      handleKeyboardHide
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) {
+      return;
+    }
+    requestAnimationFrame(scrollToBottom);
+  }, [composerInputHeight, voiceRecorder.isRecording]);
+
+  useEffect(() => {
+    if (!voiceRecorder.isRecording) {
+      return;
+    }
+    voicePeakLevelRef.current = Math.max(voicePeakLevelRef.current, voiceRecorder.normalizedLevel);
+    voiceLevelSumRef.current += voiceRecorder.normalizedLevel;
+    voiceLevelSamplesRef.current += 1;
+  }, [voiceRecorder.isRecording, voiceRecorder.normalizedLevel]);
 
   useEffect(() => {
     if (sessionId == null || authSession == null) {
@@ -159,21 +305,17 @@ export function ConversationScreen({
 
       try {
         const payload = JSON.parse(event.data) as MobileSessionEventsResponse;
-        const latestEventAt = payload.events.at(-1)?.at ?? null;
+        const latestEventAt = payload.events[0]?.at ?? null;
         if (latestEventAt == null || latestEventAt === lastStreamEventAtRef.current) {
           return;
         }
         lastStreamEventAtRef.current = latestEventAt;
         setStreamHealthy(true);
-        void Promise.all([
-          reload({ silent: true }),
-          reloadSummary({ silent: true }),
-        ]);
+        setNow(Date.now());
+        setEventsData((current) => mergeSessionEvents(current, payload));
+        void refreshConversationState({ silent: true });
       } catch {
-        void Promise.all([
-          reload({ silent: true }),
-          reloadSummary({ silent: true }),
-        ]);
+        void refreshConversationState({ silent: true });
       }
     };
 
@@ -186,42 +328,7 @@ export function ConversationScreen({
       stream.removeAllEventListeners();
       stream.close();
     };
-  }, [sessionId, authSession, reload, reloadSummary]);
-
-  useEffect(() => {
-    if (!latestAgentTurn) {
-      return;
-    }
-    if (latestSpokenTurnIdRef.current == null) {
-      latestSpokenTurnIdRef.current = latestAgentTurn.id;
-      return;
-    }
-    if (latestSpokenTurnIdRef.current === latestAgentTurn.id) {
-      return;
-    }
-    latestSpokenTurnIdRef.current = latestAgentTurn.id;
-    if (!autoReadEnabled || voiceRecorder.isRecording || pending || speechBusy) {
-      return;
-    }
-    void playLatestResponse('brief', { automatic: true });
-  }, [latestAgentTurn, autoReadEnabled, voiceRecorder.isRecording, pending, speechBusy]);
-
-  useEffect(() => {
-    if (!autoReadRequest || autoReadRequest.token === consumedAutoReadTokenRef.current) {
-      return;
-    }
-    if (
-      sessionId == null
-      || data?.view.lastAgentResponse == null
-      || voiceRecorder.isRecording
-      || pending
-      || speechBusy
-    ) {
-      return;
-    }
-    consumedAutoReadTokenRef.current = autoReadRequest.token;
-    void playLatestResponse(autoReadRequest.mode, { automatic: true });
-  }, [autoReadRequest, data?.view.lastAgentResponse, pending, sessionId, voiceRecorder.isRecording, speechBusy]);
+  }, [authSession, refreshConversationState, sessionId, setEventsData]);
 
   const sendTurn = async () => {
     if (sessionId == null || !turnMessage.trim()) {
@@ -239,10 +346,7 @@ export function ConversationScreen({
         openCoreOnAttention: true,
       });
       if (response.status === 'SUCCEEDED') {
-        await Promise.all([
-          reload({ silent: true }),
-          reloadSummary({ silent: true }),
-        ]);
+        await refreshConversationState({ silent: true });
         setTurnMessage('');
         return;
       }
@@ -260,116 +364,120 @@ export function ConversationScreen({
     }
   };
 
-  const playLatestResponse = async (
-    mode: 'brief' | 'full',
-    options?: { automatic?: boolean }
-  ) => {
-    const responseText = data?.view.lastAgentResponse?.trim();
-    if (!sessionId || !responseText || speechPending || speechActive) {
-      return;
-    }
-    const requestId = speechRequestIdRef.current + 1;
-    speechRequestIdRef.current = requestId;
-    const fallbackText = mode === 'brief'
-      ? buildBriefSpeechFallback(summaryData, data)
-      : buildFullSpeechFallback(data);
-    setSpeechPending(true);
-    setSpeechActive(true);
-    setSpeechStatus(
-      options?.automatic
-        ? 'Nueva respuesta recibida. Leyendo resumen...'
-        : mode === 'full'
-          ? 'Preparando lectura completa...'
-          : 'Preparando resumen hablado...'
-    );
-    try {
-      const result = await playSessionLatestResponseSpeech(
-        sessionId,
-        authSession?.accessToken ?? '',
-        fallbackText,
-        mode
-      );
-      if (speechRequestIdRef.current !== requestId) {
-        return;
-      }
-      setSpeechStatus(result.detail);
-    } finally {
-      if (speechRequestIdRef.current === requestId) {
-        setSpeechPending(false);
-        setSpeechActive(false);
-      }
-    }
+  const handleComposerContentSizeChange = (height: number) => {
+    const nextHeight = Math.max(composerMinHeight, Math.min(composerMaxHeight, Math.ceil(height)));
+    setComposerInputHeight((currentHeight) => (Math.abs(currentHeight - nextHeight) > 1 ? nextHeight : currentHeight));
   };
 
-  const stopAudio = async () => {
-    speechRequestIdRef.current += 1;
-    await stopSpeechPlayback();
-    setSpeechPending(false);
-    setSpeechActive(false);
-    setSpeechStatus('Lectura detenida.');
-  };
-
-  const toggleVoiceTurn = async () => {
+  const submitVoiceTurn = async () => {
     if (sessionId == null) {
       return;
     }
 
     setMutationError(null);
 
-    if (voiceRecorder.isRecording) {
-      setPending(true);
-      setVoiceStatus('Finalizando grabación...');
-      try {
-        const uri = await voiceRecorder.stop();
-        setVoiceStatus('Audio grabado. Enviando a Atenea Core...');
-        const response = await onRunVoiceCommand({
-          audio: {
-            uri,
-            name: 'conversation-voice-command.m4a',
-            type: 'audio/mp4',
-          },
-          projectId,
-          workSessionId: sessionId,
-          openCoreOnAttention: true,
-        });
-        setLastTranscript(response.transcript);
-        setVoiceStatus(`Transcripción recibida: "${response.transcript}"`);
-        if (response.command.status === 'SUCCEEDED') {
-          await Promise.all([
-            reload({ silent: true }),
-            reloadSummary({ silent: true }),
-          ]);
-          return;
-        }
-        if (response.command.status === 'NEEDS_CONFIRMATION') {
-          setMutationError('Atenea Core necesita confirmación en la pestaña Core antes de continuar.');
-          return;
-        }
-        if (response.command.status === 'NEEDS_CLARIFICATION') {
-          setMutationError('Atenea Core necesita una aclaración en la pestaña Core antes de continuar.');
-        }
-      } catch (voiceError) {
-        const message = voiceError instanceof Error ? voiceError.message : 'El turno de voz ha fallado';
-        setMutationError(message);
-        setVoiceStatus(message);
-      } finally {
-        setPending(false);
+    if (!voiceRecorder.isRecording) {
+      return;
+    }
+
+    setPending(true);
+    setVoiceStatus('Finalizando grabación...');
+    try {
+      const voicePeakLevel = voicePeakLevelRef.current;
+      const voiceAverageLevel = voiceLevelSamplesRef.current > 0
+        ? voiceLevelSumRef.current / voiceLevelSamplesRef.current
+        : 0;
+      const uri = await voiceRecorder.stop();
+      if (isSilentRecording({
+        averageLevel: voiceAverageLevel,
+        durationSeconds: voiceRecorder.durationSeconds,
+        peakLevel: voicePeakLevel,
+      })) {
+        setLastTranscript(null);
+        setVoiceStatus('No he detectado voz clara. No he enviado nada a Codex.');
+        return;
       }
+
+      setVoiceStatus('Audio grabado. Transcribiendo...');
+      const transcription = await createCoreVoiceTranscription({
+        audio: {
+          uri,
+          name: 'conversation-voice-prompt.m4a',
+          type: 'audio/mp4',
+        },
+      });
+      const transcript = transcription.transcript.trim();
+      if (!transcript) {
+        setLastTranscript(null);
+        setVoiceStatus('La transcripción ha llegado vacía. No he enviado nada a Codex.');
+        return;
+      }
+
+      setLastTranscript(transcript);
+      setVoiceStatus(`Transcripción recibida: "${transcript}"`);
+      const response = await onRunCommand({
+        input: transcript,
+        channel: 'VOICE',
+        projectId,
+        workSessionId: sessionId,
+        openCoreOnAttention: true,
+      });
+      if (response.status === 'SUCCEEDED') {
+        await refreshConversationState({ silent: true });
+        return;
+      }
+      if (response.status === 'NEEDS_CONFIRMATION') {
+        setMutationError('Atenea Core necesita confirmación en la pestaña Core antes de continuar.');
+        return;
+      }
+      if (response.status === 'NEEDS_CLARIFICATION') {
+        setMutationError('Atenea Core necesita una aclaración en la pestaña Core antes de continuar.');
+      }
+    } catch (voiceError) {
+      const message = voiceError instanceof Error ? voiceError.message : 'El turno de voz ha fallado';
+      setMutationError(message);
+      setVoiceStatus(message);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const startVoiceTurn = async () => {
+    if (sessionId == null) {
       return;
     }
 
     try {
-      await stopSpeechPlayback();
-      speechRequestIdRef.current += 1;
-      setSpeechPending(false);
-      setSpeechActive(false);
-      setSpeechStatus(null);
+      voicePeakLevelRef.current = 0;
+      voiceLevelSumRef.current = 0;
+      voiceLevelSamplesRef.current = 0;
       setVoiceStatus('Preparando grabación...');
       await voiceRecorder.start();
       setLastTranscript(null);
       setVoiceStatus('Escuchando... toca otra vez para enviar.');
     } catch (voiceError) {
       const message = voiceError instanceof Error ? voiceError.message : 'No se pudo iniciar la grabación';
+      setMutationError(message);
+      setVoiceStatus(message);
+    }
+  };
+
+  const cancelVoiceTurn = async () => {
+    if (!voiceRecorder.isRecording) {
+      return;
+    }
+
+    setMutationError(null);
+    setVoiceStatus('Cancelando grabación...');
+    try {
+      await voiceRecorder.stop();
+      voicePeakLevelRef.current = 0;
+      voiceLevelSumRef.current = 0;
+      voiceLevelSamplesRef.current = 0;
+      setLastTranscript(null);
+      setVoiceStatus('Grabación cancelada.');
+    } catch (voiceError) {
+      const message = voiceError instanceof Error ? voiceError.message : 'No se pudo cancelar la grabación';
       setMutationError(message);
       setVoiceStatus(message);
     }
@@ -391,7 +499,7 @@ export function ConversationScreen({
     return (
       <Card title="Conversación no disponible" subtitle={error || 'No se han recibido datos de conversación.'}>
         <View style={styles.headerActions}>
-          <ActionButton label="Reintentar" onPress={() => void reload()} />
+          <ActionButton label="Reintentar" onPress={() => void refreshConversationState()} />
           <ActionButton label="Volver a sesión" onPress={onBackToSession} />
         </View>
       </Card>
@@ -402,65 +510,34 @@ export function ConversationScreen({
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 8}
     >
       <View style={styles.topBar}>
-        <View style={styles.headerActionsRow}>
-          <Pressable onPress={onBackToSession}>
-            <Text style={styles.backLink}>Volver a sesión</Text>
-          </Pressable>
-          <Pressable onPress={onOpenCore}>
-            <Text style={styles.refreshLink}>Abrir Core</Text>
-          </Pressable>
+        <View style={[styles.topBarSlot, styles.topBarSlotLeft]}>
+          <IconActionLink label="Volver a sesión" icon="arrow-left" onPress={onBackToSession} compact />
         </View>
-        <Pressable onPress={() => void reload()}>
-          <Text style={styles.refreshLink}>{refreshing ? 'Actualizando...' : 'Actualizar'}</Text>
-        </Pressable>
+        <View style={[styles.topBarSlot, styles.topBarSlotCenter]}>
+          <IconActionLink label="Abrir Core" icon="spark" onPress={onOpenCore} compact />
+        </View>
+        <View style={[styles.topBarSlot, styles.topBarSlotRight]}>
+          <IconActionLink
+            label={refreshing ? 'Actualizando...' : 'Actualizar'}
+            icon="refresh"
+            onPress={() => void refreshConversationState()}
+            compact
+          />
+        </View>
       </View>
 
       <View style={styles.chatShell}>
-        {quickSummary ? (
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryHeader}>
-              <View style={styles.summaryHeaderCopy}>
-                <Text style={styles.summaryTitle}>Resumen rápido</Text>
-                <Text style={styles.summarySubtitle}>
-                  {data.view.runInProgress
-                    ? 'Codex sigue trabajando. Puedes oír el último resumen y seguir con otro proyecto.'
-                    : 'Usa este bloque para decidir rápido si leer más, probar cambios o seguir pidiendo trabajo.'}
-                </Text>
-              </View>
-              <ActionButton
-                label={autoReadEnabled ? 'Autolectura: sí' : 'Autolectura: no'}
-                onPress={() => setAutoReadEnabled((value) => !value)}
-              />
-            </View>
-            <View style={styles.summaryGrid}>
-              <SummaryItem label="Punto actual" value={quickSummary.latestProgress} />
-              <SummaryItem label="Qué ha hecho" value={quickSummary.whatDone} />
-              {quickSummary.touchedFiles ? (
-                <SummaryItem label="Archivos tocados" value={quickSummary.touchedFiles} />
+        {consoleStatusLabel || consoleStatusMeta ? (
+          <View style={styles.consoleHeader}>
+            <View style={styles.consoleHeaderMain}>
+              {consoleStatusLabel ? (
+                <Text style={styles.consoleStatusLabel}>{consoleStatusLabel}</Text>
               ) : null}
-              <SummaryItem label="Bloqueo" value={quickSummary.blocker} />
-              <SummaryItem label="Siguiente paso" value={quickSummary.nextStep} />
-              <SummaryItem label="Verificación" value={quickSummary.verification} />
-            </View>
-            <View style={styles.summaryActions}>
-              <ActionButton
-                label="Leer resumen"
-                disabled={interactionPending || speechBusy}
-                onPress={() => void playLatestResponse('brief')}
-              />
-              <ActionButton
-                label="Leer completa"
-                disabled={interactionPending || speechBusy}
-                onPress={() => void playLatestResponse('full')}
-              />
-              {speechActive ? (
-                <ActionButton
-                  label="Parar audio"
-                  onPress={() => void stopAudio()}
-                />
+              {consoleStatusMeta ? (
+                <Text style={styles.consoleStatusMeta}>{consoleStatusMeta}</Text>
               ) : null}
             </View>
           </View>
@@ -470,7 +547,8 @@ export function ConversationScreen({
           style={styles.turnScroll}
           contentContainerStyle={styles.turnList}
           keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => {
+          onContentSizeChange={(_, height) => {
+            contentHeightRef.current = height;
             if (stickToBottomRef.current) {
               requestAnimationFrame(scrollToBottom);
             }
@@ -478,7 +556,8 @@ export function ConversationScreen({
           onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
             const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
             const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-            stickToBottomRef.current = distanceFromBottom < 80;
+            const nearBottom = distanceFromBottom < 48;
+            stickToBottomRef.current = nearBottom;
           }}
           scrollEventThrottle={16}
         >
@@ -496,43 +575,43 @@ export function ConversationScreen({
           })}
         </ScrollView>
 
-        <View style={styles.composerPanel}>
-          <Text style={styles.composerHint}>
-            Esta conversación continúa la sesión activa. Lo normal es hablar, escuchar el resumen, revisar el bloque rápido y decidir si pides más detalle.
-          </Text>
-          <View style={styles.voiceDeck}>
-            <Pressable
-              onPress={() => void toggleVoiceTurn()}
-              disabled={!voiceRecorder.isRecording && interactionPending}
-              style={[
-                styles.touchToTalkButton,
-                voiceRecorder.isRecording && styles.touchToTalkButtonActive,
-                !voiceRecorder.isRecording && interactionPending && styles.touchToTalkButtonDisabled,
-              ]}
-            >
-              <Text style={styles.touchToTalkLabel}>
-                {voiceRecorder.isRecording
-                  ? `Enviar voz (${Math.max(1, Math.round(voiceRecorder.durationSeconds))}s)`
-                  : 'Tocar para hablar'}
-              </Text>
-              <Text style={styles.touchToTalkMeta}>
-                {voiceRecorder.isRecording
-                  ? 'Toca otra vez para enviar la instrucción a Codex.'
-                  : 'Un toque empieza a escuchar. Otro toque envía la orden en esta sesión.'}
-              </Text>
-            </Pressable>
-            <View style={styles.voiceUtilityRow}>
-              <ActionButton
-                label={speechActive ? 'Parar audio' : 'Repetir resumen'}
-                disabled={interactionPending || speechPending}
-                onPress={() => void (speechActive ? stopAudio() : playLatestResponse('brief'))}
-              />
-              <ActionButton
-                label="Abrir Core"
-                onPress={onOpenCore}
-              />
+        <View
+          style={[
+            styles.composerPanel,
+            Platform.OS === 'android' && keyboardInset > 0
+              ? { paddingBottom: keyboardInset + 8 }
+              : null,
+          ]}
+        >
+          {voiceRecorder.isRecording ? (
+            <View style={styles.composerRecorder}>
+              <Pressable
+                onPress={() => void cancelVoiceTurn()}
+                style={[styles.composerCircleButton, styles.composerRecorderCancelButton]}
+              >
+                <AppIcon name="close" size={20} color="#dce9e5" />
+              </Pressable>
+              <View style={styles.composerRecorderCenter}>
+                <Text style={styles.composerRecorderTitle}>
+                  Escuchando... {Math.max(1, Math.round(voiceRecorder.durationSeconds))}s
+                </Text>
+                <View style={styles.voiceWaveRow}>
+                  {voiceWaveHeights.map((height, index) => (
+                    <View
+                      key={`wave-${index}`}
+                      style={[styles.voiceWaveDot, { height }]}
+                    />
+                  ))}
+                </View>
+              </View>
+              <Pressable
+                onPress={() => void submitVoiceTurn()}
+                style={[styles.composerCircleButton, styles.composerActionButton, styles.composerRecorderActionButton]}
+              >
+                <AppIcon name="send-up" size={20} color="#dce9e5" />
+              </Pressable>
             </View>
-          </View>
+          ) : null}
           {mutationError || data.view.lastError ? (
             <View style={styles.feedbackPanel}>
               <Text style={styles.feedbackTitle}>Atención</Text>
@@ -547,48 +626,70 @@ export function ConversationScreen({
               </ScrollView>
             </View>
           ) : null}
-          {voiceStatus ? <Text style={styles.voiceStatus}>{voiceStatus}</Text> : null}
-          {lastTranscript ? <Text style={styles.voiceTranscript}>Última transcripción: {lastTranscript}</Text> : null}
-          {speechStatus ? <Text style={styles.voiceStatus}>{speechStatus}</Text> : null}
-          <TextInput
-            value={turnMessage}
-            onChangeText={setTurnMessage}
-            placeholder="Si prefieres, escribe la siguiente instrucción para Codex"
-            placeholderTextColor="#6e7b74"
-            style={[styles.input, styles.textArea]}
-            multiline
-          />
-          <View style={styles.composerRow}>
-            <Text style={styles.composerMeta}>
-              {data.view.runInProgress
-                ? 'Hay una ejecución en curso. Puedes actualizar y esperar la última respuesta.'
-                : 'El prompt se enviará al hilo actual de la WorkSession.'}
-            </Text>
-            <Pressable
-              onPress={() => void sendTurn()}
-              disabled={composerDisabled || !turnMessage.trim()}
-              style={[
-                styles.sendButton,
-                (composerDisabled || !turnMessage.trim()) && styles.sendButtonDisabled,
-              ]}
-            >
-              <Text
+          {hasVoiceDetails ? (
+            <View style={styles.voiceDetailsPanel}>
+              <Pressable onPress={() => setShowVoiceDetails((value) => !value)}>
+                <Text style={styles.voiceDetailsToggle}>
+                  {showVoiceDetails ? 'Ocultar detalles de voz' : 'Ver detalles de voz'}
+                </Text>
+              </Pressable>
+              {showVoiceDetails ? (
+                <View style={styles.voiceDetailsContent}>
+                  {voiceStatus ? <Text style={styles.voiceStatus}>{voiceStatus}</Text> : null}
+                  {lastTranscript ? <Text style={styles.voiceTranscript}>Última transcripción: {lastTranscript}</Text> : null}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+          {!voiceRecorder.isRecording ? (
+            <View style={styles.composerInputWrap}>
+              <TextInput
+                value={turnMessage}
+                onChangeText={setTurnMessage}
+                placeholder="Escribe o dicta la siguiente instrucción para Codex"
+              placeholderTextColor="#6e7b74"
+              style={[styles.input, styles.textArea, styles.composerInput, { height: composerInputHeight }]}
+              multiline
+              scrollEnabled={composerInputScrollEnabled}
+              onContentSizeChange={(event) => handleComposerContentSizeChange(event.nativeEvent.contentSize.height)}
+              onFocus={() => {
+                stickToBottomRef.current = true;
+                requestAnimationFrame(scrollToBottom);
+              }}
+            />
+              <Pressable
+                onPress={() => void (composerHasText ? sendTurn() : startVoiceTurn())}
+                disabled={composerHasText ? composerDisabled : interactionPending}
                 style={[
-                  styles.sendButtonLabel,
-                  (composerDisabled || !turnMessage.trim()) && styles.sendButtonLabelDisabled,
+                  styles.composerCircleButton,
+                  styles.composerActionButton,
+                  styles.composerInlineActionButton,
+                  (composerHasText ? composerDisabled : interactionPending) && styles.composerCircleButtonDisabled,
                 ]}
               >
-                {pending && !voiceRecorder.isRecording ? 'Enviando...' : 'Enviar prompt'}
-              </Text>
-            </Pressable>
-          </View>
+                {composerHasText ? (
+                  <AppIcon
+                    name="send-up"
+                    size={20}
+                    color={composerDisabled ? '#6f8b84' : '#dce9e5'}
+                  />
+                ) : (
+                  <AppIcon
+                    name="microphone"
+                    size={20}
+                    color={interactionPending ? '#6f8b84' : '#dce9e5'}
+                  />
+                )}
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-function RenderedTurnText({ text, operator }: { text: string; operator: boolean }) {
+export function RenderedTurnText({ text, operator }: { text: string; operator: boolean }) {
   const normalizedText = useMemo(() => normalizeTurnText(text), [text]);
   const blocks = useMemo(() => parseTurnBlocks(normalizedText), [normalizedText]);
 
@@ -621,268 +722,149 @@ function normalizeTurnText(text: string) {
     .replace(/\r\n/g, '\n')
     .replace(/```(bash|text|json|js|ts|tsx|html|css|sh|sql|xml|yaml|yml)(?!\n)/g, '```$1\n')
     .replace(/(^|\n)(#{1,3}\s+[^\n#]*?)([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])/g, '$1$2$3\n$4')
-    .replace(/([a-záéíóúñ])(\d)/g, '$1 $2')
-    .replace(/(\d)([A-Za-zÁÉÍÓÚÑáéíóúñ])/g, '$1 $2')
+    .replace(/([A-Za-zÁÉÍÓÚÑáéíóúñ])(\d+[.)]\s+)/g, '$1\n$2')
+    .replace(/(:\s+)(\d+[.)]\s+)/g, '$1\n$2')
+    .replace(/([^\n])\s*(\d+[.)]\s+)(?=[A-Za-zÁÉÍÓÚÑáéíóúñ])/g, '$1\n$2')
+    .replace(/([^\n*])\s*([-*]\s+)(?=[`A-Za-zÁÉÍÓÚÑáéíóúñ])/g, '$1\n$2')
+    .replace(/([a-záéíóúñ])((?:Si|El|La|Los|Las|Un|Una|Este|Esta|Esto|Estado|Ahora|Además|También|Pero|Como|Cuando|Puedo|Puedes|Recomiendo|Confirmo|Confirmó|Comando|Resultado)\s+)/g, '$1\n$2')
     .replace(/([^\n])(-\s+)/g, '$1\n$2');
 }
 
-function buildBriefSpeechFallback(
-  summary: MobileSessionSummary | null,
-  conversation: WorkSessionConversationView | null
+function mergeSessionEvents(
+  current: MobileSessionEventsResponse | null,
+  incoming: MobileSessionEventsResponse
 ) {
-  const insights = summary?.insights;
-  const clauses: string[] = [];
+  const merged = [...(incoming.events ?? []), ...(current?.events ?? [])];
+  const deduped = new Map<string, MobileSessionEventsResponse['events'][number]>();
 
-  if (insights?.latestProgress?.trim()) {
-    clauses.push(`Último avance: ${trimTrailingPunctuation(insights.latestProgress)}.`);
-  } else {
-    const point = extractSection(conversation?.view.lastAgentResponse ?? '', 'Punto actual');
-    if (point) {
-      clauses.push(`Punto actual: ${trimTrailingPunctuation(point)}.`);
+  for (const event of merged) {
+    const key = [
+      event.type,
+      event.at ?? '',
+      event.runId ?? '',
+      event.turnId ?? '',
+      event.deliverableId ?? '',
+    ].join('|');
+    if (!deduped.has(key)) {
+      deduped.set(key, event);
     }
   }
-
-  if (summary?.conversation.view.runInProgress) {
-    clauses.push('Codex sigue trabajando en esta sesión.');
-  }
-
-  const blocker = insights?.currentBlocker;
-  if (blocker?.summary?.trim()) {
-    if (blocker.category === 'NONE') {
-      clauses.push('Bloqueo actual: Sin bloqueo activo.');
-    } else {
-      clauses.push(`Bloqueo actual: ${trimTrailingPunctuation(blocker.summary)}.`);
-    }
-  }
-
-  if (insights?.nextStepRecommended?.trim()) {
-    clauses.push(`Siguiente paso: ${trimTrailingPunctuation(insights.nextStepRecommended)}.`);
-  } else {
-    const nextStep = extractSection(conversation?.view.lastAgentResponse ?? '', 'Siguiente paso recomendado');
-    if (nextStep) {
-      clauses.push(`Siguiente paso: ${trimTrailingPunctuation(nextStep)}.`);
-    }
-  }
-
-  const touchedFiles = summarizeTouchedFiles(conversation?.recentTurns ?? [], conversation?.view.lastAgentResponse ?? '');
-  if (touchedFiles) {
-    clauses.push(`Archivos tocados: ${trimTrailingPunctuation(touchedFiles)}.`);
-  }
-
-  const verification = trimTrailingPunctuation(
-    extractSection(conversation?.view.lastAgentResponse ?? '', 'Verificación')
-      ?? 'Sin bloque de verificación explícito'
-  );
-  if (verification && verification !== 'Sin bloque de verificación explícito') {
-    clauses.push(`Verificación: ${verification}.`);
-  }
-
-  if (clauses.length > 0) {
-    return clauses.join(' ');
-  }
-
-  return conversation?.view.lastAgentResponse?.trim() ?? '';
-}
-
-function buildFullSpeechFallback(conversation: WorkSessionConversationView | null) {
-  const latestAgentTurn = [...(conversation?.recentTurns ?? [])]
-    .reverse()
-    .find((turn) => turn.actor === 'CODEX' || turn.actor === 'ATENEA');
-  const source = latestAgentTurn?.messageText?.trim() || conversation?.view.lastAgentResponse?.trim() || '';
-  if (!source) {
-    return '';
-  }
-
-  const sections = [
-    buildSectionSentence(source, 'Punto actual'),
-    buildSectionSentence(source, 'Qué he encontrado'),
-    buildSectionSentence(source, 'Qué he hecho'),
-    buildSectionSentence(source, 'Bloqueo actual'),
-    buildSectionSentence(source, 'Siguiente paso recomendado'),
-    buildSectionSentence(source, 'Verificación'),
-  ].filter(Boolean);
-
-  if (sections.length > 0) {
-    return sections.join(' ');
-  }
-
-  return sanitizeSpeechBody(source) ?? source;
-}
-
-function extractSection(text: string, title: string) {
-  if (!text.trim()) {
-    return null;
-  }
-  const pattern = new RegExp(`##\\s+${title}\\s+([\\s\\S]*?)(?=\\n##\\s+|$)`, 'i');
-  const match = text.match(pattern);
-  if (!match?.[1]) {
-    return null;
-  }
-  return match[1]
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/\[[^\]]+\]\([^)]+\)/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function trimTrailingPunctuation(text: string) {
-  return text.replace(/\s+/g, ' ').replace(/[.。!！?？:：]+$/g, '').trim();
-}
-
-function buildSectionSentence(text: string, heading: string) {
-  const extracted = extractSection(text, heading);
-  if (!extracted) {
-    return null;
-  }
-  const sanitized = sanitizeSpeechBody(extracted);
-  if (!sanitized) {
-    return null;
-  }
-  if (sanitized.toLowerCase().startsWith('ruta actual del proyecto')) {
-    return null;
-  }
-  return `${heading}: ${trimTrailingPunctuation(sanitized)}.`;
-}
-
-function sanitizeSpeechBody(text: string) {
-  const sanitized = text
-    .replace(/```[\s\S]*?```/g, ' He preparado cambios en código y el detalle está disponible en pantalla. ')
-    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/^.*\/workspace\/.*$/gm, ' ')
-    .replace(/^.*python3 -m http\.server.*$/gm, ' ')
-    .replace(/^.*http:\/\/localhost:8000\/.*$/gm, ' ')
-    .replace(/^.*Abrir Core.*$/gm, ' ')
-    .replace(/^.*Archivos relevantes.*$/gim, ' ')
-    .replace(/^.*Comandos útiles.*$/gim, ' ')
-    .replace(/^[-*]\s+/gm, '')
-    .replace(/^\d+\.\s+/gm, '')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\b\/[^\s)]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!sanitized) {
-    return null;
-  }
-  return sanitized;
-}
-
-function buildQuickSummary(
-  summary: MobileSessionSummary | null,
-  conversation: WorkSessionConversationView | null,
-  latestAgentText: string | null
-) {
-  const source = latestAgentText ?? conversation?.view.lastAgentResponse ?? '';
-  const latestProgress = trimTrailingPunctuation(
-    summary?.insights?.latestProgress
-      ?? extractSection(source, 'Punto actual')
-      ?? 'No hay un punto actual resumido disponible'
-  );
-  const whatDone = trimTrailingPunctuation(
-    extractSection(source, 'Qué he hecho')
-      ?? 'No hay una lista breve de cambios en la última respuesta'
-  );
-  const blocker = summary?.insights?.currentBlocker?.category === 'NONE'
-    ? 'Sin bloqueo activo'
-    : trimTrailingPunctuation(
-      summary?.insights?.currentBlocker?.summary
-        ?? extractSection(source, 'Bloqueo actual')
-        ?? 'No se ha detectado un bloqueo explícito'
-    );
-  const nextStep = trimTrailingPunctuation(
-    summary?.insights?.nextStepRecommended
-      ?? extractSection(source, 'Siguiente paso recomendado')
-      ?? 'No se ha detectado un siguiente paso claro'
-  );
-  const verification = trimTrailingPunctuation(
-    extractSection(source, 'Verificación')
-      ?? 'Sin bloque de verificación explícito en la última respuesta'
-  );
-  const touchedFiles = summarizeTouchedFiles(conversation?.recentTurns ?? [], source);
 
   return {
-    latestProgress,
-    whatDone,
-    touchedFiles,
-    blocker,
-    nextStep,
-    verification,
+    sessionId: incoming.sessionId,
+    generatedAt: incoming.generatedAt,
+    events: [...deduped.values()]
+      .sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime())
+      .slice(0, 10),
   };
 }
 
-function SummaryItem({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.summaryItem}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue}>{value}</Text>
-    </View>
-  );
+function isSilentRecording({
+  peakLevel,
+  averageLevel,
+  durationSeconds,
+}: {
+  peakLevel: number;
+  averageLevel: number;
+  durationSeconds: number;
+}) {
+  if (durationSeconds < 0.35) {
+    return true;
+  }
+
+  if (peakLevel < 0.07 && averageLevel < 0.018) {
+    return true;
+  }
+
+  return peakLevel < 0.11 && averageLevel < 0.01;
 }
 
-function summarizeTouchedFiles(
-  turns: WorkSessionConversationView['recentTurns'],
-  source: string
-) {
-  const latestAgentTurn = [...turns].reverse().find((turn) => turn.actor === 'CODEX' || turn.actor === 'ATENEA');
-  const candidateSource = latestAgentTurn?.messageText ?? source;
-  const sections = [
-    extractSection(candidateSource, 'Qué he hecho'),
-    extractSection(candidateSource, 'Archivos relevantes'),
-    extractSection(candidateSource, 'Qué he encontrado'),
-  ].filter(Boolean).join('\n');
-
-  if (!sections.trim()) {
-    return null;
-  }
-
-  const labels = new Set<string>();
-  collectFileLabels(labels, sections, /\[([^\]]+)]\([^)]+\)/g);
-  collectFileLabels(labels, sections, /`([^`]+\.[A-Za-z0-9]+)`/g);
-  collectFileLabels(labels, sections, /([A-Za-z0-9._/-]+\.[A-Za-z0-9]+)/g);
-
-  const compact = [...labels]
-    .map(compactFileLabel)
-    .filter((value): value is string => Boolean(value))
-    .slice(0, 3);
-
-  if (compact.length === 0) {
-    return null;
-  }
-  if (compact.length === 1) {
-    return compact[0];
-  }
-  if (compact.length === 2) {
-    return `${compact[0]} y ${compact[1]}`;
-  }
-  return `${compact[0]}, ${compact[1]} y ${compact[2]}`;
-}
-
-function collectFileLabels(target: Set<string>, source: string, pattern: RegExp) {
-  for (const match of source.matchAll(pattern)) {
-    const value = match[1]?.trim();
-    if (value) {
-      target.add(value);
-    }
+function describeSessionEvent(event: MobileSessionEventsResponse['events'][number]) {
+  switch (event.type) {
+    case 'RUN_STARTED':
+      return 'Codex ha empezado a trabajar en este turno';
+    case 'RUN_SUCCEEDED':
+      return 'Codex terminó y dejó una respuesta nueva';
+    case 'RUN_FAILED':
+      return 'La ejecución terminó con error';
+    case 'TURN_OPERATOR':
+      return 'Has enviado una nueva instrucción';
+    case 'TURN_CODEX':
+      return 'Codex ha añadido un turno visible';
+    case 'TURN_ATENEA':
+      return 'Atenea ha añadido un turno visible';
+    case 'SESSION_PUBLISHED':
+      return 'La sesión se ha publicado en pull request';
+    case 'SESSION_CLOSE_BLOCKED':
+      return 'El cierre de la sesión sigue bloqueado';
+    case 'SESSION_CLOSED':
+      return 'La sesión ya está cerrada';
+    case 'SESSION_OPENED':
+      return 'La sesión quedó abierta y operativa';
+    case 'DELIVERABLE_GENERATED':
+      return 'Se ha generado un entregable';
+    case 'DELIVERABLE_APPROVED':
+      return 'Se ha aprobado un entregable';
+    case 'DELIVERABLE_BILLED':
+      return 'Se ha marcado un entregable como facturado';
+    default:
+      return event.title;
   }
 }
 
-function compactFileLabel(raw: string | undefined) {
-  if (!raw) {
+function sanitizeEventDetail(value: string | null) {
+  if (!value?.trim()) {
     return null;
   }
-  const normalized = raw
-    .replace(/`/g, '')
-    .replace(/#L\d+.*$/i, '')
-    .replace(/\?.*$/, '')
-    .trim();
-  const lastSlash = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
-  const label = lastSlash >= 0 ? normalized.slice(lastSlash + 1) : normalized;
-  if (!label.includes('.')) {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function formatElapsed(startedAt: string | null, now: number) {
+  if (!startedAt) {
     return null;
   }
-  return label;
+  const diffMs = Math.max(0, now - new Date(startedAt).getTime());
+  return formatDuration(diffMs);
+}
+
+function formatRelativeTime(value: string, now: number) {
+  const diffMs = Math.max(0, now - new Date(value).getTime());
+  if (diffMs < 5000) {
+    return 'hace unos segundos';
+  }
+  return `hace ${formatDuration(diffMs)}`;
+}
+
+function formatAbsoluteAndRelativeTime(value: string, now: number) {
+  const timestamp = new Date(value);
+  return `${timestamp.toLocaleTimeString()} · ${formatRelativeTime(value, now)}`;
+}
+
+function formatDuration(diffMs: number) {
+  const totalSeconds = Math.max(1, Math.round(diffMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
+function buildVoiceWaveHeights(level: number, durationSeconds: number) {
+  const bars = 17;
+  const center = (bars - 1) / 2;
+  return Array.from({ length: bars }, (_, index) => {
+    const distanceFromCenter = Math.abs(index - center) / center;
+    const centerBias = 1 - distanceFromCenter * 0.7;
+    const ripple = (Math.sin(durationSeconds * 9 + index * 0.82) + 1) / 2;
+    const energy = Math.max(0, level + (ripple - 0.5) * level * 0.25);
+    return 6 + Math.round((3 + energy * 22) * centerBias);
+  });
 }
 
 function RenderedParagraph({ text, operator }: { text: string; operator: boolean }) {
@@ -1050,22 +1032,62 @@ const styles = StyleSheet.create({
   chatShell: {
     flex: 1,
     gap: 6,
+    minHeight: 0,
+  },
+  consoleHeader: {
+    gap: 2,
+    paddingHorizontal: 10,
+    paddingBottom: 2,
+  },
+  consoleHeaderMain: {
+    gap: 2,
+  },
+  consoleTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#e8f0ec',
+    fontFamily: MONO_FONT,
+  },
+  consoleStatusLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#d8e4df',
+    fontFamily: MONO_FONT,
+  },
+  consoleStatusMeta: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#97a49f',
+    fontFamily: MONO_FONT,
+  },
+  statusScroll: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  statusScrollContent: {
+    paddingBottom: 2,
   },
   topBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
     paddingBottom: 6,
     paddingTop: 10,
     paddingHorizontal: 10,
     backgroundColor: '#3f3f3f',
+    borderBottomWidth: 1,
+    borderBottomColor: '#5a5a5a',
   },
-  headerActionsRow: {
-    flexDirection: 'row',
+  topBarSlot: {
+    flex: 1,
+  },
+  topBarSlotLeft: {
+    alignItems: 'flex-start',
+  },
+  topBarSlotCenter: {
     alignItems: 'center',
-    gap: 14,
-    flexWrap: 'wrap',
+  },
+  topBarSlotRight: {
+    alignItems: 'flex-end',
   },
   backLink: {
     fontSize: 14,
@@ -1082,57 +1104,6 @@ const styles = StyleSheet.create({
   turnScroll: {
     flex: 1,
     minHeight: 0,
-  },
-  summaryCard: {
-    gap: 10,
-    marginHorizontal: 10,
-    marginBottom: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#274842',
-    backgroundColor: '#213130',
-  },
-  summaryHeader: {
-    gap: 10,
-  },
-  summaryHeaderCopy: {
-    gap: 4,
-  },
-  summaryTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#eaf8f2',
-    fontFamily: MONO_FONT,
-  },
-  summarySubtitle: {
-    fontSize: 11,
-    lineHeight: 16,
-    color: '#9eb5ae',
-    fontFamily: MONO_FONT,
-  },
-  summaryGrid: {
-    gap: 8,
-  },
-  summaryItem: {
-    gap: 2,
-  },
-  summaryLabel: {
-    fontSize: 11,
-    color: '#73d0bd',
-    fontWeight: '800',
-    fontFamily: MONO_FONT,
-  },
-  summaryValue: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: '#e7ece9',
-    fontFamily: MONO_FONT,
-  },
-  summaryActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
   },
   turnList: {
     gap: 0,
@@ -1227,62 +1198,104 @@ const styles = StyleSheet.create({
   input: {
     borderRadius: 0,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 12,
     backgroundColor: '#585858',
     fontSize: 13,
+    lineHeight: 18,
     color: '#ecf3ef',
     fontFamily: MONO_FONT,
   },
   textArea: {
-    minHeight: 84,
-    maxHeight: 150,
+    minHeight: 56,
+    maxHeight: 156,
     textAlignVertical: 'top',
+  },
+  composerInputWrap: {
+    position: 'relative',
+    justifyContent: 'flex-end',
+  },
+  composerInput: {
+    paddingRight: 60,
+    paddingBottom: 14,
   },
   composerPanel: {
     gap: 8,
-    paddingTop: 10,
-    paddingBottom: 14,
+    paddingTop: 6,
+    paddingBottom: 8,
     paddingHorizontal: 0,
-  },
-  composerHint: {
-    fontSize: 11,
-    lineHeight: 16,
-    color: '#8a948f',
-    fontFamily: MONO_FONT,
   },
   voiceActions: {
     gap: 8,
   },
-  voiceDeck: {
-    gap: 10,
-  },
-  touchToTalkButton: {
-    gap: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+  composerRecorder: {
+    position: 'relative',
+    minHeight: 92,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
     borderWidth: 1,
-    borderColor: '#179489',
-    backgroundColor: '#1d3c38',
+    borderColor: '#355c57',
+    backgroundColor: '#1a2626',
   },
-  touchToTalkButtonActive: {
-    borderColor: '#8be5cf',
-    backgroundColor: '#22514a',
+  composerRecorderCenter: {
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 44,
+    paddingBottom: 18,
   },
-  touchToTalkButtonDisabled: {
+  composerRecorderTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#eef7f4',
+    fontFamily: MONO_FONT,
+  },
+  composerCircleButton: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#4d6763',
+    backgroundColor: '#253433',
+  },
+  composerActionButton: {
+    right: 4,
+    backgroundColor: '#253433',
+    borderColor: '#f1f5f3',
+  },
+  composerInlineActionButton: {
+    bottom: 8,
+  },
+  composerRecorderActionButton: {
+    bottom: 8,
+  },
+  composerCancelButton: {
+    left: 8,
+    bottom: 8,
+  },
+  composerRecorderCancelButton: {
+    left: 8,
+    bottom: 8,
+    borderColor: '#f1f5f3',
+  },
+  composerCircleButtonDisabled: {
     borderColor: '#29413c',
     backgroundColor: '#16211f',
   },
-  touchToTalkLabel: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#f0fbf7',
-    fontFamily: MONO_FONT,
+  voiceWaveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    minHeight: 30,
+    alignSelf: 'stretch',
   },
-  touchToTalkMeta: {
-    fontSize: 11,
-    lineHeight: 16,
-    color: '#b8c7c0',
-    fontFamily: MONO_FONT,
+  voiceWaveDot: {
+    width: 6,
+    borderRadius: 999,
+    backgroundColor: '#79d0bd',
   },
   voiceUtilityRow: {
     flexDirection: 'row',
@@ -1325,15 +1338,23 @@ const styles = StyleSheet.create({
   feedbackContent: {
     gap: 8,
   },
+  voiceDetailsPanel: {
+    gap: 6,
+  },
+  voiceDetailsToggle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#73d0bd',
+    fontFamily: MONO_FONT,
+  },
+  voiceDetailsContent: {
+    gap: 4,
+  },
   voiceTranscript: {
     fontSize: 11,
     lineHeight: 16,
     color: '#b8c7c0',
     fontFamily: MONO_FONT,
-  },
-  composerRow: {
-    gap: 8,
-    alignItems: 'flex-end',
   },
   composerMeta: {
     fontSize: 11,
@@ -1345,28 +1366,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ff7f7f',
     fontFamily: MONO_FONT,
-  },
-  sendButton: {
-    alignSelf: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#2c4046',
-    borderWidth: 1,
-    borderColor: '#179489',
-  },
-  sendButtonDisabled: {
-    backgroundColor: '#0c1511',
-    borderColor: '#1a2420',
-  },
-  sendButtonLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#179489',
-    fontFamily: MONO_FONT,
-  },
-  sendButtonLabelDisabled: {
-    color: '#4f675c',
   },
   headerActions: {
     gap: 10,

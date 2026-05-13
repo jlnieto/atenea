@@ -3,8 +3,10 @@
     const RUNNING_POLL_INTERVAL_MS = 3000;
     const RECENT_ACTIVITY_WINDOW_MS = 60 * 60 * 1000;
     const STALE_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+    const AUTH_STORAGE_KEY = "atenea.web.auth.v1";
 
     const state = {
+        auth: readAuthSession(),
         projects: [],
         selectedProjectId: null,
         selectedProject: null,
@@ -34,6 +36,15 @@
     };
 
     const elements = {
+        authScreen: document.getElementById("auth-screen"),
+        authForm: document.getElementById("auth-form"),
+        authEmail: document.getElementById("auth-email"),
+        authPassword: document.getElementById("auth-password"),
+        authError: document.getElementById("auth-error"),
+        authSubmit: document.getElementById("auth-submit"),
+        authOperatorEmail: document.getElementById("auth-operator-email"),
+        authLogout: document.getElementById("auth-logout"),
+        shell: document.querySelector(".shell"),
         projectList: document.getElementById("project-list"),
         projectFilters: Array.from(document.querySelectorAll(".project-filter")),
         projectsLoading: document.getElementById("projects-loading"),
@@ -90,6 +101,8 @@
         startNewSession: document.getElementById("start-new-session"),
     };
 
+    elements.authForm.addEventListener("submit", submitAuth);
+    elements.authLogout.addEventListener("click", logout);
     elements.refreshProjects.addEventListener("click", loadProjects);
     elements.projectFilters.forEach((button) => {
         button.addEventListener("click", () => {
@@ -113,9 +126,112 @@
     init();
 
     async function init() {
+        renderAuthState();
+        if (!state.auth) {
+            return;
+        }
         renderProjectFilters();
         await loadProjects();
         handleHashChange();
+    }
+
+    async function submitAuth(event) {
+        event.preventDefault();
+        elements.authSubmit.disabled = true;
+        elements.authError.classList.add("hidden");
+        try {
+            const response = await fetch(toAbsoluteUrl("/api/mobile/auth/login"), {
+                method: "POST",
+                headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    email: elements.authEmail.value.trim(),
+                    password: elements.authPassword.value,
+                }),
+            });
+            const session = await handleResponse(response);
+            setAuthSession(session);
+            elements.authPassword.value = "";
+            renderProjectFilters();
+            await loadProjects();
+            handleHashChange();
+        } catch (error) {
+            elements.authError.textContent = error.message;
+            elements.authError.classList.remove("hidden");
+        } finally {
+            elements.authSubmit.disabled = false;
+        }
+    }
+
+    async function logout() {
+        const refreshToken = state.auth && state.auth.refreshToken;
+        clearAuthSession();
+        if (refreshToken) {
+            try {
+                await fetch(toAbsoluteUrl("/api/mobile/auth/logout"), {
+                    method: "POST",
+                    headers: {
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ refreshToken }),
+                });
+            } catch (error) {
+                // Local logout should not depend on the server accepting a stale token.
+            }
+        }
+    }
+
+    function readAuthSession() {
+        try {
+            const rawSession = window.sessionStorage.getItem(AUTH_STORAGE_KEY);
+            if (!rawSession) {
+                return null;
+            }
+            const session = JSON.parse(rawSession);
+            return session && session.accessToken ? session : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function setAuthSession(session) {
+        state.auth = session;
+        window.sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+        renderAuthState();
+    }
+
+    function clearAuthSession() {
+        state.auth = null;
+        window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
+        state.projects = [];
+        state.selectedProjectId = null;
+        state.selectedProject = null;
+        state.sessionId = null;
+        state.sessionOpen = false;
+        state.conversationView = null;
+        state.turns = [];
+        state.hasOlderHistory = false;
+        state.sessionActionError = null;
+        state.projectApprovedPriceEstimates = [];
+        resetDeliverablesState();
+        stopRunningPolling();
+        window.location.hash = "";
+        renderAuthState();
+    }
+
+    function renderAuthState() {
+        const isAuthenticated = Boolean(state.auth && state.auth.accessToken);
+        elements.authScreen.classList.toggle("hidden", isAuthenticated);
+        elements.shell.classList.toggle("hidden", !isAuthenticated);
+        elements.authOperatorEmail.textContent = state.auth && state.auth.operator
+            ? state.auth.operator.email
+            : "";
+        if (!isAuthenticated) {
+            elements.authEmail.focus();
+        }
     }
 
     function renderTurnMessage(messageText) {
@@ -1158,14 +1274,13 @@
     }
 
     async function apiGet(url) {
-        const response = await fetch(toAbsoluteUrl(url), {
+        return apiFetch(url, {
             headers: { Accept: "application/json" },
         });
-        return handleResponse(response);
     }
 
     async function apiPost(url, payload) {
-        const response = await fetch(toAbsoluteUrl(url), {
+        return apiFetch(url, {
             method: "POST",
             headers: {
                 Accept: "application/json",
@@ -1173,7 +1288,49 @@
             },
             body: payload == null ? "{}" : JSON.stringify(payload),
         });
+    }
+
+    async function apiFetch(url, options, hasRetried) {
+        const response = await fetch(toAbsoluteUrl(url), withAuthHeaders(options));
+        if (response.status === 401 && !hasRetried && await refreshAuthSession()) {
+            return apiFetch(url, options, true);
+        }
+        if (response.status === 401) {
+            clearAuthSession();
+        }
         return handleResponse(response);
+    }
+
+    function withAuthHeaders(options) {
+        const headers = new Headers(options.headers || {});
+        if (state.auth && state.auth.accessToken) {
+            headers.set("Authorization", `Bearer ${state.auth.accessToken}`);
+        }
+        return { ...options, headers };
+    }
+
+    async function refreshAuthSession() {
+        if (!state.auth || !state.auth.refreshToken) {
+            return false;
+        }
+        try {
+            const response = await fetch(toAbsoluteUrl("/api/mobile/auth/refresh"), {
+                method: "POST",
+                headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ refreshToken: state.auth.refreshToken }),
+            });
+            if (!response.ok) {
+                return false;
+            }
+            const session = await response.json();
+            setAuthSession(session);
+            return true;
+        } catch (error) {
+            return false;
+        }
     }
 
     async function handleResponse(response) {

@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { fetchJson } from '../api/client';
 import { API_BASE_URL } from '../api/config';
 import { fetchCoreCommandEvents, fetchCoreCommands } from '../api/core';
 import {
@@ -16,8 +17,15 @@ import {
   CoreCommandResponse,
   CoreCommandSummaryResponse,
   MobileSessionSummary,
+  SessionDeliverablesView,
 } from '../api/types';
+import { confirmAction } from '../actions/confirm';
+import { selectAction } from '../actions/select';
 import { useAuth } from '../auth/AuthContext';
+import {
+  describeSessionCloseDeliverableAdvisory,
+  getSessionCloseDeliverableAdvisory,
+} from '../core/deliverables';
 import {
   buildCloseSessionCommand,
   buildGenerateDeliverableCommand,
@@ -29,9 +37,24 @@ import {
   buildSessionSummaryCommand,
   buildSyncPullRequestCommand,
 } from '../core/phrases';
+import { IconActionLink } from '../components/IconActionLink';
+import {
+  labelCoreCapability,
+  labelCoreCommandStatus,
+  labelCoreRiskLevel,
+  labelDeliverableType,
+  labelInterpreterSource,
+  labelPullRequestStatus,
+  labelSessionStatus,
+  toneCoreCommandStatus,
+  toneCoreRiskLevel,
+  tonePullRequestStatus,
+  toneSessionStatus,
+} from '../core/presentation';
 import { RunCoreCommandOptions, RunCoreVoiceCommandOptions } from '../core/useCoreCommandCenter';
 import { useVoiceRecorder } from '../core/useVoiceRecorder';
 import { ActionButton } from '../components/ActionButton';
+import type { ActionButtonProminence, ActionButtonTone } from '../components/ActionButton';
 import { Card } from '../components/Card';
 import { LoadingBlock } from '../components/LoadingBlock';
 import { StatePill } from '../components/StatePill';
@@ -52,6 +75,21 @@ type CoreConsoleScreenProps = {
   onRunVoiceCommand: (options: RunCoreVoiceCommandOptions) => Promise<{ transcript: string; command: CoreCommandResponse }>;
 };
 
+type QuickAction = {
+  label: string;
+  action: () => Promise<CoreCommandResponse> | Promise<void>;
+  tone?: ActionButtonTone;
+  prominence?: ActionButtonProminence;
+};
+
+type FocusActionGroup = {
+  key: string;
+  title: string;
+  subtitle: string;
+  surface: 'default' | 'success' | 'warning';
+  actions: QuickAction[];
+};
+
 export function CoreConsoleScreen({
   activeCommand,
   historyVersion,
@@ -70,7 +108,7 @@ export function CoreConsoleScreen({
   const [draftInput, setDraftInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [autoSpeak, setAutoSpeak] = useState(true);
+  const [autoSpeak, setAutoSpeak] = useState(false);
   const [lastTranscript, setLastTranscript] = useState<string | null>(null);
   const [speechStatus, setSpeechStatus] = useState<string | null>(null);
   const [speechError, setSpeechError] = useState<string | null>(null);
@@ -79,6 +117,7 @@ export function CoreConsoleScreen({
   const [showPortfolioSection, setShowPortfolioSection] = useState(true);
   const [showRecentCommands, setShowRecentCommands] = useState(true);
   const [showProjectShortcuts, setShowProjectShortcuts] = useState(true);
+  const [showVoiceLab, setShowVoiceLab] = useState(false);
   const [previewVoice, setPreviewVoice] = useState('nova');
   const [previewSpeed, setPreviewSpeed] = useState(1.2);
   const [previewText, setPreviewText] = useState(
@@ -102,6 +141,22 @@ export function CoreConsoleScreen({
         ? Promise.resolve<CoreCommandEventsResponse | null>(null)
         : fetchCoreCommandEvents(activeCommandId),
     [activeCommandId, historyVersion]
+  );
+  const { data: sessionSummary, reload: reloadSessionSummary } = useRemoteResource(
+    () =>
+      selectedSessionId == null
+        ? Promise.resolve<MobileSessionSummary | null>(null)
+        : fetchJson<MobileSessionSummary>(`/api/mobile/sessions/${selectedSessionId}/summary`),
+    [selectedSessionId],
+    { refreshIntervalMs: 5000 }
+  );
+  const { data: sessionDeliverables, reload: reloadSessionDeliverables } = useRemoteResource(
+    () =>
+      selectedSessionId == null
+        ? Promise.resolve<SessionDeliverablesView | null>(null)
+        : fetchJson<SessionDeliverablesView>(`/api/mobile/sessions/${selectedSessionId}/deliverables`),
+    [selectedSessionId],
+    { refreshIntervalMs: 5000 }
   );
 
   useEffect(() => {
@@ -135,6 +190,8 @@ export function CoreConsoleScreen({
         }
         void reloadEvents({ silent: true });
         void reloadHistory({ silent: true });
+        void reloadSessionSummary({ silent: true });
+        void reloadSessionDeliverables({ silent: true });
       } catch {
         // Keep polling fallback when the stream payload is malformed.
       }
@@ -166,6 +223,7 @@ export function CoreConsoleScreen({
       setShowPortfolioSection(false);
       setShowRecentCommands(false);
       setShowProjectShortcuts(false);
+      setShowVoiceLab(false);
       return;
     }
     if (selectedProjectId != null) {
@@ -173,12 +231,14 @@ export function CoreConsoleScreen({
       setShowPortfolioSection(false);
       setShowRecentCommands(true);
       setShowProjectShortcuts(true);
+      setShowVoiceLab(false);
       return;
     }
     setShowProjectSection(false);
     setShowPortfolioSection(true);
     setShowRecentCommands(true);
     setShowProjectShortcuts(true);
+    setShowVoiceLab(false);
   }, [selectedProjectId, selectedSessionId]);
 
   const applySpeechResult = (result: { mode: 'remote' | 'fallback-local' | 'local' | 'failed'; detail: string }) => {
@@ -219,7 +279,7 @@ export function CoreConsoleScreen({
       }
       return response;
     } catch (commandError) {
-      setError(commandError instanceof Error ? commandError.message : 'Core command failed');
+      setError(commandError instanceof Error ? commandError.message : 'El comando de Core ha fallado');
       throw commandError;
     } finally {
       setSending(false);
@@ -257,7 +317,7 @@ export function CoreConsoleScreen({
         setLastTranscript(response.transcript);
         setVoiceStatus(`Transcripción recibida: "${response.transcript}"`);
       } catch (voiceError) {
-        setError(voiceError instanceof Error ? voiceError.message : 'Voice command failed');
+        setError(voiceError instanceof Error ? voiceError.message : 'El comando de voz ha fallado');
         setVoiceStatus(voiceError instanceof Error ? voiceError.message : 'El comando de voz ha fallado.');
       } finally {
         setSending(false);
@@ -272,117 +332,315 @@ export function CoreConsoleScreen({
       await voiceRecorder.start();
       setVoiceStatus('Grabando. Pulsa `Enviar voz` para mandar el audio.');
     } catch (voiceError) {
-      setError(voiceError instanceof Error ? voiceError.message : 'Voice recording failed');
+      setError(voiceError instanceof Error ? voiceError.message : 'La grabación de voz ha fallado');
       setVoiceStatus(voiceError instanceof Error ? voiceError.message : 'No se pudo iniciar la grabación de voz.');
     }
   };
 
-  const portfolioActions = [
+  const closeDeliverableAdvisory = getSessionCloseDeliverableAdvisory(sessionDeliverables);
+  const closeDeliverableMessage = describeSessionCloseDeliverableAdvisory(closeDeliverableAdvisory);
+  const sessionActionsState = sessionSummary?.actions ?? null;
+  const sessionState = sessionSummary?.conversation.view.session ?? null;
+
+  const refreshSessionState = async () => {
+    await Promise.all([
+      reloadSessionSummary({ silent: true }),
+      reloadSessionDeliverables({ silent: true }),
+      reloadHistory({ silent: true }),
+      reloadEvents({ silent: true }),
+    ]);
+  };
+
+  const generateDeliverablesAndContinueClose = async (
+    pendingTypes: NonNullable<typeof closeDeliverableAdvisory>['pendingTypes']
+  ) => {
+    if (selectedSessionId == null) {
+      return;
+    }
+
+    for (const type of pendingTypes) {
+      const response = await executeCommand({
+        input: buildGenerateDeliverableCommand(type),
+        projectId: selectedProjectId,
+        workSessionId: selectedSessionId,
+      });
+      await refreshSessionState();
+      const refreshedDeliverables = await fetchJson<SessionDeliverablesView>(`/api/mobile/sessions/${selectedSessionId}/deliverables`);
+      const refreshedAdvisory = getSessionCloseDeliverableAdvisory(refreshedDeliverables);
+      if (response.status !== 'SUCCEEDED' || refreshedAdvisory?.pendingTypes.includes(type)) {
+        setError(`No se pudo dejar generado correctamente ${labelDeliverableType(type)}. La sesión sigue abierta.`);
+        return;
+      }
+    }
+
+    const finalDeliverables = await fetchJson<SessionDeliverablesView>(`/api/mobile/sessions/${selectedSessionId}/deliverables`);
+    const finalAdvisory = getSessionCloseDeliverableAdvisory(finalDeliverables);
+    if (finalAdvisory != null) {
+      setError(
+        `La sesión no se ha cerrado porque todavía faltan entregables por generar correctamente: ${finalAdvisory.pendingTypes.map(labelDeliverableType).join(', ')}.`
+      );
+      return;
+    }
+
+    await executeCommand({
+      input: buildCloseSessionCommand(true),
+      projectId: selectedProjectId,
+      workSessionId: selectedSessionId,
+    });
+    await refreshSessionState();
+  };
+
+  const runCloseSessionAction = async () => {
+    if (selectedSessionId == null) {
+      return;
+    }
+
+    const currentDeliverables = await fetchJson<SessionDeliverablesView>(`/api/mobile/sessions/${selectedSessionId}/deliverables`);
+    const currentAdvisory = getSessionCloseDeliverableAdvisory(currentDeliverables);
+    const currentCloseDeliverableMessage = describeSessionCloseDeliverableAdvisory(currentAdvisory);
+
+    if (currentAdvisory?.pendingTypes.length) {
+      const choice = await selectAction(
+        'Faltan entregables por generar',
+        closeSessionGenerationChoiceMessage(currentCloseDeliverableMessage),
+        [
+          {
+            id: 'close_anyway',
+            label: 'Cerrar igualmente',
+            style: 'destructive',
+          },
+          {
+            id: 'generate_and_continue',
+            label: 'Generar entregables y seguir',
+          },
+        ]
+      );
+      if (choice == null) {
+        return;
+      }
+      if (choice === 'generate_and_continue') {
+        await generateDeliverablesAndContinueClose(currentAdvisory.pendingTypes);
+        return;
+      }
+      const confirmed = await confirmAction(
+        '¿Cerrar sesión igualmente?',
+        closeSessionConfirmationMessage(currentCloseDeliverableMessage),
+        'Cerrar igualmente'
+      );
+      if (!confirmed) {
+        return;
+      }
+    } else {
+      const confirmed = await confirmAction(
+        '¿Cerrar sesión?',
+        closeSessionConfirmationMessage(null),
+        'Cerrar sesión'
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+    await executeCommand({
+      input: buildCloseSessionCommand(),
+      projectId: selectedProjectId,
+      workSessionId: selectedSessionId,
+    });
+    await refreshSessionState();
+  };
+
+  const portfolioActions: QuickAction[] = [
     {
       label: 'Estado proyectos',
       action: () => executeCommand({ input: buildPortfolioStatusCommand(), workSessionId: null }),
+      tone: 'secondary',
     },
   ];
 
-  const projectActions = selectedProjectId == null
-    ? []
-    : [
-        {
-          label: 'Estado proyecto',
-          action: () => executeCommand({
-            input: buildProjectStatusCommand(),
-            projectId: selectedProjectId,
-            workSessionId: null,
-          }),
-        },
-        {
-          label: 'Abrir sesión',
-          action: () => executeCommand({
-            input: buildOpenSessionCommand(null),
-            projectId: selectedProjectId,
-            workSessionId: null,
-            onSucceeded: (response) => {
-              if (response.result?.targetId != null) {
-                onOpenSession(response.result.targetId);
-              }
-            },
-          }),
-        },
-      ];
+  const projectStatusAction: QuickAction | null = selectedProjectId == null
+    ? null
+    : {
+        label: 'Estado proyecto',
+        action: () => executeCommand({
+          input: buildProjectStatusCommand(),
+          projectId: selectedProjectId,
+          workSessionId: null,
+        }),
+        tone: 'info',
+        prominence: 'high',
+      };
 
-  const sessionActions = selectedSessionId == null
-    ? []
-    : [
-        {
-          label: 'Estado sesión',
-          action: () => executeCommand({
-            input: buildSessionSummaryCommand(),
-            projectId: selectedProjectId,
-            workSessionId: selectedSessionId,
-          }),
-        },
-        {
-          label: 'Publish',
-          action: () => executeCommand({
-            input: buildPublishCommand(),
-            projectId: selectedProjectId,
-            workSessionId: selectedSessionId,
-          }),
-        },
-        {
-          label: 'Sync PR',
-          action: () => executeCommand({
-            input: buildSyncPullRequestCommand(),
-            projectId: selectedProjectId,
-            workSessionId: selectedSessionId,
-          }),
-        },
-        {
-          label: 'Close',
-          action: () => executeCommand({
-            input: buildCloseSessionCommand(),
-            projectId: selectedProjectId,
-            workSessionId: selectedSessionId,
-          }),
-        },
-      ];
+  const openSessionAction: QuickAction | null = selectedProjectId == null
+    ? null
+    : {
+        label: 'Abrir sesión',
+        action: () => executeCommand({
+          input: buildOpenSessionCommand(null),
+          projectId: selectedProjectId,
+          workSessionId: null,
+          onSucceeded: (response) => {
+            if (response.result?.targetId != null) {
+              onOpenSession(response.result.targetId);
+            }
+          },
+        }),
+        prominence: 'high',
+      };
 
-  const deliverableActions = selectedSessionId == null
-    ? []
-    : [
+  const projectActions = [projectStatusAction, openSessionAction].filter(isQuickAction);
+
+  const sessionSummaryAction: QuickAction | null = selectedSessionId == null
+    ? null
+    : {
+        label: 'Estado sesión',
+        action: () => executeCommand({
+          input: buildSessionSummaryCommand(),
+          projectId: selectedProjectId,
+          workSessionId: selectedSessionId,
+        }),
+        tone: 'info',
+        prominence: 'high',
+      };
+
+  const publishAction: QuickAction | null = selectedSessionId == null
+    || sessionActionsState?.canPublish === false
+    ? null
+    : {
+        label: 'Publicar',
+        action: () => executeCommand({
+          input: buildPublishCommand(),
+          projectId: selectedProjectId,
+          workSessionId: selectedSessionId,
+        }),
+        prominence: 'high',
+      };
+
+  const syncPullRequestAction: QuickAction | null = selectedSessionId == null
+    || sessionActionsState?.canSyncPullRequest === false
+    ? null
+    : {
+        label: 'Sincronizar PR',
+        action: () => executeCommand({
+          input: buildSyncPullRequestCommand(),
+          projectId: selectedProjectId,
+          workSessionId: selectedSessionId,
+        }),
+        tone: 'secondary',
+      };
+
+  const closeSessionAction: QuickAction | null = selectedSessionId == null
+    || sessionActionsState?.canClose === false
+    ? null
+    : {
+        label: 'Cerrar',
+        action: runCloseSessionAction,
+        tone: 'warning',
+        prominence: 'high',
+      };
+
+  const sessionDeliverablesAction: QuickAction | null = selectedSessionId == null
+    ? null
+    : {
+        label: 'Entregables',
+        action: () => executeCommand({
+          input: buildSessionDeliverablesCommand(),
+          projectId: selectedProjectId,
+          workSessionId: selectedSessionId,
+        }),
+        tone: 'secondary',
+      };
+
+  const workTicketAction: QuickAction | null = selectedSessionId == null
+    || sessionActionsState?.canGenerateDeliverables === false
+    ? null
+    : {
+        label: `Generar ${labelDeliverableType('WORK_TICKET')}`,
+        action: () => executeCommand({
+          input: buildGenerateDeliverableCommand('WORK_TICKET'),
+          projectId: selectedProjectId,
+          workSessionId: selectedSessionId,
+        }),
+        tone: 'secondary',
+      };
+
+  const workBreakdownAction: QuickAction | null = selectedSessionId == null
+    || sessionActionsState?.canGenerateDeliverables === false
+    ? null
+    : {
+        label: `Generar ${labelDeliverableType('WORK_BREAKDOWN')}`,
+        action: () => executeCommand({
+          input: buildGenerateDeliverableCommand('WORK_BREAKDOWN'),
+          projectId: selectedProjectId,
+          workSessionId: selectedSessionId,
+        }),
+        tone: 'secondary',
+      };
+
+  const priceEstimateAction: QuickAction | null = selectedSessionId == null
+    || sessionActionsState?.canGenerateDeliverables === false
+    ? null
+    : {
+        label: `Generar ${labelDeliverableType('PRICE_ESTIMATE')}`,
+        action: () => executeCommand({
+          input: buildGenerateDeliverableCommand('PRICE_ESTIMATE'),
+          projectId: selectedProjectId,
+          workSessionId: selectedSessionId,
+        }),
+        tone: 'secondary',
+      };
+
+  const focusActionGroups: FocusActionGroup[] = selectedSessionId != null
+    ? [
         {
-          label: 'Deliverables',
-          action: () => executeCommand({
-            input: buildSessionDeliverablesCommand(),
-            projectId: selectedProjectId,
-            workSessionId: selectedSessionId,
-          }),
+          key: 'pulse',
+          title: 'Pulso rápido',
+          subtitle: 'Consulta primero antes de tocar el estado de la sesión.',
+          surface: 'default',
+          actions: [sessionSummaryAction, sessionDeliverablesAction].filter(isQuickAction),
         },
         {
-          label: 'Gen ticket',
-          action: () => executeCommand({
-            input: buildGenerateDeliverableCommand('WORK_TICKET'),
-            projectId: selectedProjectId,
-            workSessionId: selectedSessionId,
-          }),
+          key: 'delivery',
+          title: 'Entrega y sincronización',
+          subtitle: 'Lo habitual cuando ya quieres mover la sesión hacia PR o entregables.',
+          surface: 'success',
+          actions: [
+            publishAction,
+            syncPullRequestAction,
+            workTicketAction,
+            workBreakdownAction,
+            priceEstimateAction,
+          ].filter(isQuickAction),
         },
         {
-          label: 'Gen breakdown',
-          action: () => executeCommand({
-            input: buildGenerateDeliverableCommand('WORK_BREAKDOWN'),
-            projectId: selectedProjectId,
-            workSessionId: selectedSessionId,
-          }),
+          key: 'state-change',
+          title: 'Cambio sensible',
+          subtitle: closeDeliverableMessage ?? 'Cierra sólo cuando el repo y la PR ya estén reconciliados.',
+          surface: 'warning',
+          actions: [closeSessionAction].filter(isQuickAction),
         },
-        {
-          label: 'Gen price',
-          action: () => executeCommand({
-            input: buildGenerateDeliverableCommand('PRICE_ESTIMATE'),
-            projectId: selectedProjectId,
-            workSessionId: selectedSessionId,
-          }),
-        },
-      ];
+      ]
+    : selectedProjectId != null
+      ? [
+          {
+            key: 'project-setup',
+            title: 'Preparar contexto',
+            subtitle: 'Confirma el proyecto y abre una sesión antes de pedir trabajo largo.',
+            surface: 'success',
+            actions: projectActions,
+          },
+        ]
+      : [];
+
+  const focusCard = selectedSessionId != null
+    ? {
+        title: 'Acciones prioritarias',
+        subtitle: `Lo más útil ahora para la sesión ${selectedSessionId}.`,
+      }
+    : selectedProjectId != null
+      ? {
+          title: 'Acciones prioritarias',
+          subtitle: `Lo más útil ahora para el proyecto ${selectedProjectId}.`,
+        }
+      : null;
 
   if (historyLoading && commandHistory == null) {
     return <LoadingBlock label="Cargando Atenea Core..." />;
@@ -415,6 +673,7 @@ export function CoreConsoleScreen({
             label={sending ? 'Enviando...' : 'Enviar a Core'}
             onPress={() => void submitDraft()}
             disabled={sending || !draftInput.trim()}
+            prominence="high"
           />
           <ActionButton
             label={
@@ -426,15 +685,17 @@ export function CoreConsoleScreen({
             }
             onPress={() => void toggleVoiceCapture()}
             disabled={sending || voiceRecorder.busy}
+            tone={voiceRecorder.isRecording ? 'warning' : 'secondary'}
           />
           {activeCommand?.speakableMessage ? (
             <ActionButton
               label="Repetir voz"
               onPress={() => void speakCommand(activeCommand.commandId ?? 0, activeCommand.speakableMessage ?? '')}
+              tone="info"
             />
           ) : null}
           {activeCommand ? (
-            <ActionButton label="Quitar foco" onPress={onClearActiveCommand} />
+            <ActionButton label="Quitar foco" onPress={onClearActiveCommand} tone="secondary" />
           ) : null}
         </View>
         {voiceRecorder.isRecording ? (
@@ -466,71 +727,129 @@ export function CoreConsoleScreen({
         ) : null}
       </Card>
 
+      {focusCard && focusActionGroups.length > 0 ? (
+        <Card title={focusCard.title} subtitle={focusCard.subtitle}>
+          {selectedSessionId != null && sessionState ? (
+            <View style={styles.focusStateBox}>
+              <Text style={styles.focusStateTitle}>{buildSessionActionHeadline(sessionState, sessionActionsState)}</Text>
+              {closeDeliverableMessage ? (
+                <Text style={styles.focusStateText}>{closeDeliverableMessage}</Text>
+              ) : null}
+              {closeDeliverableMessage ? (
+                <Text style={styles.focusStateText}>
+                  La opción por defecto generará lo que falta y sólo seguirá al cierre si todos terminan en `SUCCEEDED`.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+          <View style={styles.focusGroupStack}>
+            {focusActionGroups.map((group) => (
+              <View
+                key={group.key}
+                style={[
+                  styles.focusGroup,
+                  group.surface === 'success' && styles.focusGroupSuccess,
+                  group.surface === 'warning' && styles.focusGroupWarning,
+                ]}
+              >
+                <View style={styles.focusGroupHeader}>
+                  <Text style={styles.focusGroupTitle}>{group.title}</Text>
+                  <Text style={styles.focusGroupSubtitle}>{group.subtitle}</Text>
+                </View>
+                <View style={styles.quickGrid}>
+                  {group.actions.map((action) => (
+                    <ActionButton
+                      key={`${group.key}-${action.label}`}
+                      label={action.label}
+                      onPress={() => void action.action()}
+                      disabled={sending}
+                      tone={action.tone}
+                      prominence={action.prominence}
+                    />
+                  ))}
+                </View>
+              </View>
+            ))}
+          </View>
+        </Card>
+      ) : null}
+
       <Card
-        title="Banco de pruebas de voz"
-        subtitle="Temporal. Compara voces y velocidades remotas antes de dejar una fija."
+        title="Herramientas de voz"
+        subtitle="Secundario. Pruebas y diagnóstico de audio para ajustar la experiencia."
       >
-        <Text style={styles.meta}>Voces sugeridas</Text>
-        <View style={styles.optionRow}>
-          {VOICE_PREVIEW_OPTIONS.map((option) => (
-            <Pressable
-              key={option.value}
-              onPress={() => setPreviewVoice(option.value)}
-              style={[styles.optionChip, previewVoice === option.value && styles.optionChipActive]}
-            >
-              <Text style={[styles.optionChipLabel, previewVoice === option.value && styles.optionChipLabelActive]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <TextInput
-          value={previewVoice}
-          onChangeText={setPreviewVoice}
-          placeholder="ID de voz remota, por ejemplo coral"
-          placeholderTextColor="#8b7c6b"
-          style={styles.previewVoiceInput}
-          autoCapitalize="none"
-          autoCorrect={false}
+        <SectionToggle
+          expanded={showVoiceLab}
+          onPress={() => setShowVoiceLab((current) => !current)}
+          expandedLabel="Ocultar herramientas de voz"
+          collapsedLabel="Mostrar herramientas de voz"
         />
-        <Text style={styles.meta}>Velocidad</Text>
-        <View style={styles.optionRow}>
-          {VOICE_SPEED_OPTIONS.map((option) => (
-            <Pressable
-              key={option.toFixed(2)}
-              onPress={() => setPreviewSpeed(option)}
-              style={[styles.optionChip, previewSpeed === option && styles.optionChipActive]}
-            >
-              <Text style={[styles.optionChipLabel, previewSpeed === option && styles.optionChipLabelActive]}>
-                {option.toFixed(2)}x
+        {showVoiceLab ? (
+          <View style={styles.voiceLabContent}>
+            <Text style={styles.meta}>Voces sugeridas</Text>
+            <View style={styles.optionRow}>
+              {VOICE_PREVIEW_OPTIONS.map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setPreviewVoice(option.value)}
+                  style={[styles.optionChip, previewVoice === option.value && styles.optionChipActive]}
+                >
+                  <Text style={[styles.optionChipLabel, previewVoice === option.value && styles.optionChipLabelActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              value={previewVoice}
+              onChangeText={setPreviewVoice}
+              placeholder="ID de voz remota, por ejemplo coral"
+              placeholderTextColor="#8b7c6b"
+              style={styles.previewVoiceInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.meta}>Velocidad</Text>
+            <View style={styles.optionRow}>
+              {VOICE_SPEED_OPTIONS.map((option) => (
+                <Pressable
+                  key={option.toFixed(2)}
+                  onPress={() => setPreviewSpeed(option)}
+                  style={[styles.optionChip, previewSpeed === option && styles.optionChipActive]}
+                >
+                  <Text style={[styles.optionChipLabel, previewSpeed === option && styles.optionChipLabelActive]}>
+                    {option.toFixed(2)}x
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              value={previewText}
+              onChangeText={setPreviewText}
+              placeholder="Texto de prueba para la voz remota"
+              placeholderTextColor="#8b7c6b"
+              style={styles.previewInput}
+              multiline
+            />
+            <View style={styles.actions}>
+              <ActionButton
+                label={previewingVoice ? 'Probando voz...' : 'Probar voz remota'}
+                onPress={() => void runVoicePreview()}
+                disabled={previewingVoice || !previewText.trim() || authSession == null}
+                tone="secondary"
+              />
+            </View>
+            {previewStatus ? (
+              <Text style={previewStatus.includes('fall') || previewStatus.includes('Error') ? styles.error : styles.meta}>
+                {previewStatus}
               </Text>
-            </Pressable>
-          ))}
-        </View>
-        <TextInput
-          value={previewText}
-          onChangeText={setPreviewText}
-          placeholder="Texto de prueba para la voz remota"
-          placeholderTextColor="#8b7c6b"
-          style={styles.previewInput}
-          multiline
-        />
-        <View style={styles.actions}>
-          <ActionButton
-            label={previewingVoice ? 'Probando voz...' : 'Probar voz remota'}
-            onPress={() => void runVoicePreview()}
-            disabled={previewingVoice || !previewText.trim() || authSession == null}
-          />
-        </View>
-        {previewStatus ? (
-          <Text style={previewStatus.includes('fall') || previewStatus.includes('Error') ? styles.error : styles.meta}>
-            {previewStatus}
-          </Text>
+            ) : null}
+          </View>
         ) : null}
       </Card>
 
       {selectedSessionId == null ? (
-        <Card title="Portfolio" subtitle="Atajos globales que no necesitan proyecto ni sesión activa.">
+        <Card title="Portafolio" subtitle="Atajos globales que no necesitan proyecto ni sesión activa.">
           <View style={styles.quickGrid}>
             {portfolioActions.map((action) => (
               <ActionButton
@@ -538,17 +857,19 @@ export function CoreConsoleScreen({
                 label={action.label}
                 onPress={() => void action.action()}
                 disabled={sending}
+                tone={action.tone}
+                prominence={action.prominence}
               />
             ))}
           </View>
         </Card>
       ) : (
-        <Card title="Portfolio" subtitle="Secundario mientras haya una sesión activa.">
+        <Card title="Portafolio" subtitle="Secundario mientras haya una sesión activa.">
           <SectionToggle
             expanded={showPortfolioSection}
             onPress={() => setShowPortfolioSection((current) => !current)}
-            expandedLabel="Ocultar atajos de portfolio"
-            collapsedLabel="Mostrar atajos de portfolio"
+            expandedLabel="Ocultar atajos de portafolio"
+            collapsedLabel="Mostrar atajos de portafolio"
           />
           {showPortfolioSection ? (
             <View style={styles.quickGrid}>
@@ -558,6 +879,7 @@ export function CoreConsoleScreen({
                   label={action.label}
                   onPress={() => void action.action()}
                   disabled={sending}
+                  tone="secondary"
                 />
               ))}
             </View>
@@ -565,12 +887,18 @@ export function CoreConsoleScreen({
         </Card>
       )}
 
-      {selectedProjectId != null ? (
-        selectedSessionId == null ? (
-          <Card
-            title="Proyecto"
-            subtitle={`Proyecto activo ${selectedProjectId}.`}
-          >
+      {selectedProjectId != null && selectedSessionId != null ? (
+        <Card
+          title="Proyecto"
+          subtitle={`Secundario mientras la sesión ${selectedSessionId} esté activa.`}
+        >
+          <SectionToggle
+            expanded={showProjectSection}
+            onPress={() => setShowProjectSection((current) => !current)}
+            expandedLabel="Ocultar atajos de proyecto"
+            collapsedLabel="Mostrar atajos de proyecto"
+          />
+          {showProjectSection ? (
             <View style={styles.quickGrid}>
               {projectActions.map((action) => (
                 <ActionButton
@@ -578,70 +906,11 @@ export function CoreConsoleScreen({
                   label={action.label}
                   onPress={() => void action.action()}
                   disabled={sending}
+                  tone="secondary"
                 />
               ))}
             </View>
-          </Card>
-        ) : (
-          <Card
-            title="Proyecto"
-            subtitle={`Secundario mientras la sesión ${selectedSessionId} esté activa.`}
-          >
-            <SectionToggle
-              expanded={showProjectSection}
-              onPress={() => setShowProjectSection((current) => !current)}
-              expandedLabel="Ocultar atajos de proyecto"
-              collapsedLabel="Mostrar atajos de proyecto"
-            />
-            {showProjectSection ? (
-              <View style={styles.quickGrid}>
-                {projectActions.map((action) => (
-                  <ActionButton
-                    key={action.label}
-                    label={action.label}
-                    onPress={() => void action.action()}
-                    disabled={sending}
-                  />
-                ))}
-              </View>
-            ) : null}
-          </Card>
-        )
-      ) : null}
-
-      {selectedSessionId != null ? (
-        <Card
-          title="Sesión"
-          subtitle={`Acciones principales para la sesión ${selectedSessionId}.`}
-        >
-          <View style={styles.quickGrid}>
-            {sessionActions.map((action) => (
-              <ActionButton
-                key={action.label}
-                label={action.label}
-                onPress={() => void action.action()}
-                disabled={sending}
-              />
-            ))}
-          </View>
-        </Card>
-      ) : null}
-
-      {selectedSessionId != null ? (
-        <Card
-          title="Entregables"
-          subtitle="Genera o consulta entregables de la sesión activa."
-        >
-          <View style={styles.quickGrid}>
-            {deliverableActions.map((action) => (
-              <ActionButton
-                key={action.label}
-                label={action.label}
-                onPress={() => void action.action()}
-                disabled={sending}
-              />
-            ))}
-          </View>
+          ) : null}
         </Card>
       ) : null}
 
@@ -651,23 +920,32 @@ export function CoreConsoleScreen({
           subtitle={activeCommand.intent?.capability ?? activeCommand.status}
         >
           <View style={styles.contextRow}>
-            <StatePill label={activeCommand.status} tone={activeCommand.status === 'SUCCEEDED' ? 'good' : 'warning'} />
+            <StatePill label={labelCoreCommandStatus(activeCommand.status)} tone={toneCoreCommandStatus(activeCommand.status)} />
             {activeCommand.intent?.riskLevel ? (
-              <StatePill label={activeCommand.intent.riskLevel} tone={activeCommand.intent.requiresConfirmation ? 'warning' : 'default'} />
+              <StatePill
+                label={labelCoreRiskLevel(activeCommand.intent.riskLevel)}
+                tone={activeCommand.intent.requiresConfirmation ? 'warning' : toneCoreRiskLevel(activeCommand.intent.riskLevel)}
+              />
             ) : null}
             {activeCommand.interpretation?.source ? (
-              <StatePill label={activeCommand.interpretation.source} />
+              <StatePill label={labelInterpreterSource(activeCommand.interpretation.source)} />
             ) : null}
           </View>
           {showStructuredSessionSummary && activeSessionSummary ? (
             <View style={styles.contextRow}>
-              <StatePill label={activeSessionSummary.conversation.view.session.status} />
+              <StatePill
+                label={labelSessionStatus(activeSessionSummary.conversation.view.session.status)}
+                tone={toneSessionStatus(activeSessionSummary.conversation.view.session.status)}
+              />
               <StatePill
                 label={activeSessionSummary.conversation.view.runInProgress ? 'EN CURSO' : 'EN ESPERA'}
-                tone={activeSessionSummary.conversation.view.runInProgress ? 'warning' : 'good'}
+                tone={activeSessionSummary.conversation.view.runInProgress ? 'info' : 'good'}
               />
               {activeSessionSummary.conversation.view.session.pullRequestStatus ? (
-                <StatePill label={activeSessionSummary.conversation.view.session.pullRequestStatus} />
+                <StatePill
+                  label={labelPullRequestStatus(activeSessionSummary.conversation.view.session.pullRequestStatus)}
+                  tone={tonePullRequestStatus(activeSessionSummary.conversation.view.session.pullRequestStatus)}
+                />
               ) : null}
             </View>
           ) : null}
@@ -691,9 +969,11 @@ export function CoreConsoleScreen({
             </View>
           ) : null}
           {activeCommand.result?.targetType === 'WORK_SESSION' && activeCommand.result.targetId != null ? (
-            <Pressable onPress={() => onOpenSession(activeCommand.result!.targetId!)}>
-              <Text style={styles.link}>Abrir sesión {activeCommand.result.targetId}</Text>
-            </Pressable>
+            <IconActionLink
+              label={`Abrir sesión ${activeCommand.result.targetId}`}
+              icon="arrow-right"
+              onPress={() => onOpenSession(activeCommand.result!.targetId!)}
+            />
           ) : null}
           {activeCommand.status === 'NEEDS_CONFIRMATION' && activeCommand.confirmation ? (
             <>
@@ -702,6 +982,8 @@ export function CoreConsoleScreen({
                 label={sending ? 'Confirmando...' : 'Confirmar comando'}
                 onPress={() => void executeCommandConfirmation(onConfirmActiveCommand, setSending, setError)}
                 disabled={sending}
+                tone="warning"
+                prominence="high"
               />
             </>
           ) : null}
@@ -717,6 +999,7 @@ export function CoreConsoleScreen({
                       void executeCommandClarification(option, onResolveClarification, setSending, setError)
                     }
                     disabled={sending}
+                    tone="secondary"
                   />
                 ))}
               </View>
@@ -746,13 +1029,9 @@ export function CoreConsoleScreen({
         subtitle={selectedSessionId != null ? 'Secundario mientras haya una sesión activa.' : 'Últimos comandos registrados en este operador.'}
       >
         <View style={styles.contextRow}>
-          <Pressable onPress={() => void reloadHistory()}>
-            <Text style={styles.link}>Actualizar comandos</Text>
-          </Pressable>
+          <IconActionLink label="Actualizar comandos" icon="refresh" onPress={() => void reloadHistory()} />
           {activeCommandId != null ? (
-            <Pressable onPress={() => void reloadEvents()}>
-              <Text style={styles.link}>Actualizar eventos</Text>
-            </Pressable>
+            <IconActionLink label="Actualizar eventos" icon="refresh" onPress={() => void reloadEvents()} />
           ) : null}
           {selectedSessionId != null ? (
             <Pressable onPress={() => setShowRecentCommands((current) => !current)}>
@@ -793,6 +1072,7 @@ export function CoreConsoleScreen({
                   key={item.commandId}
                   label={item.rawInput}
                   onPress={() => void executeCommand({ input: item.rawInput, workSessionId: null })}
+                  tone="secondary"
                 />
               ))}
           </View>
@@ -865,7 +1145,7 @@ function coreInputHint(
   if (selectedProjectId != null) {
     return 'Proyecto activo. Puedes pedir estado del proyecto o abrir una sesión.';
   }
-  return 'Sin contexto activo. Empieza por portfolio o selecciona proyecto y sesión.';
+  return 'Sin contexto activo. Empieza por portafolio o selecciona proyecto y sesión.';
 }
 
 function hasVoiceDiagnostics(
@@ -874,6 +1154,54 @@ function hasVoiceDiagnostics(
   speechStatus: string | null
 ) {
   return lastTranscript != null || voiceStatus != null || speechStatus != null;
+}
+
+function closeSessionConfirmationMessage(closeDeliverableMessage: string | null) {
+  const lines = [
+    'Usa esto sólo cuando la pull request esté fusionada y el repositorio listo para reconciliar contra la rama base.',
+  ];
+  if (closeDeliverableMessage) {
+    lines.push('', closeDeliverableMessage, 'Después de cerrar ya no podrás generar nuevos entregables para esta sesión.');
+  }
+  return lines.join('\n');
+}
+
+function closeSessionGenerationChoiceMessage(closeDeliverableMessage: string | null) {
+  const lines = [
+    closeDeliverableMessage ?? 'Faltan entregables core por generar correctamente.',
+    '',
+    'La opción recomendada es generar los entregables ahora y seguir con el cierre sólo si todos terminan bien.',
+  ];
+  return lines.join('\n');
+}
+
+function buildSessionActionHeadline(
+  session: NonNullable<MobileSessionSummary['conversation']['view']['session']> | null,
+  actions: MobileSessionSummary['actions'] | null
+) {
+  if (session == null) {
+    return 'Consultando estado real de la sesión.';
+  }
+  if (session.status === 'CLOSED') {
+    return 'Sesión cerrada. Aquí sólo quedan consultas y revisión de historial.';
+  }
+  if (session.pullRequestStatus === 'NOT_CREATED' && actions?.canPublish) {
+    return 'Aún no hay pull request. Lo siguiente normal es publicar.';
+  }
+  if (session.pullRequestStatus === 'OPEN' && actions?.canSyncPullRequest) {
+    return 'La pull request ya existe. Ahora tiene más sentido sincronizar que volver a publicar.';
+  }
+  if (session.pullRequestStatus === 'MERGED' && actions?.canClose) {
+    return 'La pull request ya está fusionada. Ya puedes preparar el cierre técnico de la sesión.';
+  }
+  if (session.pullRequestStatus === 'MERGED') {
+    return 'La pull request ya está fusionada, pero el cierre sigue bloqueado por estado operativo.';
+  }
+  return 'El orden recomendado es: revisar sesión, mover PR y cerrar sólo al final.';
+}
+
+function isQuickAction(action: QuickAction | null): action is QuickAction {
+  return action != null;
 }
 
 const VOICE_PREVIEW_OPTIONS = [
@@ -901,9 +1229,9 @@ function HistoryCard({
   return (
     <View style={styles.historyCard}>
       <View style={styles.historyPills}>
-        <StatePill label={item.status} tone={historyStatusTone(item.status)} />
-        {item.intent?.capability ? <StatePill label={capabilityLabel(item.intent.capability)} /> : null}
-        {item.interpretation?.source ? <StatePill label={item.interpretation.source} /> : null}
+        <StatePill label={labelCoreCommandStatus(item.status)} tone={historyStatusTone(item.status)} />
+        {item.intent?.capability ? <StatePill label={labelCoreCapability(item.intent.capability)} /> : null}
+        {item.interpretation?.source ? <StatePill label={labelInterpreterSource(item.interpretation.source)} /> : null}
       </View>
       <Text style={styles.historyInput} numberOfLines={2}>
         {item.rawInput}
@@ -952,10 +1280,6 @@ function SectionToggle({
   );
 }
 
-function capabilityLabel(value: string) {
-  return value.replaceAll('_', ' ');
-}
-
 function historyStatusTone(status: CoreCommandSummaryResponse['status']) {
   switch (status) {
     case 'SUCCEEDED':
@@ -981,7 +1305,7 @@ async function executeCommandConfirmation(
   try {
     await onConfirmActiveCommand();
   } catch (error) {
-    setError(error instanceof Error ? error.message : 'Core confirmation failed');
+    setError(error instanceof Error ? error.message : 'La confirmación en Core ha fallado');
   } finally {
     setSending(false);
   }
@@ -998,7 +1322,7 @@ async function executeCommandClarification(
   try {
     await onResolveClarification(option);
   } catch (error) {
-    setError(error instanceof Error ? error.message : 'Core clarification follow-up failed');
+    setError(error instanceof Error ? error.message : 'La aclaración en Core ha fallado');
   } finally {
     setSending(false);
   }
@@ -1036,10 +1360,63 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  voiceLabContent: {
+    gap: 10,
+  },
   quickGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  focusStateBox: {
+    gap: 6,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#eef4f6',
+    borderWidth: 1,
+    borderColor: '#c8d8dd',
+  },
+  focusStateTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#20363d',
+  },
+  focusStateText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#55676d',
+  },
+  focusGroupStack: {
+    gap: 10,
+  },
+  focusGroup: {
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#f7f0e4',
+    borderWidth: 1,
+    borderColor: '#e3d6c0',
+  },
+  focusGroupSuccess: {
+    backgroundColor: '#edf7ee',
+    borderColor: '#bfd6c2',
+  },
+  focusGroupWarning: {
+    backgroundColor: '#fbf2df',
+    borderColor: '#e2cb95',
+  },
+  focusGroupHeader: {
+    gap: 4,
+  },
+  focusGroupTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#2d2218',
+  },
+  focusGroupSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#6d5a43',
   },
   optionRow: {
     flexDirection: 'row',

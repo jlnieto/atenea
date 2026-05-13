@@ -1,3 +1,5 @@
+import { labelDeliverableType } from './presentation';
+
 export function buildPortfolioStatusCommand() {
   return 'dime el estado de los proyectos';
 }
@@ -42,8 +44,10 @@ export function buildGenerateDeliverableCommand(deliverableType: string) {
   return `genera ${humanizeDeliverableType(deliverableType)}`;
 }
 
-export function buildCloseSessionCommand() {
-  return 'cierra la sesion';
+export function buildCloseSessionCommand(forceClosePendingDeliverables = false) {
+  return forceClosePendingDeliverables
+    ? 'cierra la sesion igualmente aunque falten entregables'
+    : 'cierra la sesion';
 }
 
 export function buildApproveDeliverableCommand(deliverableId: number) {
@@ -55,7 +59,5 @@ export function buildMarkPriceEstimateBilledCommand(deliverableId: number, billi
 }
 
 export function humanizeDeliverableType(deliverableType: string) {
-  return deliverableType
-    .replace(/_/g, ' ')
-    .toLowerCase();
+  return labelDeliverableType(deliverableType).toLowerCase();
 }

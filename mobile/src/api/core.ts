@@ -5,6 +5,7 @@ import {
   CoreCommandListResponse,
   CoreCommandResponse,
   CoreVoiceCommandResponse,
+  CoreVoiceTranscriptionResponse,
   CreateCoreCommandRequest,
 } from './types';
 
@@ -56,4 +57,30 @@ export function createCoreVoiceCommand(params: {
       workSessionId: params.workSessionId ?? null,
     }
   );
+}
+
+export function createCoreVoiceTranscription(params: {
+  audio: {
+    uri: string;
+    name: string;
+    type: string;
+  };
+}): Promise<CoreVoiceTranscriptionResponse> {
+  return uploadMultipartFile<CoreVoiceTranscriptionResponse>(
+    '/api/core/voice/transcriptions',
+    {
+      fieldName: 'audio',
+      name: params.audio.name,
+      type: params.audio.type,
+      uri: params.audio.uri,
+    }
+  ).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('/api/core/voice/transcriptions') && message.includes('404')) {
+      throw new Error(
+        'El backend de Atenea todavía no tiene desplegado el endpoint de transcripción de voz. Hay que actualizar o reiniciar el backend antes de usar el micrófono en Conversation.'
+      );
+    }
+    throw error;
+  });
 }

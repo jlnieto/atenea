@@ -141,7 +141,8 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                     "close_work_session",
                     Map.of(
                             "projectId", session.getProject().getId(),
-                            "workSessionId", session.getId()),
+                            "workSessionId", session.getId(),
+                            "forceClosePendingDeliverables", shouldForceClosePendingDeliverables(normalized)),
                     BigDecimal.valueOf(0.95),
                     "close_session_request");
         }
@@ -409,7 +410,17 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                 || normalized.contains("cierrala");
     }
 
+    private boolean shouldForceClosePendingDeliverables(String normalized) {
+        return normalized.contains("igualmente")
+                || normalized.contains("de todos modos")
+                || normalized.contains("aunque falten entregables")
+                || normalized.contains("sin generar entregables");
+    }
+
     private boolean looksLikeDeliverablesRead(String normalized) {
+        if (looksLikeClose(normalized)) {
+            return false;
+        }
         return normalized.contains("deliverable")
                 || normalized.contains("deliverables")
                 || normalized.contains("entregable")
@@ -417,13 +428,28 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
     }
 
     private boolean looksLikeGenerateDeliverable(String normalized) {
-        return (normalized.contains("generate") || normalized.contains("genera"))
-                && looksLikeDeliverablesRead(normalized);
+        return (normalized.contains("generate")
+                || normalized.contains("genera")
+                || normalized.contains("prepara")
+                || normalized.contains("create"))
+                && mentionsDeliverableSubject(normalized);
     }
 
     private boolean looksLikeApproveDeliverable(String normalized) {
         return (normalized.contains("aprueba") || normalized.contains("approve"))
                 && looksLikeDeliverablesRead(normalized);
+    }
+
+    private boolean mentionsDeliverableSubject(String normalized) {
+        return looksLikeDeliverablesRead(normalized)
+                || normalized.contains("ticket de trabajo")
+                || normalized.contains("work ticket")
+                || normalized.contains("desglose")
+                || normalized.contains("work breakdown")
+                || normalized.contains("price estimate")
+                || normalized.contains("presupuesto")
+                || normalized.contains("budget")
+                || normalized.contains("estimate");
     }
 
     private boolean looksLikeMarkPriceEstimateBilled(String normalized) {

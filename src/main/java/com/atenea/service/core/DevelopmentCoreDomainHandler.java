@@ -12,6 +12,7 @@ import com.atenea.api.worksession.PublishWorkSessionRequest;
 import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.ResolveWorkSessionRequest;
 import com.atenea.api.worksession.SessionDeliverableResponse;
+import com.atenea.api.worksession.SessionDeliverableSummaryResponse;
 import com.atenea.api.worksession.SessionDeliverablesViewResponse;
 import com.atenea.api.worksession.SyncWorkSessionPullRequestConversationViewResponse;
 import com.atenea.api.worksession.WorkSessionConversationViewResponse;
@@ -19,6 +20,7 @@ import com.atenea.api.worksession.WorkSessionViewResponse;
 import com.atenea.persistence.core.CoreDomain;
 import com.atenea.persistence.core.CoreResultType;
 import com.atenea.persistence.core.CoreTargetType;
+import com.atenea.persistence.worksession.SessionDeliverableStatus;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.project.ProjectOverviewService;
@@ -28,6 +30,8 @@ import com.atenea.service.worksession.SessionTurnService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.atenea.service.worksession.WorkSessionService;
 import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -541,15 +545,67 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
 
     private CoreCommandExecutionResult closeWorkSession(Map<String, Object> parameters) {
         Long sessionId = requireLong(parameters, "workSessionId");
+        boolean forceClosePendingDeliverables = Boolean.TRUE.equals(parameters.get("forceClosePendingDeliverables"));
+        List<SessionDeliverableType> generatedTypes = List.of();
+        if (!forceClosePendingDeliverables) {
+            generatedTypes = generatePendingCoreDeliverables(sessionId);
+        }
         var response = workSessionService.closeSessionConversationView(sessionId);
         return new CoreCommandExecutionResult(
                 CoreResultType.WORK_SESSION_CONVERSATION_VIEW,
                 CoreTargetType.WORK_SESSION,
                 sessionId,
                 response,
-                "Closed WorkSession " + sessionId + " and returned the updated conversation view",
-                "He cerrado la WorkSession correctamente.",
-                "He cerrado la sesión de trabajo correctamente.");
+                generatedTypes.isEmpty()
+                        ? "Closed WorkSession " + sessionId + " and returned the updated conversation view"
+                        : "Generated pending deliverables and closed WorkSession " + sessionId,
+                generatedTypes.isEmpty()
+                        ? "He cerrado la WorkSession correctamente."
+                        : "He generado los entregables pendientes y he cerrado la WorkSession correctamente.",
+                generatedTypes.isEmpty()
+                        ? "He cerrado la sesión de trabajo correctamente."
+                        : "He generado los entregables pendientes y he cerrado la sesión de trabajo correctamente.");
+    }
+
+    private List<SessionDeliverableType> generatePendingCoreDeliverables(Long sessionId) {
+        SessionDeliverablesViewResponse deliverablesView = sessionDeliverableService.getDeliverablesView(sessionId);
+        List<SessionDeliverableType> pendingTypes = pendingCoreDeliverableTypes(deliverablesView);
+        List<SessionDeliverableType> generatedTypes = new ArrayList<>();
+        for (SessionDeliverableType type : pendingTypes) {
+            SessionDeliverableResponse response = sessionDeliverableGenerationService.generateDeliverable(sessionId, type);
+            if (response.status() != SessionDeliverableStatus.SUCCEEDED) {
+                throw new CoreCloseWorkSessionRejectedException(
+                        "No se pudo generar correctamente "
+                                + humanizeDeliverableType(type)
+                                + " antes del cierre. La sesión sigue abierta.");
+            }
+            generatedTypes.add(type);
+        }
+        return generatedTypes;
+    }
+
+    private List<SessionDeliverableType> pendingCoreDeliverableTypes(SessionDeliverablesViewResponse deliverablesView) {
+        Map<SessionDeliverableType, SessionDeliverableSummaryResponse> latestByType = new LinkedHashMap<>();
+        if (deliverablesView.deliverables() != null) {
+            for (SessionDeliverableSummaryResponse deliverable : deliverablesView.deliverables()) {
+                latestByType.putIfAbsent(deliverable.type(), deliverable);
+            }
+        }
+
+        return EnumSet.allOf(SessionDeliverableType.class).stream()
+                .filter(type -> {
+                    SessionDeliverableSummaryResponse deliverable = latestByType.get(type);
+                    return deliverable == null || deliverable.status() != SessionDeliverableStatus.SUCCEEDED;
+                })
+                .toList();
+    }
+
+    private String humanizeDeliverableType(SessionDeliverableType type) {
+        return switch (type) {
+            case WORK_TICKET -> "el ticket de trabajo";
+            case WORK_BREAKDOWN -> "el desglose de trabajo";
+            case PRICE_ESTIMATE -> "el presupuesto";
+        };
     }
 
     private Long requireLong(Map<String, Object> parameters, String key) {

@@ -77,6 +77,12 @@ export type MobileProjectOverview = {
   } | null;
 };
 
+export type MobileSessionReadState = {
+  sessionId: number;
+  lastSeenActivityAt: string;
+  updatedAt: string;
+};
+
 export type ResolveSessionRequest = {
   title?: string;
   baseBranch?: string;
@@ -134,14 +140,30 @@ export type WorkSessionConversationView = {
       id: number;
       title: string;
       status: string;
+      operationalState: string;
       pullRequestStatus: string | null;
       closeBlockedState: string | null;
       closeBlockedReason: string | null;
       closeBlockedAction: string | null;
       closeRetryable: boolean;
+      openedAt: string | null;
+      lastActivityAt: string | null;
+      publishedAt: string | null;
+      closedAt: string | null;
     };
     runInProgress: boolean;
     canCreateTurn: boolean;
+    latestRun: {
+      id: number;
+      status: string;
+      originTurnId: number | null;
+      resultTurnId: number | null;
+      externalTurnId: string | null;
+      startedAt: string | null;
+      finishedAt: string | null;
+      outputSummary: string | null;
+      errorSummary: string | null;
+    } | null;
     lastError: string | null;
     lastAgentResponse: string | null;
   };
@@ -157,6 +179,51 @@ export type WorkSessionConversationView = {
 
 export type CreateSessionTurnConversationViewResponse = {
   view: WorkSessionConversationView;
+};
+
+export type RescueSessionStatus = 'OPEN' | 'RUNNING' | 'CLOSED';
+
+export type RescueSessionTurnActor = 'OPERATOR' | 'CODEX' | 'ATENEA';
+
+export type RescueSessionConversationView = {
+  session: {
+    id: number;
+    projectId: number;
+    projectName: string;
+    repoPath: string;
+    status: RescueSessionStatus;
+    title: string;
+    canCreateTurn: boolean;
+    externalThreadId: string | null;
+    externalTurnId: string | null;
+    openedAt: string | null;
+    lastActivityAt: string | null;
+    closedAt: string | null;
+  };
+  turns: Array<{
+    id: number;
+    actor: RescueSessionTurnActor;
+    messageText: string;
+    externalTurnId: string | null;
+    createdAt: string;
+  }>;
+};
+
+export type ResolveRescueSessionRequest = {
+  title?: string;
+};
+
+export type ResolveRescueSessionResponse = {
+  created: boolean;
+  view: RescueSessionConversationView;
+};
+
+export type CreateRescueTurnRequest = {
+  message: string;
+};
+
+export type CreateRescueTurnResponse = {
+  view: RescueSessionConversationView;
 };
 
 export type SessionDeliverablesView = {
@@ -176,6 +243,29 @@ export type SessionDeliverablesView = {
     preview: string | null;
     latestApprovedDeliverableId: number | null;
   }>;
+};
+
+export type SessionDeliverable = {
+  id: number;
+  sessionId: number;
+  type: string;
+  status: string;
+  version: number;
+  title: string | null;
+  contentMarkdown: string | null;
+  contentJson: string | null;
+  inputSnapshotJson: string | null;
+  generationNotes: string | null;
+  errorMessage: string | null;
+  model: string | null;
+  promptVersion: string | null;
+  approved: boolean;
+  approvedAt: string | null;
+  billingStatus: string | null;
+  billingReference: string | null;
+  billedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
 export type MarkPriceEstimateBilledRequest = {
@@ -364,4 +454,8 @@ export type CoreCommandEventsResponse = {
 export type CoreVoiceCommandResponse = {
   transcript: string;
   command: CoreCommandResponse;
+};
+
+export type CoreVoiceTranscriptionResponse = {
+  transcript: string;
 };

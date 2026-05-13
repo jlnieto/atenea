@@ -162,7 +162,7 @@ public class CoreCapabilityRegistry {
                             CoreDomain.DEVELOPMENT,
                             "generate_session_deliverable",
                             CoreRiskLevel.SAFE_WRITE,
-                            true,
+                            false,
                             true,
                             "Generate one deliverable for a work session.",
                             "Use when the operator explicitly asks to generate a ticket, work breakdown, or price estimate.",
@@ -223,7 +223,9 @@ public class CoreCapabilityRegistry {
                             "Do not use when the operator only asks for status or wants to publish.",
                             List.of(
                                     requiredLong("workSessionId", "Target work session identifier."),
-                                    optionalLong("projectId", "Owning project identifier when known.")),
+                                    optionalLong("projectId", "Owning project identifier when known."),
+                                    optionalBoolean("forceClosePendingDeliverables",
+                                            "When true, close without auto-generating pending core deliverables first.")),
                             List.of(
                                     new CapabilityExample("cierra la sesión",
                                             "This closes the current work session.")))),
@@ -301,5 +303,9 @@ public class CoreCapabilityRegistry {
 
     private static CapabilityParameterDefinition optionalText(String name, String description) {
         return new CapabilityParameterDefinition(name, "string", false, description);
+    }
+
+    private static CapabilityParameterDefinition optionalBoolean(String name, String description) {
+        return new CapabilityParameterDefinition(name, "boolean", false, description);
     }
 }

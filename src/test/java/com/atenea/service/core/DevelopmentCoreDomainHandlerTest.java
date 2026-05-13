@@ -1,6 +1,7 @@
 package com.atenea.service.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -11,6 +12,7 @@ import com.atenea.api.mobile.MobileSessionSummaryResponse;
 import com.atenea.api.project.ProjectOverviewResponse;
 import com.atenea.api.project.ProjectResponse;
 import com.atenea.api.worksession.ApprovedPriceEstimateSummaryResponse;
+import com.atenea.api.worksession.CloseWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.MarkPriceEstimateBilledRequest;
 import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
@@ -497,8 +499,134 @@ class DevelopmentCoreDomainHandlerTest {
         assertEquals("He marcado correctamente el presupuesto aprobado como facturado.", result.speakableMessage());
     }
 
+    @Test
+    void closeWorkSessionGeneratesPendingDeliverablesBeforeClosing() {
+        when(sessionDeliverableService.getDeliverablesView(44L)).thenReturn(new SessionDeliverablesViewResponse(
+                44L,
+                List.of(new SessionDeliverableSummaryResponse(
+                        301L,
+                        SessionDeliverableType.WORK_TICKET,
+                        SessionDeliverableStatus.SUCCEEDED,
+                        1,
+                        "Ticket",
+                        false,
+                        null,
+                        Instant.parse("2026-03-30T10:04:00Z"),
+                        "Resumen",
+                        null)),
+                false,
+                false,
+                Instant.parse("2026-03-30T10:04:00Z")));
+        when(sessionDeliverableGenerationService.generateDeliverable(44L, SessionDeliverableType.WORK_BREAKDOWN))
+                .thenReturn(deliverableResponse(
+                        302L,
+                        44L,
+                        SessionDeliverableType.WORK_BREAKDOWN,
+                        false,
+                        null,
+                        null));
+        when(sessionDeliverableGenerationService.generateDeliverable(44L, SessionDeliverableType.PRICE_ESTIMATE))
+                .thenReturn(deliverableResponse(
+                        303L,
+                        44L,
+                        SessionDeliverableType.PRICE_ESTIMATE,
+                        false,
+                        null,
+                        null));
+        when(workSessionService.closeSessionConversationView(44L)).thenReturn(closeConversationView(44L));
+
+        CoreCommandExecutionResult result = handler.execute(
+                new CoreIntentEnvelope(
+                        "CLOSE_WORK_SESSION",
+                        CoreDomain.DEVELOPMENT,
+                        "close_work_session",
+                        Map.of("projectId", 7L, "workSessionId", 44L),
+                        BigDecimal.valueOf(0.95),
+                        CoreRiskLevel.SAFE_WRITE,
+                        true),
+                new CoreExecutionContext(101L, 7L, 44L, "default", true, "token-1"));
+
+        verify(sessionDeliverableService).getDeliverablesView(44L);
+        verify(sessionDeliverableGenerationService).generateDeliverable(44L, SessionDeliverableType.WORK_BREAKDOWN);
+        verify(sessionDeliverableGenerationService).generateDeliverable(44L, SessionDeliverableType.PRICE_ESTIMATE);
+        verify(workSessionService).closeSessionConversationView(44L);
+        assertEquals("He generado los entregables pendientes y he cerrado la sesión de trabajo correctamente.", result.speakableMessage());
+    }
+
+    @Test
+    void closeWorkSessionSkipsDeliverableGenerationWhenForced() {
+        when(workSessionService.closeSessionConversationView(44L)).thenReturn(closeConversationView(44L));
+
+        CoreCommandExecutionResult result = handler.execute(
+                new CoreIntentEnvelope(
+                        "CLOSE_WORK_SESSION",
+                        CoreDomain.DEVELOPMENT,
+                        "close_work_session",
+                        Map.of("projectId", 7L, "workSessionId", 44L, "forceClosePendingDeliverables", true),
+                        BigDecimal.valueOf(0.95),
+                        CoreRiskLevel.SAFE_WRITE,
+                        true),
+                new CoreExecutionContext(101L, 7L, 44L, "default", true, "token-1"));
+
+        verify(workSessionService).closeSessionConversationView(44L);
+        assertEquals("He cerrado la sesión de trabajo correctamente.", result.speakableMessage());
+    }
+
+    @Test
+    void closeWorkSessionRejectsWhenPendingDeliverableFailsToGenerate() {
+        when(sessionDeliverableService.getDeliverablesView(44L)).thenReturn(new SessionDeliverablesViewResponse(
+                44L,
+                List.of(),
+                false,
+                false,
+                null));
+        when(sessionDeliverableGenerationService.generateDeliverable(44L, SessionDeliverableType.WORK_TICKET))
+                .thenReturn(new SessionDeliverableResponse(
+                        401L,
+                        44L,
+                        SessionDeliverableType.WORK_TICKET,
+                        SessionDeliverableStatus.FAILED,
+                        1,
+                        "Ticket",
+                        null,
+                        null,
+                        "{}",
+                        null,
+                        "Generation failed",
+                        "gpt-5.4",
+                        "v1",
+                        false,
+                        null,
+                        null,
+                        null,
+                        null,
+                        Instant.parse("2026-03-30T10:05:00Z"),
+                        Instant.parse("2026-03-30T10:06:00Z")));
+
+        CoreCloseWorkSessionRejectedException exception = assertThrows(
+                CoreCloseWorkSessionRejectedException.class,
+                () -> handler.execute(
+                        new CoreIntentEnvelope(
+                                "CLOSE_WORK_SESSION",
+                                CoreDomain.DEVELOPMENT,
+                                "close_work_session",
+                                Map.of("projectId", 7L, "workSessionId", 44L),
+                                BigDecimal.valueOf(0.95),
+                                CoreRiskLevel.SAFE_WRITE,
+                                true),
+                        new CoreExecutionContext(101L, 7L, 44L, "default", true, "token-1")));
+
+        assertEquals(
+                "No se pudo generar correctamente el ticket de trabajo antes del cierre. La sesión sigue abierta.",
+                exception.getMessage());
+    }
+
     private static WorkSessionConversationViewResponse conversationView(Long sessionId) {
         return conversationView(sessionId, null);
+    }
+
+    private static CloseWorkSessionConversationViewResponse closeConversationView(Long sessionId) {
+        return new CloseWorkSessionConversationViewResponse(conversationView(sessionId));
     }
 
     private static WorkSessionConversationViewResponse conversationView(Long sessionId, String lastAgentResponse) {

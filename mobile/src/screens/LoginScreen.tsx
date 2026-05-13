@@ -5,7 +5,7 @@ import { Card } from '../components/Card';
 
 export function LoginScreen() {
   const { login, loading } = useAuth();
-  const [email, setEmail] = useState('operator@atenea.local');
+  const [operator, setOperator] = useState('operator@atenea.local');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -13,44 +13,43 @@ export function LoginScreen() {
     setError(null);
     try {
       await login({
-        email: email.trim(),
+        email: operator.trim(),
         password,
       });
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : 'Login failed');
+      setError(loginError instanceof Error ? loginError.message : 'No se pudo iniciar sesión');
     }
   };
 
   return (
     <View style={styles.container}>
       <Card
-        title="Operator Login"
-        subtitle="Authenticate against Atenea mobile auth to operate protected mobile flows."
+        title="Acceso de operador"
+        subtitle="Autentícate en Atenea para operar los flujos móviles protegidos."
       >
         <TextInput
-          value={email}
-          onChangeText={setEmail}
+          value={operator}
+          onChangeText={setOperator}
           placeholder="operator@atenea.local"
           placeholderTextColor="#8b7c6b"
           style={styles.input}
           autoCapitalize="none"
           autoCorrect={false}
-          keyboardType="email-address"
         />
         <TextInput
           value={password}
           onChangeText={setPassword}
-          placeholder="Password"
+          placeholder="Contraseña"
           placeholderTextColor="#8b7c6b"
           style={styles.input}
           secureTextEntry
         />
         <Pressable
-          style={[styles.button, (loading || !email.trim() || !password) && styles.buttonDisabled]}
+          style={[styles.button, (loading || !operator.trim() || !password) && styles.buttonDisabled]}
           onPress={() => void submit()}
-          disabled={loading || !email.trim() || !password}
+          disabled={loading || !operator.trim() || !password}
         >
-          <Text style={styles.buttonLabel}>{loading ? 'Signing in...' : 'Sign in'}</Text>
+          <Text style={styles.buttonLabel}>{loading ? 'Entrando...' : 'Entrar'}</Text>
         </Pressable>
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </Card>

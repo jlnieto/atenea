@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: atenea
       POSTGRES_PASSWORD: atenea
     ports:
-      - "${ATENEA_DB_PORT:-5434}:5432"
+      - "127.0.0.1:${ATENEA_DB_PORT:-5434}:5432"
     volumes:
       - atenea_db_data:/var/lib/postgresql/data
 
@@ -36,14 +36,15 @@ services:
     expose:
       - "8092"
 
-  expo-dev:
+  expo-preview:
     image: node:20-bookworm-slim
-    container_name: atenea-expo-dev
+    container_name: atenea-expo-preview
     working_dir: /workspace/repos/internal/atenea/mobile
     environment:
       EXPO_NO_TELEMETRY: "1"
-      EXPO_PACKAGER_PROXY_URL: https://ateneatest.yudri.es
-      EXPO_PUBLIC_ATENEA_API_BASE_URL: ${EXPO_PUBLIC_ATENEA_API_BASE_URL:-https://atenea.yudri.es}
+      EXPO_PACKAGER_PROXY_URL: https://ateneaapptest.yudri.es
+      EXPO_PUBLIC_ATENEA_APP_NAME: ${EXPO_PUBLIC_ATENEA_PREVIEW_APP_NAME:-Atenea Preview}
+      EXPO_PUBLIC_ATENEA_API_BASE_URL: ${EXPO_PUBLIC_ATENEA_PREVIEW_API_BASE_URL:-https://ateneatest.yudri.es}
     stdin_open: true
     tty: true
     volumes:
@@ -58,6 +59,30 @@ services:
           npm ci
         fi
         npx expo start --host lan --port 8083 --clear
+
+  expo-prod:
+    image: node:20-bookworm-slim
+    container_name: atenea-expo-prod
+    working_dir: /workspace/repos/internal/atenea/mobile
+    environment:
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_PACKAGER_PROXY_URL: https://ateneaapp.yudri.es
+      EXPO_PUBLIC_ATENEA_APP_NAME: ${EXPO_PUBLIC_ATENEA_PROD_APP_NAME:-Atenea}
+      EXPO_PUBLIC_ATENEA_API_BASE_URL: ${EXPO_PUBLIC_ATENEA_PROD_API_BASE_URL:-https://atenea.yudri.es}
+    stdin_open: true
+    tty: true
+    volumes:
+      - /srv/atenea/workspace/repos:/workspace/repos
+    expose:
+      - "8084"
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        if [ ! -d node_modules ]; then
+          npm ci
+        fi
+        npx expo start --host lan --port 8084 --clear
 
   atenea-dev:
     build:
@@ -90,7 +115,7 @@ services:
       - /srv/atenea/workspace/context:/workspace/context:ro
       - atenea_m2_cache:/root/.m2
     ports:
-      - "${ATENEA_APP_PORT:-8081}:8081"
+      - "${ATENEA_APP_PORT:-8085}:8081"
     command: ["/bin/sh", "-lc", "sleep infinity"]
 
 volumes:

@@ -36,7 +36,7 @@ public class OperatorAuthenticationFilter extends OncePerRequestFilter {
         if (path == null || path.isBlank()) {
             path = request.getServletPath();
         }
-        if (!path.startsWith("/api/mobile/") || isPublicAuthPath(path)) {
+        if (!path.startsWith("/api/") || isPublicAuthPath(path)) {
             filterChain.doFilter(request, response);
             return;
         }

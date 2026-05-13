@@ -42,9 +42,10 @@ public class OperatorAuthConfiguration {
                         .requestMatchers(
                                 "/api/mobile/auth/login",
                                 "/api/mobile/auth/refresh",
-                                "/api/mobile/auth/logout"
+                                "/api/mobile/auth/logout",
+                                "/actuator/health"
                         ).permitAll()
-                        .requestMatchers("/api/mobile/**").authenticated()
+                        .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 .addFilterBefore(operatorAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();

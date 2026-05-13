@@ -64,7 +64,7 @@ ATENEA_CORE_VOICE_API_KEY=sk-... \
   Es la vía canónica para tests y debe preferirse sobre ejecutar `./mvnw` directamente desde el host.
 
 - `./scripts/run.sh`
-  Levanta la base de datos de desarrollo y arranca Spring Boot dentro de Docker exponiendo el puerto `8081`.
+  Levanta la base de datos de desarrollo y arranca Spring Boot dentro de Docker exponiendo el puerto host `8085` por defecto.
 
 - `./scripts/build.sh`
   Genera el `jar` con `./mvnw clean package` dentro de Docker.
@@ -411,4 +411,4 @@ La UI web ya consume estas superficies para:
   - usuario: `atenea`
   - password: `atenea`
   - puerto host: `5434`
-- La app expone por defecto el puerto `8081`.
+- La app de desarrollo expone por defecto el puerto host `8085`. Producción usa `8081` y preview usa `8082`.

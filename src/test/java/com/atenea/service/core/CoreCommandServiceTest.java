@@ -166,6 +166,40 @@ class CoreCommandServiceTest {
     }
 
     @Test
+    void createCommandExecutesGenerateSessionDeliverableWithoutConfirmation() {
+        when(coreIntentInterpreter.interpret(any(CreateCoreCommandRequest.class))).thenReturn(new CoreInterpretationResult(
+                new CoreIntentProposal(
+                        "GENERATE_SESSION_DELIVERABLE",
+                        CoreDomain.DEVELOPMENT,
+                        "generate_session_deliverable",
+                        Map.of("projectId", 7L, "workSessionId", 44L, "deliverableType", "WORK_TICKET"),
+                        BigDecimal.valueOf(0.92)),
+                CoreInterpreterSource.DETERMINISTIC,
+                "deliverable_generation_request"));
+        when(coreDomainRouter.execute(any(CoreIntentEnvelope.class), any(CoreExecutionContext.class)))
+                .thenReturn(new CoreCommandExecutionResult(
+                        CoreResultType.SESSION_DELIVERABLE,
+                        CoreTargetType.SESSION_DELIVERABLE,
+                        301L,
+                        Map.of("id", 301L),
+                        "Generated WORK_TICKET deliverable for WorkSession 44",
+                        "He generado correctamente el entregable solicitado.",
+                        "He generado correctamente el entregable solicitado."));
+
+        CoreCommandResponse response = coreCommandService.createCommand(new CreateCoreCommandRequest(
+                "genera ticket de trabajo",
+                CoreChannel.TEXT,
+                new CoreRequestContext(7L, 44L),
+                null));
+
+        assertEquals(CoreCommandStatus.SUCCEEDED, response.status());
+        assertEquals("generate_session_deliverable", response.intent().capability());
+        assertEquals(CoreResultType.SESSION_DELIVERABLE, response.result().type());
+        assertEquals(CoreTargetType.SESSION_DELIVERABLE, response.result().targetType());
+        assertEquals(301L, response.result().targetId());
+    }
+
+    @Test
     void createCommandMarksRejectedWhenIntentCannotBeDetermined() {
         when(coreIntentInterpreter.interpret(any(CreateCoreCommandRequest.class))).thenThrow(new CoreUnknownIntentException(
                 "Atenea Core could not determine a supported development intent for the current request"));
