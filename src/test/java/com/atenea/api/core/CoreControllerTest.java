@@ -306,7 +306,7 @@ class CoreControllerTest {
                 "voice-command.m4a",
                 "audio/mp4",
                 "fake-audio".getBytes());
-        when(coreVoiceCommandService.createVoiceCommand(audio, 7L, 12L, "operator@atenea.local"))
+        when(coreVoiceCommandService.createVoiceCommand(audio, 7L, 12L, "operator@atenea.local", null))
                 .thenReturn(new CoreVoiceCommandResponse(
                         "continua con la sesion",
                         new CoreCommandResponse(

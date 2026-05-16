@@ -7,9 +7,12 @@ import static org.mockito.Mockito.when;
 import com.atenea.api.core.CoreRequestContext;
 import com.atenea.api.core.CreateCoreCommandRequest;
 import com.atenea.persistence.core.CoreChannel;
+import com.atenea.persistence.core.CoreDomain;
+import com.atenea.persistence.operations.ManagedHostEntity;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.service.operations.OperationsHostResolver;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,12 +28,14 @@ class DefaultCoreIntentInterpreterTest {
 
     @Mock
     private CoreWorkSessionResolver coreWorkSessionResolver;
+    @Mock
+    private OperationsHostResolver operationsHostResolver;
 
     private DefaultCoreIntentInterpreter interpreter;
 
     @BeforeEach
     void setUp() {
-        interpreter = new DefaultCoreIntentInterpreter(coreProjectResolver, coreWorkSessionResolver);
+        interpreter = new DefaultCoreIntentInterpreter(coreProjectResolver, coreWorkSessionResolver, operationsHostResolver);
     }
 
     @Test
@@ -121,6 +126,24 @@ class DefaultCoreIntentInterpreterTest {
                 null));
 
         assertEquals("get_session_summary", result.proposal().capability());
+        assertEquals(Map.of("projectId", 9L, "workSessionId", 44L), result.proposal().parameters());
+    }
+
+    @Test
+    void interpretRoutesLatestCodexAnswerQuestionsToLatestSessionResponse() {
+        WorkSessionEntity session = new WorkSessionEntity();
+        session.setId(44L);
+        session.setProject(project(9L, "fomasys"));
+        when(coreWorkSessionResolver.resolveActiveSession("¿te ha contestado Codex?", 44L, 9L))
+                .thenReturn(session);
+
+        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
+                "¿te ha contestado Codex?",
+                CoreChannel.VOICE,
+                new CoreRequestContext(9L, 44L),
+                null));
+
+        assertEquals("get_latest_session_response", result.proposal().capability());
         assertEquals(Map.of("projectId", 9L, "workSessionId", 44L), result.proposal().parameters());
     }
 
@@ -241,8 +264,47 @@ class DefaultCoreIntentInterpreterTest {
                 result.proposal().parameters());
     }
 
+    @Test
+    void interpretRoutesHostStatusToOperationsDomain() {
+        ManagedHostEntity host = managedHost(3L, "dedicado-principal");
+        when(operationsHostResolver.resolveFromInput("revisa el dedicado")).thenReturn(host);
+
+        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
+                "revisa el dedicado",
+                CoreChannel.TEXT,
+                null,
+                null));
+
+        assertEquals(CoreDomain.OPERATIONS, result.proposal().domain());
+        assertEquals("get_host_status", result.proposal().capability());
+        assertEquals(Map.of("hostId", 3L), result.proposal().parameters());
+    }
+
+    @Test
+    void interpretRoutesApacheRecoveryToOperationsDomain() {
+        ManagedHostEntity host = managedHost(3L, "dedicado-principal");
+        when(operationsHostResolver.resolveFromInput("recupera apache en el dedicado")).thenReturn(host);
+
+        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
+                "recupera apache en el dedicado",
+                CoreChannel.TEXT,
+                null,
+                null));
+
+        assertEquals(CoreDomain.OPERATIONS, result.proposal().domain());
+        assertEquals("recover_apache_hung_processes", result.proposal().capability());
+        assertEquals(Map.of("hostId", 3L), result.proposal().parameters());
+    }
+
     private static ProjectEntity project(Long id, String name) {
         ProjectEntity entity = new ProjectEntity();
+        entity.setId(id);
+        entity.setName(name);
+        return entity;
+    }
+
+    private static ManagedHostEntity managedHost(Long id, String name) {
+        ManagedHostEntity entity = new ManagedHostEntity();
         entity.setId(id);
         entity.setName(name);
         return entity;

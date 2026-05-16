@@ -308,8 +308,9 @@ The first meaningful `Atenea Core` MVP should support:
 
 Important current constraint:
 
-- the repository only implements the `development` side today
-- the `operations` and `communications` capabilities described here are target scope, not present runtime features
+- the repository implements the `development` side and a first runtime slice of `operations`
+- `communications` capabilities described here are target scope, not present runtime features
+- see `docs/operations-domain.md` for the current operations runtime slice
 
 ## Non-goals for the first implementation
 

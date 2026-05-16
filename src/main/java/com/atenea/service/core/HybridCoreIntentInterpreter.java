@@ -2,6 +2,7 @@ package com.atenea.service.core;
 
 import com.atenea.api.core.CreateCoreCommandRequest;
 import com.atenea.persistence.core.CoreInterpreterSource;
+import java.text.Normalizer;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +30,10 @@ public class HybridCoreIntentInterpreter implements CoreIntentInterpreter {
             return defaultCoreIntentInterpreter.interpret(request);
         }
 
+        if (looksLikeOperationsCommand(request.input())) {
+            return defaultCoreIntentInterpreter.interpret(request);
+        }
+
         if (!coreLlmProperties.isEnabled()) {
             return defaultCoreIntentInterpreter.interpret(request);
         }
@@ -47,5 +52,23 @@ public class HybridCoreIntentInterpreter implements CoreIntentInterpreter {
     private boolean hasExplicitExecutionContext(CreateCoreCommandRequest request) {
         return request.context() != null
                 && request.context().workSessionId() != null;
+    }
+
+    private boolean looksLikeOperationsCommand(String input) {
+        String normalized = normalize(input);
+        return normalized.contains("apache")
+                || normalized.contains("servidor")
+                || normalized.contains("dedicado")
+                || normalized.contains("vps")
+                || normalized.contains("incidencia")
+                || normalized.contains("incidencias")
+                || normalized.contains("host")
+                || normalized.contains("hosts");
+    }
+
+    private String normalize(String value) {
+        return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase();
     }
 }

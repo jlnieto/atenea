@@ -53,6 +53,7 @@ import com.atenea.service.mobile.MobileSessionReadStateService;
 import com.atenea.service.mobile.MobileSessionEventService;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.mobile.MobileStreamService;
+import com.atenea.service.operations.OperationsService;
 import com.atenea.service.rescue.RescueSessionService;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
 import com.atenea.service.worksession.SessionDeliverableService;
@@ -104,6 +105,8 @@ class MobileControllerTest {
     private BillingQueueService billingQueueService;
     @Mock
     private RescueSessionService rescueSessionService;
+    @Mock
+    private OperationsService operationsService;
 
     private MockMvc mockMvc;
 
@@ -122,7 +125,8 @@ class MobileControllerTest {
                         sessionDeliverableService,
                         sessionDeliverableGenerationService,
                         billingQueueService,
-                        rescueSessionService))
+                        rescueSessionService,
+                        operationsService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -166,6 +170,9 @@ class MobileControllerTest {
                         "Atenea",
                         12L,
                         "Mobile work",
+                        null,
+                        null,
+                        null,
                         Instant.parse("2026-03-29T10:00:00Z"))),
                 new MobileInboxSummaryResponse(1, 1, 0, 0, 2)));
 

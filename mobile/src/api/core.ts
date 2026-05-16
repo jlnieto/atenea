@@ -42,6 +42,7 @@ export function createCoreVoiceCommand(params: {
   projectId?: number | null;
   workSessionId?: number | null;
   operatorKey?: string | null;
+  scope?: 'GLOBAL' | 'PROJECT' | 'SESSION' | null;
 }): Promise<CoreVoiceCommandResponse> {
   return uploadMultipartFile<CoreVoiceCommandResponse>(
     '/api/core/voice/commands',
@@ -55,6 +56,7 @@ export function createCoreVoiceCommand(params: {
       operatorKey: params.operatorKey ?? null,
       projectId: params.projectId ?? null,
       workSessionId: params.workSessionId ?? null,
+      scope: params.scope ?? null,
     }
   );
 }

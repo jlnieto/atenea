@@ -69,9 +69,10 @@ public class CoreController {
             @RequestPart("audio") MultipartFile audio,
             @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) Long workSessionId,
-            @RequestParam(required = false) String operatorKey
+            @RequestParam(required = false) String operatorKey,
+            @RequestParam(required = false) String scope
     ) {
-        return coreVoiceCommandService.createVoiceCommand(audio, projectId, workSessionId, operatorKey);
+        return coreVoiceCommandService.createVoiceCommand(audio, projectId, workSessionId, operatorKey, scope);
     }
 
     @PostMapping(value = "/voice/transcriptions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -73,6 +73,7 @@ public class CoreVoiceTranscriptionService {
     private byte[] buildMultipartBody(MultipartFile audio, String boundary) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         writeTextPart(output, boundary, "model", properties.getTranscriptionModel());
+        writeTextPart(output, boundary, "language", "es");
         writeTextPart(output, boundary, "response_format", "json");
         if (properties.getPrompt() != null && !properties.getPrompt().isBlank()) {
             writeTextPart(output, boundary, "prompt", properties.getPrompt().trim());

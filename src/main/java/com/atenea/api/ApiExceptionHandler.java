@@ -8,6 +8,7 @@ import com.atenea.service.core.CoreCommandRejectedException;
 import com.atenea.service.core.CoreVoiceTranscriptionException;
 import com.atenea.service.core.CoreVoiceUnavailableException;
 import com.atenea.service.core.CoreSpeechSynthesisException;
+import com.atenea.service.mobile.MobileUploadException;
 import com.atenea.service.project.DuplicateProjectNameException;
 import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotDirectoryException;
@@ -17,6 +18,10 @@ import com.atenea.service.rescue.RescueSessionAlreadyRunningException;
 import com.atenea.service.rescue.RescueSessionClosedException;
 import com.atenea.service.rescue.RescueSessionExecutionFailedException;
 import com.atenea.service.rescue.RescueSessionNotFoundException;
+import com.atenea.service.operations.OperationsHostNotFoundException;
+import com.atenea.service.operations.OperationsIncidentNotFoundException;
+import com.atenea.service.operations.OperationsRemoteExecutionException;
+import com.atenea.service.operations.OperationsServiceNotFoundException;
 import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.AgentRunNotFoundException;
@@ -88,6 +93,16 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(CoreCommandNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleCoreCommandNotFound(CoreCommandNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler({
+            OperationsHostNotFoundException.class,
+            OperationsIncidentNotFoundException.class,
+            OperationsServiceNotFoundException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleOperationsNotFound(RuntimeException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
@@ -204,6 +219,12 @@ public class ApiExceptionHandler {
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 
+    @ExceptionHandler(MobileUploadException.class)
+    public ResponseEntity<ApiErrorResponse> handleMobileUpload(MobileUploadException exception) {
+        return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
     @ExceptionHandler(OperatorAuthenticationException.class)
     public ResponseEntity<ApiErrorResponse> handleOperatorAuthentication(
             OperatorAuthenticationException exception
@@ -231,6 +252,14 @@ public class ApiExceptionHandler {
     @ExceptionHandler(CoreVoiceTranscriptionException.class)
     public ResponseEntity<ApiErrorResponse> handleCoreVoiceTranscription(
             CoreVoiceTranscriptionException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(OperationsRemoteExecutionException.class)
+    public ResponseEntity<ApiErrorResponse> handleOperationsRemoteExecution(
+            OperationsRemoteExecutionException exception
     ) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));

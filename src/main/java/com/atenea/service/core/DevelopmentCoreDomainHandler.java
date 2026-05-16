@@ -84,6 +84,7 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
             case "publish_work_session" -> publishWorkSession(intent.parameters());
             case "sync_work_session_pull_request" -> syncWorkSessionPullRequest(intent.parameters());
             case "get_session_summary" -> getSessionSummary(intent.parameters());
+            case "get_latest_session_response" -> getLatestSessionResponse(intent.parameters());
             case "get_session_deliverables" -> getSessionDeliverables(intent.parameters());
             case "generate_session_deliverable" -> generateSessionDeliverable(intent.parameters());
             case "approve_session_deliverable" -> approveSessionDeliverable(intent.parameters());
@@ -306,6 +307,7 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
         sessionTurnService.createTurn(sessionId, new CreateSessionTurnRequest(message));
         WorkSessionConversationViewResponse view = workSessionService.getSessionConversationView(sessionId);
         String continuationSummary = buildContinueWorkSummary(view);
+        String continuationSpeech = buildContinueWorkSpeech(view, continuationSummary);
         return new CoreCommandExecutionResult(
                 CoreResultType.WORK_SESSION_CONVERSATION_VIEW,
                 CoreTargetType.WORK_SESSION,
@@ -313,7 +315,7 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
                 new CreateSessionTurnConversationViewResponse(view),
                 "Created WorkSession turn and returned conversation view for session " + sessionId,
                 continuationSummary,
-                continuationSummary);
+                continuationSpeech);
     }
 
     private String buildContinueWorkSummary(WorkSessionConversationViewResponse response) {
@@ -331,6 +333,39 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
         }
 
         return "He enviado la instrucción a la sesión activa.";
+    }
+
+    private String buildContinueWorkSpeech(
+            WorkSessionConversationViewResponse response,
+            String fallback
+    ) {
+        if (response == null) {
+            return fallback;
+        }
+        String lastAgentResponse = latestCodexTurnText(response);
+        if (lastAgentResponse == null && response.view() != null) {
+            lastAgentResponse = response.view().lastAgentResponse();
+        }
+        lastAgentResponse = spokenFullResponse(lastAgentResponse);
+        if (lastAgentResponse != null) {
+            return "Codex responde: " + lastAgentResponse;
+        }
+        return fallback;
+    }
+
+    private String latestCodexTurnText(WorkSessionConversationViewResponse response) {
+        if (response.recentTurns() == null || response.recentTurns().isEmpty()) {
+            return null;
+        }
+        for (int index = response.recentTurns().size() - 1; index >= 0; index--) {
+            var turn = response.recentTurns().get(index);
+            if (turn.actor() == com.atenea.persistence.worksession.SessionTurnActor.CODEX
+                    && turn.messageText() != null
+                    && !turn.messageText().isBlank()) {
+                return turn.messageText();
+            }
+        }
+        return null;
     }
 
     private CoreCommandExecutionResult publishWorkSession(Map<String, Object> parameters) {
@@ -374,6 +409,50 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
                 "Returned session summary for WorkSession " + sessionId,
                 spokenSummary,
                 spokenSummary);
+    }
+
+    private CoreCommandExecutionResult getLatestSessionResponse(Map<String, Object> parameters) {
+        Long sessionId = requireLong(parameters, "workSessionId");
+        WorkSessionConversationViewResponse response = workSessionService.getSessionConversationView(sessionId);
+        String spokenResponse = buildLatestSessionResponseSpeech(response);
+        return new CoreCommandExecutionResult(
+                CoreResultType.WORK_SESSION_CONVERSATION_VIEW,
+                CoreTargetType.WORK_SESSION,
+                sessionId,
+                response,
+                "Returned latest session response for WorkSession " + sessionId,
+                spokenResponse,
+                spokenResponse);
+    }
+
+    private String buildLatestSessionResponseSpeech(WorkSessionConversationViewResponse response) {
+        if (response == null || response.view() == null) {
+            return "No tengo cargada una conversación válida para leer ahora mismo.";
+        }
+        if (response.view().runInProgress()) {
+            return "Codex todavía está trabajando. Aún no tengo una respuesta final para leer.";
+        }
+        String latestResponse = latestCodexTurnText(response);
+        if (latestResponse == null) {
+            latestResponse = response.view().lastAgentResponse();
+        }
+        if (latestResponse == null
+                && response.view().latestRun() != null
+                && response.view().latestRun().outputSummary() != null
+                && !response.view().latestRun().outputSummary().isBlank()) {
+            latestResponse = response.view().latestRun().outputSummary();
+        }
+        String spoken = spokenFullResponse(latestResponse);
+        if (spoken != null) {
+            return "Sí. Codex ya ha contestado. Última respuesta: " + spoken;
+        }
+        if (response.view().latestRun() != null
+                && response.view().latestRun().errorSummary() != null
+                && !response.view().latestRun().errorSummary().isBlank()) {
+            return "Codex terminó con error. Detalle: "
+                    + spokenFullResponse(response.view().latestRun().errorSummary());
+        }
+        return "Todavía no tengo una respuesta de Codex para esta sesión.";
     }
 
     private String buildSessionSpokenSummary(MobileSessionSummaryResponse response) {
@@ -437,6 +516,7 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
                 .replace('`', ' ')
                 .replaceAll("#{1,6}\\s*", " ")
                 .replaceAll("\\s*\\.\\s*", ". ")
+                .replaceAll("(\\.\\s*){2,}", ". ")
                 .replaceAll("\\s+", " ")
                 .trim();
         normalized = normalized
@@ -456,6 +536,29 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
             return normalized.substring(0, 217).trim() + "...";
         }
         return normalized;
+    }
+
+    private String spokenFullResponse(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value
+                .replaceAll("\\[([^\\]]+)]\\([^)]*\\)", "$1")
+                .replace("```", " ")
+                .replace('\n', '.')
+                .replace('\r', '.')
+                .replace('`', ' ')
+                .replaceAll("#{1,6}\\s*", " ")
+                .replaceAll("\\s*\\.\\s*", ". ")
+                .replaceAll("(\\.\\s*){2,}", ". ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        normalized = normalized
+                .replaceFirst("(?i)^punto actual\\.?\\s*", "")
+                .replaceFirst("(?i)^estado actual\\.?\\s*", "")
+                .replaceFirst("[.]+$", "")
+                .trim();
+        return normalized.isBlank() ? null : normalized;
     }
 
     private void appendDeliverableStatus(

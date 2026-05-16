@@ -4,6 +4,7 @@ import {
   CoreChannel,
   CoreClarificationOptionResponse,
   CoreCommandResponse,
+  CoreRequestContext,
   CoreVoiceCommandResponse,
   CreateCoreCommandRequest,
 } from '../api/types';
@@ -14,6 +15,7 @@ export type RunCoreCommandOptions = {
   channel?: CoreChannel;
   projectId?: number | null;
   workSessionId?: number | null;
+  scope?: CoreRequestContext['scope'];
   onSucceeded?: (response: CoreCommandResponse) => void;
   openCoreOnAttention?: boolean;
 };
@@ -26,6 +28,7 @@ export type RunCoreVoiceCommandOptions = {
   };
   projectId?: number | null;
   workSessionId?: number | null;
+  scope?: RunCoreCommandOptions['scope'];
   onSucceeded?: (response: CoreCommandResponse) => void;
   openCoreOnAttention?: boolean;
 };
@@ -56,6 +59,7 @@ export function useCoreCommandCenter({
     channel = 'TEXT',
     projectId = selectedProjectId,
     workSessionId = selectedSessionId,
+    scope = null,
     onSucceeded,
     openCoreOnAttention = true,
   }: RunCoreCommandOptions) => {
@@ -66,6 +70,7 @@ export function useCoreCommandCenter({
         projectId,
         workSessionId,
         operatorKey,
+        scope,
       },
       confirmation: {
         confirmed: false,
@@ -111,6 +116,7 @@ export function useCoreCommandCenter({
       projectId: lastRequest.context?.projectId ?? null,
       workSessionId: lastRequest.context?.workSessionId ?? null,
       operatorKey,
+      scope: lastRequest.context?.scope ?? null,
     };
     let nextInput = lastRequest.input;
 
@@ -130,6 +136,7 @@ export function useCoreCommandCenter({
       channel: lastRequest.channel,
       projectId: nextContext.projectId,
       workSessionId: nextContext.workSessionId,
+      scope: nextContext.scope,
     });
   };
 
@@ -141,6 +148,7 @@ export function useCoreCommandCenter({
     audio,
     projectId = selectedProjectId,
     workSessionId = selectedSessionId,
+    scope = null,
     onSucceeded,
     openCoreOnAttention = true,
   }: RunCoreVoiceCommandOptions) => {
@@ -149,11 +157,13 @@ export function useCoreCommandCenter({
       projectId,
       workSessionId,
       operatorKey,
+      scope,
     });
     const requestContext = {
       projectId,
       workSessionId,
       operatorKey,
+      scope,
     };
     setLastRequest({
       input: response.transcript,

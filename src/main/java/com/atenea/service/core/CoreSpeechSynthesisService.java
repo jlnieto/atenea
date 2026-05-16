@@ -71,7 +71,7 @@ public class CoreSpeechSynthesisService {
         return synthesizeText(text, null, null);
     }
 
-    private CoreSpeechAudioResponse synthesizeText(String text, String voiceOverride, Double speedOverride) {
+    public CoreSpeechAudioResponse synthesizeText(String text, String voiceOverride, Double speedOverride) {
         ensureEnabled();
         try {
             HttpRequest request = HttpRequest.newBuilder(speechUri())
@@ -102,9 +102,7 @@ public class CoreSpeechSynthesisService {
 
     private String writeBody(String text, String voiceOverride, Double speedOverride) {
         try {
-            String voice = voiceOverride != null && !voiceOverride.isBlank()
-                    ? voiceOverride.trim()
-                    : properties.getSpeechVoice();
+            String voice = resolveSpeechVoice(voiceOverride);
             double speed = speedOverride != null && speedOverride > 0
                     ? speedOverride
                     : properties.getSpeechSpeed();
@@ -118,6 +116,17 @@ public class CoreSpeechSynthesisService {
         } catch (Exception exception) {
             throw new CoreSpeechSynthesisException("Unable to build speech synthesis request body", exception);
         }
+    }
+
+    private String resolveSpeechVoice(String voiceOverride) {
+        String voice = voiceOverride != null && !voiceOverride.isBlank()
+                ? voiceOverride.trim().toLowerCase()
+                : properties.getSpeechVoice();
+        return switch (voice) {
+            case "alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer",
+                    "verse", "marin", "cedar" -> voice;
+            default -> properties.getSpeechVoice();
+        };
     }
 
     private CoreSpeechSynthesisException classifyFailure(int statusCode, byte[] body) {

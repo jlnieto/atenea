@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { usePendingActionCenter } from './actions/PendingActionCenter';
 import { fetchJson, postJson } from './api/client';
 import { MobileInboxResponse, MobileProjectOverview, MobileSessionReadState } from './api/types';
 import { useNotificationCenter } from './notifications/NotificationCenter';
@@ -22,9 +19,6 @@ import { ProjectsScreen } from './screens/ProjectsScreen';
 import { RescueScreen } from './screens/RescueScreen';
 import { SessionScreen } from './screens/SessionScreen';
 import { AppIcon } from './components/AppIcon';
-import { IconActionLink } from './components/IconActionLink';
-import { StatePill } from './components/StatePill';
-import { labelPullRequestStatus, tonePullRequestStatus } from './core/presentation';
 import { useCoreCommandCenter } from './core/useCoreCommandCenter';
 import { useRemoteResource } from './hooks/useRemoteResource';
 
@@ -40,17 +34,6 @@ type AppShellProps = {
   operatorKey: string;
   operatorName: string;
   onLogout: () => void;
-};
-
-type RecentQueueEvent = {
-  id: string;
-  projectId: number;
-  projectName: string;
-  sessionId: number;
-  sessionTitle: string;
-  type: 'RESPUESTA_NUEVA' | 'NECESITA_REVISION';
-  summary: string;
-  createdAt: string;
 };
 
 const SCREEN_TITLES: Record<AppTabId, string> = {
@@ -79,19 +62,15 @@ export function AppShell({
     notifications,
     consumePendingRoute,
     routeToNotification,
-    dismissNotification,
-    clearNotifications,
     publishAppNotification,
   } = useNotificationCenter();
-  const { pendingAction, clearPendingAction } = usePendingActionCenter();
   const [bootstrapSeenActivity, setBootstrapSeenActivity] = useState<Record<number, string>>({});
   const [announcedSessionState, setAnnouncedSessionState] = useState<Record<number, string>>({});
   const [conversationReadReceipt, setConversationReadReceipt] = useState<{ sessionId: number; token: number } | null>(null);
   const [conversationAutoReadRequest, setConversationAutoReadRequest] = useState<{ token: number; mode: 'brief' | 'full' } | null>(null);
-  const [recentQueueEvents, setRecentQueueEvents] = useState<RecentQueueEvent[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const hydratedAnnouncementStateRef = useRef(false);
-  const { data: workQueueProjects, reload: reloadWorkQueue } = useRemoteResource(
+  const { data: workQueueProjects } = useRemoteResource(
     () => fetchJson<MobileProjectOverview[]>('/api/mobile/projects/overview'),
     [],
     { refreshIntervalMs: 15000 }
@@ -199,28 +178,6 @@ export function AppShell({
     }
   }, [reloadSessionReadStates, seenSessionActivity, setSessionReadStates]);
 
-  const sessionHint = useMemo(() => (
-    selectedSessionId == null
-      ? 'Sin sesión activa.'
-      : `Sesión ${selectedSessionId}`
-  ), [selectedSessionId]);
-
-  const projectHint = useMemo(() => (
-    selectedProjectId == null
-      ? 'Sin proyecto activo.'
-      : `Proyecto ${selectedProjectId}`
-  ), [selectedProjectId]);
-
-  const workflowHint = useMemo(() => {
-    if (selectedSessionId != null) {
-      return 'Core opera la sesión activa. Session revisa estado y Conversation continúa el trabajo.';
-    }
-    if (selectedProjectId != null) {
-      return 'Proyecto activo. Usa Core o abre una sesión para continuar.';
-    }
-    return 'Empieza por Core o Proyectos para fijar contexto.';
-  }, [selectedProjectId, selectedSessionId]);
-
   const openSession = (sessionId: number) => {
     const sessionActivity = workQueueProjects
       ?.find((project) => project.session?.sessionId === sessionId)
@@ -314,15 +271,6 @@ export function AppShell({
       return;
     }
     openNotificationById(notification.id);
-  };
-
-  const recoverPendingAction = () => {
-    if (pendingAction?.sessionId != null) {
-      onSelectSession(pendingAction.sessionId);
-      onChangeTab('session');
-      return;
-    }
-    onChangeTab('projects');
   };
 
   const workQueue = useMemo(() => {
@@ -477,22 +425,6 @@ export function AppShell({
           ? `Resultado listo. ${item.attentionLabel}`
           : 'Codex ha terminado y hay una respuesta nueva para revisar.';
       const eventId = `session-update-${item.sessionId}-${announcementKey}`;
-      setRecentQueueEvents((current) => {
-        const next: RecentQueueEvent[] = [
-          {
-            id: eventId,
-            projectId: item.projectId,
-            projectName: item.projectName,
-            sessionId: item.sessionId,
-            sessionTitle: item.sessionTitle,
-            type: item.queueState as 'RESPUESTA_NUEVA' | 'NECESITA_REVISION',
-            summary: body,
-            createdAt: new Date().toISOString(),
-          },
-          ...current.filter((entry) => entry.id !== eventId),
-        ];
-        return next.slice(0, 6);
-      });
       void publishAppNotification({
         id: eventId,
         title,
@@ -602,11 +534,6 @@ export function AppShell({
           />
         </View>
       ) : activeTab === 'session' ? (
-        <KeyboardAvoidingView
-          key={`session-${selectedSessionId ?? 'none'}`}
-          style={styles.keyboardFrame}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
         <View style={styles.sessionContent}>
           <SessionScreen
             projectId={selectedProjectId}
@@ -617,7 +544,6 @@ export function AppShell({
             onRunCommand={runCommand}
           />
         </View>
-        </KeyboardAvoidingView>
       ) : activeTab === 'rescue' ? (
         <View
           key={`rescue-${selectedProjectId ?? 'none'}`}
@@ -629,203 +555,7 @@ export function AppShell({
           />
         </View>
       ) : activeTab === 'core' ? (
-        <KeyboardAvoidingView
-          style={styles.keyboardFrame}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-        <ScrollView
-          key="tab-core"
-          style={styles.contentScroll}
-          contentContainerStyle={styles.content}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.sessionHintCard}>
-            <Text style={styles.sessionHintValue}>{sessionHint}</Text>
-            <Text style={styles.operatorValue}>{projectHint}</Text>
-          </View>
-
-          {workQueue.length > 0 ? (
-            <View style={styles.workQueueCard}>
-              <View style={styles.workQueueHeader}>
-                <View style={styles.workQueueHeaderCopy}>
-                  <Text style={styles.workQueueTitle}>Radar de trabajo</Text>
-                  <Text style={styles.workQueueSubtitle}>
-                    Tus sesiones activas para alternar entre proyectos sin perder contexto.
-                  </Text>
-                </View>
-                <IconActionLink label="Actualizar" icon="refresh" onPress={() => void reloadWorkQueue()} />
-              </View>
-              <View style={styles.workQueueSummaryRow}>
-                <StatePill label={`${workQueue.filter((item) => item.queueState === 'NECESITA_REVISION').length} revisión`} tone="warning" />
-                <StatePill label={`${workQueue.filter((item) => item.queueState === 'RESPUESTA_NUEVA').length} nuevas`} tone="good" />
-                <StatePill label={`${workQueue.filter((item) => item.queueState === 'ESPERANDO_RESPUESTA').length} esperando`} />
-              </View>
-              {workQueue.map((item) => (
-                <View
-                  key={item.sessionId}
-                  style={[styles.workQueueItem, item.selected && styles.workQueueItemSelected]}
-                >
-                  <View style={styles.workQueueItemTop}>
-                    <View style={styles.workQueueItemCopy}>
-                      <Text style={styles.workQueueProject}>{item.projectName}</Text>
-                      <Text style={styles.workQueueSession}>
-                        Sesión {item.sessionId} · {item.sessionTitle}
-                      </Text>
-                    </View>
-                    <View style={styles.workQueuePills}>
-                      <StatePill
-                        label={
-                          item.queueState === 'NECESITA_REVISION'
-                            ? 'NECESITA REVISIÓN'
-                            : item.queueState === 'RESPUESTA_NUEVA'
-                              ? 'RESPUESTA NUEVA'
-                              : item.queueState === 'ESPERANDO_RESPUESTA'
-                                ? 'ESPERANDO RESPUESTA'
-                                : 'EN ESPERA'
-                        }
-                        tone={
-                          item.queueState === 'NECESITA_REVISION'
-                            ? 'warning'
-                            : item.queueState === 'RESPUESTA_NUEVA'
-                              ? 'good'
-                              : 'default'
-                        }
-                      />
-                      {item.pullRequestStatus ? (
-                        <StatePill
-                          label={labelPullRequestStatus(item.pullRequestStatus)}
-                          tone={tonePullRequestStatus(item.pullRequestStatus)}
-                        />
-                      ) : null}
-                    </View>
-                  </View>
-                  <Text style={styles.workQueueMeta}>
-                    {item.queueState === 'RESPUESTA_NUEVA'
-                      ? 'Hay una respuesta nueva pendiente de revisar.'
-                      : item.attentionLabel
-                        ? `Siguiente atención: ${item.attentionLabel}`
-                        : item.runInProgress
-                          ? 'Codex sigue trabajando en esta sesión.'
-                          : 'Lista para revisar la última respuesta y decidir el siguiente paso.'}
-                  </Text>
-                  <Text style={styles.workQueueMeta}>
-                    {item.lastActivityAt
-                      ? `Última actividad: ${new Date(item.lastActivityAt).toLocaleString()}`
-                      : 'Sin actividad reciente registrada.'}
-                  </Text>
-                  <View style={styles.workQueueActions}>
-                    <IconActionLink
-                      label="Abrir sesión"
-                      icon="arrow-right"
-                      onPress={() => {
-                        onSelectProject(item.projectId);
-                        openSession(item.sessionId);
-                      }}
-                    />
-                    <IconActionLink
-                      label="Ir a conversación"
-                      icon="conversation"
-                      onPress={() => openQueueConversation(item.projectId, item.sessionId)}
-                    />
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {recentQueueEvents.length > 0 ? (
-            <View style={styles.recentQueueCard}>
-              <View style={styles.recentQueueHeader}>
-                <View style={styles.recentQueueHeaderCopy}>
-                  <Text style={styles.recentQueueTitle}>Terminados recientemente</Text>
-                  <Text style={styles.recentQueueSubtitle}>
-                    Bandeja corta de lo último que ha cambiado para que proceses resultados por orden de llegada.
-                  </Text>
-                </View>
-              </View>
-              {recentQueueEvents.map((event) => (
-                <View key={event.id} style={styles.recentQueueItem}>
-                  <View style={styles.recentQueueTop}>
-                    <View style={styles.recentQueueCopy}>
-                      <Text style={styles.recentQueueProject}>{event.projectName}</Text>
-                      <Text style={styles.recentQueueMeta}>
-                        Sesión {event.sessionId} · {event.sessionTitle} · {new Date(event.createdAt).toLocaleTimeString()}
-                      </Text>
-                    </View>
-                    <StatePill
-                      label={event.type === 'NECESITA_REVISION' ? 'NECESITA REVISIÓN' : 'RESPUESTA NUEVA'}
-                      tone={event.type === 'NECESITA_REVISION' ? 'warning' : 'good'}
-                    />
-                  </View>
-                  <Text style={styles.recentQueueSummary}>{event.summary}</Text>
-                  <View style={styles.recentQueueActions}>
-                    <IconActionLink
-                      label="Abrir sesión"
-                      icon="arrow-right"
-                      onPress={() => {
-                        onSelectProject(event.projectId);
-                        openSession(event.sessionId);
-                      }}
-                    />
-                    <IconActionLink
-                      label="Ir a conversación"
-                      icon="conversation"
-                      onPress={() => openQueueConversation(event.projectId, event.sessionId)}
-                    />
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {pendingAction ? (
-            <View style={styles.pendingActionCard}>
-              <Text style={styles.pendingActionLabel}>Recuperación pendiente</Text>
-              <Text style={styles.pendingActionTitle}>{pendingAction.label}</Text>
-              <Text style={styles.pendingActionMeta}>Iniciada {new Date(pendingAction.startedAt).toLocaleString()}</Text>
-              <Text style={styles.pendingActionHint}>{pendingAction.recoveryHint}</Text>
-              <View style={styles.pendingActionButtons}>
-                <Pressable onPress={recoverPendingAction} style={styles.pendingPrimaryButton}>
-                  <Text style={styles.pendingPrimaryLabel}>Abrir contexto</Text>
-                </Pressable>
-                <Pressable onPress={clearPendingAction} style={styles.pendingSecondaryButton}>
-                  <Text style={styles.pendingSecondaryLabel}>Descartar</Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : null}
-
-          {notifications.length > 0 ? (
-            <View style={styles.notificationRail}>
-              <View style={styles.notificationRailHeader}>
-                <Text style={styles.notificationRailTitle}>Alertas recientes</Text>
-                <View style={styles.notificationRailActions}>
-                  <Text style={styles.notificationRailMeta}>{notifications.length} guardadas</Text>
-                  <Pressable onPress={clearNotifications} style={styles.notificationRailClear}>
-                    <Text style={styles.notificationRailClearLabel}>Limpiar</Text>
-                  </Pressable>
-                </View>
-              </View>
-              {notifications.slice(0, 3).map((notification, index) => (
-                <View key={notification.id} style={styles.notificationCard}>
-                  <Pressable onPress={() => openNotification(index)} style={styles.notificationOpen}>
-                    <Text style={styles.notificationTitle}>{notification.title}</Text>
-                    {notification.body ? (
-                      <Text style={styles.notificationBody}>{notification.body}</Text>
-                    ) : null}
-                    <Text style={styles.notificationMeta}>
-                      {notification.payload?.type ?? 'PUSH'} · {new Date(notification.receivedAt).toLocaleTimeString()}
-                    </Text>
-                  </Pressable>
-                  <Pressable onPress={() => dismissNotification(notification.id)} style={styles.notificationDismiss}>
-                    <Text style={styles.notificationDismissLabel}>Descartar</Text>
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
+        <View style={styles.coreContent}>
           <CoreConsoleScreen
             activeCommand={activeCommand}
             historyVersion={historyVersion}
@@ -839,13 +569,9 @@ export function AppShell({
             onRunCommand={runCommand}
             onRunVoiceCommand={runVoiceCommand}
           />
-        </ScrollView>
-        </KeyboardAvoidingView>
+        </View>
       ) : activeTab === 'projects' ? (
-        <KeyboardAvoidingView
-          style={styles.keyboardFrame}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <View style={styles.keyboardFrame}>
           <ProjectsScreen
             selectedProjectId={selectedProjectId}
             sessionSignals={Object.fromEntries(
@@ -868,12 +594,9 @@ export function AppShell({
             onSelectProject={onSelectProject}
             onRunCommand={runCommand}
           />
-        </KeyboardAvoidingView>
+        </View>
       ) : (
-        <KeyboardAvoidingView
-          style={styles.keyboardFrame}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <View style={styles.keyboardFrame}>
         <ScrollView
           key={`tab-${activeTab}`}
           style={styles.contentScroll}
@@ -902,7 +625,7 @@ export function AppShell({
             <BillingScreen onOpenSession={openSession} />
           ) : null}
         </ScrollView>
-        </KeyboardAvoidingView>
+        </View>
       )}
     </View>
   );
@@ -1098,6 +821,9 @@ const styles = StyleSheet.create({
   },
   tabLabelActive: {
     color: '#f7f3ea',
+  },
+  coreContent: {
+    flex: 1,
   },
   sessionHintCard: {
     padding: 15,

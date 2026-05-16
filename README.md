@@ -10,7 +10,10 @@ Documentos clave:
 - `docs/worksession-phase1.md`: estado real actual del core `WorkSession`
 - `docs/worksession-target-flow.md`: objetivo canónico de producto para el siguiente gran bloque `WorkSession`
 - `docs/mobile-full-operation.md`: objetivo estratégico, alcance y fases para operar Atenea end-to-end desde móvil
-- `mobile/README.md`: estado y guía operativa de la app nativa React Native
+- `docs/android-native-migration.md`: decisión y roadmap para migrar la app móvil a Android nativo como superficie principal
+- `docs/voice-engine/README.md`: contrato de producto, arquitectura y plan del motor de voz premium de Atenea
+- `android/README.md`: estado y guía operativa del nuevo cliente Android nativo
+- `mobile/README.md`: estado y guía operativa de la app Expo/React Native actual
 - `docs/session-deliverables-design.md`: diseño objetivo para deliverables persistidos, reporting y pricing de sesión
 - `docs/task-branch-workflow.md`: referencia histórica del flujo retirado `Task` / `TaskExecution`
 - `AGENTS.md`: guía local canónica para agentes/Codex
@@ -21,17 +24,25 @@ Workflow de desarrollo para este VPS:
 ./scripts/test.sh
 ./scripts/run.sh
 ./scripts/build.sh
+./scripts/android-build.sh
+./scripts/android-publish-apk.sh
 ./scripts/shell.sh
 ./scripts/logs-db.sh
 ./scripts/logs-codex.sh
 ./scripts/down.sh
 ```
 
-Cliente móvil nativo:
+Cliente móvil actual Expo/React Native:
 
 ```bash
 cd mobile
 EXPO_PUBLIC_ATENEA_API_BASE_URL=https://atenea.yudri.es npm start
+```
+
+Cliente Android nativo objetivo:
+
+```bash
+./scripts/android-build.sh
 ```
 
 Bootstrap local de operador móvil:
@@ -59,6 +70,9 @@ ATENEA_CORE_VOICE_API_KEY=sk-... \
 
 ## Qué hace cada script
 
+Los scripts resuelven automáticamente la variante de Compose disponible: primero intentan
+`docker compose` y, si no existe, usan `docker-compose`.
+
 - `./scripts/test.sh`
   Ejecuta la suite Maven dentro de Docker con JDK 21. No requiere Java instalado en el host.
   Es la vía canónica para tests y debe preferirse sobre ejecutar `./mvnw` directamente desde el host.
@@ -68,6 +82,12 @@ ATENEA_CORE_VOICE_API_KEY=sk-... \
 
 - `./scripts/build.sh`
   Genera el `jar` con `./mvnw clean package` dentro de Docker.
+
+- `./scripts/android-build.sh`
+  Compila la app Android nativa de `android/` dentro de Docker con Android SDK y Gradle. Por defecto ejecuta `:app:assembleDebug`.
+
+- `./scripts/android-publish-apk.sh`
+  Publica el APK debug Android ya compilado en `/srv/atenea/apk-public/atenea-debug.apk` para descarga protegida desde `https://atenea.yudri.es/apk/atenea-debug.apk`.
 
 - `./scripts/shell.sh`
   Abre una shell Bash dentro del contenedor de desarrollo con el repo montado.
@@ -101,9 +121,9 @@ Lectura de producto objetivo:
 
 Lectura de runtime actual del repo:
 
-- el backend Spring Boot implementado hoy sigue siendo development-first
+- el backend Spring Boot implementado hoy sigue siendo development-first, con un primer slice runtime de `operations`
 - existe un primer slice runtime de `Atenea Core Foundation`
-- ese slice sólo enruta el dominio `development`
+- ese slice enruta el dominio `development` y capacidades operativas iniciales de `operations`
 - `WorkSession` sigue siendo la única superficie de workflow real por debajo del core
 
 El modelo backend activo hoy es:
@@ -114,6 +134,7 @@ El modelo backend activo hoy es:
 - `SessionTurn`
 - `AgentRun`
 - `POST /api/core/commands` como entrada top-level inicial
+- dominio `operations` inicial para hosts gestionados, checks HTTP externos, incidentes y recuperación controlada de Apache por SSH
 - apertura o resolución de sesión
 - turnos conversacionales con Codex
 - continuidad de thread
@@ -126,7 +147,7 @@ El flujo legacy `Task` / `TaskExecution` ya fue retirado del backend y de la bas
 
 Conclusión operativa:
 
-- hoy el repo implementa el dominio `development`
+- hoy el repo implementa el dominio `development` y un slice inicial del dominio `operations`
 - `Atenea Core Foundation` más la superficie operativa de `development` ya existen en backend
 - el backend de core ya soporta:
   - estado de proyectos
@@ -140,10 +161,10 @@ Conclusión operativa:
   - confirmaciones
   - `speakableMessage`
   - timeline de comandos
-- el siguiente bloque ya no es “crear core”, sino endurecer la migración de la app y cerrar STT sobre esta superficie ya implementada
-- no debe documentarse como si ya soportara `operations` o `communications` en runtime
+- el siguiente bloque ya no es “crear core”, sino endurecer la operación móvil, la configuración segura de hosts gestionados y los runbooks remotos
+- no debe documentarse como si ya soportara `communications` en runtime
 
-El repo incluye además una app nativa en `mobile/`:
+El repo incluye además una app móvil actual en `mobile/`:
 
 - React Native sobre Expo
 - shell operatorio móvil para Core, Inbox, Projects, Session y Billing
@@ -168,7 +189,15 @@ El repo incluye además una app nativa en `mobile/`:
   - approve deliverable
   - mark billed
 - conectada de forma híbrida contra `/api/core/*` y `/api/mobile/*`
-- pensada como base de full mobile operation ya operable, con gap principal abierto en hardening de UX sensible y extensión de voz al resto de superficies
+- pensada como baseline funcional de full mobile operation
+
+Dirección móvil nueva:
+
+- `docs/android-native-migration.md` fija la decisión de evolucionar hacia una app Android nativa como superficie principal
+- `mobile/` queda como app Expo/React Native actual y referencia funcional durante la migración
+- la futura app Android nativa debe vivir separada, preferiblemente en `android/`
+- el backend y los contratos `Atenea Core` / `/api/mobile/*` siguen siendo la fuente de verdad
+- la migración no debe hacerse como rewrite destructivo, sino como implementación paralela por fases
 
 ## Superficies API actuales
 
@@ -266,6 +295,9 @@ Actualmente ya implementa:
   - `BILLING_READY`
 - `GET /api/mobile/inbox`
 - `GET /api/mobile/inbox/stream`
+- `GET /api/mobile/operations/hosts`
+- `GET /api/mobile/operations/hosts/{hostId}/status`
+- `GET /api/mobile/operations/incidents`
 - `GET /api/mobile/sessions/{sessionId}/summary`
 - `GET /api/mobile/sessions/{sessionId}/events`
 - `GET /api/mobile/sessions/{sessionId}/events/stream`

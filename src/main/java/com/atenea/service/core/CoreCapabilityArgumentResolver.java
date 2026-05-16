@@ -35,11 +35,14 @@ public class CoreCapabilityArgumentResolver {
         copyPositiveLong(rawArguments, resolved, "projectId");
         copyPositiveLong(rawArguments, resolved, "workSessionId");
         copyPositiveLong(rawArguments, resolved, "deliverableId");
+        copyPositiveLong(rawArguments, resolved, "hostId");
+        copyPositiveLong(rawArguments, resolved, "incidentId");
         copyBoolean(rawArguments, resolved, "forceClosePendingDeliverables");
         copyTrimmedText(rawArguments, resolved, "title");
         copyTrimmedText(rawArguments, resolved, "message");
         copyTrimmedText(rawArguments, resolved, "deliverableType");
         copyTrimmedText(rawArguments, resolved, "billingReference");
+        copyTrimmedText(rawArguments, resolved, "serviceName");
 
         if (definition.requiresParameter("projectId")) {
             ProjectEntity project = resolveProject(request, resolved, resolutionHints);

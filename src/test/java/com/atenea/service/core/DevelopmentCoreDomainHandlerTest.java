@@ -119,6 +119,13 @@ class DevelopmentCoreDomainHandlerTest {
 
     @Test
     void continueWorkSessionDelegatesToTurnCreationAndConversationRead() {
+        String fullCodexTurn = """
+                ## Punto actual
+                Esta es la respuesta completa de Codex, no el resumen corto.
+
+                ## Siguiente paso recomendado
+                Hay que validar el flujo completo en runtime.
+                """;
         WorkSessionConversationViewResponse conversationView = conversationView(
                 12L,
                 """
@@ -127,7 +134,13 @@ class DevelopmentCoreDomainHandlerTest {
 
                 ## Siguiente paso recomendado
                 Revisar la siguiente tarea.
-                """);
+                """,
+                List.of(
+                        new SessionTurnResponse(
+                                33L,
+                                SessionTurnActor.CODEX,
+                                fullCodexTurn,
+                                Instant.parse("2026-03-30T20:00:00Z"))));
         when(workSessionService.getSessionConversationView(12L)).thenReturn(conversationView);
 
         CoreCommandExecutionResult result = handler.execute(
@@ -145,7 +158,9 @@ class DevelopmentCoreDomainHandlerTest {
         verify(workSessionService).getSessionConversationView(12L);
         assertEquals(CoreResultType.WORK_SESSION_CONVERSATION_VIEW, result.resultType());
         assertEquals(12L, result.targetId());
-        assertEquals("Codex responde: Estoy en la sesión activa y ya he retomado el trabajo", result.speakableMessage());
+        assertEquals(
+                "Codex responde: Esta es la respuesta completa de Codex, no el resumen corto. Siguiente paso recomendado. Hay que validar el flujo completo en runtime",
+                result.speakableMessage());
     }
 
     @Test
@@ -167,6 +182,49 @@ class DevelopmentCoreDomainHandlerTest {
         assertEquals(CoreTargetType.PROJECT, result.targetType());
         assertEquals(7L, result.targetId());
         assertEquals("Atenea: sesión abierta. Título Trabajo. Sin pull request.",
+                result.speakableMessage());
+    }
+
+    @Test
+    void getLatestSessionResponseReadsLatestCodexTurn() {
+        WorkSessionConversationViewResponse conversationView = conversationView(
+                44L,
+                "Resumen corto anterior",
+                List.of(
+                        new SessionTurnResponse(
+                                81L,
+                                SessionTurnActor.OPERATOR,
+                                "Dime el siguiente paso",
+                                Instant.parse("2026-03-30T20:00:00Z")),
+                        new SessionTurnResponse(
+                                82L,
+                                SessionTurnActor.CODEX,
+                                """
+                                ## Punto actual
+                                Codex ya ha dejado preparada la separación principal.
+
+                                ## Siguiente paso recomendado
+                                Validar navegación real.
+                                """,
+                                Instant.parse("2026-03-30T20:01:00Z"))));
+        when(workSessionService.getSessionConversationView(44L)).thenReturn(conversationView);
+
+        CoreCommandExecutionResult result = handler.execute(
+                new CoreIntentEnvelope(
+                        "GET_LATEST_SESSION_RESPONSE",
+                        CoreDomain.DEVELOPMENT,
+                        "get_latest_session_response",
+                        Map.of("projectId", 7L, "workSessionId", 44L),
+                        BigDecimal.valueOf(0.95),
+                        CoreRiskLevel.READ,
+                        false),
+                new CoreExecutionContext(101L, 7L, 44L, "default", false, null));
+
+        assertEquals(CoreResultType.WORK_SESSION_CONVERSATION_VIEW, result.resultType());
+        assertEquals(CoreTargetType.WORK_SESSION, result.targetType());
+        assertEquals(44L, result.targetId());
+        assertEquals(
+                "Sí. Codex ya ha contestado. Última respuesta: Codex ya ha dejado preparada la separación principal. Siguiente paso recomendado. Validar navegación real",
                 result.speakableMessage());
     }
 
@@ -630,6 +688,14 @@ class DevelopmentCoreDomainHandlerTest {
     }
 
     private static WorkSessionConversationViewResponse conversationView(Long sessionId, String lastAgentResponse) {
+        return conversationView(sessionId, lastAgentResponse, List.of());
+    }
+
+    private static WorkSessionConversationViewResponse conversationView(
+            Long sessionId,
+            String lastAgentResponse,
+            List<SessionTurnResponse> recentTurns
+    ) {
         return new WorkSessionConversationViewResponse(
                 new WorkSessionViewResponse(
                         new WorkSessionResponse(
@@ -658,7 +724,7 @@ class DevelopmentCoreDomainHandlerTest {
                         null,
                         null,
                         lastAgentResponse),
-                List.of(),
+                recentTurns,
                 20,
                 false);
     }

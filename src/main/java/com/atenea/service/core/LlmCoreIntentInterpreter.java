@@ -45,6 +45,7 @@ public class LlmCoreIntentInterpreter {
             - Prefer selecting the right capability over guessing identifiers.
             - Use arguments only for values that are explicit or strongly inferable.
             - Use resolutionHints for names or labels that help the backend resolve the final target.
+            - If the operator asks whether Codex answered, what Codex said, or to read the latest response, prefer get_latest_session_response when an active session is inferable.
             - If the operator asks what point the development is at, latest progress, blocker, advancement, next step, or "en que punto estamos", prefer get_session_summary when an active session is inferable.
             - If the operator asks for administrative or structural status of one project, prefer get_project_overview.
             - If the operator asks about projects in plural or the whole portfolio, prefer list_projects_overview.

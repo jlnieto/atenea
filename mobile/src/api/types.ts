@@ -58,6 +58,9 @@ export type MobileInboxItem = {
   projectName: string | null;
   sessionId: number | null;
   sessionTitle: string | null;
+  hostId: number | null;
+  hostName: string | null;
+  incidentId: number | null;
   updatedAt: string | null;
 };
 
@@ -351,6 +354,7 @@ export type CoreRequestContext = {
   projectId?: number | null;
   workSessionId?: number | null;
   operatorKey?: string | null;
+  scope?: 'GLOBAL' | 'PROJECT' | 'SESSION' | null;
 };
 
 export type CoreConfirmationRequest = {

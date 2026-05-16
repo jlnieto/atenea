@@ -14,7 +14,6 @@ import {
   View,
 } from 'react-native';
 import { AteneaApiError, fetchJson, postJson } from '../api/client';
-import { createCoreVoiceTranscription } from '../api/core';
 import {
   CreateRescueTurnResponse,
   RescueSessionConversationView,
@@ -25,7 +24,7 @@ import { AppIcon } from '../components/AppIcon';
 import { IconActionLink } from '../components/IconActionLink';
 import { LoadingBlock } from '../components/LoadingBlock';
 import { useRemoteResource } from '../hooks/useRemoteResource';
-import { useVoiceRecorder } from '../core/useVoiceRecorder';
+import { formatAteneaVoiceTelemetry, useAteneaVoiceEngine } from '../voice/useAteneaVoiceEngine';
 import { RenderedTurnText } from './ConversationScreen';
 
 const MONO_FONT = Platform.select({
@@ -43,13 +42,10 @@ export function RescueScreen({
 }) {
   const composerMinHeight = 56;
   const composerMaxHeight = 156;
-  const voiceRecorder = useVoiceRecorder();
+  const voiceRecorder = useAteneaVoiceEngine({ context: 'rescue' });
   const scrollRef = useRef<ScrollView | null>(null);
   const stickToBottomRef = useRef(true);
   const contentHeightRef = useRef(0);
-  const voicePeakLevelRef = useRef(0);
-  const voiceLevelSumRef = useRef(0);
-  const voiceLevelSamplesRef = useRef(0);
   const [resolvedSessionId, setResolvedSessionId] = useState<number | null>(null);
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState(false);
@@ -89,7 +85,8 @@ export function RescueScreen({
   const composerHasText = message.trim().length > 0;
   const composerDisabled = interactionPending || session?.canCreateTurn !== true || session.status === 'CLOSED';
   const canSend = composerHasText && !composerDisabled;
-  const hasVoiceDetails = voiceStatus != null || lastTranscript != null;
+  const voiceTelemetrySummary = formatAteneaVoiceTelemetry(voiceRecorder.lastTelemetry);
+  const hasVoiceDetails = voiceStatus != null || lastTranscript != null || voiceTelemetrySummary != null;
   const latestOperatorTurn = useMemo(
     () => [...turns].reverse().find((turn) => turn.actor === 'OPERATOR') ?? null,
     [turns]
@@ -146,15 +143,6 @@ export function RescueScreen({
     }, 1000);
     return () => clearInterval(intervalId);
   }, [running]);
-
-  useEffect(() => {
-    if (!voiceRecorder.isRecording) {
-      return;
-    }
-    voicePeakLevelRef.current = Math.max(voicePeakLevelRef.current, voiceRecorder.normalizedLevel);
-    voiceLevelSumRef.current += voiceRecorder.normalizedLevel;
-    voiceLevelSamplesRef.current += 1;
-  }, [voiceRecorder.isRecording, voiceRecorder.normalizedLevel]);
 
   useEffect(() => {
     const handleKeyboardShow = (event: KeyboardEvent) => {
@@ -237,29 +225,8 @@ export function RescueScreen({
     setMutationError(null);
     setVoiceStatus('Finalizando grabación...');
     try {
-      const voicePeakLevel = voicePeakLevelRef.current;
-      const voiceAverageLevel = voiceLevelSamplesRef.current > 0
-        ? voiceLevelSumRef.current / voiceLevelSamplesRef.current
-        : 0;
-      const uri = await voiceRecorder.stop();
-      if (isSilentRecording({
-        averageLevel: voiceAverageLevel,
-        durationSeconds: voiceRecorder.durationSeconds,
-        peakLevel: voicePeakLevel,
-      })) {
-        setLastTranscript(null);
-        setVoiceStatus('No he detectado voz clara. No he enviado nada a Codex.');
-        return;
-      }
-
       setVoiceStatus('Audio grabado. Transcribiendo...');
-      const transcription = await createCoreVoiceTranscription({
-        audio: {
-          uri,
-          name: 'rescue-voice-prompt.m4a',
-          type: 'audio/mp4',
-        },
-      });
+      const transcription = await voiceRecorder.stopAndTranscribe('rescue-voice-prompt');
       const transcript = transcription.transcript.trim();
       if (!transcript) {
         setLastTranscript(null);
@@ -285,9 +252,6 @@ export function RescueScreen({
     }
 
     try {
-      voicePeakLevelRef.current = 0;
-      voiceLevelSumRef.current = 0;
-      voiceLevelSamplesRef.current = 0;
       setMutationError(null);
       setVoiceStatus('Preparando grabación...');
       await voiceRecorder.start();
@@ -308,10 +272,7 @@ export function RescueScreen({
     setMutationError(null);
     setVoiceStatus('Cancelando grabación...');
     try {
-      await voiceRecorder.stop();
-      voicePeakLevelRef.current = 0;
-      voiceLevelSumRef.current = 0;
-      voiceLevelSamplesRef.current = 0;
+      await voiceRecorder.cancel();
       setLastTranscript(null);
       setVoiceStatus('Grabación cancelada.');
     } catch (voiceError) {
@@ -433,7 +394,9 @@ export function RescueScreen({
               </Pressable>
               <View style={styles.composerRecorderCenter}>
                 <Text style={styles.composerRecorderTitle}>
-                  Escuchando... {Math.max(1, Math.round(voiceRecorder.durationSeconds))}s
+                  {voiceRecorder.isListening
+                    ? `Escuchando... ${Math.max(1, Math.round(voiceRecorder.durationSeconds))}s`
+                    : 'Activando micrófono...'}
                 </Text>
                 <View style={styles.voiceWaveRow}>
                   {voiceWaveHeights.map((height, index) => (
@@ -446,7 +409,13 @@ export function RescueScreen({
               </View>
               <Pressable
                 onPress={() => void submitVoiceTurn()}
-                style={[styles.composerCircleButton, styles.composerActionButton, styles.composerRecorderActionButton]}
+                disabled={!voiceRecorder.isListening}
+                style={[
+                  styles.composerCircleButton,
+                  styles.composerActionButton,
+                  styles.composerRecorderActionButton,
+                  !voiceRecorder.isListening && styles.composerCircleButtonDisabled,
+                ]}
               >
                 <AppIcon name="send-up" size={20} color="#dce9e5" />
               </Pressable>
@@ -478,6 +447,7 @@ export function RescueScreen({
                 <View style={styles.voiceDetailsContent}>
                   {voiceStatus ? <Text style={styles.voiceStatus}>{voiceStatus}</Text> : null}
                   {lastTranscript ? <Text style={styles.voiceTranscript}>Última transcripción: {lastTranscript}</Text> : null}
+                  {voiceTelemetrySummary ? <Text style={styles.voiceStatus}>{voiceTelemetrySummary}</Text> : null}
                 </View>
               ) : null}
             </View>
@@ -548,26 +518,6 @@ function formatElapsed(startedAt: string | null, now: number) {
     return `${minutes}m ${seconds}s`;
   }
   return `${seconds}s`;
-}
-
-function isSilentRecording({
-  peakLevel,
-  averageLevel,
-  durationSeconds,
-}: {
-  peakLevel: number;
-  averageLevel: number;
-  durationSeconds: number;
-}) {
-  if (durationSeconds < 0.35) {
-    return true;
-  }
-
-  if (peakLevel < 0.07 && averageLevel < 0.018) {
-    return true;
-  }
-
-  return peakLevel < 0.11 && averageLevel < 0.01;
 }
 
 function buildVoiceWaveHeights(level: number, durationSeconds: number) {

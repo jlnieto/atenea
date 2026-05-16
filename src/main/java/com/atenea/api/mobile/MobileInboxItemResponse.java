@@ -12,6 +12,9 @@ public record MobileInboxItemResponse(
         String projectName,
         Long sessionId,
         String sessionTitle,
+        Long hostId,
+        String hostName,
+        Long incidentId,
         Instant updatedAt
 ) {
 }

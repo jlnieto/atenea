@@ -18,9 +18,12 @@ import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -78,28 +81,33 @@ public class SessionTurnService {
             throw new WorkSessionNotFoundException(sessionId);
         }
 
-        List<SessionTurnResponse> visibleTurns = sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)
-                .stream()
-                // Some SessionTurn rows exist only as internal technical markers for the system.
-                // They are not part of the operator-visible conversation. Slice 7 should create
-                // operator/Codex turns with internal=false and expose only those through this history.
-                .filter(turn -> !turn.isInternal())
-                .map(this::toResponse)
-                .toList();
-
         Integer effectiveLimit = normalizeOptionalLimit(limit);
-        List<SessionTurnResponse> filteredTurns = beforeTurnId == null
-                ? visibleTurns
-                : visibleTurns.stream()
-                        .filter(turn -> turn.id() < beforeTurnId)
-                        .toList();
-
         if (effectiveLimit == null) {
-            return filteredTurns;
+            return sessionTurnRepository.findBySessionIdAndInternalFalseOrderByCreatedAtAsc(sessionId)
+                    .stream()
+                    .map(this::toResponse)
+                    .toList();
         }
 
-        int fromIndex = Math.max(0, filteredTurns.size() - effectiveLimit);
-        return filteredTurns.subList(fromIndex, filteredTurns.size());
+        List<SessionTurnEntity> newestFirst = beforeTurnId == null
+                ? sessionTurnRepository.findBySessionIdAndInternalFalseOrderByCreatedAtDesc(
+                        sessionId,
+                        PageRequest.of(0, effectiveLimit))
+                : sessionTurnRepository.findBySessionIdAndInternalFalseAndIdLessThanOrderByCreatedAtDesc(
+                        sessionId,
+                        beforeTurnId,
+                        PageRequest.of(0, effectiveLimit));
+        List<SessionTurnEntity> chronological = new ArrayList<>(newestFirst);
+        Collections.reverse(chronological);
+        return chronological.stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public long countVisibleTurns(Long sessionId) {
+        if (!workSessionRepository.existsById(sessionId)) {
+            throw new WorkSessionNotFoundException(sessionId);
+        }
+        return sessionTurnRepository.countBySessionIdAndInternalFalse(sessionId);
     }
 
     @Transactional(noRollbackFor = WorkSessionTurnExecutionFailedException.class)

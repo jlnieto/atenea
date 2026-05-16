@@ -202,7 +202,7 @@ public class WorkSessionService {
     public WorkSessionConversationViewResponse getSessionConversationView(Long sessionId) {
         WorkSessionViewResponse view = getSessionView(sessionId);
         List<SessionTurnResponse> turns = sessionTurnService.getTurns(sessionId, null, RECENT_TURN_LIMIT);
-        int totalVisibleTurns = sessionTurnService.getTurns(sessionId).size();
+        long totalVisibleTurns = sessionTurnService.countVisibleTurns(sessionId);
         return new WorkSessionConversationViewResponse(
                 view,
                 turns,

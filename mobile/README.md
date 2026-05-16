@@ -1,6 +1,21 @@
 # Atenea Mobile
 
-Native operator shell for Atenea mobile full operation.
+Expo/React Native operator shell for Atenea mobile full operation.
+
+## Strategic direction
+
+This `mobile/` client is the current Expo/React Native implementation and remains useful as a functional baseline.
+
+It is no longer the target architecture for the long-term personal/operator mobile tool. The canonical direction is now documented in:
+
+- `../docs/android-native-migration.md`
+
+Migration rule:
+
+- keep this client working while the Android native app is built in parallel
+- reuse this client as reference for UX, API contracts and proven flows
+- do not add Android-deep capabilities here if they belong in the future native app
+- avoid destructive rewrites of this client until the native Android app covers daily operation
 
 ## Current status
 

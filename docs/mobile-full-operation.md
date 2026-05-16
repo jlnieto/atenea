@@ -15,6 +15,7 @@ This document should be used together with:
 
 - `docs/atenea-core.md`
 - `docs/atenea-core-development-operator-surface.md`
+- `docs/android-native-migration.md`
 - `docs/roadmap.md`
 - `docs/worksession-target-flow.md`
 - `docs/worksession-phase1.md`
@@ -31,13 +32,28 @@ The target is:
 
 - full operation of Atenea from mobile
 
-## Native app decision
+## Android native direction
+
+The long-term mobile direction is now documented in `docs/android-native-migration.md`.
+
+That document supersedes the earlier assumption that Expo/React Native is the final target stack. The current `mobile/` app remains a useful functional baseline and transition client, while the target operator app should be built as Android native in parallel.
+
+The first native usability baseline is documented in `docs/android-native-shell-v1.md`. That shell is now the reference for how the Android client should organize daily operation:
+
+- `Inicio` for fast state and conversational entry
+- `Core` for full command interaction
+- `Ops` for dedicated operational state and actions
+- `Ajustes` for updates and account maintenance
+
+New native work should preserve this separation instead of adding more top-level cards to an existing screen.
+
+## Current Expo baseline
 
 The current repository direction is now explicit:
 
-- client format: native app
-- stack choice: React Native
-- bootstrap baseline: Expo
+- current client format: Expo/React Native app in `mobile/`
+- long-term target: Android native app
+- migration mode: parallel, non-destructive
 
 This decision fits Atenea's expected operator surface:
 

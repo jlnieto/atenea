@@ -509,7 +509,7 @@ class WorkSessionServiceTest {
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.empty());
         when(sessionTurnService.getTurns(12L, null, 20)).thenReturn(List.of());
-        when(sessionTurnService.getTurns(12L)).thenReturn(List.of());
+        when(sessionTurnService.countVisibleTurns(12L)).thenReturn(0L);
 
         WorkSessionConversationViewResponse response = workSessionService.getSessionConversationView(12L);
 
@@ -542,7 +542,7 @@ class WorkSessionServiceTest {
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.empty());
         when(sessionTurnService.getTurns(12L, null, 20)).thenReturn(turns.subList(5, 25));
-        when(sessionTurnService.getTurns(12L)).thenReturn(turns);
+        when(sessionTurnService.countVisibleTurns(12L)).thenReturn((long) turns.size());
 
         WorkSessionConversationViewResponse response = workSessionService.getSessionConversationView(12L);
 
@@ -575,7 +575,7 @@ class WorkSessionServiceTest {
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.empty());
         when(sessionTurnService.getTurns(12L, null, 20)).thenReturn(turns);
-        when(sessionTurnService.getTurns(12L)).thenReturn(turns);
+        when(sessionTurnService.countVisibleTurns(12L)).thenReturn((long) turns.size());
 
         WorkSessionConversationViewResponse response = workSessionService.getSessionConversationView(12L);
 
@@ -614,7 +614,7 @@ class WorkSessionServiceTest {
         when(agentRunRepository.findFirstBySessionIdAndStatusOrderByCreatedAtDesc(12L, AgentRunStatus.SUCCEEDED))
                 .thenReturn(Optional.of(latestRun));
         when(sessionTurnService.getTurns(12L, null, 20)).thenReturn(turns);
-        when(sessionTurnService.getTurns(12L)).thenReturn(turns);
+        when(sessionTurnService.countVisibleTurns(12L)).thenReturn((long) turns.size());
 
         ResolveWorkSessionConversationViewResponse response = workSessionService.resolveSessionConversationView(
                 7L,

@@ -12,20 +12,33 @@ public class CoreVoiceProperties {
     private String apiKey;
     private String transcriptionModel = "gpt-4o-mini-transcribe";
     private String speechModel = "gpt-4o-mini-tts";
-    private String speechVoice = "nova";
+    private String speechVoice = "marin";
     private String speechInstructions = """
             Speak in clear, natural Castilian Spanish from Spain.
+            Read every word in the input. Do not summarize, paraphrase, skip, or shorten the text.
+            Preserve final greetings, sign-offs, informal closings, and trailing sentences.
             Use a neutral Spain Spanish accent, not Latin American Spanish.
             Prefer peninsular Spanish pronunciation and intonation.
             Avoid Latin American cadence, vowel coloring, and regionalisms.
-            Keep a warm, professional tone with a slightly brisk pace.
+            Keep a warm, professional tone with a natural pace.
             Avoid English phonetics for Spanish sentences.
             Pronounce project and product names naturally in Spanish when possible.
             Use short pauses between sections so the result sounds conversational, not robotic.
             Do not over-emphasize punctuation, Markdown markers, file paths, or code-like tokens.
             """;
     private String speechFormat = "mp3";
-    private double speechSpeed = 1.20d;
+    private double speechSpeed = 1.05d;
+    private String realtimeModel = "gpt-realtime";
+    private String realtimeVoice = "marin";
+    private double realtimeSpeed = 1.05d;
+    private String realtimeInstructions = """
+            Eres Atenea, una asistente operativa por voz.
+            Hablas en espanol de Espana, de tu, con tono cercano y profesional.
+            Responde primero con resumen cuando haya mucho contenido.
+            No ejecutes acciones sensibles sin confirmacion explicita.
+            No inventes proyectos, worksessions, servidores, emails, tareas, ramas ni respuestas de Codex.
+            Si no tienes un dato real cargado en el contexto de sesion, dilo claramente.
+            """;
     private String prompt = """
             Transcribe the operator voice command faithfully.
             Preserve project names, branch names, repository names, pull request references, and delivery terms.
@@ -105,6 +118,38 @@ public class CoreVoiceProperties {
 
     public void setSpeechSpeed(double speechSpeed) {
         this.speechSpeed = speechSpeed;
+    }
+
+    public String getRealtimeModel() {
+        return realtimeModel;
+    }
+
+    public void setRealtimeModel(String realtimeModel) {
+        this.realtimeModel = realtimeModel;
+    }
+
+    public String getRealtimeVoice() {
+        return realtimeVoice;
+    }
+
+    public void setRealtimeVoice(String realtimeVoice) {
+        this.realtimeVoice = realtimeVoice;
+    }
+
+    public double getRealtimeSpeed() {
+        return realtimeSpeed;
+    }
+
+    public void setRealtimeSpeed(double realtimeSpeed) {
+        this.realtimeSpeed = realtimeSpeed;
+    }
+
+    public String getRealtimeInstructions() {
+        return realtimeInstructions;
+    }
+
+    public void setRealtimeInstructions(String realtimeInstructions) {
+        this.realtimeInstructions = realtimeInstructions;
     }
 
     public String getPrompt() {

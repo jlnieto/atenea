@@ -10,6 +10,8 @@ import com.atenea.persistence.worksession.SessionDeliverableBillingStatus;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.billing.BillingQueueService;
+import com.atenea.service.operations.OperationsService;
+import com.atenea.api.operations.OperationsIncidentResponse;
 import com.atenea.service.project.ProjectOverviewService;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,13 +25,16 @@ public class MobileInboxService {
 
     private final ProjectOverviewService projectOverviewService;
     private final BillingQueueService billingQueueService;
+    private final OperationsService operationsService;
 
     public MobileInboxService(
             ProjectOverviewService projectOverviewService,
-            BillingQueueService billingQueueService
+            BillingQueueService billingQueueService,
+            OperationsService operationsService
     ) {
         this.projectOverviewService = projectOverviewService;
         this.billingQueueService = billingQueueService;
+        this.operationsService = operationsService;
     }
 
     @Transactional(readOnly = true)
@@ -109,7 +114,27 @@ public class MobileInboxService {
                     billingItem.projectName(),
                     billingItem.sessionId(),
                     billingItem.sessionTitle(),
+                    null,
+                    null,
+                    null,
                     billingItem.approvedAt()));
+        }
+
+        for (OperationsIncidentResponse incident : operationsService.listActiveIncidents().incidents()) {
+            items.add(new MobileInboxItemResponse(
+                    "OPERATIONS_INCIDENT",
+                    incident.severity().name().equals("CRITICAL") ? "warning" : "info",
+                    incident.title(),
+                    incident.summary(),
+                    "Open operations incident",
+                    null,
+                    null,
+                    null,
+                    null,
+                    incident.hostId(),
+                    incident.hostName(),
+                    incident.id(),
+                    incident.lastActivityAt()));
         }
 
         items.sort(Comparator
@@ -146,6 +171,9 @@ public class MobileInboxService {
                 project.project().name(),
                 session.sessionId(),
                 session.title(),
+                null,
+                null,
+                null,
                 updatedAt);
     }
 

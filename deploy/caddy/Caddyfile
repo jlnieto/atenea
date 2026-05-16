@@ -1,4 +1,22 @@
 atenea.yudri.es {
+	handle_path /ops/* {
+		root * /srv/atenea/ops-public
+		file_server
+	}
+
+	handle_path /apk/{$ATENEA_APK_DOWNLOAD_TOKEN}/* {
+		root * /srv/atenea/apk-public-secret
+		file_server
+	}
+
+	handle_path /apk/* {
+		basic_auth {
+			atenea-apk $2a$14$Vo6aTVOQn7Tsm0PYnDhka.UjfOsraAKrGdY2EPaxFHo3LuudW2Aaa
+		}
+		root * /srv/atenea/apk-public
+		file_server
+	}
+
 	handle /api/* {
 		reverse_proxy host.docker.internal:8081
 	}

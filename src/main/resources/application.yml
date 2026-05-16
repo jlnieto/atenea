@@ -16,6 +16,11 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  servlet:
+    multipart:
+      max-file-size: ${ATENEA_MOBILE_UPLOAD_MAX_FILE_SIZE:50MB}
+      max-request-size: ${ATENEA_MOBILE_UPLOAD_MAX_REQUEST_SIZE:55MB}
+
 server:
   port: ${SERVER_PORT:8081}
 
@@ -63,3 +68,5 @@ atenea:
   mobile-push:
     enabled: ${ATENEA_MOBILE_PUSH_ENABLED:false}
     expo-push-url: ${ATENEA_MOBILE_PUSH_EXPO_PUSH_URL:https://exp.host/--/api/v2/push/send}
+  mobile-uploads:
+    root: ${ATENEA_MOBILE_UPLOAD_ROOT:/workspace/repos/internal/atenea/operator-uploads}

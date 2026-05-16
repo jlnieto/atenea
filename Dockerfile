@@ -26,7 +26,7 @@ RUN apt-get update \
 
 RUN git config --system --add safe.directory '*'
 
-RUN useradd -r -u 1001 -g root appuser
+RUN groupadd -r -g 1001 appuser && useradd -r -u 1001 -g appuser appuser
 
 COPY --from=build /workspace/target/atenea-0.0.1-SNAPSHOT.jar app.jar
 

@@ -26,7 +26,8 @@ public class CoreVoiceCommandService {
             MultipartFile audio,
             Long projectId,
             Long workSessionId,
-            String operatorKey
+            String operatorKey,
+            String scope
     ) {
         String transcript = coreVoiceTranscriptionService.transcribe(audio);
         return new CoreVoiceCommandResponse(
@@ -34,7 +35,7 @@ public class CoreVoiceCommandService {
                 coreCommandService.createCommand(new CreateCoreCommandRequest(
                         transcript,
                         CoreChannel.VOICE,
-                        new CoreRequestContext(projectId, workSessionId, operatorKey),
+                        new CoreRequestContext(projectId, workSessionId, operatorKey, scope),
                         new CoreConfirmationRequest(false, null)))
         );
     }

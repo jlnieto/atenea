@@ -2,6 +2,7 @@ package com.atenea.service.worksession;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.atenea.api.worksession.SessionTurnResponse;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 @ExtendWith(MockitoExtension.class)
 class SessionTurnServiceTest {
@@ -71,7 +73,7 @@ class SessionTurnServiceTest {
     @Test
     void getTurnsReturnsVisibleTurnsInChronologicalOrder() {
         when(workSessionRepository.existsById(12L)).thenReturn(true);
-        when(sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(12L)).thenReturn(List.of(
+        when(sessionTurnRepository.findBySessionIdAndInternalFalseOrderByCreatedAtAsc(12L)).thenReturn(List.of(
                 buildTurn(101L, SessionTurnActor.OPERATOR, "First question", false, "2026-03-25T10:05:00Z"),
                 buildTurn(102L, SessionTurnActor.CODEX, "First answer", false, "2026-03-25T10:06:00Z")));
 
@@ -87,11 +89,11 @@ class SessionTurnServiceTest {
     @Test
     void getTurnsReturnsLatestWindowWhenLimitIsProvided() {
         when(workSessionRepository.existsById(12L)).thenReturn(true);
-        when(sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(12L)).thenReturn(List.of(
-                buildTurn(101L, SessionTurnActor.OPERATOR, "Turn 1", false, "2026-03-25T10:01:00Z"),
-                buildTurn(102L, SessionTurnActor.CODEX, "Turn 2", false, "2026-03-25T10:02:00Z"),
-                buildTurn(103L, SessionTurnActor.OPERATOR, "Turn 3", false, "2026-03-25T10:03:00Z"),
-                buildTurn(104L, SessionTurnActor.CODEX, "Turn 4", false, "2026-03-25T10:04:00Z")));
+        when(sessionTurnRepository.findBySessionIdAndInternalFalseOrderByCreatedAtDesc(
+                org.mockito.ArgumentMatchers.eq(12L),
+                any(Pageable.class))).thenReturn(List.of(
+                        buildTurn(104L, SessionTurnActor.CODEX, "Turn 4", false, "2026-03-25T10:04:00Z"),
+                        buildTurn(103L, SessionTurnActor.OPERATOR, "Turn 3", false, "2026-03-25T10:03:00Z")));
 
         List<SessionTurnResponse> turns = sessionTurnService.getTurns(12L, null, 2);
 
@@ -101,12 +103,12 @@ class SessionTurnServiceTest {
     @Test
     void getTurnsReturnsOlderWindowBeforeTurnId() {
         when(workSessionRepository.existsById(12L)).thenReturn(true);
-        when(sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(12L)).thenReturn(List.of(
-                buildTurn(101L, SessionTurnActor.OPERATOR, "Turn 1", false, "2026-03-25T10:01:00Z"),
-                buildTurn(102L, SessionTurnActor.CODEX, "Turn 2", false, "2026-03-25T10:02:00Z"),
-                buildTurn(103L, SessionTurnActor.OPERATOR, "Turn 3", false, "2026-03-25T10:03:00Z"),
-                buildTurn(104L, SessionTurnActor.CODEX, "Turn 4", false, "2026-03-25T10:04:00Z"),
-                buildTurn(105L, SessionTurnActor.OPERATOR, "Turn 5", false, "2026-03-25T10:05:00Z")));
+        when(sessionTurnRepository.findBySessionIdAndInternalFalseAndIdLessThanOrderByCreatedAtDesc(
+                org.mockito.ArgumentMatchers.eq(12L),
+                org.mockito.ArgumentMatchers.eq(105L),
+                any(Pageable.class))).thenReturn(List.of(
+                        buildTurn(104L, SessionTurnActor.CODEX, "Turn 4", false, "2026-03-25T10:04:00Z"),
+                        buildTurn(103L, SessionTurnActor.OPERATOR, "Turn 3", false, "2026-03-25T10:03:00Z")));
 
         List<SessionTurnResponse> turns = sessionTurnService.getTurns(12L, 105L, 2);
 
@@ -116,8 +118,7 @@ class SessionTurnServiceTest {
     @Test
     void getTurnsExcludesInternalTurnsFromPublicHistory() {
         when(workSessionRepository.existsById(12L)).thenReturn(true);
-        when(sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(12L)).thenReturn(List.of(
-                buildTurn(101L, SessionTurnActor.ATENEA, "Internal AgentRun origin", true, "2026-03-25T10:05:00Z"),
+        when(sessionTurnRepository.findBySessionIdAndInternalFalseOrderByCreatedAtAsc(12L)).thenReturn(List.of(
                 buildTurn(102L, SessionTurnActor.OPERATOR, "Visible operator turn", false, "2026-03-25T10:06:00Z"),
                 buildTurn(103L, SessionTurnActor.CODEX, "Visible codex turn", false, "2026-03-25T10:07:00Z")));
 
@@ -130,9 +131,10 @@ class SessionTurnServiceTest {
     @Test
     void getTurnsReturnsEmptyWindowWhenNoVisibleTurnsExistBeforeCursor() {
         when(workSessionRepository.existsById(12L)).thenReturn(true);
-        when(sessionTurnRepository.findBySessionIdOrderByCreatedAtAsc(12L)).thenReturn(List.of(
-                buildTurn(101L, SessionTurnActor.OPERATOR, "Turn 1", false, "2026-03-25T10:01:00Z"),
-                buildTurn(102L, SessionTurnActor.CODEX, "Turn 2", false, "2026-03-25T10:02:00Z")));
+        when(sessionTurnRepository.findBySessionIdAndInternalFalseAndIdLessThanOrderByCreatedAtDesc(
+                org.mockito.ArgumentMatchers.eq(12L),
+                org.mockito.ArgumentMatchers.eq(101L),
+                any(Pageable.class))).thenReturn(List.of());
 
         List<SessionTurnResponse> turns = sessionTurnService.getTurns(12L, 101L, 20);
 

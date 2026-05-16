@@ -1,6 +1,14 @@
+FROM eclipse-temurin:21-jdk AS jdk
+
 FROM node:20-bookworm-slim
 
 ARG CODEX_CLI_VERSION=0.130.0
+ARG DOCKER_COMPOSE_VERSION=2.29.7
+
+COPY --from=jdk /opt/java/openjdk /opt/java/openjdk
+
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -15,12 +23,19 @@ RUN apt-get update \
         jq \
         less \
         lsof \
+        maven \
         openssh-client \
         postgresql-client \
         procps \
         rsync \
     && npm install -g @openai/codex@${CODEX_CLI_VERSION} \
     && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /usr/local/lib/docker/cli-plugins \
+    && curl -fsSL \
+        "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+        -o /usr/local/lib/docker/cli-plugins/docker-compose \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 RUN mkdir -p /workspace/codex-home /workspace/repos \
     && git config --system --add safe.directory '*'

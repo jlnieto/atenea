@@ -50,7 +50,7 @@ class CoreVoiceCommandServiceTest {
                 new com.atenea.api.core.CoreConfirmationRequest(false, null))))
                 .thenReturn(commandResponse);
 
-        var response = service.createVoiceCommand(audio, 7L, 12L, "operator@atenea.local");
+        var response = service.createVoiceCommand(audio, 7L, 12L, "operator@atenea.local", null);
 
         assertEquals("continua con la sesion", response.transcript());
         assertEquals(commandResponse, response.command());

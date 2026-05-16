@@ -2,3 +2,7 @@ target/
 *.log
 .env
 node_modules/
+android/.gradle/
+android/**/build/
+android/local.properties
+operator-uploads/

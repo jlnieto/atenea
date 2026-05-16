@@ -117,6 +117,32 @@ class HybridCoreIntentInterpreterTest {
     }
 
     @Test
+    void interpretUsesDeterministicInterpreterForOperationsCommandsWithoutSessionContext() {
+        coreLlmProperties.setEnabled(true);
+        CreateCoreCommandRequest request = new CreateCoreCommandRequest(
+                "comprueba apache en el dedicado",
+                CoreChannel.TEXT,
+                new CoreRequestContext(null, null, "operator@atenea.local", "GLOBAL"),
+                null);
+        CoreInterpretationResult proposal = new CoreInterpretationResult(
+                new CoreIntentProposal(
+                        "CHECK_SERVICE",
+                        CoreDomain.OPERATIONS,
+                        "check_service",
+                        Map.of("hostId", 1L, "serviceName", "apache"),
+                        BigDecimal.valueOf(0.93)),
+                CoreInterpreterSource.DETERMINISTIC,
+                "operations_service_check_request");
+        when(defaultCoreIntentInterpreter.interpret(request)).thenReturn(proposal);
+
+        CoreInterpretationResult result = interpreter.interpret(request);
+
+        assertEquals(proposal, result);
+        verify(defaultCoreIntentInterpreter).interpret(request);
+        verifyNoInteractions(llmCoreIntentInterpreter);
+    }
+
+    @Test
     void interpretFallsBackToDeterministicInterpreterWhenLlmFails() {
         coreLlmProperties.setEnabled(true);
         CreateCoreCommandRequest request = new CreateCoreCommandRequest(

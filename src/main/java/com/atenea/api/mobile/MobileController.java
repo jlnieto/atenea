@@ -8,6 +8,9 @@ import com.atenea.api.rescue.CreateRescueTurnResponse;
 import com.atenea.api.rescue.ResolveRescueSessionRequest;
 import com.atenea.api.rescue.ResolveRescueSessionResponse;
 import com.atenea.api.rescue.RescueSessionConversationViewResponse;
+import com.atenea.api.operations.ManagedHostResponse;
+import com.atenea.api.operations.OperationsHostStatusResponse;
+import com.atenea.api.operations.OperationsIncidentListResponse;
 import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.api.worksession.CloseWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.CreateSessionTurnConversationViewResponse;
@@ -30,6 +33,7 @@ import com.atenea.service.mobile.MobileSessionReadStateService;
 import com.atenea.service.mobile.MobileSessionEventService;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.mobile.MobileStreamService;
+import com.atenea.service.operations.OperationsService;
 import com.atenea.service.rescue.RescueSessionService;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
 import com.atenea.service.worksession.SessionDeliverableService;
@@ -68,6 +72,7 @@ public class MobileController {
     private final SessionDeliverableGenerationService sessionDeliverableGenerationService;
     private final BillingQueueService billingQueueService;
     private final RescueSessionService rescueSessionService;
+    private final OperationsService operationsService;
 
     public MobileController(
             MobileProjectOverviewService mobileProjectOverviewService,
@@ -82,7 +87,8 @@ public class MobileController {
             SessionDeliverableService sessionDeliverableService,
             SessionDeliverableGenerationService sessionDeliverableGenerationService,
             BillingQueueService billingQueueService,
-            RescueSessionService rescueSessionService
+            RescueSessionService rescueSessionService,
+            OperationsService operationsService
     ) {
         this.mobileProjectOverviewService = mobileProjectOverviewService;
         this.mobileInboxService = mobileInboxService;
@@ -97,6 +103,7 @@ public class MobileController {
         this.sessionDeliverableGenerationService = sessionDeliverableGenerationService;
         this.billingQueueService = billingQueueService;
         this.rescueSessionService = rescueSessionService;
+        this.operationsService = operationsService;
     }
 
     @GetMapping("/projects/overview")
@@ -107,6 +114,21 @@ public class MobileController {
     @GetMapping("/inbox")
     public MobileInboxResponse getInbox() {
         return mobileInboxService.getInbox();
+    }
+
+    @GetMapping("/operations/hosts")
+    public List<ManagedHostResponse> getOperationsHosts() {
+        return operationsService.listHosts();
+    }
+
+    @GetMapping("/operations/hosts/{hostId}/status")
+    public OperationsHostStatusResponse getOperationsHostStatus(@PathVariable Long hostId) {
+        return operationsService.getHostStatus(hostId);
+    }
+
+    @GetMapping("/operations/incidents")
+    public OperationsIncidentListResponse getOperationsIncidents() {
+        return operationsService.listActiveIncidents();
     }
 
     @GetMapping("/inbox/stream")

@@ -108,7 +108,7 @@ export function InboxScreen({
       ))}
 
       {data?.items.map((item, index) => (
-        <Card key={`${item.type}-${item.sessionId ?? index}`} title={item.title} subtitle={item.message}>
+        <Card key={`${item.type}-${item.sessionId ?? item.incidentId ?? index}`} title={item.title} subtitle={item.message}>
           <View style={styles.itemRow}>
             <StatePill
               label={inboxStatusLabel(item.type)}
@@ -124,9 +124,7 @@ export function InboxScreen({
               <IconActionLink label="Abrir sesión" icon="arrow-right" onPress={() => onOpenSession(item.sessionId!)} />
             ) : null}
           </View>
-          <Text style={styles.meta}>
-            {item.projectName} {item.sessionTitle ? `· ${item.sessionTitle}` : ''}
-          </Text>
+          {renderInboxMeta(item)}
           {renderInboxContext(item, now)}
           {item.action ? <Text style={styles.action}>Siguiente: {item.action}</Text> : null}
         </Card>
@@ -145,6 +143,9 @@ function inboxTone(type: string, severity: string) {
   if (type === 'CLOSE_BLOCKED') {
     return 'danger' as const;
   }
+  if (type === 'OPERATIONS_INCIDENT') {
+    return severity === 'warning' ? 'danger' as const : 'warning' as const;
+  }
   return severity === 'warning' ? 'warning' as const : 'default' as const;
 }
 
@@ -160,9 +161,25 @@ function inboxStatusLabel(type: string) {
       return 'PR ABIERTA';
     case 'BILLING_READY':
       return 'LISTA PARA FACTURAR';
+    case 'OPERATIONS_INCIDENT':
+      return 'INCIDENTE OPS';
     default:
       return type;
   }
+}
+
+function renderInboxMeta(item: MobileInboxResponse['items'][number]) {
+  const context = item.hostName ?? item.projectName;
+  const detail = item.sessionTitle ?? (item.incidentId != null ? `Incidente #${item.incidentId}` : null);
+  if (!context && !detail) {
+    return null;
+  }
+
+  return (
+    <Text style={styles.meta}>
+      {context} {detail ? `· ${detail}` : ''}
+    </Text>
+  );
 }
 
 function renderInboxContext(item: MobileInboxResponse['items'][number], now: number) {
@@ -211,6 +228,19 @@ function renderInboxContext(item: MobileInboxResponse['items'][number], now: num
         <Text style={styles.readyItemTitle}>Lista para facturar</Text>
         <Text style={styles.readyItemText}>
           El presupuesto aprobado ya puede pasar a facturación sin esperar más trabajo técnico.
+        </Text>
+      </View>
+    );
+  }
+
+  if (item.type === 'OPERATIONS_INCIDENT') {
+    return (
+      <View style={styles.operationsItemPanel}>
+        <Text style={styles.operationsItemTitle}>Requiere atención operativa</Text>
+        <Text style={styles.operationsItemText}>
+          {item.updatedAt
+            ? `Último movimiento: ${formatAbsoluteAndRelativeTime(item.updatedAt, now)}.`
+            : 'Atenea mantiene abierto un incidente operativo.'}
         </Text>
       </View>
     );
@@ -329,6 +359,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     color: '#476d55',
+  },
+  operationsItemPanel: {
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#fde8e3',
+    borderWidth: 1,
+    borderColor: '#e6b0a4',
+  },
+  operationsItemTitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    color: '#7b2517',
+  },
+  operationsItemText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#975042',
   },
   action: {
     fontSize: 13,

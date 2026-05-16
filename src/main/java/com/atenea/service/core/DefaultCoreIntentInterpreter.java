@@ -7,6 +7,8 @@ import com.atenea.persistence.core.CoreInterpreterSource;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.project.ProjectEntity;
+import com.atenea.persistence.operations.ManagedHostEntity;
+import com.atenea.service.operations.OperationsHostResolver;
 import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.util.LinkedHashMap;
@@ -18,13 +20,16 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
 
     private final CoreProjectResolver coreProjectResolver;
     private final CoreWorkSessionResolver coreWorkSessionResolver;
+    private final OperationsHostResolver operationsHostResolver;
 
     public DefaultCoreIntentInterpreter(
             CoreProjectResolver coreProjectResolver,
-            CoreWorkSessionResolver coreWorkSessionResolver
+            CoreWorkSessionResolver coreWorkSessionResolver,
+            OperationsHostResolver operationsHostResolver
     ) {
         this.coreProjectResolver = coreProjectResolver;
         this.coreWorkSessionResolver = coreWorkSessionResolver;
+        this.operationsHostResolver = operationsHostResolver;
     }
 
     @Override
@@ -32,6 +37,72 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
         CoreRequestContext context = request.context();
         String input = request.input().trim();
         String normalized = normalize(input);
+
+        if (looksLikeOperationsIncidentClose(normalized)) {
+            return proposal(
+                    "CLOSE_OPERATIONS_INCIDENT",
+                    CoreDomain.OPERATIONS,
+                    "close_operations_incident",
+                    Map.of("incidentId", extractIncidentId(input)),
+                    BigDecimal.valueOf(0.94),
+                    "operations_incident_close_request");
+        }
+
+        if (looksLikeOperationsIncidentList(normalized)) {
+            return proposal(
+                    "LIST_OPERATIONS_INCIDENTS",
+                    CoreDomain.OPERATIONS,
+                    "list_operations_incidents",
+                    Map.of(),
+                    BigDecimal.valueOf(0.93),
+                    "operations_incident_list_request");
+        }
+
+        if (looksLikeHostList(normalized)) {
+            return proposal(
+                    "LIST_HOSTS",
+                    CoreDomain.OPERATIONS,
+                    "list_hosts",
+                    Map.of(),
+                    BigDecimal.valueOf(0.93),
+                    "operations_host_list_request");
+        }
+
+        if (looksLikeApacheRecovery(normalized)) {
+            ManagedHostEntity host = resolveOperationsHost(input);
+            return proposal(
+                    "RECOVER_APACHE_HUNG_PROCESSES",
+                    CoreDomain.OPERATIONS,
+                    "recover_apache_hung_processes",
+                    Map.of("hostId", host.getId()),
+                    BigDecimal.valueOf(0.96),
+                    "apache_recovery_request");
+        }
+
+        if (looksLikeServiceCheck(normalized)) {
+            ManagedHostEntity host = resolveOperationsHost(input);
+            Map<String, Object> parameters = new LinkedHashMap<>();
+            parameters.put("hostId", host.getId());
+            parameters.put("serviceName", normalized.contains("apache") ? "apache" : "apache");
+            return proposal(
+                    "CHECK_SERVICE",
+                    CoreDomain.OPERATIONS,
+                    "check_service",
+                    parameters,
+                    BigDecimal.valueOf(0.93),
+                    "operations_service_check_request");
+        }
+
+        if (looksLikeHostStatus(normalized)) {
+            ManagedHostEntity host = resolveOperationsHost(input);
+            return proposal(
+                    "GET_HOST_STATUS",
+                    CoreDomain.OPERATIONS,
+                    "get_host_status",
+                    Map.of("hostId", host.getId()),
+                    BigDecimal.valueOf(0.92),
+                    "operations_host_status_request");
+        }
 
         if (looksLikePortfolioStatus(normalized)) {
             return proposal(
@@ -147,6 +218,18 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                     "close_session_request");
         }
 
+        if (looksLikeLatestSessionResponse(normalized)) {
+            WorkSessionEntity session = resolveSession(context, input);
+            return proposal(
+                    "GET_LATEST_SESSION_RESPONSE",
+                    "get_latest_session_response",
+                    Map.of(
+                            "projectId", session.getProject().getId(),
+                            "workSessionId", session.getId()),
+                    BigDecimal.valueOf(0.94),
+                    "latest_session_response_query");
+        }
+
         if (looksLikeSessionSummary(normalized)) {
             WorkSessionEntity session = resolveSession(context, input);
             return proposal(
@@ -257,6 +340,15 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                 "Atenea Core could not determine the target WorkSession for the current request");
     }
 
+    private ManagedHostEntity resolveOperationsHost(String input) {
+        ManagedHostEntity host = operationsHostResolver.resolveFromInput(input);
+        if (host != null) {
+            return host;
+        }
+        throw new CoreUnknownIntentException(
+                "Atenea Core could not determine the target managed host for the current request");
+    }
+
     private SessionDeliverableType resolveDeliverableType(String normalized) {
         if (normalized.contains("ticket")) {
             return SessionDeliverableType.WORK_TICKET;
@@ -317,6 +409,80 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                 new CoreIntentProposal(intent, CoreDomain.DEVELOPMENT, capability, parameters, confidence),
                 CoreInterpreterSource.DETERMINISTIC,
                 detail);
+    }
+
+    private CoreInterpretationResult proposal(
+            String intent,
+            CoreDomain domain,
+            String capability,
+            Map<String, Object> parameters,
+            BigDecimal confidence,
+            String detail
+    ) {
+        return new CoreInterpretationResult(
+                new CoreIntentProposal(intent, domain, capability, parameters, confidence),
+                CoreInterpreterSource.DETERMINISTIC,
+                detail);
+    }
+
+    private boolean looksLikeHostList(String normalized) {
+        return (normalized.contains("servidores") || normalized.contains("vps") || normalized.contains("hosts"))
+                && (normalized.contains("monitorizados")
+                || normalized.contains("gestionados")
+                || normalized.contains("lista")
+                || normalized.contains("tengo"));
+    }
+
+    private boolean looksLikeHostStatus(String normalized) {
+        return (normalized.contains("revisa")
+                || normalized.contains("comprueba")
+                || normalized.contains("estado")
+                || normalized.contains("como esta")
+                || normalized.contains("status"))
+                && mentionsOperationsTarget(normalized)
+                && !normalized.contains("apache");
+    }
+
+    private boolean looksLikeServiceCheck(String normalized) {
+        return normalized.contains("apache")
+                && (normalized.contains("revisa")
+                || normalized.contains("comprueba")
+                || normalized.contains("estado")
+                || normalized.contains("como esta")
+                || normalized.contains("diagnostica"));
+    }
+
+    private boolean looksLikeApacheRecovery(String normalized) {
+        return normalized.contains("apache")
+                && (normalized.contains("recupera")
+                || normalized.contains("arregla")
+                || normalized.contains("reinicia")
+                || normalized.contains("restart")
+                || normalized.contains("recover")
+                || normalized.contains("colgado")
+                || normalized.contains("colgados"));
+    }
+
+    private boolean looksLikeOperationsIncidentList(String normalized) {
+        return (normalized.contains("incidencias") || normalized.contains("incidentes") || normalized.contains("alertas"))
+                && (normalized.contains("servidor")
+                || normalized.contains("servidores")
+                || normalized.contains("operaciones")
+                || normalized.contains("abiertas"));
+    }
+
+    private boolean looksLikeOperationsIncidentClose(String normalized) {
+        return (normalized.contains("cierra") || normalized.contains("close"))
+                && (normalized.contains("incidencia") || normalized.contains("incidente"));
+    }
+
+    private boolean mentionsOperationsTarget(String normalized) {
+        return normalized.contains("dedicado")
+                || normalized.contains("servidor")
+                || normalized.contains("vps")
+                || normalized.contains("host")
+                || normalized.contains("webs")
+                || normalized.contains("apache");
     }
 
     private boolean looksLikePortfolioStatus(String normalized) {
@@ -387,6 +553,26 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                 || normalized.contains("avances")
                 || normalized.contains("how far along")
                 || normalized.contains("where are we");
+    }
+
+    private boolean looksLikeLatestSessionResponse(String normalized) {
+        boolean mentionsResponse = normalized.contains("respuesta")
+                || normalized.contains("respondido")
+                || normalized.contains("contestado")
+                || normalized.contains("ha dicho")
+                || normalized.contains("dijo")
+                || normalized.contains("ultimo")
+                || normalized.contains("ultima")
+                || normalized.contains("lee")
+                || normalized.contains("leeme");
+        boolean mentionsCodex = normalized.contains("codex");
+        boolean asksForLatestAnswer = normalized.contains("ultima respuesta")
+                || normalized.contains("ultimo que dijo")
+                || normalized.contains("que ha dicho")
+                || normalized.contains("ha contestado")
+                || normalized.contains("ha respondido")
+                || normalized.contains("leer respuesta");
+        return mentionsResponse && (mentionsCodex || asksForLatestAnswer);
     }
 
     private boolean looksLikePublish(String normalized) {
@@ -471,6 +657,15 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
             return Long.parseLong(raw);
         }
         throw new CoreInvalidContextException("Missing or invalid Core parameter: deliverableId");
+    }
+
+    private Long extractIncidentId(String input) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?i)(?:incidencia|incidente)\\s+(\\d+)")
+                .matcher(input);
+        if (matcher.find()) {
+            return Long.parseLong(matcher.group(1));
+        }
+        throw new CoreInvalidContextException("Missing or invalid Core parameter: incidentId");
     }
 
     private String extractBillingReference(String input) {

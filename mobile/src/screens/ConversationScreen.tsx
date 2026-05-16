@@ -15,7 +15,6 @@ import {
   View,
 } from 'react-native';
 import { API_BASE_URL } from '../api/config';
-import { createCoreVoiceTranscription } from '../api/core';
 import { fetchJson } from '../api/client';
 import {
   CoreCommandResponse,
@@ -29,8 +28,8 @@ import { IconActionLink } from '../components/IconActionLink';
 import { useAuth } from '../auth/AuthContext';
 import { Card } from '../components/Card';
 import { LoadingBlock } from '../components/LoadingBlock';
-import { useVoiceRecorder } from '../core/useVoiceRecorder';
 import { useRemoteResource } from '../hooks/useRemoteResource';
+import { formatAteneaVoiceTelemetry, useAteneaVoiceEngine } from '../voice/useAteneaVoiceEngine';
 
 const MONO_FONT = Platform.select({
   ios: 'Menlo',
@@ -58,7 +57,7 @@ export function ConversationScreen({
   const composerMinHeight = 56;
   const composerMaxHeight = 156;
   const { session: authSession } = useAuth();
-  const voiceRecorder = useVoiceRecorder();
+  const voiceRecorder = useAteneaVoiceEngine({ context: 'conversation' });
   const [streamHealthy, setStreamHealthy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const fallbackRefreshIntervalMs = streamHealthy ? undefined : 5000;
@@ -96,9 +95,6 @@ export function ConversationScreen({
   const lastStreamEventAtRef = useRef<string | null>(null);
   const lastSeenLatestTurnIdRef = useRef<number | null>(null);
   const lastSeenOutputSignatureRef = useRef<string | null>(null);
-  const voicePeakLevelRef = useRef(0);
-  const voiceLevelSumRef = useRef(0);
-  const voiceLevelSamplesRef = useRef(0);
 
   const session = data?.view.session ?? null;
   const turns = data?.recentTurns ?? [];
@@ -138,7 +134,8 @@ export function ConversationScreen({
   const consoleStatusMeta = data?.view.runInProgress
     ? latestEventLabel ?? 'La sesión sigue en curso.'
     : null;
-  const hasVoiceDetails = voiceStatus != null || lastTranscript != null;
+  const voiceTelemetrySummary = formatAteneaVoiceTelemetry(voiceRecorder.lastTelemetry);
+  const hasVoiceDetails = voiceStatus != null || lastTranscript != null || voiceTelemetrySummary != null;
   const latestOutputSignature = latestAgentTurn
     ? `${latestAgentTurn.id}:${latestAgentTurn.messageText.length}:${data?.view.lastAgentResponse?.length ?? 0}`
     : data?.view.lastAgentResponse?.length
@@ -262,15 +259,6 @@ export function ConversationScreen({
   }, [composerInputHeight, voiceRecorder.isRecording]);
 
   useEffect(() => {
-    if (!voiceRecorder.isRecording) {
-      return;
-    }
-    voicePeakLevelRef.current = Math.max(voicePeakLevelRef.current, voiceRecorder.normalizedLevel);
-    voiceLevelSumRef.current += voiceRecorder.normalizedLevel;
-    voiceLevelSamplesRef.current += 1;
-  }, [voiceRecorder.isRecording, voiceRecorder.normalizedLevel]);
-
-  useEffect(() => {
     if (sessionId == null || authSession == null) {
       return undefined;
     }
@@ -383,29 +371,8 @@ export function ConversationScreen({
     setPending(true);
     setVoiceStatus('Finalizando grabación...');
     try {
-      const voicePeakLevel = voicePeakLevelRef.current;
-      const voiceAverageLevel = voiceLevelSamplesRef.current > 0
-        ? voiceLevelSumRef.current / voiceLevelSamplesRef.current
-        : 0;
-      const uri = await voiceRecorder.stop();
-      if (isSilentRecording({
-        averageLevel: voiceAverageLevel,
-        durationSeconds: voiceRecorder.durationSeconds,
-        peakLevel: voicePeakLevel,
-      })) {
-        setLastTranscript(null);
-        setVoiceStatus('No he detectado voz clara. No he enviado nada a Codex.');
-        return;
-      }
-
       setVoiceStatus('Audio grabado. Transcribiendo...');
-      const transcription = await createCoreVoiceTranscription({
-        audio: {
-          uri,
-          name: 'conversation-voice-prompt.m4a',
-          type: 'audio/mp4',
-        },
-      });
+      const transcription = await voiceRecorder.stopAndTranscribe('conversation-voice-prompt');
       const transcript = transcription.transcript.trim();
       if (!transcript) {
         setLastTranscript(null);
@@ -448,9 +415,6 @@ export function ConversationScreen({
     }
 
     try {
-      voicePeakLevelRef.current = 0;
-      voiceLevelSumRef.current = 0;
-      voiceLevelSamplesRef.current = 0;
       setVoiceStatus('Preparando grabación...');
       await voiceRecorder.start();
       setLastTranscript(null);
@@ -470,10 +434,7 @@ export function ConversationScreen({
     setMutationError(null);
     setVoiceStatus('Cancelando grabación...');
     try {
-      await voiceRecorder.stop();
-      voicePeakLevelRef.current = 0;
-      voiceLevelSumRef.current = 0;
-      voiceLevelSamplesRef.current = 0;
+      await voiceRecorder.cancel();
       setLastTranscript(null);
       setVoiceStatus('Grabación cancelada.');
     } catch (voiceError) {
@@ -593,7 +554,9 @@ export function ConversationScreen({
               </Pressable>
               <View style={styles.composerRecorderCenter}>
                 <Text style={styles.composerRecorderTitle}>
-                  Escuchando... {Math.max(1, Math.round(voiceRecorder.durationSeconds))}s
+                  {voiceRecorder.isListening
+                    ? `Escuchando... ${Math.max(1, Math.round(voiceRecorder.durationSeconds))}s`
+                    : 'Activando micrófono...'}
                 </Text>
                 <View style={styles.voiceWaveRow}>
                   {voiceWaveHeights.map((height, index) => (
@@ -606,7 +569,13 @@ export function ConversationScreen({
               </View>
               <Pressable
                 onPress={() => void submitVoiceTurn()}
-                style={[styles.composerCircleButton, styles.composerActionButton, styles.composerRecorderActionButton]}
+                disabled={!voiceRecorder.isListening}
+                style={[
+                  styles.composerCircleButton,
+                  styles.composerActionButton,
+                  styles.composerRecorderActionButton,
+                  !voiceRecorder.isListening && styles.composerCircleButtonDisabled,
+                ]}
               >
                 <AppIcon name="send-up" size={20} color="#dce9e5" />
               </Pressable>
@@ -637,6 +606,7 @@ export function ConversationScreen({
                 <View style={styles.voiceDetailsContent}>
                   {voiceStatus ? <Text style={styles.voiceStatus}>{voiceStatus}</Text> : null}
                   {lastTranscript ? <Text style={styles.voiceTranscript}>Última transcripción: {lastTranscript}</Text> : null}
+                  {voiceTelemetrySummary ? <Text style={styles.voiceStatus}>{voiceTelemetrySummary}</Text> : null}
                 </View>
               ) : null}
             </View>
@@ -757,26 +727,6 @@ function mergeSessionEvents(
       .sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime())
       .slice(0, 10),
   };
-}
-
-function isSilentRecording({
-  peakLevel,
-  averageLevel,
-  durationSeconds,
-}: {
-  peakLevel: number;
-  averageLevel: number;
-  durationSeconds: number;
-}) {
-  if (durationSeconds < 0.35) {
-    return true;
-  }
-
-  if (peakLevel < 0.07 && averageLevel < 0.018) {
-    return true;
-  }
-
-  return peakLevel < 0.11 && averageLevel < 0.01;
 }
 
 function describeSessionEvent(event: MobileSessionEventsResponse['events'][number]) {
