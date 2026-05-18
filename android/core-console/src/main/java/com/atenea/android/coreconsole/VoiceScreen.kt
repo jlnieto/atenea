@@ -112,7 +112,6 @@ internal fun VoiceScreen(
     DisposableEffect(Unit) {
         onDispose {
             speechPlayer.release()
-            nativeVoiceRuntime.stop()
         }
     }
 
@@ -606,17 +605,17 @@ internal fun VoiceScreen(
         createNote(noteInput.trim(), clearInput = true)
     }
 
-    fun readNotes() {
+    fun readNotesFromSnapshot(currentNotes: List<MobileVoiceNote>) {
         val message = when {
-            notes.isEmpty() -> "No hay notas activas."
-            notes.size == 1 -> "Tienes una nota activa. ${notes.first().text}"
+            currentNotes.isEmpty() -> "No hay notas activas."
+            currentNotes.size == 1 -> "Tienes una nota activa. ${currentNotes.first().text}"
             else -> buildString {
-                append("Tienes ${notes.size} notas activas.")
-                notes.take(10).forEachIndexed { index, note ->
+                append("Tienes ${currentNotes.size} notas activas.")
+                currentNotes.take(10).forEachIndexed { index, note ->
                     append(" Nota ${index + 1}: ${note.text}.")
                 }
-                if (notes.size > 10) {
-                    append(" Hay ${notes.size - 10} mas.")
+                if (currentNotes.size > 10) {
+                    append(" Hay ${currentNotes.size - 10} mas.")
                 }
             }
         }
@@ -624,17 +623,59 @@ internal fun VoiceScreen(
         speakText(message)
     }
 
-    fun readNoteByNumber(number: Int) {
-        val note = notes.getOrNull(number - 1)
+    fun readNotes() {
+        scope.launch {
+            pending = true
+            error = null
+            try {
+                val state = apiClient.fetchVoiceNotesState()
+                focus = state.focus
+                notes = state.notes
+                noteSendIntent = state.pendingSendIntent
+                readNotesFromSnapshot(state.notes)
+            } catch (readError: Exception) {
+                val message = readError.message ?: "No se pudieron cargar las notas."
+                error = message
+                setPlayback(message, sourceType = "LOCAL_NOTES", sourceId = "read-notes-error")
+                speakText(message)
+            } finally {
+                pending = false
+            }
+        }
+    }
+
+    fun readNoteByNumberFromSnapshot(number: Int, currentNotes: List<MobileVoiceNote>) {
+        val note = currentNotes.getOrNull(number - 1)
         val message = when {
             note != null -> "Nota $number. ${note.text}"
-            notes.isEmpty() -> "No hay notas activas."
-            notes.size == 1 -> "No existe la nota $number. Hay una nota activa."
-            else -> "No existe la nota $number. Hay ${notes.size} notas activas."
+            currentNotes.isEmpty() -> "No hay notas activas."
+            currentNotes.size == 1 -> "No existe la nota $number. Hay una nota activa."
+            else -> "No existe la nota $number. Hay ${currentNotes.size} notas activas."
         }
         statusMessage = message
         setPlayback(message, sourceType = "LOCAL_NOTES", sourceId = "note-$number")
         speakText(message)
+    }
+
+    fun readNoteByNumber(number: Int) {
+        scope.launch {
+            pending = true
+            error = null
+            try {
+                val state = apiClient.fetchVoiceNotesState()
+                focus = state.focus
+                notes = state.notes
+                noteSendIntent = state.pendingSendIntent
+                readNoteByNumberFromSnapshot(number, state.notes)
+            } catch (readError: Exception) {
+                val message = readError.message ?: "No se pudo cargar la nota $number."
+                error = message
+                setPlayback(message, sourceType = "LOCAL_NOTES", sourceId = "read-note-error-$number")
+                speakText(message)
+            } finally {
+                pending = false
+            }
+        }
     }
 
     fun countNotes() {
@@ -771,17 +812,24 @@ internal fun VoiceScreen(
     }
 
     fun requestSendNotes(instructionOverride: String? = null) {
-        if (pending || notes.isEmpty()) {
-            val message = "No hay notas activas para enviar."
-            statusMessage = message
-            setPlayback(message, sourceType = "LOCAL_NOTES", sourceId = "send-empty")
-            speakText(message)
+        if (pending) {
             return
         }
         scope.launch {
             pending = true
             error = null
             try {
+                val refreshed = apiClient.fetchVoiceNotesState()
+                focus = refreshed.focus
+                notes = refreshed.notes
+                noteSendIntent = refreshed.pendingSendIntent
+                if (refreshed.notes.isEmpty()) {
+                    val message = "No hay notas activas para enviar."
+                    statusMessage = message
+                    setPlayback(message, sourceType = "LOCAL_NOTES", sourceId = "send-empty")
+                    speakText(message)
+                    return@launch
+                }
                 val intent = apiClient.createVoiceNoteSendIntent(instructionOverride?.takeIf { it.isNotBlank() })
                 noteSendIntent = intent
                 pendingLocalAction = null

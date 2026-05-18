@@ -57,6 +57,8 @@ internal object VoiceCommandInterpreter {
             normalizedCommand.isStartBlockCommand() -> VoiceIntent.StartBlock(VoiceBlockType.GENERIC, command.extractBlockInitialText())
             normalizedCommand.isQuestionBlockCommand() -> VoiceIntent.StartBlock(VoiceBlockType.QUESTION, command.extractBlockInitialText())
             normalizedCommand.isPromptBlockCommand() -> VoiceIntent.StartBlock(VoiceBlockType.PROMPT, command.extractBlockInitialText())
+            normalizedCommand.extractReadNoteNumber() != null ->
+                VoiceIntent.ReadNote(normalizedCommand.extractReadNoteNumber()!!)
             normalizedCommand.isNoteBlockCommand() -> VoiceIntent.StartBlock(VoiceBlockType.NOTE, command.extractNoteText().takeIf { it.isNotBlank() })
             normalizedCommand.isFinishBlockCommand() -> VoiceIntent.FinishBlock
             normalizedCommand.isCancelBlockCommand() -> VoiceIntent.CancelBlock
@@ -73,15 +75,13 @@ internal object VoiceCommandInterpreter {
             normalizedCommand.isPreviousCommand() -> VoiceIntent.PreviousPlayback
             normalizedCommand.isCodexStatusQuestion() -> VoiceIntent.CheckCodexStatus
             normalizedCommand.isLatestSessionResponseCommand() -> VoiceIntent.RunCommand(command)
-            normalizedCommand.extractReadNoteNumber() != null ->
-                VoiceIntent.ReadNote(normalizedCommand.extractReadNoteNumber()!!)
-            normalizedCommand.isReadNotesCommand() -> VoiceIntent.ReadNotes
             normalizedCommand.isCountNotesCommand() -> VoiceIntent.CountNotes
             normalizedCommand.isArchiveLastNoteCommand() -> VoiceIntent.ArchiveLastNote
             normalizedCommand.isArchiveAllNotesCommand() -> VoiceIntent.ArchiveAllNotes
             normalizedCommand.extractArchiveNoteNumber() != null ->
                 VoiceIntent.ArchiveNote(normalizedCommand.extractArchiveNoteNumber()!!)
             normalizedCommand.isSendNotesCommand() -> VoiceIntent.SendNotes(command.extractInstruction())
+            normalizedCommand.isReadNotesCommand() -> VoiceIntent.ReadNotes
             normalizedCommand.isReadCommand() -> VoiceIntent.ReadPlayback
             normalizedCommand.isClarificationCommand() -> VoiceIntent.ClarifyCurrentSegment(command)
             normalizedCommand.isConfirmCommand() -> VoiceIntent.ConfirmPending
@@ -279,7 +279,17 @@ internal object VoiceCommandInterpreter {
     }
 
     private fun String.isSendNotesCommand(): Boolean =
-        (contains("manda") || contains("mandalas") || contains("envia") || contains("envialas")) && contains("nota")
+        contains("nota") && listOf(
+            "manda",
+            "mandar",
+            "mandalas",
+            "manda las",
+            "envia",
+            "enviar",
+            "envialas",
+            "envia las",
+            "envio"
+        ).any { contains(it) }
 
     private fun String.isConfirmCommand(): Boolean =
         contains("confirmo") || contains("confirma") || contains("adelante") || contains("si confirma") || contains("si adelante")
@@ -295,23 +305,50 @@ internal object VoiceCommandInterpreter {
             contains("cancelar envio")
 
     private fun String.isReadNotesCommand(): Boolean =
-        (contains("lee") || contains("leeme") || contains("repasa") || contains("revisa")) && contains("nota")
+        contains("nota") && (
+            hasReadVerb() ||
+                contains("mis notas") ||
+                contains("las notas") ||
+                contains("notas activas")
+            )
 
     private fun String.extractReadNoteNumber(): Int? {
-        if (!(contains("lee") || contains("leeme") || contains("repasa") || contains("revisa"))) {
-            return null
-        }
         val digit = Regex("(?:nota|numero)\\s+(\\d{1,2})").find(this)
             ?.groupValues
             ?.getOrNull(1)
             ?.toIntOrNull()
         if (digit != null) {
-            return digit
+            return digit.takeIf { hasReadVerb() || looksLikeBareReadNoteCommand() }
         }
-        return NOTE_NUMBER_WORDS.entries.firstOrNull { (word, _) ->
+        val wordMatch = NOTE_NUMBER_WORDS.entries.firstOrNull { (word, _) ->
             contains("nota $word") || contains("nota numero $word") || contains("numero $word")
         }?.value
+        return wordMatch?.takeIf { hasReadVerb() || looksLikeBareReadNoteCommand() }
     }
+
+    private fun String.hasReadVerb(): Boolean =
+        listOf(
+            "lee",
+            "leer",
+            "leeme",
+            "leelo",
+            "le",
+            "ley",
+            "dime",
+            "dicta",
+            "repasa",
+            "revisa",
+            "reproduce"
+        ).any { anyToken(it) || contains("$it ") }
+
+    private fun String.looksLikeBareReadNoteCommand(): Boolean =
+        contains("nota") &&
+            (Regex("(?:nota|numero)\\s+\\d{1,2}").containsMatchIn(this) ||
+                NOTE_NUMBER_WORDS.keys.any { word -> contains("nota $word") || contains("numero $word") }) &&
+            !isSendNotesCommand() &&
+            !isArchiveAllNotesCommand() &&
+            !isArchiveLastNoteCommand() &&
+            extractArchiveNoteNumber() == null
 
     private fun String.isCountNotesCommand(): Boolean =
         (contains("cuantas") || contains("cuenta") || contains("numero de")) && contains("nota")

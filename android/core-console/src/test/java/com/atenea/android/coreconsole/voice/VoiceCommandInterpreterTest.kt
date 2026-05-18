@@ -27,6 +27,9 @@ class VoiceCommandInterpreterTest {
     fun routesReadSingleNoteBeforeReadAllNotes() {
         assertEquals(VoiceIntent.ReadNote(1), VoiceCommandInterpreter.interpret("Atenea, lee nota 1"))
         assertEquals(VoiceIntent.ReadNote(1), VoiceCommandInterpreter.interpret("Atenea, lee nota uno"))
+        assertEquals(VoiceIntent.ReadNote(1), VoiceCommandInterpreter.interpret("Atenea, le nota 1"))
+        assertEquals(VoiceIntent.ReadNote(1), VoiceCommandInterpreter.interpret("Atenea, dime nota uno"))
+        assertEquals(VoiceIntent.ReadNote(1), VoiceCommandInterpreter.interpret("Atenea, nota 1"))
     }
 
     @Test
@@ -124,10 +127,13 @@ class VoiceCommandInterpreterTest {
     @Test
     fun routesSendNotesToPendingBackendIntent() {
         val plain = VoiceCommandInterpreter.interpret("Atenea, envia la nota a Codex")
+        val infinitive = VoiceCommandInterpreter.interpret("Atenea, enviar las notas")
         val instructed = VoiceCommandInterpreter.interpret("Atenea, manda las notas y pide que priorice lo urgente")
 
         assertIs<VoiceIntent.SendNotes>(plain)
         assertEquals(null, plain.instruction)
+        assertIs<VoiceIntent.SendNotes>(infinitive)
+        assertEquals(null, infinitive.instruction)
         assertIs<VoiceIntent.SendNotes>(instructed)
         assertEquals("pide que priorice lo urgente", instructed.instruction)
     }

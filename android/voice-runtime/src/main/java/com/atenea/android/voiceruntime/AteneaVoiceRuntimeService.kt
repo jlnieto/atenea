@@ -23,6 +23,7 @@ class AteneaVoiceRuntimeService : Service() {
     private val realtimeLock = Any()
     private var realtimeClient: WebRtcRealtimeClient? = null
     private var realtimeConnected = false
+    private var expectedRealtimeCloseReason: String? = null
     private var currentResponseId: String? = null
     private var currentAssistantItemId: String? = null
     private lateinit var audioRouteController: VoiceAudioRouteController
@@ -205,6 +206,7 @@ class AteneaVoiceRuntimeService : Service() {
                     AteneaDiagnostics.info("voice-runtime", "webrtc_connected")
                     synchronized(realtimeLock) {
                         realtimeConnected = true
+                        expectedRealtimeCloseReason = null
                     }
                     AteneaVoiceRuntimeStateStore.update {
                         it.copy(
@@ -228,6 +230,12 @@ class AteneaVoiceRuntimeService : Service() {
 
                 override fun onDisconnected(reason: String) {
                     AteneaDiagnostics.warn("voice-runtime", "webrtc_disconnected", mapOf("reason" to reason))
+                    val expectedClose = synchronized(realtimeLock) {
+                        val expected = expectedRealtimeCloseReason
+                        expectedRealtimeCloseReason = null
+                        expected
+                    }
+                    val recoverable = expectedClose == null
                     synchronized(realtimeLock) {
                         realtimeConnected = false
                         realtimeClient = null
@@ -241,8 +249,8 @@ class AteneaVoiceRuntimeService : Service() {
                             realtimeStatus = "not_connected",
                             inputSpeechActive = false,
                             outputPlaybackActive = false,
-                            lastErrorCode = null,
-                            lastErrorRecoverable = false,
+                            lastErrorCode = if (recoverable) "WEBRTC_DISCONNECTED" else null,
+                            lastErrorRecoverable = recoverable,
                             lastEvent = "Realtime WebRTC cerrado: $reason"
                         )
                     }
@@ -277,6 +285,9 @@ class AteneaVoiceRuntimeService : Service() {
         AteneaDiagnostics.info("voice-runtime", "disconnect_realtime", mapOf("reason" to reason))
         val client = synchronized(realtimeLock) {
             realtimeConnected = false
+            if (realtimeClient != null) {
+                expectedRealtimeCloseReason = reason
+            }
             realtimeClient.also { realtimeClient = null }
         }
         client?.close(reason)
