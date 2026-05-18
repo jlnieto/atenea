@@ -22,8 +22,12 @@ import com.atenea.persistence.core.CoreResultType;
 import com.atenea.persistence.core.CoreTargetType;
 import com.atenea.persistence.worksession.SessionDeliverableStatus;
 import com.atenea.persistence.worksession.SessionDeliverableType;
+import com.atenea.service.database.ProjectDatabaseRefreshResponse;
+import com.atenea.service.database.ProjectDatabaseRefreshService;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.project.ProjectOverviewService;
+import com.atenea.service.verification.ProjectVerificationResponse;
+import com.atenea.service.verification.ProjectVerificationService;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
 import com.atenea.service.worksession.SessionDeliverableService;
 import com.atenea.service.worksession.SessionTurnService;
@@ -47,6 +51,9 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
     private final ProjectOverviewService projectOverviewService;
     private final MobileSessionService mobileSessionService;
     private final CoreOperatorContextService coreOperatorContextService;
+    private final SessionSpeechPreparationService sessionSpeechPreparationService;
+    private final ProjectVerificationService projectVerificationService;
+    private final ProjectDatabaseRefreshService projectDatabaseRefreshService;
 
     public DevelopmentCoreDomainHandler(
             WorkSessionService workSessionService,
@@ -56,7 +63,10 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
             SessionDeliverableGenerationService sessionDeliverableGenerationService,
             ProjectOverviewService projectOverviewService,
             MobileSessionService mobileSessionService,
-            CoreOperatorContextService coreOperatorContextService
+            CoreOperatorContextService coreOperatorContextService,
+            SessionSpeechPreparationService sessionSpeechPreparationService,
+            ProjectVerificationService projectVerificationService,
+            ProjectDatabaseRefreshService projectDatabaseRefreshService
     ) {
         this.workSessionService = workSessionService;
         this.sessionTurnService = sessionTurnService;
@@ -66,6 +76,9 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
         this.projectOverviewService = projectOverviewService;
         this.mobileSessionService = mobileSessionService;
         this.coreOperatorContextService = coreOperatorContextService;
+        this.sessionSpeechPreparationService = sessionSpeechPreparationService;
+        this.projectVerificationService = projectVerificationService;
+        this.projectDatabaseRefreshService = projectDatabaseRefreshService;
     }
 
     @Override
@@ -85,6 +98,8 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
             case "sync_work_session_pull_request" -> syncWorkSessionPullRequest(intent.parameters());
             case "get_session_summary" -> getSessionSummary(intent.parameters());
             case "get_latest_session_response" -> getLatestSessionResponse(intent.parameters());
+            case "run_project_verification" -> runProjectVerification(intent.parameters());
+            case "refresh_project_database" -> refreshProjectDatabase(intent.parameters());
             case "get_session_deliverables" -> getSessionDeliverables(intent.parameters());
             case "generate_session_deliverable" -> generateSessionDeliverable(intent.parameters());
             case "approve_session_deliverable" -> approveSessionDeliverable(intent.parameters());
@@ -262,21 +277,42 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
 
     private CoreCommandExecutionResult activateProjectContext(Map<String, Object> parameters, CoreExecutionContext context) {
         Long projectId = requireLong(parameters, "projectId");
-        coreOperatorContextService.activateProject(context.operatorKey(), projectId, context.commandId());
+        Long openWorkSessionId = coreOperatorContextService.activateProject(context.operatorKey(), projectId, context.commandId());
         ProjectOverviewResponse overview = projectOverviewService.getOverview().stream()
                 .filter(candidate -> candidate.project().id().equals(projectId))
                 .findFirst()
                 .orElseThrow(() -> new CoreInvalidContextException("Missing or invalid Core parameter: projectId"));
+        String projectName = overview.project().name();
+        ProjectOverviewResponse.WorkSessionOverviewResponse workSession = overview.workSession();
+        String message;
+        CoreTargetType targetType = CoreTargetType.PROJECT;
+        Long targetId = projectId;
+        if (openWorkSessionId != null && workSession != null && workSession.sessionId().equals(openWorkSessionId)) {
+            targetType = CoreTargetType.WORK_SESSION;
+            targetId = openWorkSessionId;
+            message = "He cambiado el foco a " + projectName
+                    + " y he seleccionado la WorkSession abierta: " + workSession.title() + ".";
+        } else if (openWorkSessionId != null) {
+            targetType = CoreTargetType.WORK_SESSION;
+            targetId = openWorkSessionId;
+            message = "He cambiado el foco a " + projectName
+                    + " y he seleccionado su WorkSession abierta.";
+        } else {
+            message = "He cambiado el foco a " + projectName
+                    + ". No hay WorkSession abierta; para trabajar con Codex primero abre una sesión.";
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activeProjectId", projectId);
+        payload.put("activeWorkSessionId", openWorkSessionId);
+        payload.put("project", overview);
         return new CoreCommandExecutionResult(
                 CoreResultType.PROJECT_CONTEXT,
-                CoreTargetType.PROJECT,
-                projectId,
-                Map.of(
-                        "activeProjectId", projectId,
-                        "project", overview),
+                targetType,
+                targetId,
+                payload,
                 "Activated project context for project " + projectId,
-                "El proyecto seleccionado ya es el contexto activo.",
-                "El proyecto seleccionado ya es el contexto activo.");
+                message,
+                message);
     }
 
     private CoreCommandExecutionResult createWorkSession(Map<String, Object> parameters) {
@@ -307,7 +343,7 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
         sessionTurnService.createTurn(sessionId, new CreateSessionTurnRequest(message));
         WorkSessionConversationViewResponse view = workSessionService.getSessionConversationView(sessionId);
         String continuationSummary = buildContinueWorkSummary(view);
-        String continuationSpeech = buildContinueWorkSpeech(view, continuationSummary);
+        String continuationSpeech = buildContinueWorkSpeech(sessionId, view, continuationSummary);
         return new CoreCommandExecutionResult(
                 CoreResultType.WORK_SESSION_CONVERSATION_VIEW,
                 CoreTargetType.WORK_SESSION,
@@ -336,9 +372,14 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
     }
 
     private String buildContinueWorkSpeech(
+            Long sessionId,
             WorkSessionConversationViewResponse response,
             String fallback
     ) {
+        String prepared = prepareBriefSessionSpeech(sessionId);
+        if (prepared != null) {
+            return "Codex responde: " + prepared;
+        }
         if (response == null) {
             return fallback;
         }
@@ -414,7 +455,7 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
     private CoreCommandExecutionResult getLatestSessionResponse(Map<String, Object> parameters) {
         Long sessionId = requireLong(parameters, "workSessionId");
         WorkSessionConversationViewResponse response = workSessionService.getSessionConversationView(sessionId);
-        String spokenResponse = buildLatestSessionResponseSpeech(response);
+        String spokenResponse = buildLatestSessionResponseSpeech(sessionId, response);
         return new CoreCommandExecutionResult(
                 CoreResultType.WORK_SESSION_CONVERSATION_VIEW,
                 CoreTargetType.WORK_SESSION,
@@ -425,12 +466,16 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
                 spokenResponse);
     }
 
-    private String buildLatestSessionResponseSpeech(WorkSessionConversationViewResponse response) {
+    private String buildLatestSessionResponseSpeech(Long sessionId, WorkSessionConversationViewResponse response) {
         if (response == null || response.view() == null) {
             return "No tengo cargada una conversación válida para leer ahora mismo.";
         }
         if (response.view().runInProgress()) {
             return "Codex todavía está trabajando. Aún no tengo una respuesta final para leer.";
+        }
+        String prepared = prepareBriefSessionSpeech(sessionId);
+        if (prepared != null) {
+            return "Sí. Codex ya ha contestado. Resumen para decidir: " + prepared;
         }
         String latestResponse = latestCodexTurnText(response);
         if (latestResponse == null) {
@@ -453,6 +498,69 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
                     + spokenFullResponse(response.view().latestRun().errorSummary());
         }
         return "Todavía no tengo una respuesta de Codex para esta sesión.";
+    }
+
+    private String prepareBriefSessionSpeech(Long sessionId) {
+        try {
+            SessionSpeechPreparationResult prepared = sessionSpeechPreparationService.prepareLatestResponse(
+                    sessionId,
+                    SessionSpeechMode.BRIEF);
+            String text = prepared.text();
+            return text == null || text.isBlank() ? null : text;
+        } catch (CoreVoiceUnavailableException ignored) {
+            return null;
+        }
+    }
+
+    private CoreCommandExecutionResult runProjectVerification(Map<String, Object> parameters) {
+        Long projectId = requireLong(parameters, "projectId");
+        Long sessionId = optionalLong(parameters, "workSessionId");
+        ProjectVerificationResponse response = projectVerificationService.runVerification(projectId, sessionId);
+        String spoken = buildProjectVerificationSpeech(response);
+        return new CoreCommandExecutionResult(
+                CoreResultType.PROJECT_VERIFICATION_RUN,
+                CoreTargetType.PROJECT_VERIFICATION_RUN,
+                response.id(),
+                response,
+                "Ran project verification " + response.id() + " for project " + projectId,
+                spoken,
+                spoken);
+    }
+
+    private CoreCommandExecutionResult refreshProjectDatabase(Map<String, Object> parameters) {
+        Long projectId = requireLong(parameters, "projectId");
+        ProjectDatabaseRefreshResponse response = projectDatabaseRefreshService.runRefresh(projectId);
+        String spoken = buildProjectDatabaseRefreshSpeech(response);
+        return new CoreCommandExecutionResult(
+                CoreResultType.PROJECT_DATABASE_REFRESH_RUN,
+                CoreTargetType.PROJECT_DATABASE_REFRESH_RUN,
+                response.id(),
+                response,
+                "Ran project database refresh " + response.id() + " for project " + projectId,
+                spoken,
+                spoken);
+    }
+
+    private String buildProjectVerificationSpeech(ProjectVerificationResponse response) {
+        StringBuilder speech = new StringBuilder(response.decisionBrief());
+        if (response.blockerSummary() != null && !response.blockerSummary().isBlank()) {
+            speech.append(" Motivo: ").append(spokenExcerpt(response.blockerSummary()));
+        }
+        if (response.recommendedAction() != null && !response.recommendedAction().isBlank()) {
+            speech.append(" Siguiente paso: ").append(spokenExcerpt(response.recommendedAction()));
+        }
+        return speech.toString().trim();
+    }
+
+    private String buildProjectDatabaseRefreshSpeech(ProjectDatabaseRefreshResponse response) {
+        StringBuilder speech = new StringBuilder(response.decisionBrief());
+        if (response.blockerSummary() != null && !response.blockerSummary().isBlank()) {
+            speech.append(" Motivo: ").append(spokenExcerpt(response.blockerSummary()));
+        }
+        if (response.recommendedAction() != null && !response.recommendedAction().isBlank()) {
+            speech.append(" Siguiente paso: ").append(spokenExcerpt(response.recommendedAction()));
+        }
+        return speech.toString().trim();
     }
 
     private String buildSessionSpokenSummary(MobileSessionSummaryResponse response) {
@@ -717,6 +825,11 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
             return number.longValue();
         }
         throw new CoreInvalidContextException("Missing or invalid Core parameter: " + key);
+    }
+
+    private Long optionalLong(Map<String, Object> parameters, String key) {
+        Object value = parameters.get(key);
+        return value instanceof Number number ? number.longValue() : null;
     }
 
     private String requireText(Map<String, Object> parameters, String key) {

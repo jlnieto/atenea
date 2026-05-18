@@ -37,6 +37,9 @@ atenea:
     prompt: ${ATENEA_CODEX_APP_SERVER_PROMPT:say hello}
     cwd: ${ATENEA_CODEX_APP_SERVER_CWD:/workspace/repos/internal/atenea}
     model: ${ATENEA_CODEX_APP_SERVER_MODEL:}
+    auth-file: ${ATENEA_CODEX_APP_SERVER_AUTH_FILE:}
+    auth-status-file: ${ATENEA_CODEX_APP_SERVER_AUTH_STATUS_FILE:}
+    required-auth-mode: ${ATENEA_CODEX_REQUIRED_AUTH_MODE:chatgpt}
     connect-timeout: ${ATENEA_CODEX_APP_SERVER_CONNECT_TIMEOUT:10s}
     start-timeout: ${ATENEA_CODEX_APP_SERVER_START_TIMEOUT:15s}
     completion-timeout: ${ATENEA_CODEX_APP_SERVER_COMPLETION_TIMEOUT:300s}
@@ -44,6 +47,9 @@ atenea:
   rescue-codex-app-server:
     url: ${ATENEA_RESCUE_CODEX_APP_SERVER_URL:${ATENEA_CODEX_APP_SERVER_URL:ws://127.0.0.1:8092}}
     model: ${ATENEA_RESCUE_CODEX_APP_SERVER_MODEL:${ATENEA_CODEX_APP_SERVER_MODEL:}}
+    auth-file: ${ATENEA_RESCUE_CODEX_APP_SERVER_AUTH_FILE:}
+    auth-status-file: ${ATENEA_RESCUE_CODEX_APP_SERVER_AUTH_STATUS_FILE:}
+    required-auth-mode: ${ATENEA_RESCUE_CODEX_REQUIRED_AUTH_MODE:${ATENEA_CODEX_REQUIRED_AUTH_MODE:chatgpt}}
     connect-timeout: ${ATENEA_RESCUE_CODEX_APP_SERVER_CONNECT_TIMEOUT:${ATENEA_CODEX_APP_SERVER_CONNECT_TIMEOUT:10s}}
     start-timeout: ${ATENEA_RESCUE_CODEX_APP_SERVER_START_TIMEOUT:${ATENEA_CODEX_APP_SERVER_START_TIMEOUT:15s}}
     completion-timeout: ${ATENEA_RESCUE_CODEX_APP_SERVER_COMPLETION_TIMEOUT:${ATENEA_CODEX_APP_SERVER_COMPLETION_TIMEOUT:300s}}
@@ -70,3 +76,37 @@ atenea:
     expo-push-url: ${ATENEA_MOBILE_PUSH_EXPO_PUSH_URL:https://exp.host/--/api/v2/push/send}
   mobile-uploads:
     root: ${ATENEA_MOBILE_UPLOAD_ROOT:/workspace/repos/internal/atenea/operator-uploads}
+  openai:
+    enabled: ${ATENEA_OPENAI_ENABLED:false}
+    api-base-url: ${ATENEA_OPENAI_API_BASE_URL:https://api.openai.com}
+    api-key: ${ATENEA_OPENAI_API_KEY:}
+    transcription-model: ${ATENEA_OPENAI_TRANSCRIPTION_MODEL:gpt-4o-mini-transcribe}
+    speech-model: ${ATENEA_OPENAI_TTS_MODEL:gpt-4o-mini-tts}
+    speech-voice: ${ATENEA_OPENAI_TTS_VOICE:marin}
+    speech-format: ${ATENEA_OPENAI_TTS_FORMAT:mp3}
+    speech-speed: ${ATENEA_OPENAI_TTS_SPEED:1.05}
+    realtime-model: ${ATENEA_OPENAI_REALTIME_MODEL:gpt-realtime}
+    realtime-voice: ${ATENEA_OPENAI_REALTIME_VOICE:marin}
+    realtime-speed: ${ATENEA_OPENAI_REALTIME_SPEED:1.05}
+    prompt: ${ATENEA_OPENAI_TRANSCRIPTION_PROMPT:Transcribe the operator voice command faithfully. Preserve project names, branch names, repository names, pull request references, and delivery terms. The command may be in Spanish or English.}
+    connect-timeout: ${ATENEA_OPENAI_CONNECT_TIMEOUT:10s}
+    read-timeout: ${ATENEA_OPENAI_READ_TIMEOUT:60s}
+    max-upload-bytes: ${ATENEA_OPENAI_MAX_UPLOAD_BYTES:10000000}
+  core:
+    intent-router:
+      enabled: ${ATENEA_CORE_INTENT_ROUTER_ENABLED:true}
+      prompt-version: ${ATENEA_CORE_INTENT_ROUTER_PROMPT_VERSION:core-intent-v6}
+  deepseek:
+    api-base-url: ${ATENEA_DEEPSEEK_API_BASE_URL:https://api.deepseek.com}
+    api-key: ${ATENEA_DEEPSEEK_API_KEY:}
+  briefing:
+    enabled: ${ATENEA_BRIEFING_ENABLED:false}
+    provider: ${ATENEA_BRIEFING_PROVIDER:deepseek}
+    model: ${ATENEA_BRIEFING_MODEL:deepseek-v4-flash}
+  costs:
+    openai:
+      enabled: ${ATENEA_OPENAI_COSTS_ENABLED:true}
+      api-base-url: ${ATENEA_OPENAI_COSTS_API_BASE_URL:https://api.openai.com}
+      admin-key: ${ATENEA_OPENAI_COSTS_ADMIN_KEY:${ATENEA_OPENAI_API_KEY:}}
+    deepseek:
+      enabled: ${ATENEA_DEEPSEEK_COSTS_ENABLED:true}

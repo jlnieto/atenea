@@ -56,7 +56,8 @@ internal fun ConversationSurface(
     onBack: () -> Unit,
     onOpenCore: () -> Unit,
     onRefresh: () -> Unit,
-    error: String?
+    error: String?,
+    commandContent: @Composable (() -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
     val latestTurnSignature = turns.lastOrNull()?.let { "${it.id}:${it.messageText.length}" }.orEmpty()
@@ -96,6 +97,7 @@ internal fun ConversationSurface(
                     style = ConversationTypography.meta
                 )
             }
+            commandContent?.invoke()
             if (turns.isEmpty()) {
                 Text(
                     "Sin mensajes visibles todavia.",

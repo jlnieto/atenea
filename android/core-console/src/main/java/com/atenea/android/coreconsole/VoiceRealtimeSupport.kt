@@ -38,6 +38,7 @@ internal fun VoiceIntent.isRealtimeRoutable(): Boolean = when (this) {
     is VoiceIntent.GoToSegment,
     VoiceIntent.NextPlayback,
     VoiceIntent.PreviousPlayback,
+    is VoiceIntent.ReadNote,
     VoiceIntent.ReadNotes,
     VoiceIntent.ReadPlayback,
     VoiceIntent.RepeatPlayback,

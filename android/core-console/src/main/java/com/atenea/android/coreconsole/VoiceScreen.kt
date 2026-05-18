@@ -112,6 +112,7 @@ internal fun VoiceScreen(
     DisposableEffect(Unit) {
         onDispose {
             speechPlayer.release()
+            nativeVoiceRuntime.stop()
         }
     }
 
@@ -384,7 +385,7 @@ internal fun VoiceScreen(
             )
         }
 
-    fun stopVoice() {
+    fun stopVoice(releaseMicrophone: Boolean = false) {
         queuedRealtimeSpeech = null
         continuousPlayback = false
         playbackGeneration += 1
@@ -394,8 +395,22 @@ internal fun VoiceScreen(
         speechPlayer.stop()
         localSpeechActive = false
         nativeVoiceRuntime.cancelRealtimeResponse()
+        if (releaseMicrophone) {
+            nativeVoiceRuntime.stop()
+        }
         voiceState = VoiceRuntimeState.IDLE
-        statusMessage = "Voz detenida. Puedes dictar una aclaracion."
+        statusMessage = if (releaseMicrophone) {
+            "Voz detenida. Microfono liberado."
+        } else {
+            "Lectura detenida. Voz conectada."
+        }
+    }
+
+    fun reportUnrecognizedCommand() {
+        val message = "Comando no entendido."
+        statusMessage = message
+        setPlayback(message, sourceType = "LOCAL_COMMAND", sourceId = "unknown")
+        speakText(message)
     }
 
     fun startBlock(type: VoiceBlockType, initialText: String? = null) {
@@ -606,6 +621,19 @@ internal fun VoiceScreen(
             }
         }
         setPlayback(message, sourceType = "LOCAL_NOTES", sourceId = "active-notes")
+        speakText(message)
+    }
+
+    fun readNoteByNumber(number: Int) {
+        val note = notes.getOrNull(number - 1)
+        val message = when {
+            note != null -> "Nota $number. ${note.text}"
+            notes.isEmpty() -> "No hay notas activas."
+            notes.size == 1 -> "No existe la nota $number. Hay una nota activa."
+            else -> "No existe la nota $number. Hay ${notes.size} notas activas."
+        }
+        statusMessage = message
+        setPlayback(message, sourceType = "LOCAL_NOTES", sourceId = "note-$number")
         speakText(message)
     }
 
@@ -1121,6 +1149,7 @@ internal fun VoiceScreen(
             is VoiceIntent.SaveNote -> startBlock(VoiceBlockType.NOTE, intent.text)
             VoiceIntent.SavePendingNote -> startBlock(VoiceBlockType.NOTE, noteInput.takeIf { it.isNotBlank() })
             VoiceIntent.ReadNotes -> readNotes()
+            is VoiceIntent.ReadNote -> readNoteByNumber(intent.number)
             VoiceIntent.CountNotes -> countNotes()
             is VoiceIntent.ArchiveNote -> archiveNoteByNumber(intent.number)
             VoiceIntent.ArchiveLastNote -> archiveLastNote()
@@ -1140,7 +1169,7 @@ internal fun VoiceScreen(
             VoiceIntent.NextPlayback -> speakNextSegment(continuous = true)
             VoiceIntent.PreviousPlayback -> speakPreviousSegment()
             is VoiceIntent.GoToSegment -> speakSegment(intent.number)
-            VoiceIntent.StopPlayback -> stopVoice()
+            VoiceIntent.StopPlayback -> stopVoice(releaseMicrophone = false)
             VoiceIntent.ConfirmPending -> confirmPendingCommand()
             VoiceIntent.CancelPending -> cancelPendingAction()
         }
@@ -1337,7 +1366,7 @@ internal fun VoiceScreen(
         }
         if (!VoiceCommandInterpreter.startsWithWakeWord(transcript)) {
             lastRealtimeTranscriptHandledSequence = sequence
-            heardStatus = "Ignorado: no empezaba por Atenea"
+            heardStatus = "Ignorado."
             if (localSpeechActive || voiceState == VoiceRuntimeState.SPEAKING) {
                 return@LaunchedEffect
             }
@@ -1345,11 +1374,11 @@ internal fun VoiceScreen(
                 val snapshot = pendingBargeInResume
                 pendingBargeInResume = null
                 resumePlayback = snapshot
-                statusMessage = "Ignorado: no empezaba por Atenea. Reanudo la lectura."
+                statusMessage = "Ignorado. Reanudo lectura."
                 delay(550)
                 speakContinuePlayback(continuous = true)
             } else {
-                statusMessage = "Ignorado: no empezaba por Atenea."
+                statusMessage = "Ignorado."
             }
             return@LaunchedEffect
         }
@@ -1364,6 +1393,20 @@ internal fun VoiceScreen(
             statusMessage = "No he detectado orden Atenea; reanudo la lectura."
             delay(550)
             speakContinuePlayback(continuous = true)
+            return@LaunchedEffect
+        }
+        if (intent == VoiceIntent.Empty || (!realtimeRoutable && !transcript.isRealtimeOperationalRequest())) {
+            lastRealtimeTranscriptHandledSequence = sequence
+            pendingBargeInResume = null
+            if (nativeVoiceState.outputPlaybackActive || localSpeechActive || voiceState == VoiceRuntimeState.SPEAKING) {
+                continuousPlayback = false
+                localSpeechRequestId += 1
+                speechPlayer.stop()
+                localSpeechActive = false
+                nativeVoiceRuntime.cancelRealtimeResponse()
+                voiceState = VoiceRuntimeState.IDLE
+            }
+            reportUnrecognizedCommand()
             return@LaunchedEffect
         }
         if ((pending && intent != VoiceIntent.StopPlayback) || (!realtimeRoutable && !transcript.isRealtimeOperationalRequest())) {
@@ -1452,14 +1495,15 @@ internal fun VoiceScreen(
                         enabled = nativeVoiceState.realtimeConnected ||
                             nativeVoiceState.outputPlaybackActive ||
                             localSpeechActive ||
+                            nativeVoiceState.captureActive ||
                             voiceState == VoiceRuntimeState.SPEAKING,
                         onClick = {
                             if (nativeVoiceState.outputPlaybackActive || localSpeechActive || voiceState == VoiceRuntimeState.SPEAKING) {
-                                stopVoice()
+                                stopVoice(releaseMicrophone = true)
                             } else {
-                                nativeVoiceRuntime.disconnectRealtime()
+                                nativeVoiceRuntime.stop()
                                 voiceState = VoiceRuntimeState.IDLE
-                                statusMessage = "Voz desconectada."
+                                statusMessage = "Voz detenida. Microfono liberado."
                             }
                         }
                     )

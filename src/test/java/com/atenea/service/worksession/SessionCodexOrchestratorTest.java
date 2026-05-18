@@ -10,6 +10,7 @@ import com.atenea.codexappserver.CodexAppServerClient;
 import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionListener;
 import com.atenea.codexappserver.CodexAppServerExecutionRequest;
+import com.atenea.codexappserver.CodexAuthStatusService;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,9 +24,13 @@ class SessionCodexOrchestratorTest {
     @Mock
     private CodexAppServerClient codexAppServerClient;
 
+    @Mock
+    private CodexAuthStatusService codexAuthStatusService;
+
     @Test
     void startTurnWrapsOperatorMessageWithMarkdownFormattingGuidance() throws Exception {
-        SessionCodexOrchestrator orchestrator = new SessionCodexOrchestrator(codexAppServerClient);
+        SessionCodexOrchestrator orchestrator =
+                new SessionCodexOrchestrator(codexAppServerClient, codexAuthStatusService);
         CodexAppServerExecutionHandle handle =
                 new CodexAppServerExecutionHandle("thread-1", "turn-1", CompletableFuture.completedFuture(null));
         when(codexAppServerClient.startExecution(any(CodexAppServerExecutionRequest.class), any()))
@@ -40,6 +45,7 @@ class SessionCodexOrchestratorTest {
         ArgumentCaptor<CodexAppServerExecutionRequest> requestCaptor =
                 ArgumentCaptor.forClass(CodexAppServerExecutionRequest.class);
         verify(codexAppServerClient).startExecution(requestCaptor.capture(), any());
+        verify(codexAuthStatusService).ensurePrimaryCompliant();
 
         CodexAppServerExecutionRequest request = requestCaptor.getValue();
         assertEquals("/workspace/repos/sandboxes/smoke/pruebas-inicial", request.repoPath());

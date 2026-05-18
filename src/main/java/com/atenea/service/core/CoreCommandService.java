@@ -290,8 +290,9 @@ public class CoreCommandService {
         if (command.getConfirmationToken() == null || command.getConfirmationToken().isBlank()) {
             command.setConfirmationToken(UUID.randomUUID().toString());
         }
-        command.setOperatorMessage("Esta capacidad requiere confirmación explícita antes de ejecutarse.");
-        command.setSpeakableMessage("Necesito tu confirmación antes de ejecutar esta acción.");
+        String confirmationMessage = buildConfirmationMessage(intent);
+        command.setOperatorMessage(confirmationMessage);
+        command.setSpeakableMessage(confirmationMessage);
         command.setFinishedAt(Instant.now());
         coreCommandRepository.save(command);
         coreCommandEventService.record(
@@ -300,6 +301,20 @@ public class CoreCommandService {
                 "Core command is waiting for explicit confirmation",
                 Map.of("confirmationToken", command.getConfirmationToken()));
         return toResponse(command, intent, null);
+    }
+
+    private String buildConfirmationMessage(CoreIntentEnvelope intent) {
+        if (intent != null && "refresh_project_database".equals(intent.capability())) {
+            String projectLabel = textParameter(intent.parameters(), "projectName");
+            if (projectLabel == null) {
+                Long projectId = longParameter(intent.parameters(), "projectId");
+                projectLabel = projectId == null ? "el proyecto activo" : "el proyecto " + projectId;
+            }
+            return "Se va a reemplazar la base de datos local de "
+                    + projectLabel
+                    + " por la que hay en producción. Confirma para continuar.";
+        }
+        return "Esta capacidad requiere confirmación explícita antes de ejecutarse.";
     }
 
     private CoreCommandResponse markSucceeded(
@@ -432,10 +447,23 @@ public class CoreCommandService {
                 command.getStatus() == CoreCommandStatus.NEEDS_CONFIRMATION
                         ? new CoreConfirmationResponse(
                                 command.getConfirmationToken(),
-                                "Esta acción necesita confirmación explícita antes de ejecutarse.")
+                                command.getOperatorMessage())
                         : null,
                 command.getOperatorMessage(),
                 command.getSpeakableMessage());
+    }
+
+    private Long longParameter(Map<String, Object> parameters, String key) {
+        Object value = parameters.get(key);
+        return value instanceof Number number ? number.longValue() : null;
+    }
+
+    private String textParameter(Map<String, Object> parameters, String key) {
+        Object value = parameters.get(key);
+        if (value instanceof String text && !text.isBlank()) {
+            return text.trim();
+        }
+        return null;
     }
 
     private CoreCommandSummaryResponse toSummaryResponse(CoreCommandEntity command) {

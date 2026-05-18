@@ -24,6 +24,12 @@ class VoiceCommandInterpreterTest {
     }
 
     @Test
+    fun routesReadSingleNoteBeforeReadAllNotes() {
+        assertEquals(VoiceIntent.ReadNote(1), VoiceCommandInterpreter.interpret("Atenea, lee nota 1"))
+        assertEquals(VoiceIntent.ReadNote(1), VoiceCommandInterpreter.interpret("Atenea, lee nota uno"))
+    }
+
+    @Test
     fun routesArchiveLastNote() {
         assertEquals(VoiceIntent.ArchiveLastNote, VoiceCommandInterpreter.interpret("Atenea, borra la ultima nota"))
     }
@@ -129,6 +135,7 @@ class VoiceCommandInterpreterTest {
     @Test
     fun routesCodexStatusQuestion() {
         assertEquals(VoiceIntent.CheckCodexStatus, VoiceCommandInterpreter.interpret("Atenea, como va Codex"))
+        assertEquals(VoiceIntent.CheckCodexStatus, VoiceCommandInterpreter.interpret("Atenea, estado de Codex"))
         assertEquals(VoiceIntent.CheckCodexStatus, VoiceCommandInterpreter.interpret("Atenea, Codex ya ha respondido"))
     }
 

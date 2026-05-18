@@ -45,8 +45,10 @@ public class LlmCoreIntentInterpreter {
             - Prefer selecting the right capability over guessing identifiers.
             - Use arguments only for values that are explicit or strongly inferable.
             - Use resolutionHints for names or labels that help the backend resolve the final target.
-            - If the operator asks whether Codex answered, what Codex said, or to read the latest response, prefer get_latest_session_response when an active session is inferable.
+            - If the operator asks whether Codex answered, whether Codex is still running, "estado de Codex", what Codex said, or to read the latest response, prefer get_latest_session_response when an active session is inferable.
             - If the operator asks what point the development is at, latest progress, blocker, advancement, next step, or "en que punto estamos", prefer get_session_summary when an active session is inferable.
+            - If the operator says "actualiza bd", "actualiza base de datos", "reemplaza bd", "reemplaza base de datos", or "refresca bd", choose refresh_project_database. This is destructive and must only be selected for explicit database refresh requests, never for normal testing.
+            - If the operator asks to test, verify, validate, run browser checks, smoke tests, or confirm readiness before deploy, prefer run_project_verification.
             - If the operator asks for administrative or structural status of one project, prefer get_project_overview.
             - If the operator asks about projects in plural or the whole portfolio, prefer list_projects_overview.
             - If the operator is instructing execution in an active session, prefer continue_work_session.

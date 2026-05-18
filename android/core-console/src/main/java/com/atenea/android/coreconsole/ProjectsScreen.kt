@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun ProjectsScreen(
     apiClient: AteneaApiClient,
-    onOpenConversation: (Long, Long) -> Unit,
+    onOpenSession: (Long, Long) -> Unit,
     onOpenRescue: (Long) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -57,7 +57,7 @@ internal fun ProjectsScreen(
             try {
                 val title = draftTitleByProject[project.projectId]?.takeIf { it.isNotBlank() }
                 val result = apiClient.resolveMobileWorkSession(project.projectId, title)
-                onOpenConversation(project.projectId, result.view.session.id)
+                onOpenSession(project.projectId, result.view.session.id)
             } catch (openError: Exception) {
                 error = openError.message ?: "No se pudo abrir la sesión."
             } finally {
@@ -106,7 +106,7 @@ internal fun ProjectsScreen(
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AteneaButton(
-                        text = if (pendingProjectId == project.projectId) "Abriendo..." else "Conversación",
+                        text = if (pendingProjectId == project.projectId) "Abriendo..." else "Sesión",
                         modifier = Modifier.weight(1f),
                         enabled = pendingProjectId == null,
                         onClick = { openSession(project) }

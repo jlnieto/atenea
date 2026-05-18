@@ -3,6 +3,7 @@ package com.atenea.service.worksession;
 import com.atenea.codexappserver.CodexAppServerClient;
 import com.atenea.codexappserver.CodexAppServerExecutionRequest;
 import com.atenea.codexappserver.CodexAppServerExecutionResult;
+import com.atenea.codexappserver.CodexAuthStatusService;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -131,12 +132,18 @@ public class SessionDeliverableCodexOrchestrator {
             """;
 
     private final CodexAppServerClient codexAppServerClient;
+    private final CodexAuthStatusService codexAuthStatusService;
 
-    public SessionDeliverableCodexOrchestrator(CodexAppServerClient codexAppServerClient) {
+    public SessionDeliverableCodexOrchestrator(
+            CodexAppServerClient codexAppServerClient,
+            CodexAuthStatusService codexAuthStatusService
+    ) {
         this.codexAppServerClient = codexAppServerClient;
+        this.codexAuthStatusService = codexAuthStatusService;
     }
 
     public String generateWorkTicket(String repoPath, String snapshotJson) throws Exception {
+        codexAuthStatusService.ensurePrimaryCompliant();
         CodexAppServerExecutionResult result = codexAppServerClient.execute(
                 new CodexAppServerExecutionRequest(repoPath, WORK_TICKET_PROMPT + snapshotJson));
 
@@ -149,6 +156,7 @@ public class SessionDeliverableCodexOrchestrator {
     }
 
     public String generateWorkBreakdown(String repoPath, String snapshotJson) throws Exception {
+        codexAuthStatusService.ensurePrimaryCompliant();
         CodexAppServerExecutionResult result = codexAppServerClient.execute(
                 new CodexAppServerExecutionRequest(repoPath, WORK_BREAKDOWN_PROMPT + snapshotJson));
 
@@ -161,6 +169,7 @@ public class SessionDeliverableCodexOrchestrator {
     }
 
     public PriceEstimateGenerationResult generatePriceEstimate(String repoPath, String snapshotJson) throws Exception {
+        codexAuthStatusService.ensurePrimaryCompliant();
         CodexAppServerExecutionResult result = codexAppServerClient.execute(
                 new CodexAppServerExecutionRequest(repoPath, PRICE_ESTIMATE_PROMPT + snapshotJson));
 

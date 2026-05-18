@@ -3,11 +3,11 @@ services:
     image: postgres:16
     container_name: atenea-db-dev
     environment:
-      POSTGRES_DB: atenea
-      POSTGRES_USER: atenea
-      POSTGRES_PASSWORD: atenea
+      POSTGRES_DB: ${POSTGRES_DB:-atenea}
+      POSTGRES_USER: ${POSTGRES_USER:-atenea}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atenea}
     ports:
-      - "127.0.0.1:${ATENEA_DB_PORT:-5434}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
     volumes:
       - atenea_db_data:/var/lib/postgresql/data
 
@@ -29,6 +29,8 @@ services:
     working_dir: /workspace/repos/internal/atenea
     environment:
       HOME: /workspace/codex-home/preview
+      ATENEA_CODEX_REQUIRED_AUTH_MODE: ${ATENEA_CODEX_REQUIRED_AUTH_MODE:-chatgpt}
+      ATENEA_CODEX_AUTH_STATUS_FILE: /workspace/codex-home/preview/codex-auth-status.json
     volumes:
       - /srv/atenea/workspace/repos:/workspace/repos
       - /srv/atenea/workspace/context:/workspace/context:ro
@@ -94,28 +96,44 @@ services:
       - db
       - codex-app-server
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/atenea
-      SPRING_DATASOURCE_USERNAME: atenea
-      SPRING_DATASOURCE_PASSWORD: atenea
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-atenea}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-atenea}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-atenea}
       ATENEA_WORKSPACE_ROOT: /workspace/repos
       ATENEA_CODEX_APP_SERVER_URL: ${ATENEA_CODEX_APP_SERVER_URL:-ws://codex-app-server:8092}
       ATENEA_CODEX_APP_SERVER_CWD: /workspace/repos/internal/atenea
+      ATENEA_CODEX_APP_SERVER_AUTH_FILE: ${ATENEA_CODEX_APP_SERVER_AUTH_FILE:-/workspace/codex-home/preview/.codex/auth.json}
+      ATENEA_CODEX_APP_SERVER_AUTH_STATUS_FILE: ${ATENEA_CODEX_APP_SERVER_AUTH_STATUS_FILE:-/workspace/codex-home/preview/codex-auth-status.json}
+      ATENEA_CODEX_REQUIRED_AUTH_MODE: ${ATENEA_CODEX_REQUIRED_AUTH_MODE:-chatgpt}
       ATENEA_GITHUB_TOKEN: ${ATENEA_GITHUB_TOKEN:-}
       ATENEA_GITHUB_TOKEN_EXPIRES_AT: ${ATENEA_GITHUB_TOKEN_EXPIRES_AT:-}
+      ATENEA_AUTH_JWT_ISSUER: ${ATENEA_AUTH_JWT_ISSUER:-atenea-dev}
+      ATENEA_AUTH_JWT_SECRET: ${ATENEA_AUTH_JWT_SECRET:-atenea-dev-mobile-secret-change-me-2026}
       ATENEA_AUTH_BOOTSTRAP_ENABLED: ${ATENEA_AUTH_BOOTSTRAP_ENABLED:-true}
       ATENEA_AUTH_BOOTSTRAP_EMAIL: ${ATENEA_AUTH_BOOTSTRAP_EMAIL:-operator@atenea.local}
       ATENEA_AUTH_BOOTSTRAP_PASSWORD: ${ATENEA_AUTH_BOOTSTRAP_PASSWORD:-secret-pass}
       ATENEA_AUTH_BOOTSTRAP_DISPLAY_NAME: ${ATENEA_AUTH_BOOTSTRAP_DISPLAY_NAME:-Mobile Operator}
-      ATENEA_CORE_VOICE_ENABLED: ${ATENEA_CORE_VOICE_ENABLED:-false}
-      ATENEA_CORE_VOICE_API_KEY: ${ATENEA_CORE_VOICE_API_KEY:-}
-      ATENEA_CORE_LLM_ENABLED: ${ATENEA_CORE_LLM_ENABLED:-true}
-      ATENEA_CORE_LLM_PROMPT_VERSION: ${ATENEA_CORE_LLM_PROMPT_VERSION:-core-intent-v6}
+      ATENEA_OPENAI_ENABLED: ${ATENEA_OPENAI_ENABLED:-false}
+      ATENEA_OPENAI_API_KEY: ${ATENEA_OPENAI_API_KEY:-}
+      ATENEA_OPENAI_COSTS_ENABLED: ${ATENEA_OPENAI_COSTS_ENABLED:-true}
+      ATENEA_OPENAI_COSTS_API_BASE_URL: ${ATENEA_OPENAI_COSTS_API_BASE_URL:-https://api.openai.com}
+      ATENEA_OPENAI_COSTS_ADMIN_KEY: ${ATENEA_OPENAI_COSTS_ADMIN_KEY:-}
+      ATENEA_OPENAI_TRANSCRIPTION_MODEL: ${ATENEA_OPENAI_TRANSCRIPTION_MODEL:-gpt-4o-mini-transcribe}
+      ATENEA_CORE_INTENT_ROUTER_ENABLED: ${ATENEA_CORE_INTENT_ROUTER_ENABLED:-true}
+      ATENEA_CORE_INTENT_ROUTER_PROMPT_VERSION: ${ATENEA_CORE_INTENT_ROUTER_PROMPT_VERSION:-core-intent-v6}
+      ATENEA_DEEPSEEK_API_BASE_URL: ${ATENEA_DEEPSEEK_API_BASE_URL:-https://api.deepseek.com}
+      ATENEA_DEEPSEEK_API_KEY: ${ATENEA_DEEPSEEK_API_KEY:-}
+      ATENEA_DEEPSEEK_COSTS_ENABLED: ${ATENEA_DEEPSEEK_COSTS_ENABLED:-true}
+      ATENEA_BRIEFING_ENABLED: ${ATENEA_BRIEFING_ENABLED:-false}
+      ATENEA_BRIEFING_PROVIDER: ${ATENEA_BRIEFING_PROVIDER:-deepseek}
+      ATENEA_BRIEFING_MODEL: ${ATENEA_BRIEFING_MODEL:-deepseek-v4-flash}
     volumes:
       - /srv/atenea/workspace/repos:/workspace/repos
       - /srv/atenea/workspace/context:/workspace/context:ro
+      - /srv/atenea/workspace/codex-home:/workspace/codex-home:ro
       - atenea_m2_cache:/root/.m2
     ports:
-      - "${ATENEA_APP_PORT:-8085}:8081"
+      - "${ATENEA_BACKEND_PORT:-8085}:8081"
     command: ["/bin/sh", "-lc", "sleep infinity"]
 
 volumes:

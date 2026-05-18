@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class SessionSpeechPreparationService {
 
-    private static final int BRIEF_MAX_LENGTH = 700;
+    private static final int BRIEF_MAX_LENGTH = 430;
     private static final int FULL_MAX_LENGTH = 3500;
 
     private final MobileSessionService mobileSessionService;
@@ -59,12 +59,6 @@ public class SessionSpeechPreparationService {
         if (nextStep != null) {
             sectionsUsed.add("nextStepRecommended");
             sentences.add("Siguiente paso: " + nextStep);
-        }
-
-        String touchedFiles = summarizeTouchedFiles(source);
-        if (touchedFiles != null) {
-            sectionsUsed.add("touchedFiles");
-            sentences.add("Archivos tocados: " + touchedFiles + ".");
         }
 
         String verification = extractSectionForSpeech(source, "Verificación", "Validation");
@@ -292,7 +286,7 @@ public class SessionSpeechPreparationService {
                 .replaceAll("(?m)^\\s*\\d+\\.\\s+", "")
                 .replaceAll("(?m)^.*?/workspace/.*$", " ")
                 .replaceAll("(?m)^.*?python3 -m http\\.server.*$", " ")
-                .replaceAll("(?m)^.*?http://localhost:8000/.*$", " ")
+                .replaceAll("(?m)^.*?https?://\\S+.*$", " ")
                 .replaceAll("\\b/[^\\s)]+", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
@@ -326,7 +320,7 @@ public class SessionSpeechPreparationService {
                 .replaceAll("(?m)^\\s*\\d+\\.\\s+", "")
                 .replaceAll("(?m)^.*?/workspace/.*$", " ")
                 .replaceAll("(?m)^.*?python3 -m http\\.server.*$", " ")
-                .replaceAll("(?m)^.*?http://localhost:8000/.*$", " ")
+                .replaceAll("(?m)^.*?https?://\\S+.*$", " ")
                 .replaceAll("\\b/[^\\s)]+", " ")
                 .replace('\r', '\n')
                 .replace('\n', ' ')

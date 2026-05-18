@@ -14,9 +14,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bubblewrap \
         ca-certificates \
+        chromium \
         curl \
         docker.io \
         docker-compose \
+        fonts-liberation \
         gh \
         git \
         iproute2 \
@@ -28,6 +30,7 @@ RUN apt-get update \
         postgresql-client \
         procps \
         rsync \
+        xvfb \
     && npm install -g @openai/codex@${CODEX_CLI_VERSION} \
     && rm -rf /var/lib/apt/lists/*
 
@@ -40,10 +43,17 @@ RUN mkdir -p /usr/local/lib/docker/cli-plugins \
 RUN mkdir -p /workspace/codex-home /workspace/repos \
     && git config --system --add safe.directory '*'
 
+COPY docker/codex-auth-guard.sh /usr/local/bin/codex-auth-guard
+RUN chmod +x /usr/local/bin/codex-auth-guard
+
 ENV HOME=/workspace/codex-home
+ENV CHROME_BIN=/usr/bin/chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_CACHE_DIR=/workspace/codex-home/puppeteer
+ENV PLAYWRIGHT_BROWSERS_PATH=/workspace/codex-home/playwright-browsers
 
 WORKDIR /srv/atenea
 
 EXPOSE 8092
 
-CMD ["codex", "app-server", "--listen", "ws://0.0.0.0:8092", "-c", "approval_policy=\"never\"", "-c", "sandbox_mode=\"danger-full-access\"", "-c", "shell_environment_policy.inherit=\"all\"", "-c", "projects.\"/srv/atenea\".trust_level=\"trusted\"", "-c", "projects.\"/workspace/repos\".trust_level=\"trusted\""]
+CMD ["codex-auth-guard", "codex", "app-server", "--listen", "ws://0.0.0.0:8092", "-c", "approval_policy=\"never\"", "-c", "sandbox_mode=\"danger-full-access\"", "-c", "shell_environment_policy.inherit=\"all\"", "-c", "projects.\"/srv/atenea\".trust_level=\"trusted\"", "-c", "projects.\"/workspace/repos\".trust_level=\"trusted\""]

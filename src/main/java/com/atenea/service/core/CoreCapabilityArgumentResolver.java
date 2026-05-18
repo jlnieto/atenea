@@ -43,6 +43,15 @@ public class CoreCapabilityArgumentResolver {
         copyTrimmedText(rawArguments, resolved, "deliverableType");
         copyTrimmedText(rawArguments, resolved, "billingReference");
         copyTrimmedText(rawArguments, resolved, "serviceName");
+        copyTrimmedText(rawArguments, resolved, "projectName");
+
+        if ("run_project_verification".equals(definition.capability())
+                && resolved.get("projectId") == null
+                && resolved.get("workSessionId") instanceof Number) {
+            WorkSessionEntity session = resolveSession(request, resolved, resolutionHints);
+            resolved.put("workSessionId", session.getId());
+            resolved.put("projectId", session.getProject().getId());
+        }
 
         if (definition.requiresParameter("projectId")) {
             ProjectEntity project = resolveProject(request, resolved, resolutionHints);

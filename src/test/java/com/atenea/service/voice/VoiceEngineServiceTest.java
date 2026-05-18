@@ -48,6 +48,7 @@ import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.core.CoreCommandService;
 import com.atenea.service.core.CoreOperatorContextService;
 import com.atenea.service.worksession.SessionTurnService;
@@ -276,6 +277,35 @@ class VoiceEngineServiceTest {
     }
 
     @Test
+    void createSendIntentResolvesOpenWorkSessionFromProjectFocus() {
+        VoiceFocusEntity focus = projectFocus();
+        WorkSessionEntity session = focus().getWorkSession();
+        VoiceNoteEntity note = note("Revisar permisos");
+        when(operatorRepository.findById(4L)).thenReturn(Optional.of(operator));
+        when(voiceNoteRepository.findByOperatorIdAndStatusOrderByCreatedAtAsc(4L, VoiceNoteStatus.ACTIVE))
+                .thenReturn(List.of(note));
+        when(voiceFocusRepository.findById(4L)).thenReturn(Optional.of(focus));
+        when(workSessionRepository.findByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(Optional.of(session));
+        when(voiceFocusRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(voiceNoteSendIntentRepository.save(any())).thenAnswer(invocation -> {
+            VoiceNoteSendIntentEntity intent = invocation.getArgument(0);
+            intent.setId(99L);
+            return intent;
+        });
+
+        var response = service.createSendIntent(
+                authenticatedOperator,
+                new CreateMobileVoiceNoteSendIntentRequest(null));
+
+        assertEquals(7L, response.projectId());
+        assertEquals(12L, response.workSessionId());
+        ArgumentCaptor<VoiceFocusEntity> focusCaptor = ArgumentCaptor.forClass(VoiceFocusEntity.class);
+        verify(voiceFocusRepository).save(focusCaptor.capture());
+        assertEquals(12L, focusCaptor.getValue().getWorkSession().getId());
+        assertEquals("Conversacion activa", focusCaptor.getValue().getActivity());
+    }
+
+    @Test
     void confirmSendIntentCreatesWorkSessionTurnAndConsumesNotes() {
         VoiceFocusEntity focus = focus();
         VoiceNoteEntity note = note("Revisar permisos");
@@ -382,6 +412,41 @@ class VoiceEngineServiceTest {
     }
 
     @Test
+    void sendActiveNotesResolvesOpenWorkSessionFromProjectFocus() {
+        VoiceFocusEntity focus = projectFocus();
+        WorkSessionEntity session = focus().getWorkSession();
+        VoiceNoteEntity note = note("Revisar permisos");
+        CoreCommandEntity consumedCommand = new CoreCommandEntity();
+        consumedCommand.setId(44L);
+        when(operatorRepository.findById(4L)).thenReturn(Optional.of(operator));
+        when(voiceNoteRepository.findByOperatorIdAndStatusOrderByCreatedAtAsc(4L, VoiceNoteStatus.ACTIVE))
+                .thenReturn(List.of(note));
+        when(voiceFocusRepository.findById(4L)).thenReturn(Optional.of(focus));
+        when(workSessionRepository.findByProjectIdAndStatus(7L, WorkSessionStatus.OPEN)).thenReturn(Optional.of(session));
+        when(voiceFocusRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(coreCommandService.createCommand(any())).thenReturn(new CoreCommandResponse(
+                44L,
+                CoreCommandStatus.SUCCEEDED,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "ok",
+                "ok"));
+        when(coreCommandRepository.getReferenceById(44L)).thenReturn(consumedCommand);
+        when(voiceNoteRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.sendActiveNotes(authenticatedOperator, new SendMobileVoiceNotesRequest(null));
+
+        ArgumentCaptor<com.atenea.api.core.CreateCoreCommandRequest> requestCaptor =
+                ArgumentCaptor.forClass(com.atenea.api.core.CreateCoreCommandRequest.class);
+        verify(coreCommandService).createCommand(requestCaptor.capture());
+        assertEquals(7L, requestCaptor.getValue().context().projectId());
+        assertEquals(12L, requestCaptor.getValue().context().workSessionId());
+    }
+
+    @Test
     void sendActiveNotesSynchronizesVoiceFocusFromWorkSessionCommandResult() {
         VoiceNoteEntity note = note("Revisar permisos");
         CoreCommandEntity consumedCommand = new CoreCommandEntity();
@@ -443,6 +508,13 @@ class VoiceEngineServiceTest {
         focus.setWorkSession(session);
         focus.setActivity("reading_codex_response");
         focus.setUpdatedAt(Instant.parse("2026-05-15T00:00:00Z"));
+        return focus;
+    }
+
+    private VoiceFocusEntity projectFocus() {
+        VoiceFocusEntity focus = focus();
+        focus.setWorkSession(null);
+        focus.setActivity("Proyecto activo");
         return focus;
     }
 

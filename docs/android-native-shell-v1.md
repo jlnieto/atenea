@@ -78,12 +78,27 @@ Código principal:
 - `android/core-console/src/main/java/com/atenea/android/coreconsole/ProjectsScreen.kt`
   - listado de proyectos desde `/api/mobile/projects/overview`
   - apertura/resolucion de WorkSession
-  - entrada hacia Conversacion y Rescate
+  - entrada hacia WorkSession y Rescate
+
+- `android/core-console/src/main/java/com/atenea/android/coreconsole/WorkSessionScreen.kt`
+  - vista operativa session-first
+  - snapshot de `/api/mobile/sessions/{id}/summary`
+  - entregables de `/api/mobile/sessions/{id}/deliverables`
+  - timeline de `/api/mobile/sessions/{id}/events`
+  - acciones de publish, sync, close, generacion, aprobacion y facturacion ejecutadas por Core con scope `SESSION`
+  - cierre guiado con bloqueos, entregables pendientes y presupuesto aprobado
 
 - `android/core-console/src/main/java/com/atenea/android/coreconsole/WorkSessionConversationScreen.kt`
   - conversacion nativa de WorkSession
-  - envio de turnos a Codex
+  - envio de instrucciones a Codex via Atenea Core con scope `SESSION`
+  - confirmaciones y aclaraciones con `CommandCard`
   - superficie visual basada en la app no nativa
+
+- `android/core-console/src/main/java/com/atenea/android/coreconsole/WorkSessionRepository.kt`
+  - repositorio de estado local para la vista de WorkSession
+  - refresco de snapshot, eventos y entregables
+  - polling adaptativo mientras hay run o accion en curso
+  - degradacion explicita a estado stale si la sincronizacion falla
 
 - `android/core-console/src/main/java/com/atenea/android/coreconsole/RescueScreen.kt`
   - canal de rescate nativo
@@ -111,7 +126,14 @@ Destinos actuales:
 - `Diagnostico`
 - `Ajustes`
 
-`Conversación` y `Rescate` no son destinos globales del drawer. Son superficies internas de un proyecto o WorkSession concreta y se abren desde `Proyectos`.
+`Sesión`, `Conversación` y `Rescate` no son destinos globales del drawer. Son superficies internas de un proyecto o WorkSession concreta y se abren desde `Proyectos`.
+
+El flujo de desarrollo nativo es:
+
+1. `Proyectos` resuelve o abre la WorkSession.
+2. `Sesión` muestra el estado de delivery y las acciones seguras.
+3. `Conversación` se abre desde `Sesión` para dar instrucciones largas a Codex.
+4. `Core` sigue disponible como consola general, pero las acciones de la WorkSession usan contexto `SESSION`.
 
 Cuando la app entra en una superficie conversacional de trabajo:
 
@@ -193,6 +215,48 @@ Significado de las acciones:
 - contenido/historial en el centro
 - input fijo abajo
 - confirmaciones y aclaraciones reutilizan `CommandCard`
+
+## WorkSession
+
+`WorkSessionScreen` es la pantalla canónica para operar una sesión desde móvil. No es una conversación larga ni una vista de proyecto: es el panel de delivery de una unidad de trabajo.
+
+Debe mostrar siempre:
+
+- estado de la sesión, estado operacional, branch de trabajo y PR
+- si Codex está trabajando
+- bloqueo de cierre, motivo y acción recomendada cuando existan
+- progreso, bloqueo actual y siguiente paso recomendado desde `MobileSessionInsights`
+- acciones disponibles calculadas por backend en `MobileSessionActions`
+- entregables generados, aprobados y pendientes
+- presupuesto aprobado y estado de facturación cuando exista
+- timeline reciente derivado de turns, runs, publish, cierre y entregables
+
+Regla de mutaciones:
+
+- Publish PR: Core `publish_work_session`
+- Sync PR: Core `sync_work_session_pull_request`
+- Close: Core `close_work_session`
+- Continuar sesión: Core `continue_work_session`
+- Generar entregable: Core `generate_session_deliverable`
+- Aprobar entregable: Core `approve_session_deliverable`
+- Marcar facturado: Core `mark_price_estimate_billed`
+
+Los endpoints `/api/mobile/sessions/{id}/publish`, `/pull-request/sync`, `/close` y `/deliverables/*` de escritura son compatibilidad legacy. La app nativa premium no debe llamarlos para mutaciones nuevas.
+
+Sincronización:
+
+- al entrar se carga snapshot completo (`summary`) y lista de entregables
+- el timeline se consulta por `/events` con cursor temporal
+- mientras hay run, comando pendiente o acción sensible, la pantalla refresca cada pocos segundos
+- en reposo refresca con menor frecuencia
+- si falla la red, conserva el último snapshot visible y marca la sesión como stale
+- tras cualquier comando Core que no requiera confirmación o aclaración se fuerza snapshot + eventos
+
+Gap aceptado de este slice:
+
+- el backend ya ofrece SSE en `/api/mobile/sessions/{id}/events/stream`, pero los eventos actuales son derivados y no tienen secuencia persistida
+- antes de producción final, el estándar premium debe añadir eventos persistidos con `sequence`, `clientRequestId`, deduplicación server-side e idempotencia explícita para acciones críticas
+- la app queda preparada para ese modelo porque el repositorio centraliza el sync y no reparte polling por la UI
 
 ## Inicio
 

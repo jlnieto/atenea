@@ -8,6 +8,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.net.HttpURLConnection
+import java.net.URLEncoder
 import java.net.URL
 
 class AteneaApiClient(
@@ -135,6 +136,46 @@ class AteneaApiClient(
         path = "/api/mobile/sessions/$sessionId/conversation",
         authenticated = true,
         parser = ::parseMobileWorkSessionConversation
+    )
+
+    suspend fun fetchMobileWorkSessionSummary(sessionId: Long): MobileSessionSummary = getJson(
+        path = "/api/mobile/sessions/$sessionId/summary",
+        authenticated = true,
+        parser = ::parseMobileSessionSummary
+    )
+
+    suspend fun fetchMobileSessionDeliverables(sessionId: Long): SessionDeliverablesView = getJson(
+        path = "/api/mobile/sessions/$sessionId/deliverables",
+        authenticated = true,
+        parser = ::parseSessionDeliverablesView
+    )
+
+    suspend fun fetchMobileSessionDeliverable(
+        sessionId: Long,
+        deliverableId: Long
+    ): SessionDeliverable = getJson(
+        path = "/api/mobile/sessions/$sessionId/deliverables/$deliverableId",
+        authenticated = true,
+        parser = ::parseSessionDeliverable
+    )
+
+    suspend fun fetchMobileSessionEvents(
+        sessionId: Long,
+        after: String? = null,
+        limit: Int = 50
+    ): MobileSessionEvents = getJson(
+        path = buildString {
+            append("/api/mobile/sessions/")
+            append(sessionId)
+            append("/events?limit=")
+            append(limit)
+            after?.takeIf { it.isNotBlank() }?.let {
+                append("&after=")
+                append(URLEncoder.encode(it, Charsets.UTF_8.name()))
+            }
+        },
+        authenticated = true,
+        parser = ::parseMobileSessionEvents
     )
 
     suspend fun createMobileWorkSessionTurn(sessionId: Long, message: String): MobileWorkSessionConversation = postJson(
@@ -363,6 +404,12 @@ class AteneaApiClient(
 
     suspend fun fetchApiCostsOverview(days: Int = 30): MobileApiCostsOverview = getJson(
         path = "/api/mobile/costs/overview?days=$days",
+        authenticated = true,
+        parser = ::parseMobileApiCostsOverview
+    )
+
+    suspend fun fetchApiCostsOverview(startDate: String, endDate: String): MobileApiCostsOverview = getJson(
+        path = "/api/mobile/costs/overview?startDate=${urlEncode(startDate)}&endDate=${urlEncode(endDate)}",
         authenticated = true,
         parser = ::parseMobileApiCostsOverview
     )
@@ -755,11 +802,23 @@ data class MobileWorkSessionConversation(
 
 data class MobileWorkSession(
     val id: Long,
+    val projectId: Long?,
     val title: String,
     val status: String,
     val operationalState: String,
+    val baseBranch: String?,
+    val workspaceBranch: String?,
+    val pullRequestUrl: String?,
     val pullRequestStatus: String?,
-    val lastActivityAt: String?
+    val finalCommitSha: String?,
+    val openedAt: String?,
+    val lastActivityAt: String?,
+    val publishedAt: String?,
+    val closedAt: String?,
+    val closeBlockedState: String?,
+    val closeBlockedReason: String?,
+    val closeBlockedAction: String?,
+    val closeRetryable: Boolean
 )
 
 data class MobileAgentRun(
@@ -776,6 +835,115 @@ data class MobileConversationTurn(
     val actor: String,
     val messageText: String,
     val createdAt: String?
+)
+
+data class MobileSessionSummary(
+    val conversation: MobileWorkSessionConversation,
+    val approvedDeliverables: SessionDeliverablesView,
+    val approvedPriceEstimate: ApprovedPriceEstimateSummary?,
+    val actions: MobileSessionActions,
+    val insights: MobileSessionInsights
+)
+
+data class MobileSessionActions(
+    val canCreateTurn: Boolean,
+    val canPublish: Boolean,
+    val canSyncPullRequest: Boolean,
+    val canClose: Boolean,
+    val canGenerateDeliverables: Boolean,
+    val canApproveDeliverables: Boolean,
+    val canMarkApprovedPriceEstimateBilled: Boolean
+)
+
+data class MobileSessionInsights(
+    val latestProgress: String?,
+    val currentBlocker: MobileSessionBlocker?,
+    val nextStepRecommended: String?
+)
+
+data class MobileSessionBlocker(
+    val category: String?,
+    val summary: String?
+)
+
+data class SessionDeliverablesView(
+    val sessionId: Long,
+    val deliverables: List<SessionDeliverableSummary>,
+    val allCoreDeliverablesPresent: Boolean,
+    val allCoreDeliverablesApproved: Boolean,
+    val lastGeneratedAt: String?
+)
+
+data class SessionDeliverableSummary(
+    val id: Long,
+    val type: String,
+    val status: String,
+    val version: Int,
+    val title: String,
+    val approved: Boolean,
+    val approvedAt: String?,
+    val updatedAt: String?,
+    val preview: String?,
+    val latestApprovedDeliverableId: Long?
+)
+
+data class SessionDeliverable(
+    val id: Long,
+    val sessionId: Long,
+    val type: String,
+    val status: String,
+    val version: Int,
+    val title: String,
+    val contentMarkdown: String?,
+    val contentJson: String?,
+    val generationNotes: String?,
+    val errorMessage: String?,
+    val approved: Boolean,
+    val approvedAt: String?,
+    val billingStatus: String?,
+    val billingReference: String?,
+    val billedAt: String?,
+    val createdAt: String?,
+    val updatedAt: String?
+)
+
+data class ApprovedPriceEstimateSummary(
+    val sessionId: Long,
+    val deliverableId: Long,
+    val version: Int,
+    val title: String,
+    val currency: String?,
+    val baseHourlyRate: Double,
+    val equivalentHours: Double,
+    val minimumPrice: Double,
+    val recommendedPrice: Double,
+    val maximumPrice: Double,
+    val commercialPositioning: String?,
+    val riskLevel: String?,
+    val confidence: String?,
+    val assumptions: List<String>,
+    val exclusions: List<String>,
+    val billingStatus: String?,
+    val billingReference: String?,
+    val billedAt: String?,
+    val approvedAt: String?,
+    val updatedAt: String?
+)
+
+data class MobileSessionEvents(
+    val sessionId: Long,
+    val events: List<MobileSessionEvent>,
+    val generatedAt: String?
+)
+
+data class MobileSessionEvent(
+    val type: String,
+    val at: String?,
+    val title: String,
+    val details: String?,
+    val runId: Long?,
+    val turnId: Long?,
+    val deliverableId: Long?
 )
 
 data class ResolveMobileRescueSessionResult(
@@ -1031,7 +1199,11 @@ data class MobileApiCostsOverview(
     val generatedAt: String?,
     val startAt: String?,
     val endAt: String?,
-    val providers: List<MobileApiCostProvider>
+    val currency: String,
+    val total: Double,
+    val providers: List<MobileApiCostProvider>,
+    val usageSummaries: List<MobileApiUsageSummary>,
+    val codexAuthStatuses: List<MobileCodexAuthStatus>
 )
 
 data class MobileApiCostProvider(
@@ -1040,14 +1212,64 @@ data class MobileApiCostProvider(
     val status: String,
     val currency: String,
     val total: Double,
+    val modelTotals: List<MobileApiCostModelTotal>,
     val lines: List<MobileApiCostLine>
+)
+
+data class MobileApiCostModelTotal(
+    val provider: String,
+    val model: String,
+    val currency: String,
+    val amount: Double
 )
 
 data class MobileApiCostLine(
     val label: String,
     val projectId: String?,
+    val model: String?,
     val currency: String,
     val amount: Double
+)
+
+data class MobileApiUsageSummary(
+    val provider: String,
+    val usageType: String,
+    val status: String,
+    val requests: Long,
+    val inputTokens: Long,
+    val cachedInputTokens: Long,
+    val outputTokens: Long,
+    val inputAudioTokens: Long,
+    val outputAudioTokens: Long,
+    val characters: Long,
+    val lines: List<MobileApiUsageLine>
+)
+
+data class MobileApiUsageLine(
+    val usageType: String,
+    val model: String,
+    val projectId: String?,
+    val projectName: String?,
+    val apiKeyId: String?,
+    val apiKeyName: String?,
+    val requests: Long,
+    val inputTokens: Long,
+    val cachedInputTokens: Long,
+    val outputTokens: Long,
+    val inputAudioTokens: Long,
+    val outputAudioTokens: Long,
+    val characters: Long
+)
+
+data class MobileCodexAuthStatus(
+    val server: String,
+    val configured: Boolean,
+    val compliant: Boolean,
+    val status: String,
+    val requiredAuthMode: String,
+    val authMode: String?,
+    val apiKeyPresent: Boolean,
+    val tokensPresent: Boolean
 )
 
 private data class BinaryApiResponse(
@@ -1145,19 +1367,12 @@ private fun parseResolveMobileWorkSessionResult(json: JSONObject): ResolveMobile
     )
 
 private fun parseMobileWorkSessionConversation(json: JSONObject): MobileWorkSessionConversation {
-    val view = json.getJSONObject("view")
+    val view = json.optJSONObject("view") ?: json
     val session = view.getJSONObject("session")
     val latestRun = view.optJSONObject("latestRun")
-    val turns = json.optJSONArray("recentTurns") ?: JSONArray()
+    val turns = json.optJSONArray("recentTurns") ?: view.optJSONArray("recentTurns") ?: JSONArray()
     return MobileWorkSessionConversation(
-        session = MobileWorkSession(
-            id = session.getLong("id"),
-            title = session.optString("title", ""),
-            status = session.optString("status", ""),
-            operationalState = session.optString("operationalState", ""),
-            pullRequestStatus = session.optNullableString("pullRequestStatus"),
-            lastActivityAt = session.optNullableString("lastActivityAt")
-        ),
+        session = parseMobileWorkSession(session),
         runInProgress = view.optBoolean("runInProgress", false),
         canCreateTurn = view.optBoolean("canCreateTurn", false),
         latestRun = latestRun?.let {
@@ -1173,6 +1388,154 @@ private fun parseMobileWorkSessionConversation(json: JSONObject): MobileWorkSess
         lastError = view.optNullableString("lastError"),
         lastAgentResponse = view.optNullableString("lastAgentResponse"),
         recentTurns = List(turns.length()) { index -> parseMobileConversationTurn(turns.getJSONObject(index)) }
+    )
+}
+
+private fun parseMobileWorkSession(json: JSONObject): MobileWorkSession =
+    MobileWorkSession(
+        id = json.getLong("id"),
+        projectId = json.optNullableLong("projectId"),
+        title = json.optString("title", ""),
+        status = json.optString("status", ""),
+        operationalState = json.optString("operationalState", ""),
+        baseBranch = json.optNullableString("baseBranch"),
+        workspaceBranch = json.optNullableString("workspaceBranch"),
+        pullRequestUrl = json.optNullableString("pullRequestUrl"),
+        pullRequestStatus = json.optNullableString("pullRequestStatus"),
+        finalCommitSha = json.optNullableString("finalCommitSha"),
+        openedAt = json.optNullableString("openedAt"),
+        lastActivityAt = json.optNullableString("lastActivityAt"),
+        publishedAt = json.optNullableString("publishedAt"),
+        closedAt = json.optNullableString("closedAt"),
+        closeBlockedState = json.optNullableString("closeBlockedState"),
+        closeBlockedReason = json.optNullableString("closeBlockedReason"),
+        closeBlockedAction = json.optNullableString("closeBlockedAction"),
+        closeRetryable = json.optBoolean("closeRetryable", false)
+    )
+
+private fun parseMobileSessionSummary(json: JSONObject): MobileSessionSummary =
+    MobileSessionSummary(
+        conversation = parseMobileWorkSessionConversation(json.getJSONObject("conversation")),
+        approvedDeliverables = parseSessionDeliverablesView(
+            json.optJSONObject("approvedDeliverables") ?: JSONObject()
+        ),
+        approvedPriceEstimate = json.optJSONObject("approvedPriceEstimate")?.let(::parseApprovedPriceEstimateSummary),
+        actions = parseMobileSessionActions(json.optJSONObject("actions") ?: JSONObject()),
+        insights = parseMobileSessionInsights(json.optJSONObject("insights") ?: JSONObject())
+    )
+
+private fun parseMobileSessionActions(json: JSONObject): MobileSessionActions =
+    MobileSessionActions(
+        canCreateTurn = json.optBoolean("canCreateTurn", false),
+        canPublish = json.optBoolean("canPublish", false),
+        canSyncPullRequest = json.optBoolean("canSyncPullRequest", false),
+        canClose = json.optBoolean("canClose", false),
+        canGenerateDeliverables = json.optBoolean("canGenerateDeliverables", false),
+        canApproveDeliverables = json.optBoolean("canApproveDeliverables", false),
+        canMarkApprovedPriceEstimateBilled = json.optBoolean("canMarkApprovedPriceEstimateBilled", false)
+    )
+
+private fun parseMobileSessionInsights(json: JSONObject): MobileSessionInsights =
+    MobileSessionInsights(
+        latestProgress = json.optNullableString("latestProgress"),
+        currentBlocker = json.optJSONObject("currentBlocker")?.let {
+            MobileSessionBlocker(
+                category = it.optNullableString("category"),
+                summary = it.optNullableString("summary")
+            )
+        },
+        nextStepRecommended = json.optNullableString("nextStepRecommended")
+    )
+
+private fun parseSessionDeliverablesView(json: JSONObject): SessionDeliverablesView {
+    val deliverables = json.optJSONArray("deliverables") ?: JSONArray()
+    return SessionDeliverablesView(
+        sessionId = json.optLong("sessionId", 0L),
+        deliverables = List(deliverables.length()) { index ->
+            parseSessionDeliverableSummary(deliverables.getJSONObject(index))
+        },
+        allCoreDeliverablesPresent = json.optBoolean("allCoreDeliverablesPresent", false),
+        allCoreDeliverablesApproved = json.optBoolean("allCoreDeliverablesApproved", false),
+        lastGeneratedAt = json.optNullableString("lastGeneratedAt")
+    )
+}
+
+private fun parseSessionDeliverableSummary(json: JSONObject): SessionDeliverableSummary =
+    SessionDeliverableSummary(
+        id = json.getLong("id"),
+        type = json.optString("type", ""),
+        status = json.optString("status", ""),
+        version = json.optInt("version", 0),
+        title = json.optString("title", ""),
+        approved = json.optBoolean("approved", false),
+        approvedAt = json.optNullableString("approvedAt"),
+        updatedAt = json.optNullableString("updatedAt"),
+        preview = json.optNullableString("preview"),
+        latestApprovedDeliverableId = json.optNullableLong("latestApprovedDeliverableId")
+    )
+
+private fun parseSessionDeliverable(json: JSONObject): SessionDeliverable =
+    SessionDeliverable(
+        id = json.getLong("id"),
+        sessionId = json.getLong("sessionId"),
+        type = json.optString("type", ""),
+        status = json.optString("status", ""),
+        version = json.optInt("version", 0),
+        title = json.optString("title", ""),
+        contentMarkdown = json.optNullableString("contentMarkdown"),
+        contentJson = json.optNullableString("contentJson"),
+        generationNotes = json.optNullableString("generationNotes"),
+        errorMessage = json.optNullableString("errorMessage"),
+        approved = json.optBoolean("approved", false),
+        approvedAt = json.optNullableString("approvedAt"),
+        billingStatus = json.optNullableString("billingStatus"),
+        billingReference = json.optNullableString("billingReference"),
+        billedAt = json.optNullableString("billedAt"),
+        createdAt = json.optNullableString("createdAt"),
+        updatedAt = json.optNullableString("updatedAt")
+    )
+
+private fun parseApprovedPriceEstimateSummary(json: JSONObject): ApprovedPriceEstimateSummary =
+    ApprovedPriceEstimateSummary(
+        sessionId = json.getLong("sessionId"),
+        deliverableId = json.getLong("deliverableId"),
+        version = json.optInt("version", 0),
+        title = json.optString("title", ""),
+        currency = json.optNullableString("currency"),
+        baseHourlyRate = json.optDouble("baseHourlyRate", 0.0),
+        equivalentHours = json.optDouble("equivalentHours", 0.0),
+        minimumPrice = json.optDouble("minimumPrice", 0.0),
+        recommendedPrice = json.optDouble("recommendedPrice", 0.0),
+        maximumPrice = json.optDouble("maximumPrice", 0.0),
+        commercialPositioning = json.optNullableString("commercialPositioning"),
+        riskLevel = json.optNullableString("riskLevel"),
+        confidence = json.optNullableString("confidence"),
+        assumptions = json.optJSONArray("assumptions").toStringList(),
+        exclusions = json.optJSONArray("exclusions").toStringList(),
+        billingStatus = json.optNullableString("billingStatus"),
+        billingReference = json.optNullableString("billingReference"),
+        billedAt = json.optNullableString("billedAt"),
+        approvedAt = json.optNullableString("approvedAt"),
+        updatedAt = json.optNullableString("updatedAt")
+    )
+
+private fun parseMobileSessionEvents(json: JSONObject): MobileSessionEvents {
+    val events = json.optJSONArray("events") ?: JSONArray()
+    return MobileSessionEvents(
+        sessionId = json.optLong("sessionId", 0L),
+        events = List(events.length()) { index ->
+            val item = events.getJSONObject(index)
+            MobileSessionEvent(
+                type = item.optString("type", ""),
+                at = item.optNullableString("at"),
+                title = item.optString("title", ""),
+                details = item.optNullableString("details"),
+                runId = item.optNullableLong("runId"),
+                turnId = item.optNullableLong("turnId"),
+                deliverableId = item.optNullableLong("deliverableId")
+            )
+        },
+        generatedAt = json.optNullableString("generatedAt")
     )
 }
 
@@ -1439,29 +1802,94 @@ private fun parseMobileVoiceRealtimeSession(json: JSONObject): MobileVoiceRealti
 
 private fun parseMobileApiCostsOverview(json: JSONObject): MobileApiCostsOverview {
     val providers = json.optJSONArray("providers") ?: JSONArray()
+    val usageSummaries = json.optJSONArray("usageSummaries") ?: JSONArray()
+    val codexAuthStatuses = json.optJSONArray("codexAuthStatuses") ?: JSONArray()
     return MobileApiCostsOverview(
         generatedAt = json.optNullableString("generatedAt"),
         startAt = json.optNullableString("startAt"),
         endAt = json.optNullableString("endAt"),
+        currency = json.optString("currency", "usd"),
+        total = json.optDouble("total", 0.0),
         providers = List(providers.length()) { index ->
             parseMobileApiCostProvider(providers.getJSONObject(index))
+        },
+        usageSummaries = List(usageSummaries.length()) { index ->
+            parseMobileApiUsageSummary(usageSummaries.getJSONObject(index))
+        },
+        codexAuthStatuses = List(codexAuthStatuses.length()) { index ->
+            val status = codexAuthStatuses.getJSONObject(index)
+            MobileCodexAuthStatus(
+                server = status.optString("server", ""),
+                configured = status.optBoolean("configured", false),
+                compliant = status.optBoolean("compliant", false),
+                status = status.optString("status", ""),
+                requiredAuthMode = status.optString("requiredAuthMode", ""),
+                authMode = status.optNullableString("authMode"),
+                apiKeyPresent = status.optBoolean("apiKeyPresent", false),
+                tokensPresent = status.optBoolean("tokensPresent", false)
+            )
+        }
+    )
+}
+
+private fun parseMobileApiUsageSummary(json: JSONObject): MobileApiUsageSummary {
+    val lines = json.optJSONArray("lines") ?: JSONArray()
+    return MobileApiUsageSummary(
+        provider = json.optString("provider", ""),
+        usageType = json.optString("usageType", ""),
+        status = json.optString("status", ""),
+        requests = json.optLong("requests", 0L),
+        inputTokens = json.optLong("inputTokens", 0L),
+        cachedInputTokens = json.optLong("cachedInputTokens", 0L),
+        outputTokens = json.optLong("outputTokens", 0L),
+        inputAudioTokens = json.optLong("inputAudioTokens", 0L),
+        outputAudioTokens = json.optLong("outputAudioTokens", 0L),
+        characters = json.optLong("characters", 0L),
+        lines = List(lines.length()) { index ->
+            val line = lines.getJSONObject(index)
+            MobileApiUsageLine(
+                usageType = line.optString("usageType", json.optString("usageType", "")),
+                model = line.optString("model", "Sin modelo"),
+                projectId = line.optNullableString("projectId"),
+                projectName = line.optNullableString("projectName"),
+                apiKeyId = line.optNullableString("apiKeyId"),
+                apiKeyName = line.optNullableString("apiKeyName"),
+                requests = line.optLong("requests", 0L),
+                inputTokens = line.optLong("inputTokens", 0L),
+                cachedInputTokens = line.optLong("cachedInputTokens", 0L),
+                outputTokens = line.optLong("outputTokens", 0L),
+                inputAudioTokens = line.optLong("inputAudioTokens", 0L),
+                outputAudioTokens = line.optLong("outputAudioTokens", 0L),
+                characters = line.optLong("characters", 0L)
+            )
         }
     )
 }
 
 private fun parseMobileApiCostProvider(json: JSONObject): MobileApiCostProvider {
     val lines = json.optJSONArray("lines") ?: JSONArray()
+    val modelTotals = json.optJSONArray("modelTotals") ?: JSONArray()
     return MobileApiCostProvider(
         provider = json.optString("provider", ""),
         configured = json.optBoolean("configured", false),
         status = json.optString("status", ""),
         currency = json.optString("currency", "usd"),
         total = json.optDouble("total", 0.0),
+        modelTotals = List(modelTotals.length()) { index ->
+            val model = modelTotals.getJSONObject(index)
+            MobileApiCostModelTotal(
+                provider = model.optString("provider", json.optString("provider", "")),
+                model = model.optString("model", "Sin modelo"),
+                currency = model.optString("currency", json.optString("currency", "usd")),
+                amount = model.optDouble("amount", 0.0)
+            )
+        },
         lines = List(lines.length()) { index ->
             val line = lines.getJSONObject(index)
             MobileApiCostLine(
                 label = line.optString("label", ""),
                 projectId = line.optNullableString("projectId"),
+                model = line.optNullableString("model"),
                 currency = line.optString("currency", json.optString("currency", "usd")),
                 amount = line.optDouble("amount", 0.0)
             )
@@ -1515,6 +1943,9 @@ private fun JSONObject.putNullable(key: String, value: Any?): JSONObject {
     return this
 }
 
+private fun urlEncode(value: String): String =
+    URLEncoder.encode(value, Charsets.UTF_8.name())
+
 private fun JSONObject.optNullableString(key: String): String? =
     if (has(key) && !isNull(key)) optString(key).takeIf { it.isNotBlank() } else null
 
@@ -1526,6 +1957,14 @@ private fun JSONObject.optNullableInt(key: String): Int? =
 
 private fun JSONObject.optNullableBoolean(key: String): Boolean? =
     if (has(key) && !isNull(key)) getBoolean(key) else null
+
+private fun JSONArray?.toStringList(): List<String> =
+    if (this == null) {
+        emptyList()
+    } else {
+        List(length()) { index -> optString(index).takeIf { it.isNotBlank() }.orEmpty() }
+            .filter { it.isNotBlank() }
+    }
 
 private fun JSONObject.toDisplayMap(): Map<String, String> {
     val result = linkedMapOf<String, String>()

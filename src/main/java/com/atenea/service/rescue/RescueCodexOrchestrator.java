@@ -4,6 +4,7 @@ import com.atenea.codexappserver.CodexAppServerClient;
 import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionListener;
 import com.atenea.codexappserver.CodexAppServerExecutionRequest;
+import com.atenea.codexappserver.CodexAuthStatusService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -36,11 +37,14 @@ public class RescueCodexOrchestrator {
             """;
 
     private final CodexAppServerClient codexAppServerClient;
+    private final CodexAuthStatusService codexAuthStatusService;
 
     public RescueCodexOrchestrator(
-            @Qualifier("rescueCodexAppServerClient") CodexAppServerClient codexAppServerClient
+            @Qualifier("rescueCodexAppServerClient") CodexAppServerClient codexAppServerClient,
+            CodexAuthStatusService codexAuthStatusService
     ) {
         this.codexAppServerClient = codexAppServerClient;
+        this.codexAuthStatusService = codexAuthStatusService;
     }
 
     public CodexAppServerExecutionHandle startTurn(
@@ -49,6 +53,7 @@ public class RescueCodexOrchestrator {
             String threadId,
             CodexAppServerExecutionListener listener
     ) throws Exception {
+        codexAuthStatusService.ensureRescueCompliant();
         return codexAppServerClient.startExecution(
                 new CodexAppServerExecutionRequest(repoPath, RESCUE_PROMPT_PREFIX + message, threadId),
                 listener);

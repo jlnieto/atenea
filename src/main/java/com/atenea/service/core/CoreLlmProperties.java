@@ -2,7 +2,7 @@ package com.atenea.service.core;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(prefix = "atenea.core.llm")
+@ConfigurationProperties(prefix = "atenea.core.intent-router")
 public class CoreLlmProperties {
 
     private boolean enabled = false;

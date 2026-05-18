@@ -181,6 +181,40 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                     "session_deliverables_query");
         }
 
+        if (looksLikeDatabaseRefresh(normalized)) {
+            ProjectEntity project = resolveProject(context, input);
+            Map<String, Object> parameters = new LinkedHashMap<>();
+            parameters.put("projectId", project.getId());
+            parameters.put("projectName", project.getName());
+            return proposal(
+                    "REFRESH_PROJECT_DATABASE",
+                    "refresh_project_database",
+                    parameters,
+                    BigDecimal.valueOf(0.96),
+                    "explicit_project_database_refresh_request");
+        }
+
+        if (looksLikeProjectVerification(normalized)) {
+            WorkSessionEntity session = tryResolveSession(context, input);
+            if (session != null) {
+                return proposal(
+                        "RUN_PROJECT_VERIFICATION",
+                        "run_project_verification",
+                        Map.of(
+                                "projectId", session.getProject().getId(),
+                                "workSessionId", session.getId()),
+                        BigDecimal.valueOf(0.95),
+                        "project_verification_request");
+            }
+            ProjectEntity project = resolveProject(context, input);
+            return proposal(
+                    "RUN_PROJECT_VERIFICATION",
+                    "run_project_verification",
+                    Map.of("projectId", project.getId()),
+                    BigDecimal.valueOf(0.91),
+                    "project_verification_request");
+        }
+
         if (looksLikePublish(normalized)) {
             WorkSessionEntity session = resolveSession(context, input);
             return proposal(
@@ -338,6 +372,14 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
         }
         throw new CoreUnknownIntentException(
                 "Atenea Core could not determine the target WorkSession for the current request");
+    }
+
+    private WorkSessionEntity tryResolveSession(CoreRequestContext context, String input) {
+        Long projectId = context == null ? null : context.projectId();
+        return coreWorkSessionResolver.resolveActiveSession(
+                input,
+                context == null ? null : context.workSessionId(),
+                projectId);
     }
 
     private ManagedHostEntity resolveOperationsHost(String input) {
@@ -515,7 +557,11 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                 || normalized.contains("work on ")
                 || normalized.contains("usar este proyecto")
                 || normalized.contains("activa el proyecto")
-                || normalized.contains("usa el proyecto");
+                || normalized.contains("usa el proyecto")
+                || normalized.contains("cambia al proyecto")
+                || normalized.contains("cambia a proyecto")
+                || normalized.contains("cambia a ")
+                || normalized.contains("cambiar a ");
     }
 
     private boolean looksLikeOpenSession(String normalized) {
@@ -555,7 +601,45 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                 || normalized.contains("where are we");
     }
 
+    private boolean looksLikeProjectVerification(String normalized) {
+        boolean asksToVerify = normalized.contains("verifica")
+                || normalized.contains("validar")
+                || normalized.contains("valida")
+                || normalized.contains("comprueba")
+                || normalized.contains("pasa las pruebas")
+                || normalized.contains("run tests")
+                || normalized.contains("test");
+        boolean mentionsRuntimeOrDelivery = normalized.contains("pruebas")
+                || normalized.contains("navegador")
+                || normalized.contains("browser")
+                || normalized.contains("smoke")
+                || normalized.contains("runtime")
+                || normalized.contains("desplegar")
+                || normalized.contains("deploy")
+                || normalized.contains("antes de publicar")
+                || normalized.contains("antes de desplegar");
+        return asksToVerify && mentionsRuntimeOrDelivery;
+    }
+
+    private boolean looksLikeDatabaseRefresh(String normalized) {
+        boolean asksRefresh = normalized.contains("actualiza")
+                || normalized.contains("reemplaza")
+                || normalized.contains("refresca");
+        boolean mentionsDatabase = normalized.contains(" bd")
+                || normalized.startsWith("bd ")
+                || normalized.endsWith(" bd")
+                || normalized.contains("base de datos");
+        return asksRefresh && mentionsDatabase;
+    }
+
     private boolean looksLikeLatestSessionResponse(String normalized) {
+        if (normalized.contains("estado de codex")
+                || normalized.contains("status de codex")
+                || normalized.contains("codex status")
+                || normalized.contains("como va codex")
+                || normalized.contains("codex sigue trabajando")) {
+            return true;
+        }
         boolean mentionsResponse = normalized.contains("respuesta")
                 || normalized.contains("respondido")
                 || normalized.contains("contestado")

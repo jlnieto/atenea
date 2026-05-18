@@ -67,6 +67,7 @@ class AteneaVoiceRuntimeService : Service() {
             ACTION_STOP -> {
                 disconnectRealtime("Servicio detenido.")
                 stopRuntime()
+                stopForegroundCompat()
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -79,7 +80,13 @@ class AteneaVoiceRuntimeService : Service() {
                     voice = intent.getStringExtra(EXTRA_VOICE).orEmpty(),
                 )
             }
-            ACTION_DISCONNECT_REALTIME -> disconnectRealtime("Realtime desconectado por el operador.")
+            ACTION_DISCONNECT_REALTIME -> {
+                disconnectRealtime("Realtime desconectado por el operador.")
+                stopRuntime()
+                stopForegroundCompat()
+                stopSelf()
+                return START_NOT_STICKY
+            }
             ACTION_CANCEL_REALTIME_RESPONSE -> cancelRealtimeResponse("Respuesta cortada por el operador.")
             ACTION_SPEAK_TEXT -> speakText(intent.getStringExtra(EXTRA_SPEAK_TEXT).orEmpty())
             ACTION_SET_OUTPUT_VOLUME -> setOutputVolume(intent.getFloatExtra(EXTRA_OUTPUT_VOLUME, 1.0f))
@@ -144,10 +151,14 @@ class AteneaVoiceRuntimeService : Service() {
         restoreAudioMode()
         AteneaVoiceRuntimeStateStore.update {
             it.copy(
+                serviceActive = false,
                 captureActive = false,
+                realtimeConnected = false,
+                realtimeStatus = "not_connected",
                 rmsDb = null,
                 peakLevel = 0.0,
                 inputSpeechActive = false,
+                outputPlaybackActive = false,
                 lastEvent = "Runtime WebRTC detenido."
             )
         }
@@ -562,6 +573,15 @@ class AteneaVoiceRuntimeService : Service() {
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
         }
     }
 

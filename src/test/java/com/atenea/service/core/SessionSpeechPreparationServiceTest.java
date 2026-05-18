@@ -84,10 +84,9 @@ class SessionSpeechPreparationServiceTest {
         SessionSpeechPreparationResult result = service.prepareLatestResponse(55L, SessionSpeechMode.BRIEF);
 
         assertEquals(
-                "Punto actual: He aplicado el parche principal. Bloqueo técnico: Los tests siguen fallando en CI. Siguiente paso: Revisar el stacktrace del test roto. Archivos tocados: index.html. Verificación: Typecheck en verde. Hay una ejecución en curso.",
+                "Punto actual: He aplicado el parche principal. Bloqueo técnico: Los tests siguen fallando en CI. Siguiente paso: Revisar el stacktrace del test roto. Verificación: Typecheck en verde. Hay una ejecución en curso.",
                 result.text());
         assertTrue(result.sectionsUsed().contains("runInProgress"));
-        assertTrue(result.sectionsUsed().contains("touchedFiles"));
         assertTrue(result.sectionsUsed().contains("verification"));
     }
 

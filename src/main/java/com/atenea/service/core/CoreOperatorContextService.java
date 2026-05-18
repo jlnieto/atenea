@@ -6,6 +6,7 @@ import com.atenea.persistence.core.CoreOperatorContextEntity;
 import com.atenea.persistence.core.CoreOperatorContextRepository;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -85,12 +86,15 @@ public class CoreOperatorContextService {
                 });
 
         Long projectId = switch (intent.capability()) {
-            case "activate_project_context", "get_project_overview", "create_work_session" ->
+            case "activate_project_context", "get_project_overview", "create_work_session",
+                    "refresh_project_database" ->
                     longParameter(intent, "projectId");
             case "continue_work_session", "publish_work_session", "sync_work_session_pull_request",
                     "get_session_summary", "get_latest_session_response",
                     "get_session_deliverables", "generate_session_deliverable",
-                    "close_work_session" -> resolveProjectIdFromSession(longParameter(intent, "workSessionId"));
+                    "run_project_verification", "close_work_session" -> resolveProjectIdFromSession(
+                    longParameter(intent, "workSessionId"),
+                    longParameter(intent, "projectId"));
             default -> context.getActiveProjectId();
         };
 
@@ -99,7 +103,7 @@ public class CoreOperatorContextService {
             case "continue_work_session", "publish_work_session", "sync_work_session_pull_request",
                     "get_session_summary", "get_latest_session_response",
                     "get_session_deliverables", "generate_session_deliverable",
-                    "close_work_session" -> longParameter(intent, "workSessionId");
+                    "run_project_verification", "close_work_session" -> longParameter(intent, "workSessionId");
             default -> context.getActiveWorkSessionId();
         };
 
@@ -111,7 +115,7 @@ public class CoreOperatorContextService {
     }
 
     @Transactional
-    public void activateProject(String operatorKey, Long projectId, Long commandId) {
+    public Long activateProject(String operatorKey, Long projectId, Long commandId) {
         if (projectId == null || !projectRepository.existsById(projectId)) {
             throw new CoreInvalidContextException("Missing or invalid Core parameter: projectId");
         }
@@ -121,11 +125,15 @@ public class CoreOperatorContextService {
                     entity.setOperatorKey(normalizeOperatorKey(operatorKey));
                     return entity;
                 });
+        Long openWorkSessionId = workSessionRepository.findByProjectIdAndStatus(projectId, WorkSessionStatus.OPEN)
+                .map(session -> session.getId())
+                .orElse(null);
         context.setActiveProjectId(projectId);
-        context.setActiveWorkSessionId(null);
+        context.setActiveWorkSessionId(openWorkSessionId);
         context.setActiveCommandId(commandId);
         context.setUpdatedAt(Instant.now());
         coreOperatorContextRepository.save(context);
+        return openWorkSessionId;
     }
 
     @Transactional(readOnly = true)
@@ -151,13 +159,13 @@ public class CoreOperatorContextService {
         return value instanceof Number number ? number.longValue() : null;
     }
 
-    private Long resolveProjectIdFromSession(Long workSessionId) {
+    private Long resolveProjectIdFromSession(Long workSessionId, Long fallbackProjectId) {
         if (workSessionId == null) {
-            return null;
+            return fallbackProjectId;
         }
         return workSessionRepository.findWithProjectById(workSessionId)
                 .map(session -> session.getProject().getId())
-                .orElse(null);
+                .orElse(fallbackProjectId);
     }
 
     private String normalizeOperatorKey(String operatorKey) {

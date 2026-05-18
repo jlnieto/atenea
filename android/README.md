@@ -21,6 +21,8 @@ The native client currently implements the first usable operator shell:
 - text command against `POST /api/core/commands`
 - recent Core command history from `GET /api/core/commands`
 - native `Inicio`, `Core`, `Operaciones`, `Archivos` and `Ajustes` destinations
+- native `Proyectos`, `WorkSession`, `Conversación` and `Rescate` surfaces
+- session-first WorkSession dashboard with Core actions, deliverables, close guidance and event sync
 - operations status from `/api/mobile/operations/*`
 - Apache recovery through Core confirmation
 - authenticated file upload through `POST /api/mobile/uploads`
@@ -31,8 +33,6 @@ The native client currently implements the first usable operator shell:
 It does not yet include:
 
 - native voice engine
-- WorkSession conversation
-- rescue
 - push notifications
 - foreground service
 - wake word
@@ -86,7 +86,9 @@ For local backend testing from a device, use a reachable LAN URL:
 2. Log in with an Atenea mobile operator account.
 3. Check `Inicio` and verify it shows the operational summary.
 4. Open `Operaciones` and run `Actualizar`.
-5. Send a simple Core command, for example:
+5. Open `Proyectos`, enter a project session and verify the WorkSession dashboard loads status, insights, deliverables and timeline.
+6. Open `Conversacion` from the WorkSession and send a scoped instruction through Core.
+7. Send a simple Core command, for example:
 
 ```text
 comprueba apache en el dedicado
@@ -97,6 +99,7 @@ Expected result:
 - Core returns a command id and status.
 - The screen shows `operatorMessage` when present.
 - Recent Core history refreshes after the command.
+- WorkSession actions use `POST /api/core/commands` with `SESSION` scope; direct mobile mutation endpoints are treated as compatibility aliases only.
 - Operaciones renders script reports as readable summary, steps and metrics, not raw JSON.
 - Archivos stores uploaded files under `/srv/atenea/workspace/repos/internal/atenea/operator-uploads`.
 
@@ -172,7 +175,7 @@ Port in this order:
 2. Core confirmations and clarifications
 3. native voice engine push-to-talk
 4. operations
-5. WorkSession conversation
+5. WorkSession dashboard and conversation
 6. rescue
 7. notifications
 8. foreground command mode

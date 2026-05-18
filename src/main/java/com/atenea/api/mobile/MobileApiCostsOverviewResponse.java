@@ -7,6 +7,10 @@ public record MobileApiCostsOverviewResponse(
         Instant generatedAt,
         Instant startAt,
         Instant endAt,
-        List<MobileApiCostProviderResponse> providers
+        String currency,
+        double total,
+        List<MobileApiCostProviderResponse> providers,
+        List<MobileApiUsageSummaryResponse> usageSummaries,
+        List<MobileCodexAuthStatusResponse> codexAuthStatuses
 ) {
 }

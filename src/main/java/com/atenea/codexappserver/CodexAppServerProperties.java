@@ -1,6 +1,7 @@
 package com.atenea.codexappserver;
 
 import java.net.URI;
+import java.nio.file.Path;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -11,6 +12,9 @@ public class CodexAppServerProperties {
     private String prompt = "say hello";
     private String cwd = "/workspace/repos/internal/atenea";
     private String model;
+    private Path authFile;
+    private Path authStatusFile;
+    private String requiredAuthMode = "chatgpt";
     private Duration connectTimeout = Duration.ofSeconds(10);
     private Duration startTimeout = Duration.ofSeconds(15);
     private Duration completionTimeout = Duration.ofSeconds(300);
@@ -46,6 +50,30 @@ public class CodexAppServerProperties {
 
     public void setModel(String model) {
         this.model = model;
+    }
+
+    public Path getAuthFile() {
+        return authFile;
+    }
+
+    public void setAuthFile(Path authFile) {
+        this.authFile = authFile;
+    }
+
+    public Path getAuthStatusFile() {
+        return authStatusFile;
+    }
+
+    public void setAuthStatusFile(Path authStatusFile) {
+        this.authStatusFile = authStatusFile;
+    }
+
+    public String getRequiredAuthMode() {
+        return requiredAuthMode;
+    }
+
+    public void setRequiredAuthMode(String requiredAuthMode) {
+        this.requiredAuthMode = requiredAuthMode;
     }
 
     public Duration getConnectTimeout() {

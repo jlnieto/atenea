@@ -8,6 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class ApiCostsProperties {
 
     private OpenAi openai = new OpenAi();
+    private DeepSeek deepseek = new DeepSeek();
 
     public OpenAi getOpenai() {
         return openai;
@@ -15,6 +16,14 @@ public class ApiCostsProperties {
 
     public void setOpenai(OpenAi openai) {
         this.openai = openai;
+    }
+
+    public DeepSeek getDeepseek() {
+        return deepseek;
+    }
+
+    public void setDeepseek(DeepSeek deepseek) {
+        this.deepseek = deepseek;
     }
 
     public static class OpenAi {
@@ -62,6 +71,18 @@ public class ApiCostsProperties {
 
         public void setReadTimeout(Duration readTimeout) {
             this.readTimeout = readTimeout;
+        }
+    }
+
+    public static class DeepSeek {
+        private boolean enabled = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
         }
     }
 }

@@ -182,21 +182,30 @@ internal fun AteneaShell(
                     AteneaDestination.VOICE -> VoiceScreen(apiClient = apiClient)
                     AteneaDestination.PROJECTS -> ProjectsScreen(
                         apiClient = apiClient,
-                        onOpenConversation = { projectId, sessionId ->
+                        onOpenSession = { projectId, sessionId ->
                             selectedProjectId = projectId
                             selectedSessionId = sessionId
-                            selectedDestination = AteneaDestination.CONVERSATION
+                            selectedDestination = AteneaDestination.SESSION
                         },
                         onOpenRescue = { projectId ->
                             selectedProjectId = projectId
                             selectedDestination = AteneaDestination.RESCUE
                         }
                     )
-                    AteneaDestination.CONVERSATION -> WorkSessionConversationScreen(
+                    AteneaDestination.SESSION -> WorkSessionScreen(
                         apiClient = apiClient,
+                        projectId = selectedProjectId,
                         sessionId = selectedSessionId,
+                        onOpenConversation = { selectedDestination = AteneaDestination.CONVERSATION },
                         onOpenCore = { selectedDestination = AteneaDestination.CORE },
                         onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS }
+                    )
+                    AteneaDestination.CONVERSATION -> WorkSessionConversationScreen(
+                        apiClient = apiClient,
+                        projectId = selectedProjectId,
+                        sessionId = selectedSessionId,
+                        onOpenCore = { selectedDestination = AteneaDestination.CORE },
+                        onBackToSession = { selectedDestination = AteneaDestination.SESSION }
                     )
                     AteneaDestination.RESCUE -> RescueScreen(
                         apiClient = apiClient,
@@ -281,6 +290,7 @@ private enum class AteneaDestination(
 ) {
     HOME("Inicio", "Inicio"),
     PROJECTS("Proyectos", "Proyectos"),
+    SESSION("Sesión", "Sesión"),
     CONVERSATION("Conversación", "Conversación"),
     RESCUE("Rescate", "Rescate"),
     HEALTH("Estado", "Estado"),

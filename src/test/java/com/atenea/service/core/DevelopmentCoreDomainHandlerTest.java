@@ -30,14 +30,18 @@ import com.atenea.persistence.core.CoreDomain;
 import com.atenea.persistence.core.CoreResultType;
 import com.atenea.persistence.core.CoreRiskLevel;
 import com.atenea.persistence.core.CoreTargetType;
+import com.atenea.persistence.database.ProjectDatabaseRefreshStatus;
 import com.atenea.persistence.worksession.SessionDeliverableBillingStatus;
 import com.atenea.persistence.worksession.SessionDeliverableStatus;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.service.database.ProjectDatabaseRefreshResponse;
+import com.atenea.service.database.ProjectDatabaseRefreshService;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.project.ProjectOverviewService;
+import com.atenea.service.verification.ProjectVerificationService;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
 import com.atenea.service.worksession.SessionDeliverableService;
 import com.atenea.service.worksession.SessionTurnService;
@@ -80,6 +84,15 @@ class DevelopmentCoreDomainHandlerTest {
     @Mock
     private CoreOperatorContextService coreOperatorContextService;
 
+    @Mock
+    private SessionSpeechPreparationService sessionSpeechPreparationService;
+
+    @Mock
+    private ProjectVerificationService projectVerificationService;
+
+    @Mock
+    private ProjectDatabaseRefreshService projectDatabaseRefreshService;
+
     private DevelopmentCoreDomainHandler handler;
 
     @BeforeEach
@@ -92,7 +105,10 @@ class DevelopmentCoreDomainHandlerTest {
                 sessionDeliverableGenerationService,
                 projectOverviewService,
                 mobileSessionService,
-                coreOperatorContextService);
+                coreOperatorContextService,
+                sessionSpeechPreparationService,
+                projectVerificationService,
+                projectDatabaseRefreshService);
     }
 
     @Test
@@ -115,6 +131,46 @@ class DevelopmentCoreDomainHandlerTest {
         assertEquals(CoreResultType.WORK_SESSION_CONVERSATION_VIEW, result.resultType());
         assertEquals(CoreTargetType.WORK_SESSION, result.targetType());
         assertEquals(44L, result.targetId());
+    }
+
+    @Test
+    void refreshProjectDatabaseDelegatesToDatabaseRefreshService() {
+        ProjectDatabaseRefreshResponse response = new ProjectDatabaseRefreshResponse(
+                501L,
+                7L,
+                ProjectDatabaseRefreshStatus.PASSED,
+                "ops/atenea-runtime.yml",
+                "mariadb",
+                "fomasys",
+                "dedicado",
+                "fomasys3a6y1",
+                "Base de datos local actualizada correctamente desde producción.",
+                "OK",
+                null,
+                null,
+                null,
+                0,
+                "Importacion completada",
+                1200L,
+                Instant.now(),
+                Instant.now());
+        when(projectDatabaseRefreshService.runRefresh(7L)).thenReturn(response);
+
+        CoreCommandExecutionResult result = handler.execute(
+                new CoreIntentEnvelope(
+                        "REFRESH_PROJECT_DATABASE",
+                        CoreDomain.DEVELOPMENT,
+                        "refresh_project_database",
+                        Map.of("projectId", 7L),
+                        BigDecimal.valueOf(0.96),
+                        CoreRiskLevel.DESTRUCTIVE,
+                        true),
+                new CoreExecutionContext(101L, 7L, null, "default", true, "token"));
+
+        assertEquals(CoreResultType.PROJECT_DATABASE_REFRESH_RUN, result.resultType());
+        assertEquals(CoreTargetType.PROJECT_DATABASE_REFRESH_RUN, result.targetType());
+        assertEquals(501L, result.targetId());
+        verify(projectDatabaseRefreshService).runRefresh(7L);
     }
 
     @Test
@@ -142,6 +198,12 @@ class DevelopmentCoreDomainHandlerTest {
                                 fullCodexTurn,
                                 Instant.parse("2026-03-30T20:00:00Z"))));
         when(workSessionService.getSessionConversationView(12L)).thenReturn(conversationView);
+        when(sessionSpeechPreparationService.prepareLatestResponse(12L, SessionSpeechMode.BRIEF))
+                .thenReturn(new SessionSpeechPreparationResult(
+                        "Punto actual: Codex retomó el trabajo. Siguiente paso: validar runtime.",
+                        SessionSpeechMode.BRIEF,
+                        false,
+                        List.of("latestProgress", "nextStepRecommended")));
 
         CoreCommandExecutionResult result = handler.execute(
                 new CoreIntentEnvelope(
@@ -159,7 +221,7 @@ class DevelopmentCoreDomainHandlerTest {
         assertEquals(CoreResultType.WORK_SESSION_CONVERSATION_VIEW, result.resultType());
         assertEquals(12L, result.targetId());
         assertEquals(
-                "Codex responde: Esta es la respuesta completa de Codex, no el resumen corto. Siguiente paso recomendado. Hay que validar el flujo completo en runtime",
+                "Codex responde: Punto actual: Codex retomó el trabajo. Siguiente paso: validar runtime.",
                 result.speakableMessage());
     }
 
@@ -186,6 +248,54 @@ class DevelopmentCoreDomainHandlerTest {
     }
 
     @Test
+    void activateProjectContextSelectsExistingOpenWorkSession() {
+        when(coreOperatorContextService.activateProject("default", 7L, 101L)).thenReturn(44L);
+        when(projectOverviewService.getOverview()).thenReturn(List.of(projectOverview(7L)));
+
+        CoreCommandExecutionResult result = handler.execute(
+                new CoreIntentEnvelope(
+                        "ACTIVATE_PROJECT_CONTEXT",
+                        CoreDomain.DEVELOPMENT,
+                        "activate_project_context",
+                        Map.of("projectId", 7L),
+                        BigDecimal.valueOf(0.95),
+                        CoreRiskLevel.READ,
+                        false),
+                new CoreExecutionContext(101L, null, null, "default", false, null));
+
+        assertEquals(CoreResultType.PROJECT_CONTEXT, result.resultType());
+        assertEquals(CoreTargetType.WORK_SESSION, result.targetType());
+        assertEquals(44L, result.targetId());
+        assertEquals(
+                "He cambiado el foco a Atenea y he seleccionado la WorkSession abierta: Trabajo.",
+                result.speakableMessage());
+    }
+
+    @Test
+    void activateProjectContextDoesNotOpenWorkSessionWhenNoneIsOpen() {
+        when(coreOperatorContextService.activateProject("default", 7L, 101L)).thenReturn(null);
+        when(projectOverviewService.getOverview()).thenReturn(List.of(projectOverviewWithoutSession(7L)));
+
+        CoreCommandExecutionResult result = handler.execute(
+                new CoreIntentEnvelope(
+                        "ACTIVATE_PROJECT_CONTEXT",
+                        CoreDomain.DEVELOPMENT,
+                        "activate_project_context",
+                        Map.of("projectId", 7L),
+                        BigDecimal.valueOf(0.95),
+                        CoreRiskLevel.READ,
+                        false),
+                new CoreExecutionContext(101L, null, null, "default", false, null));
+
+        assertEquals(CoreResultType.PROJECT_CONTEXT, result.resultType());
+        assertEquals(CoreTargetType.PROJECT, result.targetType());
+        assertEquals(7L, result.targetId());
+        assertEquals(
+                "He cambiado el foco a Atenea. No hay WorkSession abierta; para trabajar con Codex primero abre una sesión.",
+                result.speakableMessage());
+    }
+
+    @Test
     void getLatestSessionResponseReadsLatestCodexTurn() {
         WorkSessionConversationViewResponse conversationView = conversationView(
                 44L,
@@ -208,6 +318,12 @@ class DevelopmentCoreDomainHandlerTest {
                                 """,
                                 Instant.parse("2026-03-30T20:01:00Z"))));
         when(workSessionService.getSessionConversationView(44L)).thenReturn(conversationView);
+        when(sessionSpeechPreparationService.prepareLatestResponse(44L, SessionSpeechMode.BRIEF))
+                .thenReturn(new SessionSpeechPreparationResult(
+                        "Punto actual: separación principal preparada. Siguiente paso: validar navegación real.",
+                        SessionSpeechMode.BRIEF,
+                        false,
+                        List.of("latestProgress", "nextStepRecommended")));
 
         CoreCommandExecutionResult result = handler.execute(
                 new CoreIntentEnvelope(
@@ -224,7 +340,7 @@ class DevelopmentCoreDomainHandlerTest {
         assertEquals(CoreTargetType.WORK_SESSION, result.targetType());
         assertEquals(44L, result.targetId());
         assertEquals(
-                "Sí. Codex ya ha contestado. Última respuesta: Codex ya ha dejado preparada la separación principal. Siguiente paso recomendado. Validar navegación real",
+                "Sí. Codex ya ha contestado. Resumen para decidir: Punto actual: separación principal preparada. Siguiente paso: validar navegación real.",
                 result.speakableMessage());
     }
 
@@ -764,14 +880,7 @@ class DevelopmentCoreDomainHandlerTest {
 
     private static ProjectOverviewResponse projectOverview(Long projectId) {
         return new ProjectOverviewResponse(
-                new ProjectResponse(
-                        projectId,
-                        "Atenea",
-                        "Core backend",
-                        "/repos/atenea",
-                        "main",
-                        Instant.parse("2026-03-30T10:00:00Z"),
-                        Instant.parse("2026-03-30T10:00:00Z")),
+                projectResponse(projectId),
                 new ProjectOverviewResponse.WorkSessionOverviewResponse(
                         44L,
                         true,
@@ -793,5 +902,20 @@ class DevelopmentCoreDomainHandlerTest {
                         Instant.parse("2026-03-30T10:00:00Z"),
                         Instant.parse("2026-03-30T10:00:00Z"),
                         null));
+    }
+
+    private static ProjectOverviewResponse projectOverviewWithoutSession(Long projectId) {
+        return new ProjectOverviewResponse(projectResponse(projectId), null);
+    }
+
+    private static ProjectResponse projectResponse(Long projectId) {
+        return new ProjectResponse(
+                projectId,
+                "Atenea",
+                "Core backend",
+                "/repos/atenea",
+                "main",
+                Instant.parse("2026-03-30T10:00:00Z"),
+                Instant.parse("2026-03-30T10:00:00Z"));
     }
 }

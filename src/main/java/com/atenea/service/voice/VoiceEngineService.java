@@ -48,6 +48,7 @@ import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.core.CoreCommandService;
 import com.atenea.service.core.CoreInvalidContextException;
 import com.atenea.service.core.CoreOperatorContextService;
@@ -396,6 +397,7 @@ public class VoiceEngineService {
 
         VoiceFocusEntity focus = voiceFocusRepository.findById(operator.getId()).orElse(null);
         focus = synchronizeStaleFocusFromCoreContext(operator, focus);
+        focus = resolveOpenWorkSessionFocus(operator, focus);
         if (focus == null || focus.getWorkSession() == null) {
             throw new CoreInvalidContextException(
                     "No puedo enviar las notas a Codex porque el foco no apunta a una WorkSession activa");
@@ -453,6 +455,7 @@ public class VoiceEngineService {
 
         VoiceFocusEntity focus = voiceFocusRepository.findById(operator.getId()).orElse(null);
         focus = synchronizeStaleFocusFromCoreContext(operator, focus);
+        focus = resolveOpenWorkSessionFocus(operator, focus);
         if (focus == null || focus.getWorkSession() == null) {
             throw new CoreInvalidContextException(
                     "No puedo preparar el envio de notas a Codex porque el foco no apunta a una WorkSession activa");
@@ -491,6 +494,7 @@ public class VoiceEngineService {
 
         VoiceFocusEntity focus = voiceFocusRepository.findById(operator.getId()).orElse(null);
         focus = synchronizeStaleFocusFromCoreContext(operator, focus);
+        focus = resolveOpenWorkSessionFocus(operator, focus);
         Long focusedWorkSessionId = focus == null || focus.getWorkSession() == null ? null : focus.getWorkSession().getId();
         if (!Objects.equals(focusedWorkSessionId, intent.getWorkSession().getId())) {
             failIntent(intent, "No he enviado las notas porque el foco ya no apunta a "
@@ -634,6 +638,29 @@ public class VoiceEngineService {
     private WorkSessionEntity requireWorkSession(Long workSessionId) {
         return workSessionRepository.findWithProjectById(workSessionId)
                 .orElseThrow(() -> new CoreInvalidContextException("Missing or invalid Voice parameter: workSessionId"));
+    }
+
+    private VoiceFocusEntity resolveOpenWorkSessionFocus(OperatorEntity operator, VoiceFocusEntity focus) {
+        if (focus == null || focus.getWorkSession() != null || focus.getProject() == null) {
+            return focus;
+        }
+
+        return workSessionRepository.findByProjectIdAndStatus(focus.getProject().getId(), WorkSessionStatus.OPEN)
+                .map(session -> {
+                    Instant now = Instant.now();
+                    focus.setOperator(operator);
+                    focus.setDomain(VoiceDomain.DEVELOPMENT);
+                    focus.setProject(session.getProject());
+                    focus.setWorkSession(session);
+                    focus.setManagedHost(null);
+                    focus.setActivity("Conversacion activa");
+                    if (focus.getCreatedAt() == null) {
+                        focus.setCreatedAt(now);
+                    }
+                    focus.setUpdatedAt(now);
+                    return voiceFocusRepository.save(focus);
+                })
+                .orElse(focus);
     }
 
     private ProjectEntity resolveProject(Long projectId, WorkSessionEntity workSession) {

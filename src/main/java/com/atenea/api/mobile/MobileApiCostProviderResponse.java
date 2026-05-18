@@ -8,6 +8,7 @@ public record MobileApiCostProviderResponse(
         String status,
         String currency,
         double total,
+        List<MobileApiCostModelResponse> modelTotals,
         List<MobileApiCostLineResponse> lines
 ) {
 }

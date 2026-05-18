@@ -4,7 +4,7 @@ import java.net.URI;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(prefix = "atenea.core.voice")
+@ConfigurationProperties(prefix = "atenea.openai")
 public class CoreVoiceProperties {
 
     private boolean enabled = false;

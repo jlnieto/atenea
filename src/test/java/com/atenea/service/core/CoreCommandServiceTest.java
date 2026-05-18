@@ -166,6 +166,32 @@ class CoreCommandServiceTest {
     }
 
     @Test
+    void createCommandUsesProjectDatabaseRefreshConfirmationWording() {
+        when(coreIntentInterpreter.interpret(any(CreateCoreCommandRequest.class))).thenReturn(new CoreInterpretationResult(
+                new CoreIntentProposal(
+                        "REFRESH_PROJECT_DATABASE",
+                        CoreDomain.DEVELOPMENT,
+                        "refresh_project_database",
+                        Map.of("projectId", 9L, "projectName", "Fomasys"),
+                        BigDecimal.valueOf(0.96)),
+                CoreInterpreterSource.DETERMINISTIC,
+                "explicit_project_database_refresh_request"));
+
+        CoreCommandResponse response = coreCommandService.createCommand(new CreateCoreCommandRequest(
+                "Atenea, actualiza bd",
+                CoreChannel.VOICE,
+                new CoreRequestContext(9L, 44L),
+                null));
+
+        assertEquals(CoreCommandStatus.NEEDS_CONFIRMATION, response.status());
+        assertNotNull(response.confirmation());
+        assertEquals(
+                "Se va a reemplazar la base de datos local de Fomasys por la que hay en producción. Confirma para continuar.",
+                response.operatorMessage());
+        assertEquals(response.operatorMessage(), response.confirmation().message());
+    }
+
+    @Test
     void createCommandExecutesGenerateSessionDeliverableWithoutConfirmation() {
         when(coreIntentInterpreter.interpret(any(CreateCoreCommandRequest.class))).thenReturn(new CoreInterpretationResult(
                 new CoreIntentProposal(

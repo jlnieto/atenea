@@ -13,6 +13,7 @@ import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.service.operations.OperationsHostResolver;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -99,6 +100,21 @@ class DefaultCoreIntentInterpreterTest {
     }
 
     @Test
+    void interpretRoutesProjectFocusChangeAliasToActivation() {
+        ProjectEntity project = project(9L, "fomasys");
+        when(coreProjectResolver.resolveFromInputOrActive("cambia a Fomasys", null)).thenReturn(project);
+
+        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
+                "cambia a Fomasys",
+                CoreChannel.VOICE,
+                null,
+                null));
+
+        assertEquals("activate_project_context", result.proposal().capability());
+        assertEquals(Map.of("projectId", 9L), result.proposal().parameters());
+    }
+
+    @Test
     void interpretKeepsPluralProjectsQueryAsPortfolioOverview() {
         CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
                 "dime el estado de los proyectos",
@@ -145,6 +161,63 @@ class DefaultCoreIntentInterpreterTest {
 
         assertEquals("get_latest_session_response", result.proposal().capability());
         assertEquals(Map.of("projectId", 9L, "workSessionId", 44L), result.proposal().parameters());
+    }
+
+    @Test
+    void interpretRoutesCodexStatusAliasToLatestSessionResponse() {
+        WorkSessionEntity session = new WorkSessionEntity();
+        session.setId(44L);
+        session.setProject(project(9L, "fomasys"));
+        when(coreWorkSessionResolver.resolveActiveSession("estado de Codex", 44L, 9L))
+                .thenReturn(session);
+
+        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
+                "estado de Codex",
+                CoreChannel.VOICE,
+                new CoreRequestContext(9L, 44L),
+                null));
+
+        assertEquals("get_latest_session_response", result.proposal().capability());
+        assertEquals(Map.of("projectId", 9L, "workSessionId", 44L), result.proposal().parameters());
+    }
+
+    @Test
+    void interpretRoutesBrowserVerificationToProjectVerification() {
+        WorkSessionEntity session = new WorkSessionEntity();
+        session.setId(44L);
+        session.setProject(project(9L, "fomasys"));
+        when(coreWorkSessionResolver.resolveActiveSession("verifica las pruebas de navegador antes de desplegar", 44L, 9L))
+                .thenReturn(session);
+
+        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
+                "verifica las pruebas de navegador antes de desplegar",
+                CoreChannel.VOICE,
+                new CoreRequestContext(9L, 44L),
+                null));
+
+        assertEquals("run_project_verification", result.proposal().capability());
+        assertEquals(Map.of("projectId", 9L, "workSessionId", 44L), result.proposal().parameters());
+    }
+
+    @Test
+    void interpretRoutesExplicitDatabaseRefreshAliasesToDestructiveRefreshCapability() {
+        ProjectEntity project = project(9L, "fomasys");
+        when(coreProjectResolver.requireById(9L)).thenReturn(project);
+
+        for (String input : List.of(
+                "Atenea, actualiza bd",
+                "Atenea, actualiza base de datos",
+                "Atenea, reemplaza bd",
+                "Atenea, reemplaza base de datos")) {
+            CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
+                    input,
+                    CoreChannel.VOICE,
+                    new CoreRequestContext(9L, 44L),
+                    null));
+
+            assertEquals("refresh_project_database", result.proposal().capability());
+            assertEquals(Map.of("projectId", 9L, "projectName", "fomasys"), result.proposal().parameters());
+        }
     }
 
     @Test

@@ -73,6 +73,8 @@ internal object VoiceCommandInterpreter {
             normalizedCommand.isPreviousCommand() -> VoiceIntent.PreviousPlayback
             normalizedCommand.isCodexStatusQuestion() -> VoiceIntent.CheckCodexStatus
             normalizedCommand.isLatestSessionResponseCommand() -> VoiceIntent.RunCommand(command)
+            normalizedCommand.extractReadNoteNumber() != null ->
+                VoiceIntent.ReadNote(normalizedCommand.extractReadNoteNumber()!!)
             normalizedCommand.isReadNotesCommand() -> VoiceIntent.ReadNotes
             normalizedCommand.isCountNotesCommand() -> VoiceIntent.CountNotes
             normalizedCommand.isArchiveLastNoteCommand() -> VoiceIntent.ArchiveLastNote
@@ -295,6 +297,22 @@ internal object VoiceCommandInterpreter {
     private fun String.isReadNotesCommand(): Boolean =
         (contains("lee") || contains("leeme") || contains("repasa") || contains("revisa")) && contains("nota")
 
+    private fun String.extractReadNoteNumber(): Int? {
+        if (!(contains("lee") || contains("leeme") || contains("repasa") || contains("revisa"))) {
+            return null
+        }
+        val digit = Regex("(?:nota|numero)\\s+(\\d{1,2})").find(this)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+        if (digit != null) {
+            return digit
+        }
+        return NOTE_NUMBER_WORDS.entries.firstOrNull { (word, _) ->
+            contains("nota $word") || contains("nota numero $word") || contains("numero $word")
+        }?.value
+    }
+
     private fun String.isCountNotesCommand(): Boolean =
         (contains("cuantas") || contains("cuenta") || contains("numero de")) && contains("nota")
 
@@ -466,6 +484,7 @@ internal sealed interface VoiceIntent {
     data class SaveNote(val text: String) : VoiceIntent
     data object SavePendingNote : VoiceIntent
     data object ReadNotes : VoiceIntent
+    data class ReadNote(val number: Int) : VoiceIntent
     data object CountNotes : VoiceIntent
     data class ArchiveNote(val number: Int) : VoiceIntent
     data object ArchiveLastNote : VoiceIntent

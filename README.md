@@ -10,6 +10,10 @@ Documentos clave:
 - `docs/worksession-phase1.md`: estado real actual del core `WorkSession`
 - `docs/worksession-target-flow.md`: objetivo canónico de producto para el siguiente gran bloque `WorkSession`
 - `docs/mobile-full-operation.md`: objetivo estratégico, alcance y fases para operar Atenea end-to-end desde móvil
+- `docs/mobile-server-operations.md`: contrato operativo para pruebas headless, servidores gestionados y despliegues desde móvil
+- `docs/project-runtime-verification.md`: contrato por proyecto para verificar runtime y pruebas de navegador desde Atenea Core
+- `docs/android-worksession-premium-operation.md`: contrato de calidad para operar WorkSession end-to-end desde Android nativo
+- `docs/codex-auth-and-costs.md`: contrato de autenticacion ChatGPT para Codex App Server y lectura movil de costes API
 - `docs/android-native-migration.md`: decisión y roadmap para migrar la app móvil a Android nativo como superficie principal
 - `docs/voice-engine/README.md`: contrato de producto, arquitectura y plan del motor de voz premium de Atenea
 - `android/README.md`: estado y guía operativa del nuevo cliente Android nativo
@@ -60,11 +64,11 @@ Habilitar envío real de push móvil a Expo:
 ATENEA_MOBILE_PUSH_ENABLED=true ./scripts/run.sh
 ```
 
-Habilitar transcripción de voz para `Atenea Core`:
+Habilitar voz OpenAI para `Atenea Core`:
 
 ```bash
-ATENEA_CORE_VOICE_ENABLED=true \
-ATENEA_CORE_VOICE_API_KEY=sk-... \
+ATENEA_OPENAI_ENABLED=true \
+ATENEA_OPENAI_API_KEY=sk-... \
 ./scripts/run.sh
 ```
 

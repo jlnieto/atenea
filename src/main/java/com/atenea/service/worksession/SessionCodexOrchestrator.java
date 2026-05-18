@@ -4,6 +4,7 @@ import com.atenea.codexappserver.CodexAppServerClient;
 import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionListener;
 import com.atenea.codexappserver.CodexAppServerExecutionRequest;
+import com.atenea.codexappserver.CodexAuthStatusService;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -35,9 +36,14 @@ public class SessionCodexOrchestrator {
             """;
 
     private final CodexAppServerClient codexAppServerClient;
+    private final CodexAuthStatusService codexAuthStatusService;
 
-    public SessionCodexOrchestrator(CodexAppServerClient codexAppServerClient) {
+    public SessionCodexOrchestrator(
+            CodexAppServerClient codexAppServerClient,
+            CodexAuthStatusService codexAuthStatusService
+    ) {
         this.codexAppServerClient = codexAppServerClient;
+        this.codexAuthStatusService = codexAuthStatusService;
     }
 
     public CodexAppServerExecutionHandle startTurn(
@@ -46,6 +52,7 @@ public class SessionCodexOrchestrator {
             String threadId,
             CodexAppServerExecutionListener listener
     ) throws Exception {
+        codexAuthStatusService.ensurePrimaryCompliant();
         return codexAppServerClient.startExecution(
                 new CodexAppServerExecutionRequest(repoPath, buildPrompt(message), threadId),
                 listener);
