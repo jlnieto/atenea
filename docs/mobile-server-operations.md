@@ -107,11 +107,31 @@ Si queremos merge completo desde móvil, el siguiente bloque debe añadir una ca
 - registra el resultado en `CoreCommand`
 - obliga a ejecutar sync y cierre reconciliado después
 
-## Despliegues desde Atenea
+## Scripts locales de despliegue de Atenea
 
-El despliegue generalizado no está implementado todavía. El dominio `operations` tiene SSH y runbooks, pero hoy sólo hay runbooks de diagnóstico y recuperación de Apache.
+El repo ya incluye scripts canónicos para desplegar el propio backend Atenea desde el servidor:
 
-Para desplegar desde Atenea sin depender de escritorio hay que añadir un contrato explícito de deployment:
+```bash
+./scripts/deploy-preview.sh
+./scripts/deploy-prod.sh
+./scripts/release.sh
+```
+
+Contrato:
+
+- `deploy-preview.sh` reconstruye `atenea-backend-preview` con el stack de `/srv/atenea/platform/stacks/preview` y exige health OK.
+- `deploy-prod.sh` reconstruye `atenea-backend-prod` con el stack de `/srv/atenea/platform/stacks/prod` y exige health OK.
+- `release.sh` ejecuta tests, build backend, deploy preview y deploy prod.
+- `build.sh` empaqueta sin repetir tests por defecto; la validacion canónica previa es `test.sh`, que usa la base aislada de test.
+- `release.sh` solo compila y publica APK si se invoca con `ATENEA_RELEASE_PUBLISH_APK=true`.
+
+Estos scripts son la superficie que debe usar Codex para publicar cambios del propio backend Atenea desde una worksession.
+
+## Despliegues desde Atenea Core
+
+El despliegue generalizado de proyectos cliente desde comandos de voz no está implementado todavía. El dominio `operations` tiene SSH y runbooks, pero hoy sólo hay runbooks de diagnóstico y recuperación de Apache.
+
+Para desplegar proyectos cliente desde Atenea sin depender de escritorio hay que añadir un contrato explícito de deployment:
 
 - registrar todos los servidores en `managed_host`
 - registrar servicios desplegables en `managed_service`

@@ -16,12 +16,14 @@ El operador no necesita oir rutas, comandos, URLs, hashes, trazas ni listas tecn
 
 1. Atenea obtiene el resumen movil de la `WorkSession`.
 2. `SessionSpeechPreparationService` localiza la ultima respuesta util de Codex.
-3. Si `ATENEA_BRIEFING_ENABLED=true`, se usa el proveedor configurado en `ATENEA_BRIEFING_PROVIDER`.
-4. El proveedor canonico actual es `deepseek`.
-5. `DeepSeekSessionSpeechBriefingClient` llama a `/chat/completions` con `ATENEA_BRIEFING_MODEL`.
-6. DeepSeek devuelve JSON con un unico campo `speech`.
-7. Atenea limpia el texto final y aplica limites de longitud.
-8. OpenAI TTS sintetiza el audio a partir del texto ya optimizado.
+3. Atenea calcula un hash SHA-256 del contenido fuente.
+4. Si existe cache para `WorkSession` + modo + proveedor + modelo + version de prompt + hash, reutiliza el briefing persistido.
+5. Si no hay cache y `ATENEA_BRIEFING_ENABLED=true`, se usa el proveedor configurado en `ATENEA_BRIEFING_PROVIDER`.
+6. El proveedor canonico actual es `deepseek`.
+7. `DeepSeekSessionSpeechBriefingClient` llama a `/chat/completions` con `ATENEA_BRIEFING_MODEL`.
+8. DeepSeek devuelve JSON con un unico campo `speech`.
+9. Atenea limpia el texto final, aplica limites de longitud y guarda el resultado en cache.
+10. OpenAI TTS sintetiza el audio a partir del texto ya optimizado.
 
 La generacion del texto escuchable y la generacion del audio son piezas separadas:
 
@@ -65,7 +67,7 @@ ATENEA_DEEPSEEK_API_KEY=...
 
 ## Costes
 
-Cada briefing registra uso en `api_usage_record` con:
+Cada briefing generado por DeepSeek registra uso en `api_usage_record` con:
 
 - `provider=deepseek`
 - `feature=session_speech_briefing`
@@ -76,6 +78,30 @@ Cada briefing registra uso en `api_usage_record` con:
 - coste estimado
 
 Esto permite ver el gasto de los resumenes TTS en la pantalla de costes por proveedor, modelo y rango de fechas.
+
+Un cache hit no llama a DeepSeek y no registra coste nuevo. El cache se invalida automaticamente cuando cambia la respuesta fuente, el modo, el proveedor, el modelo o `ATENEA_BRIEFING_PROMPT_VERSION`.
+
+## Cache persistente
+
+La migracion `V43__create_session_speech_briefing_cache.sql` crea:
+
+```sql
+session_speech_briefing_cache
+```
+
+El cache guarda:
+
+- `work_session_id`
+- `mode`
+- `provider`
+- `model`
+- `prompt_version`
+- `source_hash`
+- `source_turn_id`, si el texto viene de un turno conversacional
+- `latest_run_id`, si el texto viene de un run
+- texto final listo para TTS
+- marca de truncado
+- `created_at` y `last_used_at`
 
 ## Contrato de calidad
 
@@ -91,3 +117,15 @@ El prompt exige:
 - en modo `brief`, dos o tres frases como maximo
 
 El resultado debe sonar como una respuesta de operador senior, no como un resumen tecnico leido en voz alta.
+
+## Evaluacion de calidad
+
+La suite de `SessionSpeechPreparationServiceTest` cubre:
+
+- prioridad de DeepSeek sobre fallback cuando el briefing esta habilitado
+- reutilizacion de cache persistente antes de llamar al proveedor
+- limpieza de markdown, rutas, URLs y comandos antes de TTS
+- fallback determinista si no hay proveedor o si el proveedor falla
+- preferencia por el ultimo `SessionTurn` completo frente a snapshots truncados
+
+Cada cambio en prompt, limpieza o cache debe mantener esos contratos. Si aparece una mala lectura real, se debe convertir en un caso de test con el texto fuente que la produjo.

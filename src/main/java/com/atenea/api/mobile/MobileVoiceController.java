@@ -174,6 +174,14 @@ public class MobileVoiceController {
         return voiceCommandTelemetryService.recent(operator, limit);
     }
 
+    @GetMapping("/command-telemetry/summary")
+    public MobileVoiceCommandTelemetrySummaryResponse getCommandTelemetrySummary(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @RequestParam(required = false) Integer limit
+    ) {
+        return voiceCommandTelemetryService.summary(operator, limit);
+    }
+
     private String realtimeOperatorContext(
             MobileVoiceFocusResponse focus,
             MobileVoiceNotesResponse notes,

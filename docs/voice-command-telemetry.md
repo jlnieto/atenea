@@ -22,7 +22,13 @@ Endpoint de lectura reciente:
 GET /api/mobile/voice/command-telemetry?limit=50
 ```
 
-Ambos requieren autenticacion de operador movil.
+Endpoint de resumen agrupado:
+
+```http
+GET /api/mobile/voice/command-telemetry/summary?limit=200
+```
+
+Todos requieren autenticacion de operador movil.
 
 ## Eventos registrados
 
@@ -69,11 +75,29 @@ order by created_at desc
 limit 100;
 ```
 
+Consulta API recomendada para priorizar mejoras:
+
+```http
+GET /api/mobile/voice/command-telemetry/summary?limit=200
+```
+
+La respuesta agrupa por transcripcion normalizada, resultado, motivo e intencion detectada. Para cada grupo devuelve:
+
+- transcripcion normalizada
+- ejemplo real escuchado
+- `outcome`
+- `reason`
+- `intentType`
+- proyecto y `WorkSession`
+- numero de notas activas
+- numero de repeticiones
+- ultima fecha vista
+
 ## Uso para mejorar Atenea
 
 El ciclo correcto es:
 
-1. Agrupar por `normalized_transcript` y `reason`.
+1. Consultar `/summary` para agrupar por `normalizedTranscript`, `outcome`, `reason` e `intentType`.
 2. Elegir los comandos repetidos que deberian haber funcionado.
 3. Añadirlos como tests en `VoiceCommandInterpreterTest`.
 4. Ajustar `VoiceCommandInterpreter`.

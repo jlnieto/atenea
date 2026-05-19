@@ -129,6 +129,34 @@ class MobileVoiceControllerTest {
     }
 
     @Test
+    void returnsVoiceCommandTelemetrySummary() throws Exception {
+        when(voiceCommandTelemetryService.summary(any(), eq(100))).thenReturn(new MobileVoiceCommandTelemetrySummaryResponse(List.of(
+                new MobileVoiceCommandTelemetrySummaryItemResponse(
+                        "atenea lee nota 1",
+                        "Atenea, li nota uno",
+                        "UNRECOGNIZED",
+                        "empty_intent",
+                        "Empty",
+                        "DEVELOPMENT",
+                        7L,
+                        "fomasys",
+                        12L,
+                        "Sesion",
+                        2,
+                        4,
+                        Instant.parse("2026-05-19T10:00:00Z")))));
+
+        mockMvc.perform(get("/api/mobile/voice/command-telemetry/summary")
+                        .param("limit", "100")
+                        .with(operator()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].normalizedTranscript").value("atenea lee nota 1"))
+                .andExpect(jsonPath("$.items[0].reason").value("empty_intent"))
+                .andExpect(jsonPath("$.items[0].projectName").value("fomasys"))
+                .andExpect(jsonPath("$.items[0].count").value(4));
+    }
+
+    @Test
     void getFocusReturnsCurrentVoiceFocus() throws Exception {
         when(voiceEngineService.getFocus(any())).thenReturn(new MobileVoiceFocusResponse(
                 4L,

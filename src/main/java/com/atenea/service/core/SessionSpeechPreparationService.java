@@ -4,11 +4,17 @@ import com.atenea.api.mobile.MobileSessionBlockerResponse;
 import com.atenea.api.mobile.MobileSessionInsightsResponse;
 import com.atenea.api.mobile.MobileSessionSummaryResponse;
 import com.atenea.api.worksession.SessionTurnResponse;
+import com.atenea.api.worksession.WorkSessionViewLatestRunResponse;
 import com.atenea.api.worksession.WorkSessionConversationViewResponse;
 import com.atenea.api.worksession.WorkSessionViewResponse;
+import com.atenea.persistence.core.SessionSpeechBriefingCacheEntity;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.service.mobile.MobileSessionService;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -25,15 +31,18 @@ public class SessionSpeechPreparationService {
     private final MobileSessionService mobileSessionService;
     private final List<SessionSpeechBriefingClient> briefingClients;
     private final SessionSpeechBriefingProperties briefingProperties;
+    private final SessionSpeechBriefingCacheService briefingCacheService;
 
     public SessionSpeechPreparationService(
             MobileSessionService mobileSessionService,
             List<SessionSpeechBriefingClient> briefingClients,
-            SessionSpeechBriefingProperties briefingProperties
+            SessionSpeechBriefingProperties briefingProperties,
+            SessionSpeechBriefingCacheService briefingCacheService
     ) {
         this.mobileSessionService = mobileSessionService;
         this.briefingClients = briefingClients;
         this.briefingProperties = briefingProperties;
+        this.briefingCacheService = briefingCacheService;
     }
 
     public SessionSpeechPreparationResult prepareLatestResponse(Long sessionId, SessionSpeechMode mode) {
@@ -78,13 +87,32 @@ public class SessionSpeechPreparationService {
         }
         WorkSessionConversationViewResponse conversation = summary.conversation();
         WorkSessionViewResponse view = conversation.view();
-        String source = resolveBestFullSource(summary);
-        if (source == null || source.isBlank()) {
+        SessionSpeechSourceCandidate source = resolveBestFullSourceCandidate(summary);
+        if (source == null || source.text() == null || source.text().isBlank()) {
             return null;
         }
         int maxLength = mode == SessionSpeechMode.BRIEF
                 ? briefingProperties.getBriefMaxOutputCharacters()
                 : briefingProperties.getFullMaxOutputCharacters();
+        String provider = briefingProperties.getProvider();
+        String model = briefingProperties.getModel();
+        String promptVersion = briefingProperties.getPromptVersion();
+        String sourceHash = sha256(source.text());
+        SessionSpeechBriefingCacheEntity cached = briefingCacheService.find(
+                        sessionId,
+                        mode,
+                        provider,
+                        model,
+                        promptVersion,
+                        sourceHash)
+                .orElse(null);
+        if (cached != null) {
+            return new SessionSpeechPreparationResult(
+                    cached.getText(),
+                    mode,
+                    cached.isTruncated(),
+                    List.of("briefing-cache", "briefing:" + cached.getProvider(), "model:" + cached.getModel()));
+        }
         try {
             SessionSpeechBriefingResult briefing = client.createBriefing(new SessionSpeechBriefingRequest(
                     sessionId,
@@ -94,7 +122,7 @@ public class SessionSpeechPreparationService {
                     summary.insights(),
                     summary.actions(),
                     view.latestRun(),
-                    source));
+                    source.text()));
             String text = sanitizeGeneratedSpeechText(briefing.text());
             if (text == null) {
                 return null;
@@ -104,6 +132,17 @@ public class SessionSpeechPreparationService {
                 text = truncateAtBoundary(text, maxLength);
                 truncated = true;
             }
+            briefingCacheService.save(
+                    sessionId,
+                    mode,
+                    briefing.provider(),
+                    briefing.model(),
+                    promptVersion,
+                    sourceHash,
+                    source.sourceTurnId(),
+                    source.latestRunId(),
+                    text,
+                    truncated);
             return new SessionSpeechPreparationResult(
                     text,
                     mode,
@@ -198,33 +237,49 @@ public class SessionSpeechPreparationService {
     }
 
     private String resolveBestSource(MobileSessionSummaryResponse summary) {
+        SessionSpeechSourceCandidate candidate = resolveBestSourceCandidate(summary);
+        return candidate == null ? null : candidate.text();
+    }
+
+    private SessionSpeechSourceCandidate resolveBestSourceCandidate(MobileSessionSummaryResponse summary) {
         WorkSessionConversationViewResponse conversation = summary.conversation();
         WorkSessionViewResponse view = conversation.view();
         if (view.lastAgentResponse() != null && !view.lastAgentResponse().isBlank()) {
-            return view.lastAgentResponse();
+            return new SessionSpeechSourceCandidate(view.lastAgentResponse(), null, latestRunId(view.latestRun()));
         }
         for (int index = conversation.recentTurns().size() - 1; index >= 0; index--) {
             SessionTurnResponse turn = conversation.recentTurns().get(index);
             if (turn.actor() == SessionTurnActor.CODEX || turn.actor() == SessionTurnActor.ATENEA) {
                 if (turn.messageText() != null && !turn.messageText().isBlank()) {
-                    return turn.messageText();
+                    return new SessionSpeechSourceCandidate(turn.messageText(), turn.id(), null);
                 }
             }
         }
-        return view.latestRun() == null ? null : view.latestRun().outputSummary();
+        return view.latestRun() == null || view.latestRun().outputSummary() == null
+                ? null
+                : new SessionSpeechSourceCandidate(view.latestRun().outputSummary(), null, view.latestRun().id());
     }
 
     private String resolveBestFullSource(MobileSessionSummaryResponse summary) {
+        SessionSpeechSourceCandidate candidate = resolveBestFullSourceCandidate(summary);
+        return candidate == null ? null : candidate.text();
+    }
+
+    private SessionSpeechSourceCandidate resolveBestFullSourceCandidate(MobileSessionSummaryResponse summary) {
         WorkSessionConversationViewResponse conversation = summary.conversation();
         for (int index = conversation.recentTurns().size() - 1; index >= 0; index--) {
             SessionTurnResponse turn = conversation.recentTurns().get(index);
             if ((turn.actor() == SessionTurnActor.CODEX || turn.actor() == SessionTurnActor.ATENEA)
                     && turn.messageText() != null
                     && !turn.messageText().isBlank()) {
-                return turn.messageText();
+                return new SessionSpeechSourceCandidate(turn.messageText(), turn.id(), null);
             }
         }
-        return resolveBestSource(summary);
+        return resolveBestSourceCandidate(summary);
+    }
+
+    private Long latestRunId(WorkSessionViewLatestRunResponse latestRun) {
+        return latestRun == null ? null : latestRun.id();
     }
 
     private String normalizeBlocker(MobileSessionBlockerResponse blocker) {
@@ -368,8 +423,11 @@ public class SessionSpeechPreparationService {
                 .replaceAll("(?m)^\\s*>\\s*", "")
                 .replaceAll("(?m)^\\s*[-*]\\s+", "")
                 .replaceAll("(?m)^\\s*\\d+\\.\\s+", "")
+                .replaceAll("(?mi)^\\s*(ruta|archivo|archivos|path|url|comando|comandos)\\s*[:.-].*$", " ")
                 .replaceAll("(?m)^.*?/workspace/.*$", " ")
+                .replaceAll("(?m)^.*?/srv/atenea/.*$", " ")
                 .replaceAll("(?m)^.*?python3 -m http\\.server.*$", " ")
+                .replaceAll("(?m)^.*?npm\\s+run\\s+\\S+.*$", " ")
                 .replaceAll("(?m)^.*?https?://\\S+.*$", " ")
                 .replaceAll("\\b/[^\\s)]+", " ")
                 .replaceAll("\\s+", " ")
@@ -414,8 +472,11 @@ public class SessionSpeechPreparationService {
                 .replaceAll("(?m)^\\s*>\\s*", "")
                 .replaceAll("(?m)^\\s*[-*]\\s+", "")
                 .replaceAll("(?m)^\\s*\\d+\\.\\s+", "")
+                .replaceAll("(?mi)^\\s*(ruta|archivo|archivos|path|url|comando|comandos)\\s*[:.-].*$", " ")
                 .replaceAll("(?m)^.*?/workspace/.*$", " ")
+                .replaceAll("(?m)^.*?/srv/atenea/.*$", " ")
                 .replaceAll("(?m)^.*?python3 -m http\\.server.*$", " ")
+                .replaceAll("(?m)^.*?npm\\s+run\\s+\\S+.*$", " ")
                 .replaceAll("(?m)^.*?https?://\\S+.*$", " ")
                 .replaceAll("\\b/[^\\s)]+", " ")
                 .replace('\r', '\n')
@@ -455,5 +516,21 @@ public class SessionSpeechPreparationService {
             shortened = shortened.substring(0, sentenceBoundary + 1).trim();
         }
         return shortened + "...";
+    }
+
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is not available", exception);
+        }
+    }
+
+    private record SessionSpeechSourceCandidate(
+            String text,
+            Long sourceTurnId,
+            Long latestRunId
+    ) {
     }
 }

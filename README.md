@@ -30,6 +30,9 @@ Workflow de desarrollo para este VPS:
 ./scripts/test.sh
 ./scripts/run.sh
 ./scripts/build.sh
+./scripts/deploy-preview.sh
+./scripts/deploy-prod.sh
+./scripts/release.sh
 ./scripts/android-build.sh
 ./scripts/android-publish-apk.sh
 ./scripts/shell.sh
@@ -87,7 +90,16 @@ Los scripts resuelven automáticamente la variante de Compose disponible: primer
   Levanta la base de datos de desarrollo y arranca Spring Boot dentro de Docker exponiendo el puerto host `8085` por defecto.
 
 - `./scripts/build.sh`
-  Genera el `jar` con `./mvnw clean package` dentro de Docker.
+  Genera el `jar` dentro de Docker y no repite tests por defecto. Usa `./scripts/test.sh` para validación; si necesitas un package con tests, ejecuta `ATENEA_BUILD_RUN_TESTS=true ./scripts/build.sh`.
+
+- `./scripts/deploy-preview.sh`
+  Reconstruye y levanta el backend de preview desde `/srv/atenea/platform/stacks/preview` y verifica `/actuator/health`.
+
+- `./scripts/deploy-prod.sh`
+  Reconstruye y levanta el backend de producción desde `/srv/atenea/platform/stacks/prod` y verifica `/actuator/health`.
+
+- `./scripts/release.sh`
+  Ejecuta tests, build backend, deploy preview y deploy producción. Si `ATENEA_RELEASE_PUBLISH_APK=true`, también compila y publica APK.
 
 - `./scripts/android-build.sh`
   Compila la app Android nativa de `android/` dentro de Docker con Android SDK y Gradle. Por defecto ejecuta `:app:assembleDebug`.

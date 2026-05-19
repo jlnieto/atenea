@@ -3,6 +3,8 @@ package com.atenea.service.core;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,6 +17,7 @@ import com.atenea.api.worksession.WorkSessionConversationViewResponse;
 import com.atenea.api.worksession.WorkSessionOperationalState;
 import com.atenea.api.worksession.WorkSessionResponse;
 import com.atenea.api.worksession.WorkSessionViewResponse;
+import com.atenea.persistence.core.SessionSpeechBriefingCacheEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.mobile.MobileSessionService;
@@ -35,6 +38,9 @@ class SessionSpeechPreparationServiceTest {
     @Mock
     private SessionSpeechBriefingClient briefingClient;
 
+    @Mock
+    private SessionSpeechBriefingCacheService briefingCacheService;
+
     private SessionSpeechBriefingProperties briefingProperties;
 
     private SessionSpeechPreparationService service;
@@ -45,7 +51,8 @@ class SessionSpeechPreparationServiceTest {
         service = new SessionSpeechPreparationService(
                 mobileSessionService,
                 List.of(briefingClient),
-                briefingProperties);
+                briefingProperties,
+                briefingCacheService);
     }
 
     @Test
@@ -105,6 +112,96 @@ class SessionSpeechPreparationServiceTest {
                 result.text());
         assertEquals(List.of("briefing", "briefing:deepseek", "model:deepseek-v4-flash"), result.sectionsUsed());
         verify(briefingClient).createBriefing(any());
+        verify(briefingCacheService).save(
+                eq(44L),
+                eq(SessionSpeechMode.BRIEF),
+                eq("deepseek"),
+                eq("deepseek-v4-flash"),
+                eq("session-speech-briefing-v1"),
+                any(),
+                any(),
+                any(),
+                eq("Codex ha dejado el cambio listo y las pruebas principales pasan. El siguiente paso es publicar."),
+                eq(false));
+    }
+
+    @Test
+    void briefModeUsesPersistentBriefingCacheBeforeCallingProvider() {
+        briefingProperties.setEnabled(true);
+        when(briefingClient.supports("deepseek")).thenReturn(true);
+        SessionSpeechBriefingCacheEntity cached = new SessionSpeechBriefingCacheEntity();
+        cached.setProvider("deepseek");
+        cached.setModel("deepseek-v4-flash");
+        cached.setText("Codex ya dejo la correccion lista. Falta decidir si se publica.");
+        cached.setTruncated(false);
+        when(briefingCacheService.find(
+                eq(44L),
+                eq(SessionSpeechMode.BRIEF),
+                eq("deepseek"),
+                eq("deepseek-v4-flash"),
+                eq("session-speech-briefing-v1"),
+                any())).thenReturn(java.util.Optional.of(cached));
+        when(mobileSessionService.getSessionSummary(44L)).thenReturn(summary(
+                false,
+                """
+                ## Qué he hecho
+                He aplicado el cambio.
+
+                ## Verificación
+                Tests en verde.
+                """,
+                new MobileSessionInsightsResponse(
+                        "He aplicado el cambio",
+                        new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),
+                        "Publicar la pull request")));
+
+        SessionSpeechPreparationResult result = service.prepareLatestResponse(44L, SessionSpeechMode.BRIEF);
+
+        assertEquals("Codex ya dejo la correccion lista. Falta decidir si se publica.", result.text());
+        assertEquals(List.of("briefing-cache", "briefing:deepseek", "model:deepseek-v4-flash"), result.sectionsUsed());
+        verify(briefingClient, never()).createBriefing(any());
+    }
+
+    @Test
+    void deepSeekBriefingOutputIsCleanedBeforeSpeechAndCache() {
+        briefingProperties.setEnabled(true);
+        when(briefingClient.supports("deepseek")).thenReturn(true);
+        when(briefingClient.createBriefing(any())).thenReturn(new SessionSpeechBriefingResult(
+                """
+                Resumen para decidir:
+                Codex corrigio el problema principal.
+                Ruta: `/srv/atenea/workspace/repos/clients/fomasys/src/app.js`
+                Comando: `npm run test`
+                https://example.test/noise
+                Verificacion en verde y siguiente paso publicar.
+                """,
+                "deepseek",
+                "deepseek-v4-flash"));
+        when(mobileSessionService.getSessionSummary(44L)).thenReturn(summary(
+                false,
+                "## Qué he hecho\nHe aplicado el cambio.\n\n## Verificación\nTests en verde.",
+                new MobileSessionInsightsResponse(
+                        "He aplicado el cambio",
+                        new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),
+                        "Publicar la pull request")));
+
+        SessionSpeechPreparationResult result = service.prepareLatestResponse(44L, SessionSpeechMode.BRIEF);
+
+        assertTrue(result.text().startsWith("Codex corrigio el problema principal."));
+        assertTrue(!result.text().contains("/srv/atenea"));
+        assertTrue(!result.text().contains("npm run test"));
+        assertTrue(!result.text().contains("https://"));
+        verify(briefingCacheService).save(
+                eq(44L),
+                eq(SessionSpeechMode.BRIEF),
+                eq("deepseek"),
+                eq("deepseek-v4-flash"),
+                eq("session-speech-briefing-v1"),
+                any(),
+                any(),
+                any(),
+                eq(result.text()),
+                eq(false));
     }
 
     @Test

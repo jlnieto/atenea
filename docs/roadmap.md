@@ -442,6 +442,9 @@ Current repository reading after recent changes:
 - core command history and command-event stream in native client: implemented
 - app-level TTS from `speakableMessage`: implemented
 - DeepSeek session speech briefing for Codex responses: implemented
+- persistent cache for DeepSeek session speech briefings: implemented
+- grouped voice command telemetry summary for failed command analysis: implemented
+- canonical backend deploy scripts for preview, production and release: implemented
 - app-level STT in the `Core` tab through backend transcription: implemented
 - remaining major mobile gaps after core foundation:
   - extension of app-level speech-to-text beyond the `Core` tab

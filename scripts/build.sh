@@ -7,4 +7,8 @@ source "$SCRIPT_DIR/lib/compose.sh"
 
 cd "$REPO_DIR"
 
-compose -f docker-compose.dev.yml run --rm atenea-dev ./mvnw clean package "$@"
+if [[ "${ATENEA_BUILD_RUN_TESTS:-false}" == "true" ]]; then
+  compose -f docker-compose.dev.yml run --rm atenea-dev ./mvnw clean package "$@"
+else
+  compose -f docker-compose.dev.yml run --rm atenea-dev ./mvnw clean package -DskipTests "$@"
+fi
