@@ -9,33 +9,117 @@ import com.atenea.api.worksession.WorkSessionViewResponse;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.service.mobile.MobileSessionService;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class SessionSpeechPreparationService {
 
+    private static final Logger logger = LoggerFactory.getLogger(SessionSpeechPreparationService.class);
     private static final int BRIEF_MAX_LENGTH = 430;
     private static final int FULL_MAX_LENGTH = 3500;
 
     private final MobileSessionService mobileSessionService;
+    private final List<SessionSpeechBriefingClient> briefingClients;
+    private final SessionSpeechBriefingProperties briefingProperties;
 
-    public SessionSpeechPreparationService(MobileSessionService mobileSessionService) {
+    public SessionSpeechPreparationService(
+            MobileSessionService mobileSessionService,
+            List<SessionSpeechBriefingClient> briefingClients,
+            SessionSpeechBriefingProperties briefingProperties
+    ) {
         this.mobileSessionService = mobileSessionService;
+        this.briefingClients = briefingClients;
+        this.briefingProperties = briefingProperties;
     }
 
     public SessionSpeechPreparationResult prepareLatestResponse(Long sessionId, SessionSpeechMode mode) {
         MobileSessionSummaryResponse summary = mobileSessionService.getSessionSummary(sessionId);
         return switch (mode) {
-            case BRIEF -> prepareBrief(summary);
-            case FULL -> prepareFull(summary);
+            case BRIEF -> prepareBrief(summary, sessionId);
+            case FULL -> prepareFull(summary, sessionId);
         };
     }
 
-    private SessionSpeechPreparationResult prepareBrief(MobileSessionSummaryResponse summary) {
+    private SessionSpeechPreparationResult prepareBrief(MobileSessionSummaryResponse summary, Long sessionId) {
+        SessionSpeechPreparationResult llmPrepared = prepareWithBriefing(summary, sessionId, SessionSpeechMode.BRIEF);
+        if (llmPrepared != null) {
+            return llmPrepared;
+        }
+        return prepareBriefFallback(summary);
+    }
+
+    private SessionSpeechPreparationResult prepareFull(MobileSessionSummaryResponse summary, Long sessionId) {
+        SessionSpeechPreparationResult llmPrepared = prepareWithBriefing(summary, sessionId, SessionSpeechMode.FULL);
+        if (llmPrepared != null) {
+            return llmPrepared;
+        }
+        return prepareFullFallback(summary);
+    }
+
+    private SessionSpeechPreparationResult prepareWithBriefing(
+            MobileSessionSummaryResponse summary,
+            Long sessionId,
+            SessionSpeechMode mode
+    ) {
+        if (!briefingProperties.isEnabled()) {
+            return null;
+        }
+        SessionSpeechBriefingClient client = briefingClients.stream()
+                .filter(candidate -> candidate.supports(briefingProperties.getProvider()))
+                .findFirst()
+                .orElse(null);
+        if (client == null) {
+            logger.warn("Session speech briefing provider is enabled but unavailable: {}", briefingProperties.getProvider());
+            return null;
+        }
+        WorkSessionConversationViewResponse conversation = summary.conversation();
+        WorkSessionViewResponse view = conversation.view();
+        String source = resolveBestFullSource(summary);
+        if (source == null || source.isBlank()) {
+            return null;
+        }
+        int maxLength = mode == SessionSpeechMode.BRIEF
+                ? briefingProperties.getBriefMaxOutputCharacters()
+                : briefingProperties.getFullMaxOutputCharacters();
+        try {
+            SessionSpeechBriefingResult briefing = client.createBriefing(new SessionSpeechBriefingRequest(
+                    sessionId,
+                    mode,
+                    maxLength,
+                    view,
+                    summary.insights(),
+                    summary.actions(),
+                    view.latestRun(),
+                    source));
+            String text = sanitizeGeneratedSpeechText(briefing.text());
+            if (text == null) {
+                return null;
+            }
+            boolean truncated = false;
+            if (text.length() > maxLength) {
+                text = truncateAtBoundary(text, maxLength);
+                truncated = true;
+            }
+            return new SessionSpeechPreparationResult(
+                    text,
+                    mode,
+                    truncated,
+                    List.of("briefing", "briefing:" + briefing.provider(), "model:" + briefing.model()));
+        } catch (Exception exception) {
+            logger.warn(
+                    "Session speech briefing failed for session {} with provider {}: {}",
+                    sessionId,
+                    briefingProperties.getProvider(),
+                    exception.getMessage());
+            return null;
+        }
+    }
+
+    private SessionSpeechPreparationResult prepareBriefFallback(MobileSessionSummaryResponse summary) {
         List<String> sectionsUsed = new ArrayList<>();
         List<String> sentences = new ArrayList<>();
         WorkSessionConversationViewResponse conversation = summary.conversation();
@@ -94,7 +178,7 @@ public class SessionSpeechPreparationService {
         return new SessionSpeechPreparationResult(text, SessionSpeechMode.BRIEF, truncated, List.copyOf(sectionsUsed));
     }
 
-    private SessionSpeechPreparationResult prepareFull(MobileSessionSummaryResponse summary) {
+    private SessionSpeechPreparationResult prepareFullFallback(MobileSessionSummaryResponse summary) {
         String source = resolveBestFullSource(summary);
         String prepared = normalizeFullText(source);
         if (prepared == null) {
@@ -306,6 +390,18 @@ public class SessionSpeechPreparationService {
         return sentence;
     }
 
+    private String sanitizeGeneratedSpeechText(String value) {
+        String sanitized = sanitizeFreeformSpeechText(value);
+        if (sanitized == null || sanitized.isBlank()) {
+            return null;
+        }
+        return sanitized
+                .replaceFirst("(?i)^resumen para decidir:?\\s*", "")
+                .replaceFirst("(?i)^ultima respuesta:?\\s*", "")
+                .replaceFirst("(?i)^última respuesta:?\\s*", "")
+                .trim();
+    }
+
     private String sanitizeFreeformSpeechText(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -331,80 +427,6 @@ public class SessionSpeechPreparationService {
             return null;
         }
         return sanitized;
-    }
-
-    private String summarizeTouchedFiles(String source) {
-        if (source == null || source.isBlank()) {
-            return null;
-        }
-        String relevantSections = String.join("\n",
-                firstNonBlank(extractSection(source, "Qué he hecho"), ""),
-                firstNonBlank(extractSection(source, "Archivos relevantes"), ""),
-                firstNonBlank(extractSection(source, "Qué he encontrado"), ""));
-        if (relevantSections.isBlank()) {
-            return null;
-        }
-
-        Set<String> labels = new LinkedHashSet<>();
-        collectFileLabels(labels, relevantSections, "\\[([^\\]]+)]\\([^)]*\\)");
-        collectFileLabels(labels, relevantSections, "`([^`]+\\.[A-Za-z0-9]+)`");
-        collectFileLabels(labels, relevantSections, "([A-Za-z0-9._/-]+\\.[A-Za-z0-9]+)");
-
-        List<String> compact = labels.stream()
-                .map(this::compactFileLabel)
-                .filter(label -> label != null && !label.isBlank())
-                .distinct()
-                .limit(3)
-                .toList();
-        if (compact.isEmpty()) {
-            return null;
-        }
-        if (compact.size() == 1) {
-            return compact.get(0);
-        }
-        if (compact.size() == 2) {
-            return compact.get(0) + " y " + compact.get(1);
-        }
-        return compact.get(0) + ", " + compact.get(1) + " y " + compact.get(2);
-    }
-
-    private void collectFileLabels(Set<String> labels, String source, String pattern) {
-        var matcher = Pattern.compile(pattern).matcher(source);
-        while (matcher.find()) {
-            for (int group = 1; group <= matcher.groupCount(); group++) {
-                String candidate = matcher.group(group);
-                if (candidate != null && !candidate.isBlank()) {
-                    labels.add(candidate);
-                    break;
-                }
-            }
-        }
-    }
-
-    private String compactFileLabel(String raw) {
-        String normalized = raw
-                .replace("`", "")
-                .replaceAll("#L\\d+.*$", "")
-                .replaceAll("\\?.*$", "")
-                .trim();
-        int slashIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
-        if (slashIndex >= 0 && slashIndex < normalized.length() - 1) {
-            normalized = normalized.substring(slashIndex + 1);
-        }
-        normalized = normalized.replaceAll("\\s+", " ").trim();
-        if (!normalized.contains(".")) {
-            return null;
-        }
-        return normalized;
-    }
-
-    private String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return null;
     }
 
     private String joinSentences(List<String> sentences) {

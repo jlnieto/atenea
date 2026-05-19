@@ -103,6 +103,12 @@ atenea:
     enabled: ${ATENEA_BRIEFING_ENABLED:false}
     provider: ${ATENEA_BRIEFING_PROVIDER:deepseek}
     model: ${ATENEA_BRIEFING_MODEL:deepseek-v4-flash}
+    prompt-version: ${ATENEA_BRIEFING_PROMPT_VERSION:session-speech-briefing-v1}
+    max-input-characters: ${ATENEA_BRIEFING_MAX_INPUT_CHARACTERS:18000}
+    brief-max-output-characters: ${ATENEA_BRIEFING_BRIEF_MAX_OUTPUT_CHARACTERS:430}
+    full-max-output-characters: ${ATENEA_BRIEFING_FULL_MAX_OUTPUT_CHARACTERS:3500}
+    max-output-tokens: ${ATENEA_BRIEFING_MAX_OUTPUT_TOKENS:900}
+    temperature: ${ATENEA_BRIEFING_TEMPERATURE:0.1}
   costs:
     openai:
       enabled: ${ATENEA_OPENAI_COSTS_ENABLED:true}

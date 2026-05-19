@@ -276,11 +276,7 @@ internal fun VoiceScreen(
     }
 
     fun segmentSpeechText(segment: String, index: Int, total: Int): String =
-        if (total > 1) {
-            "Segmento ${index + 1} de $total. $segment"
-        } else {
-            segment
-        }
+        "Segmento ${index + 1} de $total. $segment"
 
     fun preloadNextSegmentIfNeeded(segments: List<String>, index: Int, continuous: Boolean) {
         if (continuous && index < segments.lastIndex) {

@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties({ApiCostsProperties.class, DeepSeekProperties.class})
+@EnableConfigurationProperties(ApiCostsProperties.class)
 public class ApiCostsConfiguration {
 
     @Bean

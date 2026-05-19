@@ -2,6 +2,8 @@ package com.atenea.service.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.atenea.api.mobile.MobileSessionActionsResponse;
@@ -30,11 +32,20 @@ class SessionSpeechPreparationServiceTest {
     @Mock
     private MobileSessionService mobileSessionService;
 
+    @Mock
+    private SessionSpeechBriefingClient briefingClient;
+
+    private SessionSpeechBriefingProperties briefingProperties;
+
     private SessionSpeechPreparationService service;
 
     @BeforeEach
     void setUp() {
-        service = new SessionSpeechPreparationService(mobileSessionService);
+        briefingProperties = new SessionSpeechBriefingProperties();
+        service = new SessionSpeechPreparationService(
+                mobileSessionService,
+                List.of(briefingClient),
+                briefingProperties);
     }
 
     @Test
@@ -63,6 +74,37 @@ class SessionSpeechPreparationServiceTest {
                 result.text());
         assertEquals(SessionSpeechMode.BRIEF, result.mode());
         assertEquals(List.of("latestProgress", "nextStepRecommended"), result.sectionsUsed());
+    }
+
+    @Test
+    void briefModeUsesDeepSeekBriefingWhenEnabled() {
+        briefingProperties.setEnabled(true);
+        when(briefingClient.supports("deepseek")).thenReturn(true);
+        when(briefingClient.createBriefing(any())).thenReturn(new SessionSpeechBriefingResult(
+                "Codex ha dejado el cambio listo y las pruebas principales pasan. El siguiente paso es publicar.",
+                "deepseek",
+                "deepseek-v4-flash"));
+        when(mobileSessionService.getSessionSummary(44L)).thenReturn(summary(
+                false,
+                """
+                ## Qué he hecho
+                He aplicado el cambio.
+
+                ## Verificación
+                Tests en verde.
+                """,
+                new MobileSessionInsightsResponse(
+                        "He aplicado el cambio",
+                        new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),
+                        "Publicar la pull request")));
+
+        SessionSpeechPreparationResult result = service.prepareLatestResponse(44L, SessionSpeechMode.BRIEF);
+
+        assertEquals(
+                "Codex ha dejado el cambio listo y las pruebas principales pasan. El siguiente paso es publicar.",
+                result.text());
+        assertEquals(List.of("briefing", "briefing:deepseek", "model:deepseek-v4-flash"), result.sectionsUsed());
+        verify(briefingClient).createBriefing(any());
     }
 
     @Test

@@ -84,6 +84,7 @@ Regla de naming:
 - `ATENEA_OPENAI_*` describe APIs OpenAI usadas directamente por Atenea
 - `ATENEA_OPENAI_COSTS_*` describe permisos administrativos de costes OpenAI
 - `ATENEA_DEEPSEEK_*` describe proveedor DeepSeek
+- `ATENEA_BRIEFING_*` describe la preparacion de respuestas Codex para lectura TTS
 
 ## Bloqueo En Backend
 
@@ -98,6 +99,10 @@ Se bloquean:
 El bloqueo debe ser corto y accionable. No debe devolver un transcript largo ni tokens ni paths sensibles.
 
 ## Costes En Movil
+
+Los briefings TTS de respuestas Codex se registran como uso DeepSeek con `feature=session_speech_briefing`.
+
+Esto debe aparecer separado del coste de OpenAI TTS: DeepSeek prepara el texto escuchable y OpenAI genera el audio.
 
 La pantalla `Costes API` separa tres cosas:
 

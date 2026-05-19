@@ -14,6 +14,7 @@ Documentos clave:
 - `docs/project-runtime-verification.md`: contrato por proyecto para verificar runtime y pruebas de navegador desde Atenea Core
 - `docs/android-worksession-premium-operation.md`: contrato de calidad para operar WorkSession end-to-end desde Android nativo
 - `docs/codex-auth-and-costs.md`: contrato de autenticacion ChatGPT para Codex App Server y lectura movil de costes API
+- `docs/session-speech-briefing.md`: briefing con DeepSeek para lecturas TTS utiles de respuestas Codex
 - `docs/voice-command-telemetry.md`: telemetria de comandos de voz fallidos para mejorar el interprete
 - `docs/android-native-migration.md`: decisión y roadmap para migrar la app móvil a Android nativo como superficie principal
 - `docs/voice-engine/README.md`: contrato de producto, arquitectura y plan del motor de voz premium de Atenea
