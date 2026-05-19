@@ -4,6 +4,7 @@ import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.service.core.CoreSpeechAudioResponse;
 import com.atenea.service.core.CoreSpeechSynthesisService;
 import com.atenea.service.voice.MobileVoiceRealtimeSessionService;
+import com.atenea.service.voice.VoiceCommandTelemetryService;
 import com.atenea.service.voice.VoiceEngineService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,15 +26,18 @@ public class MobileVoiceController {
     private final VoiceEngineService voiceEngineService;
     private final CoreSpeechSynthesisService coreSpeechSynthesisService;
     private final MobileVoiceRealtimeSessionService mobileVoiceRealtimeSessionService;
+    private final VoiceCommandTelemetryService voiceCommandTelemetryService;
 
     public MobileVoiceController(
             VoiceEngineService voiceEngineService,
             CoreSpeechSynthesisService coreSpeechSynthesisService,
-            MobileVoiceRealtimeSessionService mobileVoiceRealtimeSessionService
+            MobileVoiceRealtimeSessionService mobileVoiceRealtimeSessionService,
+            VoiceCommandTelemetryService voiceCommandTelemetryService
     ) {
         this.voiceEngineService = voiceEngineService;
         this.coreSpeechSynthesisService = coreSpeechSynthesisService;
         this.mobileVoiceRealtimeSessionService = mobileVoiceRealtimeSessionService;
+        this.voiceCommandTelemetryService = voiceCommandTelemetryService;
     }
 
     @GetMapping("/focus")
@@ -150,6 +155,23 @@ public class MobileVoiceController {
                 realtimeOperatorContext(focus, notes, request),
                 request == null ? null : request.voice(),
                 request == null ? null : request.speed());
+    }
+
+    @PostMapping("/command-telemetry")
+    @ResponseStatus(HttpStatus.CREATED)
+    public MobileVoiceCommandTelemetryResponse recordCommandTelemetry(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @Valid @RequestBody RecordMobileVoiceCommandTelemetryRequest request
+    ) {
+        return voiceCommandTelemetryService.record(operator, request);
+    }
+
+    @GetMapping("/command-telemetry")
+    public MobileVoiceCommandTelemetryListResponse getRecentCommandTelemetry(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @RequestParam(required = false) Integer limit
+    ) {
+        return voiceCommandTelemetryService.recent(operator, limit);
     }
 
     private String realtimeOperatorContext(

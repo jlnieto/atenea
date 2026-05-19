@@ -402,6 +402,42 @@ class AteneaApiClient(
         parser = ::parseMobileVoiceRealtimeSession
     )
 
+    suspend fun recordMobileVoiceCommandTelemetry(
+        event: MobileVoiceCommandTelemetryEvent
+    ): MobileVoiceCommandTelemetry = postJson(
+        path = "/api/mobile/voice/command-telemetry",
+        body = JSONObject()
+            .putNullable("clientEventId", event.clientEventId)
+            .put("source", event.source)
+            .put("outcome", event.outcome)
+            .put("reason", event.reason)
+            .put("transcript", event.transcript)
+            .putNullable("normalizedTranscript", event.normalizedTranscript)
+            .put("wakeWordDetected", event.wakeWordDetected)
+            .put("startsWithWakeWord", event.startsWithWakeWord)
+            .putNullable("intentType", event.intentType)
+            .putNullable("domain", event.domain)
+            .putNullable("projectId", event.projectId)
+            .putNullable("projectName", event.projectName)
+            .putNullable("workSessionId", event.workSessionId)
+            .putNullable("workSessionTitle", event.workSessionTitle)
+            .putNullable("activeCommandId", event.activeCommandId)
+            .putNullable("activeNoteCount", event.activeNoteCount)
+            .putNullable("pendingSendIntentId", event.pendingSendIntentId)
+            .putNullable("realtimeConnected", event.realtimeConnected)
+            .putNullable("voiceState", event.voiceState),
+        authenticated = true,
+        parser = ::parseMobileVoiceCommandTelemetry
+    )
+
+    suspend fun fetchMobileVoiceCommandTelemetry(limit: Int = 50): List<MobileVoiceCommandTelemetry> = getJson(
+        path = "/api/mobile/voice/command-telemetry?limit=$limit",
+        authenticated = true
+    ) { json ->
+        val items = json.optJSONArray("items") ?: JSONArray()
+        List(items.length()) { index -> parseMobileVoiceCommandTelemetry(items.getJSONObject(index)) }
+    }
+
     suspend fun fetchApiCostsOverview(days: Int = 30): MobileApiCostsOverview = getJson(
         path = "/api/mobile/costs/overview?days=$days",
         authenticated = true,
@@ -1195,6 +1231,52 @@ data class MobileVoiceRealtimeSession(
     val status: String
 )
 
+data class MobileVoiceCommandTelemetryEvent(
+    val clientEventId: String?,
+    val source: String,
+    val outcome: String,
+    val reason: String,
+    val transcript: String,
+    val normalizedTranscript: String?,
+    val wakeWordDetected: Boolean,
+    val startsWithWakeWord: Boolean,
+    val intentType: String?,
+    val domain: String?,
+    val projectId: Long?,
+    val projectName: String?,
+    val workSessionId: Long?,
+    val workSessionTitle: String?,
+    val activeCommandId: Long?,
+    val activeNoteCount: Int?,
+    val pendingSendIntentId: Long?,
+    val realtimeConnected: Boolean?,
+    val voiceState: String?
+)
+
+data class MobileVoiceCommandTelemetry(
+    val id: Long,
+    val clientEventId: String?,
+    val source: String,
+    val outcome: String,
+    val reason: String,
+    val transcript: String,
+    val normalizedTranscript: String?,
+    val wakeWordDetected: Boolean,
+    val startsWithWakeWord: Boolean,
+    val intentType: String?,
+    val domain: String?,
+    val projectId: Long?,
+    val projectName: String?,
+    val workSessionId: Long?,
+    val workSessionTitle: String?,
+    val activeCommandId: Long?,
+    val activeNoteCount: Int?,
+    val pendingSendIntentId: Long?,
+    val realtimeConnected: Boolean?,
+    val voiceState: String?,
+    val createdAt: String?
+)
+
 data class MobileApiCostsOverview(
     val generatedAt: String?,
     val startAt: String?,
@@ -1798,6 +1880,31 @@ private fun parseMobileVoiceRealtimeSession(json: JSONObject): MobileVoiceRealti
         clientSecret = json.optString("clientSecret", ""),
         expiresAt = json.optNullableLong("expiresAt"),
         status = json.optString("status", "")
+    )
+
+private fun parseMobileVoiceCommandTelemetry(json: JSONObject): MobileVoiceCommandTelemetry =
+    MobileVoiceCommandTelemetry(
+        id = json.optLong("id", 0L),
+        clientEventId = json.optNullableString("clientEventId"),
+        source = json.optString("source", ""),
+        outcome = json.optString("outcome", ""),
+        reason = json.optString("reason", ""),
+        transcript = json.optString("transcript", ""),
+        normalizedTranscript = json.optNullableString("normalizedTranscript"),
+        wakeWordDetected = json.optBoolean("wakeWordDetected", false),
+        startsWithWakeWord = json.optBoolean("startsWithWakeWord", false),
+        intentType = json.optNullableString("intentType"),
+        domain = json.optNullableString("domain"),
+        projectId = json.optNullableLong("projectId"),
+        projectName = json.optNullableString("projectName"),
+        workSessionId = json.optNullableLong("workSessionId"),
+        workSessionTitle = json.optNullableString("workSessionTitle"),
+        activeCommandId = json.optNullableLong("activeCommandId"),
+        activeNoteCount = json.optNullableInt("activeNoteCount"),
+        pendingSendIntentId = json.optNullableLong("pendingSendIntentId"),
+        realtimeConnected = json.optNullableBoolean("realtimeConnected"),
+        voiceState = json.optNullableString("voiceState"),
+        createdAt = json.optNullableString("createdAt")
     )
 
 private fun parseMobileApiCostsOverview(json: JSONObject): MobileApiCostsOverview {

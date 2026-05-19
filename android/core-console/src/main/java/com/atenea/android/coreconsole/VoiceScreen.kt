@@ -39,6 +39,7 @@ import androidx.core.content.ContextCompat
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.CoreCommandResponse
 import com.atenea.android.api.CoreScope
+import com.atenea.android.api.MobileVoiceCommandTelemetryEvent
 import com.atenea.android.api.MobileVoiceAudio
 import com.atenea.android.api.MobileVoiceCodexStatus
 import com.atenea.android.api.MobileVoiceFocus
@@ -51,6 +52,8 @@ import com.atenea.android.coreconsole.voice.VoiceBlockType
 import com.atenea.android.coreconsole.voice.VoiceIntent
 import com.atenea.android.coreconsole.voice.VoiceRuntimeState
 import com.atenea.android.voiceruntime.AteneaVoiceRuntimeController
+import java.text.Normalizer
+import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -410,6 +413,48 @@ internal fun VoiceScreen(
         statusMessage = message
         setPlayback(message, sourceType = "LOCAL_COMMAND", sourceId = "unknown")
         speakText(message)
+    }
+
+    fun recordVoiceCommandFailure(
+        transcript: String,
+        intent: VoiceIntent,
+        outcome: String,
+        reason: String
+    ) {
+        val text = transcript.trim()
+        if (text.isBlank()) {
+            return
+        }
+        val focusSnapshot = focus
+        val pendingIntentSnapshot = noteSendIntent?.takeIf { it.status == "PENDING" }
+        val noteCount = notes.size.takeIf { it > 0 } ?: focusSnapshot?.activeNoteCount
+        scope.launch {
+            runCatching {
+                apiClient.recordMobileVoiceCommandTelemetry(
+                    MobileVoiceCommandTelemetryEvent(
+                        clientEventId = UUID.randomUUID().toString(),
+                        source = "android_realtime",
+                        outcome = outcome,
+                        reason = reason,
+                        transcript = text,
+                        normalizedTranscript = text.telemetryNormalized(),
+                        wakeWordDetected = VoiceCommandInterpreter.hasWakeWord(text),
+                        startsWithWakeWord = VoiceCommandInterpreter.startsWithWakeWord(text),
+                        intentType = intent.telemetryName(),
+                        domain = focusSnapshot?.domain?.name,
+                        projectId = focusSnapshot?.projectId,
+                        projectName = focusSnapshot?.projectName,
+                        workSessionId = focusSnapshot?.workSessionId,
+                        workSessionTitle = focusSnapshot?.workSessionTitle,
+                        activeCommandId = focusSnapshot?.activeCommandId,
+                        activeNoteCount = noteCount,
+                        pendingSendIntentId = pendingIntentSnapshot?.id,
+                        realtimeConnected = nativeVoiceState.realtimeConnected,
+                        voiceState = voiceState.name
+                    )
+                )
+            }
+        }
     }
 
     fun startBlock(type: VoiceBlockType, initialText: String? = null) {
@@ -1415,6 +1460,14 @@ internal fun VoiceScreen(
         if (!VoiceCommandInterpreter.startsWithWakeWord(transcript)) {
             lastRealtimeTranscriptHandledSequence = sequence
             heardStatus = "Ignorado."
+            if (transcript.looksLikePotentialAteneaCommand()) {
+                recordVoiceCommandFailure(
+                    transcript = transcript,
+                    intent = VoiceIntent.Empty,
+                    outcome = "IGNORED",
+                    reason = "wake_word_not_at_start"
+                )
+            }
             if (localSpeechActive || voiceState == VoiceRuntimeState.SPEAKING) {
                 return@LaunchedEffect
             }
@@ -1435,6 +1488,12 @@ internal fun VoiceScreen(
         val realtimeRoutable = intent.isRealtimeRoutable()
         if (intent == VoiceIntent.Empty && pendingBargeInResume != null) {
             lastRealtimeTranscriptHandledSequence = sequence
+            recordVoiceCommandFailure(
+                transcript = transcript,
+                intent = intent,
+                outcome = "UNRECOGNIZED",
+                reason = "empty_intent_during_barge_in"
+            )
             val snapshot = pendingBargeInResume
             pendingBargeInResume = null
             resumePlayback = snapshot
@@ -1446,6 +1505,12 @@ internal fun VoiceScreen(
         if (intent == VoiceIntent.Empty || (!realtimeRoutable && !transcript.isRealtimeOperationalRequest())) {
             lastRealtimeTranscriptHandledSequence = sequence
             pendingBargeInResume = null
+            recordVoiceCommandFailure(
+                transcript = transcript,
+                intent = intent,
+                outcome = "UNRECOGNIZED",
+                reason = if (intent == VoiceIntent.Empty) "empty_intent" else "not_realtime_routable"
+            )
             if (nativeVoiceState.outputPlaybackActive || localSpeechActive || voiceState == VoiceRuntimeState.SPEAKING) {
                 continuousPlayback = false
                 localSpeechRequestId += 1
@@ -1458,6 +1523,12 @@ internal fun VoiceScreen(
             return@LaunchedEffect
         }
         if ((pending && intent != VoiceIntent.StopPlayback) || (!realtimeRoutable && !transcript.isRealtimeOperationalRequest())) {
+            recordVoiceCommandFailure(
+                transcript = transcript,
+                intent = intent,
+                outcome = "BLOCKED",
+                reason = if (pending) "client_pending" else "not_realtime_routable"
+            )
             return@LaunchedEffect
         }
         lastRealtimeTranscriptHandledSequence = sequence
@@ -1955,6 +2026,57 @@ private fun String.looksLikeLocalVoicePromptEcho(): Boolean {
         text == "nota abierta cierra con antena fin" ||
         text.contains("nota abierta") && text.contains("orden de cierre") ||
         text.contains("para terminar") && text.contains("orden de cierre")
+}
+
+private fun String.looksLikePotentialAteneaCommand(): Boolean {
+    val text = telemetryNormalized()
+    if (text.isBlank()) {
+        return false
+    }
+    return listOf("atenea", "athenea", "antena", "antenea", "atenia", "aterea").any { text.contains(it) } ||
+        listOf("nota", "notas", "codex", "lee", "leer", "envia", "enviar", "manda", "confirmo").any { token ->
+            text == token || text.startsWith("$token ") || text.contains(" $token ")
+        }
+}
+
+private fun String.telemetryNormalized(): String =
+    Normalizer.normalize(lowercase(), Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun VoiceIntent.telemetryName(): String = when (this) {
+    is VoiceIntent.ArchiveNote -> "ArchiveNote"
+    is VoiceIntent.ChangeFocus -> "ChangeFocus"
+    is VoiceIntent.ClarifyCurrentSegment -> "ClarifyCurrentSegment"
+    is VoiceIntent.GoToSegment -> "GoToSegment"
+    is VoiceIntent.ReadNote -> "ReadNote"
+    is VoiceIntent.RunCommand -> "RunCommand"
+    is VoiceIntent.SaveNote -> "SaveNote"
+    is VoiceIntent.SendNotes -> "SendNotes"
+    is VoiceIntent.StartBlock -> "StartBlock:${type.name}"
+    VoiceIntent.ArchiveAllNotes -> "ArchiveAllNotes"
+    VoiceIntent.ArchiveLastNote -> "ArchiveLastNote"
+    VoiceIntent.BlockStatus -> "BlockStatus"
+    VoiceIntent.CancelBlock -> "CancelBlock"
+    VoiceIntent.CancelPending -> "CancelPending"
+    VoiceIntent.CheckCodexStatus -> "CheckCodexStatus"
+    VoiceIntent.ConfirmPending -> "ConfirmPending"
+    VoiceIntent.ContinuePlayback -> "ContinuePlayback"
+    VoiceIntent.CountNotes -> "CountNotes"
+    VoiceIntent.DescribeFocus -> "DescribeFocus"
+    VoiceIntent.Empty -> "Empty"
+    VoiceIntent.FinishBlock -> "FinishBlock"
+    VoiceIntent.NextPlayback -> "NextPlayback"
+    VoiceIntent.PreviousPlayback -> "PreviousPlayback"
+    VoiceIntent.ReadBlock -> "ReadBlock"
+    VoiceIntent.ReadNotes -> "ReadNotes"
+    VoiceIntent.ReadPlayback -> "ReadPlayback"
+    VoiceIntent.RepeatPlayback -> "RepeatPlayback"
+    VoiceIntent.SavePendingNote -> "SavePendingNote"
+    VoiceIntent.StartPlayback -> "StartPlayback"
+    VoiceIntent.StopPlayback -> "StopPlayback"
+    VoiceIntent.SummarizeBlock -> "SummarizeBlock"
 }
 
 private const val BLOCK_CAPTURE_ARMING_DELAY_MS = 900L

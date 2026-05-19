@@ -21,6 +21,7 @@ import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.service.core.CoreSpeechAudioResponse;
 import com.atenea.service.core.CoreSpeechSynthesisService;
 import com.atenea.service.voice.MobileVoiceRealtimeSessionService;
+import com.atenea.service.voice.VoiceCommandTelemetryService;
 import com.atenea.service.voice.VoiceEngineService;
 import java.time.Instant;
 import java.util.List;
@@ -51,6 +52,9 @@ class MobileVoiceControllerTest {
     @Mock
     private MobileVoiceRealtimeSessionService mobileVoiceRealtimeSessionService;
 
+    @Mock
+    private VoiceCommandTelemetryService voiceCommandTelemetryService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -58,12 +62,70 @@ class MobileVoiceControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new MobileVoiceController(
                         voiceEngineService,
                         coreSpeechSynthesisService,
-                        mobileVoiceRealtimeSessionService))
+                        mobileVoiceRealtimeSessionService,
+                        voiceCommandTelemetryService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(
                         new ByteArrayHttpMessageConverter(),
                         new MappingJackson2HttpMessageConverter(Jackson2ObjectMapperBuilder.json().build()))
                 .build();
+    }
+
+    @Test
+    void recordsVoiceCommandTelemetry() throws Exception {
+        when(voiceCommandTelemetryService.record(any(), any())).thenReturn(new MobileVoiceCommandTelemetryResponse(
+                21L,
+                "client-1",
+                "android_realtime",
+                "UNRECOGNIZED",
+                "empty_intent",
+                "Atenea, li nota uno",
+                "atenea, li nota uno",
+                true,
+                true,
+                "Empty",
+                "DEVELOPMENT",
+                7L,
+                "fomasys",
+                12L,
+                "Sesion",
+                44L,
+                2,
+                null,
+                true,
+                "IDLE",
+                Instant.parse("2026-05-19T10:00:00Z")));
+
+        mockMvc.perform(post("/api/mobile/voice/command-telemetry")
+                        .with(operator())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "clientEventId": "client-1",
+                                  "source": "android_realtime",
+                                  "outcome": "UNRECOGNIZED",
+                                  "reason": "empty_intent",
+                                  "transcript": "Atenea, li nota uno",
+                                  "normalizedTranscript": "atenea, li nota uno",
+                                  "wakeWordDetected": true,
+                                  "startsWithWakeWord": true,
+                                  "intentType": "Empty",
+                                  "domain": "DEVELOPMENT",
+                                  "projectId": 7,
+                                  "projectName": "fomasys",
+                                  "workSessionId": 12,
+                                  "workSessionTitle": "Sesion",
+                                  "activeCommandId": 44,
+                                  "activeNoteCount": 2,
+                                  "realtimeConnected": true,
+                                  "voiceState": "IDLE"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(21))
+                .andExpect(jsonPath("$.reason").value("empty_intent"))
+                .andExpect(jsonPath("$.transcript").value("Atenea, li nota uno"))
+                .andExpect(jsonPath("$.activeNoteCount").value(2));
     }
 
     @Test
