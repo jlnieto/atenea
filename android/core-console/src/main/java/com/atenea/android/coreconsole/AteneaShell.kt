@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -46,9 +47,9 @@ internal fun AteneaShell(
             currentVersionCode = currentVersionCode
         )
     }
-    var selectedDestination by remember { mutableStateOf(AteneaDestination.HOME) }
-    var selectedProjectId by remember { mutableStateOf<Long?>(null) }
-    var selectedSessionId by remember { mutableStateOf<Long?>(null) }
+    var selectedDestination by rememberSaveable { mutableStateOf(AteneaDestination.HOME) }
+    var selectedProjectId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedSessionId by rememberSaveable { mutableStateOf<Long?>(null) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var updateState by remember { mutableStateOf<UpdateCheckResult?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
