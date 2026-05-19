@@ -35,6 +35,9 @@ public class ManagedWebsiteEntity {
     @Column(name = "timeout_millis", nullable = false)
     private int timeoutMillis;
 
+    @Column(name = "degraded_threshold_millis", nullable = false)
+    private int degradedThresholdMillis;
+
     @Column(nullable = false)
     private boolean active;
 
@@ -90,6 +93,14 @@ public class ManagedWebsiteEntity {
 
     public void setTimeoutMillis(int timeoutMillis) {
         this.timeoutMillis = timeoutMillis;
+    }
+
+    public int getDegradedThresholdMillis() {
+        return degradedThresholdMillis;
+    }
+
+    public void setDegradedThresholdMillis(int degradedThresholdMillis) {
+        this.degradedThresholdMillis = degradedThresholdMillis;
     }
 
     public boolean isActive() {

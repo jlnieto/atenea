@@ -96,7 +96,18 @@ class OperationsCoreDomainHandlerTest {
                         Instant.parse("2026-05-13T09:59:00Z"),
                         Instant.parse("2026-05-13T10:00:05Z"),
                         Instant.parse("2026-05-13T10:00:05Z")),
-                List.of(new WebsiteCheckResponse(1L, "Cliente", "https://cliente.test", 200, 200, 100, true, null)));
+                List.of(new WebsiteCheckResponse(
+                        1L,
+                        "Cliente",
+                        "https://cliente.test",
+                        200,
+                        200,
+                        100,
+                        2500,
+                        10000,
+                        "OK",
+                        true,
+                        null)));
         when(operationsService.recoverApacheHungProcesses(3L)).thenReturn(recovery);
 
         CoreCommandExecutionResult result = handler.execute(

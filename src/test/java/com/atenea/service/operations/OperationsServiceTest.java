@@ -5,8 +5,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 import com.atenea.api.operations.OperationsRecoveryResponse;
+import com.atenea.api.operations.OperationsHostStatusResponse;
 import com.atenea.api.operations.OperationsServiceCheckResponse;
 import com.atenea.api.operations.WebsiteCheckResponse;
 import com.atenea.persistence.operations.ManagedHostEntity;
@@ -96,8 +98,19 @@ class OperationsServiceTest {
         when(operationsRemoteExecutor.execute(eq(host), eq("sudo /usr/local/sbin/atenea-apache-recover"), any()))
                 .thenReturn(new RemoteCommandResult(0, "{\"status\":\"ok\"}", ""));
         when(managedWebsiteRepository.findByHostIdAndActiveTrueOrderByNameAsc(3L)).thenReturn(List.of(website));
-        when(operationsWebsiteCheckService.check(website))
-                .thenReturn(new WebsiteCheckResponse(30L, "Cliente", "https://cliente.test", 200, 200, 120, true, null));
+        when(operationsWebsiteCheckService.check(website, 1500))
+                .thenReturn(new WebsiteCheckResponse(
+                        30L,
+                        "Cliente",
+                        "https://cliente.test",
+                        200,
+                        200,
+                        120,
+                        1500,
+                        1500,
+                        "OK",
+                        true,
+                        null));
 
         OperationsRecoveryResponse response = operationsService.recoverApacheHungProcesses(3L);
 
@@ -106,6 +119,62 @@ class OperationsServiceTest {
         assertEquals("ok", response.actionRun().report().status());
         assertEquals(OperationsIncidentStatus.RESOLVED, response.incident().status());
         assertEquals(1, response.validationChecks().size());
+        verify(operationsWebsiteCheckService, never()).check(website);
+    }
+
+    @Test
+    void recoverApacheKeepsIncidentMitigatingWhenFastValidationFindsSlowWebsites() {
+        ManagedHostEntity host = host();
+        ManagedServiceEntity service = service(host);
+        ManagedWebsiteEntity website = website(host);
+        AtomicLong actionIds = new AtomicLong(40L);
+        AtomicLong incidentIds = new AtomicLong(10L);
+
+        when(managedHostRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(host));
+        when(managedServiceRepository.findFirstByHostIdAndServiceTypeAndActiveTrueOrderByNameAsc(
+                3L,
+                ManagedServiceType.WEB_SERVER)).thenReturn(Optional.of(service));
+        when(operationsIncidentRepository.findFirstByHostIdAndServiceIdAndStatusInOrderByLastActivityAtDesc(
+                eq(3L),
+                eq(9L),
+                any())).thenReturn(Optional.empty());
+        when(operationsIncidentRepository.save(any(OperationsIncidentEntity.class))).thenAnswer(invocation -> {
+            OperationsIncidentEntity incident = invocation.getArgument(0);
+            if (incident.getId() == null) {
+                incident.setId(incidentIds.incrementAndGet());
+            }
+            return incident;
+        });
+        when(operationsActionRunRepository.save(any(OperationsActionRunEntity.class))).thenAnswer(invocation -> {
+            OperationsActionRunEntity run = invocation.getArgument(0);
+            if (run.getId() == null) {
+                run.setId(actionIds.incrementAndGet());
+            }
+            return run;
+        });
+        when(operationsRemoteExecutor.execute(eq(host), eq("sudo /usr/local/sbin/atenea-apache-recover"), any()))
+                .thenReturn(new RemoteCommandResult(0, "{\"status\":\"ok\"}", ""));
+        when(managedWebsiteRepository.findByHostIdAndActiveTrueOrderByNameAsc(3L)).thenReturn(List.of(website));
+        when(operationsWebsiteCheckService.check(website, 1500))
+                .thenReturn(new WebsiteCheckResponse(
+                        30L,
+                        "Cliente",
+                        "https://cliente.test",
+                        200,
+                        200,
+                        1490,
+                        1000,
+                        1500,
+                        "DEGRADED",
+                        false,
+                        "Slow response 1490ms above 1000ms threshold"));
+
+        OperationsRecoveryResponse response = operationsService.recoverApacheHungProcesses(3L);
+
+        assertEquals(OperationsIncidentStatus.MITIGATING, response.incident().status());
+        assertEquals("DEGRADED", response.validationChecks().getFirst().state());
+        assertEquals("Recuperación de Apache ejecutada, pero la validación rápida detecta webs lentas o caídas.",
+                response.incident().summary());
     }
 
     @Test
@@ -151,6 +220,62 @@ class OperationsServiceTest {
         verify(operationsIncidentRepository).save(incident);
     }
 
+    @Test
+    void hostStatusOpensWarningIncidentWhenWebsiteIsSlow() {
+        ManagedHostEntity host = host();
+        ManagedServiceEntity service = service(host);
+        ManagedWebsiteEntity website = website(host);
+        AtomicLong actionIds = new AtomicLong(40L);
+        AtomicLong incidentIds = new AtomicLong(10L);
+
+        when(managedHostRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(host));
+        when(operationsActionRunRepository.save(any(OperationsActionRunEntity.class))).thenAnswer(invocation -> {
+            OperationsActionRunEntity run = invocation.getArgument(0);
+            if (run.getId() == null) {
+                run.setId(actionIds.incrementAndGet());
+            }
+            return run;
+        });
+        when(operationsRemoteExecutor.execute(eq(host), eq("sudo /usr/local/sbin/atenea-host-status"), any()))
+                .thenReturn(new RemoteCommandResult(0, "{\"status\":\"OK\",\"summary\":\"Host OK\"}", ""));
+        when(managedWebsiteRepository.findByHostIdAndActiveTrueOrderByNameAsc(3L)).thenReturn(List.of(website));
+        when(operationsWebsiteCheckService.check(website))
+                .thenReturn(new WebsiteCheckResponse(
+                        30L,
+                        "Cliente",
+                        "https://cliente.test",
+                        200,
+                        200,
+                        3200,
+                        2500,
+                        10000,
+                        "DEGRADED",
+                        false,
+                        "Slow response 3200ms above 2500ms threshold"));
+        when(managedServiceRepository.findFirstByHostIdAndServiceTypeAndActiveTrueOrderByNameAsc(
+                3L,
+                ManagedServiceType.WEB_SERVER)).thenReturn(Optional.of(service));
+        when(managedServiceRepository.findByHostIdAndActiveTrueOrderByNameAsc(3L)).thenReturn(List.of(service));
+        when(operationsIncidentRepository.findFirstByHostIdAndServiceIdAndStatusInOrderByLastActivityAtDesc(
+                eq(3L),
+                eq(9L),
+                any())).thenReturn(Optional.empty());
+        when(operationsIncidentRepository.save(any(OperationsIncidentEntity.class))).thenAnswer(invocation -> {
+            OperationsIncidentEntity incident = invocation.getArgument(0);
+            if (incident.getId() == null) {
+                incident.setId(incidentIds.incrementAndGet());
+            }
+            return incident;
+        });
+        when(operationsIncidentRepository.findByStatusInOrderByLastActivityAtDesc(any()))
+                .thenReturn(List.of());
+
+        OperationsHostStatusResponse response = operationsService.getHostStatus(3L);
+
+        assertEquals("DEGRADED", response.websiteChecks().getFirst().state());
+        verify(operationsIncidentRepository).save(any(OperationsIncidentEntity.class));
+    }
+
     private ManagedHostEntity host() {
         ManagedHostEntity host = new ManagedHostEntity();
         host.setId(3L);
@@ -186,6 +311,7 @@ class OperationsServiceTest {
         website.setUrl("https://cliente.test");
         website.setExpectedStatus(200);
         website.setTimeoutMillis(10000);
+        website.setDegradedThresholdMillis(2500);
         website.setActive(true);
         return website;
     }

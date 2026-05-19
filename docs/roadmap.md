@@ -445,6 +445,8 @@ Current repository reading after recent changes:
 - persistent cache for DeepSeek session speech briefings: implemented
 - grouped voice command telemetry summary for failed command analysis: implemented
 - canonical backend deploy scripts for preview, production and release: implemented
+- latency-aware operations website health checks: implemented
+- bounded Apache recovery post-validation: implemented
 - app-level STT in the `Core` tab through backend transcription: implemented
 - remaining major mobile gaps after core foundation:
   - extension of app-level speech-to-text beyond the `Core` tab

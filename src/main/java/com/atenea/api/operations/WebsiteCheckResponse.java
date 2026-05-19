@@ -7,6 +7,9 @@ public record WebsiteCheckResponse(
         int expectedStatus,
         Integer statusCode,
         long durationMillis,
+        int degradedThresholdMillis,
+        int timeoutMillis,
+        String state,
         boolean healthy,
         String error
 ) {

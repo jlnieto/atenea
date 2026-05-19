@@ -31,9 +31,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +46,8 @@ public class OperationsService {
             OperationsIncidentStatus.OPEN,
             OperationsIncidentStatus.MITIGATING,
             OperationsIncidentStatus.FAILED);
+    private static final int APACHE_RECOVERY_MAX_VALIDATION_CHECKS = 3;
+    private static final int APACHE_RECOVERY_VALIDATION_TIMEOUT_MILLIS = 1_500;
 
     private final ManagedHostRepository managedHostRepository;
     private final ManagedServiceRepository managedServiceRepository;
@@ -84,11 +88,13 @@ public class OperationsService {
         ManagedHostEntity host = requireHost(hostId);
         OperationsActionRunEntity hostStatusRun = executeRemote(host, null, null, "HOST_STATUS",
                 "sudo /usr/local/sbin/atenea-host-status", Duration.ofSeconds(20));
+        List<WebsiteCheckResponse> websiteChecks = checkWebsites(host.getId());
+        syncWebsiteIncident(host, websiteChecks);
         return new OperationsHostStatusResponse(
                 toHostResponse(host),
                 toActionRunResponse(hostStatusRun),
                 listServices(host.getId()),
-                checkWebsites(host.getId()),
+                websiteChecks,
                 activeIncidentsForHost(host.getId()));
     }
 
@@ -131,17 +137,28 @@ public class OperationsService {
 
         OperationsActionRunEntity run = executeRemote(host, service, incident, "APACHE_RECOVERY",
                 "sudo /usr/local/sbin/atenea-apache-recover", Duration.ofSeconds(90));
-        List<WebsiteCheckResponse> validationChecks = checkWebsites(host.getId());
+        List<WebsiteCheckResponse> validationChecks = checkWebsites(
+                host.getId(),
+                APACHE_RECOVERY_VALIDATION_TIMEOUT_MILLIS,
+                APACHE_RECOVERY_MAX_VALIDATION_CHECKS);
         boolean websitesHealthy = validationChecks.stream().allMatch(WebsiteCheckResponse::healthy);
-        if (run.getStatus() == OperationsActionRunStatus.SUCCEEDED && websitesHealthy) {
+        if (run.getStatus() == OperationsActionRunStatus.SUCCEEDED && validationChecks.isEmpty()) {
+            incident.setStatus(OperationsIncidentStatus.MITIGATING);
+            incident.setSeverity(OperationsSeverity.WARNING);
+            incident.setSummary("Recuperación de Apache ejecutada. No hay webs activas registradas para validación rápida.");
+        } else if (run.getStatus() == OperationsActionRunStatus.SUCCEEDED && websitesHealthy) {
             incident.setStatus(OperationsIncidentStatus.RESOLVED);
             incident.setSeverity(OperationsSeverity.INFO);
-            incident.setSummary("Recuperación de Apache completada y webs validadas correctamente.");
+            incident.setSummary("Recuperación de Apache completada y validación rápida correcta.");
             incident.setResolvedAt(Instant.now());
+        } else if (run.getStatus() == OperationsActionRunStatus.SUCCEEDED) {
+            incident.setStatus(OperationsIncidentStatus.MITIGATING);
+            incident.setSeverity(severityFromWebsiteChecks(validationChecks));
+            incident.setSummary("Recuperación de Apache ejecutada, pero la validación rápida detecta webs lentas o caídas.");
         } else {
             incident.setStatus(OperationsIncidentStatus.FAILED);
             incident.setSeverity(OperationsSeverity.CRITICAL);
-            incident.setSummary("La recuperación de Apache no ha dejado todos los checks en estado correcto.");
+            incident.setSummary("La recuperación de Apache terminó con error.");
         }
         touchIncident(incident, Instant.now());
 
@@ -200,9 +217,21 @@ public class OperationsService {
     }
 
     private List<WebsiteCheckResponse> checkWebsites(Long hostId) {
-        return managedWebsiteRepository.findByHostIdAndActiveTrueOrderByNameAsc(hostId)
+        return checkWebsites(hostId, null, null);
+    }
+
+    private List<WebsiteCheckResponse> checkWebsites(Long hostId, Integer timeoutMillis, Integer maxChecks) {
+        List<CompletableFuture<WebsiteCheckResponse>> futures = managedWebsiteRepository
+                .findByHostIdAndActiveTrueOrderByNameAsc(hostId)
                 .stream()
-                .map(operationsWebsiteCheckService::check)
+                .limit(maxChecks == null ? Long.MAX_VALUE : Math.max(0, maxChecks))
+                .map(website -> CompletableFuture.supplyAsync(() -> timeoutMillis == null
+                        ? operationsWebsiteCheckService.check(website)
+                        : operationsWebsiteCheckService.check(website, timeoutMillis)))
+                .toList();
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .sorted(Comparator.comparing(WebsiteCheckResponse::name))
                 .toList();
     }
 
@@ -258,6 +287,47 @@ public class OperationsService {
                     return operationsIncidentRepository.save(incident);
                 })
                 .orElse(null);
+    }
+
+    private void syncWebsiteIncident(ManagedHostEntity host, List<WebsiteCheckResponse> websiteChecks) {
+        ManagedServiceEntity service = managedServiceRepository
+                .findFirstByHostIdAndServiceTypeAndActiveTrueOrderByNameAsc(host.getId(), ManagedServiceType.WEB_SERVER)
+                .orElse(null);
+        if (service == null) {
+            return;
+        }
+        List<WebsiteCheckResponse> unhealthy = websiteChecks.stream()
+                .filter(check -> !check.healthy())
+                .toList();
+        if (unhealthy.isEmpty()) {
+            resolveServiceIncidentIfHealthy(host, service);
+            return;
+        }
+        OperationsSeverity severity = severityFromWebsiteChecks(unhealthy);
+        String summary = websiteIncidentSummary(unhealthy);
+        openOrUpdateIncident(
+                host,
+                service,
+                severity,
+                "Webs lentas o caídas",
+                summary);
+    }
+
+    private OperationsSeverity severityFromWebsiteChecks(List<WebsiteCheckResponse> websiteChecks) {
+        boolean down = websiteChecks.stream().anyMatch(check -> "DOWN".equals(check.state()));
+        return down ? OperationsSeverity.CRITICAL : OperationsSeverity.WARNING;
+    }
+
+    private String websiteIncidentSummary(List<WebsiteCheckResponse> unhealthy) {
+        long down = unhealthy.stream().filter(check -> "DOWN".equals(check.state())).count();
+        long degraded = unhealthy.stream().filter(check -> "DEGRADED".equals(check.state())).count();
+        WebsiteCheckResponse first = unhealthy.getFirst();
+        String state = "DOWN".equals(first.state()) ? "caída" : "lenta";
+        return "Atenea detecta " + unhealthy.size() + " web(s) con problema: "
+                + down + " caída(s), " + degraded + " lenta(s). "
+                + "Primera afectada: " + first.name() + " " + state
+                + " en " + first.durationMillis() + "ms"
+                + " (umbral " + first.degradedThresholdMillis() + "ms).";
     }
 
     private OperationsActionRunEntity executeRemote(

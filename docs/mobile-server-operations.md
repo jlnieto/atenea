@@ -37,6 +37,7 @@ El dominio `operations` ya cubre el primer slice de servidores gestionados:
   - `sudo /usr/local/sbin/atenea-apache-status`
   - `sudo /usr/local/sbin/atenea-apache-recover`
 - checks HTTP externos desde Atenea
+- detección de webs degradadas por latencia, no sólo por código HTTP
 - incidencias y runs auditables
 
 ## Navegador headless para Codex
@@ -229,6 +230,37 @@ Para Atenea en este repo, el mínimo antes de desplegar es:
 ```
 
 Si el cambio toca experiencia web o móvil servida en navegador, Codex debe añadir además una prueba headless o una validación explícita con Chromium.
+
+## Contrato de recuperación Apache
+
+La acción `recover_apache_hung_processes` debe priorizar recuperar el servicio.
+
+Reglas runtime:
+
+- ejecuta primero el runbook remoto `sudo /usr/local/sbin/atenea-apache-recover`
+- después sólo hace una validación web rápida y acotada
+- la validación post-recuperación usa como máximo 3 webs activas
+- cada check post-recuperación queda limitado a 1500 ms
+- no debe recorrer todas las webs con timeouts largos antes de devolver control al operador
+
+Si el runbook termina OK pero la validación rápida detecta lentitud o caída, la incidencia queda en `MITIGATING`, no en `RESOLVED`. Esto permite actuar rápido sin vender un falso verde.
+
+## Contrato de salud web
+
+Una web ya no se considera sana sólo por devolver el HTTP esperado.
+
+Cada `managed_website` tiene:
+
+- `timeout_millis`: límite duro del check
+- `degraded_threshold_millis`: umbral de latencia aceptable
+
+Estados posibles del check:
+
+- `OK`: HTTP esperado y duración dentro del umbral
+- `DEGRADED`: HTTP esperado pero duración por encima del umbral
+- `DOWN`: timeout, error de red o HTTP inesperado
+
+`DEGRADED` cuenta como no saludable para que la app no muestre punto verde cuando las páginas cargan lentas. Una revisión de estado que detecta webs lentas o caídas abre o actualiza una incidencia operativa sobre el servicio web.
 
 ## Criterio de listo
 

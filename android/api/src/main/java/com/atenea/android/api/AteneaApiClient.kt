@@ -1028,6 +1028,9 @@ data class WebsiteCheck(
     val expectedStatus: Int,
     val statusCode: Int?,
     val durationMillis: Long,
+    val degradedThresholdMillis: Int,
+    val timeoutMillis: Int,
+    val state: String,
     val healthy: Boolean,
     val error: String?
 )
@@ -1086,6 +1089,12 @@ data class OperationsHostStatus(
 
     val unhealthyWebsites: Int
         get() = websiteChecks.count { !it.healthy }
+
+    val degradedWebsites: Int
+        get() = websiteChecks.count { it.state.equals("DEGRADED", ignoreCase = true) }
+
+    val downWebsites: Int
+        get() = websiteChecks.count { it.state.equals("DOWN", ignoreCase = true) }
 }
 
 data class MobileUpload(
@@ -1678,6 +1687,9 @@ private fun parseWebsiteCheck(json: JSONObject): WebsiteCheck = WebsiteCheck(
     expectedStatus = json.getInt("expectedStatus"),
     statusCode = json.optNullableInt("statusCode"),
     durationMillis = json.optLong("durationMillis"),
+    degradedThresholdMillis = json.optInt("degradedThresholdMillis", 2500),
+    timeoutMillis = json.optInt("timeoutMillis", 10000),
+    state = json.optString("state", if (json.optBoolean("healthy")) "OK" else "DOWN"),
     healthy = json.optBoolean("healthy"),
     error = json.optNullableString("error")
 )

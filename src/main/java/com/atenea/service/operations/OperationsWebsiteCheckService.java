@@ -18,15 +18,24 @@ public class OperationsWebsiteCheckService {
             .build();
 
     public WebsiteCheckResponse check(ManagedWebsiteEntity website) {
+        return check(website, website.getTimeoutMillis());
+    }
+
+    public WebsiteCheckResponse check(ManagedWebsiteEntity website, int maxTimeoutMillis) {
         long started = System.nanoTime();
+        int timeoutMillis = effectiveTimeoutMillis(website, maxTimeoutMillis);
+        int degradedThresholdMillis = effectiveDegradedThresholdMillis(website, timeoutMillis);
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(website.getUrl()))
-                    .timeout(Duration.ofMillis(website.getTimeoutMillis()))
+                    .timeout(Duration.ofMillis(timeoutMillis))
                     .GET()
                     .build();
             HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
             long durationMillis = elapsedMillis(started);
-            boolean healthy = response.statusCode() == website.getExpectedStatus();
+            boolean expectedStatus = response.statusCode() == website.getExpectedStatus();
+            boolean degraded = expectedStatus && durationMillis > degradedThresholdMillis;
+            String state = !expectedStatus ? "DOWN" : degraded ? "DEGRADED" : "OK";
+            boolean healthy = "OK".equals(state);
             return new WebsiteCheckResponse(
                     website.getId(),
                     website.getName(),
@@ -34,8 +43,11 @@ public class OperationsWebsiteCheckService {
                     website.getExpectedStatus(),
                     response.statusCode(),
                     durationMillis,
+                    degradedThresholdMillis,
+                    timeoutMillis,
+                    state,
                     healthy,
-                    healthy ? null : "Unexpected HTTP status " + response.statusCode());
+                    checkError(response.statusCode(), website.getExpectedStatus(), durationMillis, degradedThresholdMillis));
         } catch (Exception exception) {
             return new WebsiteCheckResponse(
                     website.getId(),
@@ -44,9 +56,38 @@ public class OperationsWebsiteCheckService {
                     website.getExpectedStatus(),
                     null,
                     elapsedMillis(started),
+                    degradedThresholdMillis,
+                    timeoutMillis,
+                    "DOWN",
                     false,
                     exception.getMessage());
         }
+    }
+
+    private String checkError(
+            int actualStatus,
+            int expectedStatus,
+            long durationMillis,
+            int degradedThresholdMillis
+    ) {
+        if (actualStatus != expectedStatus) {
+            return "Unexpected HTTP status " + actualStatus;
+        }
+        if (durationMillis > degradedThresholdMillis) {
+            return "Slow response " + durationMillis + "ms above " + degradedThresholdMillis + "ms threshold";
+        }
+        return null;
+    }
+
+    private int effectiveTimeoutMillis(ManagedWebsiteEntity website, int maxTimeoutMillis) {
+        int configured = website.getTimeoutMillis() <= 0 ? 10_000 : website.getTimeoutMillis();
+        int cap = maxTimeoutMillis <= 0 ? configured : maxTimeoutMillis;
+        return Math.max(200, Math.min(configured, cap));
+    }
+
+    private int effectiveDegradedThresholdMillis(ManagedWebsiteEntity website, int timeoutMillis) {
+        int configured = website.getDegradedThresholdMillis() <= 0 ? 2_500 : website.getDegradedThresholdMillis();
+        return Math.max(200, Math.min(configured, timeoutMillis));
     }
 
     private long elapsedMillis(long startedNanos) {

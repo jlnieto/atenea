@@ -448,8 +448,10 @@ private fun WebsitePanel(status: OperationsHostStatus) {
         Text(
             if (status.unhealthyWebsites == 0) {
                 "Todas responden correctamente. Más lenta: ${slowestWebsite?.name ?: "-"} · ${slowestWebsite?.durationMillis ?: 0} ms."
+            } else if (status.downWebsites == 0) {
+                "${status.degradedWebsites} webs responden lentas."
             } else {
-                "${status.unhealthyWebsites} webs requieren revisión."
+                "${status.downWebsites} webs caídas y ${status.degradedWebsites} lentas."
             },
             style = MaterialTheme.typography.bodySmall
         )
@@ -463,16 +465,22 @@ private fun WebsitePanel(status: OperationsHostStatus) {
         status.websiteChecks
             .sortedWith(compareBy<WebsiteCheck> { it.healthy }.thenByDescending { it.durationMillis })
             .forEach { check ->
-            val level = if (check.healthy) OperationalLevel.OK else OperationalLevel.CRITICAL
+            val level = when {
+                check.healthy -> OperationalLevel.OK
+                check.state.equals("DEGRADED", ignoreCase = true) -> OperationalLevel.WARNING
+                else -> OperationalLevel.CRITICAL
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(check.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "${check.statusCode ?: "-"} · ${check.durationMillis} ms",
+                    "${check.statusCode ?: "-"} · ${check.durationMillis} ms · ${check.state}",
                     color = if (check.healthy) {
                         MaterialTheme.colorScheme.onSurface
+                    } else if (level == OperationalLevel.WARNING) {
+                        MaterialTheme.colorScheme.tertiary
                     } else {
                         MaterialTheme.colorScheme.error
                     },
@@ -539,17 +547,19 @@ private fun IncidentPanel(incident: OperationsIncident) {
 internal fun OperationsHostStatus?.operationalLevel(loading: Boolean = false): OperationalLevel = when {
     loading -> OperationalLevel.UNKNOWN
     this == null -> OperationalLevel.UNKNOWN
-    openIncidents.isNotEmpty() || unhealthyWebsites > 0 -> OperationalLevel.CRITICAL
+    openIncidents.any { it.severity == "CRITICAL" } || downWebsites > 0 -> OperationalLevel.CRITICAL
+    openIncidents.isNotEmpty() || degradedWebsites > 0 -> OperationalLevel.WARNING
     websiteChecks.isEmpty() || hostStatusRun?.status == "FAILED" -> OperationalLevel.WARNING
     else -> OperationalLevel.OK
 }
 
 internal fun OperationsHostStatus.oneLineSummary(): String =
-    "${services.count { it.active }} servicios · ${healthyWebsites}/${websiteChecks.size} webs OK · ${openIncidents.size} incidencias"
+    "${services.count { it.active }} servicios · ${healthyWebsites}/${websiteChecks.size} webs OK · ${degradedWebsites} lentas · ${openIncidents.size} incidencias"
 
 private fun OperationsHostStatus.websiteLevel(): OperationalLevel = when {
     websiteChecks.isEmpty() -> OperationalLevel.WARNING
-    unhealthyWebsites > 0 -> OperationalLevel.CRITICAL
+    downWebsites > 0 -> OperationalLevel.CRITICAL
+    degradedWebsites > 0 -> OperationalLevel.WARNING
     else -> OperationalLevel.OK
 }
 
@@ -576,7 +586,11 @@ private fun websiteResultLabel(status: OperationsHostStatus?): String {
     if (status == null || status.websiteChecks.isEmpty()) {
         return "sin datos"
     }
-    return "${status.healthyWebsites}/${status.websiteChecks.size} OK"
+    return if (status.degradedWebsites > 0 || status.downWebsites > 0) {
+        "${status.healthyWebsites}/${status.websiteChecks.size} OK · ${status.degradedWebsites} lentas · ${status.downWebsites} caídas"
+    } else {
+        "${status.healthyWebsites}/${status.websiteChecks.size} OK"
+    }
 }
 
 private fun recoveryConclusion(
