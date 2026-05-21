@@ -78,6 +78,25 @@ Para que esto funcione en todos los proyectos, cada repo operado por Atenea debe
 
 ## Publicación, merge y cierre
 
+## Permisos del workspace
+
+Los repositorios bajo `/srv/atenea/workspace/repos` son un recurso compartido entre backend, Codex App Server, rescue y operador de host. El contrato de permisos es:
+
+- grupo host `atenea` como grupo propietario del workspace operativo
+- directorios con bit `setgid` para heredar grupo
+- escritura de grupo en working tree y `.git`
+- `umask 0002` en procesos que crean archivos dentro del workspace
+- `git config core.sharedRepository group` en cada repo registrado
+- ACL por defecto cuando `setfacl` está disponible
+
+El script canónico para reparar o aplicar esta política es:
+
+```bash
+./scripts/workspace-permissions.sh
+```
+
+Debe ejecutarse cuando se registre o clone un repositorio nuevo, y también después de cualquier operación manual que haya creado archivos como `root` o con grupo ajeno al workspace.
+
 El backend ya puede publicar una sesión:
 
 1. preparar o recuperar `workspaceBranch`

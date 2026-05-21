@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -28,6 +30,7 @@ import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.MobileSessionActions
 import com.atenea.android.api.MobileSessionEvent
 import com.atenea.android.api.MobileSessionSummary
+import com.atenea.android.api.SessionDeliverable
 import com.atenea.android.api.SessionDeliverableSummary
 import com.atenea.android.api.SessionDeliverablesView
 
@@ -92,16 +95,20 @@ internal fun WorkSessionScreen(
             WorkSessionActionsPanel(
                 actions = it.actions,
                 pendingAction = state.pendingAction,
-                onOpenConversation = onOpenConversation,
                 onPublish = { repository.runCoreAction("Publicando", "publica la pr") },
                 onSyncPullRequest = { repository.runCoreAction("Sincronizando PR", "sincroniza la pr") },
                 onClose = { repository.runCoreAction("Cerrando sesion", "cierra la sesion") }
             )
             WorkSessionDeliverablesPanel(
                 deliverables = state.deliverables,
+                openDeliverableId = state.openDeliverableId,
+                deliverableDetails = state.deliverableDetails,
+                deliverableDetailLoadingId = state.deliverableDetailLoadingId,
+                deliverableDetailError = state.deliverableDetailError,
                 approvedPriceEstimate = it.approvedPriceEstimate,
                 actions = it.actions,
                 pendingAction = state.pendingAction,
+                onToggleDeliverable = repository::toggleDeliverableDetail,
                 onGenerate = { label, input -> repository.runCoreAction(label, input) },
                 onApprove = { deliverableId ->
                     repository.runCoreAction("Aprobando entregable", "aprueba el deliverable $deliverableId")
@@ -211,39 +218,34 @@ private fun WorkSessionInsights(summary: MobileSessionSummary) {
 private fun WorkSessionActionsPanel(
     actions: MobileSessionActions,
     pendingAction: String?,
-    onOpenConversation: () -> Unit,
     onPublish: () -> Unit,
     onSyncPullRequest: () -> Unit,
     onClose: () -> Unit
 ) {
     AteneaPanel {
-        Text("Acciones Core", style = MaterialTheme.typography.titleSmall)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AteneaButton(
-                text = "Instruir Codex",
-                modifier = Modifier.weight(1f),
-                enabled = actions.canCreateTurn && pendingAction == null,
-                onClick = onOpenConversation
+        Text("Entrega", style = MaterialTheme.typography.titleSmall)
+        Text(deliveryStatusText(actions), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        when {
+            pendingAction != null -> AteneaButton(
+                text = pendingAction,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = false,
+                onClick = {}
             )
-            AteneaButton(
-                text = pendingAction ?: "Publicar PR",
-                modifier = Modifier.weight(1f),
-                enabled = actions.canPublish && pendingAction == null,
+            actions.canClose -> AteneaButton(
+                text = "Cerrar sesion",
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onClose
+            )
+            actions.canPublish -> AteneaButton(
+                text = "Publicar PR",
+                modifier = Modifier.fillMaxWidth(),
                 onClick = onPublish
             )
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AteneaOutlinedButton(
-                text = "Sync PR",
-                modifier = Modifier.weight(1f),
-                enabled = actions.canSyncPullRequest && pendingAction == null,
+            actions.canSyncPullRequest -> AteneaOutlinedButton(
+                text = "Sincronizar PR",
+                modifier = Modifier.fillMaxWidth(),
                 onClick = onSyncPullRequest
-            )
-            AteneaOutlinedButton(
-                text = "Cerrar",
-                modifier = Modifier.weight(1f),
-                enabled = actions.canClose && pendingAction == null,
-                onClick = onClose
             )
         }
     }
@@ -252,9 +254,14 @@ private fun WorkSessionActionsPanel(
 @Composable
 private fun WorkSessionDeliverablesPanel(
     deliverables: SessionDeliverablesView?,
+    openDeliverableId: Long?,
+    deliverableDetails: Map<Long, SessionDeliverable>,
+    deliverableDetailLoadingId: Long?,
+    deliverableDetailError: String?,
     approvedPriceEstimate: ApprovedPriceEstimateSummary?,
     actions: MobileSessionActions,
     pendingAction: String?,
+    onToggleDeliverable: (Long) -> Unit,
     onGenerate: (String, String) -> Unit,
     onApprove: (Long) -> Unit,
     onMarkBilled: (Long, String) -> Unit
@@ -263,34 +270,41 @@ private fun WorkSessionDeliverablesPanel(
     AteneaPanel {
         Text("Entregables", style = MaterialTheme.typography.titleSmall)
         deliverables?.let {
-            MetricLine("Core presentes", if (it.allCoreDeliverablesPresent) "Si" else "Pendientes")
-            MetricLine("Core aprobados", if (it.allCoreDeliverablesApproved) "Si" else "Pendientes")
+            MetricLine("Generados", if (it.allCoreDeliverablesPresent) "Completos" else "Pendientes")
+            MetricLine("Aprobados", if (it.allCoreDeliverablesApproved) "Completos" else "Pendientes")
             it.lastGeneratedAt?.let { generated -> MetricLine("Ultima generacion", generated.formatDateTimeForDisplay()) }
         }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AteneaOutlinedButton(
-                text = "Ticket",
-                modifier = Modifier.weight(1f),
-                enabled = actions.canGenerateDeliverables && pendingAction == null,
-                onClick = { onGenerate("Generando ticket", "genera el ticket de trabajo") }
-            )
-            AteneaOutlinedButton(
-                text = "Desglose",
-                modifier = Modifier.weight(1f),
-                enabled = actions.canGenerateDeliverables && pendingAction == null,
-                onClick = { onGenerate("Generando desglose", "genera el desglose de trabajo") }
-            )
-            AteneaOutlinedButton(
-                text = "Presupuesto",
-                modifier = Modifier.weight(1f),
-                enabled = actions.canGenerateDeliverables && pendingAction == null,
-                onClick = { onGenerate("Generando presupuesto", "genera el presupuesto") }
-            )
+        if (actions.canGenerateDeliverables) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AteneaOutlinedButton(
+                    text = "Ticket",
+                    modifier = Modifier.weight(1f),
+                    enabled = pendingAction == null,
+                    onClick = { onGenerate("Generando ticket", "genera el ticket de trabajo") }
+                )
+                AteneaOutlinedButton(
+                    text = "Desglose",
+                    modifier = Modifier.weight(1f),
+                    enabled = pendingAction == null,
+                    onClick = { onGenerate("Generando desglose", "genera el desglose de trabajo") }
+                )
+                AteneaOutlinedButton(
+                    text = "Presupuesto",
+                    modifier = Modifier.weight(1f),
+                    enabled = pendingAction == null,
+                    onClick = { onGenerate("Generando presupuesto", "genera el presupuesto") }
+                )
+            }
         }
         deliverables?.deliverables.orEmpty().forEach { deliverable ->
             DeliverableSummaryRow(
                 deliverable = deliverable,
+                detail = deliverableDetails[deliverable.id],
+                expanded = openDeliverableId == deliverable.id,
+                loading = deliverableDetailLoadingId == deliverable.id,
+                detailError = if (openDeliverableId == deliverable.id) deliverableDetailError else null,
                 canApprove = actions.canApproveDeliverables && pendingAction == null,
+                onToggle = { onToggleDeliverable(deliverable.id) },
                 onApprove = onApprove
             )
         }
@@ -309,13 +323,18 @@ private fun WorkSessionDeliverablesPanel(
 @Composable
 private fun DeliverableSummaryRow(
     deliverable: SessionDeliverableSummary,
+    detail: SessionDeliverable?,
+    expanded: Boolean,
+    loading: Boolean,
+    detailError: String?,
     canApprove: Boolean,
+    onToggle: () -> Unit,
     onApprove: (Long) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(
-                "${deliverable.type.displayLabel()} v${deliverable.version}",
+                deliverableTitle(deliverable),
                 style = MaterialTheme.typography.labelLarge
             )
             Text(
@@ -324,16 +343,113 @@ private fun DeliverableSummaryRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Text(deliverable.title, style = MaterialTheme.typography.bodyMedium)
-        deliverable.preview?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        cleanDeliverablePreview(deliverable)?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AteneaTextButton(
+                text = if (expanded) "Ocultar" else "Leer",
+                onClick = onToggle
+            )
+            if (!deliverable.approved) {
+                AteneaTextButton(
+                    text = "Aprobar",
+                    enabled = canApprove,
+                    onClick = { onApprove(deliverable.id) }
+                )
+            }
+        }
+        if (expanded) {
+            DeliverableDetail(
+                deliverable = detail,
+                loading = loading,
+                error = detailError
+            )
         }
         if (!deliverable.approved) {
-            AteneaTextButton(
-                text = "Aprobar entregable ${deliverable.id}",
-                enabled = canApprove,
-                onClick = { onApprove(deliverable.id) }
-            )
+            Text("Entregable ${deliverable.id}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun DeliverableDetail(
+    deliverable: SessionDeliverable?,
+    loading: Boolean,
+    error: String?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        when {
+            loading -> Text("Cargando entregable completo...", style = MaterialTheme.typography.bodySmall)
+            error != null -> Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            deliverable == null -> Text("Sin contenido cargado.", style = MaterialTheme.typography.bodySmall)
+            else -> {
+                OpenDeliverableDocument(deliverable)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OpenDeliverableDocument(deliverable: SessionDeliverable) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        shape = RoundedCornerShape(6.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        openDeliverableLabel(deliverable.type),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        deliverable.title.ifBlank { "${deliverable.type.displayLabel()} v${deliverable.version}" },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    if (deliverable.approved) "Aprobado" else deliverable.status.displayLabel(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "${deliverable.type.displayLabel()} v${deliverable.version}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                deliverable.updatedAt?.let {
+                    Text(
+                        it.formatDateTimeForDisplay(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            deliverable.errorMessage?.takeIf { it.isNotBlank() }?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            deliverable.contentMarkdown?.takeIf { it.isNotBlank() }?.let {
+                DeliverableMarkdown(it)
+            }
+            deliverable.generationNotes?.takeIf { it.isNotBlank() }?.let {
+                Text("Notas de generacion", style = MaterialTheme.typography.labelMedium)
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
@@ -369,17 +485,20 @@ private fun ApprovedPriceEstimatePanel(
 
 @Composable
 private fun WorkSessionEventsPanel(events: List<MobileSessionEvent>) {
+    val visibleEvents = events
+        .filterNot { it.title.contains("turn", ignoreCase = true) }
+        .take(6)
     AteneaPanel {
-        Text("Timeline", style = MaterialTheme.typography.titleSmall)
-        if (events.isEmpty()) {
-            Text("Aun no hay eventos sincronizados.", style = MaterialTheme.typography.bodySmall)
+        Text("Actividad reciente", style = MaterialTheme.typography.titleSmall)
+        if (visibleEvents.isEmpty()) {
+            Text("Aun no hay actividad sincronizada.", style = MaterialTheme.typography.bodySmall)
         }
-        events.take(12).forEach { event ->
+        visibleEvents.forEach { event ->
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(event.title.ifBlank { event.type.displayLabel() }, style = MaterialTheme.typography.labelMedium)
+                Text(eventTitle(event), style = MaterialTheme.typography.labelMedium)
                 event.at?.let { Text(it.formatDateTimeForDisplay(), style = MaterialTheme.typography.bodySmall) }
-                event.details?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                cleanEventDetails(event.details)?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -397,4 +516,57 @@ private fun MetricText(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.labelMedium)
         Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+private fun deliveryStatusText(actions: MobileSessionActions): String = when {
+    actions.canClose -> "La pull request esta fusionada. Ya puedes cerrar y reconciliar el repositorio."
+    actions.canPublish -> "La sesion esta lista para abrir pull request."
+    actions.canSyncPullRequest -> "Hay una pull request publicada. Sincroniza su estado cuando se revise o se fusione."
+    else -> "No hay accion de entrega disponible ahora mismo."
+}
+
+private fun deliverableTitle(deliverable: SessionDeliverableSummary): String = when (deliverable.type) {
+    "WORK_TICKET" -> "Ticket de trabajo v${deliverable.version}"
+    "WORK_BREAKDOWN" -> "Desglose v${deliverable.version}"
+    "PRICE_ESTIMATE" -> "Presupuesto v${deliverable.version}"
+    else -> "${deliverable.type.displayLabel()} v${deliverable.version}"
+}
+
+private fun openDeliverableLabel(type: String): String = when (type) {
+    "PRICE_ESTIMATE" -> "Presupuesto abierto"
+    "WORK_TICKET" -> "Ticket abierto"
+    "WORK_BREAKDOWN" -> "Desglose abierto"
+    else -> "Contenido abierto"
+}
+
+private fun cleanDeliverablePreview(deliverable: SessionDeliverableSummary): String? {
+    return firstReadableLine(deliverable.preview)
+        ?: firstReadableLine(deliverable.title)
+}
+
+private fun eventTitle(event: MobileSessionEvent): String {
+    val title = event.title.ifBlank { event.type.displayLabel() }
+    return title
+        .replace("WORK_TICKET", "Ticket")
+        .replace("WORK_BREAKDOWN", "Desglose")
+        .replace("PRICE_ESTIMATE", "Presupuesto")
+        .replace("generated", "generado")
+        .replace("approved", "aprobado")
+        .replace("Run succeeded", "Ejecucion completada")
+        .replace("Run started", "Ejecucion iniciada")
+}
+
+private fun cleanEventDetails(value: String?): String? = firstReadableLine(value)
+
+private fun firstReadableLine(value: String?): String? {
+    if (value.isNullOrBlank()) {
+        return null
+    }
+    val cleaned = value
+        .replace("```", " ")
+        .replace("#", " ")
+        .replace("`", "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    return cleaned.takeIf { it.isNotBlank() }
 }

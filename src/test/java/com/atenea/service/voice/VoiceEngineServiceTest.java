@@ -2,6 +2,7 @@ package com.atenea.service.voice;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
@@ -186,6 +187,28 @@ class VoiceEngineServiceTest {
         assertEquals("reading_codex_response", response.activity());
         assertEquals(2, response.playback().segmentIndex());
         assertEquals(6, response.playback().segmentCount());
+    }
+
+    @Test
+    void getFocusDemotesClosedWorkSessionFocusToProjectFocus() {
+        VoiceFocusEntity focus = focus();
+        focus.getWorkSession().setStatus(WorkSessionStatus.CLOSED);
+        CoreOperatorContextEntity context = new CoreOperatorContextEntity();
+        context.setOperatorKey(CoreOperatorContextService.DEFAULT_OPERATOR_KEY);
+        when(operatorRepository.findById(4L)).thenReturn(Optional.of(operator));
+        when(voiceFocusRepository.findById(4L)).thenReturn(Optional.of(focus));
+        when(voiceFocusRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(voiceNoteRepository.findByOperatorIdAndStatusOrderByCreatedAtAsc(4L, VoiceNoteStatus.ACTIVE))
+                .thenReturn(List.of());
+        when(coreOperatorContextService.getOrDefault(CoreOperatorContextService.DEFAULT_OPERATOR_KEY)).thenReturn(context);
+
+        var response = service.getFocus(authenticatedOperator);
+
+        assertEquals(VoiceDomain.DEVELOPMENT, response.domain());
+        assertEquals(7L, response.projectId());
+        assertEquals("fomasys", response.projectName());
+        assertNull(response.workSessionId());
+        assertEquals("Proyecto activo", response.activity());
     }
 
     @Test

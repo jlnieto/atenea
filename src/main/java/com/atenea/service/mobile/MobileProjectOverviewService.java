@@ -26,19 +26,21 @@ public class MobileProjectOverviewService {
 
     private MobileProjectOverviewResponse toMobileOverview(ProjectOverviewResponse response) {
         ProjectOverviewResponse.WorkSessionOverviewResponse session = response.workSession();
+        ProjectOverviewResponse.WorkSessionOverviewResponse activeSession =
+                session != null && session.current() ? session : null;
         return new MobileProjectOverviewResponse(
                 response.project().id(),
                 response.project().name(),
                 response.project().description(),
                 response.project().defaultBaseBranch(),
-                session == null ? null : new MobileProjectOverviewResponse.MobileProjectSessionSummaryResponse(
-                        session.sessionId(),
-                        session.status(),
-                        session.title(),
-                        session.runInProgress(),
-                        session.closeBlockedState(),
-                        session.pullRequestStatus(),
-                        session.lastActivityAt())
+                activeSession == null ? null : new MobileProjectOverviewResponse.MobileProjectSessionSummaryResponse(
+                        activeSession.sessionId(),
+                        activeSession.status(),
+                        activeSession.title(),
+                        activeSession.runInProgress(),
+                        activeSession.closeBlockedState(),
+                        activeSession.pullRequestStatus(),
+                        activeSession.lastActivityAt())
         );
     }
 }

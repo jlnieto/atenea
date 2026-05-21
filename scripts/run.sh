@@ -16,4 +16,5 @@ if [[ -n "$STALE_RUN_CONTAINERS" ]]; then
 fi
 
 compose -f docker-compose.dev.yml up -d --build db codex-app-server atenea-dev
-compose -f docker-compose.dev.yml exec atenea-dev ./mvnw spring-boot:run "$@"
+compose -f docker-compose.dev.yml exec atenea-dev \
+  /bin/sh -lc 'umask 0002 && exec ./mvnw spring-boot:run "$@"' sh "$@"

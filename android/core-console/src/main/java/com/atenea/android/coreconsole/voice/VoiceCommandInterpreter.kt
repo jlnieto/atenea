@@ -73,8 +73,8 @@ internal object VoiceCommandInterpreter {
             normalizedCommand.isContinueCommand() -> VoiceIntent.ContinuePlayback
             normalizedCommand.isNextCommand() -> VoiceIntent.NextPlayback
             normalizedCommand.isPreviousCommand() -> VoiceIntent.PreviousPlayback
-            normalizedCommand.isCodexStatusQuestion() -> VoiceIntent.CheckCodexStatus
             normalizedCommand.isLatestSessionResponseCommand() -> VoiceIntent.RunCommand(command)
+            normalizedCommand.isCodexStatusQuestion() -> VoiceIntent.CheckCodexStatus
             normalizedCommand.isCountNotesCommand() -> VoiceIntent.CountNotes
             normalizedCommand.isArchiveLastNoteCommand() -> VoiceIntent.ArchiveLastNote
             normalizedCommand.isArchiveAllNotesCommand() -> VoiceIntent.ArchiveAllNotes

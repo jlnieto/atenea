@@ -1,5 +1,6 @@
 package com.atenea.android.coreconsole
 
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -40,6 +41,12 @@ internal fun AteneaShell(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val navigationStore = remember(context) {
+        AteneaNavigationStore(context.applicationContext)
+    }
+    val restoredRoute = remember(navigationStore) {
+        navigationStore.loadRoute()
+    }
     val updateManager = remember(updateManifestUrl, currentVersionCode) {
         AteneaUpdateManager(
             context = context.applicationContext,
@@ -47,9 +54,9 @@ internal fun AteneaShell(
             currentVersionCode = currentVersionCode
         )
     }
-    var selectedDestination by rememberSaveable { mutableStateOf(AteneaDestination.HOME) }
-    var selectedProjectId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var selectedSessionId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedDestination by rememberSaveable { mutableStateOf(restoredRoute.destination) }
+    var selectedProjectId by rememberSaveable { mutableStateOf(restoredRoute.projectId) }
+    var selectedSessionId by rememberSaveable { mutableStateOf(restoredRoute.sessionId) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var updateState by remember { mutableStateOf<UpdateCheckResult?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
@@ -82,6 +89,9 @@ internal fun AteneaShell(
             }
         }
         refreshHeaderHealth()
+    }
+    LaunchedEffect(selectedDestination, selectedProjectId, selectedSessionId) {
+        navigationStore.saveRoute(selectedDestination, selectedProjectId, selectedSessionId)
     }
 
     ModalNavigationDrawer(
@@ -141,7 +151,14 @@ internal fun AteneaShell(
                     if (updateState is UpdateCheckResult.Available) {
                         Text("Actualización disponible", style = MaterialTheme.typography.bodySmall)
                     }
-                    AteneaDrawerRow(label = "Salir", selected = false, onClick = onLogout)
+                    AteneaDrawerRow(
+                        label = "Salir",
+                        selected = false,
+                        onClick = {
+                            navigationStore.clear()
+                            onLogout()
+                        }
+                    )
                 }
             }
         }
@@ -302,4 +319,65 @@ private enum class AteneaDestination(
     COSTS("Costes API", "Costes API"),
     DIAGNOSTICS("Diagnostico", "Diagnostico"),
     SETTINGS("Ajustes", "Ajustes")
+}
+
+private data class AteneaRouteSnapshot(
+    val destination: AteneaDestination,
+    val projectId: Long?,
+    val sessionId: Long?
+)
+
+private class AteneaNavigationStore(context: Context) {
+    private val preferences = context.getSharedPreferences("atenea_navigation", Context.MODE_PRIVATE)
+
+    fun loadRoute(): AteneaRouteSnapshot {
+        val projectId = preferences.getNullableLong(KEY_PROJECT_ID)
+        val sessionId = preferences.getNullableLong(KEY_SESSION_ID)
+        val destination = preferences.getString(KEY_DESTINATION, null)
+            ?.let { value -> AteneaDestination.entries.firstOrNull { it.name == value } }
+            ?: AteneaDestination.HOME
+        return AteneaRouteSnapshot(
+            destination = destination.validFor(projectId, sessionId),
+            projectId = projectId,
+            sessionId = sessionId
+        )
+    }
+
+    fun saveRoute(destination: AteneaDestination, projectId: Long?, sessionId: Long?) {
+        preferences.edit()
+            .putString(KEY_DESTINATION, destination.validFor(projectId, sessionId).name)
+            .putNullableLong(KEY_PROJECT_ID, projectId)
+            .putNullableLong(KEY_SESSION_ID, sessionId)
+            .apply()
+    }
+
+    fun clear() {
+        preferences.edit().clear().apply()
+    }
+
+    private fun AteneaDestination.validFor(projectId: Long?, sessionId: Long?): AteneaDestination = when (this) {
+        AteneaDestination.SESSION,
+        AteneaDestination.CONVERSATION -> if (projectId != null && sessionId != null) this else AteneaDestination.PROJECTS
+        AteneaDestination.RESCUE -> if (projectId != null) this else AteneaDestination.PROJECTS
+        else -> this
+    }
+
+    private fun android.content.SharedPreferences.getNullableLong(key: String): Long? =
+        if (contains(key)) getLong(key, 0L) else null
+
+    private fun android.content.SharedPreferences.Editor.putNullableLong(
+        key: String,
+        value: Long?
+    ): android.content.SharedPreferences.Editor =
+        if (value == null) {
+            remove(key)
+        } else {
+            putLong(key, value)
+        }
+
+    private companion object {
+        const val KEY_DESTINATION = "destination"
+        const val KEY_PROJECT_ID = "projectId"
+        const val KEY_SESSION_ID = "sessionId"
+    }
 }

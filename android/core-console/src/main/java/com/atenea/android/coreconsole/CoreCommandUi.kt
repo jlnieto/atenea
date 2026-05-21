@@ -28,17 +28,24 @@ internal fun CommandCard(
             if (preferSpeakable) {
                 command.speakableMessage
                     ?: command.operatorMessage
+                    ?: command.resultSummary
+                    ?: command.errorMessage
                     ?: command.confirmation?.message
                     ?: command.clarification?.message
                     ?: "Atenea no devolvió mensaje visible."
             } else {
                 command.operatorMessage
                     ?: command.speakableMessage
+                    ?: command.resultSummary
+                    ?: command.errorMessage
                     ?: command.confirmation?.message
                     ?: command.clarification?.message
                     ?: "Atenea no devolvió mensaje visible."
             }
         )
+        if (command.hasFailureDiagnostics()) {
+            CommandDiagnostics(command)
+        }
         command.confirmation?.let { confirmation ->
             AteneaButton(
                 text = if (pending) "Confirmando..." else "Confirmar",
@@ -59,6 +66,63 @@ internal fun CommandCard(
         }
     }
 }
+
+@Composable
+private fun CommandDiagnostics(command: CoreCommandResponse) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            "Diagnostico tecnico",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.error
+        )
+        command.errorCode?.takeIf { it.isNotBlank() }?.let {
+            DiagnosticLine(label = "Codigo", value = it.displayLabel())
+        }
+        command.rawInput?.takeIf { it.isNotBlank() }?.let {
+            DiagnosticLine(label = "Entrada", value = it)
+        }
+        command.errorMessage?.takeIf { it.isNotBlank() }?.let {
+            DiagnosticLine(label = "Detalle", value = cleanCommandDiagnostic(it))
+        }
+        command.finishedAt?.takeIf { it.isNotBlank() }?.let {
+            DiagnosticLine(label = "Registrado", value = it)
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticLine(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+private fun CoreCommandResponse.hasFailureDiagnostics(): Boolean =
+    status.equals("FAILED", ignoreCase = true) ||
+        !errorCode.isNullOrBlank() ||
+        !errorMessage.isNullOrBlank()
+
+private fun cleanCommandDiagnostic(message: String): String =
+    message
+        .replace(" *** ", "\n")
+        .lines()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .joinToString("\n")
 
 @Composable
 internal fun FormattedCommandMessage(message: String) {

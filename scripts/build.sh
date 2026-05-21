@@ -8,7 +8,9 @@ source "$SCRIPT_DIR/lib/compose.sh"
 cd "$REPO_DIR"
 
 if [[ "${ATENEA_BUILD_RUN_TESTS:-false}" == "true" ]]; then
-  compose -f docker-compose.dev.yml run --rm atenea-dev ./mvnw clean package "$@"
+  compose -f docker-compose.dev.yml run --rm atenea-dev \
+    /bin/sh -lc 'umask 0002 && exec ./mvnw clean package "$@"' sh "$@"
 else
-  compose -f docker-compose.dev.yml run --rm atenea-dev ./mvnw clean package -DskipTests "$@"
+  compose -f docker-compose.dev.yml run --rm atenea-dev \
+    /bin/sh -lc 'umask 0002 && exec ./mvnw clean package -DskipTests "$@"' sh "$@"
 fi

@@ -112,6 +112,9 @@ class AteneaVoiceRuntimeService : Service() {
                 outputPlaybackActive = false,
                 rmsDb = null,
                 peakLevel = 0.0,
+                lastErrorCode = null,
+                lastErrorRecoverable = false,
+                bargeInStatus = "runtime_stopped",
                 lastEvent = "Servicio nativo WebRTC parado."
             )
         }
@@ -149,6 +152,14 @@ class AteneaVoiceRuntimeService : Service() {
 
     private fun stopRuntime() {
         AteneaDiagnostics.info("voice-runtime", "stop_runtime")
+        synchronized(realtimeLock) {
+            realtimeConnected = false
+            expectedRealtimeCloseReason = null
+            pendingRealtimeEvents.clear()
+        }
+        currentResponseId = null
+        currentAssistantItemId = null
+        awaitingBargeInTranscript = false
         restoreAudioMode()
         AteneaVoiceRuntimeStateStore.update {
             it.copy(
@@ -160,6 +171,9 @@ class AteneaVoiceRuntimeService : Service() {
                 peakLevel = 0.0,
                 inputSpeechActive = false,
                 outputPlaybackActive = false,
+                lastErrorCode = null,
+                lastErrorRecoverable = false,
+                bargeInStatus = "runtime_stopped",
                 lastEvent = "Runtime WebRTC detenido."
             )
         }
@@ -235,7 +249,8 @@ class AteneaVoiceRuntimeService : Service() {
                         expectedRealtimeCloseReason = null
                         expected
                     }
-                    val recoverable = expectedClose == null
+                    val recoverable = expectedClose == null &&
+                        AteneaVoiceRuntimeStateStore.state.value.serviceActive
                     synchronized(realtimeLock) {
                         realtimeConnected = false
                         realtimeClient = null
@@ -258,13 +273,17 @@ class AteneaVoiceRuntimeService : Service() {
 
                 override fun onError(message: String) {
                     AteneaDiagnostics.warn("voice-runtime", "webrtc_error", mapOf("message" to message))
+                    val recoverable = AteneaVoiceRuntimeStateStore.state.value.serviceActive
+                    if (!recoverable) {
+                        return
+                    }
                     AteneaVoiceRuntimeStateStore.update {
                         it.copy(
                             realtimeConnected = false,
                             realtimeStatus = "error",
                             outputPlaybackActive = false,
-                            lastErrorCode = "WEBRTC_CONNECT_FAILED",
-                            lastErrorRecoverable = true,
+                            lastErrorCode = if (recoverable) "WEBRTC_CONNECT_FAILED" else null,
+                            lastErrorRecoverable = recoverable,
                             lastEvent = "Fallo Realtime WebRTC: $message"
                         )
                     }
@@ -293,6 +312,10 @@ class AteneaVoiceRuntimeService : Service() {
         client?.close(reason)
         currentResponseId = null
         currentAssistantItemId = null
+        awaitingBargeInTranscript = false
+        synchronized(realtimeLock) {
+            pendingRealtimeEvents.clear()
+        }
         AteneaVoiceRuntimeStateStore.update {
             it.copy(
                 captureActive = false,
@@ -300,6 +323,8 @@ class AteneaVoiceRuntimeService : Service() {
                 realtimeStatus = "not_connected",
                 inputSpeechActive = false,
                 outputPlaybackActive = false,
+                lastErrorCode = null,
+                lastErrorRecoverable = false,
                 lastEvent = reason
             )
         }
