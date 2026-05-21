@@ -35,6 +35,8 @@ services:
       - /srv/atenea/workspace/repos:/workspace/repos
       - /srv/atenea/workspace/context:/workspace/context:ro
       - /srv/atenea/workspace/codex-home:/workspace/codex-home
+    group_add:
+      - "${ATENEA_WORKSPACE_GID:-1001}"
     expose:
       - "8092"
 
@@ -138,6 +140,8 @@ services:
       - /srv/atenea/workspace/context:/workspace/context:ro
       - /srv/atenea/workspace/codex-home:/workspace/codex-home:ro
       - atenea_m2_cache:/root/.m2
+    group_add:
+      - "${ATENEA_WORKSPACE_GID:-1001}"
     ports:
       - "${ATENEA_BACKEND_PORT:-8085}:8081"
     command: ["/bin/sh", "-lc", "sleep infinity"]

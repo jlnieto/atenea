@@ -5,6 +5,7 @@ import com.atenea.api.core.CreateCoreCommandRequest;
 import com.atenea.persistence.core.CoreOperatorContextEntity;
 import com.atenea.persistence.core.CoreOperatorContextRepository;
 import com.atenea.persistence.project.ProjectRepository;
+import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import java.time.Instant;
@@ -33,8 +34,10 @@ public class CoreOperatorContextService {
     @Transactional(readOnly = true)
     public CreateCoreCommandRequest applyActiveContext(CreateCoreCommandRequest request) {
         String operatorKey = resolveOperatorKey(request.context());
-        CoreOperatorContextEntity operatorContext = coreOperatorContextRepository.findById(operatorKey).orElse(null);
         boolean globalScope = request.context() != null && request.context().isGlobalScope();
+        CoreOperatorContextEntity operatorContext = coreOperatorContextRepository.findById(operatorKey)
+                .map(context -> globalScope ? context : withoutClosedWorkSession(context))
+                .orElse(null);
 
         Long projectId = request.context() == null ? null : request.context().projectId();
         Long workSessionId = request.context() == null ? null : request.context().workSessionId();
@@ -63,6 +66,7 @@ public class CoreOperatorContextService {
     @Transactional(readOnly = true)
     public CoreOperatorContextEntity getOrDefault(String operatorKey) {
         return coreOperatorContextRepository.findById(normalizeOperatorKey(operatorKey))
+                .map(this::withoutClosedWorkSession)
                 .orElseGet(() -> {
                     CoreOperatorContextEntity context = new CoreOperatorContextEntity();
                     context.setOperatorKey(normalizeOperatorKey(operatorKey));
@@ -100,10 +104,11 @@ public class CoreOperatorContextService {
 
         Long workSessionId = switch (intent.capability()) {
             case "create_work_session" -> result.targetId();
+            case "close_work_session" -> null;
             case "continue_work_session", "publish_work_session", "sync_work_session_pull_request",
                     "get_session_summary", "get_latest_session_response",
                     "get_session_deliverables", "generate_session_deliverable",
-                    "run_project_verification", "close_work_session" -> longParameter(intent, "workSessionId");
+                    "run_project_verification" -> longParameter(intent, "workSessionId");
             default -> context.getActiveWorkSessionId();
         };
 
@@ -166,6 +171,25 @@ public class CoreOperatorContextService {
         return workSessionRepository.findWithProjectById(workSessionId)
                 .map(session -> session.getProject().getId())
                 .orElse(fallbackProjectId);
+    }
+
+    private CoreOperatorContextEntity withoutClosedWorkSession(CoreOperatorContextEntity context) {
+        Long workSessionId = context.getActiveWorkSessionId();
+        if (workSessionId == null) {
+            return context;
+        }
+        workSessionRepository.findWithProjectById(workSessionId)
+                .ifPresentOrElse(session -> {
+                    if (session.getProject() != null && context.getActiveProjectId() == null) {
+                        context.setActiveProjectId(session.getProject().getId());
+                    }
+                    if (session.getStatus() != null
+                            && session.getStatus() != WorkSessionStatus.OPEN
+                            && session.getStatus() != WorkSessionStatus.CLOSING) {
+                        context.setActiveWorkSessionId(null);
+                    }
+                }, () -> context.setActiveWorkSessionId(null));
+        return context;
     }
 
     private String normalizeOperatorKey(String operatorKey) {

@@ -7,5 +7,6 @@ source "$SCRIPT_DIR/lib/compose.sh"
 
 cd "$REPO_DIR"
 
-compose -f docker-compose.dev.yml up -d db codex-app-server
-compose -f docker-compose.dev.yml run --rm atenea-dev /bin/bash
+compose -f docker-compose.dev.yml up -d --build db codex-app-server
+compose -f docker-compose.dev.yml run --rm atenea-dev \
+  /bin/bash -lc 'umask 0002; exec /bin/bash'

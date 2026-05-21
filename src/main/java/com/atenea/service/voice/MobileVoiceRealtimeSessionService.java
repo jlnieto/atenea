@@ -91,7 +91,7 @@ public class MobileVoiceRealtimeSessionService {
             turnDetection.put("type", "semantic_vad");
             turnDetection.put("create_response", false);
             turnDetection.put("interrupt_response", false);
-            turnDetection.put("eagerness", "medium");
+            turnDetection.put("eagerness", "high");
 
             Map<String, Object> input = new LinkedHashMap<>();
             input.put("noise_reduction", Map.of("type", "near_field"));

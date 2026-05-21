@@ -29,7 +29,9 @@ RUN apt-get update \
     && npm install -g @openai/codex@${CODEX_CLI_VERSION} \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git config --system --add safe.directory '*'
+RUN git config --system --add safe.directory '*' \
+    && git config --system user.name "Atenea" \
+    && git config --system user.email "atenea@yudri.es"
 
 RUN groupadd -r -g 1001 appuser \
     && useradd -r -u 1001 -g appuser -m -d /home/appuser appuser
@@ -40,4 +42,4 @@ USER appuser
 
 EXPOSE 8081
 
-ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-lc", "umask 0002 && exec java -XX:+UseContainerSupport -jar app.jar"]

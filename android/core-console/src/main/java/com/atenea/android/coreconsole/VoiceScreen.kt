@@ -52,10 +52,14 @@ import com.atenea.android.coreconsole.voice.VoiceBlockType
 import com.atenea.android.coreconsole.voice.VoiceIntent
 import com.atenea.android.coreconsole.voice.VoiceRuntimeState
 import com.atenea.android.voiceruntime.AteneaVoiceRuntimeController
+import java.io.File
+import java.security.MessageDigest
 import java.text.Normalizer
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun VoiceScreen(
@@ -90,6 +94,7 @@ internal fun VoiceScreen(
     var lastRealtimeTranscriptHandledSequence by remember { mutableStateOf(0L) }
     var realtimeRecoveryEvent by remember { mutableStateOf<String?>(null) }
     var realtimeRecoveryAttempts by remember { mutableStateOf(0) }
+    var realtimeRecoverySuppressed by remember { mutableStateOf(false) }
     var voiceOutputVolume by remember { mutableStateOf(voicePreferences.getFloat("output_volume", 1.35f)) }
     var selectedVoice by remember { mutableStateOf(voicePreferences.getString("speech_voice", "marin") ?: "marin") }
     var voiceSpeed by remember { mutableStateOf(voicePreferences.getFloat("speech_speed", 1.05f)) }
@@ -119,6 +124,16 @@ internal fun VoiceScreen(
     }
 
     val speechAudioCache = remember { linkedMapOf<String, MobileVoiceAudio>() }
+    val quickVoicePrompts = remember {
+        listOf(
+            "Nota abierta. Te escucho. Cierra con Atenea, fin.",
+            "Comando no entendido.",
+            "No hay respuesta para leer.",
+            "Accion pendiente cancelada. Las notas siguen guardadas."
+        )
+    }
+    val persistentSpeechPrompts = remember(quickVoicePrompts) { quickVoicePrompts.toSet() }
+    val persistentSpeechCacheDir = remember { File(context.cacheDir, "atenea-speech-cache") }
 
     fun speechMessage(text: String?): String? = text
         ?.trim()
@@ -127,6 +142,40 @@ internal fun VoiceScreen(
 
     fun speechCacheKey(message: String): String =
         "${selectedVoice}|${"%.2f".format(voiceSpeed)}|$message"
+
+    fun shouldPersistSpeech(message: String): Boolean =
+        message in persistentSpeechPrompts
+
+    suspend fun readPersistentSpeechAudio(key: String): MobileVoiceAudio? = withContext(Dispatchers.IO) {
+        val hash = key.sha256Hex()
+        val audioFile = File(persistentSpeechCacheDir, "$hash.audio")
+        val typeFile = File(persistentSpeechCacheDir, "$hash.type")
+        if (!audioFile.isFile || !typeFile.isFile || audioFile.length() <= 0L) {
+            return@withContext null
+        }
+        val contentType = runCatching { typeFile.readText().trim() }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: "audio/mpeg"
+        runCatching {
+            audioFile.setLastModified(System.currentTimeMillis())
+            typeFile.setLastModified(System.currentTimeMillis())
+            MobileVoiceAudio(audioFile.readBytes(), contentType)
+        }.getOrNull()
+    }
+
+    suspend fun writePersistentSpeechAudio(key: String, audio: MobileVoiceAudio) = withContext(Dispatchers.IO) {
+        runCatching {
+            if (!persistentSpeechCacheDir.exists()) {
+                persistentSpeechCacheDir.mkdirs()
+            }
+            val hash = key.sha256Hex()
+            File(persistentSpeechCacheDir, "$hash.audio").writeBytes(audio.bytes)
+            File(persistentSpeechCacheDir, "$hash.type").writeText(audio.contentType.ifBlank { "audio/mpeg" })
+            prunePersistentSpeechCache(persistentSpeechCacheDir, maxAudioFiles = 24)
+        }
+        Unit
+    }
 
     fun cacheSpeechAudio(key: String, audio: MobileVoiceAudio) {
         speechAudioCache[key] = audio
@@ -144,11 +193,24 @@ internal fun VoiceScreen(
         }
         scope.launch {
             runCatching {
-                apiClient.synthesizeMobileVoiceSpeech(
+                val persistentAudio = if (shouldPersistSpeech(message)) {
+                    readPersistentSpeechAudio(key)
+                } else {
+                    null
+                }
+                persistentAudio?.also { cached ->
+                    cacheSpeechAudio(key, cached)
+                    return@launch
+                }
+                val audio = apiClient.synthesizeMobileVoiceSpeech(
                     text = message,
                     voice = selectedVoice,
                     speed = voiceSpeed.toDouble()
                 )
+                if (shouldPersistSpeech(message)) {
+                    writePersistentSpeechAudio(key, audio)
+                }
+                audio
             }.onSuccess { audio ->
                 cacheSpeechAudio(key, audio)
             }
@@ -171,11 +233,23 @@ internal fun VoiceScreen(
         scope.launch {
             try {
                 val key = speechCacheKey(message)
-                val audio = speechAudioCache.remove(key) ?: apiClient.synthesizeMobileVoiceSpeech(
+                val persistentAudio = if (shouldPersistSpeech(message)) {
+                    readPersistentSpeechAudio(key)
+                } else {
+                    null
+                }
+                val audio: MobileVoiceAudio = speechAudioCache[key]
+                    ?: persistentAudio
+                    ?: apiClient.synthesizeMobileVoiceSpeech(
                         text = message,
                         voice = selectedVoice,
                         speed = voiceSpeed.toDouble()
-                    )
+                    ).also { generated ->
+                        if (shouldPersistSpeech(message)) {
+                            writePersistentSpeechAudio(key, generated)
+                        }
+                    }
+                cacheSpeechAudio(key, audio)
                 if (requestId != localSpeechRequestId) {
                     return@launch
                 }
@@ -275,8 +349,32 @@ internal fun VoiceScreen(
             ?: 0
     }
 
+    fun segmentNumberLabel(value: Int): String = when (value) {
+        1 -> "uno"
+        2 -> "dos"
+        3 -> "tres"
+        4 -> "cuatro"
+        5 -> "cinco"
+        6 -> "seis"
+        7 -> "siete"
+        8 -> "ocho"
+        9 -> "nueve"
+        10 -> "diez"
+        11 -> "once"
+        12 -> "doce"
+        13 -> "trece"
+        14 -> "catorce"
+        15 -> "quince"
+        16 -> "dieciseis"
+        17 -> "diecisiete"
+        18 -> "dieciocho"
+        19 -> "diecinueve"
+        20 -> "veinte"
+        else -> value.toString()
+    }
+
     fun segmentSpeechText(segment: String, index: Int, total: Int): String =
-        "Segmento ${index + 1} de $total. $segment"
+        "Segmento ${segmentNumberLabel(index + 1)} de ${segmentNumberLabel(total)}. $segment"
 
     fun preloadNextSegmentIfNeeded(segments: List<String>, index: Int, continuous: Boolean) {
         if (continuous && index < segments.lastIndex) {
@@ -384,6 +482,15 @@ internal fun VoiceScreen(
         }
 
     fun stopVoice(releaseMicrophone: Boolean = false) {
+        if (releaseMicrophone) {
+            realtimeRecoverySuppressed = true
+            realtimeRecoveryAttempts = 0
+            realtimeRecoveryEvent = null
+            realtimeSessionMessage = null
+            activeBlock = null
+            pendingBlock = null
+            blockInputArmedAtMillis = 0L
+        }
         queuedRealtimeSpeech = null
         continuousPlayback = false
         playbackGeneration += 1
@@ -392,9 +499,10 @@ internal fun VoiceScreen(
         localSpeechRequestId += 1
         speechPlayer.stop()
         localSpeechActive = false
-        nativeVoiceRuntime.cancelRealtimeResponse()
         if (releaseMicrophone) {
             nativeVoiceRuntime.stop()
+        } else {
+            nativeVoiceRuntime.cancelRealtimeResponse()
         }
         voiceState = VoiceRuntimeState.IDLE
         statusMessage = if (releaseMicrophone) {
@@ -482,7 +590,7 @@ internal fun VoiceScreen(
         blockInputArmedAtMillis = 0L
         nextBlockId += 1
         statusMessage = "${type.label()} preparado. Empieza despues de la confirmacion y cierra con Atenea, fin."
-        speakText("${type.label()} abierta. Empieza ahora. Para terminar, usa la orden de cierre.")
+        speakText("${type.label()} abierta. Te escucho. Cierra con Atenea, fin.")
     }
 
     fun appendBlockChunk(transcript: String) {
@@ -943,6 +1051,24 @@ internal fun VoiceScreen(
             try {
                 val status = apiClient.fetchMobileVoiceCodexStatus()
                 codexStatus = status
+                if (status.responseReady && status.workSessionId != null) {
+                    val currentFocus = focus
+                    val command = apiClient.runVoiceCommand(
+                        input = "lee la ultima respuesta de Codex",
+                        scope = CoreScope.SESSION,
+                        projectId = status.projectId ?: currentFocus?.projectId,
+                        workSessionId = status.workSessionId
+                    )
+                    response = command
+                    setPlayback(
+                        message = command.bestVoiceMessage(),
+                        sourceType = "CORE_COMMAND",
+                        sourceId = command.commandId.toString()
+                    )
+                    statusMessage = "Codex ya ha contestado. Leyendo la respuesta."
+                    speakCurrentSegment(continuous = true)
+                    return@launch
+                }
                 val message = status.message.ifBlank { "No tengo estado nuevo de Codex." }
                 statusMessage = message
                 setPlayback(message, sourceType = "LOCAL_CODEX_STATUS", sourceId = status.agentRunId?.toString() ?: "latest")
@@ -1279,6 +1405,7 @@ internal fun VoiceScreen(
             runtimePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             return
         }
+        realtimeRecoverySuppressed = false
         scope.launch {
             pending = true
             error = null
@@ -1319,6 +1446,7 @@ internal fun VoiceScreen(
     }
 
     fun requestNativeRuntimeStart() {
+        realtimeRecoverySuppressed = false
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             nativeVoiceRuntime.start()
         } else {
@@ -1330,6 +1458,10 @@ internal fun VoiceScreen(
         refreshVoiceState()
     }
 
+    LaunchedEffect(selectedVoice, voiceSpeed) {
+        quickVoicePrompts.forEach(::preloadSpeech)
+    }
+
     LaunchedEffect(voiceOutputVolume, nativeVoiceState.serviceActive) {
         if (nativeVoiceState.serviceActive) {
             nativeVoiceRuntime.setOutputVolume(voiceOutputVolume)
@@ -1338,7 +1470,10 @@ internal fun VoiceScreen(
 
     LaunchedEffect(nativeVoiceState.lastErrorCode, nativeVoiceState.realtimeConnected) {
         val event = nativeVoiceState.lastEvent
-        if (nativeVoiceState.realtimeConnected || !nativeVoiceState.lastErrorRecoverable) {
+        if (realtimeRecoverySuppressed ||
+            nativeVoiceState.realtimeConnected ||
+            !nativeVoiceState.lastErrorRecoverable
+        ) {
             return@LaunchedEffect
         }
         if (event == realtimeRecoveryEvent || realtimeRecoveryAttempts >= 2) {
@@ -1348,7 +1483,9 @@ internal fun VoiceScreen(
         realtimeRecoveryAttempts += 1
         statusMessage = "Realtime ha perdido la conexion. Reintentando (${realtimeRecoveryAttempts}/2)."
         delay(1200)
-        requestRealtimeSession()
+        if (!realtimeRecoverySuppressed) {
+            requestRealtimeSession()
+        }
     }
 
     suspend fun handleSpeechPlaybackCompleted() {
@@ -1607,20 +1744,13 @@ internal fun VoiceScreen(
                     AteneaOutlinedButton(
                         text = "Parar",
                         modifier = Modifier.weight(1f),
-                        enabled = nativeVoiceState.realtimeConnected ||
+                        enabled = nativeVoiceState.serviceActive ||
+                            nativeVoiceState.realtimeConnected ||
                             nativeVoiceState.outputPlaybackActive ||
                             localSpeechActive ||
                             nativeVoiceState.captureActive ||
                             voiceState == VoiceRuntimeState.SPEAKING,
-                        onClick = {
-                            if (nativeVoiceState.outputPlaybackActive || localSpeechActive || voiceState == VoiceRuntimeState.SPEAKING) {
-                                stopVoice(releaseMicrophone = true)
-                            } else {
-                                nativeVoiceRuntime.stop()
-                                voiceState = VoiceRuntimeState.IDLE
-                                statusMessage = "Voz detenida. Microfono liberado."
-                            }
-                        }
+                        onClick = { stopVoice(releaseMicrophone = true) }
                     )
                 }
                 Text(
@@ -1808,7 +1938,7 @@ internal fun VoiceScreen(
                             text = "Parar runtime",
                             modifier = Modifier.weight(1f),
                             enabled = nativeVoiceState.serviceActive,
-                            onClick = { nativeVoiceRuntime.stop() }
+                            onClick = { stopVoice(releaseMicrophone = true) }
                         )
                     }
                     Text(
@@ -2020,6 +2150,8 @@ private fun String.looksLikeLocalVoicePromptEcho(): Boolean {
     return text == "nota abierta" ||
         text == "nota abierta cierra con atenea fin" ||
         text == "nota abierta cierra con antena fin" ||
+        text.contains("nota abierta") && text.contains("te escucho") ||
+        text.contains("nota abierta") && text.contains("cierra") ||
         text.contains("nota abierta") && text.contains("orden de cierre") ||
         text.contains("para terminar") && text.contains("orden de cierre")
 }
@@ -2073,6 +2205,22 @@ private fun VoiceIntent.telemetryName(): String = when (this) {
     VoiceIntent.StartPlayback -> "StartPlayback"
     VoiceIntent.StopPlayback -> "StopPlayback"
     VoiceIntent.SummarizeBlock -> "SummarizeBlock"
+}
+
+private fun String.sha256Hex(): String {
+    val bytes = MessageDigest.getInstance("SHA-256").digest(toByteArray(Charsets.UTF_8))
+    return bytes.joinToString("") { byte -> "%02x".format(byte) }
+}
+
+private fun prunePersistentSpeechCache(directory: File, maxAudioFiles: Int) {
+    val audioFiles = directory.listFiles { file -> file.isFile && file.name.endsWith(".audio") }
+        ?.sortedByDescending { it.lastModified() }
+        ?: return
+    audioFiles.drop(maxAudioFiles).forEach { audioFile ->
+        val stem = audioFile.name.removeSuffix(".audio")
+        runCatching { audioFile.delete() }
+        runCatching { File(directory, "$stem.type").delete() }
+    }
 }
 
 private const val BLOCK_CAPTURE_ARMING_DELAY_MS = 900L

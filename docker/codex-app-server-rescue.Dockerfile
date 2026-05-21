@@ -41,7 +41,9 @@ RUN mkdir -p /usr/local/lib/docker/cli-plugins \
     && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 RUN mkdir -p /workspace/codex-home /workspace/repos \
-    && git config --system --add safe.directory '*'
+    && git config --system --add safe.directory '*' \
+    && git config --system user.name "Atenea" \
+    && git config --system user.email "atenea@yudri.es"
 
 COPY docker/codex-auth-guard.sh /usr/local/bin/codex-auth-guard
 RUN chmod +x /usr/local/bin/codex-auth-guard
@@ -56,4 +58,4 @@ WORKDIR /srv/atenea
 
 EXPOSE 8092
 
-CMD ["codex-auth-guard", "codex", "app-server", "--listen", "ws://0.0.0.0:8092", "-c", "approval_policy=\"never\"", "-c", "sandbox_mode=\"danger-full-access\"", "-c", "shell_environment_policy.inherit=\"all\"", "-c", "projects.\"/srv/atenea\".trust_level=\"trusted\"", "-c", "projects.\"/workspace/repos\".trust_level=\"trusted\""]
+CMD ["sh", "-lc", "umask 0002 && exec sh /usr/local/bin/codex-auth-guard codex app-server --listen ws://0.0.0.0:8092 -c 'approval_policy=\"never\"' -c 'sandbox_mode=\"danger-full-access\"' -c 'shell_environment_policy.inherit=\"all\"' -c 'projects.\"/srv/atenea\".trust_level=\"trusted\"' -c 'projects.\"/workspace/repos\".trust_level=\"trusted\"'"]

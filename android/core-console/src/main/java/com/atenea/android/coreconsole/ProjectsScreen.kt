@@ -55,7 +55,12 @@ internal fun ProjectsScreen(
             pendingProjectId = project.projectId
             error = null
             try {
-                val title = draftTitleByProject[project.projectId]?.takeIf { it.isNotBlank() }
+                val hasActiveSession = project.session?.status in setOf("OPEN", "CLOSING")
+                val title = draftTitleByProject[project.projectId]?.trim()?.takeIf { it.isNotBlank() }
+                if (!hasActiveSession && title == null) {
+                    error = "Indica un titulo para abrir una nueva sesion."
+                    return@launch
+                }
                 val result = apiClient.resolveMobileWorkSession(project.projectId, title)
                 onOpenSession(project.projectId, result.view.session.id)
             } catch (openError: Exception) {
@@ -83,6 +88,8 @@ internal fun ProjectsScreen(
             Text("No hay proyectos disponibles.", style = MaterialTheme.typography.bodyMedium)
         }
         projects.forEach { project ->
+            val hasActiveSession = project.session?.status in setOf("OPEN", "CLOSING")
+            val draftTitle = draftTitleByProject[project.projectId].orEmpty()
             AteneaPanel {
                 Text(project.projectName, style = MaterialTheme.typography.titleSmall)
                 project.description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -94,21 +101,27 @@ internal fun ProjectsScreen(
                     session.lastActivityAt?.let { MetricLine("Actividad", it.formatDateTimeForDisplay()) }
                 } ?: Text("Sin WorkSession abierta.", style = MaterialTheme.typography.bodySmall)
 
-                OutlinedTextField(
-                    value = draftTitleByProject[project.projectId].orEmpty(),
-                    onValueChange = { value ->
-                        draftTitleByProject = draftTitleByProject + (project.projectId to value)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("Título para nueva sesión") }
-                )
+                if (!hasActiveSession) {
+                    OutlinedTextField(
+                        value = draftTitle,
+                        onValueChange = { value ->
+                            draftTitleByProject = draftTitleByProject + (project.projectId to value)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Titulo para nueva sesion") }
+                    )
+                }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AteneaButton(
-                        text = if (pendingProjectId == project.projectId) "Abriendo..." else "Sesión",
+                        text = when {
+                            pendingProjectId == project.projectId -> "Abriendo..."
+                            hasActiveSession -> "Abrir sesion"
+                            else -> "Nueva sesion"
+                        },
                         modifier = Modifier.weight(1f),
-                        enabled = pendingProjectId == null,
+                        enabled = pendingProjectId == null && (hasActiveSession || draftTitle.isNotBlank()),
                         onClick = { openSession(project) }
                     )
                     AteneaOutlinedButton(

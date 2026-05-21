@@ -23,13 +23,6 @@ class AteneaVoiceRuntimeController(
     }
 
     fun stop() {
-        if (!state.value.serviceActive &&
-            !state.value.captureActive &&
-            !state.value.realtimeConnected &&
-            !state.value.outputPlaybackActive
-        ) {
-            return
-        }
         val intent = Intent(appContext, AteneaVoiceRuntimeService::class.java)
             .setAction(AteneaVoiceRuntimeService.ACTION_STOP)
         appContext.startService(intent)
@@ -53,12 +46,6 @@ class AteneaVoiceRuntimeController(
     }
 
     fun disconnectRealtime() {
-        if (!state.value.serviceActive &&
-            !state.value.captureActive &&
-            !state.value.realtimeConnected
-        ) {
-            return
-        }
         val intent = Intent(appContext, AteneaVoiceRuntimeService::class.java)
             .setAction(AteneaVoiceRuntimeService.ACTION_DISCONNECT_REALTIME)
         appContext.startService(intent)

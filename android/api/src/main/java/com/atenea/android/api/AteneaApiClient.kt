@@ -770,7 +770,13 @@ data class CoreCommandResponse(
     val operatorMessage: String?,
     val speakableMessage: String?,
     val confirmation: CoreConfirmation?,
-    val clarification: CoreClarification?
+    val clarification: CoreClarification?,
+    val rawInput: String? = null,
+    val resultSummary: String? = null,
+    val errorCode: String? = null,
+    val errorMessage: String? = null,
+    val createdAt: String? = null,
+    val finishedAt: String? = null
 )
 
 data class CoreConfirmation(
@@ -1407,7 +1413,13 @@ private fun parseCoreCommandResponse(json: JSONObject): CoreCommandResponse {
                 message = it.optNullableString("message"),
                 options = parseClarificationOptions(it.optJSONArray("options") ?: JSONArray())
             )
-        }
+        },
+        rawInput = json.optNullableString("rawInput"),
+        resultSummary = json.optNullableString("resultSummary"),
+        errorCode = json.optNullableString("errorCode"),
+        errorMessage = json.optNullableString("errorMessage"),
+        createdAt = json.optNullableString("createdAt"),
+        finishedAt = json.optNullableString("finishedAt")
     )
 }
 

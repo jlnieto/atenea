@@ -6,6 +6,7 @@ import com.atenea.android.api.CoreCommandResponse
 import com.atenea.android.api.CoreScope
 import com.atenea.android.api.MobileSessionEvent
 import com.atenea.android.api.MobileSessionSummary
+import com.atenea.android.api.SessionDeliverable
 import com.atenea.android.api.SessionDeliverablesView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -92,6 +93,55 @@ internal class WorkSessionRepository(
         mutableState.update { it.copy(activeCommand = null) }
     }
 
+    fun toggleDeliverableDetail(deliverableId: Long) {
+        val current = mutableState.value
+        if (current.openDeliverableId == deliverableId) {
+            mutableState.update {
+                it.copy(
+                    openDeliverableId = null,
+                    deliverableDetailError = null
+                )
+            }
+            return
+        }
+
+        mutableState.update {
+            it.copy(
+                openDeliverableId = deliverableId,
+                deliverableDetailError = null
+            )
+        }
+
+        if (current.deliverableDetails.containsKey(deliverableId)) {
+            return
+        }
+
+        scope.launch {
+            mutableState.update {
+                it.copy(
+                    deliverableDetailLoadingId = deliverableId,
+                    deliverableDetailError = null
+                )
+            }
+            try {
+                val detail = apiClient.fetchMobileSessionDeliverable(sessionId, deliverableId)
+                mutableState.update {
+                    it.copy(
+                        deliverableDetails = it.deliverableDetails + (deliverableId to detail),
+                        deliverableDetailLoadingId = null
+                    )
+                }
+            } catch (detailError: Exception) {
+                mutableState.update {
+                    it.copy(
+                        deliverableDetailLoadingId = null,
+                        deliverableDetailError = detailError.message ?: "No se pudo cargar el entregable completo."
+                    )
+                }
+            }
+        }
+    }
+
     fun runCoreAction(label: String, input: String) {
         scope.launch {
             mutableState.update {
@@ -138,12 +188,16 @@ internal class WorkSessionRepository(
                 mutableState.update { it.copy(activeCommand = command, commandPending = false) }
                 refreshAfterCommand(command)
             } catch (confirmError: Exception) {
+                val refreshedCommand = runCatching { apiClient.fetchCoreCommand(commandId) }.getOrNull()
                 mutableState.update {
                     it.copy(
                         commandPending = false,
+                        activeCommand = refreshedCommand ?: it.activeCommand,
                         error = confirmError.message ?: "No se pudo confirmar el comando."
                     )
                 }
+                runCatching { refreshSnapshot(initial = false) }
+                runCatching { refreshEvents() }
             }
         }
     }
@@ -250,6 +304,10 @@ internal data class WorkSessionUiState(
     val commandPending: Boolean = false,
     val pendingAction: String? = null,
     val error: String? = null,
+    val openDeliverableId: Long? = null,
+    val deliverableDetails: Map<Long, SessionDeliverable> = emptyMap(),
+    val deliverableDetailLoadingId: Long? = null,
+    val deliverableDetailError: String? = null,
     val lastSyncedAt: String? = null,
     val lastEventAt: String? = null,
     val lastEventsGeneratedAt: String? = null

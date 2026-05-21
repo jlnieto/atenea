@@ -121,6 +121,7 @@ public class VoiceEngineService {
         OperatorEntity operator = ensureActiveOperator(authenticatedOperator);
         VoiceFocusEntity focus = voiceFocusRepository.findById(operator.getId()).orElse(null);
         focus = synchronizeStaleFocusFromCoreContext(operator, focus);
+        focus = normalizeClosedWorkSessionFocus(operator, focus);
         int activeNoteCount = activeNotes(operator.getId()).size();
         if (focus == null || (focus.getProject() == null && focus.getWorkSession() == null && focus.getManagedHost() == null)) {
             MobileVoiceFocusResponse coreFocus = focusFromCoreOperatorContext(operator, activeNoteCount);
@@ -170,9 +171,9 @@ public class VoiceEngineService {
             WorkSessionEntity session = requireWorkSession(context.getActiveWorkSessionId());
             focus.setDomain(VoiceDomain.DEVELOPMENT);
             focus.setProject(session.getProject());
-            focus.setWorkSession(session);
+            focus.setWorkSession(isActiveWorkSession(session) ? session : null);
             focus.setManagedHost(null);
-            focus.setActivity("Conversacion activa");
+            focus.setActivity(isActiveWorkSession(session) ? "Conversacion activa" : "Proyecto activo");
         } else if (context.getActiveProjectId() != null) {
             ProjectEntity project = projectRepository.findById(context.getActiveProjectId()).orElse(null);
             if (project == null) {
@@ -226,8 +227,9 @@ public class VoiceEngineService {
                     return created;
                 });
 
-        WorkSessionEntity workSession = request.workSessionId() == null ? null : requireWorkSession(request.workSessionId());
-        ProjectEntity project = resolveProject(request.projectId(), workSession);
+        WorkSessionEntity requestedWorkSession = request.workSessionId() == null ? null : requireWorkSession(request.workSessionId());
+        ProjectEntity project = resolveProject(request.projectId(), requestedWorkSession);
+        WorkSessionEntity workSession = isActiveWorkSession(requestedWorkSession) ? requestedWorkSession : null;
 
         focus.setOperator(operator);
         focus.setDomain(resolveDomain(request.domain(), project, workSession, request.managedHostId()));
@@ -260,6 +262,7 @@ public class VoiceEngineService {
         List<VoiceNoteEntity> notes = activeNotes(operator.getId());
         VoiceFocusEntity focus = voiceFocusRepository.findById(operator.getId()).orElse(null);
         focus = synchronizeStaleFocusFromCoreContext(operator, focus);
+        focus = normalizeClosedWorkSessionFocus(operator, focus);
         MobileVoiceFocusResponse focusResponse = focus == null
                 ? emptyFocus(operator, notes.size())
                 : toFocusResponse(focus, notes.size());
@@ -595,9 +598,9 @@ public class VoiceEngineService {
             WorkSessionEntity workSession = requireWorkSession(result.targetId());
             focus.setDomain(VoiceDomain.DEVELOPMENT);
             focus.setProject(workSession.getProject());
-            focus.setWorkSession(workSession);
+            focus.setWorkSession(isActiveWorkSession(workSession) ? workSession : null);
             focus.setManagedHost(null);
-            focus.setActivity("Conversacion activa");
+            focus.setActivity(isActiveWorkSession(workSession) ? "Conversacion activa" : "Proyecto activo");
             voiceFocusRepository.save(focus);
             return;
         }
@@ -641,26 +644,53 @@ public class VoiceEngineService {
     }
 
     private VoiceFocusEntity resolveOpenWorkSessionFocus(OperatorEntity operator, VoiceFocusEntity focus) {
+        focus = normalizeClosedWorkSessionFocus(operator, focus);
         if (focus == null || focus.getWorkSession() != null || focus.getProject() == null) {
             return focus;
         }
 
+        VoiceFocusEntity activeFocus = focus;
         return workSessionRepository.findByProjectIdAndStatus(focus.getProject().getId(), WorkSessionStatus.OPEN)
                 .map(session -> {
                     Instant now = Instant.now();
-                    focus.setOperator(operator);
-                    focus.setDomain(VoiceDomain.DEVELOPMENT);
-                    focus.setProject(session.getProject());
-                    focus.setWorkSession(session);
-                    focus.setManagedHost(null);
-                    focus.setActivity("Conversacion activa");
-                    if (focus.getCreatedAt() == null) {
-                        focus.setCreatedAt(now);
+                    activeFocus.setOperator(operator);
+                    activeFocus.setDomain(VoiceDomain.DEVELOPMENT);
+                    activeFocus.setProject(session.getProject());
+                    activeFocus.setWorkSession(session);
+                    activeFocus.setManagedHost(null);
+                    activeFocus.setActivity("Conversacion activa");
+                    if (activeFocus.getCreatedAt() == null) {
+                        activeFocus.setCreatedAt(now);
                     }
-                    focus.setUpdatedAt(now);
-                    return voiceFocusRepository.save(focus);
+                    activeFocus.setUpdatedAt(now);
+                    return voiceFocusRepository.save(activeFocus);
                 })
-                .orElse(focus);
+                .orElse(activeFocus);
+    }
+
+    private VoiceFocusEntity normalizeClosedWorkSessionFocus(OperatorEntity operator, VoiceFocusEntity focus) {
+        if (focus == null || focus.getWorkSession() == null || isActiveWorkSession(focus.getWorkSession())) {
+            return focus;
+        }
+        Instant now = Instant.now();
+        WorkSessionEntity closedSession = focus.getWorkSession();
+        focus.setOperator(operator);
+        focus.setDomain(VoiceDomain.DEVELOPMENT);
+        focus.setProject(closedSession.getProject());
+        focus.setWorkSession(null);
+        focus.setManagedHost(null);
+        focus.setActivity("Proyecto activo");
+        if (focus.getCreatedAt() == null) {
+            focus.setCreatedAt(now);
+        }
+        focus.setUpdatedAt(now);
+        return voiceFocusRepository.save(focus);
+    }
+
+    private boolean isActiveWorkSession(WorkSessionEntity session) {
+        return session != null && (session.getStatus() == null
+                || session.getStatus() == WorkSessionStatus.OPEN
+                || session.getStatus() == WorkSessionStatus.CLOSING);
     }
 
     private ProjectEntity resolveProject(Long projectId, WorkSessionEntity workSession) {
