@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface OperatorPushDeviceRepository extends JpaRepository<OperatorPushDeviceEntity, Long> {
 
     @EntityGraph(attributePaths = "operator")
-    Optional<OperatorPushDeviceEntity> findByExpoPushToken(String expoPushToken);
+    Optional<OperatorPushDeviceEntity> findByPushToken(String pushToken);
 
     List<OperatorPushDeviceEntity> findByOperatorIdOrderByUpdatedAtDesc(Long operatorId);
 

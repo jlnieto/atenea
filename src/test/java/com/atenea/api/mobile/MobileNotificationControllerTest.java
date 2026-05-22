@@ -46,7 +46,7 @@ class MobileNotificationControllerTest {
     void registerListAndUnregisterDelegateToService() throws Exception {
         MobilePushDeviceResponse response = new MobilePushDeviceResponse(
                 3L,
-                "ExponentPushToken[test-token]",
+                "fcm-token",
                 "device-1",
                 "Pixel",
                 "android",
@@ -67,7 +67,7 @@ class MobileNotificationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "expoPushToken": "ExponentPushToken[test-token]",
+                                  "pushToken": "fcm-token",
                                   "deviceId": "device-1",
                                   "deviceName": "Pixel",
                                   "platform": "android",
@@ -75,7 +75,7 @@ class MobileNotificationControllerTest {
                                 }
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.expoPushToken").value("ExponentPushToken[test-token]"));
+                .andExpect(jsonPath("$.pushToken").value("fcm-token"));
 
         mockMvc.perform(get("/api/mobile/notifications/push-devices")
                         .with(principal))
@@ -87,7 +87,7 @@ class MobileNotificationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "expoPushToken": "ExponentPushToken[test-token]"
+                                  "pushToken": "fcm-token"
                                 }
                                 """))
                 .andExpect(status().isNoContent());

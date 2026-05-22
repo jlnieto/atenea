@@ -1,5 +1,6 @@
 package com.atenea.mobilepush;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -18,6 +19,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -31,7 +33,7 @@ class MobilePushDispatchServiceTest {
     private MobilePushNotificationLogRepository mobilePushNotificationLogRepository;
 
     @Mock
-    private ExpoPushSender expoPushSender;
+    private FcmPushSender fcmPushSender;
 
     private MobilePushDispatchService mobilePushDispatchService;
 
@@ -40,7 +42,7 @@ class MobilePushDispatchServiceTest {
         mobilePushDispatchService = new MobilePushDispatchService(
                 operatorPushDeviceRepository,
                 mobilePushNotificationLogRepository,
-                expoPushSender
+                fcmPushSender
         );
     }
 
@@ -55,7 +57,11 @@ class MobilePushDispatchServiceTest {
 
         mobilePushDispatchService.notifyRunSucceeded(run);
 
-        verify(expoPushSender).send(any());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<FcmPushSender.FcmPushMessage>> messagesCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(fcmPushSender).send(messagesCaptor.capture());
+        assertEquals("Codex ha respondido", messagesCaptor.getValue().getFirst().title());
         verify(mobilePushNotificationLogRepository).save(any());
     }
 
@@ -70,7 +76,7 @@ class MobilePushDispatchServiceTest {
         mobilePushDispatchService.notifyRunSucceeded(run);
 
         verify(operatorPushDeviceRepository, never()).findByActiveTrueOrderByUpdatedAtDesc();
-        verify(expoPushSender, never()).send(any());
+        verify(fcmPushSender, never()).send(any());
         verify(mobilePushNotificationLogRepository, never()).save(any());
     }
 
@@ -86,8 +92,25 @@ class MobilePushDispatchServiceTest {
 
         mobilePushDispatchService.notifyBillingReady(deliverable);
 
-        verify(expoPushSender, never()).send(any());
+        verify(fcmPushSender, never()).send(any());
         verify(mobilePushNotificationLogRepository, never()).save(any());
+    }
+
+    @Test
+    void notifyRunSucceededDispatchesDevicesToFcmSender() {
+        AgentRunEntity run = new AgentRunEntity();
+        run.setId(55L);
+        run.setSession(buildSession(12L, "Atenea", "Inspect project state"));
+        OperatorPushDeviceEntity device = buildDevice();
+        device.setPushToken("fcm-token");
+
+        when(mobilePushNotificationLogRepository.existsByEventKey("RUN_SUCCEEDED:55")).thenReturn(false);
+        when(operatorPushDeviceRepository.findByActiveTrueOrderByUpdatedAtDesc()).thenReturn(List.of(device));
+
+        mobilePushDispatchService.notifyRunSucceeded(run);
+
+        verify(fcmPushSender).send(any());
+        verify(mobilePushNotificationLogRepository).save(any());
     }
 
     private static WorkSessionEntity buildSession(Long id, String projectName, String title) {
@@ -120,7 +143,7 @@ class MobilePushDispatchServiceTest {
         OperatorPushDeviceEntity device = new OperatorPushDeviceEntity();
         device.setId(4L);
         device.setOperator(operator);
-        device.setExpoPushToken("ExponentPushToken[test-token]");
+        device.setPushToken("fcm-token");
         device.setPlatform("android");
         device.setDeviceId("device-1");
         device.setDeviceName("Pixel");

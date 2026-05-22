@@ -36,6 +36,33 @@ class AteneaApiClient(
         parser = ::parseMobileAuthSession
     )
 
+    suspend fun registerPushToken(
+        token: String,
+        platform: String,
+        deviceId: String? = null,
+        deviceName: String? = null,
+        appVersion: String? = null
+    ) {
+        postJson(
+            path = "/api/mobile/notifications/push-token",
+            body = JSONObject()
+                .put("pushToken", token)
+                .putNullable("deviceId", deviceId)
+                .putNullable("deviceName", deviceName)
+                .put("platform", platform)
+                .putNullable("appVersion", appVersion),
+            authenticated = true
+        ) { Unit }
+    }
+
+    suspend fun unregisterPushToken(token: String) {
+        postJson(
+            path = "/api/mobile/notifications/push-token/unregister",
+            body = JSONObject().put("pushToken", token),
+            authenticated = true
+        ) { Unit }
+    }
+
     suspend fun runCoreCommand(
         input: String,
         scope: CoreScope = CoreScope.GLOBAL,

@@ -23,8 +23,8 @@ public class OperatorPushDeviceEntity {
     @JoinColumn(name = "operator_id", nullable = false)
     private OperatorEntity operator;
 
-    @Column(name = "expo_push_token", nullable = false, unique = true, length = 255)
-    private String expoPushToken;
+    @Column(name = "push_token", nullable = false, unique = true, length = 255)
+    private String pushToken;
 
     @Column(name = "device_id", length = 190)
     private String deviceId;
@@ -66,12 +66,12 @@ public class OperatorPushDeviceEntity {
         this.operator = operator;
     }
 
-    public String getExpoPushToken() {
-        return expoPushToken;
+    public String getPushToken() {
+        return pushToken;
     }
 
-    public void setExpoPushToken(String expoPushToken) {
-        this.expoPushToken = expoPushToken;
+    public void setPushToken(String pushToken) {
+        this.pushToken = pushToken;
     }
 
     public String getDeviceId() {

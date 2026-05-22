@@ -135,7 +135,7 @@ class MobileAuthIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "expoPushToken": "ExponentPushToken[test-token]",
+                                  "pushToken": "fcm-token",
                                   "deviceId": "device-1",
                                   "deviceName": "Pixel Test",
                                   "platform": "android",
@@ -148,14 +148,14 @@ class MobileAuthIntegrationTest {
         mockMvc.perform(get("/api/mobile/notifications/push-devices")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].expoPushToken").value("ExponentPushToken[test-token]"));
+                .andExpect(jsonPath("$[0].pushToken").value("fcm-token"));
 
         mockMvc.perform(post("/api/mobile/notifications/push-token/unregister")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "expoPushToken": "ExponentPushToken[test-token]"
+                                  "pushToken": "fcm-token"
                                 }
                                 """))
                 .andExpect(status().isNoContent());

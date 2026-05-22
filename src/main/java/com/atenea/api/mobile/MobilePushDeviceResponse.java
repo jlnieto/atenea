@@ -4,7 +4,7 @@ import java.time.Instant;
 
 public record MobilePushDeviceResponse(
         Long id,
-        String expoPushToken,
+        String pushToken,
         String deviceId,
         String deviceName,
         String platform,

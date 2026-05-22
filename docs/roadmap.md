@@ -15,7 +15,7 @@ This document should be read together with:
 - `docs/atenea-core.md`
 - `docs/atenea-core-foundation-design.md`
 - `docs/worksession-target-flow.md`
-- `docs/mobile-full-operation.md`
+- `docs/android-native-shell-v1.md`
 
 ## Current Version State
 
@@ -229,14 +229,14 @@ Implemented:
 - SSE baseline for:
   - `GET /api/mobile/inbox/stream`
   - `GET /api/mobile/sessions/{sessionId}/events/stream`
-- native client bootstrap in `mobile/`
-- React Native operator shell for:
+- native Android client bootstrap in `android/`
+- Android operator shell for:
   - Inbox
   - Projects
   - Session
   - Billing
 - dedicated conversation workspace for session operation
-- TypeScript-valid mobile API client against `/api/mobile/*`
+- Kotlin mobile API client against `/api/mobile/*`
 - native write flows already wired for:
   - resolve session
   - turn
@@ -254,24 +254,21 @@ Implemented:
   - `POST /api/mobile/auth/logout`
   - `GET /api/mobile/auth/me`
   - JWT access token + persisted refresh token rotation
-  - native login screen in `mobile/`
-  - secure local session persistence with `expo-secure-store`
-- Expo notifications registration baseline:
+  - native login screen in `android/`
+  - encrypted local session persistence
+- FCM notifications registration baseline:
   - `POST /api/mobile/notifications/push-token`
   - `POST /api/mobile/notifications/push-token/unregister`
   - `GET /api/mobile/notifications/push-devices`
-  - native Expo push-token acquisition and backend registration
-  - backend Expo dispatch baseline for:
+  - Android FCM token acquisition and backend registration
+  - backend FCM dispatch baseline for:
     - `RUN_SUCCEEDED`
     - `CLOSE_BLOCKED`
     - `PULL_REQUEST_MERGED`
     - `BILLING_READY`
   - push deduplication log in persistence
   - delivery disabled by default behind `ATENEA_MOBILE_PUSH_ENABLED`
-  - in-app notification capture and recent notification rail
-  - push-open routing into `Session` and `Billing`
-  - Expo Go protection:
-    - push initialization disabled intentionally in Expo Go because SDK 53+ does not support remote push there
+  - Android system notification display
 
 ### Block 4. Session-first project overview
 

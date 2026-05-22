@@ -7,7 +7,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class MobilePushProperties {
 
     private boolean enabled;
-    private URI expoPushUrl = URI.create("https://exp.host/--/api/v2/push/send");
+    private String fcmProjectId;
+    private String fcmClientEmail;
+    private String fcmPrivateKey;
+    private String fcmPrivateKeyId;
+    private URI fcmTokenUrl = URI.create("https://oauth2.googleapis.com/token");
+    private URI fcmApiBaseUrl = URI.create("https://fcm.googleapis.com");
 
     public boolean isEnabled() {
         return enabled;
@@ -17,11 +22,51 @@ public class MobilePushProperties {
         this.enabled = enabled;
     }
 
-    public URI getExpoPushUrl() {
-        return expoPushUrl;
+    public String getFcmProjectId() {
+        return fcmProjectId;
     }
 
-    public void setExpoPushUrl(URI expoPushUrl) {
-        this.expoPushUrl = expoPushUrl;
+    public void setFcmProjectId(String fcmProjectId) {
+        this.fcmProjectId = fcmProjectId;
+    }
+
+    public String getFcmClientEmail() {
+        return fcmClientEmail;
+    }
+
+    public void setFcmClientEmail(String fcmClientEmail) {
+        this.fcmClientEmail = fcmClientEmail;
+    }
+
+    public String getFcmPrivateKey() {
+        return fcmPrivateKey;
+    }
+
+    public void setFcmPrivateKey(String fcmPrivateKey) {
+        this.fcmPrivateKey = fcmPrivateKey;
+    }
+
+    public String getFcmPrivateKeyId() {
+        return fcmPrivateKeyId;
+    }
+
+    public void setFcmPrivateKeyId(String fcmPrivateKeyId) {
+        this.fcmPrivateKeyId = fcmPrivateKeyId;
+    }
+
+    public URI getFcmTokenUrl() {
+        return fcmTokenUrl;
+    }
+
+    public void setFcmTokenUrl(URI fcmTokenUrl) {
+        this.fcmTokenUrl = fcmTokenUrl;
+    }
+
+    public URI getFcmApiBaseUrl() {
+        return fcmApiBaseUrl;
+    }
+
+    public void setFcmApiBaseUrl(URI fcmApiBaseUrl) {
+        this.fcmApiBaseUrl = fcmApiBaseUrl;
     }
 }

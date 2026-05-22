@@ -30,6 +30,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -41,7 +42,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.atenea.android.api.MobileConversationTurn
-import kotlinx.coroutines.delay
 
 @Composable
 internal fun ConversationSurface(
@@ -59,15 +59,7 @@ internal fun ConversationSurface(
     error: String?,
     commandContent: @Composable (() -> Unit)? = null
 ) {
-    val scrollState = rememberScrollState()
-    val latestTurnSignature = turns.lastOrNull()?.let { "${it.id}:${it.messageText.length}" }.orEmpty()
-
-    LaunchedEffect(latestTurnSignature, turns.size, error) {
-        if (turns.isNotEmpty()) {
-            delay(80)
-            scrollState.scrollTo(scrollState.maxValue)
-        }
-    }
+    val transcript = remember(turns) { turns.toFormattedConversationTranscript() }
 
     Column(
         modifier = Modifier
@@ -85,14 +77,13 @@ internal fun ConversationSurface(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .verticalScroll(scrollState)
                 .padding(horizontal = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             error?.let {
                 Text(
                     it,
-                    modifier = Modifier.padding(bottom = 10.dp),
+                    modifier = Modifier.padding(bottom = 2.dp),
                     color = ConversationColors.error,
                     style = ConversationTypography.meta
                 )
@@ -105,19 +96,13 @@ internal fun ConversationSurface(
                     color = ConversationColors.secondaryText,
                     style = ConversationTypography.body
                 )
-            }
-            turns.forEachIndexed { index, turn ->
-                Column {
-                    if (index > 0) {
-                        Spacer(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(ConversationColors.divider)
-                        )
-                    }
-                    ConversationTurn(turn)
-                }
+            } else {
+                ConversationTranscript(
+                    transcript = transcript,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
             }
         }
 
@@ -129,6 +114,27 @@ internal fun ConversationSurface(
             onSend = onSend
         )
     }
+}
+
+@Composable
+private fun ConversationTranscript(
+    transcript: AnnotatedString,
+    modifier: Modifier = Modifier
+) {
+    val scrollState = rememberScrollState()
+
+    LaunchedEffect(transcript.text) {
+        scrollState.scrollTo(scrollState.maxValue)
+    }
+
+    Text(
+        text = transcript,
+        modifier = modifier
+            .verticalScroll(scrollState)
+            .padding(top = 10.dp, bottom = 14.dp),
+        color = ConversationColors.primaryText,
+        style = ConversationTypography.body.copy(lineHeight = 19.sp)
+    )
 }
 
 @Composable
@@ -475,6 +481,174 @@ private fun SendUpIcon(color: Color) {
 
 private data class ConversationBlock(val text: String, val code: Boolean)
 
+private fun List<MobileConversationTurn>.toFormattedConversationTranscript(): AnnotatedString =
+    buildAnnotatedString {
+        this@toFormattedConversationTranscript.forEachIndexed { index, turn ->
+            if (index > 0) {
+                append("\n\n")
+                withStyle(SpanStyle(color = ConversationColors.divider, fontSize = 11.sp)) {
+                    append("------------------------")
+                }
+                append("\n\n")
+            }
+            withStyle(
+                SpanStyle(
+                    color = ConversationColors.action,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                )
+            ) {
+                append(if (turn.actor == "OPERATOR") "OPERADOR" else "CODEX")
+                val createdAt = turn.createdAt
+                if (createdAt != null) {
+                    append(" · ")
+                    append(createdAt.formatDateTimeForDisplay())
+                }
+            }
+            append("\n\n")
+
+            turn.messageText.toConversationBlocks().forEachIndexed { blockIndex, block ->
+                if (blockIndex > 0) {
+                    append("\n")
+                }
+                if (block.code) {
+                    appendCodeBlock(block.text)
+                } else {
+                    appendMarkdownParagraph(block.text)
+                }
+            }
+        }
+    }
+
+private fun AnnotatedString.Builder.appendMarkdownParagraph(text: String) {
+    text.lineSequence().forEach { rawLine ->
+        val line = rawLine.trimEnd()
+        if (line.trim().isBlank()) {
+            append("\n")
+            return@forEach
+        }
+
+        val trimmed = line.trimStart()
+        val headingLevel = when {
+            trimmed.startsWith("### ") -> 3
+            trimmed.startsWith("## ") -> 2
+            trimmed.startsWith("# ") -> 1
+            else -> 0
+        }
+        val quote = trimmed.startsWith("> ")
+        val bullet = trimmed.matches(Regex("^[-*]\\s+.*"))
+        val numbered = trimmed.matches(Regex("^\\d+\\.\\s+.*"))
+        val content = when {
+            headingLevel > 0 -> trimmed.replace(Regex("^#{1,3}\\s+"), "")
+            quote -> trimmed.replace(Regex("^>\\s+"), "")
+            bullet -> trimmed.replace(Regex("^[-*]\\s+"), "")
+            numbered -> trimmed.replace(Regex("^\\d+\\.\\s+"), "")
+            else -> line
+        }
+        val prefix = when {
+            quote -> "> "
+            bullet -> "- "
+            numbered -> "${Regex("^(\\d+)\\.").find(trimmed)?.groupValues?.getOrNull(1).orEmpty()}. "
+            else -> ""
+        }
+        val lineStart = length
+        if (prefix.isNotBlank()) {
+            withStyle(SpanStyle(color = ConversationColors.action, fontWeight = FontWeight.Bold)) {
+                append(prefix)
+            }
+        }
+        appendInlineMarkdownSpans(
+            content,
+            baseStyle = SpanStyle(
+                color = when {
+                    headingLevel > 0 -> ConversationColors.action
+                    quote -> ConversationColors.quoteText
+                    else -> ConversationColors.primaryText
+                },
+                fontWeight = if (headingLevel > 0) FontWeight.Bold else null,
+                fontSize = when (headingLevel) {
+                    1 -> 16.sp
+                    2 -> 15.sp
+                    3 -> 14.sp
+                    else -> 13.sp
+                }
+            )
+        )
+        val lineEnd = length
+        if (quote || bullet || numbered) {
+            addStyle(SpanStyle(color = if (quote) ConversationColors.quoteText else ConversationColors.primaryText), lineStart, lineEnd)
+        }
+        append("\n")
+    }
+}
+
+private fun AnnotatedString.Builder.appendCodeBlock(code: String) {
+    withStyle(
+        SpanStyle(
+            color = ConversationColors.codeText,
+            background = ConversationColors.codeBackground,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp
+        )
+    ) {
+        code.trimEnd().lineSequence().forEach { line ->
+            append("  ")
+            append(line)
+            append("\n")
+        }
+    }
+    append("\n")
+}
+
+private fun AnnotatedString.Builder.appendInlineMarkdownSpans(text: String, baseStyle: SpanStyle) {
+    val regex = Regex("(\\*\\*[^*]+\\*\\*|`[^`]+`|\\[[^\\]]+\\]\\([^)]+\\))")
+    var cursor = 0
+    regex.findAll(text).forEach { match ->
+        if (match.range.first > cursor) {
+            withStyle(baseStyle) {
+                append(text.substring(cursor, match.range.first))
+            }
+        }
+        val value = match.value
+        when {
+            value.startsWith("**") && value.endsWith("**") -> withStyle(baseStyle.copy(fontWeight = FontWeight.Bold)) {
+                append(value.removePrefix("**").removeSuffix("**"))
+            }
+            value.startsWith("`") && value.endsWith("`") -> withStyle(
+                baseStyle.copy(
+                    color = ConversationColors.action,
+                    background = ConversationColors.codeBackground,
+                    fontFamily = FontFamily.Monospace
+                )
+            ) {
+                append(value.removePrefix("`").removeSuffix("`"))
+            }
+            value.startsWith("[") -> {
+                val link = Regex("^\\[([^\\]]+)]\\(([^)]+)\\)").find(value)
+                val label = link?.groupValues?.getOrNull(1).orEmpty()
+                val target = link?.groupValues?.getOrNull(2).orEmpty()
+                withStyle(baseStyle.copy(color = ConversationColors.action, fontWeight = FontWeight.Bold)) {
+                    append(label.ifBlank { value })
+                }
+                if (target.isNotBlank()) {
+                    withStyle(baseStyle.copy(color = ConversationColors.mutedText)) {
+                        append(" ($target)")
+                    }
+                }
+            }
+            else -> withStyle(baseStyle) {
+                append(value)
+            }
+        }
+        cursor = match.range.last + 1
+    }
+    if (cursor < text.length) {
+        withStyle(baseStyle) {
+            append(text.substring(cursor))
+        }
+    }
+}
+
 private fun String.toConversationBlocks(): List<ConversationBlock> {
     val result = mutableListOf<ConversationBlock>()
     var cursor = 0
@@ -588,9 +762,8 @@ private fun renderInlineMarkdown(text: String) = buildAnnotatedString {
 
 private object ConversationTypography {
     val body = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontSize = 13.sp,
-        lineHeight = 18.sp
+        fontSize = 14.sp,
+        lineHeight = 20.sp
     )
     val code = TextStyle(
         fontFamily = FontFamily.Monospace,
@@ -598,25 +771,21 @@ private object ConversationTypography {
         lineHeight = 18.sp
     )
     val meta = TextStyle(
-        fontFamily = FontFamily.Monospace,
         fontSize = 11.sp,
         lineHeight = 16.sp
     )
     val timestamp = TextStyle(
-        fontFamily = FontFamily.Monospace,
         fontSize = 10.sp,
         lineHeight = 15.sp
     )
     val action = TextStyle(
-        fontFamily = FontFamily.Monospace,
         fontSize = 9.sp,
         lineHeight = 12.sp,
         fontWeight = FontWeight.SemiBold
     )
     val input = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontSize = 13.sp,
-        lineHeight = 18.sp
+        fontSize = 14.sp,
+        lineHeight = 20.sp
     )
 }
 

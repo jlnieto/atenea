@@ -336,11 +336,11 @@ public class WorkSessionGitHubService {
         if (paths.size() == 1 && "README.md".equals(paths.get(0))) {
             return "README";
         }
-        if (paths.stream().allMatch(path -> path.startsWith("mobile/"))) {
+        if (paths.stream().allMatch(path -> path.startsWith("android/"))) {
             if (paths.stream().anyMatch(path -> path.contains("ConversationScreen"))) {
-                return "mobile conversation workspace";
+                return "Android conversation workspace";
             }
-            return "mobile app";
+            return "Android app";
         }
         if (paths.stream().allMatch(path -> path.startsWith("docs/") || "README.md".equals(path))) {
             return "project documentation";

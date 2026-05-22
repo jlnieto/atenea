@@ -104,7 +104,7 @@ class WorkSessionGitHubServiceTest {
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(false);
         when(gitRepositoryService.hasReviewableChanges(repoPath.toString(), "main", "atenea/session-12")).thenReturn(true);
         when(gitRepositoryService.getWorkingTreeStatusEntries(repoPath.toString()))
-                .thenReturn(List.of("M  mobile/src/screens/ConversationScreen.tsx"));
+                .thenReturn(List.of("M  android/core-console/src/main/java/com/atenea/android/coreconsole/WorkSessionConversationScreen.kt"));
         when(gitRepositoryService.getOriginRemoteUrl(repoPath.toString())).thenReturn("git@github.com:acme/atenea.git");
         when(gitRepositoryService.getHeadCommitSha(repoPath.toString())).thenReturn("abc123");
         when(gitHubClient.resolveRepository("git@github.com:acme/atenea.git"))
@@ -218,7 +218,7 @@ class WorkSessionGitHubServiceTest {
         when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(false);
         when(gitRepositoryService.hasReviewableChanges(repoPath.toString(), "main", "atenea/session-12")).thenReturn(true);
         when(gitRepositoryService.getWorkingTreeStatusEntries(repoPath.toString()))
-                .thenReturn(List.of("M  mobile/src/screens/ConversationScreen.tsx"));
+                .thenReturn(List.of("M  android/core-console/src/main/java/com/atenea/android/coreconsole/WorkSessionConversationScreen.kt"));
         when(gitRepositoryService.getOriginRemoteUrl(repoPath.toString())).thenReturn("git@github.com:acme/atenea.git");
         when(gitHubClient.resolveRepository("git@github.com:acme/atenea.git"))
                 .thenReturn(new GitHubRepositoryRef("acme", "atenea"));

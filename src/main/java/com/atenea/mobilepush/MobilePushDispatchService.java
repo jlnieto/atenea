@@ -22,16 +22,16 @@ public class MobilePushDispatchService {
 
     private final OperatorPushDeviceRepository operatorPushDeviceRepository;
     private final MobilePushNotificationLogRepository mobilePushNotificationLogRepository;
-    private final ExpoPushSender expoPushSender;
+    private final FcmPushSender fcmPushSender;
 
     public MobilePushDispatchService(
             OperatorPushDeviceRepository operatorPushDeviceRepository,
             MobilePushNotificationLogRepository mobilePushNotificationLogRepository,
-            ExpoPushSender expoPushSender
+            FcmPushSender fcmPushSender
     ) {
         this.operatorPushDeviceRepository = operatorPushDeviceRepository;
         this.mobilePushNotificationLogRepository = mobilePushNotificationLogRepository;
-        this.expoPushSender = expoPushSender;
+        this.fcmPushSender = fcmPushSender;
     }
 
     @Transactional
@@ -42,7 +42,7 @@ public class MobilePushDispatchService {
                 run.getSession().getId(),
                 run.getId(),
                 null,
-                "Run completed",
+                "Codex ha respondido",
                 "%s · %s".formatted(run.getSession().getProject().getName(), run.getSession().getTitle()),
                 Map.of(
                         "type", "RUN_SUCCEEDED",
@@ -126,14 +126,14 @@ public class MobilePushDispatchService {
             return;
         }
         try {
-            expoPushSender.send(devices.stream()
-                    .map(device -> new ExpoPushSender.ExpoPushMessage(
-                            device.getExpoPushToken(),
+            List<FcmPushSender.FcmPushMessage> fcmMessages = devices.stream()
+                    .map(device -> new FcmPushSender.FcmPushMessage(
+                            device.getPushToken(),
                             title,
                             body,
-                            "default",
                             data))
-                    .toList());
+                    .toList();
+            fcmPushSender.send(fcmMessages);
             Instant now = Instant.now();
             MobilePushNotificationLogEntity logEntry = new MobilePushNotificationLogEntity();
             logEntry.setEventKey(eventKey);
