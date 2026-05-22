@@ -1,5 +1,10 @@
 package com.atenea.android.coreconsole
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -19,12 +24,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.secure.AteneaSessionStore
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 
 @Composable
@@ -34,9 +41,34 @@ fun CoreConsoleApp(
     apiBaseUrl: String,
     updateManifestUrl: String,
     currentVersionCode: Int,
-    currentVersionName: String
+    currentVersionName: String,
+    pushRegistration: AteneaPushRegistration? = null
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var session by remember { mutableStateOf(sessionStore.load()) }
+    var pushRegistrationAttempted by remember { mutableStateOf(false) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        scope.launch {
+            runCatching { pushRegistration?.registerForCurrentSession() }
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(session?.operator?.id, pushRegistration) {
+        if (session == null || pushRegistration == null || !pushRegistration.isConfigured() || pushRegistrationAttempted) {
+            return@LaunchedEffect
+        }
+        pushRegistrationAttempted = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            runCatching { pushRegistration.registerForCurrentSession() }
+        }
+    }
 
     if (session == null) {
         LoginScreen(
@@ -56,8 +88,12 @@ fun CoreConsoleApp(
             currentVersionCode = currentVersionCode,
             currentVersionName = currentVersionName,
             onLogout = {
-                sessionStore.clear()
-                session = null
+                scope.launch {
+                    runCatching { pushRegistration?.unregisterCurrentToken() }
+                    sessionStore.clear()
+                    session = null
+                    pushRegistrationAttempted = false
+                }
             }
         )
     }

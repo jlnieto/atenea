@@ -10,6 +10,7 @@ import androidx.activity.SystemBarStyle
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.coreconsole.CoreConsoleApp
 import com.atenea.android.coreconsole.AteneaOperatorTheme
+import com.atenea.android.push.AteneaPushRegistrar
 import com.atenea.android.secure.AteneaSessionStore
 import com.atenea.android.voiceruntime.AteneaDiagnostics
 
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
             refreshTokenProvider = { sessionStore.load()?.refreshToken },
             sessionUpdater = { sessionStore.save(it) }
         )
+        val pushRegistrar = AteneaPushRegistrar(applicationContext, apiClient)
 
         setContent {
             AteneaOperatorTheme {
@@ -44,7 +46,8 @@ class MainActivity : ComponentActivity() {
                     apiBaseUrl = BuildConfig.ATENEA_API_BASE_URL,
                     updateManifestUrl = BuildConfig.ATENEA_ANDROID_UPDATE_MANIFEST_URL,
                     currentVersionCode = BuildConfig.VERSION_CODE,
-                    currentVersionName = BuildConfig.VERSION_NAME
+                    currentVersionName = BuildConfig.VERSION_NAME,
+                    pushRegistration = pushRegistrar
                 )
             }
         }

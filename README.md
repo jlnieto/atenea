@@ -9,17 +9,14 @@ Documentos clave:
 - `docs/atenea-v1-architecture.md`: dirección arquitectónica general
 - `docs/worksession-phase1.md`: estado real actual del core `WorkSession`
 - `docs/worksession-target-flow.md`: objetivo canónico de producto para el siguiente gran bloque `WorkSession`
-- `docs/mobile-full-operation.md`: objetivo estratégico, alcance y fases para operar Atenea end-to-end desde móvil
 - `docs/mobile-server-operations.md`: contrato operativo para pruebas headless, servidores gestionados y despliegues desde móvil
 - `docs/project-runtime-verification.md`: contrato por proyecto para verificar runtime y pruebas de navegador desde Atenea Core
 - `docs/android-worksession-premium-operation.md`: contrato de calidad para operar WorkSession end-to-end desde Android nativo
 - `docs/codex-auth-and-costs.md`: contrato de autenticacion ChatGPT para Codex App Server y lectura movil de costes API
 - `docs/session-speech-briefing.md`: briefing con DeepSeek para lecturas TTS utiles de respuestas Codex
 - `docs/voice-command-telemetry.md`: telemetria de comandos de voz fallidos para mejorar el interprete
-- `docs/android-native-migration.md`: decisión y roadmap para migrar la app móvil a Android nativo como superficie principal
 - `docs/voice-engine/README.md`: contrato de producto, arquitectura y plan del motor de voz premium de Atenea
 - `android/README.md`: estado y guía operativa del nuevo cliente Android nativo
-- `mobile/README.md`: estado y guía operativa de la app Expo/React Native actual
 - `docs/session-deliverables-design.md`: diseño objetivo para deliverables persistidos, reporting y pricing de sesión
 - `docs/task-branch-workflow.md`: referencia histórica del flujo retirado `Task` / `TaskExecution`
 - `AGENTS.md`: guía local canónica para agentes/Codex
@@ -41,14 +38,7 @@ Workflow de desarrollo para este VPS:
 ./scripts/down.sh
 ```
 
-Cliente móvil actual Expo/React Native:
-
-```bash
-cd mobile
-EXPO_PUBLIC_ATENEA_API_BASE_URL=https://atenea.yudri.es npm start
-```
-
-Cliente Android nativo objetivo:
+Cliente Android nativo:
 
 ```bash
 ./scripts/android-build.sh
@@ -63,10 +53,14 @@ ATENEA_AUTH_BOOTSTRAP_PASSWORD=secret-pass \
 ./scripts/run.sh
 ```
 
-Habilitar envío real de push móvil a Expo:
+Habilitar envío real de push móvil FCM:
 
 ```bash
-ATENEA_MOBILE_PUSH_ENABLED=true ./scripts/run.sh
+ATENEA_MOBILE_PUSH_ENABLED=true \
+ATENEA_MOBILE_PUSH_FCM_PROJECT_ID=atenea-mobile \
+ATENEA_MOBILE_PUSH_FCM_CLIENT_EMAIL=firebase-adminsdk@atenea-mobile.iam.gserviceaccount.com \
+ATENEA_MOBILE_PUSH_FCM_PRIVATE_KEY='-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n' \
+./scripts/run.sh
 ```
 
 Habilitar voz OpenAI para `Atenea Core`:
@@ -182,40 +176,7 @@ Conclusión operativa:
 - el siguiente bloque ya no es “crear core”, sino endurecer la operación móvil, la configuración segura de hosts gestionados y los runbooks remotos
 - no debe documentarse como si ya soportara `communications` en runtime
 
-El repo incluye además una app móvil actual en `mobile/`:
-
-- React Native sobre Expo
-- shell operatorio móvil para Core, Inbox, Projects, Session y Billing
-- workspace de conversación separado con UX tipo terminal para operar Codex desde móvil
-- login nativo contra `/api/mobile/auth/*`
-- persistencia local de sesión con `expo-secure-store`
-- captura en app de notificaciones push recientes y routing interno por payload
-- SSE consumido directamente en la vista de conversación, con polling como fallback
-- entrada principal conversacional a través de `Atenea Core`
-- historial y stream de eventos de comandos de core en la app
-- captura de voz en la pestaña `Core` con transcripción server-side
-- mutaciones principales de `development` ya cableadas a `Core`:
-  - activación de proyecto
-  - apertura de sesión
-  - prompts de conversación
-  - publish
-  - pull-request sync
-  - generate deliverable
-  - close
-- salida por voz desde audio backend generado a partir de `speakableMessage`, con fallback local
-- acciones móviles ya cableadas para:
-  - approve deliverable
-  - mark billed
-- conectada de forma híbrida contra `/api/core/*` y `/api/mobile/*`
-- pensada como baseline funcional de full mobile operation
-
-Dirección móvil nueva:
-
-- `docs/android-native-migration.md` fija la decisión de evolucionar hacia una app Android nativa como superficie principal
-- `mobile/` queda como app Expo/React Native actual y referencia funcional durante la migración
-- la futura app Android nativa debe vivir separada, preferiblemente en `android/`
-- el backend y los contratos `Atenea Core` / `/api/mobile/*` siguen siendo la fuente de verdad
-- la migración no debe hacerse como rewrite destructivo, sino como implementación paralela por fases
+La superficie móvil soportada es la app Android nativa en `android/`. El backend y los contratos `Atenea Core` / `/api/mobile/*` siguen siendo la fuente de verdad.
 
 ## Superficies API actuales
 
@@ -232,8 +193,8 @@ Hoy el backend expone dos superficies funcionales reales:
   - summary de pendientes y facturados por moneda
 - `Mobile`
   - auth móvil de operador con login, refresh, logout y `me`
-  - registro de dispositivos push Expo por operador
-  - dispatch backend de notificaciones Expo para eventos clave de operación móvil
+  - registro de dispositivos push FCM por operador
+  - dispatch backend de notificaciones FCM para eventos clave de operación móvil
   - overview móvil de proyectos
   - inbox móvil de atención operativa
   - summary y feed de eventos por sesión
@@ -306,7 +267,7 @@ Actualmente ya implementa:
 - `POST /api/mobile/notifications/push-token`
 - `POST /api/mobile/notifications/push-token/unregister`
 - `GET /api/mobile/notifications/push-devices`
-- dispatch backend a Expo para:
+- dispatch backend a FCM para:
   - `RUN_SUCCEEDED`
   - `CLOSE_BLOCKED`
   - `PULL_REQUEST_MERGED`

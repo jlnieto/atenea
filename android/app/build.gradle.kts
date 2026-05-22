@@ -12,8 +12,8 @@ android {
         applicationId = "com.atenea.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 115
-        versionName = "0.5.82"
+        versionCode = 122
+        versionName = "0.5.89"
 
         val ateneaApiBaseUrl = providers.gradleProperty("ATENEA_API_BASE_URL")
             .orElse("https://atenea.yudri.es")
@@ -21,8 +21,24 @@ android {
         val updateManifestUrl = providers.gradleProperty("ATENEA_ANDROID_UPDATE_MANIFEST_URL")
             .orElse("")
             .get()
+        val firebaseApiKey = providers.gradleProperty("ATENEA_FIREBASE_API_KEY")
+            .orElse("")
+            .get()
+        val firebaseProjectId = providers.gradleProperty("ATENEA_FIREBASE_PROJECT_ID")
+            .orElse("")
+            .get()
+        val firebaseAppId = providers.gradleProperty("ATENEA_FIREBASE_APP_ID")
+            .orElse("")
+            .get()
+        val firebaseGcmSenderId = providers.gradleProperty("ATENEA_FIREBASE_GCM_SENDER_ID")
+            .orElse("")
+            .get()
         buildConfigField("String", "ATENEA_API_BASE_URL", "\"${escapeBuildConfigString(ateneaApiBaseUrl)}\"")
         buildConfigField("String", "ATENEA_ANDROID_UPDATE_MANIFEST_URL", "\"${escapeBuildConfigString(updateManifestUrl)}\"")
+        buildConfigField("String", "ATENEA_FIREBASE_API_KEY", "\"${escapeBuildConfigString(firebaseApiKey)}\"")
+        buildConfigField("String", "ATENEA_FIREBASE_PROJECT_ID", "\"${escapeBuildConfigString(firebaseProjectId)}\"")
+        buildConfigField("String", "ATENEA_FIREBASE_APP_ID", "\"${escapeBuildConfigString(firebaseAppId)}\"")
+        buildConfigField("String", "ATENEA_FIREBASE_GCM_SENDER_ID", "\"${escapeBuildConfigString(firebaseGcmSenderId)}\"")
     }
 
     buildFeatures {
@@ -55,6 +71,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.firebase.messaging)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

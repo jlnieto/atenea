@@ -1,13 +1,11 @@
 # Atenea Android
 
-Android native client for the next Atenea mobile surface.
+Android native client for Atenea's mobile surface.
 
 This project is the beginning of the migration documented in:
 
 - `../docs/android-native-migration.md`
 - `../docs/android-native-shell-v1.md`
-
-The existing Expo/React Native app remains in `../mobile/` and should keep working during the migration.
 
 ## Current scope
 
@@ -28,12 +26,12 @@ The native client currently implements the first usable operator shell:
 - authenticated file upload through `POST /api/mobile/uploads`
 - update check from Atenea's protected APK manifest
 - APK download and handoff to Android's system installer
+- FCM push token registration and notification display when Firebase build config is present
 - screen kept awake while the app is open
 
 It does not yet include:
 
 - native voice engine
-- push notifications
 - foreground service
 - wake word
 
@@ -78,6 +76,22 @@ For local backend testing from a device, use a reachable LAN URL:
 
 ```bash
 ../scripts/android-build.sh :app:assembleDebug -PATENEA_API_BASE_URL=http://192.168.1.20:8085
+```
+
+Enable native push by filling the Firebase Android config file for the target build environment. The backend must also have FCM service-account credentials through `ATENEA_MOBILE_PUSH_FCM_*`.
+
+```bash
+/srv/atenea/platform/secrets/android-firebase-dev.env
+/srv/atenea/platform/secrets/android-firebase-preview.env
+/srv/atenea/platform/secrets/android-firebase-prod.env
+```
+
+Builds load `prod` by default. Use `ATENEA_ANDROID_ENV` to select another Firebase config file:
+
+```bash
+ATENEA_ANDROID_ENV=dev ../scripts/android-build.sh :app:assembleDebug
+ATENEA_ANDROID_ENV=preview ../scripts/android-build.sh :app:assembleDebug
+ATENEA_ANDROID_ENV=prod ../scripts/android-build.sh :app:assembleRelease
 ```
 
 ## First manual test
@@ -156,7 +170,7 @@ BUILD SUCCESSFUL
 
 ## Native shell rule
 
-Do not port every Expo screen mechanically and do not place new screens directly in `CoreConsoleApp.kt`.
+Do not place new screens directly in `CoreConsoleApp.kt`.
 
 Current shell rules:
 

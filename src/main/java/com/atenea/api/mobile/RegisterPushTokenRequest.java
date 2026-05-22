@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public record RegisterPushTokenRequest(
-        @NotBlank @Size(max = 255) String expoPushToken,
+        @NotBlank @Size(max = 255) String pushToken,
         @Size(max = 190) String deviceId,
         @Size(max = 190) String deviceName,
         @NotBlank @Size(max = 32) String platform,

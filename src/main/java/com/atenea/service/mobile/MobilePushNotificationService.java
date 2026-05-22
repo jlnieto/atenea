@@ -37,16 +37,16 @@ public class MobilePushNotificationService {
                 .filter(OperatorEntity::isActive)
                 .orElseThrow(() -> new OperatorAuthenticationException("Operator account not found"));
 
-        String normalizedToken = request.expoPushToken().trim();
+        String normalizedToken = request.pushToken().trim();
         Instant now = Instant.now();
-        OperatorPushDeviceEntity entity = operatorPushDeviceRepository.findByExpoPushToken(normalizedToken)
+        OperatorPushDeviceEntity entity = operatorPushDeviceRepository.findByPushToken(normalizedToken)
                 .orElseGet(OperatorPushDeviceEntity::new);
 
         if (entity.getCreatedAt() == null) {
             entity.setCreatedAt(now);
         }
         entity.setOperator(operator);
-        entity.setExpoPushToken(normalizedToken);
+        entity.setPushToken(normalizedToken);
         entity.setDeviceId(trimToNull(request.deviceId()));
         entity.setDeviceName(trimToNull(request.deviceName()));
         entity.setPlatform(request.platform().trim().toLowerCase());
@@ -62,7 +62,7 @@ public class MobilePushNotificationService {
             AuthenticatedOperator authenticatedOperator,
             UnregisterPushTokenRequest request
     ) {
-        operatorPushDeviceRepository.findByExpoPushToken(request.expoPushToken().trim())
+        operatorPushDeviceRepository.findByPushToken(request.pushToken().trim())
                 .filter(device -> device.getOperator().getId().equals(authenticatedOperator.operatorId()))
                 .ifPresent(device -> {
                     device.setActive(false);
@@ -82,7 +82,7 @@ public class MobilePushNotificationService {
     private MobilePushDeviceResponse toResponse(OperatorPushDeviceEntity entity) {
         return new MobilePushDeviceResponse(
                 entity.getId(),
-                entity.getExpoPushToken(),
+                entity.getPushToken(),
                 entity.getDeviceId(),
                 entity.getDeviceName(),
                 entity.getPlatform(),
@@ -100,4 +100,5 @@ public class MobilePushNotificationService {
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
     }
+
 }
