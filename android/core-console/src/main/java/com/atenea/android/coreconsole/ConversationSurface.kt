@@ -27,8 +27,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -51,8 +53,11 @@ internal fun ConversationSurface(
     input: String,
     pending: Boolean,
     placeholder: String,
+    recording: Boolean = false,
+    audioLevels: List<Float> = emptyList(),
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
+    onMicrophoneClick: (() -> Unit)? = null,
     onBack: () -> Unit,
     onOpenCore: () -> Unit,
     onRefresh: () -> Unit,
@@ -110,8 +115,11 @@ internal fun ConversationSurface(
             input = input,
             pending = pending,
             placeholder = placeholder,
+            recording = recording,
+            audioLevels = audioLevels,
             onInputChange = onInputChange,
-            onSend = onSend
+            onSend = onSend,
+            onMicrophoneClick = onMicrophoneClick
         )
     }
 }
@@ -332,9 +340,17 @@ private fun ConversationComposer(
     input: String,
     pending: Boolean,
     placeholder: String,
+    recording: Boolean,
+    audioLevels: List<Float>,
     onInputChange: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    onMicrophoneClick: (() -> Unit)?
 ) {
+    val hasInput = input.isNotBlank()
+    val showSend = hasInput || recording
+    val actionEnabled = !pending && (showSend || onMicrophoneClick != null)
+    val actionBackground = if (actionEnabled) ConversationColors.sendBackground else ConversationColors.disabledAction
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -349,13 +365,21 @@ private fun ConversationComposer(
                 .heightIn(min = 56.dp, max = 156.dp)
                 .background(ConversationColors.composerField)
                 .padding(start = 10.dp, top = 12.dp, end = 60.dp, bottom = 14.dp),
-            enabled = !pending,
+            enabled = !pending && !recording,
             minLines = 1,
             maxLines = 5,
             textStyle = ConversationTypography.input.copy(color = ConversationColors.primaryText),
             decorationBox = { inner ->
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    if (input.isBlank()) {
+                    if (recording) {
+                        RecordingWaveform(
+                            levels = audioLevels,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(28.dp)
+                                .padding(end = 50.dp)
+                        )
+                    } else if (input.isBlank()) {
                         Text(
                             placeholder,
                             color = ConversationColors.placeholder,
@@ -372,14 +396,49 @@ private fun ConversationComposer(
                 .padding(end = 4.dp, bottom = 8.dp)
                 .size(40.dp)
                 .border(1.dp, ConversationColors.sendBorder, CircleShape)
-                .background(
-                    if (!pending && input.isNotBlank()) ConversationColors.sendBackground else ConversationColors.disabledAction,
-                    CircleShape
-                )
-                .clickable(enabled = !pending && input.isNotBlank(), onClick = onSend),
+                .background(actionBackground, CircleShape)
+                .clickable(enabled = actionEnabled) {
+                    if (showSend) {
+                        onSend()
+                    } else {
+                        onMicrophoneClick?.invoke()
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
-            SendUpIcon(color = ConversationColors.sendText)
+            if (showSend) {
+                SendUpIcon(color = ConversationColors.sendText)
+            } else {
+                MicrophoneIcon(color = ConversationColors.sendText)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordingWaveform(
+    levels: List<Float>,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val bars = levels.takeLast(34).ifEmpty { List(18) { 0.08f } }
+        val gap = 3.dp.toPx()
+        val barWidth = 2.dp.toPx()
+        val totalWidth = bars.size * barWidth + (bars.size - 1) * gap
+        val left = ((size.width - totalWidth).coerceAtLeast(0f)) / 2f
+        val centerY = size.height / 2f
+        val maxBarHeight = size.height * 0.88f
+        bars.forEachIndexed { index, rawLevel ->
+            val level = rawLevel.coerceIn(0.02f, 1f)
+            val barHeight = (maxBarHeight * level).coerceAtLeast(4.dp.toPx())
+            val x = left + index * (barWidth + gap)
+            drawLine(
+                color = ConversationColors.action,
+                start = Offset(x, centerY - barHeight / 2f),
+                end = Offset(x, centerY + barHeight / 2f),
+                strokeWidth = barWidth,
+                cap = StrokeCap.Round
+            )
         }
     }
 }
@@ -475,6 +534,44 @@ private fun SendUpIcon(color: Color) {
             Offset(size.width * 0.70f, size.height * 0.42f),
             strokeWidth,
             cap = androidx.compose.ui.graphics.StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun MicrophoneIcon(color: Color) {
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val strokeWidth = 2.0.dp.toPx()
+        val centerX = size.width * 0.5f
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * 0.37f, size.height * 0.14f),
+            size = Size(size.width * 0.26f, size.height * 0.48f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width * 0.13f, size.width * 0.13f),
+            style = Stroke(strokeWidth)
+        )
+        drawArc(
+            color = color,
+            startAngle = 0f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(size.width * 0.24f, size.height * 0.38f),
+            size = Size(size.width * 0.52f, size.height * 0.32f),
+            style = Stroke(strokeWidth, cap = StrokeCap.Round)
+        )
+        drawLine(
+            color,
+            Offset(centerX, size.height * 0.70f),
+            Offset(centerX, size.height * 0.86f),
+            strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color,
+            Offset(size.width * 0.35f, size.height * 0.86f),
+            Offset(size.width * 0.65f, size.height * 0.86f),
+            strokeWidth,
+            cap = StrokeCap.Round
         )
     }
 }
