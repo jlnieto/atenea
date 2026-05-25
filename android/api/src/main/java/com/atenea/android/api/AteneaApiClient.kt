@@ -281,7 +281,7 @@ class AteneaApiClient(
         contentType = contentType,
         bytes = bytes,
         onProgress = null
-    ) { json -> json.optString("transcription", "").trim() }
+    ) { json -> json.optString("transcript").ifBlank { json.optString("transcription") }.trim() }
 
     suspend fun fetchVoiceFocus(): MobileVoiceFocus = getJson(
         path = "/api/mobile/voice/focus",

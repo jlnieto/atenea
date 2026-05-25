@@ -2,6 +2,7 @@ package com.atenea.android.coreconsole
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Text
@@ -41,6 +42,7 @@ internal fun WorkSessionConversationScreen(
     var activeCommand by remember { mutableStateOf<CoreCommandResponse?>(null) }
     var recording by remember { mutableStateOf(false) }
     var audioLevels by remember { mutableStateOf(List(18) { 0.06f }) }
+    var recordingStartedAtMs by remember { mutableStateOf<Long?>(null) }
 
     fun refresh() {
         val id = sessionId ?: return
@@ -76,11 +78,24 @@ internal fun WorkSessionConversationScreen(
             input = ""
             error = null
             audioLevels = List(18) { 0.06f }
+            recordingStartedAtMs = SystemClock.elapsedRealtime()
             recording = true
+            AteneaDiagnostics.info(
+                area = "conversation-voice",
+                event = "recording_started",
+                details = mapOf("sessionId" to sessionId)
+            )
         } catch (recordingError: Exception) {
             promptRecorder.release()
             error = recordingError.message ?: "No se pudo iniciar la grabación."
             recording = false
+            recordingStartedAtMs = null
+            AteneaDiagnostics.error(
+                area = "conversation-voice",
+                event = "recording_start_failed",
+                throwable = recordingError,
+                details = mapOf("sessionId" to sessionId)
+            )
         }
     }
 
@@ -131,11 +146,28 @@ internal fun WorkSessionConversationScreen(
     fun sendRecordedPrompt() {
         val id = sessionId ?: return
         recording = false
+        val recordingDurationMs = recordingStartedAtMs?.let { SystemClock.elapsedRealtime() - it }
+        recordingStartedAtMs = null
         val recordingFile = promptRecorder.stop()
         if (recordingFile == null) {
             error = "No se pudo usar la grabación. Inténtalo de nuevo."
+            AteneaDiagnostics.warn(
+                area = "conversation-voice",
+                event = "recording_unusable",
+                details = mapOf("sessionId" to id, "durationMs" to recordingDurationMs)
+            )
             return
         }
+        AteneaDiagnostics.info(
+            area = "conversation-voice",
+            event = "recording_stopped",
+            details = mapOf(
+                "sessionId" to id,
+                "durationMs" to recordingDurationMs,
+                "bytes" to recordingFile.file.length(),
+                "contentType" to recordingFile.contentType
+            )
+        )
         scope.launch {
             pending = true
             error = null
@@ -144,6 +176,15 @@ internal fun WorkSessionConversationScreen(
                     fileName = recordingFile.file.name,
                     contentType = recordingFile.contentType,
                     bytes = recordingFile.file.readBytes()
+                )
+                AteneaDiagnostics.info(
+                    area = "conversation-voice",
+                    event = "transcription_received",
+                    details = mapOf(
+                        "sessionId" to id,
+                        "characters" to transcript.length,
+                        "blank" to transcript.isBlank()
+                    )
                 )
                 if (transcript.isBlank()) {
                     error = "La transcripción llegó vacía. Prueba a grabar de nuevo."
@@ -160,6 +201,12 @@ internal fun WorkSessionConversationScreen(
                 input = ""
             } catch (sendError: Exception) {
                 error = sendError.message ?: "No se pudo transcribir y enviar el audio."
+                AteneaDiagnostics.error(
+                    area = "conversation-voice",
+                    event = "transcription_or_send_failed",
+                    throwable = sendError,
+                    details = mapOf("sessionId" to id)
+                )
             } finally {
                 recordingFile.file.delete()
                 pending = false

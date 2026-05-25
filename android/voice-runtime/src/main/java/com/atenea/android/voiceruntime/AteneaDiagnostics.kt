@@ -305,8 +305,8 @@ object AteneaDiagnostics {
     private fun readRecentEvents(): List<JSONObject> {
         val context = synchronized(lock) { appContext } ?: return emptyList()
         val dir = diagnosticsDir(context)
-        val files = listOf(File(dir, "events.jsonl")) +
-            (1..MAX_EVENT_FILES).map { File(dir, "events.$it.jsonl") }
+        val files = (MAX_EVENT_FILES downTo 1).map { File(dir, "events.$it.jsonl") } +
+            File(dir, "events.jsonl")
         return files
             .filter { it.isFile }
             .flatMap { file ->
