@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -27,8 +29,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -51,16 +55,17 @@ internal fun ConversationSurface(
     input: String,
     pending: Boolean,
     placeholder: String,
+    recording: Boolean = false,
+    audioLevels: List<Float> = emptyList(),
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
+    onMicrophoneClick: (() -> Unit)? = null,
     onBack: () -> Unit,
     onOpenCore: () -> Unit,
     onRefresh: () -> Unit,
     error: String?,
     commandContent: @Composable (() -> Unit)? = null
 ) {
-    val transcript = remember(turns) { turns.toFormattedConversationTranscript() }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -98,7 +103,7 @@ internal fun ConversationSurface(
                 )
             } else {
                 ConversationTranscript(
-                    transcript = transcript,
+                    turns = turns,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -110,31 +115,44 @@ internal fun ConversationSurface(
             input = input,
             pending = pending,
             placeholder = placeholder,
+            recording = recording,
+            audioLevels = audioLevels,
             onInputChange = onInputChange,
-            onSend = onSend
+            onSend = onSend,
+            onMicrophoneClick = onMicrophoneClick
         )
     }
 }
 
 @Composable
 private fun ConversationTranscript(
-    transcript: AnnotatedString,
+    turns: List<MobileConversationTurn>,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
 
-    LaunchedEffect(transcript.text) {
+    LaunchedEffect(turns) {
         scrollState.scrollTo(scrollState.maxValue)
     }
 
-    Text(
-        text = transcript,
+    Column(
         modifier = modifier
             .verticalScroll(scrollState)
             .padding(top = 10.dp, bottom = 14.dp),
-        color = ConversationColors.primaryText,
-        style = ConversationTypography.body.copy(lineHeight = 19.sp)
-    )
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        turns.forEachIndexed { index, turn ->
+            if (index > 0) {
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(ConversationColors.messageDivider)
+                )
+            }
+            ConversationTurn(turn)
+        }
+    }
 }
 
 @Composable
@@ -246,19 +264,30 @@ private fun RenderedConversationText(text: String, operator: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         blocks.forEach { block ->
             if (block.code) {
-                Text(
-                    block.text,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(ConversationColors.codeBackground)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    color = ConversationColors.codeText,
-                    style = ConversationTypography.code
-                )
+                ConversationCodeBlock(block.text)
             } else {
                 RenderedParagraph(block.text, operator)
             }
         }
+    }
+}
+
+@Composable
+private fun ConversationCodeBlock(code: String) {
+    val horizontalScroll = rememberScrollState()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ConversationColors.codeBackground, RoundedCornerShape(6.dp))
+            .border(1.dp, ConversationColors.codeBorder, RoundedCornerShape(6.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Text(
+            code.trimEnd(),
+            modifier = Modifier.horizontalScroll(horizontalScroll),
+            color = ConversationColors.codeText,
+            style = ConversationTypography.code
+        )
     }
 }
 
@@ -332,9 +361,17 @@ private fun ConversationComposer(
     input: String,
     pending: Boolean,
     placeholder: String,
+    recording: Boolean,
+    audioLevels: List<Float>,
     onInputChange: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    onMicrophoneClick: (() -> Unit)?
 ) {
+    val hasInput = input.isNotBlank()
+    val showSend = hasInput || recording
+    val actionEnabled = !pending && (showSend || onMicrophoneClick != null)
+    val actionBackground = if (actionEnabled) ConversationColors.sendBackground else ConversationColors.disabledAction
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -349,13 +386,21 @@ private fun ConversationComposer(
                 .heightIn(min = 56.dp, max = 156.dp)
                 .background(ConversationColors.composerField)
                 .padding(start = 10.dp, top = 12.dp, end = 60.dp, bottom = 14.dp),
-            enabled = !pending,
+            enabled = !pending && !recording,
             minLines = 1,
             maxLines = 5,
             textStyle = ConversationTypography.input.copy(color = ConversationColors.primaryText),
             decorationBox = { inner ->
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    if (input.isBlank()) {
+                    if (recording) {
+                        RecordingWaveform(
+                            levels = audioLevels,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(28.dp)
+                                .padding(end = 50.dp)
+                        )
+                    } else if (input.isBlank()) {
                         Text(
                             placeholder,
                             color = ConversationColors.placeholder,
@@ -372,14 +417,49 @@ private fun ConversationComposer(
                 .padding(end = 4.dp, bottom = 8.dp)
                 .size(40.dp)
                 .border(1.dp, ConversationColors.sendBorder, CircleShape)
-                .background(
-                    if (!pending && input.isNotBlank()) ConversationColors.sendBackground else ConversationColors.disabledAction,
-                    CircleShape
-                )
-                .clickable(enabled = !pending && input.isNotBlank(), onClick = onSend),
+                .background(actionBackground, CircleShape)
+                .clickable(enabled = actionEnabled) {
+                    if (showSend) {
+                        onSend()
+                    } else {
+                        onMicrophoneClick?.invoke()
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
-            SendUpIcon(color = ConversationColors.sendText)
+            if (showSend) {
+                SendUpIcon(color = ConversationColors.sendText)
+            } else {
+                MicrophoneIcon(color = ConversationColors.sendText)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordingWaveform(
+    levels: List<Float>,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val bars = levels.takeLast(34).ifEmpty { List(18) { 0.08f } }
+        val gap = 3.dp.toPx()
+        val barWidth = 2.dp.toPx()
+        val totalWidth = bars.size * barWidth + (bars.size - 1) * gap
+        val left = ((size.width - totalWidth).coerceAtLeast(0f)) / 2f
+        val centerY = size.height / 2f
+        val maxBarHeight = size.height * 0.88f
+        bars.forEachIndexed { index, rawLevel ->
+            val level = rawLevel.coerceIn(0.02f, 1f)
+            val barHeight = (maxBarHeight * level).coerceAtLeast(4.dp.toPx())
+            val x = left + index * (barWidth + gap)
+            drawLine(
+                color = ConversationColors.action,
+                start = Offset(x, centerY - barHeight / 2f),
+                end = Offset(x, centerY + barHeight / 2f),
+                strokeWidth = barWidth,
+                cap = StrokeCap.Round
+            )
         }
     }
 }
@@ -475,6 +555,44 @@ private fun SendUpIcon(color: Color) {
             Offset(size.width * 0.70f, size.height * 0.42f),
             strokeWidth,
             cap = androidx.compose.ui.graphics.StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun MicrophoneIcon(color: Color) {
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val strokeWidth = 2.0.dp.toPx()
+        val centerX = size.width * 0.5f
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * 0.37f, size.height * 0.14f),
+            size = Size(size.width * 0.26f, size.height * 0.48f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width * 0.13f, size.width * 0.13f),
+            style = Stroke(strokeWidth)
+        )
+        drawArc(
+            color = color,
+            startAngle = 0f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(size.width * 0.24f, size.height * 0.38f),
+            size = Size(size.width * 0.52f, size.height * 0.32f),
+            style = Stroke(strokeWidth, cap = StrokeCap.Round)
+        )
+        drawLine(
+            color,
+            Offset(centerX, size.height * 0.70f),
+            Offset(centerX, size.height * 0.86f),
+            strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color,
+            Offset(size.width * 0.35f, size.height * 0.86f),
+            Offset(size.width * 0.65f, size.height * 0.86f),
+            strokeWidth,
+            cap = StrokeCap.Round
         )
     }
 }
@@ -806,7 +924,9 @@ private object ConversationColors {
     val operator = Color(0xFF179489)
     val operatorText = Color(0xFFE7ECE9)
     val codeBackground = Color(0xFF2F3331)
-    val codeText = Color(0xFF179489)
+    val codeBorder = Color(0xFF48504C)
+    val codeText = Color(0xFFD4E4DD)
+    val messageDivider = Color(0xFF5E6763)
     val quoteText = Color(0xFFA9D8BC)
     val error = Color(0xFFFFB4A9)
 }

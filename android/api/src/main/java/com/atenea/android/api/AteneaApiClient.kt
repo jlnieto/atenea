@@ -270,6 +270,19 @@ class AteneaApiClient(
         parser = ::parseMobileUpload
     )
 
+    suspend fun transcribeCoreVoiceAudio(
+        fileName: String,
+        contentType: String,
+        bytes: ByteArray
+    ): String = postMultipartFile(
+        path = "/api/core/voice/transcriptions",
+        fieldName = "audio",
+        fileName = fileName,
+        contentType = contentType,
+        bytes = bytes,
+        onProgress = null
+    ) { json -> json.optString("transcript").ifBlank { json.optString("transcription") }.trim() }
+
     suspend fun fetchVoiceFocus(): MobileVoiceFocus = getJson(
         path = "/api/mobile/voice/focus",
         authenticated = true,
