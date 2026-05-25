@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -64,8 +66,6 @@ internal fun ConversationSurface(
     error: String?,
     commandContent: @Composable (() -> Unit)? = null
 ) {
-    val transcript = remember(turns) { turns.toFormattedConversationTranscript() }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -103,7 +103,7 @@ internal fun ConversationSurface(
                 )
             } else {
                 ConversationTranscript(
-                    transcript = transcript,
+                    turns = turns,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -126,23 +126,33 @@ internal fun ConversationSurface(
 
 @Composable
 private fun ConversationTranscript(
-    transcript: AnnotatedString,
+    turns: List<MobileConversationTurn>,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
 
-    LaunchedEffect(transcript.text) {
+    LaunchedEffect(turns) {
         scrollState.scrollTo(scrollState.maxValue)
     }
 
-    Text(
-        text = transcript,
+    Column(
         modifier = modifier
             .verticalScroll(scrollState)
             .padding(top = 10.dp, bottom = 14.dp),
-        color = ConversationColors.primaryText,
-        style = ConversationTypography.body.copy(lineHeight = 19.sp)
-    )
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        turns.forEachIndexed { index, turn ->
+            if (index > 0) {
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(ConversationColors.messageDivider)
+                )
+            }
+            ConversationTurn(turn)
+        }
+    }
 }
 
 @Composable
@@ -254,19 +264,30 @@ private fun RenderedConversationText(text: String, operator: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         blocks.forEach { block ->
             if (block.code) {
-                Text(
-                    block.text,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(ConversationColors.codeBackground)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    color = ConversationColors.codeText,
-                    style = ConversationTypography.code
-                )
+                ConversationCodeBlock(block.text)
             } else {
                 RenderedParagraph(block.text, operator)
             }
         }
+    }
+}
+
+@Composable
+private fun ConversationCodeBlock(code: String) {
+    val horizontalScroll = rememberScrollState()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ConversationColors.codeBackground, RoundedCornerShape(6.dp))
+            .border(1.dp, ConversationColors.codeBorder, RoundedCornerShape(6.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Text(
+            code.trimEnd(),
+            modifier = Modifier.horizontalScroll(horizontalScroll),
+            color = ConversationColors.codeText,
+            style = ConversationTypography.code
+        )
     }
 }
 
@@ -903,7 +924,9 @@ private object ConversationColors {
     val operator = Color(0xFF179489)
     val operatorText = Color(0xFFE7ECE9)
     val codeBackground = Color(0xFF2F3331)
-    val codeText = Color(0xFF179489)
+    val codeBorder = Color(0xFF48504C)
+    val codeText = Color(0xFFD4E4DD)
+    val messageDivider = Color(0xFF5E6763)
     val quoteText = Color(0xFFA9D8BC)
     val error = Color(0xFFFFB4A9)
 }

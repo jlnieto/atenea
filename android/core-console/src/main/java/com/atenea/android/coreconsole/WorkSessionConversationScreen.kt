@@ -120,11 +120,11 @@ internal fun WorkSessionConversationScreen(
     fun sendTextPrompt() {
         val id = sessionId ?: return
         val message = input.trim()
-        if (message.isBlank()) {
+        if (pending || message.isBlank()) {
             return
         }
+        pending = true
         scope.launch {
-            pending = true
             error = null
             try {
                 activeCommand = apiClient.runCoreCommand(
@@ -145,11 +145,16 @@ internal fun WorkSessionConversationScreen(
 
     fun sendRecordedPrompt() {
         val id = sessionId ?: return
+        if (pending) {
+            return
+        }
+        pending = true
         recording = false
         val recordingDurationMs = recordingStartedAtMs?.let { SystemClock.elapsedRealtime() - it }
         recordingStartedAtMs = null
         val recordingFile = promptRecorder.stop()
         if (recordingFile == null) {
+            pending = false
             error = "No se pudo usar la grabación. Inténtalo de nuevo."
             AteneaDiagnostics.warn(
                 area = "conversation-voice",
@@ -169,7 +174,6 @@ internal fun WorkSessionConversationScreen(
             )
         )
         scope.launch {
-            pending = true
             error = null
             try {
                 val transcript = apiClient.transcribeCoreVoiceAudio(
@@ -190,7 +194,6 @@ internal fun WorkSessionConversationScreen(
                     error = "La transcripción llegó vacía. Prueba a grabar de nuevo."
                     return@launch
                 }
-                input = transcript
                 activeCommand = apiClient.runVoiceCommand(
                     input = transcript,
                     scope = CoreScope.SESSION,
@@ -229,6 +232,7 @@ internal fun WorkSessionConversationScreen(
             audioLevels = (audioLevels + promptRecorder.normalizedAmplitude()).takeLast(34)
             delay(70)
         }
+        audioLevels = List(18) { 0.06f }
     }
 
     DisposableEffect(Unit) {
@@ -312,7 +316,7 @@ internal fun WorkSessionConversationScreen(
         onOpenCore = onOpenCore,
         onRefresh = ::refresh,
         error = error,
-        commandContent = activeCommand?.let { command ->
+        commandContent = activeCommand?.takeIf { it.isVisibleConversationCommand() }?.let { command ->
             {
                 CommandCard(
                     command = command,
@@ -325,3 +329,10 @@ internal fun WorkSessionConversationScreen(
         }
     )
 }
+
+private fun CoreCommandResponse.isVisibleConversationCommand(): Boolean =
+    confirmation != null ||
+        clarification != null ||
+        status.equals("FAILED", ignoreCase = true) ||
+        !errorCode.isNullOrBlank() ||
+        !errorMessage.isNullOrBlank()
