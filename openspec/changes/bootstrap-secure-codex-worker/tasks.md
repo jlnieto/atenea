@@ -1,10 +1,10 @@
 ## 1. Versioned bootstrap automation
 
-- [ ] 1.1 Add `ops/worker/README.md` with supported host, staged execution, anti-lockout procedure, rollback and evidence commands.
-- [ ] 1.2 Add an idempotent `ops/worker/bootstrap.sh` with explicit preflight, prepare, ssh, firewall, tailscale-package and monitoring stages.
-- [ ] 1.3 Add managed sshd, systemd health service/timer and worker health-script templates without embedding host secrets or enrollment credentials.
-- [ ] 1.4 Add `ops/worker/verify.sh` with human and JSON output for accounts, paths, sshd, firewall, RAID, SMART, capacity, time and service state.
-- [ ] 1.5 Validate scripts with syntax checks and a non-mutating preflight against the AX42 baseline.
+- [x] 1.1 Add `ops/worker/README.md` with supported host, staged execution, anti-lockout procedure, rollback and evidence commands.
+- [x] 1.2 Add an idempotent `ops/worker/bootstrap.sh` with explicit preflight, prepare, ssh, firewall, tailscale-package and monitoring stages.
+- [x] 1.3 Add managed sshd, systemd health service/timer and worker health-script templates without embedding host secrets or enrollment credentials.
+- [x] 1.4 Add `ops/worker/verify.sh` with human and JSON output for accounts, paths, sshd, firewall, RAID, SMART, capacity, time and service state.
+- [x] 1.5 Validate scripts with syntax checks and a non-mutating preflight against the AX42 baseline.
 
 ## 2. Host identity, accounts and packages
 
