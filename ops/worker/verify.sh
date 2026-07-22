@@ -43,9 +43,13 @@ else
   record sshd fail "syntax invalid"
 fi
 
-if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
-  UFW_STATUS="$(ufw status 2>/dev/null)"
-  grep -Eq '^22/tcp[[:space:]].*LIMIT' <<<"${UFW_STATUS}" && record firewall pass "active; SSH limited" || record firewall fail "active without SSH limit"
+if command -v ufw >/dev/null && systemctl is-active --quiet ufw.service; then
+  if grep -Eq -- '-A ufw-user-input .*--dport 22 .*ufw-user-limit-accept' /etc/ufw/user.rules \
+    && grep -Eq -- '-A ufw6-user-input .*--dport 22 .*ufw6-user-limit-accept' /etc/ufw/user6.rules; then
+    record firewall pass "active; IPv4/IPv6 SSH limited"
+  else
+    record firewall fail "active without IPv4/IPv6 SSH limit"
+  fi
 else
   record firewall fail "inactive"
 fi
