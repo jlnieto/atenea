@@ -2,6 +2,10 @@
 
 Documentos clave:
 
+- `docs/remote-codex-platform-program.md`: ledger canónico del programa para separar Atenea control plane y el worker Codex remoto
+- `docs/remote-codex-platform-baseline.md`: línea base verificada de portátil, Atenea, AX42, repositorios, `dev` y riesgos de migración
+- `docs/remote-codex-platform-phases.md`: gates de entrada, evidencia, rollback y archivo de cada fase del programa remoto
+- `docs/remote-codex-platform-acceptance.md`: matrices de paridad, capacidad, recuperación, UI móvil/web y rollback
 - `docs/atenea-core.md`: definición canónica de `Atenea Core`, su relación con `WorkSession` y el siguiente bloque recomendado
 - `docs/atenea-core-foundation-design.md`: diseño técnico implementable para el primer contrato de `Atenea Core Foundation`
 - `docs/atenea-core-development-operator-surface.md`: siguiente bloque recomendado para convertir `Atenea Core` en la superficie operativa del dominio `development`
