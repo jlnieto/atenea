@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: foundation specification and baseline
+- Current phase: `bootstrap-secure-codex-worker` (implementation complete except tailnet enrollment and observation gate)
 - Runtime routing: unchanged
 - Control plane: current Atenea VPS
 - First worker: Hetzner AX42
@@ -177,4 +177,8 @@ After any interruption:
 7. Continue the first unchecked task or record a new decision if evidence invalidates the plan.
 8. Validate strictly, collect release/rollback evidence and archive the phase before advancing.
 
-The next intended change after archiving this foundation is `bootstrap-secure-codex-worker`.
+The active change is `bootstrap-secure-codex-worker`. Its implementation and
+reboot evidence are recorded in `remote-codex-worker-bootstrap-evidence.md`.
+Resume at the Tailscale identity/enrollment gate; do not repeat completed host
+hardening stages. Archive only after private connectivity is proven and the
+24-hour observation window is clean.

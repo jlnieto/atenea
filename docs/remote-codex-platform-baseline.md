@@ -60,6 +60,18 @@ Current application invariants:
 
 This state is acceptable only as a short bootstrap baseline. It is not an accepted production worker configuration.
 
+### Post-bootstrap state
+
+The historical table above describes the pre-change evidence. On 2026-07-23
+CEST, change `bootstrap-secure-codex-worker` established hostname
+`codex-worker-01`, named key-only administration, a no-login worker identity,
+the `/srv/atenea` filesystem skeleton, supported updates, deny-by-default UFW,
+rate-limited public SSH, the signed Tailscale package in `NeedsLogin` state,
+and a 15-minute health timer. A controlled reboot preserved access and all
+host checks passed after time synchronization. See
+`remote-codex-worker-bootstrap-evidence.md` for exact acceptance evidence and
+remaining gates.
+
 ## Repository readiness inventory
 
 | Project | Laptop state | Current Atenea copy | Runtime/data | Migration risk |
