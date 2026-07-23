@@ -130,7 +130,8 @@ Entry, evidence, rollback and archive gates are defined in `remote-codex-platfor
 |---|---|---|---|---|---|
 | D-001 | Keep Atenea as control plane and AX42 as worker. | Preserves working web/mobile/durable state and isolates resource-heavy execution. | accepted | platform owner | before any control-plane relocation proposal |
 | D-002 | Introduce an authenticated worker protocol instead of pointing Atenea directly at one remote App Server. | Scheduling, leases, cancellation, workspace and preview ownership need a worker contract. | accepted | platform owner | remote routing design phase |
-| D-003 | Use Tailscale initially. | Provides WireGuard data plane, device identity, NAT traversal, mobile support and policy with lower operational load. | accepted, enrollment owner pending | platform owner | before worker joins a production tailnet |
+| D-003 | Use Tailscale initially. | Provides WireGuard data plane, device identity, NAT traversal, mobile support and policy with lower operational load. | accepted and enrolled in `codynwave.com` | platform owner | before adding another user or network path |
+| D-011 | Use `info@codynwave.com` as the sole tailnet Owner initially. | Keeps Standard billing to one seat; Microsoft MFA/recovery plus tested public key-only SSH break-glass cover the initial recovery model. | accepted; second independent admin deferred | platform owner | before removing public SSH break-glass or expanding the operator team |
 | D-004 | Retain `dev` as a compatibility CLI over manifests. | Preserves operator muscle memory while removing laptop-only internals. | accepted | platform owner | runtime contract phase |
 | D-005 | One worktree and runtime namespace per WorkSession. | Protects branches and permits safe cross-project concurrency. | accepted | platform owner | runtime contract phase |
 | D-006 | Do not expose the host Docker socket to Codex. | A mounted socket is effective host-root and defeats session isolation. | accepted | security owner | isolation spike |
@@ -143,7 +144,7 @@ Entry, evidence, rollback and archive gates are defined in `remote-codex-platfor
 
 | Decision | Deferral | Must be resolved before |
 |---|---|---|
-| Tailnet identity provider, owner and recovery administrator | Requires operator account choice; infrastructure can be hardened first. | enrolling Atenea or AX42 in the production tailnet |
+| Second independent tailnet administrator | The operator chose one paid seat initially. `info@codynwave.com` is Owner; Microsoft recovery and public SSH break-glass remain mandatory. | removing public SSH break-glass or expanding beyond one operator |
 | External backup target and retention | Compare Hetzner Storage Box with an independent provider and existing storage. | storing authoritative non-Git artifacts or completing operational hardening |
 | Final pilot | Beautips is provisional; first reconcile its local and Atenea commits. | enabling first real project run |
 | Per-project localhost requirement | Discover through cookies, callbacks and browser tests. | declaring that project's private preview ready |

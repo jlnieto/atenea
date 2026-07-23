@@ -26,8 +26,8 @@
 
 - [x] 4.1 Install Tailscale from its signed supported Ubuntu package source without storing or using a reusable personal auth key.
 - [x] 4.2 Record the unresolved tailnet owner/recovery administrator as an explicit gate if operator identity is not yet available.
-- [ ] 4.3 After approval, enroll AX42 with the worker tag, enroll/verify Atenea and operator devices, and apply least-privilege ACL plus UFW private-interface rules.
-- [ ] 4.4 Prove private SSH/name connectivity and retain the documented public key-only break-glass path.
+- [x] 4.3 After approval, enroll AX42 with the worker tag, enroll/verify Atenea and operator devices, and apply least-privilege ACL plus UFW private-interface rules.
+- [x] 4.4 Prove private SSH/name connectivity and retain the documented public key-only break-glass path.
 
 ## 5. Health monitoring and reboot acceptance
 

@@ -18,7 +18,7 @@ runtime and no Atenea AgentRun is routed to it.
 | Packages | supported Ubuntu updates applied; automatic security updates active; automatic reboot disabled |
 | Storage | `md0`, `md1`, `md2` all `[UU]`; no resync/recovery; both NVMe SMART health checks passed; root usage 1% |
 | Time | NTP synchronized after boot |
-| Tailscale | signed Ubuntu Noble package source; Tailscale 1.98.9; daemon enabled; `NeedsLogin`; enrollment gate stored under `/etc/atenea-worker/gates` |
+| Tailscale | signed Ubuntu Noble package source; Tailscale 1.98.9; daemon enabled; enrolled as tagged `codex-worker-01` in the `codynwave.com` tailnet |
 | Monitoring | `atenea-worker-health.timer` enabled every 15 minutes; isolated service returns success; human and JSON output pass 13 checks |
 
 ## Reboot acceptance
@@ -49,13 +49,31 @@ returned `ok: true` and the systemd health service completed with result
 
 ## Remaining gates
 
-1. Choose the production tailnet owner and a second recovery administrator.
-2. Agree worker tags and least-privilege ACLs, then enroll AX42, Atenea, laptop
-   and mobile without storing a reusable personal auth key on the worker.
-3. Prove private SSH/name connectivity while retaining public key-only
-   break-glass access.
-4. Observe the host for 24 hours after the 2026-07-23 01:35 CEST reboot. The
+1. Observe the host for 24 hours after the 2026-07-23 01:35 CEST reboot. The
    archive gate cannot close before 2026-07-24 01:35 CEST.
+
+## Private-network acceptance
+
+The production tailnet is owned by `info@codynwave.com`. The operator chose one
+Standard-plan seat initially; `info@yudri.es` was not invited. Microsoft account
+recovery and the verified public key-only SSH aliases remain required until a
+second independent administrator is approved.
+
+| Node | Tailnet identity | Tailscale IPv4 | Evidence |
+|---|---|---|---|
+| Atenea control plane | `tag:control-plane` | `100.88.252.28` | online; direct path to worker; private SSH fingerprint matched public identity |
+| AX42 worker | `tag:codex-worker` | `100.81.98.93` | online; direct path; private SSH fingerprint matched Hetzner identity |
+| Operator laptop | `info@codynwave.com` | `100.114.35.49` | online; private SSH to both servers by MagicDNS |
+| Pixel 7 | `info@codynwave.com` | `100.77.112.127` | private HTTP check to worker returned 200 |
+| M13 de José Luis | `info@codynwave.com` | `100.79.63.1` | private HTTP check to worker returned 200 |
+
+The default allow-all policy was removed. Effective grants permit operator
+devices to both tagged servers and the control plane to the worker. They do not
+permit the worker or control plane to initiate connections to operator devices,
+or the worker to initiate connections to the control plane. Three persistent
+TCP/22 policy tests protect these invariants. Live positive and negative TCP
+tests matched the policy. The worker UFW policy explicitly permits private SSH
+on `tailscale0` while retaining rate-limited public SSH as break-glass.
 
 ## Versioned implementation
 
