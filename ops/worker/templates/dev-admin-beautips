@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+json=false
+if [[ "${1:-}" == "--json" ]]; then
+  json=true
+  shift
+fi
+
+operation="${1:-status}"
+target="${2:-beautips}"
+
+if [[ "$target" != "beautips" ]]; then
+  echo "Error: el target todavía no está habilitado en el AX42: $target" >&2
+  exit 64
+fi
+
+workspace="/srv/atenea/workspaces/manual/beautips"
+env_file="/etc/atenea-worker/manual-sessions/beautips.env"
+project_name="atenea-slot1-beautips"
+url="http://127.0.0.1:18083"
+export DOCKER_HOST="unix:///run/atenea-runtime/slot1/docker.sock"
+
+compose=(
+  docker compose
+  --project-name "$project_name"
+  --env-file "$env_file"
+  --file "$workspace/docker-compose.yml"
+)
+
+require_runtime() {
+  [[ -d "$workspace/.git" ]] || {
+    echo "Error: workspace de Beautips no disponible." >&2
+    exit 69
+  }
+  [[ -r "$env_file" ]] || {
+    echo "Error: secretos locales de Beautips no disponibles." >&2
+    exit 69
+  }
+  [[ -S "${DOCKER_HOST#unix://}" ]] || {
+    echo "Error: el slot rootless de Beautips no está disponible." >&2
+    exit 69
+  }
+}
+
+wait_for_health() {
+  local attempt
+  for attempt in {1..90}; do
+    if curl --fail --silent --max-time 3 \
+      "$url/actuator/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "Error: Beautips no alcanzó health ready en 180 segundos." >&2
+  "${compose[@]}" ps >&2 || true
+  return 1
+}
+
+require_runtime
+
+case "$operation" in
+  list)
+    if "$json"; then
+      printf '{"schemaVersion":1,"targets":[{"name":"beautips","state":"enabled"}]}\n'
+    else
+      echo "beautips"
+    fi
+    ;;
+  doctor)
+    docker info >/dev/null
+    docker compose version >/dev/null
+    git -C "$workspace" status --short --branch
+    echo "Beautips: runtime rootless disponible"
+    echo "URL privada local: $url"
+    ;;
+  status)
+    if "$json"; then
+      printf '{"schemaVersion":1,"session":"manual-beautips","project":"beautips","operation":"status","url":"%s","containers":' "$url"
+      "${compose[@]}" ps --format json | jq --compact-output --slurp .
+      printf '}\n'
+    else
+      "${compose[@]}" ps
+    fi
+    ;;
+  build)
+    "${compose[@]}" build
+    ;;
+  up)
+    "${compose[@]}" up --detach --build
+    wait_for_health
+    echo "Beautips listo: $url"
+    ;;
+  stop)
+    "${compose[@]}" stop
+    ;;
+  restart)
+    "${compose[@]}" restart
+    wait_for_health
+    echo "Beautips listo: $url"
+    ;;
+  redeploy)
+    "${compose[@]}" up --detach --build app
+    wait_for_health
+    echo "Beautips listo: $url"
+    ;;
+  logs)
+    "${compose[@]}" logs --tail "${3:-200}"
+    ;;
+  url)
+    echo "$url"
+    ;;
+  *)
+    echo "Uso: dev [--json] {list|doctor|status|build|up|stop|restart|redeploy|logs|url} beautips" >&2
+    exit 64
+    ;;
+esac

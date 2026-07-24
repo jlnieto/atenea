@@ -47,12 +47,54 @@ bundle containing committed refs only was verified and used to create:
 
 The checkout is clean, its `origin` remains
 `https://github.com/jlnieto/beautips.git`, and the `codex-beautips` tmux session
-is ready. Fetch/push remains an explicit blocked capability until independent
-GitHub authorization is configured.
+is ready. The AX42 performed an independent GitHub device authorization for
+account `jlnieto`; a sanitized `fetch` proved `HEAD == origin/main`. No laptop
+GitHub token or credential file was copied.
 
-No Compose runtime, application secret, preview or Atenea routing has been
-enabled for Beautips. It remains an administrative source workspace rather than
-an onboarded/schedulable project.
+## Beautips rootless runtime
+
+The official Docker repository key was verified as
+`9DC858229FC7DD38854AE2D88D81803C0EBFCD88`. The installed runtime is pinned:
+
+| Component | Version |
+|---|---|
+| Docker Engine/CLI/rootless extras | `29.6.2` |
+| containerd | `2.2.6` |
+| Buildx | `0.35.0` |
+| Compose | `5.3.1` |
+
+The rootful Docker, Docker socket and containerd services are masked. User
+`atenea-slot1` owns a rootless daemon and has no sudo or `atenea` group access.
+Its systemd user slice is limited to 400% CPU, 10 GiB `MemoryHigh`, 12 GiB
+`MemoryMax` and 4096 tasks. The administrative bridge reaches only this
+rootless slot through `/run/atenea-runtime/slot1/docker.sock`; it does not
+receive `/var/run/docker.sock`.
+
+Local development credentials were generated on the AX42 and stored at
+`/etc/atenea-worker/manual-sessions/beautips.env` as `root:atenea-slot1` mode
+`0640`. WhatsApp integration secrets remain unset. No credential value is
+recorded here.
+
+`dev up beautips` built the declared Node 22, Maven 3.9.9 and Java 21 stages,
+then started PostgreSQL 16, Redis 7 and the application. Acceptance evidence:
+
+- application health returned `UP`;
+- PostgreSQL and Redis reported healthy;
+- Codex itself successfully executed `dev status beautips` from its
+  `workspace-write` sandbox;
+- all published ports bind to worker loopback only;
+- Playwright loaded `/admin/login` through a private SSH tunnel at `1440x900`
+  and `390x844`;
+- both DOM checks had visible content and no horizontal overflow;
+- inspected screenshots showed the complete, readable Superadmin login without
+  clipping or overlap.
+
+The root `/` returning 403 is expected for this application; `/admin/login` is
+the declared visual smoke route.
+
+Beautips remains an administrative pilot rather than an Atenea-schedulable
+project until the generic manifest/broker, data fixtures, full test suite,
+cleanup and remote AgentRun routing gates pass.
 
 ## Immediate usage
 
@@ -64,6 +106,15 @@ axcodex beautips
 
 Detach without terminating Codex with `Ctrl-b`, then `d`. The same command
 reattaches to the existing conversation.
+
+Start the private browser tunnel on the laptop:
+
+```bash
+axpreview beautips
+```
+
+The current URL is `http://127.0.0.1:18083/admin/login`. Stop the tunnel with
+`axpreview beautips stop`; stopping the tunnel does not stop Beautips or Codex.
 
 From another authorized Tailscale device with an SSH client:
 

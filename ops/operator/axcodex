@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+name="${1:-main}"
+
+if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,47}$ ]]; then
+  echo "Uso: axcodex [nombre-de-sesion]" >&2
+  exit 2
+fi
+
+exec ssh -t codex-worker \
+  /home/jose/.local/bin/codex-work \
+  "$name" \
+  "/srv/atenea/workspaces/manual/$name"

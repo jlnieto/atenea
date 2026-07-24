@@ -31,9 +31,17 @@ esac
 
 session="codex-$name"
 export PATH="$HOME/.local/bin:$PATH"
+codex_args=()
+
+case "$name" in
+  beautips)
+    export DOCKER_HOST="unix:///run/atenea-runtime/slot1/docker.sock"
+    codex_args+=(--add-dir /run/atenea-runtime/slot1)
+    ;;
+esac
 
 echo "Sesión: $session"
 echo "Workspace: $workspace"
 echo "Para salir sin detener Codex: Ctrl-b y después d"
 
-exec tmux new-session -A -s "$session" -c "$workspace" codex
+exec tmux new-session -A -s "$session" -c "$workspace" codex "${codex_args[@]}"

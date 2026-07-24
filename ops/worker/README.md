@@ -93,3 +93,21 @@ ssh -t codex-worker \
 
 Detach with `Ctrl-b`, then `d`. This bridge runs as the named administrator and
 MUST NOT be used as Atenea's managed AgentRun executor.
+
+## Rootless runtime slots
+
+Install one of the four pinned rootless Docker slots:
+
+```bash
+sudo ./install-rootless-runtime-slot.sh 1
+```
+
+The script masks the rootful Docker/containerd units, verifies Docker's signing
+key, pins the Engine/CLI/Compose/Buildx/containerd packages, creates a
+non-administrative slot user and applies a systemd CPU, memory and task limit.
+It publishes a group-restricted proxy to that slot's rootless socket beneath
+`/run/atenea-runtime/`; it never publishes `/var/run/docker.sock`.
+
+The current `dev` template is an administrative Beautips pilot. The generic
+manifest resolver and default-deny managed broker remain part of the active
+runtime-contract change and are required before Atenea can schedule a project.

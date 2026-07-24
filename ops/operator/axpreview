@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+target="${1:-beautips}"
+action="${2:-start}"
+runtime_root="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+case "$target" in
+  beautips)
+    local_port=18083
+    remote_port=18083
+    path="/admin/login"
+    ;;
+  *)
+    echo "Error: preview todavía no habilitado para $target" >&2
+    exit 64
+    ;;
+esac
+
+control_dir="$runtime_root/axpreview"
+control_socket="$control_dir/$target.sock"
+url="http://127.0.0.1:${local_port}${path}"
+mkdir -p "$control_dir"
+chmod 0700 "$control_dir"
+
+is_running() {
+  ssh -S "$control_socket" -O check codex-worker >/dev/null 2>&1
+}
+
+case "$action" in
+  start)
+    if ! is_running; then
+      ssh -M -S "$control_socket" -fNT \
+        -o ExitOnForwardFailure=yes \
+        -L "127.0.0.1:${local_port}:127.0.0.1:${remote_port}" \
+        codex-worker
+    fi
+    echo "Preview privado activo: $url"
+    ;;
+  stop)
+    if is_running; then
+      ssh -S "$control_socket" -O exit codex-worker >/dev/null
+    fi
+    echo "Preview privado detenido: $target"
+    ;;
+  status)
+    if is_running; then
+      echo "ready $url"
+    else
+      echo "stopped $target"
+      exit 1
+    fi
+    ;;
+  url)
+    echo "$url"
+    ;;
+  *)
+    echo "Uso: axpreview beautips {start|stop|status|url}" >&2
+    exit 64
+    ;;
+esac
