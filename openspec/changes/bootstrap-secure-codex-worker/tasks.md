@@ -42,4 +42,4 @@
 - [x] 6.1 Run strict OpenSpec validation and repository diff checks.
 - [x] 6.2 Confirm current Atenea AgentRun routing, production containers and project repositories were not changed by this phase.
 - [x] 6.3 Execute the documented configuration rollback test or an equivalent isolated dry run and record its result.
-- [ ] 6.4 Observe the baseline for 24 hours without authentication, RAID, network or service-start regression before archiving the phase.
+- [x] 6.4 Observe the baseline for 24 hours without authentication, RAID, network or service-start regression before archiving the phase.

@@ -1,6 +1,6 @@
 # Secure Codex worker bootstrap evidence
 
-Evidence date: 2026-07-23 CEST. Change:
+Evidence date: 2026-07-24 CEST. Change:
 `bootstrap-secure-codex-worker`.
 
 ## Result
@@ -47,10 +47,33 @@ returned `ok: true` and the systemd health service completed with result
 - No Docker runtime, Codex runtime, repositories, project secrets or Atenea
   production routing were introduced in this phase.
 
-## Remaining gates
+## Observation acceptance
 
-1. Observe the host for 24 hours after the 2026-07-23 01:35 CEST reboot. The
-   archive gate cannot close before 2026-07-24 01:35 CEST.
+The worker remained continuously online for more than 41 hours after the
+2026-07-23 01:35 CEST reboot, exceeding the 24-hour archive gate. Final
+acceptance on 2026-07-24 recorded:
+
+- 159 successful `atenea-worker-health.service` completions and zero failed
+  health runs;
+- strict verification `ok: true` with all 13 checks passing;
+- `md0`, `md1` and `md2` continuously healthy `[UU]`, with no resync or
+  recovery operation;
+- both NVMe SMART checks passing, root usage 1%, NTP synchronized and no failed
+  systemd units;
+- no unexpected reboot, authentication regression or service-start
+  regression;
+- private operator SSH, public root key-only break-glass and Atenea-to-worker
+  SSH passing;
+- worker-to-control-plane TCP/22 remaining blocked by the tailnet policy.
+
+One isolated `AMD-Vi: Completion-Wait loop timed out` kernel warning occurred
+on 2026-07-23 15:31 CEST. It did not recur and had no associated RAID, SMART,
+network, service or health-check failure. Malformed and brute-force public SSH
+traffic was rejected before authentication or rate-limited by UFW.
+
+At final acceptance, Atenea's production containers remained up, its existing
+dirty production worktree was unchanged by this programme, and the clean
+programme worktree contained only the versioned bootstrap change.
 
 ## Private-network acceptance
 
