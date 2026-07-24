@@ -70,6 +70,11 @@ Its systemd user slice is limited to 400% CPU, 10 GiB `MemoryHigh`, 12 GiB
 rootless slot through `/run/atenea-runtime/slot1/docker.sock`; it does not
 receive `/var/run/docker.sock`.
 
+The same empty isolated base was prepared for slots 2–4. All four rootless
+daemons and restricted proxy sockets are active; only slot 1 currently has a
+workspace/runtime assignment. No repository, secret or application was placed
+in the unused slots.
+
 Local development credentials were generated on the AX42 and stored at
 `/etc/atenea-worker/manual-sessions/beautips.env` as `root:atenea-slot1` mode
 `0640`. WhatsApp integration secrets remain unset. No credential value is
