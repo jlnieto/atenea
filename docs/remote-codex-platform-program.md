@@ -6,11 +6,11 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `bootstrap-secure-codex-worker` (implementation complete except tailnet enrollment and observation gate)
+- Current phase: `establish-project-runtime-contract`
 - Runtime routing: unchanged
 - Control plane: current Atenea VPS
 - First worker: Hetzner AX42
-- Last evidence refresh: 2026-07-22
+- Last evidence refresh: 2026-07-24
 
 The normative requirements live in OpenSpec. This ledger records phase state, decisions, evidence locations and the exact resume point. Code, tests and migrations remain authoritative for existing Atenea runtime behaviour.
 
@@ -167,6 +167,10 @@ Every implementation phase requires a dedicated OpenSpec change, test evidence, 
 
 ## Resume protocol
 
+The secure AX42 bootstrap was accepted after more than 24 hours of clean
+observation and archived as
+`openspec/changes/archive/2026-07-24-bootstrap-secure-codex-worker`.
+
 After any interruption:
 
 1. Open this ledger and identify `Current phase`.
@@ -178,8 +182,7 @@ After any interruption:
 7. Continue the first unchecked task or record a new decision if evidence invalidates the plan.
 8. Validate strictly, collect release/rollback evidence and archive the phase before advancing.
 
-The active change is `bootstrap-secure-codex-worker`. Its implementation and
-reboot evidence are recorded in `remote-codex-worker-bootstrap-evidence.md`.
-Resume at the Tailscale identity/enrollment gate; do not repeat completed host
-hardening stages. Archive only after private connectivity is proven and the
-24-hour observation window is clean.
+The active change is `establish-project-runtime-contract`. Resume from its first
+unchecked task. The administrative Codex/tmux bridge may be used to begin work,
+but it is not evidence of the managed session isolation boundary and MUST NOT be
+used as Atenea's AgentRun executor.
