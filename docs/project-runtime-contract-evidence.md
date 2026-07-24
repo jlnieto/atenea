@@ -97,6 +97,35 @@ then started PostgreSQL 16, Redis 7 and the application. Acceptance evidence:
 The root `/` returning 403 is expected for this application; `/admin/login` is
 the declared visual smoke route.
 
+## Tailnet-only browser preview
+
+Tailscale Serve was explicitly enabled by the tailnet owner and configured in
+background mode:
+
+`https://codex-worker-01.tailf11cbc.ts.net/` proxies
+`http://127.0.0.1:18083`.
+
+Evidence:
+
+- Serve reports `tailnet only`; Funnel/public sharing was not enabled;
+- MagicDNS resolves the worker FQDN to `100.81.98.93`;
+- TLS 1.3 completed with a valid Let's Encrypt certificate for the exact worker
+  FQDN;
+- HTTPS `/actuator/health` returned `UP`;
+- HTTPS `/admin/login` returned the rendered Superadmin login;
+- Playwright passed at `1440x900` and `390x844` through the HTTPS Serve URL with
+  visible content and no horizontal overflow;
+- the two registered Android devices were online during validation.
+
+The background Serve configuration survives tailscaled and host restarts. It
+can be disabled without stopping Beautips using:
+
+`sudo tailscale serve --https=443 off`
+
+This pilot assigns the worker's single default HTTPS root to Beautips. Multiple
+simultaneous project previews require the generic session preview registry and
+path/service allocation defined for the later preview phase.
+
 Beautips remains an administrative pilot rather than an Atenea-schedulable
 project until the generic manifest/broker, data fixtures, full test suite,
 cleanup and remote AgentRun routing gates pass.
