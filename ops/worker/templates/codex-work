@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+name="${1:-main}"
+requested_dir="${2:-/srv/atenea/workspaces/manual/$name}"
+
+if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,47}$ ]]; then
+  echo "Error: el nombre debe usar letras, números, punto, guion o guion bajo (máximo 48)." >&2
+  exit 2
+fi
+
+case "$requested_dir" in
+  /srv/atenea/workspaces/*) ;;
+  *)
+    echo "Error: el workspace debe estar bajo /srv/atenea/workspaces." >&2
+    exit 2
+    ;;
+esac
+
+mkdir -p "$requested_dir"
+workspace="$(realpath "$requested_dir")"
+
+case "$workspace" in
+  /srv/atenea/workspaces/*) ;;
+  *)
+    echo "Error: el workspace resuelto sale de /srv/atenea/workspaces." >&2
+    exit 2
+    ;;
+esac
+
+session="codex-$name"
+export PATH="$HOME/.local/bin:$PATH"
+
+echo "Sesión: $session"
+echo "Workspace: $workspace"
+echo "Para salir sin detener Codex: Ctrl-b y después d"
+
+exec tmux new-session -A -s "$session" -c "$workspace" codex

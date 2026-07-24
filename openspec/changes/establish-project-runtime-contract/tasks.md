@@ -6,19 +6,19 @@
       fixture corpus.
 - [ ] 1.3 Define the session allocation, worktree, runtime identity, structured
       state and error envelopes.
-- [ ] 1.4 Update the programme ledger to make this change the active phase and
+- [x] 1.4 Update the programme ledger to make this change the active phase and
       record the accepted AX42 foundation evidence.
 
 ## 2. Worker toolchain and Codex
 
 - [ ] 2.1 Add idempotent installation/version-pin automation for required host,
       container, Java, Node, browser and build prerequisites.
-- [ ] 2.2 Install the official Codex CLI for the administrative bridge and prove
+- [x] 2.2 Install the official Codex CLI for the administrative bridge and prove
       version, diagnostics and independent headless authentication without
       exposing credentials.
 - [ ] 2.3 Promote only allowlisted non-secret global instructions, configuration
       and skills and record effective context hashes.
-- [ ] 2.4 Prove a named tmux Codex session survives SSH/laptop disconnect and can
+- [x] 2.4 Prove a named tmux Codex session survives SSH/laptop disconnect and can
       be resumed from another authorized client.
 
 ## 3. Session workspace and dev compatibility

@@ -66,3 +66,30 @@ sudo cat /proc/mdstat
 sudo smartctl -H /dev/nvme0n1
 sudo smartctl -H /dev/nvme1n1
 ```
+
+## Administrative Codex bridge
+
+After the secure baseline has passed and the runtime-contract change is active,
+install the pinned, non-authoritative bridge:
+
+```bash
+sudo ./install-codex-bridge.sh
+sudo -u jose -H codex login --device-auth
+sudo -u jose -H codex doctor --summary
+```
+
+The script installs the Ubuntu 24.04 `bubblewrap` AppArmor profile recommended
+for the Codex Linux sandbox, promotes only the versioned non-secret
+configuration/instructions, and installs `codex-work`. It never copies a laptop
+Codex home or authentication file.
+
+Start or reattach a private persistent session:
+
+```bash
+ssh -t codex-worker \
+  /home/jose/.local/bin/codex-work beautips \
+  /srv/atenea/workspaces/manual/beautips
+```
+
+Detach with `Ctrl-b`, then `d`. This bridge runs as the named administrator and
+MUST NOT be used as Atenea's managed AgentRun executor.
