@@ -183,6 +183,7 @@ WORKTREE_REAL="$(realpath -e "${WORKTREE_PATH}")"
 [[ "${MANIFEST_REAL}" == "${WORKTREE_REAL}/"* ]] ||
   fail "MANIFEST_INVALID" "Runtime manifest is outside the owned session worktree." \
     "Use the reviewed manifest from this WorkSession."
+MANIFEST_RELATIVE_PATH="${MANIFEST_REAL#"${WORKTREE_REAL}/"}"
 jq -e \
   --arg project "${PROJECT_ID}" '
     .schemaVersion == 1 and
@@ -233,6 +234,8 @@ validate_allocation_record() {
     .schemaVersion == 1 and .state == "allocated" and
     (.projectId | test("^[a-z][a-z0-9-]{1,62}$")) and
     .runtimeId == $runtime and
+    (.manifestRelativePath |
+      test("^(?!/)(?!~)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)[A-Za-z0-9._/-]+$")) and
     (.slot | test("^slot[1-4]$")) and
     .workloadClass == "normal" and
     .runtimeNames.composeProject == ($runtime + "-compose") and
@@ -291,6 +294,7 @@ record_matches_request() {
     --arg mirror "${MIRROR_PATH}" \
     --arg worktree "${WORKTREE_PATH}" \
     --arg runtime "${RUNTIME_ID}" \
+    --arg manifestRelativePath "${MANIFEST_RELATIVE_PATH}" \
     --arg slot "${SLOT}" \
     --arg runtimeRoot "${RUNTIME_ROOT}" \
     --arg logs "${LOGS_PATH}" \
@@ -304,6 +308,7 @@ record_matches_request() {
       .sessionId == $session and .projectId == $project and
       .branch == $branch and .mirrorPath == $mirror and
       .worktreePath == $worktree and .runtimeId == $runtime and
+      .manifestRelativePath == $manifestRelativePath and
       .slot == $slot and .workloadClass == "normal" and
       .runtimeRoot == $runtimeRoot and .logsPath == $logs and
       .artifactsRoot == $artifacts and .cacheRoot == $cache and
@@ -474,6 +479,7 @@ if [[ ! -f "${RUNTIME_RECORD}" ]]; then
     --arg mirror "${MIRROR_PATH}" \
     --arg worktree "${WORKTREE_PATH}" \
     --arg runtime "${RUNTIME_ID}" \
+    --arg manifestRelativePath "${MANIFEST_RELATIVE_PATH}" \
     --arg slot "${SLOT}" \
     --arg runtimeRoot "${RUNTIME_ROOT}" \
     --arg logs "${LOGS_PATH}" \
@@ -492,6 +498,7 @@ if [[ ! -f "${RUNTIME_RECORD}" ]]; then
       mirrorPath: $mirror,
       worktreePath: $worktree,
       runtimeId: $runtime,
+      manifestRelativePath: $manifestRelativePath,
       slot: $slot,
       workloadClass: "normal",
       state: "allocated",

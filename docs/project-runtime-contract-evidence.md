@@ -145,7 +145,7 @@ SHA-256 hashes match:
 
 | File | SHA-256 |
 |---|---|
-| `session-runtime-allocation-v1.sh` | `30446edabd33aebe9f6ced92aaff15fecf10ce4f9e1a895d4d662d599da39cc6` |
+| `session-runtime-allocation-v1.sh` | `b576bf96a1734a71b7c125d46e1227087c97c17a1b24da8d2187752f71fdb28c` |
 | `test-session-runtime-allocation-v1.sh` | `208c73be039110fb80656897bb09acdbb86af25addb4741a97d7cc714d217909` |
 
 Before and after the worker suite, `/srv/atenea/repositories` remained empty,
@@ -158,6 +158,73 @@ remained `UP` on `127.0.0.1:18083`, and Tailscale continued to report
 
 No real Atenea project or WorkSession was created, no real mirror or worktree
 was introduced, and Atenea production routing remained unchanged.
+
+## WorkSession-aware dev compatibility
+
+Task 3.3 adds `dev-session-v1.sh` with human output for `list`, `status`,
+`build`, `up`, `stop`, `restart`, `redeploy`, `logs`, `url` and `doctor`.
+Session-specific operations resolve exactly one WorkSession from:
+
+- an explicit canonical `--session` UUID;
+- the current directory beneath an owned session worktree; or
+- an unambiguous project selector.
+
+The client validates every discovered `workspace-v1.json` and
+`runtime-allocation-v1.json`, their owner and mode, the worktree boundary and
+the exact manifest path persisted by allocation. To make that resolution
+deterministic, task 3.2's allocation record now includes
+`manifestRelativePath`; it remains repository-relative and must resolve beneath
+the owned worktree.
+
+`list`, allocation `status`, loopback `url` and diagnostic state are rendered
+directly from validated records. Lifecycle and log operations never execute
+manifest `argv` arrays or contact Docker directly. They delegate to the fixed
+root-owned `/usr/libexec/atenea-runtime-client-v1` boundary. That client is
+intentionally absent until task 4.2, so lifecycle operations fail closed with
+the required next action in the real staging state. The existing
+administrative Beautips `dev` pilot was not replaced or modified.
+
+Task 3.4 remains separate: `--json` is explicitly rejected rather than
+returning unstable pseudo-JSON.
+
+`test-dev-session-v1.sh` passed twice in the programme worktree and once on
+`codex-worker-01` as `atenea-worker`. It used two synthetic WorkSessions for
+the same project and a synthetic mediated adapter beneath `/tmp`. The suite
+proved:
+
+- human list and aggregate status output include both session identities;
+- explicit UUID, current-worktree and project selection resolve safely;
+- duplicate project selection is rejected as `SESSION_AMBIGUOUS`;
+- missing selection and project/session mismatch fail closed;
+- all lifecycle/log commands reach only the selected synthetic adapter;
+- `logs --tail` remains bounded and reaches the adapter unchanged;
+- `url` uses the persisted loopback port and declared preview path;
+- status visibly reports the pending task 4.2 boundary when the runtime client
+  is absent;
+- `--json`, invalid option combinations, unsafe record modes and symbolic-link
+  manifests are rejected;
+- allocation records, uncommitted worktree state and mirror evidence remain
+  byte-identical;
+- deliberately failing manifest lifecycle commands are never executed
+  directly.
+
+The staged repository/worker SHA-256 hashes are:
+
+| File | SHA-256 |
+|---|---|
+| `session-runtime-allocation-v1.sh` | `b576bf96a1734a71b7c125d46e1227087c97c17a1b24da8d2187752f71fdb28c` |
+| `dev-session-v1.sh` | `fcbebfabde4659cdb945576491ac6b77f60f038601097772d6f0df98dda55fa5` |
+| `test-dev-session-v1.sh` | `bc7ea5cdf0fb32e7e74647ad029f6abe2ff88a8e50b3de26b3569914aa425a2a` |
+
+Before and after the worker suite, `/srv/atenea/repositories` remained empty,
+`/srv/atenea/workspaces/sessions` remained absent, manual workspaces were
+unchanged, slot 2 contained zero containers, and no temporary fixture
+remained. Rootful Docker, `docker.socket` and containerd remained inactive and
+masked. Beautips remained `UP` on loopback and Tailscale continued to report
+`No serve config`.
+
+No runtime manager, JSON envelope, real manifest, real project, real
+WorkSession or Atenea route was introduced.
 
 ## Administrative Codex bridge
 

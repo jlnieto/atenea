@@ -246,4 +246,4 @@ but it is not evidence of the managed session isolation boundary and MUST NOT be
 used as Atenea's AgentRun executor.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — runtime allocation 3.2`.
+`Migración Atenea y Codex al AX42 — dev JSON 3.4`.

@@ -37,6 +37,10 @@ allocation returns the byte-identical record. A conflicting slot, port,
 identity, ownership record or allocation state blocks reconciliation instead
 of selecting a replacement silently.
 
+The allocation record also binds the repository-relative path of the reviewed
+manifest used for the allocation. `dev` resolves that exact path beneath the
+owned worktree and never discovers a manifest by scanning unrelated files.
+
 Session caches are isolated below the cache root and carry a worker-written
 policy marker declaring them non-authoritative, reconstructible and unavailable
 for secrets. Removing a cache MUST NOT remove or rewrite source, workspace

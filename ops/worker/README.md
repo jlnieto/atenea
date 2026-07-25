@@ -212,3 +212,33 @@ with synthetic state beneath `/tmp`:
 ```bash
 ./test-session-runtime-allocation-v1.sh
 ```
+
+## WorkSession-aware dev client
+
+`dev-session-v1.sh` implements task 3.3's human command surface:
+
+```bash
+sudo -u atenea-worker ./dev-session-v1.sh list
+sudo -u atenea-worker ./dev-session-v1.sh \
+  --session 018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e status
+sudo -u atenea-worker ./dev-session-v1.sh up dummy-compose \
+  --session 018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e
+```
+
+The client resolves a WorkSession from `--session`, the current owned worktree
+or an unambiguous project selector. It validates both ownership records and the
+exact repository-relative manifest persisted by task 3.2. `list`, `status`,
+`url` and `doctor` render concise human state. `build`, `up`, `stop`, `restart`,
+`redeploy` and `logs` delegate to `/usr/libexec/atenea-runtime-client-v1`; they
+never execute manifest lifecycle commands or contact a container daemon
+directly.
+
+The mediated runtime client is intentionally absent until task 4.2. Mutating
+commands therefore fail closed outside the synthetic suite. `--json` remains
+task 3.4 and is rejected explicitly in this version.
+
+Run the complete resolver and delegation suite beneath `/tmp`:
+
+```bash
+./test-dev-session-v1.sh
+```
