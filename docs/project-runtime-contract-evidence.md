@@ -95,6 +95,70 @@ and removed every temporary fixture. Before and after the worker run,
 `/srv/atenea/workspaces/sessions` remained absent. No real project, mirror,
 session worktree, service, container or Atenea route was created.
 
+## Session runtime allocation
+
+Task 3.2 adds `session-runtime-allocation-v1.sh`, which consumes the ready
+task 3.1 workspace ownership record and does not invoke Git, start a project
+runtime or implement the later `dev` and runtime-manager tasks. The helper:
+
+- derives the runtime identity and every Compose, network, volume, process-unit
+  and Tomcat name from all 32 lowercase hexadecimal WorkSession UUID
+  characters;
+- serializes allocation through one worker-owned `flock`;
+- persists a mode `0640` `runtime-allocation-v1.json` beside
+  `workspace-v1.json` and returns it byte-identically on repetition;
+- binds every declared internal port to a distinct allocation on
+  `127.0.0.1`, skipping persisted allocations and live listeners;
+- creates deterministic session roots for runtime data, logs and retained run
+  artifacts without modifying mirrors or worktrees;
+- isolates Maven, Node, OCI and browser caches per session and writes a policy
+  marker declaring them rebuildable, non-authoritative and unavailable for
+  secrets;
+- fails closed on mismatched identity, slot, manifest, state, ownership, port
+  registry, mode or symbolic-link state.
+
+The helper deliberately accepts only `normal` workload manifests in task 3.2.
+Heavy admission and pressure limits remain task 4.4. Lifecycle commands and
+stable `dev --json` output remain tasks 3.3 and 3.4.
+
+The synthetic suite passed twice in a local clone of
+`program/remote-codex-worker-platform` and twice on `codex-worker-01` as
+`atenea-worker`. The first worker invocation inherited the inaccessible
+`/home/jose` current directory and emitted two harmless `find` restore
+warnings while still passing; repeating from `/tmp` produced clean evidence.
+The suite proved:
+
+- byte-stable idempotent repetition;
+- two sessions declaring internal ports `8080` and `5005` receive different
+  loopback ports and full-UUID-derived names;
+- a live synthetic loopback listener is skipped;
+- identity, incompatible state, unsafe mode, duplicate persisted port and
+  symbolic-link cache ownership conflicts are rejected;
+- logs, artifacts, cache entries, synthetic mirrors and uncommitted synthetic
+  worktree files survive success and denial paths;
+- cache policy and authoritative state remain separated;
+- two competing allocations serialize and receive different ports.
+
+Only the two versioned task 3.2 scripts were added to the existing staging
+root `/srv/atenea/worker/workspace-v1/ops/worker`. Their worker and repository
+SHA-256 hashes match:
+
+| File | SHA-256 |
+|---|---|
+| `session-runtime-allocation-v1.sh` | `30446edabd33aebe9f6ced92aaff15fecf10ce4f9e1a895d4d662d599da39cc6` |
+| `test-session-runtime-allocation-v1.sh` | `208c73be039110fb80656897bb09acdbb86af25addb4741a97d7cc714d217909` |
+
+Before and after the worker suite, `/srv/atenea/repositories` remained empty,
+`/srv/atenea/workspaces/sessions` remained absent, the existing manual
+workspaces were unchanged, slot 2 retained the same four digest-pinned images
+and zero containers, and task 3.1's staged hashes were unchanged. Rootful
+Docker, `docker.socket` and containerd remained inactive and masked. Beautips
+remained `UP` on `127.0.0.1:18083`, and Tailscale continued to report
+`No serve config`.
+
+No real Atenea project or WorkSession was created, no real mirror or worktree
+was introduced, and Atenea production routing remained unchanged.
+
 ## Administrative Codex bridge
 
 The bridge is intentionally separate from the future managed AgentRun executor.

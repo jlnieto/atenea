@@ -25,7 +25,7 @@
 
 - [x] 3.1 Implement canonical mirror and idempotent session-worktree creation
       with conflict-safe recovery.
-- [ ] 3.2 Implement collision-free runtime names, port allocation, logs,
+- [x] 3.2 Implement collision-free runtime names, port allocation, logs,
       artifacts and controlled caches.
 - [ ] 3.3 Implement `dev` list/status/build/up/stop/restart/redeploy/logs/url and
       doctor with explicit session selection.

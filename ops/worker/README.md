@@ -188,3 +188,27 @@ state:
 ```bash
 ./test-session-workspace-v1.sh
 ```
+
+## Session runtime allocation
+
+`session-runtime-allocation-v1.sh` implements task 3.2 without starting a
+runtime or changing Git state. It requires the ready task 3.1 ownership record,
+derives every runtime name from the complete WorkSession UUID, serializes
+slot/port ownership, persists a byte-stable allocation and creates only the
+declared runtime, log, artifact and rebuildable cache roots:
+
+```bash
+sudo -u atenea-worker ./session-runtime-allocation-v1.sh ensure \
+  018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e \
+  slot2 \
+  /srv/atenea/workspaces/sessions/018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e/dummy-compose/runtime.json
+```
+
+Task 3.2 accepts normal-workload manifests only. Heavy admission and resource
+pressure remain task 4.4; lifecycle commands and JSON rendering remain tasks
+3.3 and 3.4. Run the collision, ownership, preservation and concurrency suite
+with synthetic state beneath `/tmp`:
+
+```bash
+./test-session-runtime-allocation-v1.sh
+```

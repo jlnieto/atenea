@@ -21,12 +21,26 @@ worktree:  /srv/atenea/workspaces/sessions/S/P
 runtime:   ws-<32 lowercase hexadecimal UUID characters>
 logs:      /srv/atenea/artifacts/sessions/S/runtime/logs
 artifacts: /srv/atenea/artifacts/sessions/S/runs/<agent-run-id>
+cache:     /srv/atenea/caches/sessions/S
 ```
 
 The complete UUID, without hyphens, is used in the runtime identity. It is not
 truncated. Runtime-owned Compose projects, networks, volumes, Tomcat bases and
 process-unit names are prefixed by that identity and a resource-kind suffix.
 The project name alone is never a runtime namespace.
+
+The worker serializes allocation changes and persists
+`runtime-allocation-v1.json` beside `workspace-v1.json`. Declared internal ports
+are mapped to unique ports bound only on `127.0.0.1`; the same internal port may
+therefore be declared by multiple WorkSessions without collision. Repeating an
+allocation returns the byte-identical record. A conflicting slot, port,
+identity, ownership record or allocation state blocks reconciliation instead
+of selecting a replacement silently.
+
+Session caches are isolated below the cache root and carry a worker-written
+policy marker declaring them non-authoritative, reconstructible and unavailable
+for secrets. Removing a cache MUST NOT remove or rewrite source, workspace
+records, logs or retained run artifacts.
 
 The worker-owned record binds the complete session UUID to its project,
 canonical credential-free remote, original base commit, session branch, mirror,

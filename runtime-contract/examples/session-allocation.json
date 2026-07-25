@@ -8,8 +8,25 @@
   "runtimeId": "ws-018f47a26b0c7a319c2d4f5a6b7c8d9e",
   "slot": "slot2",
   "workloadClass": "normal",
-  "state": "ready",
+  "state": "allocated",
+  "runtimeNames": {
+    "composeProject": "ws-018f47a26b0c7a319c2d4f5a6b7c8d9e-compose",
+    "network": "ws-018f47a26b0c7a319c2d4f5a6b7c8d9e-network",
+    "volumePrefix": "ws-018f47a26b0c7a319c2d4f5a6b7c8d9e-volume",
+    "processUnit": "atenea-ws-018f47a26b0c7a319c2d4f5a6b7c8d9e.service",
+    "tomcatBase": "/srv/atenea/workspaces/sessions/018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e/runtime/ws-018f47a26b0c7a319c2d4f5a6b7c8d9e/tomcat"
+  },
+  "runtimeRoot": "/srv/atenea/workspaces/sessions/018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e/runtime/ws-018f47a26b0c7a319c2d4f5a6b7c8d9e",
+  "logsPath": "/srv/atenea/artifacts/sessions/018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e/runtime/logs",
+  "artifactsRoot": "/srv/atenea/artifacts/sessions/018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e/runs",
+  "cacheRoot": "/srv/atenea/caches/sessions/018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e",
   "allocatedPorts": [
-    {"name": "web", "internalPort": 8080, "loopbackPort": 18120}
+    {
+      "name": "web",
+      "internalPort": 8080,
+      "protocol": "http",
+      "bindAddress": "127.0.0.1",
+      "loopbackPort": 18120
+    }
   ]
 }
