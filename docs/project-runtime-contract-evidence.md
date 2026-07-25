@@ -57,6 +57,44 @@ normal allocation example and heavy-capacity blocked envelope passed schema and
 format validation. This is contract evidence only; task 3 implements it and
 task 5 exercises idempotency, collision and denial behaviour.
 
+## Session mirror and worktree provisioning
+
+Task 3.1 adds `session-workspace-v1.sh`, executed as the non-login
+`atenea-worker` service identity. It creates one bare repository per project
+under `/srv/atenea/repositories` and maps fetched canonical branches only to
+`refs/remotes/origin/*`; session-owned branches remain under `refs/heads/*` and
+cannot be overwritten by a canonical fetch.
+
+Each WorkSession owns a worker-written record at
+`/srv/atenea/workspaces/sessions/<uuid>/workspace-v1.json`. The record binds the
+complete session UUID to the credential-free canonical remote, original base
+commit, session branch, mirror, worktree and worker hostname. Provisioning is
+serialized per project and refuses symlinks, foreign ownership, unsafe fetch
+maps, mismatched records/remotes, branches checked out elsewhere, unowned
+paths and orphan local branches. Recovery never resets, cleans, switches or
+overwrites an existing worktree.
+
+The companion synthetic suite passed twice in the programme worktree and twice
+on `codex-worker-01` as `atenea-worker`. It proved:
+
+- initial mirror, ownership record and worktree creation;
+- byte-stable idempotent allocation while uncommitted work is present;
+- canonical branch advancement without changing the session branch;
+- reconciliation from a matching `provisioning` record;
+- reattachment of a persisted session branch after its synthetic worktree was
+  removed through Git;
+- denial of cross-session branch reuse, identity changes, unowned paths,
+  mismatched remotes, orphan branches and unsafe fetch mappings;
+- serialization of two concurrent requests for the same session.
+
+Only the two versioned scripts are staged at
+`/srv/atenea/worker/workspace-v1`. Their worker and repository SHA-256 hashes
+match. The suite permits only isolated `file:///tmp/...` remotes in test mode
+and removed every temporary fixture. Before and after the worker run,
+`/srv/atenea/repositories` remained empty and
+`/srv/atenea/workspaces/sessions` remained absent. No real project, mirror,
+session worktree, service, container or Atenea route was created.
+
 ## Administrative Codex bridge
 
 The bridge is intentionally separate from the future managed AgentRun executor.

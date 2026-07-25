@@ -159,3 +159,32 @@ The image action is idempotent, uses only the selected slot's rootless socket,
 runs version probes with networking disabled and never enables the rootful
 Docker daemon. Repeat it explicitly for another slot when that slot needs the
 toolchain cache.
+
+## Session mirrors and worktrees
+
+`session-workspace-v1.sh` implements task 3.1's Git boundary. Run it as the
+`atenea-worker` service identity with the persisted WorkSession UUID, registered
+project, credential-free canonical GitHub remote, base branch and session-owned
+branch:
+
+```bash
+sudo -u atenea-worker ./session-workspace-v1.sh ensure \
+  018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e \
+  dummy-compose \
+  https://github.com/example/dummy-compose.git \
+  main \
+  atenea/session-018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e
+```
+
+The helper keeps fetched canonical branches under `refs/remotes/origin/*` so a
+fetch cannot overwrite a session branch. It serializes changes per project,
+persists a worker-owned `workspace-v1.json` beside the worktree and fails closed
+when the session identity, remote, branch, ownership record or Git registration
+does not match. It never resets, cleans or switches an existing worktree.
+
+Run the synthetic lifecycle and conflict suite without GitHub or real project
+state:
+
+```bash
+./test-session-workspace-v1.sh
+```

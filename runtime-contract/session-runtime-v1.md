@@ -16,6 +16,7 @@ For WorkSession UUID `S` and project identifier `P`:
 
 ```text
 mirror:    /srv/atenea/repositories/P.git
+record:    /srv/atenea/workspaces/sessions/S/workspace-v1.json
 worktree:  /srv/atenea/workspaces/sessions/S/P
 runtime:   ws-<32 lowercase hexadecimal UUID characters>
 logs:      /srv/atenea/artifacts/sessions/S/runtime/logs
@@ -26,6 +27,11 @@ The complete UUID, without hyphens, is used in the runtime identity. It is not
 truncated. Runtime-owned Compose projects, networks, volumes, Tomcat bases and
 process-unit names are prefixed by that identity and a resource-kind suffix.
 The project name alone is never a runtime namespace.
+
+The worker-owned record binds the complete session UUID to its project,
+canonical credential-free remote, original base commit, session branch, mirror,
+worktree and execution target. A path or branch without that matching record is
+not owned merely because its name resembles a session identity.
 
 The four normal execution slots are `slot1` through `slot4`. A heavy operation
 also leases one of the two independent heavy permits. A third heavy request

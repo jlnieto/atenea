@@ -23,7 +23,7 @@
 
 ## 3. Session workspace and dev compatibility
 
-- [ ] 3.1 Implement canonical mirror and idempotent session-worktree creation
+- [x] 3.1 Implement canonical mirror and idempotent session-worktree creation
       with conflict-safe recovery.
 - [ ] 3.2 Implement collision-free runtime names, port allocation, logs,
       artifacts and controlled caches.
