@@ -83,6 +83,28 @@ for the Codex Linux sandbox, promotes only the versioned non-secret
 configuration/instructions, and installs `codex-work`. It never copies a laptop
 Codex home or authentication file.
 
+The promoted administrative context is controlled by
+`codex-context-allowlist-v1.txt`; `codex-context-lock-v1.txt` pins every source
+hash and the reviewed Git revision. Review the deterministic effective
+manifest without changing the worker:
+
+```bash
+./promote-codex-context.sh plan | jq .
+```
+
+Apply the reviewed context separately when its versioned sources change:
+
+```bash
+sudo ./promote-codex-context.sh apply
+```
+
+The apply action fails closed on unversioned or modified sources,
+credential-like material, symlinks and unexpected custom skill files. It
+installs only the allowlisted configuration, global instructions and OpenSpec
+skills, writes `~/.codex/context-manifest.json` with per-file and aggregate
+SHA-256 hashes, and does not read or copy authentication, histories, sessions,
+logs, caches, state databases, SSH keys or project secrets.
+
 Start or reattach a private persistent session:
 
 ```bash

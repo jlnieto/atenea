@@ -80,8 +80,44 @@ Verified state:
 
 No laptop `auth.json`, histories, sessions, logs, caches, SSH keys, complete
 Codex home or embedded project credentials were copied. The worker performed
-its own device authorization. Only a minimal versioned configuration and worker
-instruction file were promoted.
+its own device authorization.
+
+## Allowlisted Codex context
+
+Task 2.3 promoted the administrative context from seven explicitly allowlisted
+sources at Git revision
+`e89b7460ee642dd75cbecf3d2fad0073d43f1067`: one configuration file, one global
+instruction file and five OpenSpec skills. `codex-context-lock-v1.txt` pins
+every source hash. The effective manifest on the worker records context version
+`remote-codex-admin-v1` and aggregate SHA-256:
+
+`afa03516a02362c216876b930145b9ab03c3561e138f9da10be8b26509a21b35`
+
+The reviewed bundle contains only its promotion automation, allowlist, lock and
+the seven allowed sources. It is staged at
+`/srv/atenea/worker/context-v1`. The first apply created the protected rollback
+snapshot
+`/var/backups/atenea-worker-runtime/20260725T121420Z-codex-context`; the second
+apply reported the context already current. All seven installed hashes and
+their declared modes matched the manifest.
+
+The pre-existing configuration contained Codex-generated NUX and project-trust
+state not present in the versioned global configuration. Promotion removed
+those non-allowlisted entries and restored the pinned configuration. The
+instruction file already matched its pinned hash; no custom skills existed
+before promotion.
+
+Hashes for `auth.json` and `history.jsonl`, the absence of `history.json`, and
+the count of two session files were identical before and after promotion.
+Authentication, histories, sessions, logs, caches, state databases, SSH keys
+and project secrets are explicitly excluded. A sanitized post-promotion check
+confirmed Codex `0.145.0`, ChatGPT login, loaded configuration, healthy state
+databases and a successful WebSocket connection.
+
+Operationally, the standalone Codex binary is available through the worker
+login profile, not a bare non-login SSH PATH. Validation therefore used a login
+shell; future managed execution must set its declared PATH explicitly rather
+than inheriting an interactive profile.
 
 ## Version-pinned worker toolchains
 

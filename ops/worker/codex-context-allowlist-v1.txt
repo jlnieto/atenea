@@ -1,0 +1,8 @@
+# source|target|mode|kind
+ops/worker/templates/codex-admin-config.toml|config.toml|0600|configuration
+ops/worker/templates/codex-admin-AGENTS.md|AGENTS.md|0644|instructions
+.codex/skills/openspec-apply-change/SKILL.md|skills/openspec-apply-change/SKILL.md|0644|skill
+.codex/skills/openspec-archive-change/SKILL.md|skills/openspec-archive-change/SKILL.md|0644|skill
+.codex/skills/openspec-explore/SKILL.md|skills/openspec-explore/SKILL.md|0644|skill
+.codex/skills/openspec-propose/SKILL.md|skills/openspec-propose/SKILL.md|0644|skill
+.codex/skills/openspec-sync-specs/SKILL.md|skills/openspec-sync-specs/SKILL.md|0644|skill

@@ -7,8 +7,6 @@ TEMPLATE_DIR="${SCRIPT_DIR}/templates"
 ADMIN_USER="${ATENEA_WORKER_ADMIN_USER:-jose}"
 CODEX_RELEASE="${ATENEA_CODEX_RELEASE:-0.145.0}"
 ADMIN_HOME="$(getent passwd "${ADMIN_USER}" | cut -d: -f6)"
-BACKUP_ROOT="/var/backups/atenea-worker-runtime"
-RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 
 [[ "${EUID}" -eq 0 ]] || {
   echo "Run as root." >&2
@@ -20,12 +18,16 @@ RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
   exit 65
 }
 
-for template in codex-admin-config.toml codex-admin-AGENTS.md codex-work; do
+for template in codex-work; do
   [[ -f "${TEMPLATE_DIR}/${template}" ]] || {
     echo "Missing template: ${TEMPLATE_DIR}/${template}" >&2
     exit 66
   }
 done
+[[ -x "${SCRIPT_DIR}/promote-codex-context.sh" ]] || {
+  echo "Missing context promotion helper." >&2
+  exit 66
+}
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -42,25 +44,14 @@ apparmor_parser -r "${profile_target}"
 
 install -d -m 0700 -o "${ADMIN_USER}" -g "${ADMIN_USER}" "${ADMIN_HOME}/.codex"
 install -d -m 0755 -o "${ADMIN_USER}" -g "${ADMIN_USER}" "${ADMIN_HOME}/.local/bin"
-install -d -m 0700 "${BACKUP_ROOT}"
-
-snapshot="${BACKUP_ROOT}/${RUN_ID}-codex-admin-bridge"
-install -d -m 0700 "${snapshot}"
-for file in config.toml AGENTS.md; do
-  if [[ -f "${ADMIN_HOME}/.codex/${file}" ]]; then
-    cp -a "${ADMIN_HOME}/.codex/${file}" "${snapshot}/${file}"
-  fi
-done
-
-install -m 0600 -o "${ADMIN_USER}" -g "${ADMIN_USER}" \
-  "${TEMPLATE_DIR}/codex-admin-config.toml" "${ADMIN_HOME}/.codex/config.toml"
-install -m 0644 -o "${ADMIN_USER}" -g "${ADMIN_USER}" \
-  "${TEMPLATE_DIR}/codex-admin-AGENTS.md" "${ADMIN_HOME}/.codex/AGENTS.md"
 install -m 0755 -o "${ADMIN_USER}" -g "${ADMIN_USER}" \
   "${TEMPLATE_DIR}/codex-work" "${ADMIN_HOME}/.local/bin/codex-work"
 
 install -d -m 2770 -o "${ADMIN_USER}" -g atenea \
   /srv/atenea/workspaces/manual
+
+ATENEA_WORKER_ADMIN_USER="${ADMIN_USER}" \
+  "${SCRIPT_DIR}/promote-codex-context.sh" apply
 
 runuser -u "${ADMIN_USER}" -- env \
   HOME="${ADMIN_HOME}" \
@@ -93,4 +84,3 @@ else
   echo "Authentication guard: action required"
   echo "Run as ${ADMIN_USER}: codex login --device-auth"
 fi
-echo "Rollback snapshot: ${snapshot}"

@@ -16,7 +16,7 @@
 - [x] 2.2 Install the official Codex CLI for the administrative bridge and prove
       version, diagnostics and independent headless authentication without
       exposing credentials.
-- [ ] 2.3 Promote only allowlisted non-secret global instructions, configuration
+- [x] 2.3 Promote only allowlisted non-secret global instructions, configuration
       and skills and record effective context hashes.
 - [x] 2.4 Prove a named tmux Codex session survives SSH/laptop disconnect and can
       be resumed from another authorized client.
