@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.codynwave.com/schemas/session-allocation-v1.schema.json",
+  "title": "Atenea session runtime allocation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sessionId",
+    "projectId",
+    "branch",
+    "mirrorPath",
+    "worktreePath",
+    "runtimeId",
+    "slot",
+    "workloadClass",
+    "state"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "sessionId": {"$ref": "#/$defs/uuid"},
+    "projectId": {"$ref": "#/$defs/projectId"},
+    "branch": {
+      "type": "string",
+      "pattern": "^(?!-)(?!.*\\.\\.)(?!.*[~^:?*\\[\\\\])[A-Za-z0-9._/-]+$"
+    },
+    "mirrorPath": {
+      "type": "string",
+      "pattern": "^/srv/atenea/repositories/[a-z][a-z0-9-]{1,62}\\.git$"
+    },
+    "worktreePath": {
+      "type": "string",
+      "pattern": "^/srv/atenea/workspaces/sessions/[0-9a-f-]{36}/[a-z][a-z0-9-]{1,62}$"
+    },
+    "runtimeId": {
+      "type": "string",
+      "pattern": "^ws-[0-9a-f]{32}$"
+    },
+    "slot": {
+      "enum": ["slot1", "slot2", "slot3", "slot4"]
+    },
+    "heavyPermit": {
+      "enum": ["heavy1", "heavy2"]
+    },
+    "workloadClass": {
+      "enum": ["normal", "heavy"]
+    },
+    "state": {
+      "enum": [
+        "pending",
+        "allocated",
+        "provisioning",
+        "ready",
+        "stopping",
+        "stopped",
+        "reconciling",
+        "blocked",
+        "error"
+      ]
+    },
+    "allocatedPorts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "internalPort", "loopbackPort"],
+        "properties": {
+          "name": {"$ref": "#/$defs/projectId"},
+          "internalPort": {"type": "integer", "minimum": 1, "maximum": 65535},
+          "loopbackPort": {"type": "integer", "minimum": 1024, "maximum": 65535}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"workloadClass": {"const": "heavy"}},
+        "required": ["workloadClass"]
+      },
+      "then": {"required": ["heavyPermit"]},
+      "else": {"not": {"required": ["heavyPermit"]}}
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,62}$"
+    }
+  }
+}

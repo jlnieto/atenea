@@ -1,17 +1,17 @@
 ## 1. Contract and baseline
 
-- [ ] 1.1 Record the laptop `dev`, Codex and six-project toolchain baseline
+- [x] 1.1 Record the laptop `dev`, Codex and six-project toolchain baseline
       without collecting secret values.
-- [ ] 1.2 Add the versioned runtime-manifest schema, safe examples and invalid
+- [x] 1.2 Add the versioned runtime-manifest schema, safe examples and invalid
       fixture corpus.
-- [ ] 1.3 Define the session allocation, worktree, runtime identity, structured
+- [x] 1.3 Define the session allocation, worktree, runtime identity, structured
       state and error envelopes.
 - [x] 1.4 Update the programme ledger to make this change the active phase and
       record the accepted AX42 foundation evidence.
 
 ## 2. Worker toolchain and Codex
 
-- [ ] 2.1 Add idempotent installation/version-pin automation for required host,
+- [x] 2.1 Add idempotent installation/version-pin automation for required host,
       container, Java, Node, browser and build prerequisites.
 - [x] 2.2 Install the official Codex CLI for the administrative bridge and prove
       version, diagnostics and independent headless authentication without

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "id": "dummy-compose",
+    "repository": {
+      "url": "https://github.com/example/dummy-compose.git",
+      "defaultBranch": "main"
+    }
+  },
+  "toolchains": [
+    {"name": "git", "version": "2.43.0", "source": "worker-package"},
+    {"name": "java-build", "version": "21.0.11", "source": "container-image"},
+    {"name": "maven", "version": "3.9.9", "source": "container-image"},
+    {"name": "docker", "version": "29.6.2", "source": "worker-package"},
+    {"name": "compose", "version": "5.3.1", "source": "worker-package"},
+    {"name": "playwright", "version": "1.60.0", "source": "project-wrapper"}
+  ],
+  "runtime": {
+    "kind": "compose",
+    "composeFiles": ["docker-compose.yml"],
+    "services": ["app", "db"],
+    "internalPorts": [
+      {"name": "web", "port": 8080, "protocol": "http"}
+    ]
+  },
+  "lifecycle": {
+    "build": {"argv": ["docker", "compose", "build"], "timeoutSeconds": 1800},
+    "start": {"argv": ["docker", "compose", "up", "-d"], "timeoutSeconds": 300},
+    "stop": {"argv": ["docker", "compose", "down"], "timeoutSeconds": 300},
+    "health": {"argv": ["curl", "-fsS", "http://app:8080/actuator/health"], "timeoutSeconds": 30},
+    "logs": {"argv": ["docker", "compose", "logs", "--no-color"], "timeoutSeconds": 60}
+  },
+  "preview": {
+    "internalPort": "web",
+    "path": "/",
+    "publish": "private",
+    "command": {"argv": ["curl", "-fsS", "http://app:8080/"], "timeoutSeconds": 30},
+    "localhostCompatibilityRequired": false
+  },
+  "browserChecks": [
+    {
+      "name": "home",
+      "path": "/",
+      "command": {"argv": ["./scripts/browser-check.sh", "/"], "timeoutSeconds": 120},
+      "viewports": ["desktop-1440x900", "mobile-390x844"],
+      "artifact": "artifacts/browser/home"
+    }
+  ],
+  "artifacts": [
+    {"name": "test-reports", "path": "target/surefire-reports", "retention": "run"},
+    {"name": "browser", "path": "artifacts/browser", "retention": "session"}
+  ],
+  "secrets": [
+    {"name": "DUMMY_DATABASE_PASSWORD", "purpose": "Dummy development database only", "exposure": "runtime", "required": true}
+  ],
+  "workloadClass": "normal"
+}

@@ -1,0 +1,435 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.codynwave.com/schemas/project-runtime-v1.schema.json",
+  "title": "Atenea project runtime manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "project",
+    "toolchains",
+    "runtime",
+    "lifecycle",
+    "preview",
+    "browserChecks",
+    "artifacts",
+    "secrets",
+    "workloadClass"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "project": {
+      "$ref": "#/$defs/project"
+    },
+    "toolchains": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/toolchain"
+      }
+    },
+    "runtime": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/composeRuntime"
+        },
+        {
+          "$ref": "#/$defs/tomcatRuntime"
+        }
+      ]
+    },
+    "lifecycle": {
+      "$ref": "#/$defs/lifecycle"
+    },
+    "preview": {
+      "$ref": "#/$defs/preview"
+    },
+    "browserChecks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/browserCheck"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "secrets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/secret"
+      }
+    },
+    "workloadClass": {
+      "enum": [
+        "normal",
+        "heavy"
+      ]
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,62}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!~)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)[A-Za-z0-9._/-]+$"
+    },
+    "routePath": {
+      "type": "string",
+      "pattern": "^/(?!/)[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$"
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "repository"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "repository": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "url",
+            "defaultBranch"
+          ],
+          "properties": {
+            "url": {
+              "type": "string",
+              "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\\.git$"
+            },
+            "defaultBranch": {
+              "type": "string",
+              "pattern": "^(?!-)(?!.*\\.\\.)(?!.*[~^:?*\\[\\\\])[A-Za-z0-9._/-]+$"
+            }
+          }
+        }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "source"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "git",
+            "java-build",
+            "java-runtime",
+            "maven",
+            "node",
+            "docker",
+            "compose",
+            "chromium",
+            "playwright"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9][A-Za-z0-9.+_-]{0,63}$"
+        },
+        "source": {
+          "enum": [
+            "worker-package",
+            "container-image",
+            "project-wrapper"
+          ]
+        }
+      }
+    },
+    "internalPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "port",
+        "protocol"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "protocol": {
+          "enum": [
+            "http",
+            "tcp"
+          ]
+        }
+      }
+    },
+    "composeRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "composeFiles",
+        "services",
+        "internalPorts"
+      ],
+      "properties": {
+        "kind": {
+          "const": "compose"
+        },
+        "composeFiles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/relativePath"
+          }
+        },
+        "services": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "internalPorts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/internalPort"
+          }
+        }
+      }
+    },
+    "tomcatRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "webappModule",
+        "warPath",
+        "contextPath",
+        "internalPorts"
+      ],
+      "properties": {
+        "kind": {
+          "const": "tomcat"
+        },
+        "webappModule": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "warPath": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "contextPath": {
+          "$ref": "#/$defs/routePath"
+        },
+        "internalPorts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/internalPort"
+          }
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "argv",
+        "timeoutSeconds"
+      ],
+      "properties": {
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?!.*(?:PASSWORD|TOKEN|SECRET|API_KEY)=).*$"
+          }
+        },
+        "cwd": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "secretRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+          }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "build",
+        "start",
+        "stop",
+        "health",
+        "logs"
+      ],
+      "properties": {
+        "build": {
+          "$ref": "#/$defs/command"
+        },
+        "start": {
+          "$ref": "#/$defs/command"
+        },
+        "stop": {
+          "$ref": "#/$defs/command"
+        },
+        "health": {
+          "$ref": "#/$defs/command"
+        },
+        "logs": {
+          "$ref": "#/$defs/command"
+        }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "internalPort",
+        "path",
+        "publish",
+        "command"
+      ],
+      "properties": {
+        "internalPort": {
+          "$ref": "#/$defs/identifier"
+        },
+        "path": {
+          "$ref": "#/$defs/routePath"
+        },
+        "publish": {
+          "const": "private"
+        },
+        "command": {
+          "$ref": "#/$defs/command"
+        },
+        "localhostCompatibilityRequired": {
+          "type": "boolean"
+        }
+      }
+    },
+    "browserCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "path",
+        "command",
+        "viewports",
+        "artifact"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "path": {
+          "$ref": "#/$defs/routePath"
+        },
+        "command": {
+          "$ref": "#/$defs/command"
+        },
+        "viewports": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "desktop-1440x900",
+              "mobile-390x844",
+              "tablet-768x1024"
+            ]
+          }
+        },
+        "artifact": {
+          "$ref": "#/$defs/relativePath"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "path",
+        "retention"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "retention": {
+          "enum": [
+            "run",
+            "session"
+          ]
+        }
+      }
+    },
+    "secret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "purpose",
+        "exposure"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "exposure": {
+          "enum": [
+            "build",
+            "runtime",
+            "browser"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

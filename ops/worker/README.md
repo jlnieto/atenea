@@ -111,3 +111,29 @@ It publishes a group-restricted proxy to that slot's rootless socket beneath
 The current `dev` template is an administrative Beautips pilot. The generic
 manifest resolver and default-deny managed broker remain part of the active
 runtime-contract change and are required before Atenea can schedule a project.
+
+## Version-pinned toolchains
+
+`toolchain-lock-v1.sh` pins the supported Ubuntu host packages, rootless Docker
+packages and OCI manifest-list digests for Node 22, Maven/Java 21, Tomcat/Java
+8 and Playwright/Chromium. Java, Node and browser tools run in the selected
+rootless slot instead of mutating a host-global toolchain.
+
+Review the lock without changing the worker:
+
+```bash
+./install-toolchain-prerequisites.sh plan
+sudo ./install-toolchain-prerequisites.sh verify-host
+```
+
+Install and verify the immutable images in one prepared slot:
+
+```bash
+sudo ./install-toolchain-prerequisites.sh install-images 2
+sudo ./install-toolchain-prerequisites.sh verify-slot 2
+```
+
+The image action is idempotent, uses only the selected slot's rootless socket,
+runs version probes with networking disabled and never enables the rootful
+Docker daemon. Repeat it explicitly for another slot when that slot needs the
+toolchain cache.

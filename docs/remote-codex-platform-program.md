@@ -101,9 +101,11 @@ This is the observed state on 2026-07-25, not the target boundary. In
 particular, the Atenea server still hosts repositories and Codex App Server
 containers, and no Atenea AgentRun is routed to the AX42. AX42 Codex is
 available in a login shell as `0.145.0`; GitHub is independently authenticated;
-the four slot proxies and `codex-beautips` tmux session are active. Playwright
-has pilot evidence through project tooling but is not currently exposed as a
-global login-shell command.
+the four slot proxies and `codex-beautips` tmux session are active. The Beautips
+runtime remains healthy on worker loopback, but the previously accepted
+Tailscale Serve route was absent at the 2026-07-25 refresh and is not currently
+an available preview. Playwright has pilot evidence through project tooling but
+is not currently exposed as a global login-shell command.
 
 ### Target
 

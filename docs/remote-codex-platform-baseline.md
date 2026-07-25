@@ -1,6 +1,7 @@
 # Remote Codex Platform Baseline
 
-Evidence date: 2026-07-22. Values are operational snapshots, not secrets or permanent capacity promises.
+Evidence refreshed: 2026-07-25. Values are operational snapshots, not secrets
+or permanent capacity promises.
 
 ## Operator laptop
 
@@ -16,6 +17,64 @@ Evidence date: 2026-07-22. Values are operational snapshots, not secrets or perm
 | Workflow | global/project AGENTS, custom skills, Git, `dev`, Playwright, screenshots in `/home/jose/Imágenes` |
 
 The laptop remains the current configuration reference, not a directory tree to copy. Parity is assessed by outcomes and versioned context.
+
+### Laptop `dev` workflow and configuration boundary
+
+Task 1.1 was refreshed from the real laptop command, project checkouts and
+declarative build files on 2026-07-25. No environment value, credential,
+private key, local database value or secret-bearing JVM option was collected.
+
+The current `/home/jose/.local/bin/dev` command exposes:
+
+- `list`, `status`, `build`, `up`, `stop`, `restart`, `redeploy`, `logs`, `url`
+  and `doctor`;
+- four Compose targets: Yvateve, Beautips, Checkpol and Fomasys;
+- five ISC Tomcat variants (`en`, `de`, `fr`, `it`, `es`) plus Recambios;
+- a maximum of three simultaneously active laptop Tomcats;
+- human-oriented output only; there is no stable `--json` envelope or
+  WorkSession selection.
+
+At the refresh, only Yvateve was running (`app` and `db`); every Tomcat target
+and the other Compose targets were stopped. This is an observation, not a
+request to preserve that runtime state.
+
+Configuration is split across the global Bash command and per-target files
+under `~/.config/dev-java-projects`. Those files contain absolute repository,
+JDK, Tomcat and Compose paths, fixed ports, process-manager settings and runtime
+options. The ISC English configuration also imports a named API token from the
+interactive shell when absent. That implicit secret mechanism is discovery
+evidence only: it MUST be replaced by a named secret reference and neither its
+line nor its value may be promoted to AX42.
+
+The operator workflow also depends on:
+
+- repository-level `AGENTS.md` in all six initial projects;
+- global instructions and reviewed custom skills;
+- Git branch/commit/push/pull-request delivery;
+- Playwright 1.60.0 with the installed Chromium cache;
+- screenshots in `/home/jose/Imágenes`;
+- client-local `localhost` URLs and systemd user units for legacy Tomcats.
+
+Only the non-secret, explicitly allowlisted instructions, configuration and
+skills are candidates for later context promotion. Codex authentication,
+history, sessions, logs, caches, SSH material and the complete home directory
+are excluded.
+
+### Six-project toolchain baseline
+
+| Project | Laptop runtime contract observed | Toolchain/build evidence | Fixed local origin or lifecycle constraint |
+|---|---|---|---|
+| Yvateve | Compose application plus PostgreSQL 16 | Java 21 build and JRE images; prebuilt Compose override | `localhost:8080`; custom prebuild and health actions |
+| Beautips | Compose application plus PostgreSQL 16 and Redis 7 | Node 22 web build, Maven 3.9.9 and Java 21 | health URL on `localhost:8083`; persistent assets/imports require declared fixtures |
+| Checkpol | Compose application plus PostgreSQL 16 | Node 22, Maven 3.9.9 and Java 21 | `localhost:8082`; external Stripe/SES/truststore dependencies must be stubbed or named |
+| Fomasys | Compose application | Maven 3.9.9 and Java 21 multi-module build | login on `localhost:8090`; current laptop checkout has a staged `AGENTS.md` change |
+| ISC | Maven multi-module WARs and five Tomcat variants | JDK 17 build; Java 8 bytecode/runtime; Tomcat 8.5.58 | fixed ports 8091, 8092, 8093, 8094 and 8097; per-language module and origin |
+| Recambios | Maven multi-module WAR on Tomcat | JDK 17 build; Java 8 bytecode/runtime; Tomcat 8.5.58 | fixed port 8095; active feature/base branch must be selected before onboarding |
+
+The laptop-wide defaults (`Java 21`, Maven 3.6.3, Node 22.16.0, npm 11.17.0,
+Docker 29.1.3 and Compose 2.40.3) do not override the project declarations
+above. In particular, the managed worker must select legacy Java 8 runtime
+compatibility without mutating another session's Java 21 toolchain.
 
 ## Current Atenea control plane
 
@@ -76,7 +135,7 @@ remaining gates.
 
 | Project | Laptop state | Current Atenea copy | Runtime/data | Migration risk |
 |---|---|---|---|---|
-| Yvateve | `agent/geographic-demand-phase1` at `26c2f69`; three untracked paths | missing | Docker app + PostgreSQL, preview on 8080 | import canonical remote; classify spreadsheet/test/tmp artifacts before sync |
+| Yvateve | `agent/recover-invalid-primary-from-isolation` at `f58cdc7`; four untracked paths | missing | Docker app + PostgreSQL, preview on 8080 | import canonical remote; classify spreadsheet/test/tmp artifacts before sync |
 | Beautips | clean `main` at `a6d2f28` | clean `main` at `bd15a16` | Docker app + PostgreSQL + Redis; persistent assets/imports; optional WhatsApp/bootstrap secrets | reconcile different commits and prepare deterministic non-production fixtures |
 | ISC | clean `master` at `48dff803` | clean `master` at `8b270ef4` | Maven multi-module; JDK 17 build, JDK 8/Tomcat 8 runtime; EN/DE/FR/IT/ES variants; file storage | large divergence, legacy toolchain and per-language runtime/origin testing |
 | Recambios | clean feature branch `feature/integrar-nacex-recoger-en-eshop` at `fbdd2a39` | clean `master` at `c5605fc3` | Maven/Tomcat 8; JDK 17 build and JDK 8 runtime; port 8095 locally | branch selection and legacy runtime/data dependencies |

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "id": "dummy-tomcat",
+    "repository": {
+      "url": "https://github.com/example/dummy-tomcat.git",
+      "defaultBranch": "main"
+    }
+  },
+  "toolchains": [
+    {"name": "git", "version": "2.43.0", "source": "worker-package"},
+    {"name": "java-build", "version": "17.0.12", "source": "worker-package"},
+    {"name": "java-runtime", "version": "8.0.422", "source": "container-image"},
+    {"name": "maven", "version": "3.9.9", "source": "project-wrapper"},
+    {"name": "playwright", "version": "1.60.0", "source": "project-wrapper"}
+  ],
+  "runtime": {
+    "kind": "tomcat",
+    "webappModule": "web",
+    "warPath": "web/target/app.war",
+    "contextPath": "/",
+    "internalPorts": [
+      {"name": "web", "port": 8080, "protocol": "http"}
+    ]
+  },
+  "lifecycle": {
+    "build": {"argv": ["./mvnw", "clean", "package"], "timeoutSeconds": 1800},
+    "start": {"argv": ["runtime-manager", "tomcat", "start"], "timeoutSeconds": 300},
+    "stop": {"argv": ["runtime-manager", "tomcat", "stop"], "timeoutSeconds": 300},
+    "health": {"argv": ["curl", "-fsS", "http://tomcat:8080/"], "timeoutSeconds": 30},
+    "logs": {"argv": ["runtime-manager", "tomcat", "logs"], "timeoutSeconds": 60}
+  },
+  "preview": {
+    "internalPort": "web",
+    "path": "/",
+    "publish": "private",
+    "command": {"argv": ["curl", "-fsS", "http://tomcat:8080/"], "timeoutSeconds": 30},
+    "localhostCompatibilityRequired": true
+  },
+  "browserChecks": [
+    {
+      "name": "home",
+      "path": "/",
+      "command": {"argv": ["./scripts/browser-check.sh", "/"], "timeoutSeconds": 120},
+      "viewports": ["desktop-1440x900", "mobile-390x844"],
+      "artifact": "artifacts/browser/home"
+    }
+  ],
+  "artifacts": [
+    {"name": "war", "path": "web/target/app.war", "retention": "run"},
+    {"name": "browser", "path": "artifacts/browser", "retention": "session"}
+  ],
+  "secrets": [],
+  "workloadClass": "heavy"
+}

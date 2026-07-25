@@ -8,6 +8,55 @@
 - Atenea production routing: unchanged
 - Real projects schedulable through Atenea: none
 
+## Runtime manifest contract
+
+Version 1 of the project runtime manifest is defined at
+`runtime-contract/project-runtime-v1.schema.json` using JSON Schema draft
+2020-12. It requires:
+
+- canonical GitHub repository identity and default branch;
+- explicitly versioned toolchains;
+- either a Compose or legacy Tomcat runtime with declared internal ports;
+- argument-array lifecycle, health, log, private-preview and browser commands;
+- repository-relative artifact paths and named secret references;
+- an explicit normal or heavy workload class.
+
+The schema has no fields for privileged execution, host namespaces, devices,
+arbitrary mounts or daemon sockets, and every object rejects undeclared
+properties. Two safe examples cover Java 21 Compose and JDK 17 build/Java 8
+Tomcat runtime. Eight negative fixtures cover absolute/traversing paths, literal
+secret values, missing lifecycle, daemon socket mounts, host networking,
+privileged execution and unsupported schema versions.
+
+Local contract verification on 2026-07-25 used a draft-2020-12 validator:
+
+- the schema passed its meta-schema check;
+- both safe examples validated;
+- all eight negative fixtures were rejected;
+- every JSON document passed syntax parsing.
+
+These fixtures define the contract only. They do not activate a project,
+install worker prerequisites or prove the mediated runtime boundary.
+
+## Session allocation and state contract
+
+`runtime-contract/session-runtime-v1.md` fixes the v1 ownership and recovery
+rules. The WorkSession UUID is the allocation key; the full UUID derives the
+runtime identity, and the project name alone never identifies a runtime
+resource. Canonical mirrors, worktrees, logs and run artifacts have separate
+deterministic roots beneath `/srv/atenea`.
+
+`session-allocation-v1.schema.json` defines the four slot identities, the two
+heavy permits, deterministic worktree/runtime fields, allocated loopback ports
+and reconciliation states. `dev-envelope-v1.schema.json` defines stable
+operations, health, URL, blocked/error states and actionable non-secret error
+codes.
+
+Both schemas passed their draft-2020-12 meta-schema checks on 2026-07-25. The
+normal allocation example and heavy-capacity blocked envelope passed schema and
+format validation. This is contract evidence only; task 3 implements it and
+task 5 exercises idempotency, collision and denial behaviour.
+
 ## Administrative Codex bridge
 
 The bridge is intentionally separate from the future managed AgentRun executor.
@@ -33,6 +82,38 @@ No laptop `auth.json`, histories, sessions, logs, caches, SSH keys, complete
 Codex home or embedded project credentials were copied. The worker performed
 its own device authorization. Only a minimal versioned configuration and worker
 instruction file were promoted.
+
+## Version-pinned worker toolchains
+
+`ops/worker/toolchain-lock-v1.sh` and
+`install-toolchain-prerequisites.sh` define the Ubuntu 24.04 amd64 host
+prerequisites, the existing rootless Docker package versions and immutable OCI
+manifest-list digests for:
+
+- Node 22.16.0;
+- Maven 3.9.9 with Java 21;
+- Tomcat 8.5.100 with Java 8;
+- Playwright 1.60.0's browser image with Chromium 148.0.7778.96.
+
+The host verification passed on 2026-07-25 without changing an installed
+package: all declared package versions matched, and rootful Docker, its socket
+and containerd remained inactive.
+
+The four pinned images were installed in the previously empty rootless
+`slot2`. Version probes ran without a network namespace and proved Node,
+Maven, Java 21, Java 8 and the pinned Chromium binary. Repeating the complete
+image installation reported every digest up to date and all probes passed,
+providing idempotency evidence.
+
+The first browser probe incorrectly used `npx`, which attempted package
+resolution despite the image containing browsers rather than the npm package.
+The probe was interrupted, left no process or container behind, and was
+replaced by a direct finite-timeout Chromium version check. The corrected
+verification passed.
+
+No application was deployed, no real project was assigned to slot 2, no
+service was restarted and no host-global Java, Node or Playwright installation
+was introduced.
 
 ## Beautips administrative source
 
@@ -121,6 +202,19 @@ The background Serve configuration survives tailscaled and host restarts. It
 can be disabled without stopping Beautips using:
 
 `sudo tailscale serve --https=443 off`
+
+### 2026-07-25 state refresh
+
+The earlier acceptance proves that the tailnet-only route worked at that time;
+it does not describe the current route state. A read-only refresh on
+2026-07-25 returned `No serve config`. Beautips itself remained healthy at its
+loopback health endpoint, all four rootless slot daemons were active, and
+Atenea contained no AX42 routing reference.
+
+Consequently, the private Serve preview is currently **inactive** and MUST be
+re-established and revalidated before it is presented as available. This drift
+does not invalidate the browser evidence already collected, and it does not
+make Beautips schedulable through Atenea.
 
 This pilot assigns the worker's single default HTTPS root to Beautips. Multiple
 simultaneous project previews require the generic session preview registry and

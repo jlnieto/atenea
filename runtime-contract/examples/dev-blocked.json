@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e",
+  "projectId": "dummy-tomcat",
+  "operation": "up",
+  "state": "blocked",
+  "error": {
+    "code": "HEAVY_CAPACITY_EXHAUSTED",
+    "message": "The two heavy-operation permits are in use.",
+    "retryable": true,
+    "action": "Wait for a heavy operation to finish, then retry this session.",
+    "details": {
+      "activeHeavyOperations": 2,
+      "maximumHeavyOperations": 2
+    }
+  },
+  "timestamp": "2026-07-25T18:00:00Z"
+}
