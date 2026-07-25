@@ -89,7 +89,54 @@ Observation/archive:
 - repeat the isolation/lifecycle suite after a worker reboot;
 - archive after the manifest contract and CLI are stable enough for remote routing.
 
-## Phase 3: route-agent-runs-to-remote-worker
+## Phase 3: relocate-atenea-development-to-ax42
+
+Entry:
+
+- runtime contract archived and its isolation boundary accepted;
+- GitHub branch/commit and the existing dirty Atenea worktree are reconciled by
+  an explicit operator decision, never copied or discarded automatically;
+- AX42 has a manifest-valid Atenea development toolchain and non-production
+  fixture plan;
+- production Atenea remains healthy and no production routing change is needed.
+
+Implementation:
+
+- create the GitHub-backed Atenea mirror and session-owned development worktree
+  on AX42;
+- move Atenea build, test, development runtime, development PostgreSQL,
+  Playwright and development artifacts to AX42;
+- update developer/operator documentation so `/srv/atenea` on the control plane
+  is not treated as the normal development workspace;
+- retain production web/mobile APIs, production PostgreSQL, secrets, backups,
+  monitoring and deploy/rollback authority on the Atenea server;
+- remove no legacy executor component during this phase.
+
+Evidence:
+
+- Atenea tests, build, development runtime, DOM checks and inspected
+  desktop/mobile screenshots pass on AX42;
+- GitHub remains canonical and the AX42 worktree can be recreated from the
+  selected commit plus declared non-secret inputs;
+- production containers, production database and public endpoints remain
+  unchanged throughout the exercise;
+- a laptop disconnect does not terminate the administrative development
+  session, without claiming managed AgentRun routing.
+
+Rollback:
+
+- stop only the AX42 Atenea development runtime and preserve its worktree and
+  artifacts for inspection;
+- continue using the existing Atenea production/control plane and legacy
+  executor while the later routing phase is pending;
+- never overwrite the dirty pre-existing Atenea worktree or production data.
+
+Observation/archive:
+
+- repeat the Atenea development lifecycle after an AX42 restart;
+- archive before changing AgentRun routing.
+
+## Phase 4: route-agent-runs-to-remote-worker
 
 Entry:
 
@@ -127,12 +174,52 @@ Observation/archive:
 - one synthetic session completes multiple turns over at least one backend restart;
 - archive before any real project becomes authoritative on the worker.
 
-## Phase 4: add-private-session-previews
+## Phase 5: add-worksession-attachments
+
+Entry:
+
+- remote synthetic run continuity is proven;
+- attachment storage, metadata authority, access control and retention proposal
+  are approved;
+- upload and artifact limits have safe defaults.
+
+Implementation:
+
+- WorkSession- and AgentRun-scoped attachment registration for operator uploads,
+  screenshots, traces and reports;
+- ordered metadata containing source, creation time, content type, size,
+  retention and integrity identity;
+- web/mobile upload and retrieval through Atenea without granting arbitrary
+  worker filesystem access;
+- deterministic current-session resolution for “latest screenshot”,
+  “previous screenshot” and “last N screenshots”.
+
+Evidence:
+
+- prompt and image input reach only the intended WorkSession;
+- latest/previous/N ordering is deterministic and cannot cross sessions or
+  projects;
+- retained attachments survive client disconnect, worker service restart and
+  preview teardown;
+- unauthorized, oversized and unsupported inputs fail with an actionable state.
+
+Rollback:
+
+- disable new upload affordances while preserving already indexed evidence;
+- do not delete retained attachments as part of routing rollback.
+
+Observation/archive:
+
+- exercise upload, Codex consumption, ordering and later mobile retrieval across
+  one complete synthetic session.
+
+## Phase 6: add-private-session-previews
 
 Entry:
 
 - remote synthetic run lifecycle proven;
 - tailnet ACL and preview ownership approved;
+- WorkSession attachment capability archived;
 - artifact storage and authentication boundary available.
 
 Implementation:
@@ -141,7 +228,8 @@ Implementation:
 - private reverse proxy/Tailscale route;
 - generated SSH localhost tunnel;
 - Playwright/Chromium execution and required viewports;
-- session/run artifact metadata, retention and ordered latest/N resolution;
+- preview-generated artifacts registered through the WorkSession attachment
+  contract;
 - web and Android preview/artifact read models.
 
 Evidence:
@@ -150,7 +238,7 @@ Evidence:
 - laptop and Android open a private ready preview;
 - localhost tunnel passes a declared compatibility case;
 - DOM assertions and inspected desktop/mobile screenshots are retained after preview teardown;
-- latest/previous/N never cross session boundaries.
+- preview evidence remains associated with the originating session and run.
 
 Rollback:
 
@@ -162,7 +250,58 @@ Observation/archive:
 
 - validate URL expiry, artifact retention and mobile behaviour through one complete synthetic session.
 
-## Phase 5: project onboarding
+## Phase 7: establish-development-database-lifecycle
+
+Entry:
+
+- runtime namespaces and WorkSession attachments are accepted;
+- each candidate database is classified as development-only or production;
+- fixture, sanitization, retention and secret requirements are reviewed.
+
+Implementation:
+
+- isolated development database identities, storage, health and backup/restore
+  commands on AX42;
+- manifest-declared create, migrate, seed, snapshot and replace operations;
+- explicit confirmation for destructive replacement;
+- hard rejection of production hosts, credentials, database identities and
+  network targets.
+
+Evidence:
+
+- two sessions cannot read or replace each other's database;
+- a confirmed development replacement is auditable and reproducible;
+- an unconfirmed replacement and every production-like target are denied before
+  mutation;
+- rollback restores a declared development snapshot without touching Git or
+  production data.
+
+Rollback:
+
+- stop database automation, preserve owned development volumes for inspection
+  and keep production connectivity unavailable to the worker.
+
+Observation/archive:
+
+- run create/migrate/seed/replace/restore twice on representative modern and
+  legacy fixtures before any dependent project onboarding.
+
+## Phase 8: individual project onboarding
+
+Each project is a separate OpenSpec change. No cohort-wide change may make every
+project schedulable at once. Planned changes are:
+
+1. `onboard-atenea-on-ax42`
+2. `onboard-beautips-on-ax42`
+3. `onboard-checkpol-on-ax42`
+4. `onboard-yvateve-on-ax42`
+5. `onboard-fomasys-on-ax42`
+6. `onboard-iscspain-on-ax42`
+7. `onboard-recambios-on-ax42`
+
+The exact order after Atenea and Beautips may change when entry evidence is
+refreshed. A project that fails its gate remains disabled without blocking
+already accepted projects.
 
 Common entry gate per project:
 
@@ -203,7 +342,46 @@ Acceptance per project:
 
 Rollback disables only that project on the worker and keeps already accepted projects available.
 
-## Phase 6: harden-worker-operations
+## Phase 9: add-controlled-production-deployments
+
+Entry:
+
+- at least one onboarded project completes build, verification, publish and
+  reconciled close on AX42;
+- artifact format, provenance, retention and target mapping are approved;
+- restricted production deploy identities and rollback runbooks exist outside
+  ordinary Codex execution.
+
+Implementation:
+
+- produce immutable, versioned deployment artifacts from reviewed Git commits;
+- separate build/publish from a confirmed production promotion command;
+- allowlist target/service actions and restrict credentials to the deployment
+  boundary;
+- require explicit confirmation, preflight, health checks, audit record and
+  version-addressed rollback;
+- prevent normal AgentRuns and development database tooling from reaching
+  production deployment or database authority.
+
+Evidence:
+
+- an unconfirmed, unreviewed or mismatched artifact cannot deploy;
+- a confirmed non-production rehearsal records artifact, actor, target, checks
+  and result;
+- representative health failure triggers the documented rollback path;
+- rollback selects a known version and does not rebuild mutable source.
+
+Rollback:
+
+- disable promotion while preserving artifacts and audit records;
+- continue manual approved production operations until the workflow is accepted.
+
+Observation/archive:
+
+- each production target requires its own enablement evidence; no global
+  production permission is inferred from one service.
+
+## Phase 10: harden-worker-operations
 
 Entry:
 
@@ -233,3 +411,39 @@ Observation/archive:
 
 - seven days of representative operation including at least one planned reboot;
 - default cutover is a separate recorded decision after archive.
+
+## Phase 11: retire-legacy-atenea-executor
+
+Entry:
+
+- AX42 is the accepted default for all enabled development projects;
+- controlled deployment and hardening changes are archived;
+- no open WorkSession or recoverable run is pinned to the legacy executor;
+- rollback and restore evidence cover worker loss.
+
+Implementation:
+
+- disable new legacy execution first;
+- observe and inventory remaining Atenea-hosted Codex, preview, repository and
+  development-database dependencies;
+- retire only proven-unused executor components in bounded steps;
+- keep Atenea production, PostgreSQL, secrets, backups, monitoring and
+  deploy/rollback services intact.
+
+Evidence:
+
+- web/mobile control, scheduling, notifications and production operations remain
+  healthy with the legacy executor disabled;
+- all development execution, builds, runtimes, databases, Playwright, previews,
+  repositories, worktrees and attachments resolve through AX42;
+- no production secret or database dependency migrated unintentionally.
+
+Rollback:
+
+- re-enable the last known-good legacy route for newly opened sessions only;
+- never move an active AX42 session implicitly or delete its worktree/artifacts.
+
+Observation/archive:
+
+- archive after a named observation window and an explicit owner decision that
+  bounded legacy executor removal is complete.

@@ -26,7 +26,9 @@ The current near-term target flow for that direction is documented in:
 
 ## System role
 
-Atenea is a remote orchestration backend for repository work on this VPS.
+Atenea is the durable control plane for remote repository work. The current
+implementation still executes Codex and operates repositories on the Atenea
+VPS, but that host-local coupling is legacy state, not the target architecture.
 
 That means:
 
@@ -52,6 +54,42 @@ In the currently implemented runtime, the system is best understood as:
 - publish the session work to a pull request
 - synchronize merge state
 - close the session only after repository reconciliation is safe
+
+## Production and development boundary
+
+The target architecture separates two authorities:
+
+```text
+Atenea server: production/control plane
+  - public web and mobile APIs
+  - production PostgreSQL and durable workflow state
+  - production secrets, backups and monitoring
+  - worker scheduling, confirmations and notifications
+  - controlled deploy, health-check and rollback authority
+
+AX42: development/execution plane
+  - GitHub-backed mirrors and WorkSession worktrees
+  - Codex AgentRuns, builds and tests
+  - project runtimes and development databases
+  - Playwright, private previews and WorkSession attachments
+```
+
+GitHub remains canonical for source code. A worker mirror or worktree is
+recreatable execution state and cannot silently become a new source of truth.
+Laptop and mobile are clients; disconnecting either must not terminate a
+durably accepted run.
+
+Atenea itself is an internal project under the same development rules. Its
+development worktree, build, test, development runtime, development database and
+browser evidence move to AX42 through a dedicated migration phase. Its public
+service, production PostgreSQL, production secrets, backups, monitoring and
+deploy/rollback authority stay on the Atenea server.
+
+Production deployment is not an ordinary Codex command. The target deployment
+boundary accepts only a reviewed versioned artifact, uses restricted
+target-specific authority, requires confirmation, runs health checks and
+retains a version-addressed rollback. Development database replacement also
+requires confirmation and must reject every production target before mutation.
 
 ## Target architecture
 
@@ -185,6 +223,11 @@ Architectural meaning:
 - `AgentRun` is the internal trace of that execution
 - `SessionTurn` is the conversation-facing trace of that execution
 
+This describes the current local executor. No production Atenea AgentRun is
+currently connected to AX42. The planned remote-worker contract adds execution
+target, dispatch identity, workspace affinity, lease and reconciliation while
+preserving `AgentRun` and `SessionTurn` as Atenea-owned durable state.
+
 ## Implemented runtime flows
 
 ### Session lifecycle
@@ -295,6 +338,13 @@ They are:
 - deciding how governance, confirmation and typed capabilities should be modeled across domains
 - tightening end-to-end validation around publish, merge detection and reconciled close
 - keeping documentation and product language aligned with the codebase
+- relocating Atenea development without moving Atenea production authority
+- routing AgentRuns to the AX42 with durable affinity and reconciliation
+- scoping uploads, screenshots and browser evidence to WorkSession
+- providing private session previews and isolated development databases
+- onboarding Atenea and each initial customer project independently
+- separating controlled production deployment from ordinary Codex execution
+- hardening the worker before retiring the host-local executor
 
 ## What the backend is not claiming yet
 
@@ -306,4 +356,9 @@ It does not yet define:
 - the final frontend contract beyond the currently available session reads
 - the final long-term operator UX around blocked close recovery
 - the final execution model for `operations` or `communications`
+- remote AgentRun routing to AX42
+- WorkSession attachment persistence and deterministic screenshot resolution
+- private preview routing from Atenea
+- development database lifecycle on AX42
+- controlled artifact-based production deployment
 - every future reporting or higher-level product surface that may be built on top of `WorkSession`

@@ -15,6 +15,10 @@ Atenea debe permitir completar el ciclo real de trabajo aunque el operador sólo
 - operar servidores gestionados por SSH con runbooks auditables
 - desplegar sólo mediante acciones confirmadas y verificables
 
+El móvil y el portátil son clientes del plano de control. Una vez que Atenea
+acepta durablemente un `AgentRun`, desconectar cualquiera de ellos no debe
+detener la ejecución en AX42.
+
 ## Estado implementado hoy
 
 El runtime actual ya cubre el flujo de `WorkSession` hasta pull request:
@@ -25,6 +29,11 @@ El runtime actual ya cubre el flujo de `WorkSession` hasta pull request:
 - `WorkSessionService` sólo permite cerrar de forma limpia cuando no hay runs pendientes, la pull request publicada está fusionada y el repositorio queda reconciliado.
 - `Atenea Core` expone capacidades confirmables para `publish_work_session` y `close_work_session`.
 - `/api/mobile/*` conserva aliases de compatibilidad para operar sesión desde móvil.
+
+Este estado actual sigue usando el executor y los repositorios alojados en el
+servidor Atenea. La producción de Atenea todavía no enruta `AgentRun` al AX42.
+El AX42 dispone de un puente administrativo Codex/tmux, cuatro slots rootless y
+un piloto manual de Beautips, pero ese piloto no es una WorkSession gestionada.
 
 El dominio `operations` ya cubre el primer slice de servidores gestionados:
 
@@ -42,7 +51,12 @@ El dominio `operations` ya cubre el primer slice de servidores gestionados:
 
 ## Navegador headless para Codex
 
-La imagen `docker/codex-app-server.Dockerfile` debe considerarse la superficie de ejecución de Codex para proyectos registrados.
+Actualmente `docker/codex-app-server.Dockerfile` es la superficie local de
+ejecución de Codex para proyectos registrados. En la arquitectura objetivo, el
+manifest versionado de cada proyecto y el executor aislado de AX42 reemplazan
+esa imagen como superficie normal de desarrollo. Los contenedores Codex
+prod/preview/rescue que hoy siguen en Atenea son estado legado hasta la retirada
+controlada del executor antiguo.
 
 Codex App Server debe arrancar con el guard de autenticacion en modo ChatGPT. Si el guard detecta API key o tokens incompletos, bloquea el contenedor antes de aceptar trabajo. El contrato completo esta en `docs/codex-auth-and-costs.md`.
 
@@ -76,11 +90,32 @@ Para que esto funcione en todos los proyectos, cada repo operado por Atenea debe
 - URL local que debe validar Codex
 - datos de prueba permitidos
 
+Las capturas, trazas e informes generados por estas pruebas deben registrarse
+como adjuntos de la `WorkSession` y del `AgentRun` de origen. “Última captura”,
+“penúltima captura” y “las N últimas capturas” se resuelven dentro de esa sesión
+y fuente; una carpeta global del servidor o del portátil no forma parte del
+contrato remoto.
+
+## Bases de datos de desarrollo
+
+Las bases usadas para build, tests, previews y trabajo interactivo pertenecen al
+plano de ejecución AX42 y deben estar aisladas según el manifest del proyecto.
+Crear, migrar y sembrar datos puede automatizarse. Reemplazar o restaurar una
+base exige confirmación explícita, deja auditoría y sólo puede operar sobre una
+identidad clasificada como desarrollo.
+
+El worker debe rechazar antes de mutar cualquier host, credencial, nombre de
+base o ruta clasificados como producción. Copiar datos de producción a AX42 no
+es un comportamiento implícito; requiere una política separada de
+anonimización, autorización y retención.
+
 ## Publicación, merge y cierre
 
 ## Permisos del workspace
 
-Los repositorios bajo `/srv/atenea/workspace/repos` son un recurso compartido entre backend, Codex App Server, rescue y operador de host. El contrato de permisos es:
+Hoy los repositorios bajo `/srv/atenea/workspace/repos` son un recurso
+compartido entre backend, Codex App Server, rescue y operador de host. Las reglas
+siguientes describen esa realidad transitoria, no el destino de desarrollo:
 
 - grupo host `atenea` como grupo propietario del workspace operativo
 - directorios con bit `setgid` para heredar grupo
@@ -96,6 +131,11 @@ El script canónico para reparar o aplicar esta política es:
 ```
 
 Debe ejecutarse cuando se registre o clone un repositorio nuevo, y también después de cualquier operación manual que haya creado archivos como `root` o con grupo ajeno al workspace.
+
+En el objetivo, GitHub es canónico y AX42 mantiene mirrors y un worktree aislado
+por `WorkSession`. El servidor Atenea no debe conservarse como workspace normal
+de build, Codex, preview o desarrollo una vez completada la retirada del executor
+antiguo.
 
 El backend ya puede publicar una sesión:
 
@@ -129,7 +169,8 @@ Si queremos merge completo desde móvil, el siguiente bloque debe añadir una ca
 
 ## Scripts locales de despliegue de Atenea
 
-El repo ya incluye scripts canónicos para desplegar el propio backend Atenea desde el servidor:
+El repo ya incluye scripts que hoy despliegan el propio backend Atenea desde el
+servidor:
 
 ```bash
 ./scripts/deploy-preview.sh
@@ -145,7 +186,15 @@ Contrato:
 - `build.sh` empaqueta sin repetir tests por defecto; la validacion canónica previa es `test.sh`, que usa la base aislada de test.
 - `release.sh` solo compila y publica APK si se invoca con `ATENEA_RELEASE_PUBLISH_APK=true`.
 
-Estos scripts son la superficie que debe usar Codex para publicar cambios del propio backend Atenea desde una worksession.
+Estos scripts documentan el mecanismo actual, pero no autorizan al Codex normal
+a desplegar producción. La arquitectura objetivo compila y valida Atenea en
+AX42, publica un artefacto inmutable asociado a un commit revisado y entrega la
+promoción a una capacidad de operaciones separada en el servidor Atenea.
+
+Esa capacidad usa permisos restringidos, confirmación explícita, health check,
+auditoría y rollback a una versión conocida. Producción, PostgreSQL, secretos,
+backups, monitorización y deploy/rollback permanecen en Atenea; el worktree,
+build, runtime y base de desarrollo de Atenea se trasladan a AX42.
 
 ## Despliegues desde Atenea Core
 
@@ -162,6 +211,10 @@ Para desplegar proyectos cliente desde Atenea sin depender de escritorio hay que
 - persistir cada ejecución como `operations_action_run`
 - ejecutar checks posteriores desde Atenea
 - devolver al móvil resumen, pasos, métricas y rollback recomendado
+- aceptar sólo artefactos inmutables y versionados producidos desde commits
+  revisados
+- impedir que un `AgentRun` ordinario reciba credenciales o autoridad de
+  producción
 
 Runbook remoto recomendado por servicio:
 
@@ -227,7 +280,7 @@ Las claves privadas no deben guardarse en base de datos. `ssh_key_path` apunta a
 
 ## Checklist antes de desplegar una versión
 
-Desde móvil, el flujo mínimo debe ser:
+Desde móvil, el flujo objetivo mínimo debe ser:
 
 1. pedir a Atenea el estado del proyecto y de la sesión activa
 2. pedir a Codex que ejecute la suite del repo usando sus scripts canónicos
@@ -237,10 +290,12 @@ Desde móvil, el flujo mínimo debe ser:
 6. revisar y fusionar la PR
 7. sincronizar la PR en Atenea
 8. cerrar la `WorkSession`
-9. ejecutar despliegue confirmado cuando exista la capacidad de deployment
-10. revisar checks HTTP externos y estado del servicio
+9. seleccionar el artefacto versionado producido por el flujo aceptado
+10. ejecutar despliegue confirmado mediante la capacidad separada de operations
+11. comprobar health check y conservar el rollback de la versión anterior
+12. revisar checks HTTP externos y estado del servicio
 
-Para Atenea en este repo, el mínimo antes de desplegar es:
+Para Atenea en este repo, el mínimo de validación sigue siendo:
 
 ```bash
 ./scripts/test.sh
@@ -249,6 +304,10 @@ Para Atenea en este repo, el mínimo antes de desplegar es:
 ```
 
 Si el cambio toca experiencia web o móvil servida en navegador, Codex debe añadir además una prueba headless o una validación explícita con Chromium.
+
+Durante la transición estos scripts pueden seguir ejecutándose en el mecanismo
+actual por un operador autorizado. Eso no constituye aceptación del futuro
+despliegue controlado ni permiso para invocarlos desde una WorkSession normal.
 
 ## Contrato de recuperación Apache
 
@@ -289,6 +348,7 @@ Una versión está lista para desplegar desde operación móvil sólo si:
 - la `WorkSession` tiene respuesta final revisable
 - los tests y builds canónicos han pasado
 - las pruebas headless necesarias han pasado
+- los adjuntos de evidencia pertenecen a la WorkSession correcta
 - la PR está publicada y fusionada
 - Atenea ha sincronizado la PR como `MERGED`
 - la sesión se puede cerrar sin bloqueo
@@ -296,3 +356,5 @@ Una versión está lista para desplegar desde operación móvil sólo si:
 - los runbooks remotos existen y devuelven JSON estructurado
 - las webs del servicio están registradas en `managed_website`
 - existe plan de rollback verificable
+- el despliegue usa un artefacto versionado y una capacidad separada de Codex
+- ninguna operación de base de datos apunta a producción desde AX42
