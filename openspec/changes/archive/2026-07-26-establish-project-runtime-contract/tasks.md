@@ -48,9 +48,9 @@
       concurrent same-port isolation and cross-session denial.
 - [x] 5.2 Run local worker health and browser checks, retain declared artifacts
       and verify cleanup removes only proven-owned ephemeral resources.
-- [ ] 5.3 Reboot the worker and prove reconciliation plus administrative access,
+- [x] 5.3 Reboot the worker and prove reconciliation plus administrative access,
       RAID, firewall and existing baseline health.
-- [ ] 5.4 Execute runtime-manager rollback while preserving mirrors, worktrees
+- [x] 5.4 Execute runtime-manager rollback while preserving mirrors, worktrees
       and artifacts, and confirm Atenea routing was unchanged.
-- [ ] 5.5 Strictly validate OpenSpec, record evidence and archive the phase before
+- [x] 5.5 Strictly validate OpenSpec, record evidence and archive the phase before
       remote AgentRun routing begins.

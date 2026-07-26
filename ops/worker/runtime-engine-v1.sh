@@ -563,6 +563,7 @@ validate_plan() {
       fail "RUNTIME_OWNERSHIP_CONFLICT" "The engine state root has foreign ownership."
   else
     install -d -m 0700 "${ENGINE_ROOT}"
+    chmod g-s,u=rwx,go= "${ENGINE_ROOT}"
     printf '%s %s\n' "${SESSION}" "${RUNTIME}" >"${ENGINE_ROOT}/.owner-v1"
   fi
   [[ ! -L "${LOCK_PATH}" ]] ||

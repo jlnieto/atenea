@@ -239,6 +239,7 @@ prepare_session() {
     "${ARTIFACT_ROOT}/sessions/${session}/runtime/logs" \
     "${ARTIFACT_ROOT}/sessions/${session}/runs" \
     "${CACHE_ROOT}/sessions/${session}"
+  chmod 2770 "${session_root}/runtime/${runtime}"
   cp -a "${REPO_ROOT}/runtime-contract/fixtures/valid/${fixture}/." "${worktree}/"
   jq -n \
     --arg session "${session}" \
@@ -354,6 +355,14 @@ for session in "${SESSION_COMPOSE}" "${SESSION_TOMCAT}"; do
     output="$(run_dev "${session}" "${operation}" "${project}")"
     grep -Fq "fixture-secret-48913" <<<"${output}" &&
       fail "${operation} exposed an environment value"
+    if [[ "${operation}" == "build" ]]; then
+      engine_root="$(
+        jq -r '.runtimeRoot' \
+          "${WORKSPACE_ROOT}/sessions/${session}/runtime-allocation-v1.json"
+      )/engine-v1"
+      [[ "$(stat -c %a "${engine_root}")" == "700" ]] ||
+        fail "engine state root inherited the parent setgid mode"
+    fi
   done
   health_port="$(jq -r '.allocatedPorts[0].loopbackPort' \
     "${WORKSPACE_ROOT}/sessions/${session}/runtime-allocation-v1.json")"

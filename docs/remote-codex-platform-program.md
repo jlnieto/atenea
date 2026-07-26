@@ -6,7 +6,8 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `establish-project-runtime-contract`
+- Current phase: none active; `establish-project-runtime-contract` archived as
+  `2026-07-26-establish-project-runtime-contract`
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -169,10 +170,11 @@ backup/monitoring and deploy/rollback control remain on the Atenea server.
 
 Entry, evidence, rollback and archive gates are defined in `remote-codex-platform-phases.md`. No phase becomes authoritative merely because its code builds.
 
-Only `establish-project-runtime-contract` is active. The names after it are a
-planning queue, not created or implementation-ready OpenSpec changes. Each must
-receive its own proposal, design, specs and tasks only when its entry gate is
-met; they are deliberately not folded into the active runtime-contract change.
+No OpenSpec change is active. The names after
+`establish-project-runtime-contract` are a planning queue, not created or
+implementation-ready OpenSpec changes. Each must receive its own proposal,
+design, specs and tasks only when its entry gate is met; they are deliberately
+not folded into the archived runtime-contract change.
 
 ## Decision log
 
@@ -194,6 +196,8 @@ met; they are deliberately not folded into the active runtime-contract change.
 | D-014 | Scope attachments and screenshot language to WorkSession. | Global folders can mix projects and make “latest” nondeterministic. | accepted | product owner | attachment phase |
 | D-015 | Permit database replacement only for development databases and only after confirmation. | Prevents an execution-plane operation from reaching production data. | accepted | data owner | development database phase |
 | D-016 | Separate production deployment from ordinary Codex execution. | Production requires reviewed artifacts, restricted authority, explicit confirmation, health checks and rollback. | accepted | operations owner | controlled deployment phase |
+| D-017 | Keep executable reboot harnesses beneath `/tmp`, but persist synthetic WorkSession state and retained evidence in the canonical `/srv/atenea` roots. | AX42 clears `/tmp` during reboot; reconciliation must be based on real surviving state rather than static or lost files. | accepted and proven in 5.3 | runtime owner | cleanup and retention design |
+| D-018 | Give the administrative Beautips PostgreSQL and Redis containers the same `unless-stopped` restart policy as the application. | The first reboot proved that dependencies with restart policy `no` leave the application unhealthy after host recovery. | accepted and proven in 5.3 | operations owner | Beautips onboarding |
 
 ## Deferred decisions and gates
 
@@ -240,10 +244,31 @@ After any interruption:
 7. Continue the first unchecked task or record a new decision if evidence invalidates the plan.
 8. Validate strictly, collect release/rollback evidence and archive the phase before advancing.
 
-The active change is `establish-project-runtime-contract`. Task 5.2 is complete;
-resume from the first unchecked task, 5.3. The administrative Codex/tmux bridge
-may be used to begin work, but it is not evidence of the managed session
-isolation boundary and MUST NOT be used as Atenea's AgentRun executor.
+`establish-project-runtime-contract` completed all 21 tasks and is archived at
+`openspec/changes/archive/2026-07-26-establish-project-runtime-contract`.
+OpenSpec synchronized eight modified requirements with no additions, removals
+or renames; strict validation passes and `openspec list` reports no active
+changes.
+
+The runtime-engine mode mismatch observed during the 5.4 rollback was corrected
+without weakening the invariant. An owned engine state root created below the
+canonical setgid runtime directory is normalized to exact mode `0700`. The
+regression starts from a setgid parent, fails against the previous engine and
+passes against the corrected implementation.
+
+Local and AX42 contract, allocation, dev, manager, engine and admission suites
+passed. AX42 returned to the accepted empty-state baseline, retained evidence
+from 5.3 and 5.4 remained intact, Beautips remained healthy at the published
+commit, and Atenea production remained unchanged and unrouted.
+
+No subsequent phase was created or started. The next action, only after
+explicit authorization, is the entry-gate review and proposal for
+`relocate-atenea-development-to-ax42`; do not implement that phase from this
+resume point.
+
+The administrative Codex/tmux bridge may be used to begin work, but it is not
+evidence of the managed session isolation boundary and MUST NOT be used as
+Atenea's AgentRun executor.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — reboot y reconciliación 5.3`.
+`Migración Atenea y Codex al AX42 — gate de entrada para reubicar desarrollo Atenea`.

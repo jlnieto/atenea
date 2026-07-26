@@ -901,6 +901,423 @@ Repository and AX42 staging hashes match:
 | `project-runtime-browser-check-v1.js` | `3b235ab654561998051ccff4b841038cdb692ad87496e6e48ea24f3e351c3dff` |
 | `test-project-runtime-health-browser-cleanup-v1.sh` | `cff656808b5eb2804389d0c2ad1099458cda93fd72243c8f4adb6f6f277c343b` |
 
+## Task 5.3 controlled reboot attempt — blocked
+
+Task 5.3 remains incomplete after the single authorized controlled reboot on
+2026-07-26. No reconciliation or post-reboot runtime suite was accepted.
+
+The initial read-only audit matched the documented programme state. The
+programme worktree was clean at local and remote commit
+`5fac27b313b9e06e175915ba8ee8e95e0ae3e76a`; OpenSpec was valid at `18/21`.
+Atenea production remained on
+`feature/actualizar-conversacion-en-web` at
+`7e8afa6c7039a70aea3b330234ddeabdcf2a6587`, with dirty-state fingerprint
+`b3ede1645fc6b8b74dba9a0b09aab95cbdd37c02d5b15f7601b1b160be7ee022`
+and no observed AX42 routing.
+
+One precheck difference was found and repaired before the reboot. The private
+network path from Atenea to AX42 reached TCP/22, but Atenea had no accepted SSH
+identity even though the archived bootstrap evidence declared this path
+working. A dedicated control-plane ED25519 identity was created for the
+`atenea` account, the previous worker administrator `authorized_keys` was
+backed up beneath `/var/backups/atenea-worker-runtime`, and exactly that public
+key was added idempotently. Fresh Atenea-to-worker administration, laptop
+administration and root key-only break-glass access then passed. No sshd,
+firewall or Tailscale policy was changed.
+
+All remaining prechecks passed before reboot:
+
+- no real `atenea-worker` job, mirror, WorkSession or admission root;
+- slot 2 had zero containers and exactly the four pinned image digests;
+- all four rootless daemons and proxy sockets were active;
+- every user slice retained 400% CPU, 10 GiB `MemoryHigh`, 12 GiB
+  `MemoryMax` and 4096 tasks;
+- rootful Docker, `docker.socket` and containerd were inactive and masked;
+- all three RAID arrays were `[UU]`, with no operation active, and SMART
+  passed;
+- strict worker verification passed SSH, firewall, private networking, time,
+  security updates and health timer checks;
+- Beautips was `UP`, its administrative `dev` hash was unchanged and
+  Tailscale Serve reported `No serve config`;
+- protected runtime-contract hashes matched;
+- no global runtime client, manager or engine, runtime sudoers, runtime
+  service, browser process or temporary broker was present.
+
+Because the retained 5.2 state did not include runtime records, the attempt
+created a minimal synthetic reconciliation fixture. Four canonical synthetic
+WorkSessions acquired `slot1` through `slot4`; only the sessions persisted for
+the exercise used their admitted `slot2`, `slot3` and `slot4`. Slot 2 held one
+live, fully labelled synthetic resource; slot 3 held one stopped, fully
+labelled resource; slot 4 declared an absent resource. A deliberately
+unlabelled synthetic resource in slot 2 provided the ambiguous-ownership denial
+case. Records, logs, worktrees and artifacts had a pre-reboot hash manifest.
+A root broker beneath `/tmp` accepted only the exact fixture operations and
+paths and verified the Unix peer as `atenea-worker`. It terminated before the
+reboot.
+
+The reboot request was issued at `2026-07-26T14:42:04Z`. SSH returned within
+the four-minute timeout. The boot ID changed from
+`1ca0c820-0065-4e80-9758-845113996096` to
+`0677f046-561d-4a36-a5c8-c5254c49d474`. Named administration, Atenea
+administration and root break-glass access returned. Strict host verification,
+RAID/SMART, SSH, firewall, Tailscale, time, health timer, all four rootless
+slots, rootful-daemon masks and systemd limits also returned correctly.
+
+Two acceptance-blocking differences then appeared:
+
+1. Beautips did not recover health. PostgreSQL and Redis remained exited
+   because their restart policy was `no`; the application repeatedly restarted
+   with an unresolved `postgres` hostname and could not obtain a database
+   connection. No Beautips container was deliberately restarted, replaced or
+   redeployed.
+2. The reboot removed both the retained 5.2 evidence root and the complete 5.3
+   fixture under `/tmp`, including records, logs, worktrees, artifacts and the
+   pre-reboot hash manifest. Rootless Docker resources persisted, but the
+   declared filesystem evidence did not. This proves that `/tmp` is an
+   execution location, not a valid reboot-retention boundary on this host.
+
+The stop condition was applied immediately. Reconciliation, lifecycle,
+isolation and Playwright suites were not run and 5.3 was not marked complete.
+The exact synthetic containers were inventoried by name, creation time, pinned
+image and, where applicable, complete engine/session/runtime labels. The two
+labelled resources and the deliberately unlabelled resource created by this
+attempt were removed; the temporary slot 3 image was removed; slots 2–4 were
+returned to their pre-attempt synthetic-resource state. No second reboot was
+attempted.
+
+Before task 5.3 can be repeated, the programme needs an approved durable
+synthetic evidence location outside reboot-cleaned `/tmp` while keeping
+executables and live harnesses beneath `/tmp`, plus an explicit operator
+decision for the Beautips post-reboot dependency/restart defect. A further
+reboot requires new authorization. Task 5.4 remains out of scope.
+
+## Task 5.3 controlled reboot and reconciliation — accepted
+
+Task 5.3 was repeated and accepted on 2026-07-26 after the operator approved
+the two blocking corrections and a further controlled reboot. Task 5.4 was not
+started.
+
+The administrative Beautips Compose source received only two declarative
+changes: PostgreSQL and Redis now use `restart: unless-stopped`, matching the
+application. Only those two dependency containers were recreated before the
+reboot; the application was not deliberately replaced or restarted. All three
+services became healthy/running with `unless-stopped`, and the protected
+administrative `dev` hash remained
+`db58c7ac7e2dc71fab0d7ef6a04591236ec34ff223b0ae52951e3538aa6234d5`.
+The Compose source change was committed independently in the administrative
+Beautips repository as
+`5044a3b07b3db82895e9c8ff47bc4bc9b0e97130`; it was not pushed during this
+evidence refresh.
+
+The repeated precheck passed the complete archived host baseline and confirmed:
+
+- no real job, mirror, WorkSession, admission state or Atenea-to-AX42 routing;
+- slot 2 with zero containers and exactly the four pinned Node, Maven, Tomcat
+  and Playwright image digests;
+- all four rootless daemons and proxies, fixed 400% CPU, 10 GiB
+  `MemoryHigh`, 12 GiB `MemoryMax` and 4096-task slice limits;
+- rootful Docker, `docker.socket` and containerd inactive and masked;
+- all three RAID arrays healthy at `[UU]`, SMART passing, archived SSH and
+  firewall policy, private connectivity, time and health timer passing;
+- laptop administration, root public-key break-glass and named administration
+  from Atenea over the private network;
+- Beautips `UP`, Tailscale `No serve config`, protected source/staging hashes,
+  no global runtime executables, runtime sudoers/services, browser process or
+  temporary broker.
+
+After that empty-state gate, four unambiguously synthetic UUIDs acquired
+`slot1` through `slot4`. Executables and the peer-credential-authenticated
+broker stayed beneath `/tmp`, but admitted records used
+`/srv/atenea/worker/runtime-admission-v1`; WorkSession state and worktrees used
+`/srv/atenea/workspaces/sessions`; logs and artifacts used
+`/srv/atenea/artifacts/sessions`; controlled caches used
+`/srv/atenea/caches/sessions`. A 40-file pre-reboot manifest covered the
+declared persistent fixture.
+
+The real Docker matrix contained:
+
+- one running, completely labelled resource in admitted `slot2`;
+- one stopped, completely labelled resource in admitted `slot3`;
+- one declared absent resource in admitted `slot4`;
+- one unlabelled, one foreign-labelled and one partially labelled denial
+  resource in admitted `slot2`.
+
+The reboot was requested at `2026-07-26T15:16:54Z`. SSH returned within the
+four-minute bound and the boot ID changed from
+`0677f046-561d-4a36-a5c8-c5254c49d474` to
+`0886b4d0-485c-4035-b8bb-1b0ab910e85c`. A first combined gate exited while
+services were still settling; the direct sanitized verifier then showed all
+13 checks passing and every strict repeat passed. The four proxy services were
+correctly socket-activated on their first read-only Docker request. Before any
+runtime action, RAID/SMART, firewall, SSH, private networking, Tailscale, time,
+rootful masks, rootless daemons, slice limits and all three administrative
+paths passed. Beautips recovered automatically with all three containers
+running under `unless-stopped`, remained `UP`, and Tailscale Serve remained
+unconfigured.
+
+The complete pre-reboot manifest verified after reboot. Admission still held
+the four exact slots, all records, logs, worktrees, caches and artifacts
+survived, and the expected Docker resources survived stopped. Real
+reconciliation then:
+
+- restarted only the completely owned live resource and set its WorkSession
+  state to `ready`;
+- preserved the stopped resource and terminal `stopped` state;
+- kept the absent resource `blocked` with
+  `recreate-if-authorized`;
+- rejected unlabelled, foreign-labelled and partially labelled resources with
+  `RUNTIME_OWNERSHIP_CONFLICT`;
+- produced identical stable results on its second and third execution without
+  duplicating the durable reconciliation artifact or changing terminal state.
+
+The required local suites passed:
+
+- `test-project-runtime-contract-v1.sh`;
+- `test-session-runtime-allocation-v1.sh`;
+- `test-dev-session-v1.sh`;
+- `test-runtime-manager-v1.sh`;
+- `test-runtime-engine-v1.sh`;
+- `test-runtime-admission-v1.sh`;
+- `test-project-runtime-health-browser-cleanup-v1.sh`.
+
+The same six non-browser suites passed explicitly on AX42 as `atenea-worker`.
+The browser/retention/cleanup suite also passed on AX42 inside the pinned
+Playwright image in admitted slot 2 with network `none`, rootless Docker,
+finite timeouts and complete synthetic ownership labels. The official image
+contains browsers but not the npm module or `jq`; exact Playwright 1.60.0
+modules and the worker's existing `jq` libraries were therefore staged only
+beneath `/tmp`. Because the slot identity cannot traverse the staging parent
+under `/srv`, an exact read-only copy of `workspace-v1` was used beneath
+`/tmp`; no `/srv` permission was widened. The fixture's `cp -a` required only
+the temporary container capability `CHOWN` after `cap-drop ALL`; it retained
+`no-new-privileges`, rootfs read-only, CPU/memory/PID limits and no network.
+
+The first local browser invocation used a shared visual root that already held
+four older PNGs, so its global count check rejected eight files. Repeating in
+an exclusive child root passed. Four local and four AX42 screenshots were
+inspected at 1440×900 and 390×844: Compose and Tomcat text was complete,
+legible and free of clipping or horizontal overflow, including wrapped Tomcat
+mobile output. No Playwright or Chromium process remained.
+
+Cleanup was proven twice against the real resources. The first pass removed
+the two completely owned resources, rejected all three denial resources, then
+removed those three only after their immutable Docker identity matched exact
+synthetic creation records; it also removed the slot 3 fixture image. The
+second pass removed zero resources and reported the image already absent.
+Admission records were released, structured post-reboot state was archived,
+and the canonical synthetic WorkSession/admission/cache roots were removed.
+
+The final AX42 audit passed:
+
+- zero mirrors, no `/srv/atenea/workspaces/sessions` and no
+  `/srv/atenea/worker/runtime-admission-v1`;
+- zero containers in slots 2–4, slot 2 with exactly its original four pinned
+  images, and no fixture image in slots 3–4;
+- no temporary fixture, broker, browser process, global runtime executable,
+  runtime sudoers or runtime service;
+- four rootless daemons/proxies and unchanged slice limits;
+- rootful Docker, its socket and containerd still inactive and masked;
+- strict archived host checks and three RAID arrays at `[UU]`;
+- Beautips `UP` with unchanged `dev` hash and Tailscale `No serve config`;
+- all protected runtime-contract hashes unchanged.
+
+Twenty-seven declared synthetic evidence files remain under
+`/srv/atenea/artifacts/sessions`, covered by
+`final-retained-v2.sha256`. They include pre/post host state, reconciliation,
+idempotent cleanup, browser artifact hashes, release records and the archived
+structured state. They contain no detected secret marker or private key.
+
+Atenea production remained on
+`feature/actualizar-conversacion-en-web` at
+`7e8afa6c7039a70aea3b330234ddeabdcf2a6587`, with unchanged dirty-state
+fingerprint
+`b3ede1645fc6b8b74dba9a0b09aab95cbdd37c02d5b15f7601b1b160be7ee022`,
+an empty index and no observed AX42 routing before or after the reboot.
+
+## Task 5.4 runtime-manager rollback — accepted
+
+Task 5.4 was executed and accepted on 2026-07-26. Task 5.5 was not started.
+The administrative Beautips commit
+`5044a3b07b3db82895e9c8ff47bc4bc9b0e97130` was first fetched, revalidated
+as the single direct descendant of the previous `origin/main`, and published
+by a normal fast-forward push. Local and remote `main` now point to that exact
+commit with zero divergence and a clean worktree. Compose configuration
+validated with the existing administrative environment; PostgreSQL, Redis and
+the application remained running under `unless-stopped`, and application
+health remained `UP`.
+
+The pre-rollback AX42 audit matched the accepted 5.3 boundary:
+
+- zero mirrors and no real or synthetic WorkSession/admission roots;
+- zero containers in slots 2–4, exactly the four fixed images in slot 2 and
+  no fixture images in slots 3–4;
+- four active rootless daemons and proxies with 400% CPU, 10 GiB
+  `MemoryHigh`, 12 GiB `MemoryMax` and 4096 tasks per slice;
+- rootful Docker, `docker.socket` and containerd inactive and masked;
+- strict SSH, firewall, private-network, RAID/SMART, time, capacity and health
+  checks passing, with all three arrays at `[UU]`;
+- Beautips `UP`, Tailscale Serve at `No serve config`, the administrative
+  `dev` hash protected and the 5.3 retained-evidence manifest intact;
+- no global runtime client, manager or engine, runtime sudoers/service,
+  temporary broker, fixture or Playwright/Chromium process.
+
+The protected local suites ran first from an isolated `/tmp` copy, followed by
+the same suites on AX42 as `atenea-worker`:
+
+- `test-project-runtime-contract-v1.sh` (`8/8`);
+- `test-session-runtime-allocation-v1.sh`;
+- `test-dev-session-v1.sh`;
+- `test-runtime-manager-v1.sh`;
+- `test-runtime-engine-v1.sh`;
+- `test-runtime-admission-v1.sh`.
+
+One unambiguously synthetic target WorkSession and one admission-only filler
+were then admitted so the target received persisted `slot2`. The target used a
+local synthetic bare Git mirror, a real Git worktree, the fixed Compose
+fixture, a dirty worktree marker, retained logs and retained run artifacts in
+the canonical `/srv/atenea` roots. No real project, remote repository or
+Atenea WorkSession was used.
+
+The protected client, manager and engine plus one exact sudoers delegation
+were installed only for the bounded exercise; no service was created. The real
+chain built the completely labelled image. This exposed one previously
+undocumented canonical-path defect: `engine-v1` inherited mode `2700` beneath
+the setgid runtime root, while the next engine invocation requires exact mode
+`0700`. The protected source remained unchanged. Only that synthetic engine
+directory had its setgid bit removed before continuing. The real manager then
+started the fixture, returned structured `ready/healthy` state and the
+loopback health response identified only `dummy-compose` with `UP`.
+
+Three additional stopped containers exercised denial with no labels,
+foreign complete labels and partial labels. The rollback helper beneath
+`/tmp` rejected each with `RUNTIME_OWNERSHIP_CONFLICT` and left it present.
+Two manager `stop` calls returned the same structured terminal
+`stopped/stopped` result. The first rollback pass removed exactly the owned
+container, network, fixture image and engine temporary. The second pass
+removed nothing. Both retained the same stable structured terminal state.
+
+The rollback-boundary manifest verified byte-identical preservation of the
+workspace record, allocation, runtime manifest, dirty worktree marker, runtime
+log, an independent retained log and run artifact. The synthetic mirror ref
+also remained unchanged. An earlier pre-lifecycle manifest comparison had
+shown only `runtime.log` changing because the explicit manager `logs`
+operation refreshes that declared log; the accepted rollback-boundary manifest
+was therefore taken after lifecycle/log collection and before cleanup.
+
+The three denied containers were finally removed only after their current
+immutable Docker ID, name, creation time and image matched their recorded
+synthetic creation identities. Admission was released, the temporary global
+files and sudoers rule were removed, and only the exact synthetic mirror,
+worktree, cache, admission/allocation roots and `/tmp` tools were deleted.
+Thirty-seven declared evidence files remain under:
+
+`/srv/atenea/artifacts/sessions/018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d54/runs/synthetic-run-5-4-rollback/rollback-evidence`
+
+They are covered by `final-retained-v1.sha256`. The final audit returned to
+the complete pre-fixture AX42 baseline, retained the 5.3 evidence manifest,
+and found no runtime, Docker, broker or browser residue.
+
+The repository and AX42 staging protected hashes remained:
+
+| File | SHA-256 |
+|---|---|
+| `runtime-manager-v1.sh` | `c7c394907706fc1f5699c9ac4f4167b4337981f5b26db4e7109cf0344148ee78` |
+| `runtime-client-v1.sh` | `0792bfae3f583474f51fef0d18169e4e7ffaad445efcc5f0de2470892b4089cb` |
+| `test-runtime-manager-v1.sh` | `4e77070cbbbd5ca913297d7beb035d85af34bda22fcb64e64e0955fa8049a9cc` |
+| `runtime-engine-v1.sh` | `3144aff72b6e53a3022aa8229ac19fc81f1b470a7797dd1cf26cc193ba6d8ebb` |
+| `test-runtime-engine-v1.sh` | `7d153d650ff5415ac8c30c58080b47b5a480613a8bd88bb0fb9c41ed8dcf80ad` |
+| Compose `runtime.json` | `db26ac0eb81d38c23c7883f2dda2c95c7dcbd3e4a9ee3509438293096938c5cb` |
+| Tomcat `runtime.json` | `f36c7a10e65cd148f4bbc0aa29fa6efdd5e097a0d9d573967cea20cf469f9d6a` |
+| `runtime-admission-v1.sh` | `f78f7f26b0ba16ffb4d05eaa60d3bc09cb6fd07c6d73172b9042b5d44b0187de` |
+| `test-runtime-admission-v1.sh` | `e8b1f12768f646cd79f45c7c7d82adbbee702e174d2a3b2a07ec1f94e3383232` |
+| `test-project-runtime-contract-v1.sh` | `985a06efef41b9797d2b8f77c218f8c12f8f2c8abac9224629739218aeb4546e` |
+
+Atenea production remained on
+`feature/actualizar-conversacion-en-web` at
+`7e8afa6c7039a70aea3b330234ddeabdcf2a6587`. Its dirty-state fingerprint
+remained
+`b3ede1645fc6b8b74dba9a0b09aab95cbdd37c02d5b15f7601b1b160be7ee022`,
+the index remained empty, private connectivity passed, and both repository
+sources and running container environments contained zero observed AX42
+routing references before and after rollback.
+
+## Task 5.5 final validation and archive gate
+
+Before archive, the canonical-path mode difference found by task 5.4 was
+resolved in the protected engine. `runtime-engine-v1.sh` now explicitly removes
+the inherited setgid bit and fixes the new engine state root at mode `0700`
+before writing its ownership marker. No validation rule was weakened: repeated
+invocations still reject a pre-existing engine root unless it is a regular
+directory owned by the engine identity, mode `0700`, and carries the exact
+WorkSession/runtime marker.
+
+`test-runtime-engine-v1.sh` now prepares each synthetic runtime root at mode
+`2770`, matching the canonical worker allocation boundary, and asserts that
+the engine state root is `0700` immediately after `build`. The modified
+regression failed against the previous protected engine with
+`engine state root inherited the parent setgid mode` and passed against the
+corrected source. This proves the test detects the observed defect instead of
+only documenting it.
+
+The corrected local verification ran first from an isolated `/tmp` copy:
+
+- `test-project-runtime-contract-v1.sh` passed all eight blocks;
+- `test-session-runtime-allocation-v1.sh` passed;
+- `test-dev-session-v1.sh` passed;
+- `test-runtime-manager-v1.sh` passed;
+- `test-runtime-engine-v1.sh` passed with the setgid regression;
+- `test-runtime-admission-v1.sh` passed.
+
+The same six suites then passed on `codex-worker-01` from `/tmp` as
+`atenea-worker`. No global client, manager or engine was installed and the
+suites left no fixture, broker, container, network, image or process residue.
+The final worker gate passed strict hostname, account, filesystem, SSH,
+firewall, RAID/SMART, capacity, time, security-update, Tailscale and health
+checks. All four rootless slots and proxies remained active with their fixed
+limits; slots 2–4 contained zero containers, slot 2 retained exactly its four
+fixed images, and slots 3–4 retained zero fixture images. Rootful Docker,
+`docker.socket` and containerd remained inactive and masked.
+
+Both retained manifests from tasks 5.3 and 5.4 verified after the correction.
+Beautips remained `UP`, clean and synchronized at
+`5044a3b07b3db82895e9c8ff47bc4bc9b0e97130`. Atenea production remained on
+`feature/actualizar-conversacion-en-web` at
+`7e8afa6c7039a70aea3b330234ddeabdcf2a6587`, with unchanged dirty-state
+fingerprint
+`b3ede1645fc6b8b74dba9a0b09aab95cbdd37c02d5b15f7601b1b160be7ee022`,
+an empty index, working private connectivity and zero observed AX42 routing
+references in repository sources or running container environments.
+
+The final corrected hashes in both the repository and AX42 staging are:
+
+| File | SHA-256 |
+|---|---|
+| `runtime-manager-v1.sh` | `c7c394907706fc1f5699c9ac4f4167b4337981f5b26db4e7109cf0344148ee78` |
+| `runtime-client-v1.sh` | `0792bfae3f583474f51fef0d18169e4e7ffaad445efcc5f0de2470892b4089cb` |
+| `test-runtime-manager-v1.sh` | `4e77070cbbbd5ca913297d7beb035d85af34bda22fcb64e64e0955fa8049a9cc` |
+| `runtime-engine-v1.sh` | `0f6d3da1d2ad974f31935bb24105c0e6871174fb2918db2ae05d0ca240ac6850` |
+| `test-runtime-engine-v1.sh` | `63830dfe9eaa3180cde0743311c1ac9aefcf1c1b71f070a8bb5c61807bccea46` |
+| Compose `runtime.json` | `db26ac0eb81d38c23c7883f2dda2c95c7dcbd3e4a9ee3509438293096938c5cb` |
+| Tomcat `runtime.json` | `f36c7a10e65cd148f4bbc0aa29fa6efdd5e097a0d9d573967cea20cf469f9d6a` |
+| `runtime-admission-v1.sh` | `f78f7f26b0ba16ffb4d05eaa60d3bc09cb6fd07c6d73172b9042b5d44b0187de` |
+| `test-runtime-admission-v1.sh` | `e8b1f12768f646cd79f45c7c7d82adbbee702e174d2a3b2a07ec1f94e3383232` |
+| `test-project-runtime-contract-v1.sh` | `f5035927f697403ca605b2af585f63d4feaf3aea9cf264c1d42d2c91c306d694` |
+
+The two active delta specs were assessed before archive. Sync updates the four
+modified Codex environment requirements and the four modified isolated runtime
+requirements while preserving the unaffected stable requirements. No delta
+removal or rename is requested. Playwright was not run for task 5.5 because
+the correction changes only engine filesystem mode handling and has no visible
+surface.
+
+The final OpenSpec gate completed at 21/21 tasks. Strict validation passed, and
+`openspec archive establish-project-runtime-contract -y --json` synchronized
+exactly eight modified requirements with zero additions, removals or renames.
+The change is retained at
+`openspec/changes/archive/2026-07-26-establish-project-runtime-contract`, and
+`openspec list` reports no active changes. No subsequent phase was created or
+started.
+
 ## Administrative Codex bridge
 
 The bridge is intentionally separate from the future managed AgentRun executor.
