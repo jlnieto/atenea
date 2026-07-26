@@ -11,7 +11,7 @@ This document is the durable programme ledger for moving Atenea development exec
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
 - Canonical source: GitHub
-- Last evidence refresh: 2026-07-25
+- Last evidence refresh: 2026-07-26
 
 The normative requirements live in OpenSpec. This ledger records phase state, decisions, evidence locations and the exact resume point. Code, tests and migrations remain authoritative for existing Atenea runtime behaviour.
 
@@ -240,10 +240,10 @@ After any interruption:
 7. Continue the first unchecked task or record a new decision if evidence invalidates the plan.
 8. Validate strictly, collect release/rollback evidence and archive the phase before advancing.
 
-The active change is `establish-project-runtime-contract`. Resume from its first
-unchecked task. The administrative Codex/tmux bridge may be used to begin work,
-but it is not evidence of the managed session isolation boundary and MUST NOT be
-used as Atenea's AgentRun executor.
+The active change is `establish-project-runtime-contract`. Task 5.2 is complete;
+resume from the first unchecked task, 5.3. The administrative Codex/tmux bridge
+may be used to begin work, but it is not evidence of the managed session
+isolation boundary and MUST NOT be used as Atenea's AgentRun executor.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — dev JSON 3.4`.
+`Migración Atenea y Codex al AX42 — reboot y reconciliación 5.3`.

@@ -37,16 +37,16 @@
       to its privileged control group.
 - [x] 4.2 Implement the session-scoped runtime manager with a default-deny policy
       for mounts, namespaces, capabilities, devices and resource ownership.
-- [ ] 4.3 Add a dummy Compose fixture and a JDK 17 build/JDK 8 Tomcat 8 runtime
+- [x] 4.3 Add a dummy Compose fixture and a JDK 17 build/JDK 8 Tomcat 8 runtime
       fixture using the same internal service port.
-- [ ] 4.4 Prove four normal slots, two heavy permits and resource-pressure
+- [x] 4.4 Prove four normal slots, two heavy permits and resource-pressure
       admission without host thrashing.
 
 ## 5. Verification and rollback
 
-- [ ] 5.1 Test schema rejection, idempotent lifecycle, structured output,
+- [x] 5.1 Test schema rejection, idempotent lifecycle, structured output,
       concurrent same-port isolation and cross-session denial.
-- [ ] 5.2 Run local worker health and browser checks, retain declared artifacts
+- [x] 5.2 Run local worker health and browser checks, retain declared artifacts
       and verify cleanup removes only proven-owned ephemeral resources.
 - [ ] 5.3 Reboot the worker and prove reconciliation plus administrative access,
       RAID, firewall and existing baseline health.

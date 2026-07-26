@@ -204,10 +204,11 @@ sudo -u atenea-worker ./session-runtime-allocation-v1.sh ensure \
   /srv/atenea/workspaces/sessions/018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e/dummy-compose/runtime.json
 ```
 
-Task 3.2 accepts normal-workload manifests only. Heavy admission and resource
-pressure remain task 4.4; lifecycle commands and JSON rendering remain tasks
-3.3 and 3.4. Run the collision, ownership, preservation and concurrency suite
-with synthetic state beneath `/tmp`:
+Task 3.2 accepts normal-workload manifests only. Its caller must first acquire
+the persisted normal slot returned by task 4.4's admission helper. Lifecycle
+commands and JSON rendering are implemented by tasks 3.3 and 3.4. Run the
+collision, ownership, preservation and concurrency suite with synthetic state
+beneath `/tmp`:
 
 ```bash
 ./test-session-runtime-allocation-v1.sh
@@ -236,8 +237,8 @@ exact repository-relative manifest persisted by task 3.2. `list`, `status`,
 never execute manifest lifecycle commands or contact a container daemon
 directly.
 
-The mediated runtime client remains intentionally uninstalled while the task
-4.2 boundary is staged and the task 4.3 engine fixtures are pending. Mutating
+The mediated runtime client, manager and engine remain intentionally
+uninstalled while their reviewed task 4.2 and 4.3 sources are staged. Mutating
 commands therefore fail closed outside the synthetic suites. `--json` emits
 one schema-valid envelope on stdout, keeps fixed diagnostics on stderr and
 never copies raw runtime-client output into the envelope.
@@ -278,5 +279,156 @@ beneath `/tmp`:
 ```
 
 The suite does not contact Docker. Installing the root-owned client/manager and
-the real runtime engine is a separate controlled worker action; the dummy
-Compose and Tomcat engine fixtures remain task 4.3.
+engine remains a separate controlled worker action.
+
+## Synthetic runtime engine fixtures
+
+Task 4.3 adds `runtime-engine-v1.sh` and two fixed fixtures beneath
+`runtime-contract/fixtures/valid`. Both declare internal HTTP port `8080`, no
+secrets and no external service. One uses a generated restrictive Compose
+definition and the pinned Node image. The other compiles a servlet with the
+digest-pinned JDK 17 image and runs it with the pinned Java 8/Tomcat 8 image.
+
+Engine v1 accepts only those two reviewed fixture identities. It consumes the
+manager's mode `0600` plan, revalidates allocation ownership and exact fixture
+file hashes, derives the rootless slot and every resource name from the
+WorkSession, and generates its Dockerfile/Compose inputs in a private
+session-owned runtime root. It never copies or executes manifest `argv`
+values.
+
+Runtime containers use loopback-only port publication, a read-only root
+filesystem, no-new-privileges, all capabilities dropped, private namespaces,
+no devices, no bind mounts and no daemon socket. Images, containers and
+networks carry complete WorkSession/runtime ownership labels and are checked
+before reuse or removal. `stop` retains WorkSession records, source, logs and
+artifacts.
+
+Run the dependency-free fake-Docker integration suite beneath `/tmp`:
+
+```bash
+./test-runtime-engine-v1.sh
+```
+
+The real rootless AX42 verification is deliberately temporary: it uses only an
+explicitly assigned slot, synthetic state beneath `/tmp` and a short-lived
+UID-checking broker. No global client, manager, engine, sudoers entry or
+service is installed by task 4.3.
+
+## Runtime capacity admission
+
+Task 4.4 adds `runtime-admission-v1.sh` as a pre-runtime lease boundary. It
+serializes every request through one worker-owned lock and recovers capacity
+from mode-restricted records persisted by complete WorkSession UUID. The
+admission limits are:
+
+- four normal slots, `slot1` through `slot4`, with one owner each;
+- two independent heavy permits, `heavy1` and `heavy2`;
+- one heavy permit only after that WorkSession owns a normal slot.
+
+Repeating an active acquisition returns the same byte-stable record. Releasing
+a lease changes its state to `released` instead of deleting the record, so
+ownership and recovery evidence remain available. Duplicate slot or permit
+claims, mismatched record identities, unsafe modes and symbolic links fail
+closed.
+
+Before a new lease is granted, the helper retains host recovery headroom by
+checking load, available memory and process count. A fifth normal session
+returns `NORMAL_CAPACITY_EXHAUSTED`; a third heavy operation returns
+`HEAVY_CAPACITY_EXHAUSTED`. Resource-pressure denial uses the corresponding
+capacity code and starts no runtime process or container. Existing leases can
+still be repeated or released while pressure is high.
+
+The production control root is reserved at
+`/srv/atenea/worker/runtime-admission-v1` for a later managed installation.
+Task 4.4 stages the helper and tests only; it does not create that root, install
+an executable, add sudoers or start a service. Run the complete synthetic suite
+as `atenea-worker` from `/tmp`:
+
+```bash
+cd /tmp
+/srv/atenea/worker/workspace-v1/ops/worker/test-runtime-admission-v1.sh
+```
+
+The suite covers concurrent allocation, capacity denial, idempotency,
+persistent recovery, release/reuse, ownership conflicts, human/JSON state,
+secret suppression, pressure denial and preservation of records, worktrees,
+logs and artifacts.
+
+## Project runtime contract integration
+
+Task 5.1 adds `test-project-runtime-contract-v1.sh` as the minimum global
+contract suite. It runs only with synthetic WorkSessions, manifests, fixtures,
+adapters and bounded loopback ports beneath `/tmp`. It composes the workspace,
+allocation, `dev`, manager, engine and admission regressions, then verifies
+admission-to-allocation consistency across all four slots.
+
+The integrated assertions cover:
+
+- formal schema acceptance/rejection when Python `jsonschema` is available,
+  plus a dependency-free corpus check on the worker;
+- cross-session denial at workspace, allocation, admission, manager, engine
+  and resource-ownership boundaries;
+- the two fixed fixtures through idempotent human and JSON lifecycle paths;
+- four unique allocations for internal port `8080`, including two bounded
+  loopback adapters healthy at the same time;
+- four normal slots, two heavy permits, fifth-session and third-heavy denial;
+- byte-stable concurrent retries without duplicate records or allocations;
+- retained workspace records, worktree content, logs and artifacts;
+- suppression of environment markers and raw adapter diagnostics;
+- unchanged task 4.2, 4.3 and 4.4 protected hashes.
+
+Run it locally or from the AX42 staging root without installing any global
+component:
+
+```bash
+cd /tmp
+/srv/atenea/worker/workspace-v1/ops/worker/test-project-runtime-contract-v1.sh
+```
+
+On AX42 invoke it as `atenea-worker`. The staged schema and invalid corpus are
+test inputs only. The suite does not create a real mirror, WorkSession,
+project deployment, service, sudoers rule or rootful Docker authority.
+
+## Runtime health, browser evidence and cleanup
+
+Task 5.2 adds:
+
+- `project-runtime-browser-check-v1.js`, a finite-timeout Playwright check for
+  declared loopback identity, expected DOM text, desktop/mobile usability and
+  deterministic session/run artifact registration;
+- `runtime-cleanup-v1.sh`, a synthetic cleanup boundary that validates the
+  allocation and requires exact engine, WorkSession and runtime labels before
+  removing a container, network or image;
+- `test-project-runtime-health-browser-cleanup-v1.sh`, the local fake-Docker,
+  loopback-health, browser, retention, denial and idempotency suite.
+
+The cleanup helper accepts only explicit synthetic records beneath `/tmp` and
+an assigned rootless slot or synthetic Docker socket. It validates every
+existing target before deleting the first one. Missing, foreign or partial
+labels block the complete cleanup request. Workspace/allocation records,
+mirrors, worktrees, logs and registered artifacts are never cleanup targets.
+
+The browser check records fixed filenames beneath:
+
+```text
+<artifact-root>/<session-uuid>/runs/<agent-run-id>/browser/
+```
+
+Repeating the same check replaces the same four artifact identities and
+produces the same registry instead of appending duplicates. Chromium, pages
+and contexts are closed in `finally`, and every navigation and screenshot has
+a finite timeout.
+
+Run the synthetic suite from `/tmp` with an explicit temporary Playwright
+runner:
+
+```bash
+ATENEA_BROWSER_RUNNER=/tmp/atenea-playwright-runner \
+ATENEA_VISUAL_ROOT=/tmp/codex-visual-checks/remote-codex-platform \
+  ./test-project-runtime-health-browser-cleanup-v1.sh
+```
+
+The AX42 acceptance uses the pinned Playwright image and rootless slot selected
+by synthetic admission. Browser transport may use the exact session network
+and container name while the registered operator URL remains the allocation's
+loopback URL. This avoids widening a loopback binding or using host networking.

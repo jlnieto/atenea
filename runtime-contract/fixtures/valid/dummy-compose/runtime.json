@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "id": "dummy-compose",
+    "repository": {
+      "url": "https://github.com/example/dummy-compose.git",
+      "defaultBranch": "main"
+    }
+  },
+  "toolchains": [
+    {"name": "node", "version": "22.16.0", "source": "container-image"},
+    {"name": "docker", "version": "29.6.2", "source": "worker-package"},
+    {"name": "compose", "version": "5.3.1", "source": "worker-package"}
+  ],
+  "runtime": {
+    "kind": "compose",
+    "composeFiles": ["compose.json"],
+    "services": ["app"],
+    "internalPorts": [
+      {"name": "web", "port": 8080, "protocol": "http"}
+    ]
+  },
+  "lifecycle": {
+    "build": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "build"], "timeoutSeconds": 600},
+    "start": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "up"], "timeoutSeconds": 120},
+    "stop": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "stop"], "timeoutSeconds": 120},
+    "health": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "health"], "timeoutSeconds": 30},
+    "logs": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "logs"], "timeoutSeconds": 30}
+  },
+  "preview": {
+    "internalPort": "web",
+    "path": "/",
+    "publish": "private",
+    "command": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "preview"], "timeoutSeconds": 30},
+    "localhostCompatibilityRequired": false
+  },
+  "browserChecks": [
+    {
+      "name": "health",
+      "path": "/health",
+      "command": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "browser"], "timeoutSeconds": 30},
+      "viewports": ["desktop-1440x900"],
+      "artifact": "artifacts/browser/health"
+    }
+  ],
+  "artifacts": [
+    {"name": "build", "path": "artifacts/build", "retention": "run"}
+  ],
+  "secrets": [],
+  "workloadClass": "normal"
+}

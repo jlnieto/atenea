@@ -396,6 +396,511 @@ describing task 3.4 as pending and `--json` as rejected. It now describes the
 implemented structured renderer and the staged manager boundary. Atenea
 production and its pre-existing dirty web worktree were not modified.
 
+## Synthetic runtime engine and fixtures
+
+Task 4.3 adds one fixed engine and two completely synthetic fixtures:
+
+- `runtime-engine-v1.sh`;
+- `test-runtime-engine-v1.sh`;
+- `runtime-contract/fixtures/valid/dummy-compose`;
+- `runtime-contract/fixtures/valid/dummy-tomcat`.
+
+Both manifests are schema-valid, normal workloads with no secrets or external
+services. Both declare HTTP port `8080`. Their lifecycle command arrays contain
+the deliberate marker `MANIFEST_ARGV_MUST_NOT_RUN`; the marker never reached
+the Docker command log or an executed process.
+
+Engine v1 accepts only the two fixture project/runtime pairs. It revalidates the
+manager's mode `0600` plan, the allocation identity, slot 2, loopback port and
+default-deny restrictions. It then verifies exact SHA-256 hashes for every
+executable fixture input and copies only those files into a private,
+engine-owned snapshot. Dockerfiles and the restrictive Compose document are
+generated from the validated plan; manifest paths, flags, names and `argv`
+values do not become daemon commands.
+
+Every image, container and network name derives from the complete WorkSession
+runtime ID and carries engine, session and runtime labels. Existing resources
+are reused, stopped, removed or rebuilt only after all ownership labels match.
+The selected daemon is derived from the persisted slot and fixed to the
+rootless proxy; neither `/var/run/docker.sock` nor another slot is accepted.
+
+The generated containers enforce:
+
+- loopback-only publication to distinct allocated ports;
+- read-only root filesystems;
+- `no-new-privileges`;
+- all capabilities dropped and none added;
+- private network/PID/IPC namespaces;
+- no privileged mode, devices or bind mounts;
+- no Docker or other daemon socket;
+- bounded PIDs and only small `tmpfs` runtime paths where required.
+
+Local tests ran first and exclusively beneath `/tmp`. The schema validator
+accepted both fixtures. The task 3.2, 3.3/3.4 and 4.2 regression suites plus
+the new engine suite passed in the local inspection tree and in the canonical
+Atenea programme worktree. The same four suites then passed on AX42 as
+`atenea-worker` from `/tmp` using the dependency-free fake-Docker boundary.
+
+The real AX42 exercise used two synthetic WorkSession UUIDs, fixed loopback
+ports `27301` and `27302`, and only rootless slot 2. A temporary broker beneath
+`/tmp` verified the Unix peer UID was `atenea-worker`, accepted only the exact
+synthetic session paths and manager operations, and invoked the root-owned
+temporary engine. It did not install a service, sudoers rule or global
+executable, and it was removed after the run.
+
+The complete real chain
+`dev -> runtime client -> runtime manager -> engine -> rootless slot 2`
+passed twice from `/tmp`. For both fixtures it covered `build`, `up`, `status`,
+health, `logs`, `url`, `stop`, repeated `stop`, `restart` and `redeploy` in
+human and JSON modes. Both applications were healthy simultaneously while
+listening internally on `8080`; their host bindings remained independent at
+`127.0.0.1:27301` and `127.0.0.1:27302`.
+
+The Compose response identified `dummy-compose` with state `UP`. The Tomcat
+response identified `dummy-tomcat`, state `UP` and runtime
+`java8-tomcat8`. Direct pinned-image probes and retained build metadata proved:
+
+| Toolchain boundary | Observed result |
+|---|---|
+| Build compiler | `javac 17.0.19` |
+| Runtime VM | Temurin OpenJDK `1.8.0_402` |
+| Servlet runtime | Tomcat `8.5.100` |
+
+Direct daemon inspection confirmed both containers were unprivileged,
+read-only, `no-new-privileges`, `cap_drop=ALL`, with no added capabilities,
+devices, binds or host namespaces. Port `8080/tcp` mapped only to each declared
+loopback port. Cross-session allocation use and a modified Compose fixture
+requesting a host mount were rejected. The task 4.2 denial regression also
+reconfirmed rejection of mounts, host namespaces, capabilities, devices,
+Docker sockets, unsupported fields and foreign names.
+
+Repeated lifecycle calls preserved byte-identical workspace/allocation records,
+fixture source, retained runtime logs and the session-derived toolchain
+artifact. No environment marker or raw engine output entered human or JSON
+stdout. `stop` did not remove records, worktrees, logs or artifacts.
+
+Before and after the real run:
+
+- `/srv/atenea/repositories` contained zero mirrors;
+- `/srv/atenea/workspaces/sessions` remained absent;
+- slot 2 contained zero containers and exactly the same four pinned image
+  digests;
+- rootful Docker, `docker.socket` and containerd remained inactive and masked;
+- Beautips returned `UP` on `127.0.0.1:18083/actuator/health`;
+- Tailscale reported `No serve config`;
+- the administrative Beautips `dev` hash remained
+  `db58c7ac7e2dc71fab0d7ef6a04591236ec34ff223b0ae52951e3538aa6234d5`;
+- Atenea production retained branch `feature/actualizar-conversacion-en-web`,
+  its pre-existing web changes and no observed AX42 routing reference.
+
+All two-session containers, networks, images, broker files and fixture roots
+were removed only after their synthetic ownership was inspected. The
+digest-pinned JDK 17 reference introduced for the direct version probe was also
+removed; slot 2 returned to its exact four-image baseline. No real mirror,
+worktree, WorkSession, project deployment, authentication material, history,
+secret, service restart or production change occurred.
+
+The repository and staging hashes after task 4.3 match:
+
+| File | SHA-256 |
+|---|---|
+| `runtime-engine-v1.sh` | `3144aff72b6e53a3022aa8229ac19fc81f1b470a7797dd1cf26cc193ba6d8ebb` |
+| `test-runtime-engine-v1.sh` | `7d153d650ff5415ac8c30c58080b47b5a480613a8bd88bb0fb9c41ed8dcf80ad` |
+| Compose `runtime.json` | `db26ac0eb81d38c23c7883f2dda2c95c7dcbd3e4a9ee3509438293096938c5cb` |
+| Tomcat `runtime.json` | `f36c7a10e65cd148f4bbc0aa29fa6efdd5e097a0d9d573967cea20cf469f9d6a` |
+
+Observed documentation differences were corrected during the task:
+
+- the programme resume title still pointed to completed task 3.4;
+- the worker README still described the engine fixtures as pending;
+- the Tomcat digest actually contains Temurin `1.8.0_402`, so the initial
+  fixture declaration of `8.0.412` was corrected before acceptance;
+- an initial AX42 invocation inherited `/home/jose` and produced harmless
+  `find` CWD warnings; it was not used as evidence, and the complete suite was
+  repeated cleanly from `/tmp`.
+
+At the task 4.3 boundary, the original task 4.2 staging hashes remained
+unchanged. The global client, manager and engine were deliberately absent, no
+runtime sudoers entry or service existed, and capacity/resource-pressure work
+had not started.
+
+## Four-slot and heavy-operation admission
+
+Task 4.4 adds two staged artifacts:
+
+- `runtime-admission-v1.sh`;
+- `test-runtime-admission-v1.sh`.
+
+The admission helper is deliberately separate from task 3.2's deterministic
+runtime allocation and task 4.2's privileged mediation. It runs before either
+boundary and has no operation that can start a process or container. It
+serializes all state changes through one worker-owned `flock`, then rebuilds
+the complete capacity view from mode-restricted records persisted by canonical
+WorkSession UUID.
+
+Each held record owns exactly one of `slot1` through `slot4`. A WorkSession may
+also own one of the independent `heavy1` or `heavy2` permits, but only while it
+holds a normal slot. Release changes the persisted lease state to `released`
+instead of deleting the record. Repeating an active acquisition returns the
+same byte-stable record, while a fresh helper process recovers all held slot
+and permit ownership from disk.
+
+Before granting new capacity, the helper checks the real host or a
+test-injected, strictly shaped metric document for:
+
+- one-minute load no greater than 75% of online CPU capacity;
+- at least 8 GiB of available host memory;
+- no more than 8192 host processes.
+
+Existing acquisitions remain repeatable and releasable under pressure. A new
+normal request blocked by capacity or headroom returns
+`NORMAL_CAPACITY_EXHAUSTED`; a heavy request returns
+`HEAVY_CAPACITY_EXHAUSTED`. Human output is concise, and JSON output contains
+the operation, state, WorkSession where applicable, current limits and an
+actionable fixed error. Neither output includes environment values, raw
+commands or secret material.
+
+Local tests ran first and exclusively in the temporary inspection tree beneath
+`/tmp`. The task 3.2, 3.3/3.4, 4.2, 4.3 and new 4.4 suites all passed. The new
+suite proved:
+
+- four concurrent normal requests receive `slot1` through `slot4` exactly
+  once, and a fifth is blocked with `NORMAL_CAPACITY_EXHAUSTED`;
+- two concurrent heavy requests receive `heavy1` and `heavy2`, and a third is
+  blocked with `HEAVY_CAPACITY_EXHAUSTED`;
+- normal and heavy leases are released and safely reused;
+- concurrent duplicate requests serialize to one byte-identical record and
+  result;
+- a new process invocation recovers four normal owners and the persisted heavy
+  owner without in-memory state;
+- cross-session record identity, duplicate slot, duplicate permit, unsafe mode
+  and symbolic-link conflicts fail closed;
+- injected CPU, memory and process pressure blocks new work without creating a
+  record, process or container marker;
+- blocked and successful human/JSON states remain actionable and suppress an
+  environment secret marker;
+- persisted records survive release and synthetic worktrees, logs and
+  artifacts remain byte-identical.
+
+The same five suites passed on `codex-worker-01`, invoked from `/tmp` as
+`atenea-worker`. A second AX42 exercise omitted the injected metric document
+and used the host's real `/proc` state. It admitted four synthetic sessions
+onto all four slots and two heavy operations, then returned the required codes
+for the fifth normal and third heavy requests. Its observed ready state was:
+
+| Metric | Observed | Admission threshold |
+|---|---:|---:|
+| One-minute load | `260` milli-load | `12000` maximum |
+| Available memory | `63926693888` bytes | `8589934592` minimum |
+| Host processes | `323` | `8192` maximum |
+| Normal ownership | `4/4` | four |
+| Heavy ownership | `2/2` | two |
+
+All four installed rootless slot slices report the existing limits of 400% CPU,
+10 GiB `MemoryHigh`, 12 GiB `MemoryMax` and 4096 tasks. A bounded 12-second
+pressure exercise ran only inside the explicitly assigned `atenea-slot2` user
+slice, with stricter transient limits of 50% CPU, 96 MiB `MemoryHigh`, 128 MiB
+`MemoryMax` and 32 tasks. During the accepted run:
+
+| Pressure observation | Result |
+|---|---:|
+| CPU control | `50000 100000`; 11 throttling events |
+| Memory | `74616832 / 134217728` bytes |
+| PIDs | `14 / 32` |
+| Host available memory | `63866757120` bytes |
+| Host process count | `338` |
+| Beautips during load | `UP` in `0.004205` seconds |
+| Slot 2 containers before/after | `0 / 0` |
+| Transient unit final state | `inactive` |
+
+The first pressure harness draft left its unbounded CPU generator active after
+the intended observation interval. Its cleanup trap stopped the transient unit
+and removed the script; a read-only check confirmed the unit inactive, no
+matching slot process, zero slot 2 containers and Beautips `UP`. The generator
+was corrected with its own 12-second timeout before the accepted run above.
+No destructive or exhaustion load was attempted.
+
+Read-only checks before the suites found no state divergence from the resume
+protocol. After task 4.4:
+
+- all task 4.2 and 4.3 protected hashes remain unchanged;
+- `/srv/atenea/repositories` contains zero mirrors and
+  `/srv/atenea/workspaces/sessions` is absent;
+- slot 2 has zero containers and the same four pinned image digests;
+- every slot daemon reports the rootless security option, and the rootful
+  `docker` group has no member;
+- rootful Docker, `docker.socket` and containerd remain inactive and masked;
+- the global client, manager and engine remain absent, with no runtime sudoers
+  entry or service;
+- Beautips remains `UP`, Tailscale Serve remains `No serve config`, and the
+  administrative Beautips `dev` hash remains
+  `db58c7ac7e2dc71fab0d7ef6a04591236ec34ff223b0ae52951e3538aa6234d5`;
+- Atenea production remains on `feature/actualizar-conversacion-en-web`, with
+  its pre-existing dirty web changes untouched and no AX42 routing reference.
+
+The repository and staging hashes for task 4.4 match:
+
+| File | SHA-256 |
+|---|---|
+| `runtime-admission-v1.sh` | `f78f7f26b0ba16ffb4d05eaa60d3bc09cb6fd07c6d73172b9042b5d44b0187de` |
+| `test-runtime-admission-v1.sh` | `e8b1f12768f646cd79f45c7c7d82adbbee702e174d2a3b2a07ec1f94e3383232` |
+
+No real project, mirror, worktree or WorkSession was created. No application
+was deployed, no global component was installed, no service or host was
+restarted, and no Atenea route, production file, authentication material,
+history, secret, commit or push was changed.
+
+## Global runtime-contract verification
+
+Task 5.1 adds `test-project-runtime-contract-v1.sh`, one minimum global suite
+that composes the previously accepted boundaries without changing their
+implementations. Its protected hash table fixes the accepted task 4.2, 4.3 and
+4.4 sources, tests and fixture manifests before and after every complete run.
+
+The suite has eight ordered blocks:
+
+1. project-runtime schema and invalid-authority corpus;
+2. session workspace ownership and cross-session denial;
+3. runtime allocation, same-port uniqueness and serialization;
+4. concise human `dev` output and stable JSON envelopes;
+5. manager/client default-deny and cross-session policy;
+6. both synthetic fixture lifecycles through the fixed engine;
+7. four-slot/two-heavy admission and pressure denial;
+8. integrated admission-to-allocation capacity, concurrency, simultaneous
+   loopback identity and retained-evidence checks.
+
+The integrated block acquires four normal sessions concurrently, uses each
+persisted admitted slot for allocation and proves four distinct loopback
+bindings for the same declared internal port `8080`. Two bounded synthetic
+HTTP adapters remain healthy simultaneously and return only their owning
+WorkSession identity. A fifth normal session and third heavy request return
+the stable capacity codes without creating an admission record, workspace or
+allocation.
+
+Concurrent duplicate admission and allocation requests return byte-identical
+results. Cross-session slot use is rejected before allocation changes. The
+composed regressions additionally deny neighbouring workspace/branch use,
+foreign allocation paths, record identities, manager inspection results,
+engine resources, mounts, host namespaces, capabilities, devices, daemon
+sockets and unsupported authority.
+
+Before and after idempotent and denied operations, the suite hashes workspace
+and allocation records, uncommitted synthetic worktree content, synthetic
+mirror evidence, retained logs and artifacts. Counts remain exactly four
+admission records and four allocation records. The two fixture lifecycle
+suites cover build, up, status, logs, URL, restart, redeploy, stop and repeated
+stop in human and JSON modes without duplicate resources. Environment markers,
+raw adapter stdout/stderr and manifest lifecycle command markers are rejected
+from normal output, normalized diagnostics and envelopes.
+
+Local verification ran first from a fresh
+`/tmp/remote-codex-platform-5.1.*` copy. Python `jsonschema` 4.26.0 performed
+the draft-2020-12 meta-schema check, accepted both fixed fixtures and rejected
+all eight invalid manifests. Shell syntax, ShellCheck and the complete suite
+passed:
+
+```text
+[PASS] schema-corpus
+[PASS] workspace-boundary
+[PASS] allocation-regression
+[PASS] dev-regression
+[PASS] manager-regression
+[PASS] engine-regression
+[PASS] admission-regression
+[PASS] integrated-capacity
+Project runtime contract v1 integration tests passed (8/8).
+```
+
+The same suite then passed on `codex-worker-01` from `/tmp` as
+`atenea-worker`. AX42 intentionally has no host-global Python `jsonschema`
+package, so that run used the suite's explicit dependency-free corpus checks
+and the manager denial regression. Runtime execution used the existing
+fake-Docker adapter and temporary loopback listeners; no real slot container,
+network or image was created. The listeners and every suite fixture were
+removed by bounded cleanup.
+
+The first AX42 invocation stopped in the schema block because the existing
+staging root contained the two valid fixtures but not the schema or invalid
+corpus. No lifecycle block or test process had started. The versioned
+`project-runtime-v1.schema.json` and eight invalid JSON fixtures were added
+only beneath `/srv/atenea/worker/workspace-v1`, and the complete invocation was
+then repeated successfully. This staging-location dependency was the only
+documentation/observed-state difference found during 5.1.
+
+The repository and AX42 staging hash for the new suite match:
+
+| File | SHA-256 |
+|---|---|
+| `test-project-runtime-contract-v1.sh` | `985a06efef41b9797d2b8f77c218f8c12f8f2c8abac9224629739218aeb4546e` |
+
+The final read-only AX42 audit observed:
+
+- zero mirrors beneath `/srv/atenea/repositories` and no
+  `/srv/atenea/workspaces/sessions`;
+- zero slot 2 containers and exactly the original Node, Maven, Tomcat and
+  Playwright images with digests
+  `048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34`,
+  `3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e`,
+  `e3ca75a4b11560bfb30894c3fa5d066ff0105e2e8e1ad183711df97606321e51`
+  and
+  `9bd26ad900bb5e0f4dee75839e957a89ae89c2b7ab1e76050e559790e946b948`;
+- all four slot daemons still rootless, without rootful Docker authority, and
+  all four user slices still at 400% CPU, 10 GiB `MemoryHigh`, 12 GiB
+  `MemoryMax` and 4096 tasks;
+- rootful Docker, `docker.socket` and containerd inactive and masked;
+- Beautips `UP`, Tailscale `No serve config`, an empty rootful Docker group and
+  the administrative `dev` hash unchanged at
+  `db58c7ac7e2dc71fab0d7ef6a04591236ec34ff223b0ae52951e3538aa6234d5`;
+- no global client, manager, engine or admission root, zero runtime sudoers or
+  runtime services, and zero matching temporary suite roots beneath `/tmp`.
+
+Atenea production remained at commit
+`7e8afa6c7039a70aea3b330234ddeabdcf2a6587` on
+`feature/actualizar-conversacion-en-web`. Its pre-existing dirty-state
+fingerprint remained
+`b3ede1645fc6b8b74dba9a0b09aab95cbdd37c02d5b15f7601b1b160be7ee022`,
+and neither repository sources nor running container configuration contained
+an observed AX42 routing reference.
+
+No real project, mirror, worktree or WorkSession was used. No component was
+installed globally, no service or host was restarted, no rootful Docker or
+Tailscale route was enabled, and no production routing, authentication
+material, history, secret, commit or push was changed.
+
+## Runtime health, browser retention and proven-owned cleanup
+
+Task 5.2 adds three staged artifacts without changing the accepted task 4.2,
+4.3, 4.4 or 5.1 implementations:
+
+- `project-runtime-browser-check-v1.js`;
+- `runtime-cleanup-v1.sh`;
+- `test-project-runtime-health-browser-cleanup-v1.sh`.
+
+The Playwright check accepts only explicit cases and artifact roots beneath
+`/tmp`. Every registered case binds one canonical synthetic WorkSession UUID
+and run ID to its declared `127.0.0.1` allocation, route and viewport. It
+requires HTTP success, visible non-empty body content and the fixture-specific
+DOM text, then rejects horizontal overflow or viewport clipping before
+capturing a fixed screenshot. Browser, context and page closure runs from
+`finally`, and navigation, locator, screenshot and process execution all have
+finite timeouts.
+
+Artifacts are registered deterministically beneath:
+
+`/tmp/codex-visual-checks/remote-codex-platform/<session>/runs/<run>/browser`
+
+The registry records session, run, source, declared loopback URL, route,
+viewport, content type, retention, path, SHA-256 and the visual measurements.
+Repeating the same four checks retained exactly four PNGs and produced a
+byte-identical registry rather than appending duplicate artifacts.
+
+The cleanup helper independently validates the synthetic allocation, manifest,
+complete runtime identity, fixed fixture project and assigned rootless socket.
+It inspects every existing container, network and image before removing the
+first resource. All three ownership labels must exactly match the fixed engine,
+WorkSession and runtime identities. Empty labels, a foreign session/runtime and
+a partial/ambiguous label set were each rejected while the resource remained
+present. A matching engine temporary root also requires its exact ownership
+marker. Workspace and allocation records, mirrors, worktrees, branches, logs
+and run artifacts are outside the cleanup target set.
+
+The local suite ran first beneath `/tmp` with two synthetic loopback HTTP
+adapters and fake Docker state. Both health routes returned the expected
+fixture and `UP` state. Playwright 1.60.0 with Chromium checked and captured:
+
+| Fixture | Declared route | Desktop | Mobile |
+|---|---|---|---|
+| Compose | `/health` | `1440x900` | `390x844` |
+| Tomcat | `/` | `1440x900` | `390x844` |
+
+DOM and screenshot inspection found visible content, no empty state, no
+clipping, no overlap and no horizontal overflow. Tomcat's longer JSON wrapped
+legibly in the mobile viewport. The first adapter draft served `/health` as a
+downloadable type, so Chromium correctly refused to produce a rendered page.
+The accepted adapter explicitly returns `application/json`; the complete suite
+was then repeated successfully. A second full run reconfirmed deterministic
+artifact identities, label denial, retained hashes and zero fake-Docker
+resources.
+
+The required local regressions then passed individually:
+
+- `test-project-runtime-contract-v1.sh` (`8/8`);
+- `test-session-runtime-allocation-v1.sh`;
+- `test-dev-session-v1.sh`;
+- `test-runtime-manager-v1.sh`;
+- `test-runtime-engine-v1.sh`;
+- `test-runtime-admission-v1.sh`.
+
+On AX42 the same six regressions passed from `/tmp` as `atenea-worker`.
+The real fixture exercise used only rootless slot 2 and synthetic WorkSessions
+`018f47a2-6b0c-7a31-9c2d-4f5a6b7c8dc3` and
+`018f47a2-6b0c-7a31-9c2d-4f5a6b7c8dc4`. Their declared loopback endpoints were
+`127.0.0.1:27421/health` and `127.0.0.1:27422/`. Both applications were
+healthy simultaneously and returned only their expected fixture identity,
+`UP` state and, for Tomcat, `java8-tomcat8`.
+
+The worker has the pinned Playwright browser image but no host-global
+Playwright installation. Rootless `host-gateway` cannot and should not reach a
+host service bound to `127.0.0.1`. The accepted browser run therefore attached
+one temporary, session-labelled Playwright container to each exact synthetic
+runtime network and allowlisted only that session-derived container name as
+the browser transport. The artifact registry continued to record the declared
+operator loopback URL and port. No host network, wider bind, Tailscale route or
+global package was introduced.
+
+All four real-worker screenshots were inspected after retrieval. Compose and
+Tomcat content was complete and readable at `1440x900` and `390x844`; the
+recorded DOM measurements reported `horizontalOverflow=false` and
+`clipped=false`. The Tomcat mobile response wrapped without losing content.
+The retained Tomcat toolchain artifact still reported
+`17.0.19 8 8.5.100`.
+
+After browser verification, both runtimes retained their normalized logs,
+records, worktrees, synthetic mirror markers and browser/toolchain artifacts
+through `stop`. The first cleanup removed exactly the two labelled containers,
+networks, fixture images and engine temporaries. The second cleanup reported
+all removal booleans `false`. Hashes of retained evidence were identical before
+and after cleanup, and no environment marker, raw diagnostic or secret-like
+assignment appeared in logs, JSON, registry or artifacts.
+
+Two harness defects were observed before the accepted worker run: a shell
+comparison newline stopped the first draft after startup, and pre-created
+root-owned browser directories blocked the rootless browser writer. In both
+cases the new cleanup helper removed only the exact labelled fixture resources,
+read-only checks confirmed no residue, and the exercise restarted from a fresh
+fixed `/tmp` root. The accepted run completed after using a writable synthetic
+artifact root owned by the run.
+
+The final AX42 audit observed:
+
+- zero mirrors and no `/srv/atenea/workspaces/sessions`;
+- zero slot 2 containers and exactly the original Node, Maven, Tomcat and
+  Playwright image digests;
+- zero resources carrying the synthetic engine label in any slot;
+- all four daemons rootless and all four slices unchanged at 400% CPU,
+  10 GiB `MemoryHigh`, 12 GiB `MemoryMax` and 4096 tasks;
+- rootful Docker, `docker.socket` and containerd inactive and masked, with an
+  empty rootful Docker group;
+- Beautips `UP`, Tailscale `No serve config` and the administrative `dev` hash
+  unchanged;
+- no global client, manager, engine or admission root, no runtime sudoers or
+  runtime service and no matching temporary suite root or browser process;
+- only the four declared browser PNGs, their registry and the declared Tomcat
+  toolchain artifact retained beneath the synthetic `/tmp` evidence root.
+
+The temporary Playwright npm tree, extracted browser probe, wrappers and live
+harness were removed after acceptance. No global executable, package, service,
+sudoers rule, group membership, rootful daemon, real project, mirror,
+WorkSession, production route, secret, commit or push was introduced.
+
+Repository and AX42 staging hashes match:
+
+| File | SHA-256 |
+|---|---|
+| `runtime-cleanup-v1.sh` | `4ac7edfe60764f2f37a825c92faf982b168a574db11bc456569f4ac5aa77cae3` |
+| `project-runtime-browser-check-v1.js` | `3b235ab654561998051ccff4b841038cdb692ad87496e6e48ea24f3e351c3dff` |
+| `test-project-runtime-health-browser-cleanup-v1.sh` | `cff656808b5eb2804389d0c2ad1099458cda93fd72243c8f4adb6f6f277c343b` |
+
 ## Administrative Codex bridge
 
 The bridge is intentionally separate from the future managed AgentRun executor.
