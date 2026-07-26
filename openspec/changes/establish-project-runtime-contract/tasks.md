@@ -29,7 +29,7 @@
       artifacts and controlled caches.
 - [x] 3.3 Implement `dev` list/status/build/up/stop/restart/redeploy/logs/url and
       doctor with explicit session selection.
-- [ ] 3.4 Add stable `dev --json` output and actionable blocked/error states.
+- [x] 3.4 Add stable `dev --json` output and actionable blocked/error states.
 
 ## 4. Mediated runtime and fixtures
 

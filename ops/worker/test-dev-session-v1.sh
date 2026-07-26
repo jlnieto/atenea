@@ -3,8 +3,11 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 DEV="${SCRIPT_DIR}/dev-session-v1.sh"
 ALLOCATOR="${SCRIPT_DIR}/session-runtime-allocation-v1.sh"
+DEV_SCHEMA="${REPO_ROOT}/runtime-contract/dev-envelope-v1.schema.json"
+ALLOCATION_SCHEMA="${REPO_ROOT}/runtime-contract/session-allocation-v1.schema.json"
 TEST_ROOT="$(mktemp -d /tmp/atenea-dev-session-test.XXXXXX)"
 
 cleanup() {
@@ -33,6 +36,83 @@ expect_failure() {
     fail "expected ${expected_code}, got: ${output}"
 }
 
+validate_envelope() {
+  local document="$1"
+  jq -e -s '
+    length == 1 and
+    .[0].schemaVersion == 1 and
+    (.[0].operation |
+      . == "list" or . == "status" or . == "build" or . == "up" or
+      . == "stop" or . == "restart" or . == "redeploy" or
+      . == "logs" or . == "url" or . == "doctor") and
+    (.[0].state |
+      . == "pending" or . == "running" or . == "ready" or
+      . == "stopped" or . == "blocked" or . == "error" or
+      . == "reconciling") and
+    (.[0].timestamp |
+      test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
+    (if (.[0].state == "blocked" or .[0].state == "error") then
+      (.[0].error.code | type == "string") and
+      (.[0].error.message | type == "string" and length > 0) and
+      (.[0].error.retryable | type == "boolean") and
+      (.[0].error.action | type == "string" and length > 0)
+    else
+      (.[0] | has("error") | not)
+    end)
+  ' "${document}" >/dev/null ||
+    fail "JSON output at ${document} is not one structurally valid v1 envelope: $(cat "${document}")"
+
+  if python3 -c 'import jsonschema' >/dev/null 2>&1; then
+    PYTHONWARNINGS="ignore::DeprecationWarning" \
+      python3 - "${DEV_SCHEMA}" "${ALLOCATION_SCHEMA}" "${document}" <<'PY'
+import json
+import sys
+from jsonschema import Draft202012Validator, FormatChecker, RefResolver
+
+dev_schema_path, allocation_schema_path, document_path = sys.argv[1:]
+with open(dev_schema_path, encoding="utf-8") as handle:
+    dev_schema = json.load(handle)
+with open(allocation_schema_path, encoding="utf-8") as handle:
+    allocation_schema = json.load(handle)
+with open(document_path, encoding="utf-8") as handle:
+    document = json.load(handle)
+resolver = RefResolver.from_schema(
+    dev_schema,
+    store={allocation_schema["$id"]: allocation_schema},
+)
+Draft202012Validator(
+    dev_schema,
+    resolver=resolver,
+    format_checker=FormatChecker(),
+).validate(document)
+PY
+  fi
+}
+
+run_json_success() {
+  local output_file="$1"
+  shift
+  : >"${TEST_ROOT}/json-success.stderr"
+  run_dev --json "$@" >"${output_file}" 2>"${TEST_ROOT}/json-success.stderr"
+  [[ ! -s "${TEST_ROOT}/json-success.stderr" ]] ||
+    fail "successful JSON command wrote diagnostics to stderr"
+  validate_envelope "${output_file}"
+}
+
+run_json_failure() {
+  local expected_code="$1" output_file="$2"
+  shift 2
+  : >"${TEST_ROOT}/json-failure.stderr"
+  if run_dev --json "$@" >"${output_file}" 2>"${TEST_ROOT}/json-failure.stderr"; then
+    fail "JSON command unexpectedly succeeded: $*"
+  fi
+  validate_envelope "${output_file}"
+  [[ "$(jq -r '.error.code' "${output_file}")" == "${expected_code}" ]] ||
+    fail "expected JSON ${expected_code}, got: $(cat "${output_file}")"
+  grep -q "^${expected_code}:" "${TEST_ROOT}/json-failure.stderr" ||
+    fail "JSON failure did not keep its diagnostic on stderr"
+}
+
 WORKSPACE_ROOT="${TEST_ROOT}/workspaces"
 ARTIFACT_ROOT="${TEST_ROOT}/artifacts"
 CACHE_ROOT="${TEST_ROOT}/caches"
@@ -50,6 +130,32 @@ set -Eeuo pipefail
 printf '%s\n' "$*" >>"${ATENEA_TEST_ADAPTER_LOG}"
 operation="$1"
 shift
+json=false
+for argument in "$@"; do
+  [[ "${argument}" == "--json" ]] && json=true
+done
+if [[ "${json}" == "true" ]]; then
+  if [[ "${ATENEA_TEST_ADAPTER_MODE:-ready}" == "fail" ]]; then
+    printf 'raw adapter output %s\n' "${ATENEA_TEST_SECRET_MARKER:-missing}"
+    printf 'raw adapter diagnostic %s\n' "${ATENEA_TEST_SECRET_MARKER:-missing}" >&2
+    exit 70
+  fi
+  case "${operation}" in
+    status|up|restart|redeploy|doctor)
+      printf '{"state":"ready","healthState":"healthy"}\n'
+      ;;
+    stop)
+      printf '{"state":"stopped","healthState":"stopped"}\n'
+      ;;
+    build|logs)
+      printf '{"state":"ready","healthState":"unknown"}\n'
+      ;;
+    *)
+      exit 64
+      ;;
+  esac
+  exit 0
+fi
 case "${operation}" in
   status)
     echo "Runtime state: synthetic-ready"
@@ -139,6 +245,8 @@ run_dev() {
   ATENEA_WORKSPACE_ROOT="${WORKSPACE_ROOT}" \
   ATENEA_RUNTIME_CLIENT="${RUNTIME_CLIENT}" \
   ATENEA_TEST_ADAPTER_LOG="${ADAPTER_LOG}" \
+  ATENEA_TEST_ADAPTER_MODE="${ATENEA_TEST_ADAPTER_MODE:-ready}" \
+  ATENEA_TEST_SECRET_MARKER="${ATENEA_TEST_SECRET_MARKER:-}" \
     "${DEV}" "$@"
 }
 
@@ -159,6 +267,12 @@ record_one_hash="$(sha256sum "${record_one}" | cut -d' ' -f1)"
 record_two_hash="$(sha256sum "${record_two}" | cut -d' ' -f1)"
 worktree_hash="$(sha256sum "${worktree_one}/uncommitted.txt" | cut -d' ' -f1)"
 mirror_hash="$(sha256sum "${MIRROR_ROOT}/${PROJECT}.git/synthetic-ref" | cut -d' ' -f1)"
+logs_one="$(jq -r '.logsPath' "${record_one}")"
+artifacts_one="$(jq -r '.artifactsRoot' "${record_one}")"
+printf 'preserve dev log\n' >"${logs_one}/runtime.log"
+printf 'preserve dev artifact\n' >"${artifacts_one}/result.txt"
+log_hash="$(sha256sum "${logs_one}/runtime.log" | cut -d' ' -f1)"
+artifact_hash="$(sha256sum "${artifacts_one}/result.txt" | cut -d' ' -f1)"
 
 list_output="$(run_dev list)"
 grep -q $'PROJECT\tSESSION\tSLOT\tSTATE' <<<"${list_output}" ||
@@ -223,7 +337,6 @@ expect_failure SESSION_REQUIRED run_dev up
 expect_failure SESSION_AMBIGUOUS run_dev up "${PROJECT}"
 expect_failure SESSION_IDENTITY_CONFLICT \
   run_dev --session "${SESSION_ONE}" status different-project
-expect_failure OPERATION_FAILED run_dev --json status
 expect_failure OPERATION_FAILED run_dev --tail 10 status
 expect_failure OPERATION_FAILED run_dev_without_client doctor
 expect_failure OPERATION_FAILED \
@@ -234,15 +347,92 @@ blocked_status="$(
 grep -q "Runtime client: blocked (task 4.2 pending)" <<<"${blocked_status}" ||
   fail "status did not expose the pending mediated-runtime state"
 
+SECRET_MARKER="DO_NOT_EXPOSE_DEV_JSON_SECRET_74291"
+export ATENEA_TEST_SECRET_MARKER="${SECRET_MARKER}"
+
+for operation in list status; do
+  run_json_success "${TEST_ROOT}/json-${operation}.json" "${operation}"
+  [[ "$(jq -r '.operation' "${TEST_ROOT}/json-${operation}.json")" == "${operation}" ]] ||
+    fail "JSON ${operation} returned the wrong operation"
+done
+run_json_success \
+  "${TEST_ROOT}/json-selected-status.json" \
+  --session "${SESSION_ONE}" status
+jq -e \
+  --arg session "${SESSION_ONE}" \
+  --arg project "${PROJECT}" '
+    .sessionId == $session and .projectId == $project and
+    .state == "ready" and .health.state == "healthy" and
+    .allocation.sessionId == $session and
+    (.url | startswith("http://127.0.0.1:"))
+  ' "${TEST_ROOT}/json-selected-status.json" >/dev/null ||
+  fail "selected JSON status omitted its identity, allocation, health or URL"
+
+for operation in build up stop restart redeploy; do
+  run_json_success \
+    "${TEST_ROOT}/json-${operation}.json" \
+    --session "${SESSION_ONE}" "${operation}" "${PROJECT}"
+done
+run_json_success \
+  "${TEST_ROOT}/json-logs.json" \
+  --session "${SESSION_ONE}" --tail 41 logs
+grep -q "^logs --session ${SESSION_ONE} .* --tail 41 --json$" "${ADAPTER_LOG}" ||
+  fail "JSON logs did not use the bounded synthetic adapter"
+run_json_success \
+  "${TEST_ROOT}/json-url.json" \
+  --session "${SESSION_ONE}" url
+[[ "$(jq -r '.url' "${TEST_ROOT}/json-url.json")" == "${expected_url}" ]] ||
+  fail "JSON URL did not use the persisted allocation"
+run_json_success "${TEST_ROOT}/json-doctor.json" doctor
+run_json_success \
+  "${TEST_ROOT}/json-session-doctor.json" \
+  --session "${SESSION_ONE}" doctor
+
+run_json_failure SESSION_REQUIRED \
+  "${TEST_ROOT}/json-session-required.json" up
+run_json_failure SESSION_AMBIGUOUS \
+  "${TEST_ROOT}/json-session-ambiguous.json" up "${PROJECT}"
+run_json_failure SESSION_IDENTITY_CONFLICT \
+  "${TEST_ROOT}/json-identity-conflict.json" \
+  --session "${SESSION_ONE}" status different-project
+
+run_dev_without_client --json --session "${SESSION_ONE}" status \
+  >"${TEST_ROOT}/json-runtime-pending.json" \
+  2>"${TEST_ROOT}/json-runtime-pending.stderr" && \
+  fail "pending runtime client unexpectedly succeeded"
+validate_envelope "${TEST_ROOT}/json-runtime-pending.json"
+jq -e '
+  .state == "blocked" and
+  .error.code == "OPERATION_FAILED" and
+  (.error.action | contains("4.2"))
+' "${TEST_ROOT}/json-runtime-pending.json" >/dev/null ||
+  fail "pending runtime client was not an actionable blocked envelope"
+
+export ATENEA_TEST_ADAPTER_MODE=fail
+run_json_failure OPERATION_FAILED \
+  "${TEST_ROOT}/json-operation-error.json" \
+  --session "${SESSION_ONE}" up
+jq -e '.state == "error"' "${TEST_ROOT}/json-operation-error.json" >/dev/null ||
+  fail "adapter failure was not represented as an error state"
+unset ATENEA_TEST_ADAPTER_MODE
+
+if grep -F "${SECRET_MARKER}" "${TEST_ROOT}"/json-*.json >/dev/null; then
+  fail "JSON envelope exposed an environment or raw adapter secret marker"
+fi
+
 manifest_one="${worktree_one}/ops/atenea-runtime.json"
 mv "${manifest_one}" "${TEST_ROOT}/manifest.backup"
 ln -s "${TEST_ROOT}/manifest.backup" "${manifest_one}"
 expect_failure MANIFEST_INVALID run_dev list
+run_json_failure MANIFEST_INVALID \
+  "${TEST_ROOT}/json-manifest-invalid.json" list
 rm "${manifest_one}"
 mv "${TEST_ROOT}/manifest.backup" "${manifest_one}"
 
 chmod 0666 "${record_two}"
 expect_failure RUNTIME_OWNERSHIP_CONFLICT run_dev list
+run_json_failure RUNTIME_OWNERSHIP_CONFLICT \
+  "${TEST_ROOT}/json-ownership-conflict.json" list
 chmod 0640 "${record_two}"
 
 [[ "$(sha256sum "${record_one}" | cut -d' ' -f1)" == "${record_one_hash}" &&
@@ -252,6 +442,10 @@ chmod 0640 "${record_two}"
   fail "dev modified uncommitted worktree state"
 [[ "$(sha256sum "${MIRROR_ROOT}/${PROJECT}.git/synthetic-ref" | cut -d' ' -f1)" == "${mirror_hash}" ]] ||
   fail "dev modified the synthetic mirror"
+[[ "$(sha256sum "${logs_one}/runtime.log" | cut -d' ' -f1)" == "${log_hash}" ]] ||
+  fail "dev modified retained runtime logs"
+[[ "$(sha256sum "${artifacts_one}/result.txt" | cut -d' ' -f1)" == "${artifact_hash}" ]] ||
+  fail "dev modified retained run artifacts"
 [[ ! -e "${TEST_ROOT}/lifecycle-command-ran" ]] ||
   fail "dev executed a manifest lifecycle command directly"
 

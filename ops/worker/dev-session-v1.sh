@@ -10,9 +10,137 @@ PROJECT_FILTER=""
 OPERATION=""
 LOG_TAIL="200"
 TAIL_SET=false
+JSON_MODE=false
+RUNTIME_RESULT=""
+
+json_timestamp() {
+  date -u '+%Y-%m-%dT%H:%M:%SZ'
+}
+
+json_identity_arguments() {
+  local record="${SELECTED_RECORD:-}"
+  if [[ -n "${record}" && -f "${record}" && ! -L "${record}" ]]; then
+    local allocation
+    if [[ "${TEST_MODE}" == "1" ]]; then
+      allocation="$(
+        jq -c '
+          .sessionId as $session |
+          .projectId as $project |
+          .runtimeId as $runtime |
+          .mirrorPath = ("/srv/atenea/repositories/" + $project + ".git") |
+          .worktreePath = (
+            "/srv/atenea/workspaces/sessions/" + $session + "/" + $project
+          ) |
+          .runtimeRoot = (
+            "/srv/atenea/workspaces/sessions/" + $session +
+            "/runtime/" + $runtime
+          ) |
+          .runtimeNames.tomcatBase = (.runtimeRoot + "/tomcat") |
+          .logsPath = (
+            "/srv/atenea/artifacts/sessions/" + $session + "/runtime/logs"
+          ) |
+          .artifactsRoot = (
+            "/srv/atenea/artifacts/sessions/" + $session + "/runs"
+          ) |
+          .cacheRoot = (
+            "/srv/atenea/caches/sessions/" + $session
+          )
+        ' "${record}"
+      )"
+    else
+      allocation="$(jq -c '.' "${record}")"
+    fi
+    printf '%s\n%s\n%s\n' \
+      "$(jq -r '.sessionId' "${record}")" \
+      "$(jq -r '.projectId' "${record}")" \
+      "${allocation}"
+  else
+    printf '%s\n%s\n%s\n' "" "" "null"
+  fi
+}
+
+emit_json_error() {
+  local state="$1" code="$2" message="$3" retryable="$4" action="$5"
+  local identity session project allocation
+  identity="$(json_identity_arguments)"
+  session="$(sed -n '1p' <<<"${identity}")"
+  project="$(sed -n '2p' <<<"${identity}")"
+  allocation="$(sed -n '3p' <<<"${identity}")"
+  jq -n \
+    --arg operation "${OPERATION}" \
+    --arg state "${state}" \
+    --arg session "${session}" \
+    --arg project "${project}" \
+    --argjson allocation "${allocation}" \
+    --arg code "${code}" \
+    --arg message "${message}" \
+    --argjson retryable "${retryable}" \
+    --arg action "${action}" \
+    --arg timestamp "$(json_timestamp)" '{
+      schemaVersion: 1,
+      operation: $operation,
+      state: $state,
+      timestamp: $timestamp,
+      error: {
+        code: $code,
+        message: $message,
+        retryable: $retryable,
+        action: $action
+      }
+    }
+    + (if $session == "" then {} else {sessionId: $session} end)
+    + (if $project == "" then {} else {projectId: $project} end)
+    + (if $allocation == null then {} else {allocation: $allocation} end)'
+  printf '%s: %s\nNext action: %s\n' "${code}" "${message}" "${action}" >&2
+  exit 65
+}
+
+emit_json_success() {
+  local state="$1" health_state="$2" summary="${3:-}" url="${4:-}"
+  local identity session project allocation
+  identity="$(json_identity_arguments)"
+  session="$(sed -n '1p' <<<"${identity}")"
+  project="$(sed -n '2p' <<<"${identity}")"
+  allocation="$(sed -n '3p' <<<"${identity}")"
+  jq -n \
+    --arg operation "${OPERATION}" \
+    --arg state "${state}" \
+    --arg session "${session}" \
+    --arg project "${project}" \
+    --argjson allocation "${allocation}" \
+    --arg healthState "${health_state}" \
+    --arg summary "${summary}" \
+    --arg url "${url}" \
+    --arg timestamp "$(json_timestamp)" '{
+      schemaVersion: 1,
+      operation: $operation,
+      state: $state,
+      timestamp: $timestamp,
+      health: ({state: $healthState}
+        + (if $summary == "" then {} else {summary: $summary} end))
+    }
+    + (if $session == "" then {} else {sessionId: $session} end)
+    + (if $project == "" then {} else {projectId: $project} end)
+    + (if $allocation == null then {} else {allocation: $allocation} end)
+    + (if $url == "" then {} else {url: $url} end)'
+}
 
 fail() {
-  local code="$1" message="$2" action="$3"
+  local code="$1" message="$2" action="$3" state="${4:-}"
+  if [[ "${JSON_MODE}" == "true" &&
+        "${OPERATION}" =~ ^(list|status|build|up|stop|restart|redeploy|logs|url|doctor)$ ]]; then
+    if [[ -z "${state}" ]]; then
+      case "${code}" in
+        SESSION_REQUIRED|SESSION_AMBIGUOUS|SESSION_IDENTITY_CONFLICT|WORKTREE_CONFLICT|WORKTREE_DIRTY|RUNTIME_OWNERSHIP_CONFLICT|NORMAL_CAPACITY_EXHAUSTED|HEAVY_CAPACITY_EXHAUSTED|MANIFEST_INVALID|TOOLCHAIN_UNAVAILABLE|RECONCILIATION_REQUIRED)
+          state="blocked"
+          ;;
+        *)
+          state="error"
+          ;;
+      esac
+    fi
+    emit_json_error "${state}" "${code}" "${message}" false "${action}"
+  fi
   printf '%s: %s\nNext action: %s\n' "${code}" "${message}" "${action}" >&2
   exit 65
 }
@@ -20,10 +148,8 @@ fail() {
 usage() {
   cat >&2 <<EOF
 Usage:
-  dev [--session <worksession-uuid>] [--tail <lines>] \
+  dev [--json] [--session <worksession-uuid>] [--tail <lines>] \
     {list|status|build|up|stop|restart|redeploy|logs|url|doctor} [project]
-
-Task 3.3 provides human output only. Machine-readable --json output is task 3.4.
 EOF
   exit 64
 }
@@ -42,8 +168,9 @@ while [[ "$#" -gt 0 ]]; do
       shift 2
       ;;
     --json)
-      fail "OPERATION_FAILED" "Machine-readable dev output is not implemented in task 3.3." \
-        "Use the human command now or continue with the reviewed task 3.4 contract."
+      [[ "${JSON_MODE}" == "false" ]] || usage
+      JSON_MODE=true
+      shift
       ;;
     -*)
       usage
@@ -85,11 +212,16 @@ if [[ "${TAIL_SET}" == "true" && "${OPERATION}" != "logs" ]]; then
     "Remove --tail or select the logs operation."
 fi
 
-for command in find jq realpath sort stat timeout; do
+for command in find jq realpath sed sort stat timeout; do
   command -v "${command}" >/dev/null ||
     fail "OPERATION_FAILED" "Required command is unavailable: ${command}" \
       "Install the version-pinned worker prerequisites and retry."
 done
+if [[ "${JSON_MODE}" == "true" ]]; then
+  command -v date >/dev/null ||
+    fail "OPERATION_FAILED" "Required command is unavailable: date" \
+      "Install the version-pinned worker prerequisites and retry."
+fi
 
 if [[ "${TEST_MODE}" == "1" ]]; then
   WORKSPACE_ROOT="${ATENEA_WORKSPACE_ROOT:-}"
@@ -361,6 +493,44 @@ invoke_runtime_client() {
       "$@"
 }
 
+invoke_runtime_client_json() {
+  local operation="$1"
+  shift
+  local result
+  runtime_client_available ||
+    fail "OPERATION_FAILED" "The mediated runtime client is not installed." \
+      "Complete and accept task 4.2 before executing project lifecycle operations." \
+      "blocked"
+  if ! result="$(
+    timeout --foreground 3600 \
+      "${RUNTIME_CLIENT}" "${operation}" \
+        --session "$(jq -r '.sessionId' "${SELECTED_RECORD}")" \
+        --allocation "${SELECTED_RECORD}" \
+        --manifest "$(selected_manifest)" \
+        "$@" --json 2>/dev/null
+  )"; then
+    fail "OPERATION_FAILED" "The mediated runtime operation failed." \
+      "Inspect the session-scoped runtime diagnostics, then retry the operation." \
+      "error"
+  fi
+  jq -e -s '
+    length == 1 and
+    .[0] as $result |
+    ($result | type == "object") and
+    (($result | keys - ["healthState", "state"]) | length == 0) and
+    ($result.state |
+      . == "pending" or . == "running" or . == "ready" or
+      . == "stopped" or . == "reconciling") and
+    ($result.healthState |
+      . == "unknown" or . == "starting" or . == "healthy" or
+      . == "unhealthy" or . == "stopped")
+  ' <<<"${result}" >/dev/null ||
+    fail "OPERATION_FAILED" "The mediated runtime client returned an incompatible result." \
+      "Inspect the session-scoped adapter contract before retrying." \
+      "error"
+  RUNTIME_RESULT="$(jq -c -s '.[0]' <<<"${result}")"
+}
+
 print_selected_status() {
   printf 'Project: %s\n' "$(jq -r '.projectId' "${SELECTED_RECORD}")"
   printf 'WorkSession: %s\n' "$(jq -r '.sessionId' "${SELECTED_RECORD}")"
@@ -379,7 +549,13 @@ print_selected_status() {
 case "${OPERATION}" in
   list)
     [[ -z "${SESSION_ID}" && "${TAIL_SET}" == "false" ]] || usage
-    print_list
+    if [[ "${JSON_MODE}" == "true" ]]; then
+      emit_json_success \
+        "ready" "unknown" \
+        "${#RECORDS[@]} validated runtime allocation(s)."
+    else
+      print_list
+    fi
     ;;
   status)
     if [[ -z "${SESSION_ID}" && -z "${PROJECT_FILTER}" ]]; then
@@ -393,41 +569,98 @@ case "${OPERATION}" in
         fi
       done
       if [[ "${cwd_selected}" == "false" ]]; then
-        print_list
+        if [[ "${JSON_MODE}" == "true" ]]; then
+          emit_json_success \
+            "ready" "unknown" \
+            "${#RECORDS[@]} validated runtime allocation(s)."
+        else
+          print_list
+        fi
         exit 0
       fi
     fi
     select_record
-    print_selected_status
+    if [[ "${JSON_MODE}" == "true" ]]; then
+      if ! runtime_client_available; then
+        fail "OPERATION_FAILED" "The mediated runtime client is not installed." \
+          "Complete and accept task 4.2 before requesting managed runtime state." \
+          "blocked"
+      fi
+      invoke_runtime_client_json status
+      emit_json_success \
+        "$(jq -r '.state' <<<"${RUNTIME_RESULT}")" \
+        "$(jq -r '.healthState' <<<"${RUNTIME_RESULT}")" \
+        "" "$(selected_url)"
+    else
+      print_selected_status
+    fi
     ;;
   doctor)
-    echo "Workspace root: ready"
-    printf 'Validated allocations: %s\n' "${#RECORDS[@]}"
-    if runtime_client_available; then
-      echo "Runtime client: ready"
+    if [[ "${JSON_MODE}" == "true" ]]; then
+      if ! runtime_client_available; then
+        fail "OPERATION_FAILED" "The mediated runtime client is not installed." \
+          "Complete and accept task 4.2 before requesting managed runtime diagnostics." \
+          "blocked"
+      fi
       if [[ -n "${SESSION_ID}" || -n "${PROJECT_FILTER}" ]]; then
         select_record
-        invoke_runtime_client doctor
+        invoke_runtime_client_json doctor
+        emit_json_success \
+          "$(jq -r '.state' <<<"${RUNTIME_RESULT}")" \
+          "$(jq -r '.healthState' <<<"${RUNTIME_RESULT}")"
+      else
+        emit_json_success \
+          "ready" "unknown" \
+          "${#RECORDS[@]} validated runtime allocation(s); runtime client ready."
       fi
     else
-      echo "Runtime client: blocked"
-      fail "OPERATION_FAILED" "The mediated runtime client is not installed." \
-        "Complete and accept task 4.2 before executing project lifecycle operations."
+      echo "Workspace root: ready"
+      printf 'Validated allocations: %s\n' "${#RECORDS[@]}"
+      if runtime_client_available; then
+        echo "Runtime client: ready"
+        if [[ -n "${SESSION_ID}" || -n "${PROJECT_FILTER}" ]]; then
+          select_record
+          invoke_runtime_client doctor
+        fi
+      else
+        echo "Runtime client: blocked"
+        fail "OPERATION_FAILED" "The mediated runtime client is not installed." \
+          "Complete and accept task 4.2 before executing project lifecycle operations."
+      fi
     fi
     ;;
   url)
     select_record
-    selected_url
+    if [[ "${JSON_MODE}" == "true" ]]; then
+      emit_json_success "ready" "unknown" "" "$(selected_url)"
+    else
+      selected_url
+    fi
     ;;
   logs)
     select_record
-    invoke_runtime_client logs --tail "${LOG_TAIL}"
+    if [[ "${JSON_MODE}" == "true" ]]; then
+      invoke_runtime_client_json logs --tail "${LOG_TAIL}"
+      emit_json_success \
+        "$(jq -r '.state' <<<"${RUNTIME_RESULT}")" \
+        "$(jq -r '.healthState' <<<"${RUNTIME_RESULT}")"
+    else
+      invoke_runtime_client logs --tail "${LOG_TAIL}"
+    fi
     ;;
   build|up|stop|restart|redeploy)
     select_record
-    printf 'Project: %s\n' "$(jq -r '.projectId' "${SELECTED_RECORD}")"
-    printf 'WorkSession: %s\n' "$(jq -r '.sessionId' "${SELECTED_RECORD}")"
-    printf 'Operation: %s\n' "${OPERATION}"
-    invoke_runtime_client "${OPERATION}"
+    if [[ "${JSON_MODE}" == "true" ]]; then
+      invoke_runtime_client_json "${OPERATION}"
+      emit_json_success \
+        "$(jq -r '.state' <<<"${RUNTIME_RESULT}")" \
+        "$(jq -r '.healthState' <<<"${RUNTIME_RESULT}")" \
+        "" "$(selected_url)"
+    else
+      printf 'Project: %s\n' "$(jq -r '.projectId' "${SELECTED_RECORD}")"
+      printf 'WorkSession: %s\n' "$(jq -r '.sessionId' "${SELECTED_RECORD}")"
+      printf 'Operation: %s\n' "${OPERATION}"
+      invoke_runtime_client "${OPERATION}"
+    fi
     ;;
 esac

@@ -184,8 +184,9 @@ intentionally absent until task 4.2, so lifecycle operations fail closed with
 the required next action in the real staging state. The existing
 administrative Beautips `dev` pilot was not replaced or modified.
 
-Task 3.4 remains separate: `--json` is explicitly rejected rather than
-returning unstable pseudo-JSON.
+The human rendering remains independent from the structured renderer added by
+task 3.4. The same human assertions continue to pass without parsing or
+round-tripping JSON.
 
 `test-dev-session-v1.sh` passed twice in the programme worktree and once on
 `codex-worker-01` as `atenea-worker`. It used two synthetic WorkSessions for
@@ -223,8 +224,93 @@ remained. Rootful Docker, `docker.socket` and containerd remained inactive and
 masked. Beautips remained `UP` on loopback and Tailscale continued to report
 `No serve config`.
 
-No runtime manager, JSON envelope, real manifest, real project, real
-WorkSession or Atenea route was introduced.
+No runtime manager, real manifest, real project, real WorkSession or Atenea
+route was introduced.
+
+## Stable dev JSON envelopes
+
+Task 3.4 extends `dev-session-v1.sh` with a separate `--json` renderer while
+preserving task 3.3's human output. Every successful or failed structured
+invocation writes exactly one JSON document to stdout. Fixed actionable
+diagnostics use stderr, and raw runtime-client stdout/stderr is never copied
+into an envelope.
+
+The renderer always includes `schemaVersion`, `operation`, `state` and a UTC
+timestamp. A selected operation also includes the validated WorkSession and
+project identities plus the schema-valid allocation. Health and the
+loopback-only preview URL are included when applicable. Blocked and error
+states contain a reserved code, short non-secret message, `retryable` flag and
+one next action.
+
+Lifecycle, log and selected runtime-state operations still delegate only to
+the fixed mediated client boundary. For structured calls, `dev` accepts from
+that boundary only one minimal result containing enumerated `state` and
+`healthState` values. It does not parse human prose, execute manifest `argv`
+arrays, contact Docker or expose raw adapter output. The real
+`/usr/libexec/atenea-runtime-client-v1` remains absent until task 4.2, so real
+selected status, doctor and lifecycle JSON calls fail closed with an
+actionable `blocked` envelope rather than simulating a runtime.
+
+Implementation exposed one contract inconsistency. The original envelope
+schema required `sessionId` and `projectId` for every lifecycle operation,
+including `SESSION_REQUIRED` and `SESSION_AMBIGUOUS`, where no unique identity
+exists and one must not be invented. The schema now excepts only those two
+selection failures from that identity requirement. Every other selected
+operation still requires both identities. This was the only documentation/
+observed-behaviour correction required by task 3.4.
+
+The expanded synthetic suite ran beneath `/tmp`:
+
+- locally, with every output validated by a draft-2020-12 JSON Schema
+  validator and format checker;
+- in the canonical Atenea programme worktree, with the same formal schema
+  validation;
+- on `codex-worker-01` as `atenea-worker`, using the dependency-free structural
+  checks because the worker intentionally has no Python `jsonschema` package.
+
+The suite covered all ten operations: `list`, `status`, `build`, `up`, `stop`,
+`restart`, `redeploy`, `logs`, `url` and `doctor`. It proved:
+
+- one valid JSON document on stdout and no successful-path prose or
+  diagnostics mixed into it;
+- stable stdout/stderr separation on failures;
+- schema-valid allocation, health and URL fields for selected operations;
+- `SESSION_REQUIRED`, `SESSION_AMBIGUOUS`, `SESSION_IDENTITY_CONFLICT`,
+  `RUNTIME_OWNERSHIP_CONFLICT` and `MANIFEST_INVALID` blocked envelopes;
+- actionable blocked state while the task 4.2 runtime client is pending;
+- actionable error state when the synthetic mediated adapter fails;
+- lifecycle and bounded log delegation only through the synthetic adapter;
+- suppression of raw adapter output and an environment secret marker;
+- byte-identical allocation records, synthetic mirrors, uncommitted worktree
+  files, retained logs and retained artifacts;
+- continued human-output assertions for every task 3.3 command;
+- no direct execution of deliberately failing manifest lifecycle commands.
+
+The versioned staging hashes after task 3.4 are:
+
+| File | SHA-256 |
+|---|---|
+| `session-runtime-allocation-v1.sh` | `b576bf96a1734a71b7c125d46e1227087c97c17a1b24da8d2187752f71fdb28c` |
+| `dev-session-v1.sh` | `2bed3984e335482a5224f8ebf8790f0b8ab20eb4e8c3bcf9b34888efb756cb7e` |
+| `test-dev-session-v1.sh` | `572ff2c80d466c048f05dc9d304294ffab27d7e8fda8592ab6c96edbef85605c` |
+| `dev-envelope-v1.schema.json` (repository) | `6289cf6c7f75d7383580bab0003d69d1f4e6c1dedf6360bce63d5f865535582a` |
+
+Before and after the worker suite and after refreshing staging,
+`/srv/atenea/repositories` contained zero mirrors,
+`/srv/atenea/workspaces/sessions` remained absent, and no synthetic fixture
+remained under `/tmp`. Slot 2 retained the same four digest-pinned images and
+zero containers. Rootful Docker, `docker.socket` and containerd remained
+inactive and masked. Beautips returned `UP` from
+`127.0.0.1:18083/actuator/health`, and Tailscale continued to report
+`No serve config`. The administrative Beautips `dev` at
+`/home/jose/.local/bin/dev` was not replaced.
+
+Atenea production remained on
+`feature/actualizar-conversacion-en-web` with its pre-existing uncommitted web
+changes untouched. Its running backend and local Codex App Server containers
+contained no observed AX42 routing reference. No application was deployed, no
+service was restarted, no real session state was created, and no commit or
+push was performed.
 
 ## Administrative Codex bridge
 

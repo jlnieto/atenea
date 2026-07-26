@@ -112,10 +112,28 @@
     },
     {
       "if": {
-        "properties": {
-          "operation": {"enum": ["build", "up", "stop", "restart", "redeploy", "logs", "url"]}
-        },
-        "required": ["operation"]
+        "allOf": [
+          {
+            "properties": {
+              "operation": {"enum": ["build", "up", "stop", "restart", "redeploy", "logs", "url"]}
+            },
+            "required": ["operation"]
+          },
+          {
+            "not": {
+              "properties": {
+                "state": {"const": "blocked"},
+                "error": {
+                  "properties": {
+                    "code": {"enum": ["SESSION_REQUIRED", "SESSION_AMBIGUOUS"]}
+                  },
+                  "required": ["code"]
+                }
+              },
+              "required": ["state", "error"]
+            }
+          }
+        ]
       },
       "then": {"required": ["sessionId", "projectId"]}
     }
