@@ -215,7 +215,8 @@ with synthetic state beneath `/tmp`:
 
 ## WorkSession-aware dev client
 
-`dev-session-v1.sh` implements task 3.3's human command surface:
+`dev-session-v1.sh` implements task 3.3's human command surface and task 3.4's
+stable JSON renderer:
 
 ```bash
 sudo -u atenea-worker ./dev-session-v1.sh list
@@ -223,6 +224,8 @@ sudo -u atenea-worker ./dev-session-v1.sh \
   --session 018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e status
 sudo -u atenea-worker ./dev-session-v1.sh up dummy-compose \
   --session 018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e
+sudo -u atenea-worker ./dev-session-v1.sh --json \
+  --session 018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e status
 ```
 
 The client resolves a WorkSession from `--session`, the current owned worktree
@@ -233,12 +236,47 @@ exact repository-relative manifest persisted by task 3.2. `list`, `status`,
 never execute manifest lifecycle commands or contact a container daemon
 directly.
 
-The mediated runtime client is intentionally absent until task 4.2. Mutating
-commands therefore fail closed outside the synthetic suite. `--json` remains
-task 3.4 and is rejected explicitly in this version.
+The mediated runtime client remains intentionally uninstalled while the task
+4.2 boundary is staged and the task 4.3 engine fixtures are pending. Mutating
+commands therefore fail closed outside the synthetic suites. `--json` emits
+one schema-valid envelope on stdout, keeps fixed diagnostics on stderr and
+never copies raw runtime-client output into the envelope.
 
 Run the complete resolver and delegation suite beneath `/tmp`:
 
 ```bash
 ./test-dev-session-v1.sh
 ```
+
+## Mediated runtime manager
+
+Task 4.2 adds `runtime-client-v1.sh` and `runtime-manager-v1.sh`. The client has
+no runtime authority. Its production contract invokes only the fixed,
+root-owned manager boundary as `atenea-worker`; the manager independently
+validates caller identity, the WorkSession records, allocation ownership, the
+complete reviewed manifest and the exact worktree boundary.
+
+Before an operation can reach the fixed runtime-engine interface, the manager
+requires a resolved policy report with:
+
+- exactly the services declared by the manifest;
+- no mounts, host namespaces, added capabilities, devices or daemon sockets;
+- no unsupported runtime fields;
+- only names derived from the selected WorkSession allocation.
+
+The manager then creates a mode `0600` operation plan containing only validated
+identities, allocations and default-deny restrictions. It never executes a
+manifest lifecycle `argv`. The plan requires no-new-privileges, a read-only
+root filesystem, all capabilities dropped, no host network/PID/IPC, no devices,
+no daemon sockets and no mounts.
+
+Run the manager, client, cross-session denial and synthetic-engine suite
+beneath `/tmp`:
+
+```bash
+./test-runtime-manager-v1.sh
+```
+
+The suite does not contact Docker. Installing the root-owned client/manager and
+the real runtime engine is a separate controlled worker action; the dummy
+Compose and Tomcat engine fixtures remain task 4.3.

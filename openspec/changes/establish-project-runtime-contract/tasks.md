@@ -35,7 +35,7 @@
 
 - [x] 4.1 Install the container engine without adding Codex/session identities
       to its privileged control group.
-- [ ] 4.2 Implement the session-scoped runtime manager with a default-deny policy
+- [x] 4.2 Implement the session-scoped runtime manager with a default-deny policy
       for mounts, namespaces, capabilities, devices and resource ownership.
 - [ ] 4.3 Add a dummy Compose fixture and a JDK 17 build/JDK 8 Tomcat 8 runtime
       fixture using the same internal service port.

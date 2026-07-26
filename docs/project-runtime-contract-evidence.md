@@ -312,6 +312,90 @@ contained no observed AX42 routing reference. No application was deployed, no
 service was restarted, no real session state was created, and no commit or
 push was performed.
 
+## Session-scoped runtime manager boundary
+
+Task 4.2 adds three versioned artifacts:
+
+- `runtime-client-v1.sh`, the unprivileged `dev` delegation boundary;
+- `runtime-manager-v1.sh`, the root-boundary policy and operation-plan
+  validator;
+- `test-runtime-manager-v1.sh`, the synthetic engine, denial and preservation
+  suite.
+
+The client grants no Docker or filesystem authority. Its production contract
+accepts only the fixed root-owned manager path and the `atenea-worker` service
+identity. The manager ignores production path and identity overrides, verifies
+the sudo caller, and independently revalidates:
+
+- the canonical WorkSession UUID and exact allocation path;
+- worker ownership, regular-file type and restrictive modes for both records;
+- matching workspace, project, branch, mirror and worktree identities;
+- the complete allocation namespace, runtime names, loopback ports, logs,
+  artifacts and cache roots;
+- the exact repository-relative manifest beneath the owned worktree;
+- the complete version 1 manifest shape, including commands as data only,
+  toolchains, runtime, preview, browser checks, artifacts and named secrets.
+
+Before any operation reaches the fixed runtime-engine interface, the engine
+must return one resolved policy report for exactly the manifest-declared
+services. The manager rejects non-empty mounts, host namespaces, added
+capabilities, devices, daemon sockets, unsupported runtime fields and every
+resource name not derived from the selected allocation.
+
+Accepted operations receive a temporary mode `0600` plan containing only
+validated identity, allocation and policy. Its restrictions require
+no-new-privileges, a read-only root filesystem, all capabilities dropped, no
+host network/PID/IPC namespaces, no devices, no daemon sockets and no mounts.
+The plan is removed on success and failure. Manifest lifecycle `argv` values
+are never copied into the plan or executed by the manager.
+
+The synthetic suite passed locally, in the canonical Atenea programme worktree
+and on `codex-worker-01` as `atenea-worker` from `/tmp`. It covered:
+
+- structured `status`, `doctor`, `build`, `up`, `stop`, `restart`, `redeploy`
+  and `logs` through the fixed synthetic engine;
+- human logs and JSON `dev → client → manager → engine` integration;
+- manifest-level rejection of privileged, mount, host-network, capability and
+  device fields;
+- resolved-policy rejection of mounts, namespaces, capabilities, devices,
+  Docker sockets, unsupported fields, foreign resources and mismatched
+  WorkSession identity;
+- unsafe record modes and cross-session allocation-path denial;
+- suppression of raw engine stdout/stderr containing a secret marker;
+- preservation of allocation/workspace records, manifest, uncommitted
+  worktree content, synthetic mirror, logs and artifacts across accepted and
+  denied operations;
+- removal of every temporary plan and fixture;
+- absence of direct Docker calls and direct manifest lifecycle execution.
+
+The staged task 4.2 hashes are:
+
+| File | SHA-256 |
+|---|---|
+| `runtime-manager-v1.sh` | `c7c394907706fc1f5699c9ac4f4167b4337981f5b26db4e7109cf0344148ee78` |
+| `runtime-client-v1.sh` | `0792bfae3f583474f51fef0d18169e4e7ffaad445efcc5f0de2470892b4089cb` |
+| `test-runtime-manager-v1.sh` | `4e77070cbbbd5ca913297d7beb035d85af34bda22fcb64e64e0955fa8049a9cc` |
+
+The source and tests are staged under
+`/srv/atenea/worker/workspace-v1/ops/worker`. They are deliberately not
+installed under `/usr/libexec`, no sudoers rule or service was created, and the
+real runtime engine remains uninstalled. Consequently
+`/usr/libexec/atenea-runtime-client-v1` is still absent and no lifecycle
+authority has been activated. The real Compose/Tomcat engine integration and
+dummy applications remain task 4.3.
+
+Before and after the AX42 suite, `/srv/atenea/repositories` contained zero
+mirrors and `/srv/atenea/workspaces/sessions` remained absent. Slot 2 retained
+four digest-pinned images and zero containers. Rootful Docker,
+`docker.socket` and containerd remained masked and inactive. Beautips remained
+`UP` on `127.0.0.1:18083/actuator/health`, and Tailscale Serve continued to
+report `No serve config`.
+
+The only stale documentation found during 4.2 was the worker README still
+describing task 3.4 as pending and `--json` as rejected. It now describes the
+implemented structured renderer and the staged manager boundary. Atenea
+production and its pre-existing dirty web worktree were not modified.
+
 ## Administrative Codex bridge
 
 The bridge is intentionally separate from the future managed AgentRun executor.
