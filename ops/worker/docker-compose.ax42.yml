@@ -102,6 +102,7 @@ services:
       ATENEA_CODEX_APP_SERVER_CWD: /workspace/atenea
       ATENEA_CODEX_REQUIRED_AUTH_MODE: disabled
       ATENEA_AUTH_BOOTSTRAP_ENABLED: "false"
+      ATENEA_MOBILE_UPLOAD_ROOT: /workspace/data/uploads
       ATENEA_OPENAI_ENABLED: "false"
       ATENEA_OPENAI_COSTS_ENABLED: "false"
       ATENEA_OPENAI_API_BASE_URL: http://127.0.0.1:9
