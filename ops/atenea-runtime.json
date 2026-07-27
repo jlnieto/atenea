@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "id": "atenea",
+    "repository": {
+      "url": "https://github.com/jlnieto/atenea.git",
+      "defaultBranch": "feature/actualizar-conversacion-en-web"
+    }
+  },
+  "toolchains": [
+    {
+      "name": "git",
+      "version": "2.43.0",
+      "source": "worker-package"
+    },
+    {
+      "name": "java-build",
+      "version": "21.0.7+6",
+      "source": "container-image"
+    },
+    {
+      "name": "java-runtime",
+      "version": "21.0.7+6",
+      "source": "container-image"
+    },
+    {
+      "name": "maven",
+      "version": "3.9.9",
+      "source": "container-image"
+    },
+    {
+      "name": "node",
+      "version": "22.16.0",
+      "source": "container-image"
+    },
+    {
+      "name": "docker",
+      "version": "29.6.2",
+      "source": "worker-package"
+    },
+    {
+      "name": "compose",
+      "version": "5.3.1",
+      "source": "worker-package"
+    },
+    {
+      "name": "chromium",
+      "version": "148.0.7778.96",
+      "source": "container-image"
+    },
+    {
+      "name": "playwright",
+      "version": "1.60.0",
+      "source": "container-image"
+    }
+  ],
+  "runtime": {
+    "kind": "compose",
+    "composeFiles": [
+      "ops/worker/docker-compose.ax42.yml"
+    ],
+    "services": [
+      "db",
+      "codex-app-server",
+      "atenea-dev"
+    ],
+    "internalPorts": [
+      {
+        "name": "web",
+        "port": 8081,
+        "protocol": "http"
+      },
+      {
+        "name": "codex",
+        "port": 8092,
+        "protocol": "tcp"
+      },
+      {
+        "name": "postgres",
+        "port": 5432,
+        "protocol": "tcp"
+      }
+    ]
+  },
+  "lifecycle": {
+    "build": {
+      "argv": [
+        "./ops/worker/atenea-runtime-v1.sh",
+        "build"
+      ],
+      "timeoutSeconds": 3600
+    },
+    "start": {
+      "argv": [
+        "./ops/worker/atenea-runtime-v1.sh",
+        "up"
+      ],
+      "timeoutSeconds": 600,
+      "secretRefs": [
+        "ATENEA_DEV_POSTGRES_PASSWORD",
+        "ATENEA_DEV_JWT_SECRET",
+        "ATENEA_DEV_OPERATOR_PASSWORD",
+        "ATENEA_DEV_CODEX_AUTH"
+      ]
+    },
+    "stop": {
+      "argv": [
+        "./ops/worker/atenea-runtime-v1.sh",
+        "stop"
+      ],
+      "timeoutSeconds": 300
+    },
+    "health": {
+      "argv": [
+        "./ops/worker/atenea-runtime-v1.sh",
+        "health"
+      ],
+      "timeoutSeconds": 60
+    },
+    "logs": {
+      "argv": [
+        "./ops/worker/atenea-runtime-v1.sh",
+        "logs"
+      ],
+      "timeoutSeconds": 120
+    }
+  },
+  "preview": {
+    "internalPort": "web",
+    "path": "/admin/login",
+    "publish": "private",
+    "command": {
+      "argv": [
+        "./ops/worker/atenea-runtime-v1.sh",
+        "url"
+      ],
+      "timeoutSeconds": 60
+    },
+    "localhostCompatibilityRequired": false
+  },
+  "browserChecks": [
+    {
+      "name": "operator-console",
+      "path": "/admin/login",
+      "command": {
+        "argv": [
+          "./ops/worker/atenea-runtime-v1.sh",
+          "browser"
+        ],
+        "timeoutSeconds": 600,
+        "secretRefs": [
+          "ATENEA_DEV_OPERATOR_BROWSER_PASSWORD"
+        ]
+      },
+      "viewports": [
+        "desktop-1440x900",
+        "mobile-390x844"
+      ],
+      "artifact": "target/atenea-relocation/browser/operator-console"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "backend-tests",
+      "path": "target/surefire-reports",
+      "retention": "run"
+    },
+    {
+      "name": "web-assets",
+      "path": "src/main/resources/static/assets",
+      "retention": "run"
+    },
+    {
+      "name": "runtime-logs",
+      "path": "target/atenea-relocation/runtime-logs",
+      "retention": "session"
+    },
+    {
+      "name": "browser-evidence",
+      "path": "target/atenea-relocation/browser",
+      "retention": "session"
+    }
+  ],
+  "secrets": [
+    {
+      "name": "ATENEA_DEV_POSTGRES_PASSWORD",
+      "purpose": "Development-only PostgreSQL credential; never production data or access",
+      "exposure": "runtime",
+      "required": true
+    },
+    {
+      "name": "ATENEA_DEV_JWT_SECRET",
+      "purpose": "Development-only signing material for the synthetic operator session",
+      "exposure": "runtime",
+      "required": true
+    },
+    {
+      "name": "ATENEA_DEV_OPERATOR_PASSWORD",
+      "purpose": "Development-only bootstrap credential for the synthetic operator",
+      "exposure": "runtime",
+      "required": true
+    },
+    {
+      "name": "ATENEA_DEV_OPERATOR_BROWSER_PASSWORD",
+      "purpose": "Browser-only credential reference for the synthetic operator check",
+      "exposure": "browser",
+      "required": true
+    },
+    {
+      "name": "ATENEA_DEV_CODEX_AUTH",
+      "purpose": "Optional AX42-only authentication boundary for the development Codex service",
+      "exposure": "runtime",
+      "required": false
+    }
+  ],
+  "workloadClass": "heavy"
+}
