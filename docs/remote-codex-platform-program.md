@@ -174,7 +174,12 @@ Entry, evidence, rollback and archive gates are defined in `remote-codex-platfor
 `route-agent-runs-to-remote-worker` is archived as
 `2026-07-28-route-agent-runs-to-remote-worker` with all `35/35` tasks complete.
 Production routing is unchanged and disabled. `add-worksession-attachments`
-remains the next planning gate and was not created or started.
+is the active Phase 5 change. Its approved preproduction boundary stores
+opaque content on AX42, indexes immutable WorkSession metadata in
+Atenea/PostgreSQL, defaults to 16 MiB per file and 256 MiB per session, and
+records 24-hour, 30-day or 180-day retention without general deletion.
+Real-project authoritative activation remains blocked until independent
+external backup is configured and restore-tested.
 
 ## Decision log
 
@@ -203,6 +208,10 @@ remains the next planning gate and was not created or started.
 | D-021 | Use an additive V46 expand/contract migration and disable routing for rollback instead of down-migrating live history. | Retained remote ownership is required for reconciliation and audit; destructive rollback is unnecessary. | accepted | data owner | after remote records have aged out |
 | D-022 | Restrict Phase 4 execution to the fixed `synthetic-routing-v1` workload over a private authenticated protocol. | Routing continuity can be proved without granting arbitrary shell, repository, container or real-project authority. | accepted | security owner | first real-project onboarding |
 | D-023 | Retain non-terminal lease and lifecycle records; do not reuse expired leases or delete routing history in Phase 4. | Reconciliation requires durable ownership while final retention can be informed by measured synthetic runs. | accepted | backend owner | before production remote-routing defaults |
+| D-024 | Keep attachment metadata authoritative in Atenea/PostgreSQL and content bytes on AX42 behind opaque storage identities. | Ordered ownership belongs in the control plane while large content should remain on the worker without exposing filesystem paths. | accepted for synthetic Phase 5 | platform owner | before real-project activation |
+| D-025 | Default attachment limits to 16 MiB per file and 256 MiB retained per WorkSession with a narrow validated media-type allowlist. | Safe bounded defaults prevent an upload surface from becoming arbitrary worker storage. | accepted | security owner | after representative preview measurements |
+| D-026 | Record `TRANSIENT` 24-hour, `SESSION` 30-day and `EVIDENCE` 180-day retention classes but perform no general deletion in Phase 5. | The contract needs deterministic retention metadata while production cleanup requires measured evidence and external backup. | accepted for preproduction | data owner | before production defaults |
+| D-027 | Keep Phase 5 default-off and exact-synthetic-only until independent external backup is configured and restore-tested. | RAID is availability, not backup, and synthetic fixtures are recreatable. | accepted | operations owner | before authoritative real-project artifacts |
 
 ## Deferred decisions and gates
 
@@ -951,5 +960,25 @@ SHA-256 of its `SHA256SUMS` is
 `fbc4713c8a884144d1d1b73728a72d455e49507a6c79fe658c025ecfbe2a77c6`.
 
 The exact resume point is the Phase 5 entry gate for
-`add-worksession-attachments`. No Phase 5 proposal, task or implementation has
-been created or started.
+`add-worksession-attachments`.
+
+## Phase 5 progress: add-worksession-attachments
+
+Tasks 1.1–1.4 are complete and change progress is `4/31`. The accepted entry
+gate proves clean synchronized source and programme Git, unchanged production
+and preview container identities and health, no V47 source, no AX42 attachment
+root, an inactive/disabled Phase 4 worker, four healthy rootless slots, healthy
+RAID and unchanged Beautips state. The first capture attempt is retained
+separately because obsolete verifier/database assumptions exited non-zero; it
+was not accepted and caused no mutation.
+
+The storage, metadata, access-control, ordering, limits, retention and rollback
+contract is approved for exact synthetic preproduction use. Authoritative
+real-project activation is explicitly blocked until an independent external
+backup target is configured and restore-tested. Accepted entry evidence is
+beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-worksession-attachments/entry-gate`;
+the SHA-256 of its `SHA256SUMS` is
+`1d63a3ce1c6b76d2baa03b7422260796ee365e6a6f9e9200cb025b71ced7913d`.
+
+The exact resume point is task 2.1 of `add-worksession-attachments`.
