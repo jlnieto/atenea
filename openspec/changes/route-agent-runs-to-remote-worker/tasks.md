@@ -48,8 +48,8 @@
 
 ## 7. Rollback, observation and handoff
 
-- [ ] 7.1 Disable remote selection for new sessions, explicitly reconcile or cancel every synthetic non-terminal remote run and leave existing session affinity unchanged
-- [ ] 7.2 Execute rollback twice and remove only exact Phase 4 fixtures while retaining schema, logs, artifacts and lifecycle evidence
-- [ ] 7.3 Compare final production, Git, database, routing, AX42, RAID, firewall, slots and Beautips fingerprints with the accepted baseline
-- [ ] 7.4 Retain sanitized commands, exit codes, timeouts, durations and `SHA256SUMS`; record the observation result and operator workflow
+- [x] 7.1 Disable remote selection for new sessions, explicitly reconcile or cancel every synthetic non-terminal remote run and leave existing session affinity unchanged
+- [x] 7.2 Execute rollback twice and remove only exact Phase 4 fixtures while retaining schema, logs, artifacts and lifecycle evidence
+- [x] 7.3 Compare final production, Git, database, routing, AX42, RAID, firewall, slots and Beautips fingerprints with the accepted baseline
+- [x] 7.4 Retain sanitized commands, exit codes, timeouts, durations and `SHA256SUMS`; record the observation result and operator workflow
 - [ ] 7.5 Run strict OpenSpec validation, confirm every Phase 4 task complete, archive the change, commit and push both repositories, then stop before Phase 5

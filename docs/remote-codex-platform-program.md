@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `route-agent-runs-to-remote-worker` (active `30/35`)
+- Current phase: `route-agent-runs-to-remote-worker` (active `34/35`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -170,10 +170,11 @@ backup/monitoring and deploy/rollback control remain on the Atenea server.
 Entry, evidence, rollback and archive gates are defined in `remote-codex-platform-phases.md`. No phase becomes authoritative merely because its code builds.
 
 `relocate-atenea-development-to-ax42` is archived. The active
-`route-agent-runs-to-remote-worker` change has a strictly valid proposal,
-design, two capability deltas and 35-task checklist. Its entry gate is accepted
-at `4/35`; routing remains disabled while implementation proceeds. Later names
-remain a planning queue and MUST NOT be created or started from this phase.
+`route-agent-runs-to-remote-worker` has a strictly valid proposal, design, two
+capability deltas and 35-task checklist. Its implementation and executed
+rollback are complete at `34/35`; only strict archive/commit closure remains.
+Production routing is unchanged and disabled. Later names remain a planning
+queue and MUST NOT be created or started from this phase.
 
 ## Decision log
 
@@ -914,9 +915,28 @@ rootless slots retained their accepted inventories, RAID remained healthy and
 the private worker returned to zero capacity in use.
 
 Accepted continuity evidence is beneath `runs/task-6-synthetic-continuity`; the
-SHA-256 of its `SHA256SUMS` is
-`f4bbfc0cbfea8cf73a6361b18ceccdacff531aa6e34b9fe92f4e3c380b9377c8`.
+manifest includes the rollback instance identity recorded before removal. The
+final SHA-256 of its `SHA256SUMS` is
+`c3ef39356cd83d92e82a8a0c64ad7b5bb1c6b1cbc5a34948384c1385672f8292`.
 
-The exact resume point is task 7.1: disable new synthetic selection, verify all
-remote runs are terminal, execute idempotent rollback/cleanup and compare final
-fingerprints. Do not start Phase 5 or make a real project authoritative.
+Tasks 7.1–7.4 are complete and programme progress is `34/35`. Remote selection
+was disabled with all six synthetic AgentRuns terminal. The four existing
+WorkSessions retained their persisted remote affinity. The first exact rollback
+removed the registered disposable resources and private firewall/listener; the
+second exited zero with every target already absent and removed nothing.
+
+Worker state retains fifteen terminal protocol records (`14 SUCCEEDED`,
+`1 CANCELLED`) and zero non-terminal records. The worker is inactive/disabled
+with no port 8787 listener or UFW rule. Production remains on its unchanged
+schema with AgentRun count `58`; production, preview and Beautips remain `UP`.
+AX42 strict verification passes, RAID is `[UU]`, slot inventories match
+baseline, source Git is clean/synchronized and no Phase 4 temporary resource
+remains.
+
+Accepted rollback and observation evidence is beneath
+`runs/task-7-rollback-observation`; the SHA-256 of its `SHA256SUMS` is
+`5db761a247ee2c5981ca67fb62046e7e0b250c7a07c044056e8d484775ceeb89`.
+
+The exact resume point is task 7.5: run strict validation, archive this change,
+commit and push the final programme state, then stop before
+`add-worksession-attachments`.
