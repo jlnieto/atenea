@@ -2646,3 +2646,39 @@ SHA-256 is
 `0068a4f8428e6d8a2d2c1bb8896bb8c68b8f90e544b21cbd0f9e6676743338f7`.
 The result is `pass`. Programme progress is `26/27`; task 8.4 is the first
 pending task.
+
+## Task 8.4 — strict validation and OpenSpec archive
+
+Completed on 2026-07-28. The final gate began from clean, synchronized
+programme commit `62300c4107c7d0b219b5a12e6e448872e38e0a57`, with only the
+task 8.4 checkbox modified and an empty index. All 27 tasks were checked and
+strict change validation passed before archive.
+
+One non-interactive archive invocation moved the change to:
+
+`openspec/changes/archive/2026-07-28-relocate-atenea-development-to-ax42`
+
+OpenSpec synchronized the capability deltas into the normative specs, reporting
+seven added requirements and one modified requirement. Strict validation of
+all changes and specs passed after archive. The worktree and cached diff checks
+found one blank line at EOF added by the archive formatter to each of the two
+synchronized specs. A formatting-only continuation removed those two lines and
+repeated strict all-spec validation successfully. The archive command was not
+repeated.
+
+The active change path is absent, the archived task list is `27/27`, the Git
+index remained empty and the archive diff is clean. Task 8.1, 8.2 and 8.3
+evidence manifests reverified before finalization. No runtime, route,
+production resource, unrelated slot or Beautips resource changed, and no later
+phase was created or started. No environment value, database row, secret or
+Codex internal state file was read.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-8.4-openspec-archive`
+
+It contains 17 regular files. `SHA256SUMS` verifies the other 16 files; its
+SHA-256 is
+`7f03e7ba6916d8394daed6fac2795fdec0a30c8e8e3a7f2d83d75cb49558c6cc`.
+The result is `pass`. Programme progress is `27/27`; the change is archived and
+there is no active implementation change.

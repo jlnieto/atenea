@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `26/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (archived `27/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -169,11 +169,11 @@ backup/monitoring and deploy/rollback control remain on the Atenea server.
 
 Entry, evidence, rollback and archive gates are defined in `remote-codex-platform-phases.md`. No phase becomes authoritative merely because its code builds.
 
-`relocate-atenea-development-to-ax42` is the only active OpenSpec change. Its
-entry gate was reviewed against real control-plane and worker state, and its
-proposal, design, specs and 27-task implementation checklist are complete and
-strictly valid. Later names remain a planning queue and MUST NOT be created or
-started from this phase.
+`relocate-atenea-development-to-ax42` is archived. Its entry gate was reviewed
+against real control-plane and worker state, and its proposal, design, specs
+and 27-task implementation checklist are complete and strictly valid. There is
+no active implementation change. Later names remain a planning queue and MUST
+NOT be created or started from this phase.
 
 ## Decision log
 
@@ -777,10 +777,29 @@ only to non-secret artifact roots and verified manifests. Passing evidence is
 beneath `runs/task-8.3-operator-handoff`; the SHA-256 of its `SHA256SUMS` is
 `0068a4f8428e6d8a2d2c1bb8896bb8c68b8f90e544b21cbd0f9e6676743338f7`.
 
-The next action and exact resume point is task 8.4. Task 8.4 remains pending:
-run strict OpenSpec validation, review final Git/index state and archive the
-change only if all 27 tasks are complete. Do not start another phase from this
-resume point.
+Task 8.4 is complete and programme progress is `27/27`. All task checkboxes
+were complete before strict change validation passed. One
+`openspec archive relocate-atenea-development-to-ax42 -y --json` invocation
+archived the change as
+`openspec/changes/archive/2026-07-28-relocate-atenea-development-to-ax42` and
+synchronized seven added requirements plus one modified requirement into the
+normative specs. Strict all-spec validation passed.
 
-Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — validación y archivo final`.
+The worktree and cached diff checks identified one blank line at EOF introduced
+by the archive formatter in each of the two synchronized specs. Removing only
+those two blank lines made the diff clean and strict all-spec validation passed
+again. The archive command was not repeated and the index remained empty. No
+runtime, route, production resource, unrelated slot or Beautips resource
+changed.
+
+Passing evidence is beneath `runs/task-8.4-openspec-archive`; the SHA-256 of
+its `SHA256SUMS` is
+`7f03e7ba6916d8394daed6fac2795fdec0a30c8e8e3a7f2d83d75cb49558c6cc`.
+
+The exact resume point is the programme boundary after the archived relocation
+phase. No implementation change is active. The next planned phase is
+`route-agent-runs-to-remote-worker`, but it requires its own proposal, entry
+gate and explicit authorization and was not created or started here.
+
+Recommended title for a separately authorized next phase is
+`Remote Codex platform — diseño de routing de AgentRuns`.
