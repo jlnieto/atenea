@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `route-agent-runs-to-remote-worker` (active `12/35`)
+- Current phase: `route-agent-runs-to-remote-worker` (active `20/35`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -858,6 +858,26 @@ suite passed with `330` tests and no failures after recreating only its
 disposable test database; focused routing/API/reconciliation tests passed
 `19/19`.
 
-The exact resume point is task 3.5: install and verify the private synthetic
-worker service on AX42 before executing control-plane acceptance. Do not start
+Tasks 3.5 and 4.1–4.7 are complete and programme progress is `20/35`. The
+private worker is installed as `atenea-worker`, listens only on
+`100.81.98.93:8787`, and UFW permits that port only from Atenea at
+`100.88.252.28`. Unauthenticated health is rejected, an unrelated tailnet
+source cannot connect, and authenticated health reports the exact v1 protocol,
+`ax42-01` identity and `4/2` capacity. Root-owned configuration, bounded
+readiness and systemd hardening pass the installed verifier.
+
+Accepted installation evidence is beneath
+`runs/task-3.5-private-worker-install`; the SHA-256 of its `SHA256SUMS` is
+`62d1ffaecc727b876996529c7b9e6d78be4224e944666db9871e9b378d057d55`.
+Two fail-closed verifier attempts and their separately committed fixes remain
+documented there; neither accepted an execution.
+
+Atenea now has default-disabled exact-allowlist selection, authenticated finite
+clients, durable-before-dispatch coordination, monotonic optimistic terminal
+acceptance, exact cancellation and persisted-target reconciliation. The local
+startup path explicitly excludes remote runs and its original stale-run policy
+continues for local runs.
+
+The exact resume point is task 5.1: execute and retain automated validation
+evidence before creating the disposable end-to-end control plane. Do not start
 Phase 5 or make a real project authoritative.

@@ -18,17 +18,17 @@
 - [x] 3.2 Implement idempotent dispatch, conflicting-identity rejection, status/progress, lease renewal, cancellation and monotonic terminal state
 - [x] 3.3 Enforce four normal slots, two heavy permits and durable FIFO recovery after worker-service restart
 - [x] 3.4 Add protocol, authentication, malformed-input, duplicate, capacity, restart and cancellation tests
-- [ ] 3.5 Install the private worker service on AX42 with root-owned configuration, narrow Tailscale/UFW access and no public listener
+- [x] 3.5 Install the private worker service on AX42 with root-owned configuration, narrow Tailscale/UFW access and no public listener
 
 ## 4. Atenea dispatch, affinity and reconciliation
 
-- [ ] 4.1 Add default-disabled configuration and select remote execution only for a newly opened WorkSession in the exact synthetic allowlist
-- [ ] 4.2 Add authenticated health/capacity and execution clients with finite timeouts, sanitized errors and stable idempotency headers
-- [ ] 4.3 Dispatch remote AgentRuns only after target, workspace, dispatch and lease state are durable
-- [ ] 4.4 Poll and persist monotonic progress and exactly-once terminal response delivery
-- [ ] 4.5 Implement exact remote cancellation while preserving unrelated sessions
-- [ ] 4.6 Reconcile persisted remote targets on startup and partition without duplicate dispatch, automatic reassignment or local fallback
-- [ ] 4.7 Preserve the existing local executor and local startup/stale-run reconciliation semantics
+- [x] 4.1 Add default-disabled configuration and select remote execution only for a newly opened WorkSession in the exact synthetic allowlist
+- [x] 4.2 Add authenticated health/capacity and execution clients with finite timeouts, sanitized errors and stable idempotency headers
+- [x] 4.3 Dispatch remote AgentRuns only after target, workspace, dispatch and lease state are durable
+- [x] 4.4 Poll and persist monotonic progress and exactly-once terminal response delivery
+- [x] 4.5 Implement exact remote cancellation while preserving unrelated sessions
+- [x] 4.6 Reconcile persisted remote targets on startup and partition without duplicate dispatch, automatic reassignment or local fallback
+- [x] 4.7 Preserve the existing local executor and local startup/stale-run reconciliation semantics
 
 ## 5. Automated validation and regression
 
