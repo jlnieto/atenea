@@ -13,11 +13,14 @@ Usage:
   install-toolchain-prerequisites.sh plan
   sudo install-toolchain-prerequisites.sh install-host
   sudo install-toolchain-prerequisites.sh install-images SLOT_NUMBER
+  sudo install-toolchain-prerequisites.sh install-playwright-module SLOT_NUMBER
   sudo install-toolchain-prerequisites.sh verify-host
   sudo install-toolchain-prerequisites.sh verify-slot SLOT_NUMBER
 
 SLOT_NUMBER must be between 1 and 4. Image installation is idempotent and
-targets only that slot's rootless daemon.
+targets only that slot's rootless daemon. The Playwright module installation
+uses the selected slot for a package-lock-enforced download, then installs a
+content-verified, read-only host bundle shared by the browser containers.
 EOF
   exit 64
 }
@@ -103,6 +106,11 @@ plan() {
   printf 'buildx=%s\n' "${ATENEA_BUILDX_VERSION}"
   printf 'compose=%s\n' "${ATENEA_COMPOSE_VERSION}"
   printf 'image=%s\n' "${ATENEA_TOOLCHAIN_IMAGES[@]}"
+  printf 'playwright_module_version=%s\n' "${ATENEA_PLAYWRIGHT_MODULE_VERSION}"
+  printf 'playwright_module_relative_root=%s\n' \
+    "${ATENEA_PLAYWRIGHT_MODULE_RELATIVE_ROOT}"
+  printf 'playwright_module_tree_sha256=%s\n' \
+    "${ATENEA_PLAYWRIGHT_MODULE_TREE_SHA256}"
 }
 
 install_host() {
@@ -161,7 +169,115 @@ install_images() {
   for image in "${ATENEA_TOOLCHAIN_IMAGES[@]}"; do
     slot_docker pull "${image}"
   done
+  install_playwright_module
   verify_slot
+}
+
+playwright_source_root() {
+  printf '%s/playwright-module-v1\n' "${SCRIPT_DIR}"
+}
+
+playwright_module_root() {
+  printf '%s/%s\n' \
+    "$(slot_home)" "${ATENEA_PLAYWRIGHT_MODULE_RELATIVE_ROOT}"
+}
+
+verify_playwright_source() {
+  local source_root
+  source_root="$(playwright_source_root)"
+  [[ -d "${source_root}" && ! -L "${source_root}" ]]
+  [[ "$(sha256sum "${source_root}/package.json" | cut -d' ' -f1)" == \
+    "${ATENEA_PLAYWRIGHT_PACKAGE_SHA256}" ]]
+  [[ "$(sha256sum "${source_root}/package-lock.json" | cut -d' ' -f1)" == \
+    "${ATENEA_PLAYWRIGHT_PACKAGE_LOCK_SHA256}" ]]
+}
+
+playwright_module_tree_sha256() {
+  local root="$1"
+  (
+    cd "${root}"
+    find package.json package-lock.json node_modules \
+      \( -type f -o -type l \) -print0 |
+      LC_ALL=C sort -z |
+      while IFS= read -r -d '' path; do
+        if [[ -L "${path}" ]]; then
+          printf 'link %s %s\n' "${path}" "$(readlink "${path}")"
+        else
+          printf 'file %s %s\n' \
+            "${path}" "$(sha256sum "${path}" | cut -d' ' -f1)"
+        fi
+      done
+  ) | sha256sum | cut -d' ' -f1
+}
+
+verify_playwright_module() {
+  local module_root
+  module_root="$(playwright_module_root)"
+  verify_playwright_source
+  [[ -d "${module_root}/node_modules/playwright" &&
+      ! -L "${module_root}" ]]
+  [[ "$(playwright_module_tree_sha256 "${module_root}")" == \
+    "${ATENEA_PLAYWRIGHT_MODULE_TREE_SHA256}" ]]
+  [[ "$(
+    slot_docker run --rm --network none \
+      --mount \
+      "type=bind,src=${module_root},dst=/opt/atenea-playwright-module-v1,readonly" \
+      -e NODE_PATH=/opt/atenea-playwright-module-v1/node_modules \
+      "${ATENEA_PLAYWRIGHT_IMAGE}" \
+      node -p 'require("playwright/package.json").version'
+  )" == "${ATENEA_PLAYWRIGHT_MODULE_VERSION}" ]]
+}
+
+install_playwright_module() {
+  require_root
+  verify_platform
+  validate_slot
+  verify_playwright_source
+
+  local source_root module_root staging target_next target_previous
+  source_root="$(playwright_source_root)"
+  module_root="$(playwright_module_root)"
+  staging="$(mktemp -d \
+    "/tmp/atenea-playwright-module-v1.slot${SLOT_NUMBER}.XXXXXX")"
+  target_next="${module_root}.next"
+  target_previous="${module_root}.previous"
+  chown "atenea-slot${SLOT_NUMBER}:atenea-slot${SLOT_NUMBER}" "${staging}"
+  install -o "atenea-slot${SLOT_NUMBER}" -g "atenea-slot${SLOT_NUMBER}" \
+    -m 0600 "${source_root}/package.json" "${source_root}/package-lock.json" \
+    "${staging}/"
+
+  if ! slot_docker run --rm \
+      --name "atenea-toolchain-playwright-module-v1-slot${SLOT_NUMBER}" \
+      --label com.atenea.toolchain=playwright-module-v1 \
+      --network bridge \
+      --mount "type=bind,src=${staging},dst=/work" \
+      --workdir /work \
+      "${ATENEA_NODE_IMAGE}" \
+      npm ci --omit=dev --ignore-scripts --no-audit --no-fund; then
+    rm -rf -- "${staging}"
+    return 1
+  fi
+  [[ "$(playwright_module_tree_sha256 "${staging}")" == \
+    "${ATENEA_PLAYWRIGHT_MODULE_TREE_SHA256}" ]] || {
+      rm -rf -- "${staging}"
+      echo "Installed Playwright module tree does not match the lock." >&2
+      return 1
+    }
+
+  rm -rf -- "${target_next}" "${target_previous}"
+  install -d -o "atenea-slot${SLOT_NUMBER}" -g "atenea-slot${SLOT_NUMBER}" \
+    -m 0750 "$(dirname "${target_next}")"
+  cp -a -- "${staging}" "${target_next}"
+  chown -R "atenea-slot${SLOT_NUMBER}:atenea-slot${SLOT_NUMBER}" \
+    "${target_next}"
+  find "${target_next}" -type d -exec chmod 0755 {} +
+  find "${target_next}" -type f -exec chmod 0644 {} +
+  if [[ -e "${module_root}" ]]; then
+    mv -- "${module_root}" "${target_previous}"
+  fi
+  mv -- "${target_next}" "${module_root}"
+  rm -rf -- "${target_previous}" "${staging}"
+  verify_playwright_module
 }
 
 assert_image_present() {
@@ -193,6 +309,7 @@ verify_slot() {
     --entrypoint "${ATENEA_PLAYWRIGHT_CHROMIUM_PATH}" \
     "${ATENEA_PLAYWRIGHT_IMAGE}" --version |
     grep -F "${ATENEA_PLAYWRIGHT_CHROMIUM_VERSION}" >/dev/null
+  verify_playwright_module
 
   echo "Slot ${SLOT_NUMBER} toolchains match lock v${ATENEA_TOOLCHAIN_LOCK_VERSION}."
 }
@@ -209,6 +326,10 @@ case "${ACTION}" in
   install-images)
     [[ "$#" -eq 2 ]] || usage
     install_images
+    ;;
+  install-playwright-module)
+    [[ "$#" -eq 2 ]] || usage
+    install_playwright_module
     ;;
   verify-host)
     [[ "$#" -eq 1 ]] || usage

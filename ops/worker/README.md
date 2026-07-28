@@ -155,6 +155,24 @@ sudo ./install-toolchain-prerequisites.sh install-images 2
 sudo ./install-toolchain-prerequisites.sh verify-slot 2
 ```
 
+The Playwright image pins Chromium but intentionally does not serve as the
+Node package source. `playwright-module-v1/package-lock.json` pins
+`playwright` and `playwright-core`; `install-images` installs that bundle
+through the selected rootless slot and verifies its complete content tree
+before publishing it at
+`/var/lib/atenea-slots/slotN/toolchain/playwright-module-v1`. Browser
+containers from that slot mount the directory read-only and set `NODE_PATH`
+to its `node_modules` directory. A standalone repair or initial installation
+can use:
+
+```bash
+sudo ./install-toolchain-prerequisites.sh install-playwright-module 2
+```
+
+Package registry access is limited to this installation step. Runtime browser
+checks use the retained, hash-verified bundle with `--network none` for
+toolchain verification and do not download dependencies.
+
 The image action is idempotent, uses only the selected slot's rootless socket,
 runs version probes with networking disabled and never enables the rootful
 Docker daemon. Repeat it explicitly for another slot when that slot needs the
