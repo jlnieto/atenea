@@ -664,7 +664,7 @@ database_summary() {
 }
 
 domain_counts() {
-  docker_exec_cmd --user 999:999 "${DB_CONTAINER}" \
+  docker_exec_cmd --interactive --user 999:999 "${DB_CONTAINER}" \
     psql --no-psqlrc --tuples-only --no-align \
       --username atenea_ax42_synthetic_v1 \
       --dbname atenea_ax42_synthetic_v1 <<'SQL'
