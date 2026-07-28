@@ -451,8 +451,8 @@ class AgentRunHandler(BaseHTTPRequestHandler):
 
 def read_token(path: Path) -> str:
     stat = path.stat()
-    if stat.st_mode & 0o077:
-        raise RuntimeError("token file must not be group/world accessible")
+    if stat.st_uid != 0 or stat.st_mode & 0o037:
+        raise RuntimeError("token file must be root-owned, group-readable and otherwise private")
     token = path.read_text(encoding="utf-8").strip()
     if len(token) < 32:
         raise RuntimeError("token must contain at least 32 characters")
