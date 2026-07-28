@@ -168,6 +168,11 @@ environment values. Because an internal rootless bridge has no gateway
 endpoint for Docker's normal publisher, the adapter registers exactly the
 three allocated loopback mappings through slot2's fixed RootlessKit `3.0.2`
 API and retains their returned identities for mediated removal.
+The stable system socket proxy remains the lifecycle API boundary. Its
+transport does not preserve Docker's hijacked exec stream, so the root-owned
+adapter uses slot2's exact user-owned daemon socket only for non-interactive
+read-only `psql` verification. Neither socket is mounted into a container or
+made available to project or Codex processes.
 
 The application is packaged first in a bounded, non-runtime build container.
 The three-service runtime itself has no external network path. Codex App Server

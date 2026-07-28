@@ -41,6 +41,10 @@ container-daemon socket, host root filesystem or unrelated workspaces.
 - **WHEN** Docker cannot publish a port from the internal rootless bridge because it has no gateway endpoint
 - **THEN** the fixed adapter registers only the three allocated `tcp4` mappings through the assigned slot's RootlessKit API, retains their returned identities and removes only those identities during mediated stop
 
+#### Scenario: Stable socket proxy cannot preserve exec output
+- **WHEN** the stable lifecycle socket proxy cannot return Docker's hijacked exec stream for SQL verification
+- **THEN** only the fixed root-owned adapter may use the assigned slot's exact user-owned daemon socket for non-interactive read-only `psql`, and no daemon socket is exposed inside any container
+
 ### Requirement: Development-only Atenea data
 The AX42 Atenea database SHALL be a development-only PostgreSQL instance
 created from an empty schema by versioned migrations and explicit synthetic

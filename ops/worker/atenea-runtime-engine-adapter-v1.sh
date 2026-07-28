@@ -74,6 +74,15 @@ docker_cmd() {
   DOCKER_HOST="${DOCKER_HOST_VALUE}" timeout --foreground 600 "${DOCKER_BIN}" "$@"
 }
 
+docker_exec_cmd() {
+  if [[ "${TEST_MODE}" == '1' ]]; then
+    docker_cmd exec "$@"
+  else
+    DOCKER_HOST='unix:///run/user/1102/docker.sock' \
+      timeout --foreground 600 "${DOCKER_BIN}" exec "$@"
+  fi
+}
+
 rootlesskit_api() {
   local method="$1" path="$2"
   shift 2
@@ -648,14 +657,14 @@ tcp_listener_ready() {
 }
 
 database_summary() {
-  docker_cmd exec --user 999:999 "${DB_CONTAINER}" \
+  docker_exec_cmd --user 999:999 "${DB_CONTAINER}" \
     psql --no-psqlrc --tuples-only --no-align \
       --username atenea --dbname atenea_dev --command \
       "SELECT count(*),min(installed_rank),max(installed_rank),count(*) FILTER (WHERE success),count(*) FILTER (WHERE NOT success),max(version::integer) FROM flyway_schema_history;"
 }
 
 domain_counts() {
-  docker_cmd exec --user 999:999 "${DB_CONTAINER}" \
+  docker_exec_cmd --user 999:999 "${DB_CONTAINER}" \
     psql --no-psqlrc --tuples-only --no-align \
       --username atenea --dbname atenea_dev <<'SQL'
 SELECT 'agent_run,' || count(*) FROM agent_run
@@ -874,6 +883,12 @@ validate_plan() {
     fail RUNTIME_OWNERSHIP_CONFLICT "The runtime log root is unsafe."
   id "${SLOT_USER}" >/dev/null 2>&1 ||
     fail RUNTIME_OWNERSHIP_CONFLICT "The admitted rootless slot identity is absent."
+  if [[ "${TEST_MODE}" != '1' ]]; then
+    [[ -S /run/user/1102/docker.sock &&
+        "$(stat -c %U:%G /run/user/1102/docker.sock)" == \
+          'atenea-slot2:atenea-slot2' ]] ||
+      fail TOOLCHAIN_UNAVAILABLE "The exact slot2 exec-stream socket is unavailable."
+  fi
   assert_retained_volume
 }
 
