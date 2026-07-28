@@ -885,8 +885,7 @@ validate_plan() {
     fail RUNTIME_OWNERSHIP_CONFLICT "The admitted rootless slot identity is absent."
   if [[ "${TEST_MODE}" != '1' ]]; then
     [[ -S /run/user/1102/docker.sock &&
-        "$(stat -c %U:%G /run/user/1102/docker.sock)" == \
-          'atenea-slot2:atenea-slot2' ]] ||
+        "$(stat -c %u:%a /run/user/1102/docker.sock)" == '1102:1660' ]] ||
       fail TOOLCHAIN_UNAVAILABLE "The exact slot2 exec-stream socket is unavailable."
   fi
   assert_retained_volume
