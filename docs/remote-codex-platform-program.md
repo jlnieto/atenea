@@ -998,3 +998,20 @@ test schema was recreated exactly, V47 was corrected before publication and
 the accepted rerun passed.
 
 The exact resume point is task 3.1 of `add-worksession-attachments`.
+
+Tasks 3.1–3.4 are complete and change progress is `12/31`. The versioned
+`worksession-attachment/v1` service accepts only authenticated exact UUID
+routes; streams bounded content through an owned temporary file; verifies the
+declared SHA-256 and file signature/text encoding; atomically publishes content
+plus metadata; returns opaque identities; and exposes no filesystem list,
+path, command or execution field. It independently enforces 16 MiB file and
+256 MiB WorkSession limits.
+
+Identical retries return the original object and conflicting identity reuse
+changes nothing. General deletion is absent; the exact delete route requires
+both persisted and request-side synthetic-fixture identity. The `11/11`
+protocol tests cover authentication, atomic/idempotent create, conflict,
+integrity, MIME, file/quota bounds, cross-session/traversal rejection,
+restart persistence, download and exact synthetic cleanup.
+
+The exact resume point is task 3.5 of `add-worksession-attachments`.

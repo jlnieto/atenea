@@ -1,0 +1,33 @@
+[Unit]
+Description=Atenea private WorkSession attachment storage v1
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=atenea-worker
+Group=atenea
+EnvironmentFile=/etc/atenea-worker/worksession-attachment-v1.env
+ExecStart=/usr/local/libexec/atenea/worksession-attachment-worker-v1.py --bind ${ATENEA_ATTACHMENT_BIND} --port ${ATENEA_ATTACHMENT_PORT} --worker-id ${ATENEA_ATTACHMENT_WORKER_ID} --root /srv/atenea/attachments-v1 --token-file /etc/atenea-worker/worksession-attachment-v1.token --max-file-bytes 16777216 --max-session-bytes 268435456
+Restart=on-failure
+RestartSec=2s
+TimeoutStartSec=15s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/srv/atenea/attachments-v1
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

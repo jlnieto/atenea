@@ -14,10 +14,10 @@
 
 ## 3. Private AX42 attachment storage
 
-- [ ] 3.1 Implement the versioned authenticated attachment service with opaque storage identities and no filesystem browsing
-- [ ] 3.2 Implement streaming validation, SHA-256 identity, atomic create and conflicting-idempotency rejection
-- [ ] 3.3 Enforce file/type limits, exact ownership and synthetic-fixture-only deletion
-- [ ] 3.4 Add protocol, authentication, malformed input, MIME, quota, restart and traversal tests
+- [x] 3.1 Implement the versioned authenticated attachment service with opaque storage identities and no filesystem browsing
+- [x] 3.2 Implement streaming validation, SHA-256 identity, atomic create and conflicting-idempotency rejection
+- [x] 3.3 Enforce file/type limits, exact ownership and synthetic-fixture-only deletion
+- [x] 3.4 Add protocol, authentication, malformed input, MIME, quota, restart and traversal tests
 - [ ] 3.5 Install the private service and retained root on AX42 without starting a project runtime
 
 ## 4. Atenea API and clients

@@ -232,6 +232,38 @@ beneath `/tmp`:
 ./test-session-runtime-allocation-v1.sh
 ```
 
+## WorkSession attachment storage
+
+`worksession-attachment-worker-v1.py` is the private Phase 5 content boundary.
+It accepts only authenticated, exact WorkSession and attachment UUID routes,
+validates a narrow media-type allowlist, computes SHA-256 while streaming and
+retains content atomically beneath `/srv/atenea/attachments-v1`. It exposes
+opaque storage identities, not filesystem paths, and has no list, shell or
+directory-browsing endpoint.
+
+Run its synthetic protocol suite:
+
+```bash
+python3 ./test-worksession-attachment-worker-v1.py
+```
+
+Review and install it on AX42 with the exact Atenea tailnet address:
+
+```bash
+./install-worksession-attachment-v1.sh plan | jq .
+sudo ATENEA_CONTROL_PLANE_TAILSCALE_IP=100.x.y.z \
+  ./install-worksession-attachment-v1.sh apply
+```
+
+The default limits are 16 MiB per file and 256 MiB per WorkSession. General
+deletion is deliberately absent: the exact delete route works only when both
+the retained record and the request identify a synthetic fixture. Disable new
+traffic without deleting retained bytes with:
+
+```bash
+sudo ./install-worksession-attachment-v1.sh disable
+```
+
 ## WorkSession-aware dev client
 
 `dev-session-v1.sh` implements task 3.3's human command surface and task 3.4's
