@@ -116,7 +116,9 @@ verify() {
   [[ "$ready" == true ]] || fail "worker did not become ready within 15 seconds"
   systemctl is-active "$SERVICE"
   systemd-analyze security "$SERVICE" --no-pager >/dev/null
-  ! ss -H -lntp "sport = :$PORT" | grep -Eq '(^|[[:space:]])(0\.0\.0\.0|\[::\]):' \
+  ! ss -H -lntp "sport = :$PORT" \
+      | awk '{ print $4 }' \
+      | grep -Eq '^(0\.0\.0\.0|\[::\]):' \
     || fail "worker has a wildcard listener"
   [[ "$(stat -c '%a:%U:%G' "$TOKEN_FILE")" == "640:root:atenea" ]] \
     || fail "token file ownership or mode is invalid"
