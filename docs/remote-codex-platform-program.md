@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `14/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `15/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -430,29 +430,50 @@ private runtime step; there are zero session-owned containers and networks,
 zero allocated-port listeners and zero AgentRun routing keys. Evidence is
 retained beneath `runs/task-4.4-backend-tests`.
 
-Task 5.1 preflight stopped before daemon access and remains pending. The fixed
-`/usr/libexec` runtime client, manager and engine are not installed on AX42,
-and the exact versioned engine explicitly rejects Atenea after closed-plan
-validation. The rootless slot still cannot traverse the mode-`2770` worktree
-ancestors, while the exact adapter allowlists only direct worktree binds and
-does not authorize a byte-exact WorkSession-scoped archive delivery root.
-
-No runtime, listener, network, container, alternate volume, routing key or
-production/preview mutation was created. The task 4.3 volume remains exact,
-rootful Docker remains inactive and masked, production/preview and Beautips
-remain `UP`, and routing remains zero. Blocked evidence is retained beneath
-`runs/task-5.1-private-runtime`; the SHA-256 of its `SHA256SUMS` is
+The first task 5.1 preflight stopped before daemon access. Its unchanged
+blocked evidence was moved to
+`runs/task-5.1-private-runtime-attempt-1-blocked`; the SHA-256 of its
+`SHA256SUMS` remains
 `4098564cff3eccda9002fa85fd6d9c1e593997ea0f5ea7fd694b7b3962f240b4`.
 
-The next action remains task 5.1, not 5.2. Before retrying, review and version
-the minimum mediated lifecycle and commit-exact delivery contract, install the
-fixed boundary and repeat its negative regression gate. Do not widen ACLs,
-owners, groups or modes. Detailed evidence is in
+Task 5.1 is now complete and programme progress is `15/27`. The versioned
+runtime contract installs a root-owned client, manager, engine and dedicated
+Atenea adapter, creates a commit-exact WorkSession delivery without changing
+the protected worktree ancestors, and starts exactly `db`,
+`codex-app-server` and `atenea-dev` through the admitted
+`slot2/heavy1` lifecycle.
+
+The three containers are running with the exact runtime-derived names and
+ownership labels, read-only root filesystems, all capabilities dropped,
+`no-new-privileges`, no host namespaces, devices, privilege or daemon socket.
+They share one labelled internal network. Because that network has no Docker
+gateway publisher, the adapter retains exactly three RootlessKit `tcp4`
+mappings on `127.0.0.1`: `28541→5432`, `22667→8092` and `22359→8081`.
+
+Codex `0.145.0` is fixed at OCI digest `sha256:c081aaa9...`; its
+authentication-disabled App Server listens only on container loopback and a
+reviewed same-container TCP proxy exposes the declared internal port. Atenea
+returns `UP` at its private health endpoint. PostgreSQL reuses the exact task
+4.3 volume, data root, database and role: Flyway history remains byte-identical
+at 45 successful V1–V45 rows, and all 28 counts remain exact, including one
+synthetic operator, one project, one closed WorkSession, two SessionTurns and
+zero AgentRuns. No fixture or migration was rerun.
+
+OpenAI, DeepSeek, FCM, GitHub operations and other external integrations are
+disabled or fail-safe local. Rootful Docker and containerd remain inactive
+and masked; production, preview and Beautips remain `UP`; routing and secret
+value matches remain zero. Passing evidence is retained beneath
+`runs/task-5.1-private-runtime`; the SHA-256 of its `SHA256SUMS` is
+`23010f74668e1f962a056b67505bb8c9816e47a953409fd2a53c0056f87ea856`.
+Detailed evidence is in
 `docs/atenea-development-relocation-evidence.md`.
+
+The next action is task 5.2. Task 5.2 was not started: do not run Playwright
+or browser acceptance until a new continuation begins from this resume point.
 
 The administrative Codex/tmux bridge may be used to begin work, but it is not
 evidence of the managed session isolation boundary and MUST NOT be used as
 Atenea's AgentRun executor.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — implementar reubicación de desarrollo Atenea`.
+`Migración Atenea y Codex al AX42 — validar operador privado con Playwright`.

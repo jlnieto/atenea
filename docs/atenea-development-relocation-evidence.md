@@ -1533,7 +1533,7 @@ identical after excluding capture time and the task 5.1 evidence directory.
 
 Blocked evidence is retained at:
 
-`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-5.1-private-runtime`
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-5.1-private-runtime-attempt-1-blocked`
 
 It includes source and contract hashes, sanitized workspace/allocation/admission
 records, before/after fingerprints, worktree traversal evidence, installed
@@ -1546,3 +1546,137 @@ The next action remains task 5.1. Before retrying, review and version the
 minimum mediated lifecycle plus commit-exact delivery contract, install the
 fixed client/manager/engine boundary and rerun the full negative regression
 gate. Do not start task 5.2.
+
+## Task 5.1 — private runtime accepted
+
+Completed on 2026-07-28 only for administrative WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad` and `slot2/heavy1`. Programme progress
+is `15/27`; task 5.2 was not started.
+
+The accepted source remained the clean WorkSession worktree at commit
+`b6dc854d94ba5b1976926656c9a6aba330f671e2` and tree
+`f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`. Workspace, allocation and
+admission hashes remained respectively
+`8ee6237d0eb4c3bba0b3ccdc8ec9c0fb49550180bfebf921dc1ad70d75e4928e`,
+`c4e45ac8ff834d68cddd385ec95699702b1df0ec7d574154b6dc8654fd592f13`
+and `20c7a409e741eb73b4847a177c98b69128da7b07b6a9ac5ff7b7e1af1413a29d`.
+The fixed archive SHA-256 remained
+`a6f52b2d267750dfb4f8bc9f31d3c0d2434876ddf6517920cb882f19112b5dea`.
+
+### Mediated contract and source delivery
+
+The versioned programme contract at
+`d1e71d68f0634d59f3aec5fd5695b0196594decc` installs exact root-owned
+client, manager, engine and Atenea adapter boundaries beneath `/usr/libexec`
+plus the exact sudoers rule for `atenea-worker`. All local, negative-policy
+and AX42 regression suites passed, including the integrated runtime contract
+gate `8/8`; strict OpenSpec validation passes.
+
+The adapter accepts only this administrative WorkSession, runtime, source
+commit/tree, manifest and Compose hashes. It creates a byte-exact delivery at
+`/tmp/atenea-runtime-delivery/ws-41c0ff95e5554773b7b460903a3af1ad`
+owned for `atenea-slot2`. No ACL, owner, group or mode beneath the canonical
+worktree changed. Named development secret references are copied into the
+private delivery boundary without values in plans, commands, inspect output,
+logs or evidence.
+
+The application JAR was produced by a bounded build container from the pinned
+Maven/JDK 21 digest. The build container had a read-only rootfs,
+`cap_drop: ALL`, `no-new-privileges`, finite CPU, memory and PID limits, no
+published port and no daemon socket. The running application consumes only
+that commit-exact JAR and delivery.
+
+### Runtime identity, network and health
+
+The mediated lifecycle reports:
+
+`{"state":"ready","healthState":"healthy"}`
+
+Exactly three running containers exist:
+
+- `ws-41c0ff95e5554773b7b460903a3af1ad-db`;
+- `ws-41c0ff95e5554773b7b460903a3af1ad-codex-app-server`;
+- `ws-41c0ff95e5554773b7b460903a3af1ad-atenea-dev`.
+
+Each has the exact session, runtime, project, service and engine ownership
+labels. All use a read-only root filesystem, `cap_drop: ALL`,
+`no-new-privileges`, private PID/IPC namespaces, finite PID limits, no added
+capability, device, privilege, host networking or daemon-socket mount. They
+share only the exact labelled internal bridge
+`ws-41c0ff95e5554773b7b460903a3af1ad-network`.
+
+An internal rootless bridge has no Docker gateway endpoint, so normal Compose
+port publication is deliberately absent from container HostConfig. The
+root-owned adapter instead registers and retains exactly three RootlessKit
+3.0.2 `tcp4` mappings:
+
+- `127.0.0.1:22667` to Codex `8092`;
+- `127.0.0.1:28541` to PostgreSQL `5432`;
+- `127.0.0.1:22359` to Atenea `8081`.
+
+The live RootlessKit IDs exactly match the root-owned retained state file.
+`ss` reports exactly these three allocated listeners and none on
+`0.0.0.0`.
+
+PostgreSQL is healthy. Atenea returns `{"status":"UP"}` through its private
+health endpoint. The reviewed Codex image is built from the pinned Node
+22.16.0 digest with Codex `0.145.0` and fixed at
+`sha256:c081aaa9d40afa4d8b57297000fe9aff5635e52a94b2b87abf8626b128c55e2d`.
+Codex refuses unauthenticated non-loopback listeners, so the image keeps the
+authentication-disabled App Server on `127.0.0.1:18092`; a fixed
+credential-free same-container TCP proxy exposes only internal port `8092`.
+Both the private `/readyz` check and the allocated host TCP check pass.
+
+### Accepted PostgreSQL persistence
+
+The runtime reuses only
+`ws-41c0ff95e5554773b7b460903a3af1ad-volume-db-data`, with the exact task 4.3
+labels. No other session volume exists. The data root remains
+`/var/lib/postgresql/data`; no nested `PGDATA`, Flyway initialization,
+fixture application, repair or baseline is present.
+
+An early fail-closed iteration selected a nested `PGDATA` and created a second
+empty cluster inside the accepted volume. The runtime was stopped immediately.
+After proving all containers stopped and the accepted root cluster remained
+intact, only the task-5.1-created nested directory was fingerprinted and
+deleted. The final contract removes that `PGDATA` setting and selects the
+task 4.3 database and role `atenea_ax42_synthetic_v1`.
+
+Final Flyway history is byte-identical to task 4.3: 45 successful rows, ranks
+1–45, zero failures and final version 45. All 28 declared table counts are
+also byte-identical: one operator account, one project, one closed
+WorkSession, two SessionTurns, zero AgentRuns and zero rows in every other
+declared table. The accepted task 4.3 and 4.4 `SHA256SUMS` hashes remain
+`80dc617182d0466a8a5c7a770de7dfcaaa60b513ebabc7eb3672440ac02b8688`
+and `e284239926aae141cff5253f0a81fcc13525ec4bade67464c4238a6c5eaa80a8`.
+
+### External authority, resources and non-impact
+
+The final application environment disables OpenAI, OpenAI costs, the core
+intent router, briefings, DeepSeek costs, FCM/mobile push and auth bootstrap.
+OpenAI, DeepSeek, FCM and operational GitHub base URLs are local fail-safe
+`127.0.0.1:9` destinations. The internal network provides no external path.
+There are zero AgentRun rows and zero routing records.
+
+Retained evidence contains sanitized service logs, container/network/volume
+and image inspections, exact ownership labels, loopback mappings and
+listeners, health output, full Flyway history, all 28 counts, CPU/memory/PID
+measurements, process inventories, installed-boundary hashes, before/after
+fingerprints and secret scanning. No development secret value matched.
+
+Rootful Docker, its socket and containerd remain inactive and masked.
+Production and preview retain all nine expected running containers. Beautips
+retains its three expected running containers, with PostgreSQL and Redis
+healthy. The Atenea source repository remains clean and synchronized at
+`b6dc854d...`; the programme repository was clean and synchronized at
+`d1e71d6...` when runtime evidence was closed.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-5.1-private-runtime`
+
+It contains 62 regular files. `SHA256SUMS` verifies all other 61 files; its
+SHA-256 is
+`23010f74668e1f962a056b67505bb8c9816e47a953409fd2a53c0056f87ea856`.
+The result is `pass`. Task 5.2 is the first pending task and was not started.
