@@ -50,7 +50,7 @@ sudo -n -u atenea-slot2 \
   fail 'the exact reviewed Codex App Server image is unavailable in slot2'
 
 install -d -o root -g root -m 0755 "${LIBEXEC}"
-install -d -o root -g root -m 0750 "${MANAGER_CONTROL_ROOT}"
+install -d -o root -g root -m 2750 "${MANAGER_CONTROL_ROOT}"
 install -o root -g root -m 0755 \
   "${SCRIPT_DIR}/runtime-client-v1.sh" \
   "${LIBEXEC}/atenea-runtime-client-v1"
@@ -83,7 +83,7 @@ for installed in \
   [[ "$(stat -c %U:%G:%a "${installed}")" == 'root:root:755' ]] ||
     fail "installed boundary metadata differs: ${installed}"
 done
-[[ "$(stat -c %U:%G:%a "${MANAGER_CONTROL_ROOT}")" == 'root:root:750' ]] ||
+[[ "$(stat -c %U:%G:%a "${MANAGER_CONTROL_ROOT}")" == 'root:root:2750' ]] ||
   fail 'installed manager control-root metadata differs'
 
 printf 'ATENEA_RUNTIME_V1_INSTALLED\n'
