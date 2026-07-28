@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `route-agent-runs-to-remote-worker` (active `20/35`)
+- Current phase: `route-agent-runs-to-remote-worker` (active `25/35`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -878,6 +878,23 @@ acceptance, exact cancellation and persisted-target reconciliation. The local
 startup path explicitly excludes remote runs and its original stale-run policy
 continues for local runs.
 
-The exact resume point is task 5.1: execute and retain automated validation
-evidence before creating the disposable end-to-end control plane. Do not start
-Phase 5 or make a real project authoritative.
+Tasks 5.1–5.5 are complete and programme progress is `25/35`. The final Atenea
+backend suite passed `335/335`; the web build and canonical packaged backend
+build also passed on AX42. Installed-protocol acceptance returned one execution
+for an identical retry, rejected conflicting identity reuse with HTTP `409`,
+held the fifth normal run queued behind four permits, and held the third heavy
+run queued behind two permits. All admitted and queued fixtures subsequently
+completed and capacity returned.
+
+The exact Compose fixture was removed with volumes and local build images.
+Slot 2 returned to zero containers and custom networks, seven baseline images
+and only the pre-existing retained Phase 3 PostgreSQL volume. Production
+configuration, routing and AgentRun count remained unchanged.
+
+Accepted validation evidence is beneath `runs/task-5-automated-validation`;
+the SHA-256 of its `SHA256SUMS` is
+`dc4f59d3c58c0b760eaed04d95fc58e8b9faf84948cc10b1748e74f63a12d754`.
+
+The exact resume point is task 6.1: create an isolated synthetic control plane
+and execute restart, partition, cancellation and multi-turn continuity. Do not
+start Phase 5 or make a real project authoritative.

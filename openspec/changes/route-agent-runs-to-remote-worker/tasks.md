@@ -32,11 +32,11 @@
 
 ## 5. Automated validation and regression
 
-- [ ] 5.1 Run migration, repository, service and API tests for local defaults, remote lifecycle, non-terminal uniqueness and terminal deduplication
-- [ ] 5.2 Prove feature-switch changes affect only new sessions and remote selection fails safely when the worker is unavailable or incompatible
-- [ ] 5.3 Prove duplicate dispatch produces one execution and a conflicting payload changes nothing
-- [ ] 5.4 Prove four normal and two heavy limits, visible queuing and permit recovery
-- [ ] 5.5 Run the complete Atenea backend suite and canonical build without changing production configuration
+- [x] 5.1 Run migration, repository, service and API tests for local defaults, remote lifecycle, non-terminal uniqueness and terminal deduplication
+- [x] 5.2 Prove feature-switch changes affect only new sessions and remote selection fails safely when the worker is unavailable or incompatible
+- [x] 5.3 Prove duplicate dispatch produces one execution and a conflicting payload changes nothing
+- [x] 5.4 Prove four normal and two heavy limits, visible queuing and permit recovery
+- [x] 5.5 Run the complete Atenea backend suite and canonical build without changing production configuration
 
 ## 6. Synthetic acceptance and continuity
 
