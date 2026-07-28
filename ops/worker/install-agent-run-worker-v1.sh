@@ -94,7 +94,8 @@ apply_install() {
   systemctl daemon-reload
   ufw allow in on tailscale0 proto tcp from "$CONTROL_PLANE_IP" to any port "$PORT" \
     comment 'atenea-agent-run-worker-v1' >/dev/null
-  systemctl enable --now "$SERVICE"
+  systemctl enable "$SERVICE"
+  systemctl restart "$SERVICE"
   verify
 }
 
@@ -103,10 +104,18 @@ verify() {
   local bind
   bind="$(tailscale_ipv4)"
   systemctl is-enabled "$SERVICE"
+  local ready=false
+  for _attempt in $(seq 1 60); do
+    if systemctl is-active --quiet "$SERVICE" \
+        && ss -H -lntp "sport = :$PORT" | grep -F "$bind:$PORT" >/dev/null; then
+      ready=true
+      break
+    fi
+    sleep 0.25
+  done
+  [[ "$ready" == true ]] || fail "worker did not become ready within 15 seconds"
   systemctl is-active "$SERVICE"
   systemd-analyze security "$SERVICE" --no-pager >/dev/null
-  ss -H -lntp "sport = :$PORT" | grep -F "$bind:$PORT" >/dev/null \
-    || fail "worker is not listening on the Tailscale address"
   ! ss -H -lntp "sport = :$PORT" | grep -Eq '(^|[[:space:]])(0\.0\.0\.0|\[::\]):' \
     || fail "worker has a wildcard listener"
   [[ "$(stat -c '%a:%U:%G' "$TOKEN_FILE")" == "640:root:atenea" ]] \
