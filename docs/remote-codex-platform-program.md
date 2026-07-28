@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `17/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `18/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -522,13 +522,45 @@ secret value or forbidden unsanitized browser artifact. Passing evidence is
 beneath `runs/task-5.3-playwright-visual`; the SHA-256 of its `SHA256SUMS` is
 `8d6cc8093107126b2d07b517d0ef5177462c609fea996d285cc8d7743cedf37f`.
 
-The next action is task 5.4. Task 5.4 was not started: do not exercise
-unavailable external integrations until a new continuation begins from this
-resume point.
+Task 5.4 is complete and programme progress is `18/27`. The accepted probe
+ran only on AX42 against the existing admitted `slot2/heavy1` WorkSession and
+its loopback endpoints. Runtime configuration kept OpenAI, DeepSeek costs,
+briefing, FCM and LLM intent routing disabled; all declared provider base URLs
+remained the non-routable loopback sentinel `127.0.0.1:9`, the session network
+remained internal and no external credential environment variable existed.
+
+Authenticated costs returned OpenAI and DeepSeek as `configured=false` and
+`disabled`. Speech synthesis, realtime voice and transcription each returned
+the exact sanitized HTTP 503 disabled outcome before provider transport.
+Source-guard hashes and runtime boundaries prove that disabled FCM returns
+before token/message HTTP, disabled DeepSeek briefing returns before provider
+HTTP and an absent GitHub token fails before GitHub HTTP; no operational
+GitHub, push, briefing, host-management or external-provider action was
+invoked. Runtime log signatures and the internal network boundary recorded
+zero provider attempts.
+
+Logout revoked the one temporary refresh token and bounded cleanup restored
+the table to zero. Flyway remained at 45 successful migrations; the exact
+synthetic counts, Git identities, WorkSession records, allocation, admission,
+three containers, one network, one retained volume and three listeners were
+unchanged. AgentRuns, API usage, push records, managed hosts, core commands,
+routing and residual task processes remained zero. Production, preview and
+Beautips remained `UP`; rootful Docker, its socket and containerd remained
+inactive and masked. Final scanning found no secret value, retained auth
+material or unsanitized provider response.
+
+Passing evidence is beneath
+`runs/task-5.4-external-integrations-fail-safe`; the SHA-256 of its
+`SHA256SUMS` is
+`bc750f5c958867f69b6f8b23d562ed7a13c96e990fb5f64b2d463ca0e10d0a70`.
+
+The next action is task 6.1. Task 6.1 was not started: do not establish the
+named administrative SSH/tmux development session until a new continuation
+begins from this resume point.
 
 The administrative Codex/tmux bridge may be used to begin work, but it is not
 evidence of the managed session isolation boundary and MUST NOT be used as
 Atenea's AgentRun executor.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — integraciones externas fail-safe`.
+`Migración Atenea y Codex al AX42 — continuidad administrativa`.

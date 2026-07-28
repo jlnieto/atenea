@@ -1911,3 +1911,109 @@ It contains 36 regular files. `SHA256SUMS` verifies the other 35 files; its
 SHA-256 is
 `8d6cc8093107126b2d07b517d0ef5177462c609fea996d285cc8d7743cedf37f`.
 The result is `pass`. Task 5.4 is the first pending task and was not started.
+
+## Task 5.4 — unavailable external integrations fail safely
+
+Completed on 2026-07-28 only for administrative WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad`, admitted to `slot2/heavy1`.
+The accepted source remained the clean WorkSession worktree at commit
+`b6dc854d94ba5b1976926656c9a6aba330f671e2`, tree
+`f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`. No source, UI, CSS, runtime
+configuration or deployment was changed.
+
+### Declared integration boundary
+
+The before/after container inspection retained only allowlisted non-secret
+configuration and proved:
+
+- OpenAI runtime, OpenAI costs, DeepSeek costs, briefing, FCM and LLM intent
+  routing are disabled;
+- OpenAI, DeepSeek, FCM and GitHub base URLs use the explicit loopback failure
+  sentinel `http://127.0.0.1:9`;
+- the WorkSession network is still Docker `Internal=true`;
+- external OpenAI, DeepSeek, FCM and GitHub credential environment variables
+  are absent;
+- only named runtime secret filenames and mount destinations were retained,
+  never their values.
+
+Hashes bind the evidence to the proposal, design, both change specifications,
+tasks, acceptance contract, private-preview contract, manifest and the exact
+source guard implementations. The runtime source guards establish that FCM
+returns before token or message HTTP when disabled, DeepSeek briefing rejects
+before provider HTTP when disabled, and GitHub rejects before HTTP when its
+token is absent. Those operational integrations were deliberately not invoked.
+
+### Finite local probes and fail-safe outcomes
+
+The reproducible `task-5.4-run.sh` used only AX42 loopback ports and finite
+timeouts: 650 seconds for the outer command, 600 seconds for the declared
+process budget, 20 seconds for Docker/runtime calls, 5 seconds per PostgreSQL
+statement, and 3-second connect/10-second complete/20-second process limits for
+HTTP. It authenticated only the declared synthetic operator with the named
+development browser-password file. Login request, response, curl authorization
+configuration and logout request existed only in a private temporary directory
+and were shredded or deleted by the exit trap.
+
+The accepted run proved:
+
+- costs HTTP 200 reported OpenAI and DeepSeek `configured=false`,
+  `status=disabled`, zero totals and no model or cost lines;
+- speech synthesis, realtime voice and voice transcription each returned
+  sanitized HTTP 503 with the exact committed disabled message before provider
+  transport;
+- push-device and managed-host reads returned HTTP 200 with zero records;
+- the existing local Codex `/readyz` returned HTTP 200 while required external
+  Codex authentication remained disabled;
+- no GitHub operational action, DeepSeek briefing, FCM send, managed-host
+  action, AgentRun or routing action was invoked;
+- runtime logs after the start timestamp contained zero OpenAI, DeepSeek, FCM
+  or GitHub attempt signatures.
+
+The launcher first returned 127 before starting the runner because of remote
+shell quoting. The first real probe then completed all safe calls and cleanup
+but exposed an incorrect postcondition assumption: logout revokes a refresh
+token row rather than deleting it. The corrected accepted assertion proves one
+row created, zero active tokens after logout, one revoked row deleted by the
+bounded cleanup and zero rows afterward. Both preliminary attempts and their
+effects are retained structurally; neither caused a provider call or left
+authentication data.
+
+### Data, isolation, cleanup and non-impact
+
+Before/after Flyway evidence is byte-identical at 45 successful V1–V45
+migrations. All 28 table counts are byte-identical after cleanup: one operator,
+one project, one closed WorkSession, two SessionTurns and zero AgentRuns, API
+usage rows, push devices/logs, managed hosts/services/websites, core commands,
+routing-related records, refresh tokens and all other declared synthetic
+tables.
+
+Workspace, allocation and admission hashes are unchanged. Runtime status
+remains `ready/healthy` with exactly the same three labelled containers, one
+internal network, one retained PostgreSQL volume and three loopback listeners.
+The worktree and index remain clean. No Chromium, Node/Playwright, proxy,
+tunnel or test process remains, and no test container, WorkSession, allocation,
+admission, route, network, volume or database was created.
+
+Rootful Docker, its socket and containerd remain inactive and masked. Atenea
+production and preview remain `UP` with the same nine containers. Beautips
+remains `UP` with its three containers. The source repository remains clean
+and synchronized at `b6dc854d...`; the programme repository was clean and
+synchronized at `d5eafc0...` before this documentation-only update.
+
+The final scan checked all retained files against four named development secret
+values and found zero matches. It also found no retained login response,
+logout request, curl auth file, storage state, trace, authorization bearer,
+access token, refresh token or password field outside the reproducible runner.
+No raw provider response, cookie, token, password or authorization header is
+retained.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-5.4-external-integrations-fail-safe`
+
+It contains 33 regular files. `SHA256SUMS` verifies the other 32 files; its
+SHA-256 is
+`bc750f5c958867f69b6f8b23d562ed7a13c96e990fb5f64b2d463ca0e10d0a70`.
+The result is `pass`. Programme progress is `18/27`; task 6.1 is the first
+pending task and was not started.
