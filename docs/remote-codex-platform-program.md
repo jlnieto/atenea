@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `route-agent-runs-to-remote-worker` (active `25/35`)
+- Current phase: `route-agent-runs-to-remote-worker` (active `30/35`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -895,6 +895,28 @@ Accepted validation evidence is beneath `runs/task-5-automated-validation`;
 the SHA-256 of its `SHA256SUMS` is
 `dc4f59d3c58c0b760eaed04d95fc58e8b9faf84948cc10b1748e74f63a12d754`.
 
-The exact resume point is task 6.1: create an isolated synthetic control plane
-and execute restart, partition, cancellation and multi-turn continuity. Do not
-start Phase 5 or make a real project authoritative.
+Tasks 6.1–6.5 are complete and programme progress is `30/35`. An empty
+disposable V46 control plane completed six remote AgentRuns: five succeeded and
+one exact cancellation became `CANCELLED`; no non-terminal row remained.
+
+One live execution survived an Atenea backend restart with the same dispatch
+and execution identities and exactly one visible response. A proxy-scoped
+partition exposed `RECONCILING` with an explicit no-replacement reason, then
+healed to the same successful execution. Exact cancellation left a concurrent
+unrelated execution running to success. Three turns in one WorkSession retained
+`ax42-01`, one workspace identity and one synthetic thread, while using three
+distinct dispatch/execution identities and producing exactly six visible
+operator/worker turns.
+
+Production AgentRun count and routing remained unchanged; production and
+preview containers remained `UP`. Beautips health remained `UP`, all four
+rootless slots retained their accepted inventories, RAID remained healthy and
+the private worker returned to zero capacity in use.
+
+Accepted continuity evidence is beneath `runs/task-6-synthetic-continuity`; the
+SHA-256 of its `SHA256SUMS` is
+`f4bbfc0cbfea8cf73a6361b18ceccdacff531aa6e34b9fe92f4e3c380b9377c8`.
+
+The exact resume point is task 7.1: disable new synthetic selection, verify all
+remote runs are terminal, execute idempotent rollback/cleanup and compare final
+fingerprints. Do not start Phase 5 or make a real project authoritative.

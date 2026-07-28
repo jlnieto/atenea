@@ -40,11 +40,11 @@
 
 ## 6. Synthetic acceptance and continuity
 
-- [ ] 6.1 Create a disposable synthetic control-plane environment and confirm production routing remains zero
-- [ ] 6.2 Complete one remote turn, then keep another live across an Atenea backend restart and accept its terminal response exactly once
-- [ ] 6.3 Introduce and heal a bounded control-plane-to-worker partition, observing reconciling state without duplicate work or terminal delivery
-- [ ] 6.4 Cancel one exact execution and prove unrelated queued/running sessions, worker slots and Beautips remain unchanged
-- [ ] 6.5 Complete multiple turns in one synthetic WorkSession with the same persisted worker and workspace identity
+- [x] 6.1 Create a disposable synthetic control-plane environment and confirm production routing remains zero
+- [x] 6.2 Complete one remote turn, then keep another live across an Atenea backend restart and accept its terminal response exactly once
+- [x] 6.3 Introduce and heal a bounded control-plane-to-worker partition, observing reconciling state without duplicate work or terminal delivery
+- [x] 6.4 Cancel one exact execution and prove unrelated queued/running sessions, worker slots and Beautips remain unchanged
+- [x] 6.5 Complete multiple turns in one synthetic WorkSession with the same persisted worker and workspace identity
 
 ## 7. Rollback, observation and handoff
 
