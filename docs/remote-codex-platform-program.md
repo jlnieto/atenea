@@ -6,7 +6,8 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `route-agent-runs-to-remote-worker` (active `34/35`)
+- Current phase: `route-agent-runs-to-remote-worker` (complete and archived
+  `35/35`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -169,12 +170,11 @@ backup/monitoring and deploy/rollback control remain on the Atenea server.
 
 Entry, evidence, rollback and archive gates are defined in `remote-codex-platform-phases.md`. No phase becomes authoritative merely because its code builds.
 
-`relocate-atenea-development-to-ax42` is archived. The active
-`route-agent-runs-to-remote-worker` has a strictly valid proposal, design, two
-capability deltas and 35-task checklist. Its implementation and executed
-rollback are complete at `34/35`; only strict archive/commit closure remains.
-Production routing is unchanged and disabled. Later names remain a planning
-queue and MUST NOT be created or started from this phase.
+`relocate-atenea-development-to-ax42` is archived.
+`route-agent-runs-to-remote-worker` is archived as
+`2026-07-28-route-agent-runs-to-remote-worker` with all `35/35` tasks complete.
+Production routing is unchanged and disabled. `add-worksession-attachments`
+remains the next planning gate and was not created or started.
 
 ## Decision log
 
@@ -937,6 +937,19 @@ Accepted rollback and observation evidence is beneath
 `runs/task-7-rollback-observation`; the SHA-256 of its `SHA256SUMS` is
 `5db761a247ee2c5981ca67fb62046e7e0b250c7a07c044056e8d484775ceeb89`.
 
-The exact resume point is task 7.5: run strict validation, archive this change,
-commit and push the final programme state, then stop before
-`add-worksession-attachments`.
+Task 7.5 is complete and programme progress is `35/35`. Strict change
+validation passed with all tasks checked before one archive invocation moved
+the change to
+`openspec/changes/archive/2026-07-28-route-agent-runs-to-remote-worker`.
+Twelve modified requirements were synchronized into the two normative specs.
+The archive formatter added one blank line at EOF to each synchronized spec;
+removing only those lines made the diff clean. Strict validation then passed
+for all seven normative specs.
+
+Accepted archive evidence is beneath `runs/task-7.5-openspec-archive`; the
+SHA-256 of its `SHA256SUMS` is
+`fbc4713c8a884144d1d1b73728a72d455e49507a6c79fe658c025ecfbe2a77c6`.
+
+The exact resume point is the Phase 5 entry gate for
+`add-worksession-attachments`. No Phase 5 proposal, task or implementation has
+been created or started.
