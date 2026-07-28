@@ -1,0 +1,33 @@
+[Unit]
+Description=Atenea private synthetic AgentRun worker v1
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=atenea-worker
+Group=atenea
+ExecStart=/usr/local/libexec/atenea/agent-run-worker-v1.py --bind ${ATENEA_WORKER_BIND} --port ${ATENEA_WORKER_PORT} --worker-id ${ATENEA_WORKER_ID} --state-dir /srv/atenea/worker/agent-runs-v1 --token-file /etc/atenea-worker/agent-run-worker-v1.token --normal-capacity 4 --heavy-capacity 2
+EnvironmentFile=/etc/atenea-worker/agent-run-worker-v1.env
+Restart=on-failure
+RestartSec=2s
+TimeoutStartSec=15s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/srv/atenea/worker/agent-runs-v1
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

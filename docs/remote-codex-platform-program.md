@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `route-agent-runs-to-remote-worker` (active `4/35`)
+- Current phase: `route-agent-runs-to-remote-worker` (active `12/35`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -827,7 +827,7 @@ the SHA-256 of its `SHA256SUMS` is
 The first blocked lexical-version check and its exact cleanup remain retained
 separately for audit; it changed no production or foreign resource.
 
-Tasks 1.1–1.4 are complete and programme progress is `4/35`. The proposal,
+Tasks 1.1–1.4 are complete. The proposal,
 design and deltas close execution affinity, authenticated protocol, lease,
 capacity, synthetic scope and non-destructive migration rollback decisions.
 Attachments/previews, real-project selection, per-project localhost,
@@ -835,6 +835,29 @@ artifact-promotion authority, external backup retention and a second tailnet
 administrator remain at their later declared gates and do not block synthetic
 Phase 4 routing.
 
-The exact resume point is task 2.1: add the V46 persistent routing and lifecycle
-model while remote routing remains default-disabled. Do not start Phase 5 or
-make a real project authoritative.
+Tasks 2.1–2.4 and 3.1–3.4 are complete and programme progress is `12/35`.
+The additive V46 model, immutable session affinity, durable dispatch identity,
+lease/lifecycle state, optimistic terminal acceptance and non-terminal
+per-session uniqueness are committed in Atenea source at
+`23a9549e2ef2f3930325004068aea7bc0aad7454`. Routing remains default-disabled
+and existing rows remain local.
+
+The accepted V45 restore plus current V46 migration proof is beneath
+`runs/task-2.4-v46-restore-migration`; the SHA-256 of its `SHA256SUMS` is
+`70a752d212a6ae4e2ee77a083200859968b4c85b46cf70a221d31e605b7ec18f`.
+It used a network-disabled disposable PostgreSQL fixture, verified the
+expand/contract boundary and removed the fixture by exact identity without
+changing production.
+
+The versioned worker source now implements authenticated
+`agent-run-worker/v1`, atomic durable state, idempotent dispatch, fail-closed
+conflict handling, exact cancellation and bounded four-normal/two-heavy FIFO
+scheduling. Its seven protocol/scheduler tests pass, including service-state
+restart recovery with the same execution identity. The complete Atenea backend
+suite passed with `330` tests and no failures after recreating only its
+disposable test database; focused routing/API/reconciliation tests passed
+`19/19`.
+
+The exact resume point is task 3.5: install and verify the private synthetic
+worker service on AX42 before executing control-plane acceptance. Do not start
+Phase 5 or make a real project authoritative.

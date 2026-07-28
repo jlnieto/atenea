@@ -7,17 +7,17 @@
 
 ## 2. Persistent routing and lifecycle model
 
-- [ ] 2.1 Add an additive Flyway migration for worker registration, WorkSession execution affinity and AgentRun dispatch, workload, lease and lifecycle state
-- [ ] 2.2 Expand persistence and API models with safe local defaults and one non-terminal AgentRun per session
-- [ ] 2.3 Add repository operations for compatible-worker selection, monotonic lifecycle updates, lease renewal and exact terminal acceptance
-- [ ] 2.4 Prove V45 backup restore plus V46 migration and document expand/contract rollback without destructive down migration
+- [x] 2.1 Add an additive Flyway migration for worker registration, WorkSession execution affinity and AgentRun dispatch, workload, lease and lifecycle state
+- [x] 2.2 Expand persistence and API models with safe local defaults and one non-terminal AgentRun per session
+- [x] 2.3 Add repository operations for compatible-worker selection, monotonic lifecycle updates, lease renewal and exact terminal acceptance
+- [x] 2.4 Prove V45 backup restore plus V46 migration and document expand/contract rollback without destructive down migration
 
 ## 3. Private worker protocol and scheduler
 
-- [ ] 3.1 Implement the versioned authenticated synthetic worker service with durable atomic state and no arbitrary command/runtime fields
-- [ ] 3.2 Implement idempotent dispatch, conflicting-identity rejection, status/progress, lease renewal, cancellation and monotonic terminal state
-- [ ] 3.3 Enforce four normal slots, two heavy permits and durable FIFO recovery after worker-service restart
-- [ ] 3.4 Add protocol, authentication, malformed-input, duplicate, capacity, restart and cancellation tests
+- [x] 3.1 Implement the versioned authenticated synthetic worker service with durable atomic state and no arbitrary command/runtime fields
+- [x] 3.2 Implement idempotent dispatch, conflicting-identity rejection, status/progress, lease renewal, cancellation and monotonic terminal state
+- [x] 3.3 Enforce four normal slots, two heavy permits and durable FIFO recovery after worker-service restart
+- [x] 3.4 Add protocol, authentication, malformed-input, duplicate, capacity, restart and cancellation tests
 - [ ] 3.5 Install the private worker service on AX42 with root-owned configuration, narrow Tailscale/UFW access and no public listener
 
 ## 4. Atenea dispatch, affinity and reconciliation
