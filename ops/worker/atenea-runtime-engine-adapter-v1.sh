@@ -104,7 +104,7 @@ assert_rootlesskit_port_boundary() {
 
 remove_owned_rootless_ports() {
   local state="${ENGINE_ROOT}/rootlesskit-ports-v1.json"
-  [[ -e "${state}" || -L "${state}" ]] || return
+  [[ -e "${state}" || -L "${state}" ]] || return 0
   [[ -f "${state}" && ! -L "${state}" &&
       "$(stat -c %u:%g:%a "${state}")" == '0:0:600' ]] ||
     fail RUNTIME_OWNERSHIP_CONFLICT "The retained RootlessKit port state is unsafe."
