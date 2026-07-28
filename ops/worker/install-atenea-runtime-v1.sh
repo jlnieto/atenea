@@ -6,6 +6,7 @@ umask 0077
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 LIBEXEC='/usr/libexec'
 SUDOERS='/etc/sudoers.d/91-atenea-runtime-v1'
+MANAGER_CONTROL_ROOT='/srv/atenea/worker/runtime-manager-v1'
 CODEX_IMAGE='atenea/codex-app-server@sha256:b51c22f9c49b8c3196bda81669265ef0e552c6598d02c48eb370ed32f80611a5'
 CODEX_IMAGE_ID='sha256:b51c22f9c49b8c3196bda81669265ef0e552c6598d02c48eb370ed32f80611a5'
 CODEX_DOCKERFILE_SHA256='628cf76fb87da3becadc873c99c02113ad74e38eb64383e929e7663ec3d79ae9'
@@ -49,6 +50,7 @@ sudo -n -u atenea-slot2 \
   fail 'the exact reviewed Codex App Server image is unavailable in slot2'
 
 install -d -o root -g root -m 0755 "${LIBEXEC}"
+install -d -o root -g root -m 0750 "${MANAGER_CONTROL_ROOT}"
 install -o root -g root -m 0755 \
   "${SCRIPT_DIR}/runtime-client-v1.sh" \
   "${LIBEXEC}/atenea-runtime-client-v1"
@@ -81,6 +83,8 @@ for installed in \
   [[ "$(stat -c %U:%G:%a "${installed}")" == 'root:root:755' ]] ||
     fail "installed boundary metadata differs: ${installed}"
 done
+[[ "$(stat -c %U:%G:%a "${MANAGER_CONTROL_ROOT}")" == 'root:root:750' ]] ||
+  fail 'installed manager control-root metadata differs'
 
 printf 'ATENEA_RUNTIME_V1_INSTALLED\n'
 sha256sum \
@@ -89,3 +93,4 @@ sha256sum \
   "${LIBEXEC}/atenea-runtime-engine-v1" \
   "${LIBEXEC}/atenea-runtime-engine-adapter-v1" \
   "${SUDOERS}"
+stat -c '%U:%G:%a %n' "${MANAGER_CONTROL_ROOT}"
