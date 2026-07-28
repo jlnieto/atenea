@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (archived `27/27`)
+- Current phase: `route-agent-runs-to-remote-worker` (active `4/35`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -169,11 +169,11 @@ backup/monitoring and deploy/rollback control remain on the Atenea server.
 
 Entry, evidence, rollback and archive gates are defined in `remote-codex-platform-phases.md`. No phase becomes authoritative merely because its code builds.
 
-`relocate-atenea-development-to-ax42` is archived. Its entry gate was reviewed
-against real control-plane and worker state, and its proposal, design, specs
-and 27-task implementation checklist are complete and strictly valid. There is
-no active implementation change. Later names remain a planning queue and MUST
-NOT be created or started from this phase.
+`relocate-atenea-development-to-ax42` is archived. The active
+`route-agent-runs-to-remote-worker` change has a strictly valid proposal,
+design, two capability deltas and 35-task checklist. Its entry gate is accepted
+at `4/35`; routing remains disabled while implementation proceeds. Later names
+remain a planning queue and MUST NOT be created or started from this phase.
 
 ## Decision log
 
@@ -197,6 +197,11 @@ NOT be created or started from this phase.
 | D-016 | Separate production deployment from ordinary Codex execution. | Production requires reviewed artifacts, restricted authority, explicit confirmation, health checks and rollback. | accepted | operations owner | controlled deployment phase |
 | D-017 | Keep executable reboot harnesses beneath `/tmp`, but persist synthetic WorkSession state and retained evidence in the canonical `/srv/atenea` roots. | AX42 clears `/tmp` during reboot; reconciliation must be based on real surviving state rather than static or lost files. | accepted and proven in 5.3 | runtime owner | cleanup and retention design |
 | D-018 | Give the administrative Beautips PostgreSQL and Redis containers the same `unless-stopped` restart policy as the application. | The first reboot proved that dependencies with restart policy `no` leave the application unhealthy after host recovery. | accepted and proven in 5.3 | operations owner | Beautips onboarding |
+| D-019 | Pin execution target and immutable workspace identity when each WorkSession is opened. | A feature change or transient failure must never move an active Codex thread implicitly. | accepted | backend owner | remote routing implementation |
+| D-020 | Use a UUID dispatch identity plus monotonic worker lifecycle revision as the idempotency boundary. | Retries and duplicate terminal delivery must return existing work rather than create another run or response. | accepted | backend owner | remote routing acceptance |
+| D-021 | Use an additive V46 expand/contract migration and disable routing for rollback instead of down-migrating live history. | Retained remote ownership is required for reconciliation and audit; destructive rollback is unnecessary. | accepted | data owner | after remote records have aged out |
+| D-022 | Restrict Phase 4 execution to the fixed `synthetic-routing-v1` workload over a private authenticated protocol. | Routing continuity can be proved without granting arbitrary shell, repository, container or real-project authority. | accepted | security owner | first real-project onboarding |
+| D-023 | Retain non-terminal lease and lifecycle records; do not reuse expired leases or delete routing history in Phase 4. | Reconciliation requires durable ownership while final retention can be informed by measured synthetic runs. | accepted | backend owner | before production remote-routing defaults |
 
 ## Deferred decisions and gates
 
@@ -207,7 +212,7 @@ NOT be created or started from this phase.
 | Final pilot | Beautips is provisional; first reconcile its local and Atenea commits. | enabling first real project run |
 | Per-project localhost requirement | Discover through cookies, callbacks and browser tests. | declaring that project's private preview ready |
 | Initial runtime sandbox implementation | Prototype mediated rootless/container alternatives against the no-host-socket requirement. | accepting the runtime contract phase |
-| Lease, artifact and preview retention durations | Measure representative jobs. | production defaults in remote routing/preview phases |
+| Terminal AgentRun, artifact and preview retention durations | Non-terminal Phase 4 lease/lifecycle retention is fixed; measure representative runs before choosing terminal cleanup. | production defaults in remote routing/preview phases |
 | Atenea development data fixture and sanitization policy | Production data must not be copied implicitly to AX42. | relocating the Atenea development database |
 | Versioned artifact format and promotion authority | Deployment must not build mutable source on the production host. | controlled deployment phase |
 
@@ -796,10 +801,40 @@ Passing evidence is beneath `runs/task-8.4-openspec-archive`; the SHA-256 of
 its `SHA256SUMS` is
 `7f03e7ba6916d8394daed6fac2795fdec0a30c8e8e3a7f2d83d75cb49558c6cc`.
 
-The exact resume point is the programme boundary after the archived relocation
-phase. No implementation change is active. The next planned phase is
-`route-agent-runs-to-remote-worker`, but it requires its own proposal, entry
-gate and explicit authorization and was not created or started here.
+## Phase 4 entry and active resume point
 
-Recommended title for a separately authorized next phase is
-`Remote Codex platform — diseño de routing de AgentRuns`.
+The `route-agent-runs-to-remote-worker` entry gate was accepted on 2026-07-28.
+Canonical programme Git was clean at
+`8b964f2c3db54481315b59a9ed7ac1a399f53353`; Atenea source was clean at
+`b6dc854d94ba5b1976926656c9a6aba330f671e2`. Production, preview and Beautips
+were `UP`, production routing records were zero, AX42 strict health passed,
+three RAID arrays were `[UU]`, all four bounded rootless slots were healthy and
+the accepted capacity remained four normal slots plus two heavy permits.
+
+The exact installed runtime client, manager, engine and Atenea adapter hashes
+match their versioned sources. The retained production-schema backup is
+`/srv/atenea/backups/prod/atenea_prod_before_remote_routing_v46_20260728T222500Z.dump`
+with SHA-256
+`a48a7d25b5d9b3289e926bef4201c074c5f523bb32a793b0f3ccc8e1f1760160`.
+It restored successfully into a network-disabled disposable PostgreSQL 16
+fixture with the full successful Flyway V45 history and expected public tables.
+The fixture was removed by exact immutable identity.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/route-agent-runs-to-remote-worker/entry-gate`;
+the SHA-256 of its `SHA256SUMS` is
+`783780d6170441392e7cc2124ecf54c571df859005d1847b710dc728a946b245`.
+The first blocked lexical-version check and its exact cleanup remain retained
+separately for audit; it changed no production or foreign resource.
+
+Tasks 1.1–1.4 are complete and programme progress is `4/35`. The proposal,
+design and deltas close execution affinity, authenticated protocol, lease,
+capacity, synthetic scope and non-destructive migration rollback decisions.
+Attachments/previews, real-project selection, per-project localhost,
+artifact-promotion authority, external backup retention and a second tailnet
+administrator remain at their later declared gates and do not block synthetic
+Phase 4 routing.
+
+The exact resume point is task 2.1: add the V46 persistent routing and lifecycle
+model while remote routing remains default-disabled. Do not start Phase 5 or
+make a real project authoritative.
