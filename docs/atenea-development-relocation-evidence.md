@@ -2315,3 +2315,111 @@ SHA-256 is
 The result is `pass`. Programme progress is `21/27`; task 7.2 is the first
 pending task and was not started. Task 7.3 remains separately gated by
 explicit restart authorization.
+
+## Task 7.2 — rollback idempotence and ownership rejection
+
+Completed on 2026-07-28 only for administrative WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad` and the already released
+`slot2/heavy1` admission. The runtime was not recreated and task 7.3 was not
+executed.
+
+### Complete pre-fingerprint and second rollback
+
+The accepted run first verified the complete task 7.1 package and its
+`SHA256SUMS` SHA-256
+`25c6a03f43c727652020161116011a82d3a881e2b8b74ba94dd59b6b3bd2bf70`.
+It fingerprinted:
+
+- worktree commit `b6dc854d94ba5b1976926656c9a6aba330f671e2`,
+  tree `f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`, clean status and index;
+- workspace, allocation and `released/released` admission records;
+- mirror refs, delivery source/owner and persisted engine state;
+- runtime logs and every prior retained artifact;
+- container, network, volume and image identity in all four rootless slots;
+- owned resources, loopback listeners and browser/broker processes;
+- administrative tmux identity/labels, routing records and rootful services;
+- independent control-plane Git/index, production/preview health and container
+  sentinels, plus Beautips health and containers.
+
+The repeat rollback found all three target containers, the internal network
+and all three allocated listener identities already absent. The manager
+correctly refused another mediated stop after admission release with exit 65
+and `RUNTIME_OWNERSHIP_CONFLICT`; it did not reach engine execution. Repeating
+the exact versioned heavy and normal release operations exited zero and left
+both records `released`. The structured second-pass result is
+`stopped/stopped`, removed `0/0/0/0` containers, networks, images and
+listeners, changed no retained state and did not recreate runtime.
+
+### Literal unlabelled, partial, foreign and ambiguous denial
+
+The accepted corpus created four stopped, internal network fixtures in slot2.
+It started no process and created no image:
+
+- `unlabelled`: no labels at all;
+- `partial`: only the expected engine, session and runtime labels;
+- `foreign`: all five labels, but with a foreign WorkSession and runtime;
+- `ambiguous`: all five expected labels plus conflicting
+  `com.atenea.owner=foreign`.
+
+Before invoking the gate, evidence recorded each immutable network ID, exact
+name, creation time, driver and complete labels. Every ownership check exited
+65 with `RUNTIME_OWNERSHIP_CONFLICT`. The resource remained addressable by the
+same immutable ID and its complete inspect SHA-256 was byte-identical before
+and after denial.
+
+Cleanup re-inspected the current resource and required equality with the
+recorded immutable ID, name, creation time, driver and labels. It then removed
+only that exact ID. Final all-slot inventories are byte-identical to the
+pre-fixture inventories.
+
+### Residual, retention and non-impact result
+
+The accepted WorkSession has zero containers, networks, owned images,
+allocated listeners, brokers and Playwright/Chromium processes. Its exact
+labelled PostgreSQL volume remains. The pre-existing slot2 anonymous volume
+also remains; no global image or unrelated slot resource changed.
+
+Mirror refs, worktree Git/index, workspace and allocation records, delivery,
+engine state, logs and every prior artifact are unchanged. The admission
+record remains `released/released`. The same administrative tmux session,
+`session_created=1785262669`, `administrative` window and pane `%0` remains
+alive with zero clients and explicit AgentRun/lease/routing `none` labels.
+The synthetic AgentRun count remains zero by the unchanged retained database
+identity and the accepted pre-stop 7.1 data evidence; the database was not
+restarted merely to re-query it. Worker routing records remain zero.
+
+Production and preview remained `UP` with the same nine containers and clean,
+synchronized source/programme Git sentinels. Beautips remained `UP` with the
+same three containers. Rootful Docker, its socket and containerd remained
+inactive.
+
+### Transparent bounded corrections
+
+Four preliminary evidence roots are retained:
+
+- attempt 1 corrected the inherited cwd used for rootless inspection;
+- attempt 2 bounded ownership denial in a subshell and removed two
+  attempt-owned anonymous volumes only after exact creation-time/ID proof;
+- attempt 3 treated expected absence after exact deletion as success;
+- attempt 4 removed the non-ownership task label from the literally
+  unlabelled fixture after strict evidence validation rejected it.
+
+Every attempt records zero rollback-target removal, zero residual fixtures,
+unchanged admission, no runtime recreation and no foreign-resource change.
+Their own `SHA256SUMS` files verify. The accepted run uses network-only
+fixtures and created no anonymous volume.
+
+Final sanitization retained no Codex authentication, history, internal session
+file, token, cookie, environment dump, private key or credential-pattern
+match. Secret-value files were not read.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-7.2-rollback-idempotence`
+
+It contains 84 regular files. `SHA256SUMS` verifies the other 83 files; its
+SHA-256 is
+`f65acffc596e333ac3a3428c784756eeee8b73729d6046c5e810e051b84745c0`.
+The result is `pass`. Programme progress is `22/27`; task 7.3 is the first
+pending task. Task 8.1 was not started.

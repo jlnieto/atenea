@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `21/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `22/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -644,10 +644,52 @@ Passing evidence is beneath
 Sanitization retained no Codex auth/history/internal-session file, token,
 cookie, environment dump, private key or credential-pattern match.
 
-The next action is task 7.2. Task 7.2 remains pending: do not repeat rollback,
-run the negative ownership corpus or perform residual cleanup until a new
-continuation begins from this resume point. Task 7.3 also remains pending and
-still requires separate explicit restart authorization.
+Task 7.2 is complete and programme progress is `22/27`. The bounded second
+rollback pass began from the exact 7.1 terminal boundary: zero session
+containers, networks and listeners, one retained PostgreSQL volume and
+persisted `slot2/heavy1` admission already `released/released`. It removed zero
+containers, networks, images and listeners and did not recreate the runtime.
+The mediated manager rejected a post-release stop with the expected
+`RUNTIME_OWNERSHIP_CONFLICT`; repeating both versioned admission releases was
+an idempotent zero-exit no-op.
+
+Four synthetic network identities then exercised literal no-label, partial
+label, complete foreign-owner and complete-but-ambiguous ownership. Every
+candidate was recorded by immutable ID, name, creation time, driver and labels
+before use. The exact rollback ownership gate rejected every case with exit 65
+and `RUNTIME_OWNERSHIP_CONFLICT`; inspect SHA-256 remained byte-identical and
+each rejected resource remained present during denial. Cleanup revalidated the
+complete recorded identity and removed only that exact immutable ID.
+
+All four rootless-slot container, network, volume and image inventories match
+their pre-fixture fingerprints. The Atenea session has zero residual
+containers, networks, owned images, allocated listeners, brokers and
+Playwright/Chromium processes, while its labelled PostgreSQL volume, mirror,
+worktree, clean Git/index, allocation, delivery, engine state, logs and all
+prior artifacts remain byte-identical. AgentRuns, worker lease and routing
+remain zero/none. The administrative tmux/Codex session remains alive with the
+same identity and zero attached clients. Production, preview and Beautips
+remain `UP`; rootful Docker, its socket and containerd remain inactive.
+
+Four bounded preliminary attempts are retained transparently. They exposed an
+inaccessible inherited cwd, an unbounded denial exit, an absent-resource
+status propagated after exact deletion, and a nominally unlabelled fixture
+carrying a non-ownership task label. No attempt recreated runtime, removed a
+rollback target, changed admission or modified a foreign resource. The two
+anonymous volumes created by the early container fixtures were identified by
+their exact creation identities and removed by immutable ID; the pre-existing
+anonymous volume and the retained session volume were preserved. The accepted
+corpus uses network-only fixtures and a literally unlabelled candidate.
+
+Passing evidence is beneath
+`runs/task-7.2-rollback-idempotence`; the SHA-256 of its `SHA256SUMS` is
+`f65acffc596e333ac3a3428c784756eeee8b73729d6046c5e810e051b84745c0`.
+Sanitization retained no Codex auth/history/internal-session file, token,
+cookie, environment dump, private key or credential-pattern match.
+
+The next action is task 7.3. Task 7.3 remains pending: perform the separately
+authorized AX42 restart only after capturing the complete pre-reboot boundary.
+Task 8.1 and all later tasks remain out of scope.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — rollback idempotente`.
+`Migración Atenea y Codex al AX42 — reconciliación tras reinicio`.
