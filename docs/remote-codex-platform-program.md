@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `19/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `20/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -582,10 +582,38 @@ Passing evidence is beneath
 `SHA256SUMS` is
 `c914c4d4234701dd5d2d01ecabcd841f6c7fd72fca09bc982f4bef5045498ecf`.
 
-The next action is task 6.2. Task 6.2 was not started: do not attach,
-disconnect or resume the administrative client until a new continuation begins
-from this resume point. The tmux session must remain running unchanged for that
-acceptance.
+Task 6.2 is complete and programme progress is `20/27`. Two independent,
+finite private SSH clients attached in sequence to the existing
+`codex-atenea-41c0ff95` tmux session. Before the first disconnect, during the
+detached interval, after the second resume and after final detach, the session
+retained `session_created=1785262669`, window `administrative`, pane `%0`, pane
+PID `1170290`, the exact worktree and the same live Codex process. Attached
+client counts followed `0→1→0→1→0`.
+
+The resumed pane still contained
+`CONTEXT-READY ATENEA-41C0FF95-20260728`. Without tools or file changes, the
+existing conversation returned the exact response
+`CONTINUITY-RESUMED ATENEA-41C0FF95-20260728`. The final client detached
+cleanly; tmux and Codex remain alive with zero attached clients.
+
+The worktree commit/tree/index, workspace/allocation/admission hashes,
+`slot2/heavy1` identity, runtime `ready/healthy`, three containers, internal
+network, retained volume and three loopback listeners remained unchanged.
+Flyway remains at 45 successful migrations and the synthetic counts remain one
+operator, one project, one closed WorkSession and two SessionTurns. AgentRuns,
+refresh tokens and routing remain zero. The session labels still classify this
+as administrative with no dispatch or lease. Production, preview and Beautips
+remain `UP`.
+
+Passing evidence is beneath
+`runs/task-6.2-administrative-continuity`; the SHA-256 of its `SHA256SUMS` is
+`1216ed3162348b6d3f4f2e465bffd071ed8ec468b792bf1b5ff517b176bb54ed`.
+Sanitization retained no raw terminal, Codex auth/history/internal-session
+file, token, cookie, environment dump or credential-pattern match.
+
+The next action is task 7.1. Task 7.1 remains pending and no runtime stop,
+rollback, cleanup or other part of section 7 has been executed. The
+administrative tmux session must remain alive unchanged for later inspection.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — desconexión y reanudación`.
+`Migración Atenea y Codex al AX42 — rollback controlado`.

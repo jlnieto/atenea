@@ -34,7 +34,7 @@
 ## 6. Administrative continuity
 
 - [x] 6.1 Establish the named administrative SSH/tmux development session without representing it as managed AgentRun dispatch or lease evidence
-- [ ] 6.2 Disconnect the administrative client, resume the same session and verify that its worktree, runtime context and conversation continuity are preserved
+- [x] 6.2 Disconnect the administrative client, resume the same session and verify that its worktree, runtime context and conversation continuity are preserved
 
 ## 7. Rollback and restart reconciliation
 

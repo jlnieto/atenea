@@ -2121,3 +2121,98 @@ SHA-256 is
 `c914c4d4234701dd5d2d01ecabcd841f6c7fd72fca09bc982f4bef5045498ecf`.
 The result is `pass`. Programme progress is `19/27`; task 6.2 is the first
 pending task and was not started.
+
+## Task 6.2 — administrative disconnect and conversation resume
+
+Completed on 2026-07-28 against the exact task 6.1 session
+`codex-atenea-41c0ff95`. The test used two new, independent, finite private SSH
+connections and real tmux clients. It did not create or replace a tmux session,
+AgentRun, dispatch, lease, routing record, WorkSession, allocation or runtime
+resource.
+
+### Stable administrative identity
+
+Before the first attach, with the first client attached, during the detached
+gap, with the second client attached before and after the response, and after
+the final detach, fingerprints retained the same:
+
+- `session_created=1785262669`;
+- window `administrative` and pane `%0`;
+- pane PID `1170290` and live Codex child;
+- worktree
+  `/srv/atenea/workspaces/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/atenea`;
+- commit `b6dc854d94ba5b1976926656c9a6aba330f671e2`;
+- tree `f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`;
+- clean worktree and index;
+- WorkSession `41c0ff95-e555-4773-b7b4-60903a3af1ad`;
+- runtime `ws-41c0ff95e5554773b7b460903a3af1ad`;
+- allocation `slot2`, workload `heavy`, permit `heavy1`.
+
+The attached-client sequence was exactly `0→1→0→1→0`. The first client
+detached with tmux `Ctrl-b d`; an independent connection then proved that the
+same session and Codex process remained live with zero clients. The second
+connection attached to that exact session and also detached with `Ctrl-b d`.
+Both SSH client commands exited zero under finite outer timeouts.
+
+All `@atenea_*` labels remained byte-identical. They classify the session as
+`administrative`, bind the same WorkSession/runtime/workspace and record
+AgentRun `none`, worker lease `none` and routing `none`. `DOCKER_HOST` remains
+absent from the tmux session environment. This test is not managed execution
+evidence.
+
+### Conversation continuity
+
+The second client saw the existing task 6.1 marker in pane `%0`:
+
+`CONTEXT-READY ATENEA-41C0FF95-20260728`
+
+The client then asked the existing conversation, explicitly without tools or
+file changes, for one exact response. It appeared after one bounded polling
+interval in the same pane:
+
+`CONTINUITY-RESUMED ATENEA-41C0FF95-20260728`
+
+The retained marker extract contains the task 6.1 prompt/response followed by
+the task 6.2 prompt/response. Raw interactive terminal output was not retained.
+
+### Runtime, data and control-plane non-impact
+
+Before/after fingerprints are equal for Git, workspace/allocation/admission
+hashes, runtime `ready/healthy`, the three session containers, one internal
+network, one retained PostgreSQL volume and three loopback listeners. Rootful
+Docker, its socket and containerd remain inactive. The final tmux session is
+alive with zero attached clients.
+
+Flyway evidence is byte-identical at 45 successful V1–V45 migrations. Counts
+remain one synthetic operator, one project, one closed WorkSession, two
+SessionTurns, zero AgentRuns and zero refresh tokens; the other checked
+synthetic tables remain zero. Worker routing records remain absent.
+
+Atenea production and preview remain `UP` with the same nine containers.
+Beautips remains `UP` with the same three containers. The Atenea source
+repository remains clean and synchronized at `b6dc854d...`. The programme
+repository was clean and synchronized at `e2a1ce1...` before this
+documentation-only update.
+
+The first evidence-runner invocation returned 1 after completing the pre-test
+fingerprint because one local `jq` assertion was over-escaped. At that point no
+client had attached and no operational state had changed. The expression was
+corrected and the already captured fingerprint was validated; the accepted
+attach/disconnect/resume sequence then completed without recreating or
+replacing the session. Exit codes, timeouts and observed durations are retained
+in `operations.json`, and the exact reproducible procedure is in `commands.md`.
+
+Final scanning retained no raw terminal, Codex authentication, history,
+internal session file, token, cookie, environment dump, private key or
+credential-pattern match. Secret-value files were not read. The task 6.1
+evidence checksum was reverified, and contract hashes are retained.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-6.2-administrative-continuity`
+
+It contains 44 regular files. `SHA256SUMS` verifies the other 43 files; its
+SHA-256 is
+`1216ed3162348b6d3f4f2e465bffd071ed8ec468b792bf1b5ff517b176bb54ed`.
+The result is `pass`. Programme progress is `20/27`; task 7.1 is the first
+pending task. No runtime stop, rollback or other section 7 action was executed.
