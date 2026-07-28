@@ -2216,3 +2216,102 @@ SHA-256 is
 `1216ed3162348b6d3f4f2e465bffd071ed8ec468b792bf1b5ff517b176bb54ed`.
 The result is `pass`. Programme progress is `20/27`; task 7.1 is the first
 pending task. No runtime stop, rollback or other section 7 action was executed.
+
+## Task 7.1 — exact owned runtime rollback
+
+Completed on 2026-07-28 only for administrative WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad` and its persisted
+`slot2/heavy1` admission. Task 7.2 was not executed.
+
+### Mediated stop and exact resource removal
+
+The installed manager validated the exact session, allocation, manifest,
+source commit/tree, runtime plan, slot and admission before invoking the fixed
+Atenea adapter. The bounded stop exited zero after 1,631 ms and returned:
+
+`{"state":"stopped","healthState":"stopped"}`
+
+The adapter retained current logs, stopped all three exact containers and
+removed the three retained RootlessKit listener identities. The containers
+were stopped with their exact service labels and no allocated listener
+remained.
+
+A task-scoped rollback wrapper then validated the complete five-label
+ownership tuple—engine, project, runtime, service and WorkSession—for each
+stopped container and the internal network. It recorded immutable IDs and
+removed exactly:
+
+- `ws-41c0ff95e5554773b7b460903a3af1ad-db`;
+- `ws-41c0ff95e5554773b7b460903a3af1ad-codex-app-server`;
+- `ws-41c0ff95e5554773b7b460903a3af1ad-atenea-dev`;
+- `ws-41c0ff95e5554773b7b460903a3af1ad-network`.
+
+No volume or image was removed. The accepted PostgreSQL volume
+`ws-41c0ff95e5554773b7b460903a3af1ad-volume-db-data` retains the exact five
+ownership labels. The complete slot2 image inventory is byte-identical before
+and after.
+
+The exact versioned admission tool, SHA-256
+`a81366d3495bb2a7bf4702e9ea934a74e9b3edb30f728926e655a5c0a6a9f7ce`,
+released `heavy1` before `slot2`. Both operations exited zero in a combined
+166 ms. The persisted record now reports heavy and normal states as
+`released`.
+
+### Bounded corrective continuation
+
+The first rollback wrapper invocation returned 1 only after the successful
+mediated stop. Its post-stop network assertion expected the pre-stop endpoint
+count of three, while Compose had correctly disconnected all stopped
+containers and the actual count was zero.
+
+Read-only inspection proved the manager result was already
+`stopped/stopped`, all three containers were stopped, all listeners were
+absent, the exact network and volume remained, admission was still
+`held/held`, no resource had been removed and tmux/Codex remained alive. Only
+that expected endpoint count was corrected. The stop was not repeated and the
+runtime was not recreated. `execution-attempts.json` retains this boundary.
+
+### Retention and non-impact
+
+The mirror refs, workspace record, allocation record, worktree commit
+`b6dc854d94ba5b1976926656c9a6aba330f671e2`, tree
+`f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`, index hash and clean Git status
+are unchanged. A complete manifest proves every prior retained artifact is
+byte-identical. Post-stop logs are byte-identical before and after exact
+container/network cleanup.
+
+The administrative session remains
+`codex-atenea-41c0ff95`, with the same `session_created=1785262669`, window
+`administrative`, pane `%0`, pane PID `1170290`, live Codex child and zero
+attached clients. Its administrative/no-AgentRun/no-lease/no-routing labels
+remain unchanged.
+
+Immediately before stop, Flyway remained at 45 successful V1–V45 migrations.
+The synthetic counts remained one operator, one project, one closed
+WorkSession, two SessionTurns, zero AgentRuns and zero refresh tokens; all
+other checked tables remained zero. After rollback the database was not
+restarted merely to re-query it; persistence is proven by the unchanged exact
+retained volume identity and labels.
+
+Atenea production and preview remain `UP` with the same nine containers.
+Beautips remains `UP` with the same three containers. The Atenea source and
+programme repositories remained clean and synchronized at `b6dc854d...` and
+`83f3180...` during the exercise. Routing records remain zero. Rootful Docker,
+its socket and containerd remain inactive.
+
+Final scanning retained no Codex authentication, history, internal session
+file, token, cookie, environment dump, private key or credential-pattern
+match. Secret-value files were not read. Contract hashes and the verified 6.2
+evidence checksum are retained.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-7.1-atenea-runtime-rollback`
+
+It contains 46 regular files. `SHA256SUMS` verifies the other 45 files; its
+SHA-256 is
+`25c6a03f43c727652020161116011a82d3a881e2b8b74ba94dd59b6b3bd2bf70`.
+The result is `pass`. Programme progress is `21/27`; task 7.2 is the first
+pending task and was not started. Task 7.3 remains separately gated by
+explicit restart authorization.

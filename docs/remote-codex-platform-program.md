@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `20/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `21/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -611,9 +611,43 @@ Passing evidence is beneath
 Sanitization retained no raw terminal, Codex auth/history/internal-session
 file, token, cookie, environment dump or credential-pattern match.
 
-The next action is task 7.1. Task 7.1 remains pending and no runtime stop,
-rollback, cleanup or other part of section 7 has been executed. The
-administrative tmux session must remain alive unchanged for later inspection.
+Task 7.1 is complete and programme progress is `21/27`. The installed mediated
+manager stopped the exact admitted Atenea runtime and returned
+`stopped/stopped` in 1,631 ms. Its fixed adapter retained logs and removed the
+three owned RootlessKit listeners. A task-scoped rollback wrapper then required
+the exact five ownership labels and immutable IDs before removing only the
+three stopped session containers and their now-empty internal network.
+
+The session PostgreSQL volume and complete image inventory were retained.
+`heavy1` was released before `slot2` through the exact versioned admission
+tool; the admission record now records `released/released`. Workspace and
+allocation records, mirror refs, worktree commit/tree/index, post-stop logs and
+all prior retained artifacts are unchanged. The administrative tmux/Codex
+session remains alive with zero attached clients.
+
+The first wrapper continuation stopped after the successful mediated stop
+because its network assertion still expected the pre-stop three endpoints;
+Compose had correctly disconnected stopped containers and the actual count was
+zero. No resource had yet been removed and admission remained held. The
+assertion was corrected, the stop was not repeated and the runtime was not
+recreated.
+
+Pre-stop Flyway and synthetic data checks remained exact at 45 migrations, one
+operator, one project, one closed WorkSession, two SessionTurns and zero
+AgentRuns/refresh tokens. Routing remains zero. Production, preview and
+Beautips remain `UP`; rootful Docker, its socket and containerd remain
+inactive.
+
+Passing evidence is beneath
+`runs/task-7.1-atenea-runtime-rollback`; the SHA-256 of its `SHA256SUMS` is
+`25c6a03f43c727652020161116011a82d3a881e2b8b74ba94dd59b6b3bd2bf70`.
+Sanitization retained no Codex auth/history/internal-session file, token,
+cookie, environment dump, private key or credential-pattern match.
+
+The next action is task 7.2. Task 7.2 remains pending: do not repeat rollback,
+run the negative ownership corpus or perform residual cleanup until a new
+continuation begins from this resume point. Task 7.3 also remains pending and
+still requires separate explicit restart authorization.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — rollback controlado`.
+`Migración Atenea y Codex al AX42 — rollback idempotente`.
