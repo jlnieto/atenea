@@ -74,6 +74,142 @@ docker_cmd() {
   DOCKER_HOST="${DOCKER_HOST_VALUE}" timeout --foreground 600 "${DOCKER_BIN}" "$@"
 }
 
+rootlesskit_api() {
+  local method="$1" path="$2"
+  shift 2
+  runuser -u "${SLOT_USER}" -- \
+    curl --silent --show-error --fail \
+      --request "${method}" \
+      --unix-socket /run/user/1102/dockerd-rootless/api.sock \
+      "$@" "http://rootlesskit/v1/${path}"
+}
+
+rootlesskit_ports() {
+  rootlesskit_api GET ports |
+    jq -c 'if . == null then [] elif type == "array" then . else error("invalid ports") end'
+}
+
+assert_rootlesskit_port_boundary() {
+  rootlesskit_api GET info |
+    jq -e '
+      .apiVersion == "1.1.2" and
+      .version == "3.0.2" and
+      .stateDir == "/run/user/1102/dockerd-rootless" and
+      .networkDriver.driver == "slirp4netns" and
+      .portDriver.driver == "builtin" and
+      (.portDriver.protos | index("tcp4")) != null
+    ' >/dev/null ||
+    fail TOOLCHAIN_UNAVAILABLE "The slot2 RootlessKit port boundary differs from the reviewed contract."
+}
+
+remove_owned_rootless_ports() {
+  local state="${ENGINE_ROOT}/rootlesskit-ports-v1.json"
+  [[ -e "${state}" || -L "${state}" ]] || return
+  [[ -f "${state}" && ! -L "${state}" &&
+      "$(stat -c %u:%g:%a "${state}")" == '0:0:600' ]] ||
+    fail RUNTIME_OWNERSHIP_CONFLICT "The retained RootlessKit port state is unsafe."
+  local current id status
+  current="$(rootlesskit_ports)"
+  while IFS= read -r status; do
+    id="$(jq -r '.id' <<<"${status}")"
+    [[ "${id}" =~ ^[0-9]+$ ]] ||
+      fail RUNTIME_OWNERSHIP_CONFLICT "A retained RootlessKit port identity is invalid."
+    if jq -e --argjson expected "${status}" \
+        'any(.[]; . == $expected)' <<<"${current}" >/dev/null; then
+      rootlesskit_api DELETE "ports/${id}" >/dev/null
+    fi
+  done < <(jq -c '.[]' "${state}")
+  find "${state}" -maxdepth 0 -type f -delete
+}
+
+add_rootlesskit_ports() {
+  assert_rootlesskit_port_boundary
+  remove_owned_rootless_ports
+  local current state_temporary failed=false
+  current="$(rootlesskit_ports)"
+  jq -e \
+    --argjson db "${POSTGRES_PORT}" \
+    --argjson codex "${CODEX_PORT}" \
+    --argjson web "${WEB_PORT}" '
+      all(.[]; (.spec.parentPort == $db or
+        .spec.parentPort == $codex or .spec.parentPort == $web) | not)
+    ' <<<"${current}" >/dev/null ||
+    fail RUNTIME_OWNERSHIP_CONFLICT "An allocated loopback port already has a foreign RootlessKit mapping."
+
+  state_temporary="$(mktemp "${ENGINE_ROOT}/.rootlesskit-ports-v1.XXXXXX")"
+  local container parent child ip spec response
+  while IFS=$'\t' read -r container parent child; do
+    ip="$(
+      docker_cmd inspect "${container}" |
+        jq -er --arg network "${NETWORK}" '
+          .[0].NetworkSettings.Networks[$network].IPAddress |
+          select(test("^[0-9]+(\\.[0-9]+){3}$"))
+        '
+    )"
+    spec="$(
+      jq -cn \
+        --argjson parent "${parent}" \
+        --argjson child "${child}" \
+        --arg ip "${ip}" '{
+          proto: "tcp4",
+          parentIP: "127.0.0.1",
+          parentPort: $parent,
+          childIP: $ip,
+          childPort: $child
+        }'
+    )"
+    if ! response="$(
+      rootlesskit_api POST ports \
+        --header 'Content-Type: application/json' \
+        --data-binary "${spec}"
+    )"; then
+      failed=true
+      break
+    fi
+    jq -e --argjson spec "${spec}" \
+      '.id >= 0 and .spec == $spec' <<<"${response}" >/dev/null ||
+      failed=true
+    [[ "${failed}" == false ]] || break
+    printf '%s\n' "${response}" >>"${state_temporary}"
+  done <<EOF
+${DB_CONTAINER}	${POSTGRES_PORT}	5432
+${CODEX_CONTAINER}	${CODEX_PORT}	8092
+${APP_CONTAINER}	${WEB_PORT}	8081
+EOF
+
+  if [[ "${failed}" == true ]]; then
+    while IFS= read -r response; do
+      rootlesskit_api DELETE "ports/$(jq -r '.id' <<<"${response}")" >/dev/null || true
+    done <"${state_temporary}"
+    find "${state_temporary}" -maxdepth 0 -type f -delete
+    fail OPERATION_FAILED "The exact slot2 loopback publication failed."
+  fi
+  jq -s '.' "${state_temporary}" >"${ENGINE_ROOT}/rootlesskit-ports-v1.json"
+  chmod 0600 "${ENGINE_ROOT}/rootlesskit-ports-v1.json"
+  find "${state_temporary}" -maxdepth 0 -type f -delete
+}
+
+rootlesskit_ports_ready() {
+  local state="${ENGINE_ROOT}/rootlesskit-ports-v1.json"
+  [[ -f "${state}" && ! -L "${state}" ]] || return 1
+  local expected current
+  expected="$(jq -cS 'sort_by(.id)' "${state}")"
+  current="$(
+    rootlesskit_ports |
+      jq -cS \
+        --argjson db "${POSTGRES_PORT}" \
+        --argjson codex "${CODEX_PORT}" \
+        --argjson web "${WEB_PORT}" '
+          [.[] | select(
+            .spec.parentPort == $db or
+            .spec.parentPort == $codex or
+            .spec.parentPort == $web
+          )] | sort_by(.id)
+        '
+  )"
+  [[ "${current}" == "${expected}" ]]
+}
+
 assert_regular() {
   [[ -f "$1" && ! -L "$1" ]] ||
     fail RUNTIME_OWNERSHIP_CONFLICT "A required Atenea runtime input is missing or unsafe."
@@ -353,9 +489,6 @@ write_compose() {
     --arg postgresSecret "${DELIVERY}/secrets/postgres-password" \
     --arg jwtSecret "${DELIVERY}/secrets/jwt-secret" \
     --arg jar "/workspace/atenea/target/${jar}" \
-    --arg dbPort "127.0.0.1:${POSTGRES_PORT}:5432" \
-    --arg codexPort "127.0.0.1:${CODEX_PORT}:8092" \
-    --arg webPort "127.0.0.1:${WEB_PORT}:8081" \
     --argjson dbLabels "$(label_json db)" \
     --argjson codexLabels "$(label_json codex-app-server)" \
     --argjson appLabels "$(label_json atenea-dev)" \
@@ -372,7 +505,6 @@ write_compose() {
             POSTGRES_PASSWORD_FILE: "/run/secrets/postgres-password"
           },
           command: ["postgres", "-c", "listen_addresses=*", "-c", "port=5432"],
-          ports: [$dbPort],
           volumes: [
             {type: "volume", source: "db-data", target: "/var/lib/postgresql/data"},
             {type: "bind", source: $postgresSecret, target: "/run/secrets/postgres-password", read_only: true}
@@ -408,7 +540,6 @@ write_compose() {
             "-c", "approval_policy=\"never\"",
             "-c", "sandbox_mode=\"workspace-write\""
           ],
-          ports: [$codexPort],
           volumes: [
             {type: "bind", source: $source, target: "/workspace/atenea"},
             {type: "bind", source: $codexCache, target: "/workspace/cache/codex"}
@@ -457,7 +588,6 @@ write_compose() {
             npm_config_cache: "/workspace/cache/node"
           },
           command: ["java", "-jar", $jar],
-          ports: [$webPort],
           volumes: [
             {type: "bind", source: $source, target: "/workspace/atenea"},
             {type: "bind", source: $mavenCache, target: "/workspace/cache/maven"},
@@ -509,6 +639,7 @@ start_runtime() {
     --project-name "${COMPOSE_PROJECT}" \
     --file "${COMPOSE_FILE}" \
     up --detach --no-build --pull never >/dev/null
+  add_rootlesskit_ports
 }
 
 tcp_listener_ready() {
@@ -605,7 +736,8 @@ health_runtime() {
 
   local ready=false
   for unused in $(seq 1 180); do
-    if [[ "$(docker_cmd inspect -f '{{.State.Health.Status}}' "${DB_CONTAINER}" 2>/dev/null || true)" == healthy ]] &&
+    if rootlesskit_ports_ready &&
+       [[ "$(docker_cmd inspect -f '{{.State.Health.Status}}' "${DB_CONTAINER}" 2>/dev/null || true)" == healthy ]] &&
        tcp_listener_ready "${CODEX_PORT}" &&
        timeout 3 curl -fsS "http://127.0.0.1:${WEB_PORT}/actuator/health" |
          jq -e '.status == "UP"' >/dev/null 2>&1; then
@@ -667,6 +799,7 @@ stop_runtime() {
   assert_container_owned_or_absent "${DB_CONTAINER}" db
   assert_container_owned_or_absent "${CODEX_CONTAINER}" codex-app-server
   assert_container_owned_or_absent "${APP_CONTAINER}" atenea-dev
+  remove_owned_rootless_ports
   if [[ -f "${COMPOSE_FILE}" && ! -L "${COMPOSE_FILE}" ]]; then
     docker_cmd compose \
       --project-name "${COMPOSE_PROJECT}" \

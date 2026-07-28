@@ -35,7 +35,11 @@ container-daemon socket, host root filesystem or unrelated workspaces.
 
 #### Scenario: Development Codex runs without authentication
 - **WHEN** the private runtime starts the authentication-disabled Codex App Server
-- **THEN** Codex listens only on container loopback and a fixed credential-free same-container proxy exposes its declared port solely through the internal runtime network and allocated host-loopback publication
+- **THEN** Codex listens only on container loopback and a fixed credential-free same-container proxy exposes its declared port solely through the internal runtime network and the slot's exact retained RootlessKit host-loopback publication
+
+#### Scenario: Internal rootless network has no gateway publisher
+- **WHEN** Docker cannot publish a port from the internal rootless bridge because it has no gateway endpoint
+- **THEN** the fixed adapter registers only the three allocated `tcp4` mappings through the assigned slot's RootlessKit API, retains their returned identities and removes only those identities during mediated stop
 
 ### Requirement: Development-only Atenea data
 The AX42 Atenea database SHALL be a development-only PostgreSQL instance

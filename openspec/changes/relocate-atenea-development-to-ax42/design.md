@@ -162,9 +162,12 @@ boundary with no values in the plan, command line, logs or evidence.
 The engine consumes the committed manifest and AX42 Compose file only at their
 reviewed hashes, then generates a closed Compose definition for the three
 allowlisted services. It requires the retained labelled PostgreSQL volume as
-an external resource, publishes only the three allocated loopback ports,
-creates one internal labelled network and adds only deterministic names,
-labels, mounts, limits and fail-safe development environment values.
+an external resource, creates one internal labelled network and adds only
+deterministic names, labels, mounts, limits and fail-safe development
+environment values. Because an internal rootless bridge has no gateway
+endpoint for Docker's normal publisher, the adapter registers exactly the
+three allocated loopback mappings through slot2's fixed RootlessKit `3.0.2`
+API and retains their returned identities for mediated removal.
 
 The application is packaged first in a bounded, non-runtime build container.
 The three-service runtime itself has no external network path. Codex App Server
@@ -174,9 +177,9 @@ unauthenticated non-loopback listener, that image keeps the authentication-
 disabled App Server on container loopback and exposes the declared container
 port through a fixed same-container TCP proxy. The proxy has no credentials,
 authority or external route; the internal runtime network and host-loopback
-publication remain the outer boundary. The installed client, manager, engine
-and dedicated Atenea adapter remain root-owned; only `atenea-worker` may
-invoke the manager through the exact sudoers boundary.
+RootlessKit publication remain the outer boundary. The installed client,
+manager, engine and dedicated Atenea adapter remain root-owned; only
+`atenea-worker` may invoke the manager through the exact sudoers boundary.
 
 ## Risks / Trade-offs
 
