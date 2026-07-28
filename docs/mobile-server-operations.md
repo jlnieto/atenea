@@ -49,6 +49,54 @@ El dominio `operations` ya cubre el primer slice de servidores gestionados:
 - detección de webs degradadas por latencia, no sólo por código HTTP
 - incidencias y runs auditables
 
+## Piloto administrativo de Atenea en AX42
+
+La reubicación aceptada valida desarrollo administrativo de Atenea en AX42,
+pero no activa routing gestionado de `AgentRun`. El flujo operativo aceptado
+es:
+
+1. usar GitHub como fuente canónica y verificar la rama
+   `feature/actualizar-conversacion-en-web`;
+2. seleccionar exclusivamente la WorkSession administrativa
+   `41c0ff95-e555-4773-b7b4-60903a3af1ad`, su worktree y su asignación
+   persistida `slot2/heavy1`;
+3. adquirir de nuevo admisión normal y heavy antes de cualquier arranque;
+4. validar manifest, commit, tree, ownership completo y recursos rootless antes
+   de crear o arrancar el runtime;
+5. conservar logs y artefactos bajo la raíz declarada de la WorkSession;
+6. mantener producción, preview, deploy, PostgreSQL productivo, secretos,
+   monitoring y rollback productivo en Atenea.
+
+El rollback administrativo sólo puede actuar sobre el runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad` cuando coinciden la WorkSession, runtime,
+proyecto, engine, servicio, slot persistido e ID inmutable observado. Un
+recurso sin labels, parcialmente etiquetado, extranjero o ambiguo debe
+rechazarse antes de mutar nada. El rollback elimina sólo contenedores, red,
+listeners y delivery efímero propios; conserva mirror, worktree, Git e índice,
+allocation, volumen PostgreSQL etiquetado, engine state, logs y evidencias.
+Repetirlo debe eliminar cero recursos.
+
+El reinicio autorizado de AX42 demostró reconciliación `report-only` desde
+registros persistidos. Con admisión `released/released` y runtime ausente no se
+debe recrear, arrancar, reasignar slot ni inventar ownership. La sesión tmux
+administrativa no es persistente y terminó con el reboot; reanudar trabajo
+requiere crear explícitamente una sesión administrativa nueva, sin presentarla
+como `AgentRun`, lease o route.
+
+La evidencia no secreta se conserva bajo la WorkSession en:
+
+- `runs/task-7.1-atenea-runtime-rollback`;
+- `runs/task-7.2-rollback-idempotence`;
+- `runs/task-7.3-restart-reconciliation`;
+- `runs/task-8.1-final-non-impact`;
+- `runs/task-8.2-final-worker-audit`;
+- `runs/task-8.3-operator-handoff`.
+
+Cada raíz contiene `SHA256SUMS`, comandos reproducibles, resultado estructurado
+y controles de sanitización. No deben copiarse ni adjuntarse `auth.json`,
+historial de Codex, sesiones internas, tokens, cookies, credenciales, dumps de
+entorno o datos productivos.
+
 ## Navegador headless para Codex
 
 Actualmente `docker/codex-app-server.Dockerfile` es la superficie local de

@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `23/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `26/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -734,9 +734,53 @@ Passing evidence is beneath
 Sanitization retained no Codex auth/history/internal-session file, token,
 cookie, environment dump, private key or credential-pattern match.
 
-The next action and exact resume point is task 8.1. Task 8.1 remains pending:
-compare final production non-impact sentinels in a new continuation. Do not
-execute 8.1 or any later task from this resume point.
+Task 8.1 is complete and programme progress is `24/27`. The final
+control-plane capture remains clean and synchronized: the programme was at
+`bb14726b06ad07c8cb804fd76b3747beb37fa474` before handoff documentation and
+the Atenea source remains on
+`feature/actualizar-conversacion-en-web` at
+`b6dc854d94ba5b1976926656c9a6aba330f671e2`. Production and preview are `UP`.
+The nine immutable production/preview container IDs match task 7.3 exactly,
+including the production PostgreSQL container. This proves the unchanged
+runtime configuration and environment boundary without reading an environment
+value or database row. Source and persisted routing-record scans are zero.
+
+The final AX42 session inventory has zero containers, networks, owned images
+and allocated listeners, one retained labelled PostgreSQL volume, zero
+AgentRuns by the unchanged retained database evidence, no lease and no routing.
+Beautips remains `UP`. Passing evidence is beneath
+`runs/task-8.1-final-non-impact`; the SHA-256 of its `SHA256SUMS` is
+`21ef3351db436d2cec0223a692c92ca6c303e08683553eeafe37744f942692d7`.
+A read-only first assertion attempt is retained separately and records no
+resource change.
+
+Task 8.2 is complete and programme progress is `25/27`. The strict installed
+worker verifier passes. All three RAID arrays are `[UU]` with no recovery
+action; root and Atenea filesystems are each at 4% use. UFW is active, SSH is
+key-only, Tailscale is online with no Serve configuration, and all four
+rootless slots, daemon sockets and stable proxies are healthy. Every slot
+retains the accepted CPU `4s`, `MemoryHigh=10737418240`,
+`MemoryMax=12884901888` and `TasksMax=4096` boundary.
+
+Rootful Docker, its socket and containerd remain inactive and masked, with no
+Docker group members. All slot container, image, volume, normalized-network
+and persistent-network inventories equal task 7.3. Beautips remains clean,
+synchronized at `5044a3b07b3db82895e9c8ff47bc4bc9b0e97130` and `UP` with
+the same immutable containers. Passing evidence is beneath
+`runs/task-8.2-final-worker-audit`; the SHA-256 of its `SHA256SUMS` is
+`00de504f1a1381c5945701d08dc3ebcdba88703c98d1655200994b731a538a00`.
+
+Task 8.3 is complete and programme progress is `26/27`. The operator workflow,
+rollback boundary and explicit administrative resume procedure now distinguish
+this accepted manual pilot from managed AgentRun routing. The handoff points
+only to non-secret artifact roots and verified manifests. Passing evidence is
+beneath `runs/task-8.3-operator-handoff`; the SHA-256 of its `SHA256SUMS` is
+`0068a4f8428e6d8a2d2c1bb8896bb8c68b8f90e544b21cbd0f9e6676743338f7`.
+
+The next action and exact resume point is task 8.4. Task 8.4 remains pending:
+run strict OpenSpec validation, review final Git/index state and archive the
+change only if all 27 tasks are complete. Do not start another phase from this
+resume point.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — evidencia final de no impacto`.
+`Migración Atenea y Codex al AX42 — validación y archivo final`.

@@ -2542,3 +2542,107 @@ SHA-256 is
 `57c702382e7d9551224d19121a310adb337b6aba554fe5434bc57e553f0819ba`.
 The result is `pass`. Programme progress is `23/27`; task 8.1 is the first
 pending task and was not started.
+
+## Task 8.1 — final production non-impact comparison
+
+Completed on 2026-07-28 as a read-only final comparison. The capture fetched
+only Git refs, called the two local health endpoints, selected non-secret
+Docker identity fields and scanned source plus persisted routing-record paths.
+It read zero environment values and zero database rows.
+
+The programme was clean and synchronized at
+`bb14726b06ad07c8cb804fd76b3747beb37fa474` before handoff documentation.
+Atenea remains clean and synchronized on
+`feature/actualizar-conversacion-en-web` at
+`b6dc854d94ba5b1976926656c9a6aba330f671e2`, tree
+`f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`. The source intentionally advanced
+from the task 1.1 entry commit only through the accepted relocation commits;
+branch authority, remote equality and clean index are preserved.
+
+Production and preview remain `UP`. All nine immutable container ID/name pairs
+match the independently accepted task 7.3 post-reboot capture, including the
+production PostgreSQL container. The task 1.1 container/database sentinels were
+reported unchanged through every intermediate non-impact gate; exact task 7.3
+identity followed by exact final identity completes the transitive comparison.
+This also proves that running container environments did not change without
+reading their values.
+
+Non-documentation source routing matches, control-plane routing records and
+worker routing records are all zero. AX42 has zero session containers,
+networks and owned images, one retained labelled volume, no lease and no
+routing. AgentRuns remain zero by unchanged retained database identity.
+Beautips remains `UP`.
+
+One first, read-only finalizer attempt expected the fresh summary itself to
+contain the detailed container array instead of comparing its separate
+immutable ID/name manifest. The assertion stopped before a result was issued,
+changed no resource and is retained transparently beneath
+`task-8.1-final-non-impact-attempt-1-blocked`.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-8.1-final-non-impact`
+
+It contains 30 regular files. `SHA256SUMS` verifies the other 29 files; its
+SHA-256 is
+`21ef3351db436d2cec0223a692c92ca6c303e08683553eeafe37744f942692d7`.
+The result is `pass`. Programme progress is `24/27`.
+
+## Task 8.2 — final AX42 safety and capacity audit
+
+Completed on 2026-07-28 with only read-only system, service, rootless Docker,
+Git and health inspection plus evidence writes. The strict installed worker
+verifier passes. All three RAID arrays are `[UU]` with no recovery action;
+root and `/srv/atenea` filesystems are each at 4% use.
+
+UFW is active. Effective SSH policy is key-only with interactive password and
+X11 forwarding disabled. Tailscale is online and healthy with `No serve
+config`. All four rootless user managers, Docker daemons, daemon sockets and
+stable proxies are active. Each slot retains CPU quota `4s`,
+`MemoryHigh=10737418240`, `MemoryMax=12884901888` and `TasksMax=4096`, and
+reports rootless security mode.
+
+Rootful Docker, `docker.socket` and containerd remain inactive and masked; the
+Docker group has no members. Every slot container, image, volume,
+name/driver-network and persistent-network inventory equals task 7.3. The
+Atenea WorkSession has zero containers, networks, owned images, listeners and
+browser/broker processes, plus exactly one retained labelled PostgreSQL
+volume. AgentRuns, lease and routing remain zero/none.
+
+Beautips is `UP`, clean and synchronized at
+`5044a3b07b3db82895e9c8ff47bc4bc9b0e97130`, with the same three immutable
+container IDs as task 7.3. No environment value, database row, secret or Codex
+state file was read.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-8.2-final-worker-audit`
+
+It contains 62 regular files. `SHA256SUMS` verifies the other 61 files; its
+SHA-256 is
+`00de504f1a1381c5945701d08dc3ebcdba88703c98d1655200994b731a538a00`.
+The result is `pass`. Programme progress is `25/27`.
+
+## Task 8.3 — operator handoff, rollback and resume
+
+Completed on 2026-07-28. The mobile/server operator document now records the
+accepted administrative workflow, exact fail-closed rollback boundary,
+retained state, post-reboot `report-only` behavior and explicit administrative
+resume requirement. It states that this pilot is not AgentRun routing and
+keeps production/deploy/database authority on Atenea.
+
+The handoff references only non-secret artifact roots and their verified
+manifests. It explicitly excludes Codex authentication, history and internal
+session files, tokens, cookies, credentials, environment dumps and production
+data. No runtime, route, production resource, unrelated slot or Beautips
+resource changed.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-8.3-operator-handoff`
+
+It contains 8 regular files. `SHA256SUMS` verifies the other 7 files; its
+SHA-256 is
+`0068a4f8428e6d8a2d2c1bb8896bb8c68b8f90e544b21cbd0f9e6676743338f7`.
+The result is `pass`. Programme progress is `26/27`; task 8.4 is the first
+pending task.

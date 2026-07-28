@@ -44,7 +44,7 @@
 
 ## 8. Non-impact evidence and handoff
 
-- [ ] 8.1 Compare pre- and post-change production health, branch, commit, index, container and database sentinels and prove zero Atenea routing to AX42
-- [ ] 8.2 Confirm final AX42 safety, capacity, RAID, firewall, SSH, Tailscale, rootless-slot, rootful-Docker and Beautips invariants
-- [ ] 8.3 Update relocation evidence, operator workflow, rollback and resume documentation with hashes and non-secret artifact references
+- [x] 8.1 Compare pre- and post-change production health, branch, commit, index, container and database sentinels and prove zero Atenea routing to AX42
+- [x] 8.2 Confirm final AX42 safety, capacity, RAID, firewall, SSH, Tailscale, rootless-slot, rootful-Docker and Beautips invariants
+- [x] 8.3 Update relocation evidence, operator workflow, rollback and resume documentation with hashes and non-secret artifact references
 - [ ] 8.4 Run strict OpenSpec validation, review the final Git/index state and archive the change only after every acceptance task is complete
