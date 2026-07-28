@@ -1800,3 +1800,114 @@ It contains 29 regular files. `SHA256SUMS` verifies all other 28 files; its
 SHA-256 is
 `351dca13a8e356bf0eac6e8018f672250de5a4006887ff711d4505af445b7418`.
 The result is `pass`. Task 5.3 is the first pending task and was not started.
+
+## Task 5.3 — inspected desktop and mobile screenshots accepted
+
+Completed on 2026-07-28 only for administrative WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad`, `slot2/heavy1`, Atenea commit
+`b6dc854d94ba5b1976926656c9a6aba330f671e2` and tree
+`f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`. Programme progress is
+`17/27`; task 5.4 remains pending and was not started.
+
+### Exact route, authentication and browser boundary
+
+The acceptance reused the 5.2 route authority and opened `/`, backed by
+commit-exact `src/main/resources/static/index.html` Git object
+`ac4ea34f6dabcb4e200188afad801928bcb79d0d`. It did not change or redeploy
+Atenea to address the manifest's `/admin/login` discrepancy.
+
+The retained runner used Playwright `1.60.0`, Chromium `148.0.7778.96`, image
+digest
+`sha256:9bd26ad900bb5e0f4dee75839e957a89ae89c2b7ab1e76050e559790e946b948`
+and the read-only module bundle whose canonical content-tree SHA-256 is
+`1ca49077563d996a21591e41f5a71296747d81ed9f1936e4887924fcb574b2ee`.
+It ran only in a labelled ephemeral slot2 container on the existing internal
+WorkSession network. The development browser password came from its named
+secret file; no value, cookie, token, storage state, authorization header,
+trace or HAR was retained.
+
+The complete process timeout was 600 seconds; browser launch was 30 seconds,
+navigation 15 seconds, locators 10 seconds, authentication 20 seconds, network
+responses 15 seconds, `page.evaluate()` 5 seconds, screenshots 15 seconds,
+page/context/browser closure 10 seconds and each viewport 90 seconds. Page,
+context and browser closed in `finally`.
+
+### Pre-capture DOM assertions and measurements
+
+Before each screenshot, semantic locators proved:
+
+- login heading and action absent after HTTP 200 authentication;
+- `[SYNTHETIC] AX42 Operator V1` visible;
+- `Proyectos`, `[SYNTHETIC] Atenea AX42 V1` and `Sin sesión` visible;
+- `Crear sesión`, `Rescate` and `Actualizar` visible and enabled;
+- empty-input `Ejecutar` disabled on the authenticated home state;
+- no login, permanent loading, backend error or inline error;
+- zero external browser requests and zero failed local requests.
+
+At desktop, document/body `scrollWidth` and `clientWidth` were all `1440`.
+At mobile they were all `390`. Neither viewport had unintended horizontal
+overflow. Critical titles, state and actions had positive bounding boxes,
+intersection ratio `1` and full viewport containment. Stable pairwise checks
+found zero visible overlaps.
+
+### Direct screenshot inspection
+
+The retained original-resolution images are:
+
+- `desktop-1440x900.png`, SHA-256
+  `3f5b88b3f28577c5e10d8eb88b3336d513799267b8f2f1dd8e95ebd801612892`;
+- `mobile-390x844.png`, SHA-256
+  `a95a11378c16c9a5aa8a76572860a5f60a97cc53ecd87707e80b024c08f93d49`.
+
+Both PNGs were inspected, not merely existence-checked. Desktop presents a
+clear `Proyectos` → filter → project → `Sin sesión` → `Crear sesión`
+hierarchy. Text, facts and actions are readable; the primary action is above
+the fold and visually stronger than `Rescate`. No clipping, overlap, control
+outside the viewport or unreadable wrapping is visible. The intentional
+ellipsis of the long desktop base-branch fact preserves its label and does not
+obscure the operational state.
+
+Mobile preserves the same hierarchy and meaning. Filters stack cleanly,
+project facts become full-width rows, `Sin sesión` remains explicit and both
+`Crear sesión` and `Rescate` are fully visible within `390x844`. No horizontal
+overflow, clipping, overlap or illegible wrapping is visible. The populated
+project card and explicit state cannot be mistaken for an empty list.
+
+The header dash in both images is the committed no-managed-hosts state returned
+by `healthSnapshot` after a successful read, not a loading or error marker.
+Desktop and mobile are visually consistent.
+
+### Cleanup, non-impact and retained evidence
+
+The two authenticated viewport contexts created exactly two synthetic refresh
+tokens. Logout revoked them and bounded cleanup returned the count to zero.
+Flyway remains at 45 successful V1–V45 migrations. All 28 declared table
+counts remain byte-identical: one operator, one project, one closed
+WorkSession, two SessionTurns, zero AgentRuns and zero rows elsewhere.
+
+Workspace, allocation and admission hashes are unchanged. Runtime status
+remains `ready/healthy` with the same three labelled containers, one internal
+network, one retained PostgreSQL volume and three loopback listeners. No
+Chromium, Playwright, browser Node process, proxy, tunnel or test container
+remains. Routing is zero; no WorkSession, allocation, admission, network,
+volume or database was created.
+
+Rootful Docker, its socket and containerd remain inactive and masked.
+Production and preview remain `UP` with their nine containers. Beautips remains
+`UP` with its three containers. The Atenea source repository remains clean and
+synchronized at `b6dc854d...`; the programme repository was clean and
+synchronized at `5906f6b...` before this evidence-only documentation update.
+
+Final sanitization checked all retained files and both PNGs against the four
+development secret values and found zero matches. It also found zero storage
+states, traces, HAR files, cookie dumps or authorization-header dumps.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-5.3-playwright-visual`
+
+It contains 36 regular files. `SHA256SUMS` verifies the other 35 files; its
+SHA-256 is
+`8d6cc8093107126b2d07b517d0ef5177462c609fea996d285cc8d7743cedf37f`.
+The result is `pass`. Task 5.4 is the first pending task and was not started.

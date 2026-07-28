@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `15/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `17/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -500,12 +500,35 @@ processes and refresh tokens were cleaned to zero. Passing evidence is beneath
 Toolchain remediation evidence is beneath
 `runs/task-5.2-toolchain-remediation`.
 
-The next action is task 5.3. Task 5.3 was not started: do not inspect, capture
-or accept screenshots until a new continuation begins from this resume point.
+Task 5.3 is complete and programme progress is `17/27`. Playwright ran only
+on AX42 in the same admitted `slot2/heavy1` WorkSession network and captured
+the authenticated Projects screen at `1440x900` and `390x844`. Pre-capture
+semantic locators proved the expected synthetic operator, project,
+`Sin sesión` projection and critical action states, with no login, permanent
+loading, inline error, external browser request or failed local request.
+
+Finite DOM measurements recorded equal `scrollWidth` and `clientWidth` at
+both viewports, full viewport intersection for the critical state and actions,
+and zero stable visible overlaps. Direct inspection of both original-resolution
+PNGs passed hierarchy, readability, primary-action visibility, clipping,
+overlap, overflow, control containment, wrapping, empty-state distinction and
+desktop/mobile consistency.
+
+The accepted commit, runtime, three containers, internal network, retained
+volume, three listeners, 45 Flyway migrations and exact synthetic counts
+remain unchanged. Refresh tokens, AgentRuns, routing and browser processes are
+zero. Production, preview and Beautips remain `UP`. Final sanitization found no
+secret value or forbidden unsanitized browser artifact. Passing evidence is
+beneath `runs/task-5.3-playwright-visual`; the SHA-256 of its `SHA256SUMS` is
+`8d6cc8093107126b2d07b517d0ef5177462c609fea996d285cc8d7743cedf37f`.
+
+The next action is task 5.4. Task 5.4 was not started: do not exercise
+unavailable external integrations until a new continuation begins from this
+resume point.
 
 The administrative Codex/tmux bridge may be used to begin work, but it is not
 evidence of the managed session isolation boundary and MUST NOT be used as
 Atenea's AgentRun executor.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — aceptación visual desktop y móvil`.
+`Migración Atenea y Codex al AX42 — integraciones externas fail-safe`.

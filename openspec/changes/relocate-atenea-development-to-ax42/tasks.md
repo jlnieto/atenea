@@ -28,7 +28,7 @@
 
 - [x] 5.1 Start the admitted Atenea development runtime privately and prove health, session ownership, loopback allocation and synthetic-data persistence
 - [x] 5.2 Use finite-timeout Playwright checks to assert the authenticated operator state and critical DOM content at `1440x900` and `390x844`
-- [ ] 5.3 Inspect and retain desktop and mobile screenshots, confirming hierarchy, readability, no clipping or overlap and no unintended horizontal overflow
+- [x] 5.3 Inspect and retain desktop and mobile screenshots, confirming hierarchy, readability, no clipping or overlap and no unintended horizontal overflow
 - [ ] 5.4 Prove that declared unavailable external integrations fail safely without exposing secret material
 
 ## 6. Administrative continuity
