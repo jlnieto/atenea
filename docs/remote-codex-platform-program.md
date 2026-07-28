@@ -386,11 +386,33 @@ ACLs, ownership or the worktree; the scratch was removed. This does not block
 the accepted build, but direct worktree mounting remains an explicit gate
 before the private runtime task 5.1.
 
-Task 4.2 is complete and programme progress is `12/27`. The next action is
-task 4.3: initialize a new owned PostgreSQL volume from the committed
-migrations and create only the declared synthetic records. Do not start 4.3
-without a new explicit continuation, enable routing or treat the
-administrative session as a managed AgentRun. Detailed evidence is in
+Tasks 4.2 and 4.3 are complete and programme progress is `13/27`. Task 4.3
+initialized a new runtime-derived, exactly labelled PostgreSQL volume from
+the approved PostgreSQL 16 digest. A one-shot `network=none` helper used the
+already documented least-authority pattern of `cap_drop=ALL` plus only
+`CAP_CHOWN` to assign the empty volume root to `999:999`, then exited and was
+removed. Persistent PostgreSQL ran as `999:999` with all capabilities dropped,
+an internal WorkSession network, no published ports and zero host listeners.
+
+Flyway validated and applied exactly the committed V1–V45 inventory from an
+empty schema, with 45 successful history rows, zero failures and final version
+45. Before fixtures all 28 declared domain counts were zero. The deterministic
+fixture created exactly one operator, one project, one closed WorkSession, two
+SessionTurns and zero AgentRuns; every other declared count is zero. Exact
+reapplication was a no-op and a conflicting pre-existing project failed
+closed with a transaction rollback.
+
+All temporary containers, networks, scratch and processes were removed.
+Slot2 retains the exact approved image and exactly one session-owned volume
+for task 4.4; session-owned containers and networks, allocated-port listeners
+and AgentRun routing are zero. Production, preview and Beautips remain `UP`.
+Passing evidence is retained beneath `runs/task-4.3-database`; the first
+fail-closed attempt remains separately beneath
+`runs/task-4.3-database-attempt-1-blocked`.
+
+The next action is task 4.4. It has not started. Do not start the complete
+backend suite as part of this resume point without continuing from the
+retained task 4.3 volume. Detailed evidence is in
 `docs/atenea-development-relocation-evidence.md`.
 
 The administrative Codex/tmux bridge may be used to begin work, but it is not

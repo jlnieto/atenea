@@ -21,7 +21,7 @@
 
 - [x] 4.1 Verify the committed manifest and pinned Java, Maven, Node, Compose and Playwright toolchains against the selected source commit
 - [x] 4.2 Run `npm ci`, the zero-vulnerability audit and canonical web build, then verify the built index references only current generated assets
-- [ ] 4.3 Initialize a new owned PostgreSQL volume from all committed Flyway migrations and create only the declared synthetic records
+- [x] 4.3 Initialize a new owned PostgreSQL volume from all committed Flyway migrations and create only the declared synthetic records
 - [ ] 4.4 Run the complete Atenea backend test suite and retain structured reports, logs and resource measurements in declared artifact paths
 
 ## 5. Private runtime and browser acceptance

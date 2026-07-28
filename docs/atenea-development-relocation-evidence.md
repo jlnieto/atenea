@@ -1279,3 +1279,128 @@ preview remain `UP`, and AX42 AgentRun routing remains zero.
 
 No Atenea source commit or push occurred. Task 4.2 is complete; OpenSpec
 progress is `12/27`, task 4.3 is the first pending task and was not started.
+
+## Task 4.3 — empty PostgreSQL initialization and synthetic fixtures
+
+Completed on 2026-07-28 only for administrative WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad` and `slot2/heavy1`. Programme progress
+is `13/27`; task 4.4 was not started.
+
+### Exact source, contracts and image
+
+The AX42 worktree remained clean at commit
+`b6dc854d94ba5b1976926656c9a6aba330f671e2` and tree
+`f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`. A fresh byte-exact Git archive
+reproduced SHA-256
+`a6f52b2d267750dfb4f8bc9f31d3c0d2434876ddf6517920cb882f19112b5dea`.
+The committed contract hashes were:
+
+| Input | SHA-256 |
+|---|---|
+| manifest | `3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3` |
+| Compose | `2133646b9fe6227ca417d6d62c92a74306caaa46a2957cdee810d5d7b0e5bb9f` |
+| data inventory | `ae757a4befde1ba02fca03abc205779d5a8f919d121c8c14bc02a24cc755046d` |
+| migration inventory | `360203affcb287b446a106651602affe11f6f60d0523283825d9a403d449a9ff` |
+| allocation helper | `2efceeaaba78b349f1d6aa79bfba5d908d397a9e3a480cfa3b100bde52fb99d7` |
+| manager | `902f25ad76c08ebbc2235cc4b06e2fe0fd94938a5ac2000a2151a27808bbcbd5` |
+| engine | `617327df412fdee18b879295359bc000431f0bc686623b98e06c41b5ec93e6e3` |
+
+All 45 committed migration paths and SHA-256 values matched the inventory.
+The approved PostgreSQL image was initially absent from slot2 but is fixed
+identically by the manager and engine contracts. Slot2 materialized only
+`postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20`;
+the immutable repo digest and Linux/amd64 image identity matched. No image was
+built, substituted or accepted by mutable tag.
+
+### New volume and least-authority initialization
+
+The successful run created a previously absent volume named
+`ws-41c0ff95e5554773b7b460903a3af1ad-volume-db-data`. Its exact five labels
+were engine `atenea-runtime-engine-v1`, session
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad`, project `atenea` and service `db`.
+
+The first fail-closed attempt proved that the root entrypoint cannot initialize
+an empty named volume with `cap_drop: ALL`. A second probe also proved that
+changing only `PGDATA` does not resolve the required ownership operations.
+Both probes removed their containers, networks, volumes and scratch.
+
+The accepted run used the already versioned least-authority pattern documented
+by the runtime-contract evidence: a one-shot container from the exact approved
+PostgreSQL digest, network `none`, no published ports, read-only rootfs,
+`no-new-privileges`, `cap_drop: ALL` and only `CAP_CHOWN`. It changed only the
+empty volume root to UID/GID `999:999`, exited zero and was removed.
+PostgreSQL then ran as `999:999` with `cap_drop: ALL`, no added capabilities,
+the session-internal network and no published host port. The three allocated
+host ports had zero listeners throughout.
+
+The rootless UID-mapped PostgreSQL reference was a byte-exact ephemeral
+mode-`0600` copy owned only by the mapped `999:999` identity. The worktree gate
+was handled by a commit-exact Git archive and an ephemeral WorkSession-scoped
+scratch; no ancestor ACL, owner, group or mode changed.
+
+### Flyway and fixture acceptance
+
+PostgreSQL began with zero public tables. Flyway 11.7.2 validated and applied
+exactly the committed V1–V45 files in inventory order with
+`baselineOnMigrate=false`, `validateOnMigrate=true`, `outOfOrder=false`,
+`cleanDisabled=true` and target 45. The sanitized history contains 45
+successful rows, ranks 1–45, zero failures and final integer version 45. No
+baseline, repair or additional migration was used.
+
+After migrations and before fixtures, all 28 declared domain-table counts were
+zero. The deterministic loader created exactly:
+
+- one `operator_account`;
+- one `project`;
+- one closed `work_session`;
+- two `session_turn` rows;
+- zero `agent_run` rows;
+- every other declared table count at zero.
+
+A second exact application was a no-op. A transactionally mutated project
+caused `ATENEA_FIXTURE_CONFLICT project`; the proof then recorded `ROLLBACK`.
+Final counts still matched
+`ops/atenea-development-data-v1.json` exactly. Non-secret audits also prove no
+open/closing session, running AgentRun, managed host/service/website authority,
+push record, API usage or database-refresh authority was created.
+
+### Secret boundary, cleanup and non-impact
+
+Only the four development references declared by the manifest and data
+inventory were resolved beneath the owned session secret directory:
+`ATENEA_DEV_POSTGRES_PASSWORD`, `ATENEA_DEV_JWT_SECRET`,
+`ATENEA_DEV_OPERATOR_PASSWORD` and
+`ATENEA_DEV_OPERATOR_BROWSER_PASSWORD`. Each is
+`atenea-worker:atenea` mode `0600`; the operator and browser references were
+verified equal without printing them. No value or secret-derived hash is in
+commands, logs, retained evidence or OpenSpec.
+
+The successful trap removed the PostgreSQL, Flyway and helper containers, the
+internal network, Git-archive and UID-mapped scratch, dependency scratch and
+every temporary process. Slot2 ends with zero session-owned containers and
+networks, zero allocated-port listeners and five images. It retains exactly
+one session-owned volume, the accepted database volume required by task 4.4.
+Rootful Docker, its socket and containerd remain inactive and masked.
+
+Mirror, worktree, allocation, admission and cache fingerprints are unchanged.
+Atenea remains clean and synchronized at `b6dc854...`; production and preview
+remain `UP`, Beautips remains `UP`, and the sanitized routing-key count remains
+zero. No production or preview endpoint, database, row, credential, volume,
+backup or snapshot was queried or changed.
+
+Final evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-4.3-database`
+
+It includes exact source and contract identities, the complete migration
+inventory, immutable image identity, retained volume identity and labels,
+one-shot initializer and persistent-container isolation, sanitized Flyway
+history and logs, pre/post counts, SQL audits, idempotence and conflict proof,
+before/after fingerprints, cleanup proof, non-secret reproducibility inputs,
+a passing result and `SHA256SUMS`. The previous fail-closed attempt is retained
+separately at `runs/task-4.3-database-attempt-1-blocked`.
+
+Task 4.3 is complete. Task 4.4 is now the first pending task and was not
+started.
