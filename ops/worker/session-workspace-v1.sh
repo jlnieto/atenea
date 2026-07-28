@@ -81,6 +81,7 @@ else
 fi
 
 MIRROR_PATH="${MIRROR_ROOT}/${PROJECT_ID}.git"
+SESSIONS_ROOT="${WORKSPACE_ROOT}/sessions"
 SESSION_ROOT="${WORKSPACE_ROOT}/sessions/${SESSION_ID}"
 WORKTREE_PATH="${SESSION_ROOT}/${PROJECT_ID}"
 RECORD_PATH="${SESSION_ROOT}/workspace-v1.json"
@@ -115,6 +116,16 @@ for root in "${MIRROR_ROOT}" "${WORKSPACE_ROOT}" "${LOCK_ROOT}"; do
     fail "WORKTREE_CONFLICT" "A workspace control root is unsafe or owned by another identity." \
       "Reconcile the worker-owned root before provisioning."
 done
+if [[ -e "${SESSIONS_ROOT}" || -L "${SESSIONS_ROOT}" ]]; then
+  [[ -d "${SESSIONS_ROOT}" && ! -L "${SESSIONS_ROOT}" &&
+      "$(stat -c %u "${SESSIONS_ROOT}")" == "$(id -u)" ]] ||
+    fail "WORKTREE_CONFLICT" "The session workspace collection is unsafe or owned by another identity." \
+      "Reconcile the worker-owned sessions root before provisioning."
+fi
+install -d -m 2770 "${SESSIONS_ROOT}"
+[[ "$(stat -c %a "${SESSIONS_ROOT}")" == "2770" ]] ||
+  fail "WORKTREE_CONFLICT" "The session workspace collection has an unsafe mode." \
+    "Restore mode 2770 on the worker-owned sessions root before provisioning."
 [[ ! -L "${LOCK_PATH}" ]] ||
   fail "WORKTREE_CONFLICT" "The project workspace lock is a symbolic link." \
     "Inspect the lock path before retrying."

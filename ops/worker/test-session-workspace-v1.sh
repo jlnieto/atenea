@@ -65,6 +65,8 @@ run_helper() {
 
 run_helper ensure "${SESSION_ONE}" "${PROJECT}" "${REMOTE}" main "${BRANCH_ONE}" \
   >"${TEST_ROOT}/first.json"
+[[ "$(stat -c %a "${WORKSPACE_ROOT}/sessions")" == "2770" ]] ||
+  fail "session workspace collection is not isolated with mode 2770"
 WORKTREE_ONE="${WORKSPACE_ROOT}/sessions/${SESSION_ONE}/${PROJECT}"
 RECORD_ONE="${WORKSPACE_ROOT}/sessions/${SESSION_ONE}/workspace-v1.json"
 MIRROR="${MIRROR_ROOT}/${PROJECT}.git"

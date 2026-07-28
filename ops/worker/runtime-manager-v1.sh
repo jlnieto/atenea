@@ -13,6 +13,8 @@ JSON_MODE=false
 TEST_MODE="${ATENEA_RUNTIME_MANAGER_TEST_MODE:-0}"
 SERVICE_USER="atenea-worker"
 PLAN_PATH=""
+ATENEA_MANIFEST_SHA256="3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
+ATENEA_COMPOSE_SHA256="2133646b9fe6227ca417d6d62c92a74306caaa46a2957cdee810d5d7b0e5bb9f"
 
 fail() {
   local code="$1" message="$2" action="$3"
@@ -94,7 +96,7 @@ done
   fail "OPERATION_FAILED" "Log tail must be between 1 and 10000 lines." \
     "Retry with a bounded --tail value."
 
-for command in jq mktemp realpath stat; do
+for command in jq mktemp realpath sha256sum stat; do
   command -v "${command}" >/dev/null ||
     fail "OPERATION_FAILED" "Required command is unavailable: ${command}" \
       "Install the version-pinned worker prerequisites and retry."
@@ -178,18 +180,34 @@ jq -e \
   --arg workspaceRoot "${WORKSPACE_ROOT}" \
   --arg artifactRoot "${ARTIFACT_ROOT}" \
   --arg cacheRoot "${CACHE_ROOT}" '
-    (keys | sort) == [
-      "allocatedPorts", "artifactsRoot", "branch", "cacheRoot", "logsPath",
-      "manifestRelativePath", "mirrorPath", "projectId", "runtimeId",
-      "runtimeNames", "runtimeRoot", "schemaVersion", "sessionId", "slot",
-      "state", "workloadClass", "worktreePath"
-    ] and
+    (
+      (
+        .projectId == "atenea" and
+        (keys | sort) == [
+          "allocatedPorts", "artifactsRoot", "branch", "cacheRoot",
+          "heavyPermit", "logsPath", "manifestRelativePath", "mirrorPath",
+          "projectId", "runtimeId", "runtimeNames", "runtimeRoot",
+          "schemaVersion", "sessionId", "slot", "state", "workloadClass",
+          "worktreePath"
+        ] and
+        .workloadClass == "heavy" and
+        (.heavyPermit | test("^heavy[1-2]$"))
+      ) or (
+        .projectId != "atenea" and
+        (keys | sort) == [
+          "allocatedPorts", "artifactsRoot", "branch", "cacheRoot", "logsPath",
+          "manifestRelativePath", "mirrorPath", "projectId", "runtimeId",
+          "runtimeNames", "runtimeRoot", "schemaVersion", "sessionId", "slot",
+          "state", "workloadClass", "worktreePath"
+        ] and
+        .workloadClass == "normal"
+      )
+    ) and
     .schemaVersion == 1 and .state == "allocated" and
     .sessionId == $session and
     (.projectId | test("^[a-z][a-z0-9-]{1,62}$")) and
     .runtimeId == ("ws-" + ($session | gsub("-"; ""))) and
     (.slot | test("^slot[1-4]$")) and
-    .workloadClass == "normal" and
     .worktreePath == (
       $workspaceRoot + "/sessions/" + $session + "/" + .projectId
     ) and
@@ -230,6 +248,8 @@ PROJECT_ID="$(jq -r '.projectId' "${ALLOCATION_PATH}")"
 WORKTREE_PATH="$(jq -r '.worktreePath' "${ALLOCATION_PATH}")"
 RUNTIME_ID="$(jq -r '.runtimeId' "${ALLOCATION_PATH}")"
 MANIFEST_RELATIVE="$(jq -r '.manifestRelativePath' "${ALLOCATION_PATH}")"
+IS_ATENEA=false
+[[ "${PROJECT_ID}" == "atenea" ]] && IS_ATENEA=true
 
 [[ -d "${SESSION_ROOT}" && ! -L "${SESSION_ROOT}" &&
     "$(stat -c %u "${SESSION_ROOT}")" == "${EXPECTED_OWNER}" &&
@@ -237,6 +257,58 @@ MANIFEST_RELATIVE="$(jq -r '.manifestRelativePath' "${ALLOCATION_PATH}")"
     "$(stat -c %u "${WORKTREE_PATH}")" == "${EXPECTED_OWNER}" ]] ||
   fail "RUNTIME_OWNERSHIP_CONFLICT" "Session root or worktree ownership is unsafe." \
     "Reconcile the WorkSession without resetting or cleaning source."
+
+assert_owned_directory() {
+  local path="$1" description="$2"
+  [[ -d "${path}" && ! -L "${path}" &&
+      "$(stat -c %u "${path}")" == "${EXPECTED_OWNER}" ]] ||
+    fail "RUNTIME_OWNERSHIP_CONFLICT" "${description} is missing, unsafe or foreign-owned." \
+      "Reconcile the exact WorkSession-owned path before retrying."
+}
+
+if [[ "${IS_ATENEA}" == "true" ]]; then
+  if [[ "${TEST_MODE}" == "1" ]]; then
+    ADMISSION_RECORD="${ATENEA_RUNTIME_ADMISSION_RECORD:-}"
+    [[ "${ADMISSION_RECORD}" == /tmp/* && "${ADMISSION_RECORD}" != *".."* ]] ||
+      fail "RUNTIME_OWNERSHIP_CONFLICT" "Synthetic Atenea admission record is outside /tmp." \
+        "Use the persisted synthetic admission record for this WorkSession."
+  else
+    ADMISSION_RECORD="/srv/atenea/worker/runtime-admission-v1/records/${SESSION_ID}.json"
+  fi
+  assert_owned_record "${ADMISSION_RECORD}" "Atenea admission record"
+  jq -e \
+    --arg session "${SESSION_ID}" \
+    --arg slot "$(jq -r '.slot' "${ALLOCATION_PATH}")" \
+    --arg permit "$(jq -r '.heavyPermit' "${ALLOCATION_PATH}")" '
+      (keys | sort) == ["heavy", "normal", "schemaVersion", "sessionId"] and
+      .schemaVersion == 1 and .sessionId == $session and
+      .normal == {slot: $slot, state: "held"} and
+      .heavy == {permit: $permit, state: "held"}
+    ' "${ADMISSION_RECORD}" >/dev/null ||
+    fail "RUNTIME_OWNERSHIP_CONFLICT" "Atenea slot or heavy permit is not held by this WorkSession." \
+      "Reconcile the persisted admission and allocation records before retrying."
+
+  for path in \
+    "$(jq -r '.runtimeRoot' "${ALLOCATION_PATH}")" \
+    "$(jq -r '.logsPath' "${ALLOCATION_PATH}")" \
+    "$(jq -r '.artifactsRoot' "${ALLOCATION_PATH}")" \
+    "$(jq -r '.cacheRoot' "${ALLOCATION_PATH}")" \
+    "$(jq -r '.cacheRoot' "${ALLOCATION_PATH}")/codex" \
+    "$(jq -r '.cacheRoot' "${ALLOCATION_PATH}")/maven" \
+    "$(jq -r '.cacheRoot' "${ALLOCATION_PATH}")/node" \
+    "$(jq -r '.runtimeRoot' "${ALLOCATION_PATH}")/data/uploads" \
+    "$(jq -r '.runtimeRoot' "${ALLOCATION_PATH}")/secrets"; do
+    assert_owned_directory "${path}" "Atenea runtime path"
+  done
+  for secret_name in ATENEA_DEV_POSTGRES_PASSWORD ATENEA_DEV_JWT_SECRET; do
+    secret_path="$(jq -r '.runtimeRoot' "${ALLOCATION_PATH}")/secrets/${secret_name}"
+    [[ -f "${secret_path}" && ! -L "${secret_path}" &&
+        "$(stat -c %u "${secret_path}")" == "${EXPECTED_OWNER}" &&
+        "$(stat -c %a "${secret_path}")" == "600" ]] ||
+      fail "RUNTIME_OWNERSHIP_CONFLICT" "A named Atenea secret reference is missing or unsafe." \
+        "Resolve the named development-only secret into the owned session secret path."
+  done
+fi
 
 jq -e \
   --arg session "${SESSION_ID}" \
@@ -262,6 +334,17 @@ MANIFEST_REAL="$(realpath -e "${MANIFEST_PATH}")"
 [[ "${MANIFEST_REAL}" == "${WORKTREE_REAL}/"* ]] ||
   fail "MANIFEST_INVALID" "Manifest escapes the owned WorkSession worktree." \
     "Restore the reviewed repository-relative manifest."
+if [[ "${IS_ATENEA}" == "true" ]]; then
+  [[ "${MANIFEST_RELATIVE}" == "ops/atenea-runtime.json" &&
+      "$(sha256sum "${MANIFEST_REAL}" | cut -d' ' -f1)" == "${ATENEA_MANIFEST_SHA256}" ]] ||
+    fail "MANIFEST_INVALID" "Atenea manifest path or SHA-256 differs from the reviewed contract." \
+      "Restore the exact committed Atenea runtime manifest."
+  ATENEA_COMPOSE_PATH="${WORKTREE_REAL}/ops/worker/docker-compose.ax42.yml"
+  [[ -f "${ATENEA_COMPOSE_PATH}" && ! -L "${ATENEA_COMPOSE_PATH}" &&
+      "$(sha256sum "${ATENEA_COMPOSE_PATH}" | cut -d' ' -f1)" == "${ATENEA_COMPOSE_SHA256}" ]] ||
+    fail "MANIFEST_INVALID" "Atenea Compose path or SHA-256 differs from the reviewed contract." \
+      "Restore the exact committed AX42 Compose definition."
+fi
 
 jq -e \
   --arg project "${PROJECT_ID}" \
@@ -320,7 +403,10 @@ jq -e \
       (.version | type == "string" and test("^[0-9][A-Za-z0-9.+_-]{0,63}$")) and
       (.source == "worker-package" or .source == "container-image" or
        .source == "project-wrapper")) and
-    .workloadClass == "normal" and
+    (
+      (.workloadClass == "normal" and $project != "atenea") or
+      (.workloadClass == "heavy" and $project == "atenea")
+    ) and
     (.lifecycle | keys | sort) ==
       ["build", "health", "logs", "start", "stop"] and
     all(.lifecycle[]; runtimeCommand) and
@@ -409,15 +495,126 @@ if [[ "$(jq -r '.runtime.kind' "${MANIFEST_REAL}")" == "compose" ]]; then
 else
   EXPECTED_SERVICES='["tomcat"]'
 fi
-jq -e -s \
-  --arg session "${SESSION_ID}" \
-  --arg runtime "${RUNTIME_ID}" \
-  --arg compose "$(jq -r '.runtimeNames.composeProject' "${ALLOCATION_PATH}")" \
-  --arg network "$(jq -r '.runtimeNames.network' "${ALLOCATION_PATH}")" \
-  --arg volume "$(jq -r '.runtimeNames.volumePrefix' "${ALLOCATION_PATH}")" \
-  --arg unit "$(jq -r '.runtimeNames.processUnit' "${ALLOCATION_PATH}")" \
-  --arg tomcat "$(jq -r '.runtimeNames.tomcatBase' "${ALLOCATION_PATH}")" \
-  --argjson expectedServices "${EXPECTED_SERVICES}" '
+if [[ "${IS_ATENEA}" == "true" ]]; then
+  jq -e -s \
+    --arg session "${SESSION_ID}" \
+    --arg runtime "${RUNTIME_ID}" \
+    --arg slot "$(jq -r '.slot' "${ALLOCATION_PATH}")" \
+    --arg worktree "${WORKTREE_PATH}" \
+    --arg runtimeRoot "$(jq -r '.runtimeRoot' "${ALLOCATION_PATH}")" \
+    --arg cache "$(jq -r '.cacheRoot' "${ALLOCATION_PATH}")" \
+    --arg compose "$(jq -r '.runtimeNames.composeProject' "${ALLOCATION_PATH}")" \
+    --arg network "$(jq -r '.runtimeNames.network' "${ALLOCATION_PATH}")" \
+    --arg volume "$(jq -r '.runtimeNames.volumePrefix' "${ALLOCATION_PATH}")" \
+    --arg allocationSha "$(sha256sum "${ALLOCATION_PATH}" | cut -d' ' -f1)" \
+    --arg manifestSha "${ATENEA_MANIFEST_SHA256}" \
+    --arg composePath "${ATENEA_COMPOSE_PATH}" \
+    --arg composeSha "${ATENEA_COMPOSE_SHA256}" '
+      def labels($service): {
+        "com.atenea.engine": "atenea-runtime-engine-v1",
+        "com.atenea.session": $session,
+        "com.atenea.runtime": $runtime,
+        "com.atenea.project": "atenea",
+        "com.atenea.service": $service
+      };
+      length == 1 and
+      (.[0] | keys | sort) == [
+        "allocationSha256", "compose", "manifestSha256", "projectId",
+        "runtimeId", "schemaVersion", "services", "sessionId", "slot"
+      ] and
+      .[0].schemaVersion == 1 and .[0].sessionId == $session and
+      .[0].runtimeId == $runtime and .[0].projectId == "atenea" and
+      .[0].slot == $slot and .[0].allocationSha256 == $allocationSha and
+      .[0].manifestSha256 == $manifestSha and
+      .[0].compose == {
+        sourcePath: $composePath,
+        sourceSha256: $composeSha,
+        projectName: $compose,
+        network: {
+          name: $network,
+          internal: true,
+          labels: labels("runtime")
+        },
+        volumes: [{
+          name: ($volume + "-db-data"),
+          labels: labels("db")
+        }]
+      } and
+      ([.[0].services[].name] | sort) ==
+        ["atenea-dev", "codex-app-server", "db"] and
+      all(.[0].services[];
+        (keys | sort) == [
+          "capabilities", "containerName", "daemonSockets", "devices",
+          "image", "labels", "mounts", "name", "namespaces", "ports",
+          "resourceNames", "secretRefs", "unsupportedFields"
+        ] and
+        .containerName == ($runtime + "-" + .name) and
+        .labels == labels(.name) and
+        (.ports | type == "array" and length == 1) and
+        all(.ports[];
+          .bindAddress == "127.0.0.1" and
+          (.loopbackPort | type == "number" and floor == . and
+            . >= 1024 and . <= 65535)) and
+        .namespaces == [] and .capabilities == [] and .devices == [] and
+        .daemonSockets == [] and .unsupportedFields == [] and
+        all(.resourceNames[];
+          . == $compose or . == $network or
+          . == ($volume + "-db-data") or startswith($runtime + "-"))) and
+      (.[0].services[] | select(.name == "db")) as $db |
+      $db.image ==
+        "postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20" and
+      $db.mounts == [{
+        type: "volume",
+        source: ($volume + "-db-data"),
+        target: "/var/lib/postgresql/data",
+        readOnly: false
+      }] and
+      $db.ports == [(
+        $db.ports[0] |
+        select(.name == "postgres" and .internalPort == 5432 and .protocol == "tcp")
+      )] and
+      $db.secretRefs == ["ATENEA_DEV_POSTGRES_PASSWORD"] and
+      (.[0].services[] | select(.name == "codex-app-server")) as $codex |
+      $codex.image ==
+        "node:22.16.0-bookworm-slim@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34" and
+      $codex.mounts == [
+        {type: "bind", source: $worktree, target: "/workspace/atenea", readOnly: false},
+        {type: "bind", source: ($cache + "/codex"), target: "/workspace/cache/codex", readOnly: false}
+      ] and
+      $codex.ports == [(
+        $codex.ports[0] |
+        select(.name == "codex" and .internalPort == 8092 and .protocol == "tcp")
+      )] and $codex.secretRefs == [] and
+      (.[0].services[] | select(.name == "atenea-dev")) as $app |
+      $app.image ==
+        "maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e" and
+      $app.mounts == [
+        {type: "bind", source: $worktree, target: "/workspace/atenea", readOnly: false},
+        {type: "bind", source: ($cache + "/maven"), target: "/workspace/cache/maven", readOnly: false},
+        {type: "bind", source: ($cache + "/node"), target: "/workspace/cache/node", readOnly: false},
+        {type: "bind", source: ($runtimeRoot + "/data/uploads"), target: "/workspace/data/uploads", readOnly: false}
+      ] and
+      $app.ports == [(
+        $app.ports[0] |
+        select(.name == "web" and .internalPort == 8081 and .protocol == "http")
+      )] and
+      $app.secretRefs == [
+        "ATENEA_DEV_POSTGRES_PASSWORD",
+        "ATENEA_DEV_JWT_SECRET"
+      ]
+    ' <<<"${INSPECTION}" >/dev/null ||
+    fail "RUNTIME_OWNERSHIP_CONFLICT" "Resolved Atenea runtime differs from the exact allowlisted adapter." \
+      "Restore the reviewed services, images, mounts, ports, labels and resource identities."
+else
+  jq -e -s \
+    --arg session "${SESSION_ID}" \
+    --arg runtime "${RUNTIME_ID}" \
+    --arg compose "$(jq -r '.runtimeNames.composeProject' "${ALLOCATION_PATH}")" \
+    --arg network "$(jq -r '.runtimeNames.network' "${ALLOCATION_PATH}")" \
+    --arg volume "$(jq -r '.runtimeNames.volumePrefix' "${ALLOCATION_PATH}")" \
+    --arg unit "$(jq -r '.runtimeNames.processUnit' "${ALLOCATION_PATH}")" \
+    --arg tomcat "$(jq -r '.runtimeNames.tomcatBase' "${ALLOCATION_PATH}")" \
+    --argjson expectedServices "${EXPECTED_SERVICES}" '
     length == 1 and
     .[0].schemaVersion == 1 and
     .[0].sessionId == $session and .[0].runtimeId == $runtime and
@@ -441,9 +638,10 @@ jq -e -s \
       all(.resourceNames[];
         . == $compose or . == $network or . == $unit or . == $tomcat or
         startswith($volume + "-")))
-  ' <<<"${INSPECTION}" >/dev/null ||
-  fail "RUNTIME_OWNERSHIP_CONFLICT" "Resolved runtime requests forbidden authority or foreign resources." \
-    "Remove mounts, host namespaces, capabilities, devices, daemon sockets or foreign names."
+    ' <<<"${INSPECTION}" >/dev/null ||
+    fail "RUNTIME_OWNERSHIP_CONFLICT" "Resolved runtime requests forbidden authority or foreign resources." \
+      "Remove mounts, host namespaces, capabilities, devices, daemon sockets or foreign names."
+fi
 
 PLAN_PATH="$(mktemp "${CONTROL_ROOT}/.runtime-plan-v1.XXXXXX")"
 jq -n \
@@ -453,9 +651,25 @@ jq -n \
   --arg runtime "${RUNTIME_ID}" \
   --arg allocation "${ALLOCATION_PATH}" \
   --arg manifest "${MANIFEST_REAL}" \
+  --arg slot "$(jq -r '.slot' "${ALLOCATION_PATH}")" \
   --argjson tail "${LOG_TAIL}" \
   --argjson runtimeNames "$(jq -c '.runtimeNames' "${ALLOCATION_PATH}")" \
-  --argjson allocatedPorts "$(jq -c '.allocatedPorts' "${ALLOCATION_PATH}")" '{
+  --argjson allocatedPorts "$(jq -c '.allocatedPorts' "${ALLOCATION_PATH}")" \
+  --argjson ateneaAdapter "$(
+    if [[ "${IS_ATENEA}" == "true" ]]; then
+      jq -c '.' <<<"${INSPECTION}"
+    else
+      printf 'null'
+    fi
+  )" \
+  --argjson mountsAllowed "$(
+    if [[ "${IS_ATENEA}" == "true" ]]; then
+      jq -c '[.services[].mounts[] | select(.type == "bind") | .source] |
+        unique | sort' <<<"${INSPECTION}"
+    else
+      printf '[]'
+    fi
+  )" '{
     schemaVersion: 1,
     operation: $operation,
     sessionId: $session,
@@ -475,9 +689,19 @@ jq -n \
       hostIpc: false,
       devicesAllowed: false,
       daemonSocketsAllowed: false,
-      mountsAllowed: []
+      mountsAllowed: $mountsAllowed
     }
-  }' >"${PLAN_PATH}"
+  } |
+  if $project == "atenea" then
+    .slot = $slot |
+    .ateneaAdapter = $ateneaAdapter |
+    .restrictions.secretRefsAllowed = [
+      "ATENEA_DEV_JWT_SECRET",
+      "ATENEA_DEV_POSTGRES_PASSWORD"
+    ]
+  else
+    .
+  end' >"${PLAN_PATH}"
 chmod 0600 "${PLAN_PATH}"
 
 if [[ "${JSON_MODE}" == "true" ]]; then

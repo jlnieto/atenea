@@ -12,6 +12,7 @@ OPERATION="${1:-}"
 SESSION_ID="${2:-}"
 [[ "$#" -gt 0 ]] && shift
 [[ "$#" -gt 0 ]] && shift
+REQUESTED_SLOT="${1:-}"
 
 TEST_MODE="${ATENEA_RUNTIME_ADMISSION_TEST_MODE:-0}"
 SERVICE_USER="${ATENEA_WORKER_SERVICE_USER:-atenea-worker}"
@@ -23,7 +24,8 @@ MAX_PROCESS_COUNT=8192
 usage() {
   cat >&2 <<EOF
 Usage:
-  $0 [--json] {acquire-normal|acquire-heavy|release-normal|release-heavy} <worksession-uuid>
+  $0 [--json] acquire-normal <worksession-uuid> [slot1-slot4]
+  $0 [--json] {acquire-heavy|release-normal|release-heavy} <worksession-uuid>
   $0 [--json] status
 EOF
   exit 64
@@ -34,8 +36,15 @@ EOF
 if [[ "${OPERATION}" == "status" ]]; then
   [[ -z "${SESSION_ID}" && "$#" -eq 0 ]] || usage
 else
-  [[ "${SESSION_ID}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ &&
-      "$#" -eq 0 ]] || usage
+  [[ "${SESSION_ID}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] ||
+    usage
+  if [[ "${OPERATION}" == "acquire-normal" ]]; then
+    [[ "$#" -le 1 &&
+        (-z "${REQUESTED_SLOT}" || "${REQUESTED_SLOT}" =~ ^slot[1-4]$) ]] ||
+      usage
+  else
+    [[ "$#" -eq 0 ]] || usage
+  fi
 fi
 
 for command in awk find flock jq mktemp nproc ps stat; do
@@ -356,6 +365,11 @@ case "${OPERATION}" in
   acquire-normal)
     if [[ -f "${CURRENT_RECORD}" &&
         "$(jq -r '.normal.state' "${CURRENT_RECORD}")" == "held" ]]; then
+      [[ -z "${REQUESTED_SLOT}" ||
+          "$(jq -r '.normal.slot' "${CURRENT_RECORD}")" == "${REQUESTED_SLOT}" ]] ||
+        fail_fixed "RUNTIME_OWNERSHIP_CONFLICT" \
+          "The WorkSession already holds a different normal slot." \
+          "Use its persisted slot or reconcile the admission record."
       emit_admitted "${CURRENT_RECORD}"
       exit 0
     fi
@@ -366,16 +380,28 @@ case "${OPERATION}" in
         "Wait for resource pressure to clear, then retry the same WorkSession." true
     fi
     selected_slot=""
-    for candidate in slot1 slot2 slot3 slot4; do
+    if [[ -n "${REQUESTED_SLOT}" ]]; then
+      candidates=("${REQUESTED_SLOT}")
+    else
+      candidates=(slot1 slot2 slot3 slot4)
+    fi
+    for candidate in "${candidates[@]}"; do
       if [[ -z "${SLOT_OWNERS[${candidate}]:-}" ]]; then
         selected_slot="${candidate}"
         break
       fi
     done
-    [[ -n "${selected_slot}" ]] ||
-      fail_fixed "NORMAL_CAPACITY_EXHAUSTED" \
-        "All four normal runtime slots are owned." \
-        "Wait for a WorkSession to release its slot, then retry unchanged." true
+    if [[ -z "${selected_slot}" ]]; then
+      if [[ -n "${REQUESTED_SLOT}" ]]; then
+        fail_fixed "NORMAL_CAPACITY_EXHAUSTED" \
+          "The requested normal runtime slot is already owned." \
+          "Select a proven-empty slot or wait for its WorkSession to release it." true
+      else
+        fail_fixed "NORMAL_CAPACITY_EXHAUSTED" \
+          "All four normal runtime slots are owned." \
+          "Wait for a WorkSession to release its slot, then retry unchanged." true
+      fi
+    fi
     if [[ -f "${CURRENT_RECORD}" ]]; then
       document="$(
         jq -c --arg slot "${selected_slot}" \

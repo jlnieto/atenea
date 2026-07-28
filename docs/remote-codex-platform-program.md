@@ -6,13 +6,12 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: none active; `establish-project-runtime-contract` archived as
-  `2026-07-26-establish-project-runtime-contract`
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `12/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
 - Canonical source: GitHub
-- Last evidence refresh: 2026-07-26
+- Last evidence refresh: 2026-07-27
 
 The normative requirements live in OpenSpec. This ledger records phase state, decisions, evidence locations and the exact resume point. Code, tests and migrations remain authoritative for existing Atenea runtime behaviour.
 
@@ -170,11 +169,11 @@ backup/monitoring and deploy/rollback control remain on the Atenea server.
 
 Entry, evidence, rollback and archive gates are defined in `remote-codex-platform-phases.md`. No phase becomes authoritative merely because its code builds.
 
-No OpenSpec change is active. The names after
-`establish-project-runtime-contract` are a planning queue, not created or
-implementation-ready OpenSpec changes. Each must receive its own proposal,
-design, specs and tasks only when its entry gate is met; they are deliberately
-not folded into the archived runtime-contract change.
+`relocate-atenea-development-to-ax42` is the only active OpenSpec change. Its
+entry gate was reviewed against real control-plane and worker state, and its
+proposal, design, specs and 27-task implementation checklist are complete and
+strictly valid. Later names remain a planning queue and MUST NOT be created or
+started from this phase.
 
 ## Decision log
 
@@ -247,8 +246,7 @@ After any interruption:
 `establish-project-runtime-contract` completed all 21 tasks and is archived at
 `openspec/changes/archive/2026-07-26-establish-project-runtime-contract`.
 OpenSpec synchronized eight modified requirements with no additions, removals
-or renames; strict validation passes and `openspec list` reports no active
-changes.
+or renames; strict validation passes for the archived change.
 
 The runtime-engine mode mismatch observed during the 5.4 rollback was corrected
 without weakening the invariant. An owned engine state root created below the
@@ -261,14 +259,143 @@ passed. AX42 returned to the accepted empty-state baseline, retained evidence
 from 5.3 and 5.4 remained intact, Beautips remained healthy at the published
 commit, and Atenea production remained unchanged and unrouted.
 
-No subsequent phase was created or started. The next action, only after
-explicit authorization, is the entry-gate review and proposal for
-`relocate-atenea-development-to-ax42`; do not implement that phase from this
-resume point.
+The entry-gate review for `relocate-atenea-development-to-ax42` found a dirty
+Atenea development worktree. The operator authorized reconciliation: the
+reviewed React-console migration and documentation were validated, committed
+and published normally on `feature/actualizar-conversacion-en-web` at
+`a9fe14989544308acc587e3eb71cb985fa637b2d`. The branch is now clean and matches
+its remote; production remains healthy, unchanged and unrouted.
+
+The active change is apply-ready with proposal, design, two capability deltas
+and 27 implementation tasks. Tasks 1.1 through 1.3 recorded the canonical
+source and sentinels, committed the schema-valid heavy Atenea manifest, and
+defined the empty PostgreSQL 16 migration plus synthetic-fixture contract.
+Task 2.1 then added the deliberately adapter-dependent Atenea worker Compose
+definition and proved its fail-closed resolution without activating it. Task
+2.2 extended only the manager/engine allowlist for that exact manifest and
+Compose hash, one persisted heavy allocation, the three declared services,
+session-owned paths, three loopback ports, full-runtime resource names and
+five exact ownership labels. Task 2.3 then added the dedicated negative policy
+corpus at both the manager-inspection and engine closed-plan boundaries. It
+proves that daemon sockets, privileged or host namespaces, devices, undeclared
+mounts, fixed global identities and unlabelled, partially labelled, foreign
+or ambiguous resources fail before engine execution or daemon access. Task
+2.4 then passed the complete synthetic contract, allocation, lifecycle,
+manager, engine, admission, health/browser/retention and cleanup regression
+gate from `/tmp`, plus both focused Atenea adapter suites. The integrated
+contract suite's protected manager/engine hashes were advanced only to the
+exact task 2.2 implementations.
+Detailed results are in `docs/atenea-development-relocation-evidence.md`;
+OpenSpec progress is `12/27`.
+
+Atenea is clean and synchronized locally and remotely at
+`7cc003dba3b931e5d4769c507d65983d377a3222`. With explicit operator
+authorization for task 3.2, the three previously local reviewed commits were
+published in order above the accepted entry commit. The first adds
+`ops/atenea-runtime.json`; the second adds only
+`ops/atenea-development-data-v1.json` and its 45-file migration checksum
+inventory; the third adds only `ops/worker/docker-compose.ax42.yml`.
+PostgreSQL 16.11 applied all 45
+Flyway migrations from an empty temporary volume and reached V45 with zero
+domain rows before fixtures; the temporary container and volume were removed.
+The declared fixture contains one synthetic operator, one synthetic project,
+one closed synthetic WorkSession and two synthetic turns, with all other
+domain counts zero and explicit production/external-integration denials.
+
+The current Compose SHA-256 is
+`2133646b9fe6227ca417d6d62c92a74306caaa46a2957cdee810d5d7b0e5bb9f`.
+It declares exactly `db`, `codex-app-server` and `atenea-dev`, requires all
+session identities, images, internal ports, owned paths, network, volume and
+secret-file references from the future allowlisted adapter, and has no host
+port publication or fallback to `docker-compose.dev.yml`. Resolution from
+`/tmp` passed with the AX42 Compose `5.3.1`; all 18 required inputs fail closed
+when individually absent.
+
+The allowlisted Atenea plan remains deliberately non-activable: after exact
+plan validation the engine rejects lifecycle execution before resolving or
+calling a daemon. Manager validation never executes manifest `argv`, and the
+plan contains named secret references rather than values. The synthetic
+fixture loader remains deferred to 4.3.
+
+Task 3.1 created the sole GitHub-backed Atenea bare mirror at
+`/srv/atenea/repositories/atenea.git` as `atenea-worker:atenea`, mode `2770`,
+using the contract's credential-free HTTPS identity and
+`+refs/heads/*:refs/remotes/origin/*` fetch mapping. A fresh fetch selected
+`a9fe14989544308acc587e3eb71cb985fa637b2d`, exactly equal to the accepted
+entry commit. The mirror contains none of Atenea's three unpublished local
+commits and has no local alternates, credential-bearing URL or persisted
+credential material.
+
+Task 3.2 admitted administrative development WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad` in `slot2` with `heavy1`. Its clean
+session branch and worktree are pinned at the synchronized GitHub commit
+`7cc003dba3b931e5d4769c507d65983d377a3222`. Workspace, admission, allocation,
+runtime-path, log, artifact, reconstructible-cache and empty named-secret
+reference ownership records are persisted beneath the canonical
+`/srv/atenea` roots as `atenea-worker:atenea`, with session roots mode `2770`
+and records mode `0640`.
+
+No lifecycle command, manager, engine, client, container, image, network,
+volume, listener, service unit or route was started. Slot container/image
+counts remain `3/3`, `0/4`, `0/0`, `0/0`; admission capacity is `1/4` normal
+and `1/2` heavy.
+
+Task 3.3 first stopped at its default-deny source-isolation gate because the
+worker Compose mounted the owned upload path at `/workspace/data/uploads`
+without setting `ATENEA_MOBILE_UPLOAD_ROOT`. With explicit commit/push
+authorization, Atenea commit
+`b6dc854d94ba5b1976926656c9a6aba330f671e2` added only the missing environment
+binding and was published on the selected branch. The exact Compose hash and
+the manager/engine allowlist hashes were advanced, and both isolated adapter
+suites passed against a fresh GitHub checkout.
+
+The AX42 mirror fetched the published correction and the existing
+administrative session branch was fast-forwarded locally without publication.
+`workspace-v1.json` now records `b6dc854...`; allocation and admission records
+remained byte-identical in `slot2/heavy1`. The accepted read-only proof
+reproduced Git common-directory, GitHub publication, mirror self-containment,
+the three administrative records, the four exact inputs, all 45 migration
+hashes and the effective owned upload root. It found no alternate, symlink,
+bind mount, control-plane runtime input or real WorkSession/AgentRun authority.
+Complete mirror, worktree, record, artifact and cache content/metadata
+fingerprints were identical before and after the proof.
+
+Task 4.1 verified the exact committed manifest at
+`b6dc854d94ba5b1976926656c9a6aba330f671e2` without executing or changing a
+toolchain. The worktree and Git blob both reproduce manifest SHA-256
+`3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3`;
+the manifest passes the staged versioned schema on AX42. Existing package
+records prove the pinned Git, Docker and Compose versions, while immutable OCI
+index/platform/config metadata and stored layer identity prove the selected
+Node, Java, Maven, Playwright and Chromium versions. No package, image,
+wrapper, browser or container was downloaded, installed, updated, built or
+executed.
+
+Task 4.2 ran `npm ci`, the zero-vulnerability audit and the canonical
+`scripts/web-build.sh` with the pinned Node image in `slot2`. The audit
+reported zero vulnerabilities and the generated `index.html`, CSS and
+JavaScript are byte-identical to the selected commit. The index references
+exactly the two files emitted by Vite, with no stale asset identity. Evidence
+is retained beneath the administrative WorkSession artifact root at
+`runs/task-4.2-web-build`.
+
+The rootless slot daemon cannot traverse the `atenea-worker:atenea` mode
+`2770` worktree ancestors for a direct bind. Task 4.2 therefore used a
+byte-exact `git archive` scratch owned by `atenea-slot2`, without changing
+ACLs, ownership or the worktree; the scratch was removed. This does not block
+the accepted build, but direct worktree mounting remains an explicit gate
+before the private runtime task 5.1.
+
+Task 4.2 is complete and programme progress is `12/27`. The next action is
+task 4.3: initialize a new owned PostgreSQL volume from the committed
+migrations and create only the declared synthetic records. Do not start 4.3
+without a new explicit continuation, enable routing or treat the
+administrative session as a managed AgentRun. Detailed evidence is in
+`docs/atenea-development-relocation-evidence.md`.
 
 The administrative Codex/tmux bridge may be used to begin work, but it is not
 evidence of the managed session isolation boundary and MUST NOT be used as
 Atenea's AgentRun executor.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — gate de entrada para reubicar desarrollo Atenea`.
+`Migración Atenea y Codex al AX42 — implementar reubicación de desarrollo Atenea`.

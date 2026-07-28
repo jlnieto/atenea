@@ -101,9 +101,10 @@ SESSION_FOUR="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d94"
 SESSION_FIVE="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d95"
 SESSION_SIX="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d96"
 
+run_admission --json acquire-normal "${SESSION_ONE}" slot2 \
+  >"${TEST_ROOT}/normal-${SESSION_ONE}.json"
 pids=()
-for session in \
-  "${SESSION_ONE}" "${SESSION_TWO}" "${SESSION_THREE}" "${SESSION_FOUR}"; do
+for session in "${SESSION_TWO}" "${SESSION_THREE}" "${SESSION_FOUR}"; do
   run_admission --json acquire-normal "${session}" \
     >"${TEST_ROOT}/normal-${session}.json" &
   pids+=("$!")
@@ -117,6 +118,8 @@ mapfile -t slots < <(
 )
 [[ "${slots[*]}" == "slot1 slot2 slot3 slot4" ]] ||
   fail "four concurrent WorkSessions did not receive four unique normal slots"
+[[ "$(jq -r '.record.normal.slot' "${TEST_ROOT}/normal-${SESSION_ONE}.json")" == "slot2" ]] ||
+  fail "requested proven-empty normal slot was not granted"
 status="$(run_admission --json status)"
 jq -e '
   .state == "ready" and
@@ -131,6 +134,12 @@ run_admission --json acquire-normal "${SESSION_ONE}" \
   >"${TEST_ROOT}/normal-repeat.json"
 cmp -s "${record_one}" "${TEST_ROOT}/record-one.before" ||
   fail "repeated normal admission changed its persisted record"
+run_admission --json acquire-normal "${SESSION_ONE}" slot2 \
+  >"${TEST_ROOT}/normal-requested-repeat.json"
+cmp -s "${record_one}" "${TEST_ROOT}/record-one.before" ||
+  fail "repeated requested-slot admission changed its persisted record"
+expect_failure RUNTIME_OWNERSHIP_CONFLICT \
+  acquire-normal "${SESSION_ONE}" slot3
 expect_blocked_json NORMAL_CAPACITY_EXHAUSTED \
   acquire-normal "${SESSION_FIVE}"
 [[ ! -e "${CONTROL_ROOT}/records/${SESSION_FIVE}.json" ]] ||

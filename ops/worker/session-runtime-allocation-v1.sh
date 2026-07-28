@@ -51,6 +51,7 @@ if [[ "${TEST_MODE}" == "1" ]]; then
   ARTIFACT_ROOT="${ATENEA_ARTIFACT_ROOT:-}"
   CACHE_ROOT="${ATENEA_CACHE_ROOT:-}"
   CONTROL_ROOT="${ATENEA_RUNTIME_CONTROL_ROOT:-}"
+  ADMISSION_ROOT="${ATENEA_RUNTIME_ADMISSION_ROOT:-}"
   for root in \
     "${WORKSPACE_ROOT}" "${ARTIFACT_ROOT}" "${CACHE_ROOT}" "${CONTROL_ROOT}"; do
     [[ "${root}" == /tmp/* && "${root}" != *".."* ]] ||
@@ -65,6 +66,7 @@ else
   ARTIFACT_ROOT="/srv/atenea/artifacts"
   CACHE_ROOT="/srv/atenea/caches"
   CONTROL_ROOT="/srv/atenea/worker/runtime-allocation-v1"
+  ADMISSION_ROOT="/srv/atenea/worker/runtime-admission-v1"
 fi
 
 SESSION_ROOT="${WORKSPACE_ROOT}/sessions/${SESSION_ID}"
@@ -188,7 +190,10 @@ jq -e \
   --arg project "${PROJECT_ID}" '
     .schemaVersion == 1 and
     .project.id == $project and
-    .workloadClass == "normal" and
+    (
+      .workloadClass == "normal" or
+      (.workloadClass == "heavy" and $project == "atenea")
+    ) and
     (.runtime.internalPorts | type == "array" and length > 0) and
     all(.runtime.internalPorts[];
       (keys | sort) == ["name", "port", "protocol"] and
@@ -198,8 +203,40 @@ jq -e \
     ([.runtime.internalPorts[].name] | length == (unique | length))
   ' "${MANIFEST_REAL}" >/dev/null ||
   fail "MANIFEST_INVALID" "Manifest project, workload or internal ports are incompatible with runtime allocation v1." \
-    "Validate the normal-workload manifest and retry; heavy admission is implemented in task 4.4."
-WORKLOAD_CLASS="normal"
+    "Validate the project manifest and its supported workload class before retrying."
+WORKLOAD_CLASS="$(jq -r '.workloadClass' "${MANIFEST_REAL}")"
+HEAVY_PERMIT=""
+if [[ "${WORKLOAD_CLASS}" == "heavy" ]]; then
+  if [[ "${TEST_MODE}" == "1" ]]; then
+    [[ "${ADMISSION_ROOT}" == /tmp/* && "${ADMISSION_ROOT}" != *".."* ]] ||
+      fail "RUNTIME_OWNERSHIP_CONFLICT" "Heavy test admission root must be beneath /tmp." \
+        "Use the persisted synthetic admission root for this WorkSession."
+  fi
+  ADMISSION_RECORD="${ADMISSION_ROOT}/records/${SESSION_ID}.json"
+  [[ -f "${ADMISSION_RECORD}" && ! -L "${ADMISSION_RECORD}" &&
+      "$(stat -c %u "${ADMISSION_RECORD}")" == "$(id -u)" &&
+      "$(stat -c %a "${ADMISSION_RECORD}")" =~ ^6[04]0$ ]] ||
+    fail "RUNTIME_OWNERSHIP_CONFLICT" "Heavy allocation has no safe admission record." \
+      "Acquire the WorkSession normal slot and heavy permit before allocating it."
+  jq -e \
+    --arg session "${SESSION_ID}" \
+    --arg slot "${SLOT}" '
+      (keys | sort) == ["heavy", "normal", "schemaVersion", "sessionId"] and
+      .schemaVersion == 1 and .sessionId == $session and
+      .normal == {slot: $slot, state: "held"} and
+      (.heavy | type == "object" and
+        (keys | sort) == ["permit", "state"] and
+        (.permit | test("^heavy[1-2]$")) and .state == "held")
+    ' "${ADMISSION_RECORD}" >/dev/null ||
+    fail "RUNTIME_OWNERSHIP_CONFLICT" "Heavy admission does not hold the requested slot and permit." \
+      "Reconcile admission before creating runtime allocation state."
+  HEAVY_PERMIT="$(jq -r '.heavy.permit' "${ADMISSION_RECORD}")"
+fi
+if [[ "${WORKLOAD_CLASS}" == "heavy" ]]; then
+  CACHE_SCOPES='["browser","codex","maven","node","oci"]'
+else
+  CACHE_SCOPES='["browser","maven","node","oci"]'
+fi
 REQUESTED_PORTS="$(
   jq -cS \
     '[.runtime.internalPorts[] | {
@@ -233,11 +270,19 @@ validate_allocation_record() {
     ("ws-" + $sessionHex) as $runtime |
     .schemaVersion == 1 and .state == "allocated" and
     (.projectId | test("^[a-z][a-z0-9-]{1,62}$")) and
+    (
+      (
+        .workloadClass == "normal" and
+        (has("heavyPermit") | not)
+      ) or (
+        .projectId == "atenea" and .workloadClass == "heavy" and
+        (.heavyPermit | test("^heavy[1-2]$"))
+      )
+    ) and
     .runtimeId == $runtime and
     (.manifestRelativePath |
       test("^(?!/)(?!~)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)[A-Za-z0-9._/-]+$")) and
     (.slot | test("^slot[1-4]$")) and
-    .workloadClass == "normal" and
     .runtimeNames.composeProject == ($runtime + "-compose") and
     .runtimeNames.network == ($runtime + "-network") and
     .runtimeNames.volumePrefix == ($runtime + "-volume") and
@@ -296,6 +341,8 @@ record_matches_request() {
     --arg runtime "${RUNTIME_ID}" \
     --arg manifestRelativePath "${MANIFEST_RELATIVE_PATH}" \
     --arg slot "${SLOT}" \
+    --arg workloadClass "${WORKLOAD_CLASS}" \
+    --arg heavyPermit "${HEAVY_PERMIT}" \
     --arg runtimeRoot "${RUNTIME_ROOT}" \
     --arg logs "${LOGS_PATH}" \
     --arg artifacts "${ARTIFACTS_ROOT}" \
@@ -309,7 +356,14 @@ record_matches_request() {
       .branch == $branch and .mirrorPath == $mirror and
       .worktreePath == $worktree and .runtimeId == $runtime and
       .manifestRelativePath == $manifestRelativePath and
-      .slot == $slot and .workloadClass == "normal" and
+      .slot == $slot and .workloadClass == $workloadClass and
+      (
+        if $workloadClass == "heavy" then
+          .heavyPermit == $heavyPermit
+        else
+          (has("heavyPermit") | not)
+        end
+      ) and
       .runtimeRoot == $runtimeRoot and .logsPath == $logs and
       .artifactsRoot == $artifacts and .cacheRoot == $cache and
       .runtimeNames.composeProject == $compose and
@@ -423,6 +477,19 @@ for path in \
         "Reconcile ownership without deleting logs, artifacts, caches or source."
   fi
 done
+if [[ "${WORKLOAD_CLASS}" == "heavy" ]]; then
+  for path in \
+    "${SESSION_CACHE_ROOT}/codex" \
+    "${RUNTIME_ROOT}/data/uploads" \
+    "${RUNTIME_ROOT}/secrets"; do
+    if [[ -e "${path}" || -L "${path}" ]]; then
+      [[ -d "${path}" && ! -L "${path}" &&
+          "$(stat -c %u "${path}")" == "$(id -u)" ]] ||
+        fail "RUNTIME_OWNERSHIP_CONFLICT" "An Atenea heavy-runtime path is unsafe or foreign-owned." \
+          "Reconcile the owned WorkSession path without deleting source or retained evidence."
+    fi
+  done
+fi
 assert_no_symlink_chain "${SESSION_ROOT}" "${RUNTIME_ROOT}" "Runtime root"
 assert_no_symlink_chain "${SESSION_ROOT}" "${TOMCAT_BASE}" "Tomcat base"
 assert_no_symlink_chain "${ARTIFACT_ROOT}" "${LOGS_PATH}" "Log root"
@@ -432,10 +499,37 @@ for cache_scope in maven node oci browser; do
   assert_no_symlink_chain \
     "${CACHE_ROOT}" "${SESSION_CACHE_ROOT}/${cache_scope}" "Cache scope"
 done
+if [[ "${WORKLOAD_CLASS}" == "heavy" ]]; then
+  assert_no_symlink_chain "${CACHE_ROOT}" "${SESSION_CACHE_ROOT}/codex" "Atenea Codex cache"
+  assert_no_symlink_chain "${SESSION_ROOT}" "${RUNTIME_ROOT}/data/uploads" "Atenea upload data"
+  assert_no_symlink_chain "${SESSION_ROOT}" "${RUNTIME_ROOT}/secrets" "Atenea secret references"
+fi
 install -d -m 2770 \
-  "${RUNTIME_ROOT}" "${TOMCAT_BASE}" "${LOGS_PATH}" "${ARTIFACTS_ROOT}" \
+  "${SESSION_ROOT}/runtime" "${RUNTIME_ROOT}" "${TOMCAT_BASE}" \
+  "${ARTIFACT_ROOT}/sessions/${SESSION_ID}" \
+  "${ARTIFACT_ROOT}/sessions/${SESSION_ID}/runtime" \
+  "${LOGS_PATH}" "${ARTIFACTS_ROOT}" "${SESSION_CACHE_ROOT}" \
   "${SESSION_CACHE_ROOT}/maven" "${SESSION_CACHE_ROOT}/node" \
   "${SESSION_CACHE_ROOT}/oci" "${SESSION_CACHE_ROOT}/browser"
+if [[ "${WORKLOAD_CLASS}" == "heavy" ]]; then
+  install -d -m 2770 \
+    "${SESSION_CACHE_ROOT}/codex" \
+    "${RUNTIME_ROOT}/data" \
+    "${RUNTIME_ROOT}/data/uploads" \
+    "${RUNTIME_ROOT}/secrets"
+  for secret_name in ATENEA_DEV_POSTGRES_PASSWORD ATENEA_DEV_JWT_SECRET; do
+    secret_path="${RUNTIME_ROOT}/secrets/${secret_name}"
+    if [[ -e "${secret_path}" || -L "${secret_path}" ]]; then
+      [[ -f "${secret_path}" && ! -L "${secret_path}" &&
+          "$(stat -c %u "${secret_path}")" == "$(id -u)" &&
+          "$(stat -c %a "${secret_path}")" == "600" ]] ||
+        fail "RUNTIME_OWNERSHIP_CONFLICT" "An Atenea named secret reference is unsafe or foreign-owned." \
+          "Reconcile the empty owned reference without exposing a secret value."
+    else
+      install -m 0600 /dev/null "${secret_path}"
+    fi
+  done
+fi
 
 if [[ -e "${CACHE_POLICY_PATH}" || -L "${CACHE_POLICY_PATH}" ]]; then
   [[ -f "${CACHE_POLICY_PATH}" && ! -L "${CACHE_POLICY_PATH}" &&
@@ -445,11 +539,12 @@ if [[ -e "${CACHE_POLICY_PATH}" || -L "${CACHE_POLICY_PATH}" ]]; then
       "Reconcile the cache root without touching authoritative session state."
   jq -e \
     --arg session "${SESSION_ID}" \
-    --arg runtime "${RUNTIME_ID}" '
+    --arg runtime "${RUNTIME_ID}" \
+    --argjson scopes "${CACHE_SCOPES}" '
       .schemaVersion == 1 and .sessionId == $session and
       .runtimeId == $runtime and .authoritative == false and
       .rebuildable == true and .secretsAllowed == false and
-      .scopes == ["browser", "maven", "node", "oci"]
+      .scopes == $scopes
     ' "${CACHE_POLICY_PATH}" >/dev/null ||
     fail "RUNTIME_OWNERSHIP_CONFLICT" "The cache policy conflicts with the session allocation." \
       "Quarantine or rebuild only the non-authoritative cache after review."
@@ -457,14 +552,15 @@ else
   temporary_cache_policy="$(mktemp "${SESSION_CACHE_ROOT}/.cache-policy-v1.json.XXXXXX")"
   jq -n \
     --arg session "${SESSION_ID}" \
-    --arg runtime "${RUNTIME_ID}" '{
+    --arg runtime "${RUNTIME_ID}" \
+    --argjson scopes "${CACHE_SCOPES}" '{
       schemaVersion: 1,
       sessionId: $session,
       runtimeId: $runtime,
       authoritative: false,
       rebuildable: true,
       secretsAllowed: false,
-      scopes: ["browser", "maven", "node", "oci"]
+      scopes: $scopes
     }' >"${temporary_cache_policy}"
   chmod 0640 "${temporary_cache_policy}"
   mv -- "${temporary_cache_policy}" "${CACHE_POLICY_PATH}"
@@ -481,6 +577,8 @@ if [[ ! -f "${RUNTIME_RECORD}" ]]; then
     --arg runtime "${RUNTIME_ID}" \
     --arg manifestRelativePath "${MANIFEST_RELATIVE_PATH}" \
     --arg slot "${SLOT}" \
+    --arg workloadClass "${WORKLOAD_CLASS}" \
+    --arg heavyPermit "${HEAVY_PERMIT}" \
     --arg runtimeRoot "${RUNTIME_ROOT}" \
     --arg logs "${LOGS_PATH}" \
     --arg artifacts "${ARTIFACTS_ROOT}" \
@@ -500,7 +598,7 @@ if [[ ! -f "${RUNTIME_RECORD}" ]]; then
       runtimeId: $runtime,
       manifestRelativePath: $manifestRelativePath,
       slot: $slot,
-      workloadClass: "normal",
+      workloadClass: $workloadClass,
       state: "allocated",
       runtimeNames: {
         composeProject: $compose,
@@ -514,7 +612,12 @@ if [[ ! -f "${RUNTIME_RECORD}" ]]; then
       artifactsRoot: $artifacts,
       cacheRoot: $cache,
       allocatedPorts: $ports
-    }' >"${temporary_record}"
+    } |
+    if $workloadClass == "heavy" then
+      . + {heavyPermit: $heavyPermit}
+    else
+      .
+    end' >"${temporary_record}"
   chmod 0640 "${temporary_record}"
   mv -- "${temporary_record}" "${RUNTIME_RECORD}"
 fi
