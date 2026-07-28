@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `18/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `19/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -554,13 +554,38 @@ Passing evidence is beneath
 `SHA256SUMS` is
 `bc750f5c958867f69b6f8b23d562ed7a13c96e990fb5f64b2d463ca0e10d0a70`.
 
-The next action is task 6.1. Task 6.1 was not started: do not establish the
-named administrative SSH/tmux development session until a new continuation
-begins from this resume point.
+Task 6.1 is complete and programme progress is `19/27`. A key-authenticated
+private SSH connection over Tailscale established the named tmux session
+`codex-atenea-41c0ff95` as administrator `jose`, with one
+`administrative` window rooted at the exact admitted WorkSession worktree.
+Codex `0.145.0`, the sanitized `remote-codex-admin-v1` context and ChatGPT
+login guard passed. The conversation contains the non-secret continuity marker
+`CONTEXT-READY ATENEA-41C0FF95-20260728`.
 
-The administrative Codex/tmux bridge may be used to begin work, but it is not
-evidence of the managed session isolation boundary and MUST NOT be used as
-Atenea's AgentRun executor.
+Tmux options label the session `administrative` and bind it to the existing
+WorkSession/runtime while explicitly recording `AgentRun=none`, worker
+lease `none` and routing `none`. The Codex process has no `DOCKER_HOST`
+environment. The worktree commit/tree/index, workspace/allocation/admission
+hashes, private runtime resources, 45 migrations and synthetic counts remained
+unchanged. AgentRuns, refresh tokens and routing records remain zero.
+Production, preview and Beautips remain `UP`; rootful Docker, its socket and
+containerd remain inactive and masked.
+
+The installed `codex-work` helper differs from the programme template only by
+`export COLORTERM=truecolor`; the retained comparison proves no workspace,
+daemon or authority change. Task 6.1 used an explicit detached tmux command,
+not that drifted helper. Final scanning retained no Codex auth/history/session
+file, environment dump or secret value.
+
+Passing evidence is beneath
+`runs/task-6.1-administrative-tmux-session`; the SHA-256 of its
+`SHA256SUMS` is
+`c914c4d4234701dd5d2d01ecabcd841f6c7fd72fca09bc982f4bef5045498ecf`.
+
+The next action is task 6.2. Task 6.2 was not started: do not attach,
+disconnect or resume the administrative client until a new continuation begins
+from this resume point. The tmux session must remain running unchanged for that
+acceptance.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — continuidad administrativa`.
+`Migración Atenea y Codex al AX42 — desconexión y reanudación`.

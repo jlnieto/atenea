@@ -2017,3 +2017,107 @@ SHA-256 is
 `bc750f5c958867f69b6f8b23d562ed7a13c96e990fb5f64b2d463ca0e10d0a70`.
 The result is `pass`. Programme progress is `18/27`; task 6.1 is the first
 pending task and was not started.
+
+## Task 6.1 — named administrative SSH/tmux session
+
+Completed on 2026-07-28 for administrative WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad`, without creating or claiming a managed
+execution. The session is named `codex-atenea-41c0ff95`, owned by administrator
+`jose`, and has one window named `administrative`.
+
+### Administrative boundary and context
+
+The initiating SSH path resolved `codex-worker-01` to its Tailscale address
+`100.81.98.93` and authenticated `jose` by public key. Password authentication
+was not used. The session started in the exact admitted worktree:
+
+`/srv/atenea/workspaces/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/atenea`
+
+Codex is the independently installed official `0.145.0` CLI. Its sanitized
+login guard reported ChatGPT authentication without reading or retaining
+authentication material. The promoted context manifest is
+`remote-codex-admin-v1`, aggregate SHA-256
+`afa03516a02362c216876b930145b9ab03c3561e138f9da10be8b26509a21b35`,
+with seven allowlisted configuration, instruction and skill files. The
+manifest explicitly excludes authentication, history, sessions, logs, caches,
+state databases, SSH keys and project secrets.
+
+Tmux options persist the following non-secret contract on the named session:
+
+- mode `administrative`;
+- the exact WorkSession, runtime and workspace identities;
+- context marker `ATENEA-41C0FF95-20260728`;
+- AgentRun `none`;
+- worker lease `none`;
+- routing `none`.
+
+The Codex child process runs as `jose`, in the exact worktree, with no
+`DOCKER_HOST` environment. This is intentionally a sudo-administrator bridge:
+it is not evidence of the managed sandbox, dispatch, idempotency or lease
+contracts and Atenea MUST NOT use it as an AgentRun executor.
+
+### Conversation initialization
+
+The first launch encountered Codex's interactive repository-trust guard. The
+initial bounded runner therefore stopped without retaining a session or
+changing Git/runtime state. The accepted session was then created with a
+keepalive diagnostic parent, the trust choice was made explicitly, and the
+Codex child remained active. The first marker submission needed one additional
+Enter after the pasted TUI input settled; the finite retry returned:
+
+`CONTEXT-READY ATENEA-41C0FF95-20260728`
+
+The corrected retained runner now handles the trust guard and waits one second
+between literal input and submit. Both preliminary outcomes are recorded
+structurally. The accepted session was created at
+`2026-07-28T18:17:49Z`, remains alive with one window and zero attached
+clients, and preserves the marker in its current pane.
+
+Task 6.1 deliberately created the session detached and did not perform the
+task 6.2 attach/disconnect/reconnect sequence. No resume claim is made here.
+
+### Non-impact and sanitization
+
+Before/after fingerprints prove the unchanged source commit
+`b6dc854d94ba5b1976926656c9a6aba330f671e2`, tree
+`f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`, clean index,
+workspace/allocation/admission hashes and runtime `ready/healthy` status. The
+same three containers, one internal network, one retained volume and three
+loopback listeners remain.
+
+Flyway remains byte-identical at 45 successful V1–V45 migrations. The checked
+synthetic subset is unchanged: one operator, one project, one closed
+WorkSession, two SessionTurns, zero AgentRuns, refresh tokens, API usage,
+push records, managed hosts and core commands. Routing records remain zero.
+No WorkSession, allocation, admission, runtime resource, database or listener
+was created.
+
+Production and preview remain `UP` with the same nine containers. Beautips
+remains `UP` with its three containers. Rootful Docker, its socket and
+containerd remain inactive and masked. The source and programme repositories
+were clean and synchronized at `b6dc854d...` and `f9c9cca...` before this
+documentation-only update.
+
+The installed `codex-work` SHA-256 is
+`f5a6c4accfc56101b2f26bc7f9838b9a4c306daffece2195ae76fa8935bbee85`;
+the current programme template is
+`6f0ce8f61847851e64a1c29d1c7f04c299f56b97f153d5d12c77e64ac4f2325a`.
+The only reviewed difference is an added `export COLORTERM=truecolor`, which
+does not change workspace validation, daemon access or authority. Task 6.1
+used an explicit detached tmux command instead of invoking the helper.
+
+Final sanitization checked all retained files against the four development
+secret values and found zero matches. No Codex authentication, history,
+session or state-database file, auth header, token, password, environment dump
+or unsanitized credential material is retained.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-6.1-administrative-tmux-session`
+
+It contains 32 regular files. `SHA256SUMS` verifies the other 31 files; its
+SHA-256 is
+`c914c4d4234701dd5d2d01ecabcd841f6c7fd72fca09bc982f4bef5045498ecf`.
+The result is `pass`. Programme progress is `19/27`; task 6.2 is the first
+pending task and was not started.
