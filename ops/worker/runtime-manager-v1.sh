@@ -587,7 +587,7 @@ if [[ "${IS_ATENEA}" == "true" ]]; then
       $db.secretRefs == ["ATENEA_DEV_POSTGRES_PASSWORD"] and
       (.[0].services[] | select(.name == "codex-app-server")) as $codex |
       $codex.image ==
-        "atenea/codex-app-server@sha256:b51c22f9c49b8c3196bda81669265ef0e552c6598d02c48eb370ed32f80611a5" and
+        "atenea/codex-app-server@sha256:c081aaa9d40afa4d8b57297000fe9aff5635e52a94b2b87abf8626b128c55e2d" and
       $codex.mounts == [
         {type: "bind", source: ($delivery + "/source"), target: "/workspace/atenea", readOnly: false},
         {type: "bind", source: ($delivery + "/cache/codex"), target: "/workspace/cache/codex", readOnly: false}

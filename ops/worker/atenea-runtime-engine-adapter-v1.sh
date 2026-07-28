@@ -15,8 +15,8 @@ EXPECTED_ARCHIVE_SHA256='a6f52b2d267750dfb4f8bc9f31d3c0d2434876ddf6517920cb882f1
 EXPECTED_MANIFEST_SHA256='3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3'
 EXPECTED_COMPOSE_SHA256='2133646b9fe6227ca417d6d62c92a74306caaa46a2957cdee810d5d7b0e5bb9f'
 POSTGRES_IMAGE='postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20'
-CODEX_IMAGE='atenea/codex-app-server@sha256:b51c22f9c49b8c3196bda81669265ef0e552c6598d02c48eb370ed32f80611a5'
-CODEX_IMAGE_ID='sha256:b51c22f9c49b8c3196bda81669265ef0e552c6598d02c48eb370ed32f80611a5'
+CODEX_IMAGE='atenea/codex-app-server@sha256:c081aaa9d40afa4d8b57297000fe9aff5635e52a94b2b87abf8626b128c55e2d'
+CODEX_IMAGE_ID='sha256:c081aaa9d40afa4d8b57297000fe9aff5635e52a94b2b87abf8626b128c55e2d'
 APP_IMAGE='maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e'
 
 PLAN=''
@@ -109,8 +109,17 @@ container_owned() {
     jq -e --argjson expected "$(label_json "${service}")" '
       .[0].Config.Labels as $actual |
       all($expected | to_entries[]; $actual[.key] == .value) and
-      all($actual | keys[]; startswith("com.atenea.") or
-        startswith("com.docker.compose."))
+      all($actual | keys[];
+        (startswith("com.atenea.") | not) or
+        . == "com.atenea.engine" or
+        . == "com.atenea.session" or
+        . == "com.atenea.runtime" or
+        . == "com.atenea.project" or
+        . == "com.atenea.service" or
+        . == "com.atenea.image" or
+        . == "com.atenea.codex.version" or
+        . == "com.atenea.node.version" or
+        . == "com.atenea.codex.auth-boundary")
     ' >/dev/null
 }
 
@@ -395,7 +404,7 @@ write_compose() {
             ATENEA_CODEX_AUTH_STATUS_FILE: "/workspace/cache/codex/auth-status.json"
           },
           command: [
-            "codex", "app-server", "--listen", "ws://0.0.0.0:8092",
+            "node", "/usr/local/lib/atenea/codex-loopback-proxy.mjs",
             "-c", "approval_policy=\"never\"",
             "-c", "sandbox_mode=\"workspace-write\""
           ],

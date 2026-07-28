@@ -33,6 +33,10 @@ container-daemon socket, host root filesystem or unrelated workspaces.
 - **WHEN** the admitted rootless slot cannot traverse the protected canonical worktree ancestors
 - **THEN** the mediator verifies a byte-exact archive of the selected commit and mounts only a WorkSession/runtime-scoped ephemeral delivery without changing canonical path permissions or accepting another source identity
 
+#### Scenario: Development Codex runs without authentication
+- **WHEN** the private runtime starts the authentication-disabled Codex App Server
+- **THEN** Codex listens only on container loopback and a fixed credential-free same-container proxy exposes its declared port solely through the internal runtime network and allocated host-loopback publication
+
 ### Requirement: Development-only Atenea data
 The AX42 Atenea database SHALL be a development-only PostgreSQL instance
 created from an empty schema by versioned migrations and explicit synthetic

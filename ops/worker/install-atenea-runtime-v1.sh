@@ -7,9 +7,10 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 LIBEXEC='/usr/libexec'
 SUDOERS='/etc/sudoers.d/91-atenea-runtime-v1'
 MANAGER_CONTROL_ROOT='/srv/atenea/worker/runtime-manager-v1'
-CODEX_IMAGE='atenea/codex-app-server@sha256:b51c22f9c49b8c3196bda81669265ef0e552c6598d02c48eb370ed32f80611a5'
-CODEX_IMAGE_ID='sha256:b51c22f9c49b8c3196bda81669265ef0e552c6598d02c48eb370ed32f80611a5'
-CODEX_DOCKERFILE_SHA256='628cf76fb87da3becadc873c99c02113ad74e38eb64383e929e7663ec3d79ae9'
+CODEX_IMAGE='atenea/codex-app-server@sha256:c081aaa9d40afa4d8b57297000fe9aff5635e52a94b2b87abf8626b128c55e2d'
+CODEX_IMAGE_ID='sha256:c081aaa9d40afa4d8b57297000fe9aff5635e52a94b2b87abf8626b128c55e2d'
+CODEX_DOCKERFILE_SHA256='d6a5688825f46533074d800cd11b29a1656413cdf68249a07a4924b17829d27e'
+CODEX_PROXY_SHA256='b62771d89fe1a26ca804f34c8712c3156b41134d235825c03a90a90daa7de64f'
 
 fail() {
   printf 'INSTALL_ATENEA_RUNTIME_FAILED: %s\n' "$1" >&2
@@ -37,6 +38,10 @@ dockerfile="${SCRIPT_DIR}/images/atenea-codex-app-server/Dockerfile"
 [[ "$(sha256sum "${dockerfile}" | cut -d' ' -f1)" == \
     "${CODEX_DOCKERFILE_SHA256}" ]] ||
   fail 'Codex image Dockerfile SHA-256 differs'
+proxy="${SCRIPT_DIR}/images/atenea-codex-app-server/codex-loopback-proxy.mjs"
+[[ -f "${proxy}" && ! -L "${proxy}" &&
+    "$(sha256sum "${proxy}" | cut -d' ' -f1)" == "${CODEX_PROXY_SHA256}" ]] ||
+  fail 'Codex loopback proxy SHA-256 differs'
 
 sudo -n -u atenea-slot2 \
   env DOCKER_HOST=unix:///run/atenea-runtime/slot2/docker.sock \
@@ -45,7 +50,8 @@ sudo -n -u atenea-slot2 \
     length == 1 and .[0].Id == $id and
     .[0].Config.Labels["com.atenea.image"] == "codex-app-server" and
     .[0].Config.Labels["com.atenea.codex.version"] == "0.145.0" and
-    .[0].Config.Labels["com.atenea.node.version"] == "22.16.0"
+    .[0].Config.Labels["com.atenea.node.version"] == "22.16.0" and
+    .[0].Config.Labels["com.atenea.codex.auth-boundary"] == "loopback-proxy-v1"
   ' >/dev/null ||
   fail 'the exact reviewed Codex App Server image is unavailable in slot2'
 

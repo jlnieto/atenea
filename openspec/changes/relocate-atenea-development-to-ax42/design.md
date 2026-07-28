@@ -169,9 +169,14 @@ labels, mounts, limits and fail-safe development environment values.
 The application is packaged first in a bounded, non-runtime build container.
 The three-service runtime itself has no external network path. Codex App Server
 uses a reviewed image built from the pinned Node digest and Codex `0.145.0`,
-then fixed by its resulting OCI digest. The installed client, manager, engine
-and dedicated Atenea adapter remain root-owned; only `atenea-worker` may invoke
-the manager through the exact sudoers boundary.
+then fixed by its resulting OCI digest. Because Codex rejects an
+unauthenticated non-loopback listener, that image keeps the authentication-
+disabled App Server on container loopback and exposes the declared container
+port through a fixed same-container TCP proxy. The proxy has no credentials,
+authority or external route; the internal runtime network and host-loopback
+publication remain the outer boundary. The installed client, manager, engine
+and dedicated Atenea adapter remain root-owned; only `atenea-worker` may
+invoke the manager through the exact sudoers boundary.
 
 ## Risks / Trade-offs
 
