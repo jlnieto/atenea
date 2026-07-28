@@ -51,6 +51,10 @@ created from an empty schema by versioned migrations and explicit synthetic
 fixtures. Production dumps, volumes, rows, endpoints and credentials MUST NOT
 be copied or reachable from the worker.
 
+#### Scenario: Runtime reuses the task 4.3 cluster
+- **WHEN** the private runtime mounts the accepted PostgreSQL volume
+- **THEN** it uses the existing data root, database and role from task 4.3 without setting a nested `PGDATA`, initializing another cluster, rerunning fixtures or changing Flyway history
+
 #### Scenario: Development database is initialized
 - **WHEN** the Atenea development runtime starts with a new owned database volume
 - **THEN** Flyway applies the committed migrations and only declared synthetic operator and verification records are created

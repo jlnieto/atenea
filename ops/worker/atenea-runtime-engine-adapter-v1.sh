@@ -508,9 +508,8 @@ write_compose() {
           container_name: $dbContainer,
           user: "999:999",
           environment: {
-            PGDATA: "/var/lib/postgresql/data/pgdata",
-            POSTGRES_DB: "atenea_dev",
-            POSTGRES_USER: "atenea",
+            POSTGRES_DB: "atenea_ax42_synthetic_v1",
+            POSTGRES_USER: "atenea_ax42_synthetic_v1",
             POSTGRES_PASSWORD_FILE: "/run/secrets/postgres-password"
           },
           command: ["postgres", "-c", "listen_addresses=*", "-c", "port=5432"],
@@ -520,7 +519,7 @@ write_compose() {
           ],
           networks: {runtime: {aliases: ["db"]}},
           healthcheck: {
-            test: ["CMD-SHELL", "pg_isready --host=127.0.0.1 --port=5432 --username=atenea --dbname=atenea_dev"],
+            test: ["CMD-SHELL", "pg_isready --host=127.0.0.1 --port=5432 --username=atenea_ax42_synthetic_v1 --dbname=atenea_ax42_synthetic_v1"],
             interval: "5s", timeout: "3s", retries: 30, start_period: "10s"
           },
           read_only: true,
@@ -573,8 +572,8 @@ write_compose() {
           environment: {
             SERVER_PORT: "8081",
             SPRING_CONFIG_IMPORT: "configtree:/run/secrets/",
-            SPRING_DATASOURCE_URL: "jdbc:postgresql://db:5432/atenea_dev",
-            SPRING_DATASOURCE_USERNAME: "atenea",
+            SPRING_DATASOURCE_URL: "jdbc:postgresql://db:5432/atenea_ax42_synthetic_v1",
+            SPRING_DATASOURCE_USERNAME: "atenea_ax42_synthetic_v1",
             ATENEA_WORKSPACE_ROOT: "/workspace",
             ATENEA_CODEX_APP_SERVER_URL: "ws://codex-app-server:8092",
             ATENEA_CODEX_APP_SERVER_CWD: "/workspace/atenea",
@@ -659,14 +658,16 @@ tcp_listener_ready() {
 database_summary() {
   docker_exec_cmd --user 999:999 "${DB_CONTAINER}" \
     psql --no-psqlrc --tuples-only --no-align \
-      --username atenea --dbname atenea_dev --command \
+      --username atenea_ax42_synthetic_v1 \
+      --dbname atenea_ax42_synthetic_v1 --command \
       "SELECT count(*),min(installed_rank),max(installed_rank),count(*) FILTER (WHERE success),count(*) FILTER (WHERE NOT success),max(version::integer) FROM flyway_schema_history;"
 }
 
 domain_counts() {
   docker_exec_cmd --user 999:999 "${DB_CONTAINER}" \
     psql --no-psqlrc --tuples-only --no-align \
-      --username atenea --dbname atenea_dev <<'SQL'
+      --username atenea_ax42_synthetic_v1 \
+      --dbname atenea_ax42_synthetic_v1 <<'SQL'
 SELECT 'agent_run,' || count(*) FROM agent_run
 UNION ALL SELECT 'api_usage_record,' || count(*) FROM api_usage_record
 UNION ALL SELECT 'core_command,' || count(*) FROM core_command

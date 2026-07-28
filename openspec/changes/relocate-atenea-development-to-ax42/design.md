@@ -173,6 +173,10 @@ transport does not preserve Docker's hijacked exec stream, so the root-owned
 adapter uses slot2's exact user-owned daemon socket only for non-interactive
 read-only `psql` verification. Neither socket is mounted into a container or
 made available to project or Codex processes.
+The retained volume is consumed at the same PostgreSQL data root and with the
+same `atenea_ax42_synthetic_v1` database and role established by task 4.3.
+The runtime does not set a nested `PGDATA`, initialize another cluster, run
+fixtures or change Flyway history.
 
 The application is packaged first in a bounded, non-runtime build container.
 The three-service runtime itself has no external network path. Codex App Server
