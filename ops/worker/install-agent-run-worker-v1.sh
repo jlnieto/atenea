@@ -132,6 +132,17 @@ disable_endpoint() {
   systemctl disable --now "$SERVICE"
 }
 
+rollback_endpoint() {
+  require_root
+  [[ "$CONTROL_PLANE_IP" =~ ^100\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] \
+    || fail "ATENEA_CONTROL_PLANE_TAILSCALE_IP must be an exact tailnet IPv4 address"
+  systemctl disable --now "$SERVICE"
+  if ufw status | grep -F "$PORT/tcp on tailscale0" | grep -Fq "$CONTROL_PLANE_IP"; then
+    ufw --force delete allow in on tailscale0 proto tcp from "$CONTROL_PLANE_IP" \
+      to any port "$PORT" comment 'atenea-agent-run-worker-v1' >/dev/null
+  fi
+}
+
 enable_endpoint() {
   require_root
   systemctl enable --now "$SERVICE"
@@ -143,6 +154,7 @@ case "$ACTION" in
   apply) apply_install ;;
   verify) verify ;;
   disable) disable_endpoint ;;
+  rollback) rollback_endpoint ;;
   enable) enable_endpoint ;;
-  *) fail "usage: $0 plan|apply|verify|disable|enable" ;;
+  *) fail "usage: $0 plan|apply|verify|disable|rollback|enable" ;;
 esac
