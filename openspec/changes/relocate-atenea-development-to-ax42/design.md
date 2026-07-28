@@ -144,6 +144,35 @@ After rollback, production and the legacy executor continue unchanged.
 Restart acceptance later recreates or reconciles the AX42 development runtime
 from persisted records; it does not make AX42 authoritative for AgentRuns.
 
+### 9. Deliver the selected commit through a mediated ephemeral snapshot
+
+The rootless slot identity cannot traverse the canonical worktree's
+`atenea-worker:atenea` mode-`2770` ancestors. The runtime engine therefore
+creates a byte-exact `git archive` from the allocation's selected commit,
+checks its fixed archive SHA-256 and extracts it into a deterministic
+WorkSession/runtime-scoped path beneath `/tmp/atenea-runtime-delivery`.
+
+The delivery is owned by the assigned rootless slot, contains an ownership
+marker with the complete WorkSession, runtime, commit and tree identities, and
+is the only source bind authorized in the generated Compose input. The
+canonical mirror, worktree, index, ACLs, owners, groups and modes are not
+changed. Named development secrets are copied only into the private delivery
+boundary with no values in the plan, command line, logs or evidence.
+
+The engine consumes the committed manifest and AX42 Compose file only at their
+reviewed hashes, then generates a closed Compose definition for the three
+allowlisted services. It requires the retained labelled PostgreSQL volume as
+an external resource, publishes only the three allocated loopback ports,
+creates one internal labelled network and adds only deterministic names,
+labels, mounts, limits and fail-safe development environment values.
+
+The application is packaged first in a bounded, non-runtime build container.
+The three-service runtime itself has no external network path. Codex App Server
+uses a reviewed image built from the pinned Node digest and Codex `0.145.0`,
+then fixed by its resulting OCI digest. The installed client, manager, engine
+and dedicated Atenea adapter remain root-owned; only `atenea-worker` may invoke
+the manager through the exact sudoers boundary.
+
 ## Risks / Trade-offs
 
 - [Atenea's current Compose assumptions bypass isolation] → replace them with a

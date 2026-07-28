@@ -29,6 +29,10 @@ container-daemon socket, host root filesystem or unrelated workspaces.
 - **WHEN** its Compose input or command requests a fixed global identity, host namespace, daemon socket, device, privileged mode or undeclared host mount
 - **THEN** the runtime manager rejects the request before creating any resource and reports the unsafe field
 
+#### Scenario: Rootless slot cannot traverse the canonical worktree
+- **WHEN** the admitted rootless slot cannot traverse the protected canonical worktree ancestors
+- **THEN** the mediator verifies a byte-exact archive of the selected commit and mounts only a WorkSession/runtime-scoped ephemeral delivery without changing canonical path permissions or accepting another source identity
+
 ### Requirement: Development-only Atenea data
 The AX42 Atenea database SHALL be a development-only PostgreSQL instance
 created from an empty schema by versioned migrations and explicit synthetic

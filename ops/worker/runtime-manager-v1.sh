@@ -503,13 +503,15 @@ if [[ "${IS_ATENEA}" == "true" ]]; then
     --arg worktree "${WORKTREE_PATH}" \
     --arg runtimeRoot "$(jq -r '.runtimeRoot' "${ALLOCATION_PATH}")" \
     --arg cache "$(jq -r '.cacheRoot' "${ALLOCATION_PATH}")" \
+    --arg logs "$(jq -r '.logsPath' "${ALLOCATION_PATH}")" \
     --arg compose "$(jq -r '.runtimeNames.composeProject' "${ALLOCATION_PATH}")" \
     --arg network "$(jq -r '.runtimeNames.network' "${ALLOCATION_PATH}")" \
     --arg volume "$(jq -r '.runtimeNames.volumePrefix' "${ALLOCATION_PATH}")" \
     --arg allocationSha "$(sha256sum "${ALLOCATION_PATH}" | cut -d' ' -f1)" \
     --arg manifestSha "${ATENEA_MANIFEST_SHA256}" \
     --arg composePath "${ATENEA_COMPOSE_PATH}" \
-    --arg composeSha "${ATENEA_COMPOSE_SHA256}" '
+    --arg composeSha "${ATENEA_COMPOSE_SHA256}" \
+    --arg deliveryBase "${ATENEA_RUNTIME_DELIVERY_BASE:-/tmp/atenea-runtime-delivery}" '
       def labels($service): {
         "com.atenea.engine": "atenea-runtime-engine-v1",
         "com.atenea.session": $session,
@@ -526,10 +528,19 @@ if [[ "${IS_ATENEA}" == "true" ]]; then
       .[0].runtimeId == $runtime and .[0].projectId == "atenea" and
       .[0].slot == $slot and .[0].allocationSha256 == $allocationSha and
       .[0].manifestSha256 == $manifestSha and
+      ($deliveryBase + "/" + $runtime) as $delivery |
       .[0].compose == {
         sourcePath: $composePath,
         sourceSha256: $composeSha,
         projectName: $compose,
+        delivery: {
+          root: $delivery,
+          source: ($delivery + "/source"),
+          archiveSha256: "a6f52b2d267750dfb4f8bc9f31d3c0d2434876ddf6517920cb882f19112b5dea",
+          commit: "b6dc854d94ba5b1976926656c9a6aba330f671e2",
+          tree: "f8c0dff5c7acf3d82d73885b09f9b1d142b562d2",
+          logs: $logs
+        },
         network: {
           name: $network,
           internal: true,
@@ -576,10 +587,10 @@ if [[ "${IS_ATENEA}" == "true" ]]; then
       $db.secretRefs == ["ATENEA_DEV_POSTGRES_PASSWORD"] and
       (.[0].services[] | select(.name == "codex-app-server")) as $codex |
       $codex.image ==
-        "node:22.16.0-bookworm-slim@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34" and
+        "atenea/codex-app-server@sha256:b51c22f9c49b8c3196bda81669265ef0e552c6598d02c48eb370ed32f80611a5" and
       $codex.mounts == [
-        {type: "bind", source: $worktree, target: "/workspace/atenea", readOnly: false},
-        {type: "bind", source: ($cache + "/codex"), target: "/workspace/cache/codex", readOnly: false}
+        {type: "bind", source: ($delivery + "/source"), target: "/workspace/atenea", readOnly: false},
+        {type: "bind", source: ($delivery + "/cache/codex"), target: "/workspace/cache/codex", readOnly: false}
       ] and
       $codex.ports == [(
         $codex.ports[0] |
@@ -589,10 +600,10 @@ if [[ "${IS_ATENEA}" == "true" ]]; then
       $app.image ==
         "maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e" and
       $app.mounts == [
-        {type: "bind", source: $worktree, target: "/workspace/atenea", readOnly: false},
-        {type: "bind", source: ($cache + "/maven"), target: "/workspace/cache/maven", readOnly: false},
-        {type: "bind", source: ($cache + "/node"), target: "/workspace/cache/node", readOnly: false},
-        {type: "bind", source: ($runtimeRoot + "/data/uploads"), target: "/workspace/data/uploads", readOnly: false}
+        {type: "bind", source: ($delivery + "/source"), target: "/workspace/atenea", readOnly: false},
+        {type: "bind", source: ($delivery + "/cache/maven"), target: "/workspace/cache/maven", readOnly: false},
+        {type: "bind", source: ($delivery + "/cache/node"), target: "/workspace/cache/node", readOnly: false},
+        {type: "bind", source: ($delivery + "/data/uploads"), target: "/workspace/data/uploads", readOnly: false}
       ] and
       $app.ports == [(
         $app.ports[0] |

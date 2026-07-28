@@ -70,6 +70,8 @@ ADMISSION="${TEST_ROOT}/admission/${SESSION}.json"
 MANAGER="${TEST_ROOT}/runtime-manager-v1"
 ENGINE="${TEST_ROOT}/runtime-engine-v1"
 ENGINE_WRAPPER="${TEST_ROOT}/runtime-engine-wrapper-v1"
+ATENEA_ADAPTER="${TEST_ROOT}/atenea-runtime-engine-adapter-v1"
+ATENEA_ADAPTER_LOG="${TEST_ROOT}/atenea-adapter.log"
 DOCKER="${TEST_ROOT}/docker"
 DOCKER_LOG="${TEST_ROOT}/docker.log"
 ENGINE_LOG="${TEST_ROOT}/engine.log"
@@ -192,11 +194,23 @@ printf '{"state":"stopped","healthState":"stopped"}\n'
 WRAPPER
 chmod 0750 "${ENGINE_WRAPPER}"
 
+{
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'printf "%s\n" "$*" >>"${ATENEA_TEST_ADAPTER_LOG}"' \
+    'printf '\''{"state":"stopped","healthState":"stopped"}\n'\'''
+} >"${ATENEA_ADAPTER}"
+chmod 0750 "${ATENEA_ADAPTER}"
+
 engine_env=(
   ATENEA_RUNTIME_ENGINE_TEST_MODE=1
   ATENEA_RUNTIME_DOCKER_BIN="${DOCKER}"
   ATENEA_RUNTIME_DOCKER_HOST="unix://${TEST_ROOT}/docker.sock"
   ATENEA_RUNTIME_FAKE_DOCKER=1
+  ATENEA_RUNTIME_ALLOWED_SLOT=slot3
+  ATENEA_RUNTIME_ATENEA_ADAPTER="${ATENEA_ADAPTER}"
+  ATENEA_RUNTIME_DELIVERY_BASE="${TEST_ROOT}/delivery"
+  ATENEA_TEST_ADAPTER_LOG="${ATENEA_ADAPTER_LOG}"
   ATENEA_TEST_DOCKER_LOG="${DOCKER_LOG}"
   ATENEA_ENGINE_WORKSPACE_ROOT="${WORKSPACE_ROOT}"
   ATENEA_ENGINE_ARTIFACT_ROOT="${ARTIFACT_ROOT}"
@@ -279,11 +293,18 @@ if grep -Fq "atenea-runtime-v1.sh" "${CAPTURED_PLAN}"; then
   fail "manager copied manifest argv into the engine plan"
 fi
 
-expect_failure OPERATION_FAILED \
+engine_output="$(
   env "${engine_env[@]}" \
     "${ENGINE}" execute --plan "${CAPTURED_PLAN}" --json
+)"
+jq -e '.state == "stopped" and .healthState == "stopped"' \
+  <<<"${engine_output}" >/dev/null ||
+  fail "the validated Atenea plan did not reach the fixed adapter"
+grep -Fq "execute --plan ${CAPTURED_PLAN} --docker-host unix://${TEST_ROOT}/docker.sock --json" \
+  "${ATENEA_ADAPTER_LOG}" ||
+  fail "the engine did not delegate the closed plan to the fixed Atenea adapter"
 [[ ! -s "${DOCKER_LOG}" ]] ||
-  fail "Atenea plan validation called the container daemon"
+  fail "Atenea plan validation or adapter delegation called the fake container daemon"
 
 cp "${SOURCE_MANIFEST}" "${MANIFEST}"
 printf '\n' >>"${MANIFEST}"

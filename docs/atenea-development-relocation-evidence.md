@@ -1480,3 +1480,69 @@ test result, before/after fingerprints, cleanup proof and `SHA256SUMS`.
 
 Task 4.4 is complete. Task 5.1 is now the first pending task and was not
 started.
+
+## Task 5.1 — private runtime activation blocked before daemon access
+
+Attempted on 2026-07-28 only for administrative WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad` and `slot2/heavy1`. Task 5.1 remains
+unchecked and programme progress remains `14/27`; task 5.2 was not started.
+
+The preflight reproduced the selected Atenea commit
+`b6dc854d94ba5b1976926656c9a6aba330f671e2`, tree
+`f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`, clean worktree and clean index.
+Workspace, allocation and admission hashes remained respectively
+`8ee6237d0eb4c3bba0b3ccdc8ec9c0fb49550180bfebf921dc1ad70d75e4928e`,
+`c4e45ac8ff834d68cddd385ec95699702b1df0ec7d574154b6dc8654fd592f13`
+and `20c7a409e741eb73b4847a177c98b69128da7b07b6a9ac5ff7b7e1af1413a29d`.
+The manifest and Compose hashes remained
+`3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3`
+and `2133646b9fe6227ca417d6d62c92a74306caaa46a2957cdee810d5d7b0e5bb9f`.
+
+Activation stopped before invoking a daemon for four related contract gates:
+
+1. The fixed `/usr/libexec/atenea-runtime-client-v1`,
+   `/usr/libexec/atenea-runtime-manager-v1` and
+   `/usr/libexec/atenea-runtime-engine-v1` paths are absent on AX42. No
+   corresponding sudoers entry or service unit is installed.
+2. The exact versioned engine, SHA-256
+   `617327df412fdee18b879295359bc000431f0bc686623b98e06c41b5ec93e6e3`,
+   explicitly rejects Atenea after validating its closed plan with
+   `Atenea lifecycle activation remains disabled after plan validation`.
+3. `atenea-slot2` cannot traverse the canonical worktree ancestors, which are
+   intentionally `atenea-worker:atenea` mode `2770`.
+4. The exact manager/engine adapter authorizes the canonical worktree itself as
+   the bind source for `codex-app-server` and `atenea-dev`; it has no reviewed
+   field for a byte-exact, WorkSession-scoped `git archive` delivery root.
+
+Installing or extending the mediator, changing the bind allowlist, or changing
+the committed Compose would be a new reviewed contract implementation.
+Changing ACLs, modes, ownership or groups would violate the explicit gate.
+Consequently no direct `docker compose up`, arbitrary Compose adapter,
+rootful daemon, alternative database volume, capability workaround or image
+substitution was attempted.
+
+Slot2 remained at zero session containers, zero session networks and zero
+listeners on `127.0.0.1:22667`, `127.0.0.1:28541` and
+`127.0.0.1:22359`. The exact retained task 4.3 volume and its five ownership
+labels remained unchanged. Rootful Docker, its socket and containerd remained
+inactive and masked. Production and preview retained all nine expected running
+containers, Beautips retained its three running containers, and routing
+environment/record counts remained zero. Fingerprints before and after were
+identical after excluding capture time and the task 5.1 evidence directory.
+
+Blocked evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-5.1-private-runtime`
+
+It includes source and contract hashes, sanitized workspace/allocation/admission
+records, before/after fingerprints, worktree traversal evidence, installed
+boundary state, container/network/volume/image/listener inventories, the exact
+retained-volume labels, Beautips and control-plane status, routing absence, a
+structured blocker and `SHA256SUMS`. The SHA-256 of `SHA256SUMS` is
+`4098564cff3eccda9002fa85fd6d9c1e593997ea0f5ea7fd694b7b3962f240b4`.
+
+The next action remains task 5.1. Before retrying, review and version the
+minimum mediated lifecycle plus commit-exact delivery contract, install the
+fixed client/manager/engine boundary and rerun the full negative regression
+gate. Do not start task 5.2.

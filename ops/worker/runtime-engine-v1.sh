@@ -13,8 +13,9 @@ ENGINE_LABEL="atenea-runtime-engine-v1"
 ATENEA_MANIFEST_SHA256="3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
 ATENEA_COMPOSE_SHA256="2133646b9fe6227ca417d6d62c92a74306caaa46a2957cdee810d5d7b0e5bb9f"
 ATENEA_POSTGRES_IMAGE="postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20"
-ATENEA_CODEX_IMAGE="${NODE_IMAGE}"
+ATENEA_CODEX_IMAGE="atenea/codex-app-server@sha256:b51c22f9c49b8c3196bda81669265ef0e552c6598d02c48eb370ed32f80611a5"
 ATENEA_APP_IMAGE="maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e"
+ATENEA_ADAPTER="${ATENEA_RUNTIME_ATENEA_ADAPTER:-/usr/libexec/atenea-runtime-engine-adapter-v1}"
 
 fail() {
   printf '%s: %s\n' "$1" "$2" >&2
@@ -160,8 +161,10 @@ atenea_inspection() {
     --arg postgresImage "${ATENEA_POSTGRES_IMAGE}" \
     --arg codexImage "${ATENEA_CODEX_IMAGE}" \
     --arg appImage "${ATENEA_APP_IMAGE}" \
+    --arg deliveryBase "${ATENEA_RUNTIME_DELIVERY_BASE:-/tmp/atenea-runtime-delivery}" \
     --slurpfile allocation "${allocation}" '
       $allocation[0] as $a |
+      ($deliveryBase + "/" + $a.runtimeId) as $delivery |
       def labels($service): {
         "com.atenea.engine": $engine,
         "com.atenea.session": $session,
@@ -190,6 +193,14 @@ atenea_inspection() {
           sourcePath: $composePath,
           sourceSha256: $composeSha,
           projectName: $a.runtimeNames.composeProject,
+          delivery: {
+            root: $delivery,
+            source: ($delivery + "/source"),
+            archiveSha256: "a6f52b2d267750dfb4f8bc9f31d3c0d2434876ddf6517920cb882f19112b5dea",
+            commit: "b6dc854d94ba5b1976926656c9a6aba330f671e2",
+            tree: "f8c0dff5c7acf3d82d73885b09f9b1d142b562d2",
+            logs: $a.logsPath
+          },
           network: {
             name: $a.runtimeNames.network,
             internal: true,
@@ -233,13 +244,13 @@ atenea_inspection() {
             mounts: [
               {
                 type: "bind",
-                source: $a.worktreePath,
+                source: ($delivery + "/source"),
                 target: "/workspace/atenea",
                 readOnly: false
               },
               {
                 type: "bind",
-                source: ($a.cacheRoot + "/codex"),
+                source: ($delivery + "/cache/codex"),
                 target: "/workspace/cache/codex",
                 readOnly: false
               }
@@ -265,25 +276,25 @@ atenea_inspection() {
             mounts: [
               {
                 type: "bind",
-                source: $a.worktreePath,
+                source: ($delivery + "/source"),
                 target: "/workspace/atenea",
                 readOnly: false
               },
               {
                 type: "bind",
-                source: ($a.cacheRoot + "/maven"),
+                source: ($delivery + "/cache/maven"),
                 target: "/workspace/cache/maven",
                 readOnly: false
               },
               {
                 type: "bind",
-                source: ($a.cacheRoot + "/node"),
+                source: ($delivery + "/cache/node"),
                 target: "/workspace/cache/node",
                 readOnly: false
               },
               {
                 type: "bind",
-                source: ($a.runtimeRoot + "/data/uploads"),
+                source: ($delivery + "/data/uploads"),
                 target: "/workspace/data/uploads",
                 readOnly: false
               }
@@ -792,7 +803,57 @@ validate_plan() {
         .slot == $slot and .state == "allocated"
       ' "${ALLOCATION}" >/dev/null ||
       fail "RUNTIME_OWNERSHIP_CONFLICT" "The Atenea plan does not own the assigned slot."
-    fail "OPERATION_FAILED" "Atenea lifecycle activation remains disabled after plan validation."
+    SLOT="$(jq -r '.slot' "${ALLOCATION}")"
+    [[ "${SLOT}" == "${ATENEA_RUNTIME_ALLOWED_SLOT:-slot2}" ]] ||
+      fail "RUNTIME_OWNERSHIP_CONFLICT" "The engine is not authorized for this slot."
+    RUNTIME_ROOT="$(jq -r '.runtimeRoot' "${ALLOCATION}")"
+    LOGS_PATH="$(jq -r '.logsPath' "${ALLOCATION}")"
+    ARTIFACTS_ROOT="$(jq -r '.artifactsRoot' "${ALLOCATION}")"
+    NETWORK="$(jq -r '.runtimeNames.network' "${ALLOCATION}")"
+    COMPOSE_PROJECT="$(jq -r '.runtimeNames.composeProject' "${ALLOCATION}")"
+    ENGINE_ROOT="${RUNTIME_ROOT}/engine-v1"
+    LOCK_PATH="${RUNTIME_ROOT}/engine-v1.lock"
+    for path in "${RUNTIME_ROOT}" "${LOGS_PATH}" "${ARTIFACTS_ROOT}"; do
+      [[ -d "${path}" && ! -L "${path}" ]] ||
+        fail "RUNTIME_OWNERSHIP_CONFLICT" "A session-derived runtime path is unsafe."
+    done
+    if [[ -e "${ENGINE_ROOT}" || -L "${ENGINE_ROOT}" ]]; then
+      [[ -d "${ENGINE_ROOT}" && ! -L "${ENGINE_ROOT}" &&
+          "$(stat -c %u "${ENGINE_ROOT}")" == "$(id -u)" &&
+          "$(stat -c %a "${ENGINE_ROOT}")" == "700" &&
+          -f "${ENGINE_ROOT}/.owner-v1" &&
+          "$(cat "${ENGINE_ROOT}/.owner-v1")" == "${SESSION} ${RUNTIME}" ]] ||
+        fail "RUNTIME_OWNERSHIP_CONFLICT" "The engine state root has foreign ownership."
+    else
+      install -d -m 0700 "${ENGINE_ROOT}"
+      chmod g-s,u=rwx,go= "${ENGINE_ROOT}"
+      printf '%s %s\n' "${SESSION}" "${RUNTIME}" >"${ENGINE_ROOT}/.owner-v1"
+    fi
+    [[ ! -L "${LOCK_PATH}" ]] ||
+      fail "RUNTIME_OWNERSHIP_CONFLICT" "The runtime lock is unsafe."
+    exec {engine_lock_fd}>"${LOCK_PATH}"
+    [[ "$(stat -c %u "${LOCK_PATH}")" == "$(id -u)" ]] ||
+      fail "RUNTIME_OWNERSHIP_CONFLICT" "The runtime lock has foreign ownership."
+    flock -w 30 "${engine_lock_fd}" ||
+      fail "RECONCILIATION_REQUIRED" "The session runtime is busy."
+    if [[ "${TEST_MODE}" == "1" ]]; then
+      DOCKER_HOST_VALUE="${ATENEA_RUNTIME_DOCKER_HOST:-}"
+      [[ "${DOCKER_HOST_VALUE}" == unix:///tmp/* ||
+          "${DOCKER_HOST_VALUE}" == "unix:///run/atenea-runtime/slot2/docker.sock" ]] ||
+        fail "RUNTIME_OWNERSHIP_CONFLICT" "Synthetic Docker host is outside the allowed slot."
+      [[ "${ATENEA_ADAPTER}" == /tmp/* && -f "${ATENEA_ADAPTER}" &&
+          ! -L "${ATENEA_ADAPTER}" && -x "${ATENEA_ADAPTER}" ]] ||
+        fail "RUNTIME_OWNERSHIP_CONFLICT" "The synthetic Atenea adapter is unsafe."
+    else
+      DOCKER_HOST_VALUE="unix:///run/atenea-runtime/${SLOT}/docker.sock"
+      [[ -f "${ATENEA_ADAPTER}" && ! -L "${ATENEA_ADAPTER}" &&
+          -x "${ATENEA_ADAPTER}" && "$(stat -c %u "${ATENEA_ADAPTER}")" == 0 ]] ||
+        fail "TOOLCHAIN_UNAVAILABLE" "The fixed Atenea runtime adapter is unavailable."
+    fi
+    [[ -S "${DOCKER_HOST_VALUE#unix://}" ||
+        "${ATENEA_RUNTIME_FAKE_DOCKER:-0}" == "1" ]] ||
+      fail "TOOLCHAIN_UNAVAILABLE" "The assigned rootless runtime slot is unavailable."
+    return
   fi
 
   jq -e '
@@ -895,6 +956,15 @@ execute_plan() {
   fi
   validate_plan
   operation="$(jq -r '.operation' "${PLAN}")"
+  if [[ "${PROJECT}" == "atenea" ]]; then
+    adapter_args=(
+      execute
+      --plan "${PLAN}"
+      --docker-host "${DOCKER_HOST_VALUE}"
+    )
+    [[ "${JSON_MODE}" == "true" ]] && adapter_args+=(--json)
+    exec "${ATENEA_ADAPTER}" "${adapter_args[@]}"
+  fi
   case "${operation}" in
     doctor)
       docker_cmd version >/dev/null 2>&1 ||

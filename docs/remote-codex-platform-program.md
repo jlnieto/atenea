@@ -6,12 +6,12 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `12/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `14/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
 - Canonical source: GitHub
-- Last evidence refresh: 2026-07-27
+- Last evidence refresh: 2026-07-28
 
 The normative requirements live in OpenSpec. This ledger records phase state, decisions, evidence locations and the exact resume point. Code, tests and migrations remain authoritative for existing Atenea runtime behaviour.
 
@@ -430,9 +430,23 @@ private runtime step; there are zero session-owned containers and networks,
 zero allocated-port listeners and zero AgentRun routing keys. Evidence is
 retained beneath `runs/task-4.4-backend-tests`.
 
-The next action is task 5.1. It has not started. Before starting the admitted
-private runtime, resolve the documented direct-worktree traversal gate with a
-reviewed byte-exact WorkSession-scoped delivery mechanism; do not widen ACLs,
+Task 5.1 preflight stopped before daemon access and remains pending. The fixed
+`/usr/libexec` runtime client, manager and engine are not installed on AX42,
+and the exact versioned engine explicitly rejects Atenea after closed-plan
+validation. The rootless slot still cannot traverse the mode-`2770` worktree
+ancestors, while the exact adapter allowlists only direct worktree binds and
+does not authorize a byte-exact WorkSession-scoped archive delivery root.
+
+No runtime, listener, network, container, alternate volume, routing key or
+production/preview mutation was created. The task 4.3 volume remains exact,
+rootful Docker remains inactive and masked, production/preview and Beautips
+remain `UP`, and routing remains zero. Blocked evidence is retained beneath
+`runs/task-5.1-private-runtime`; the SHA-256 of its `SHA256SUMS` is
+`4098564cff3eccda9002fa85fd6d9c1e593997ea0f5ea7fd694b7b3962f240b4`.
+
+The next action remains task 5.1, not 5.2. Before retrying, review and version
+the minimum mediated lifecycle and commit-exact delivery contract, install the
+fixed boundary and repeat its negative regression gate. Do not widen ACLs,
 owners, groups or modes. Detailed evidence is in
 `docs/atenea-development-relocation-evidence.md`.
 
