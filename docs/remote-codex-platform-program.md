@@ -468,12 +468,44 @@ value matches remain zero. Passing evidence is retained beneath
 Detailed evidence is in
 `docs/atenea-development-relocation-evidence.md`.
 
-The next action is task 5.2. Task 5.2 was not started: do not run Playwright
-or browser acceptance until a new continuation begins from this resume point.
+Task 5.2 is complete and programme progress is `16/27`. A reviewed,
+package-lock-enforced Playwright `1.60.0` module bundle was installed for
+slot2 and verified against content-tree SHA-256
+`1ca49077563d996a21591e41f5a71296747d81ed9f1936e4887924fcb574b2ee`.
+The official pinned image continues to provide Chromium `148.0.7778.96`;
+the module bundle is mounted read-only and no dependency download occurs
+during browser acceptance.
+
+Playwright authenticated the synthetic operator at `1440x900` and `390x844`
+through the exact WorkSession internal network. Both viewports proved login
+absence after authentication, the expected operator identity, non-empty
+complete DOM, `Atenea Core`, the synthetic project, the closed fixture's
+declared `Sin sesión` operator projection and the expected enabled/disabled
+critical actions. Login and project-overview reads returned HTTP 200. Browser
+external requests, failed local requests, AgentRuns, routing, secret matches,
+screenshots and traces were all zero.
+
+The committed manifest preview path `/admin/login` returned 404 in the
+selected Atenea commit. Acceptance therefore used `/`, backed by the
+commit-exact `src/main/resources/static/index.html` Git object
+`ac4ea34f6dabcb4e200188afad801928bcb79d0d`; the discrepancy is retained in
+the evidence rather than hidden or repaired through a runtime redeploy.
+
+The accepted runtime, three containers, internal network, retained volume,
+three loopback listeners, 45 Flyway migrations and exact synthetic counts
+remain unchanged. Production, preview and Beautips remain `UP`; browser
+processes and refresh tokens were cleaned to zero. Passing evidence is beneath
+`runs/task-5.2-playwright-dom`; the SHA-256 of its `SHA256SUMS` is
+`351dca13a8e356bf0eac6e8018f672250de5a4006887ff711d4505af445b7418`.
+Toolchain remediation evidence is beneath
+`runs/task-5.2-toolchain-remediation`.
+
+The next action is task 5.3. Task 5.3 was not started: do not inspect, capture
+or accept screenshots until a new continuation begins from this resume point.
 
 The administrative Codex/tmux bridge may be used to begin work, but it is not
 evidence of the managed session isolation boundary and MUST NOT be used as
 Atenea's AgentRun executor.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — validar operador privado con Playwright`.
+`Migración Atenea y Codex al AX42 — aceptación visual desktop y móvil`.

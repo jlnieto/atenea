@@ -1680,3 +1680,123 @@ It contains 62 regular files. `SHA256SUMS` verifies all other 61 files; its
 SHA-256 is
 `23010f74668e1f962a056b67505bb8c9816e47a953409fd2a53c0056f87ea856`.
 The result is `pass`. Task 5.2 is the first pending task and was not started.
+
+## Task 5.2 — authenticated operator DOM accepted
+
+Completed on 2026-07-28 only for administrative WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad`, `slot2/heavy1`, Atenea commit
+`b6dc854d94ba5b1976926656c9a6aba330f671e2` and tree
+`f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`. Programme progress is
+`16/27`; task 5.3 remains pending and was not started.
+
+### Reviewed Playwright module boundary
+
+The pinned image
+`mcr.microsoft.com/playwright:v1.60.0-noble@sha256:9bd26ad900bb5e0f4dee75839e957a89ae89c2b7ab1e76050e559790e946b948`
+contains Chromium but did not contain the Node `playwright` package. The first
+probe failed before launching a browser, authentication or DOM work.
+
+Programme commit `837d998a04279acbba738711a6ec60ab9758ac3d`
+adds a reviewed `package-lock.json` for exact `playwright` and
+`playwright-core` version `1.60.0`. The preparation-only installation used
+the pinned Node image through slot2, enforced package integrity, and published
+the resulting 171-file bundle at
+`/var/lib/atenea-slots/slot2/toolchain/playwright-module-v1`. Its canonical
+content-tree SHA-256 is
+`1ca49077563d996a21591e41f5a71296747d81ed9f1936e4887924fcb574b2ee`.
+The browser container mounts the bundle read-only. Offline verification with
+`--network none` returned Playwright `1.60.0` and Chromium
+`148.0.7778.96`; no toolchain or browser process remained.
+
+Toolchain evidence is retained beneath
+`runs/task-5.2-toolchain-remediation`. It contains 12 regular files; the
+SHA-256 of its `SHA256SUMS` is
+`2b3e44f634a47d6715c016031a344cd59f81c4fbf8c0578d53e07f3ab9044fc4`.
+
+### Route and synthetic operator projection
+
+The selected commit serves the React console from commit-exact
+`src/main/resources/static/index.html`, Git object
+`ac4ea34f6dabcb4e200188afad801928bcb79d0d`. The manifest preview path
+`/admin/login` returned HTTP 404 while `/` returned HTTP 200. The passing
+check used `/` and retains this discrepancy explicitly; Atenea was not
+changed, rebuilt, restarted or redeployed.
+
+The fixture contains one closed WorkSession, but the committed
+`MobileProjectOverviewService` exposes only `OPEN` or `CLOSING` sessions as
+the mobile operator's active project session. The accepted DOM expectation is
+therefore the synthetic project with `Sin sesión` and the non-mutating
+presence of `Crear sesión`, not the closed session title as an active item.
+PostgreSQL evidence independently proves the closed WorkSession and its two
+SessionTurns remain intact.
+
+Three fail-closed attempts are retained separately:
+
+- missing Playwright Node module:
+  `runs/task-5.2-playwright-dom-attempt-1-blocked`, `SHA256SUMS` SHA-256
+  `a03fb6ce76671789686e16f3f1b2885a498a6a7f8456e536b51f6ed38832b568`;
+- manifest path returning HTTP 404:
+  `runs/task-5.2-playwright-dom-attempt-2-blocked-manifest-route`,
+  `SHA256SUMS` SHA-256
+  `d2f3b1f3df6417739442bae820e571345a4793d37cf538082903be353326f88b`;
+- closed fixture incorrectly expected as an active mobile session:
+  `runs/task-5.2-playwright-dom-attempt-3-blocked-closed-session-projection`,
+  `SHA256SUMS` SHA-256
+  `f9a5f3554a730d4b3c8544e1909c149d2eb05d532802248cddb532d9501c88e4`.
+
+Each attempt closed its browser container, removed its temporary named secret
+copy and restored synthetic refresh-token count to zero.
+
+### Finite-timeout DOM acceptance
+
+The passing Playwright process ran on AX42 inside the admitted session network,
+without host networking. The complete process timeout was 600 seconds;
+browser launch was 30 seconds, navigation 15 seconds, locators/assertions 10
+seconds, authentication 20 seconds, network waits 15 seconds, `page.evaluate`
+5 seconds and each viewport 90 seconds. Page, context and browser close in
+`finally`.
+
+At both `1440x900` and `390x844`, semantic locators proved:
+
+- initial HTTP success and visible `Backend disponible`;
+- HTTP 200 synthetic operator login;
+- absence of `Acceso de operador` and `Entrar` after authentication;
+- visible `[SYNTHETIC] AX42 Operator V1`;
+- visible `Atenea Core`, `[SYNTHETIC] Atenea AX42 V1` and `Sin sesión`;
+- visible and enabled `Salir`, `Crear sesión`, `Rescate` and `Actualizar`;
+- visible but disabled empty-input `Ejecutar`;
+- HTTP 200 project overview;
+- a complete, non-empty DOM with no login, permanent loading or inline error;
+- zero external browser requests and zero failed local requests.
+
+The two authenticated viewports created exactly two synthetic refresh tokens;
+logout revoked them and the bounded cleanup deleted exactly two, returning the
+count to zero. No AgentRun, routing record or other domain row was created.
+
+### Final invariants and retained evidence
+
+Flyway remains at 45 successful V1–V45 rows with zero failures. All 28
+declared table counts are byte-identical before and after: one operator, one
+project, one closed WorkSession, two SessionTurns, zero AgentRuns and zero
+rows elsewhere. Workspace, allocation and admission hashes are unchanged.
+
+The same three labelled runtime containers, one internal network, one retained
+PostgreSQL volume and three loopback listeners remain. Runtime status is
+`ready/healthy`; rootful Docker, its socket and containerd remain inactive and
+masked. Production and preview retain nine running containers and health
+`UP`; Beautips retains three running containers and health `UP`.
+
+No browser, Node/Playwright, proxy or tunnel process from the test remains.
+Secret scanning found zero value matches. The passing run captured no
+screenshot or trace, and no image was inspected; visual acceptance remains
+exclusively task 5.3.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-5.2-playwright-dom`
+
+It contains 29 regular files. `SHA256SUMS` verifies all other 28 files; its
+SHA-256 is
+`351dca13a8e356bf0eac6e8018f672250de5a4006887ff711d4505af445b7418`.
+The result is `pass`. Task 5.3 is the first pending task and was not started.
