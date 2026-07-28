@@ -14,6 +14,9 @@ import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.WorkloadClass;
+import com.atenea.remoteworker.RemoteAgentRunCoordinator;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
@@ -25,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -45,6 +49,7 @@ public class SessionTurnService {
     private final AgentRunReconciliationService agentRunReconciliationService;
     private final SessionCodexOrchestrator sessionCodexOrchestrator;
     private final SessionTurnCompletionService sessionTurnCompletionService;
+    private RemoteAgentRunCoordinator remoteAgentRunCoordinator;
 
     public SessionTurnService(
             WorkSessionRepository workSessionRepository,
@@ -68,6 +73,11 @@ public class SessionTurnService {
         this.agentRunReconciliationService = agentRunReconciliationService;
         this.sessionCodexOrchestrator = sessionCodexOrchestrator;
         this.sessionTurnCompletionService = sessionTurnCompletionService;
+    }
+
+    @Autowired(required = false)
+    void setRemoteAgentRunCoordinator(RemoteAgentRunCoordinator remoteAgentRunCoordinator) {
+        this.remoteAgentRunCoordinator = remoteAgentRunCoordinator;
     }
 
     @Transactional(readOnly = true)
@@ -124,15 +134,30 @@ public class SessionTurnService {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
         agentRunReconciliationService.reconcileSession(sessionId);
-        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
+        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)
+                || agentRunRepository.existsBySessionIdAndStatusIn(
+                        sessionId,
+                        AgentRunStatus.nonTerminalStatuses())) {
             throw new WorkSessionAlreadyRunningException(sessionId);
         }
 
-        String repoPath = resolveOperationalRepoPath(session);
         Instant now = Instant.now();
         SessionTurnEntity operatorTurn = createVisibleTurn(session, SessionTurnActor.OPERATOR, message, now);
         touchSession(session, now);
 
+        if (session.getExecutionTarget() == ExecutionTarget.REMOTE) {
+            if (remoteAgentRunCoordinator == null) {
+                throw new WorkSessionOperationBlockedException("Remote AgentRun coordinator is unavailable");
+            }
+            AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, operatorTurn, WorkloadClass.NORMAL);
+            registerRemoteDispatch(run.getId());
+            return new CreateSessionTurnResponse(
+                    toResponse(operatorTurn),
+                    agentRunService.toResponse(run),
+                    null);
+        }
+
+        String repoPath = resolveOperationalRepoPath(session);
         AgentRunEntity run = agentRunService.createRunningRun(session, operatorTurn);
         ExecutionProgress progress = new ExecutionProgress();
 
@@ -171,6 +196,19 @@ public class SessionTurnService {
                     "Codex execution failed for WorkSession turn",
                     exception);
         }
+    }
+
+    private void registerRemoteDispatch(Long runId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            remoteAgentRunCoordinator.dispatchAfterCommit(runId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                remoteAgentRunCoordinator.dispatchAfterCommit(runId);
+            }
+        });
     }
 
     private CodexAppServerExecutionHandle startTurnWithThreadRecovery(

@@ -305,7 +305,7 @@ public class VoiceEngineService {
             message = "Tengo el envio registrado en " + destination + ", pero todavia no tengo una ejecucion de Codex asociada.";
         } else if (responseReady) {
             message = "Codex ya respondio en " + destination + ". Puedes pedirme que lea la ultima respuesta.";
-        } else if (status == AgentRunStatus.RUNNING) {
+        } else if (status != null && status.isNonTerminal()) {
             message = "Codex sigue trabajando en " + destination + ".";
         } else if (failed) {
             message = "Codex no pudo completar el trabajo en " + destination + ".";

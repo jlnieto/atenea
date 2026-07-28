@@ -16,5 +16,6 @@ public class AgentRunStartupReconciliationRunner implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         agentRunReconciliationService.reconcileRunningRunsAfterStartup();
+        agentRunReconciliationService.reconcileRemoteRunsAfterStartup();
     }
 }

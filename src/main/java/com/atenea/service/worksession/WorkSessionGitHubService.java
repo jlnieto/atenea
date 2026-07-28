@@ -171,7 +171,10 @@ public class WorkSessionGitHubService {
         }
 
         agentRunReconciliationService.reconcileSession(session.getId());
-        if (agentRunRepository.existsBySessionIdAndStatus(session.getId(), AgentRunStatus.RUNNING)) {
+        if (agentRunRepository.existsBySessionIdAndStatus(session.getId(), AgentRunStatus.RUNNING)
+                || agentRunRepository.existsBySessionIdAndStatusIn(
+                        session.getId(),
+                        AgentRunStatus.nonTerminalStatuses())) {
             throw new AgentRunAlreadyRunningException(session.getId());
         }
 

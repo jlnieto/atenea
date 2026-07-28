@@ -42,6 +42,16 @@ public class WorkSessionEntity {
     @Column(name = "external_thread_id", length = 100)
     private String externalThreadId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_target", nullable = false, length = 16)
+    private ExecutionTarget executionTarget = ExecutionTarget.LOCAL;
+
+    @Column(name = "selected_worker_id", length = 80)
+    private String selectedWorkerId;
+
+    @Column(name = "workspace_identity", nullable = false, length = 200)
+    private String workspaceIdentity;
+
     @Column(name = "pull_request_url", length = 500)
     private String pullRequestUrl;
 
@@ -136,6 +146,30 @@ public class WorkSessionEntity {
 
     public void setExternalThreadId(String externalThreadId) {
         this.externalThreadId = externalThreadId;
+    }
+
+    public ExecutionTarget getExecutionTarget() {
+        return executionTarget;
+    }
+
+    public void setExecutionTarget(ExecutionTarget executionTarget) {
+        this.executionTarget = executionTarget;
+    }
+
+    public String getSelectedWorkerId() {
+        return selectedWorkerId;
+    }
+
+    public void setSelectedWorkerId(String selectedWorkerId) {
+        this.selectedWorkerId = selectedWorkerId;
+    }
+
+    public String getWorkspaceIdentity() {
+        return workspaceIdentity;
+    }
+
+    public void setWorkspaceIdentity(String workspaceIdentity) {
+        this.workspaceIdentity = workspaceIdentity;
     }
 
     public String getPullRequestUrl() {

@@ -4,12 +4,15 @@ import com.atenea.codexappserver.CodexAppServerProperties;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.remoteworker.RemoteAgentRunCoordinator;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +28,7 @@ public class AgentRunReconciliationService {
 
     private final AgentRunRepository agentRunRepository;
     private final CodexAppServerProperties codexAppServerProperties;
+    private RemoteAgentRunCoordinator remoteAgentRunCoordinator;
 
     public AgentRunReconciliationService(
             AgentRunRepository agentRunRepository,
@@ -32,6 +36,11 @@ public class AgentRunReconciliationService {
     ) {
         this.agentRunRepository = agentRunRepository;
         this.codexAppServerProperties = codexAppServerProperties;
+    }
+
+    @Autowired(required = false)
+    void setRemoteAgentRunCoordinator(RemoteAgentRunCoordinator remoteAgentRunCoordinator) {
+        this.remoteAgentRunCoordinator = remoteAgentRunCoordinator;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -46,6 +55,9 @@ public class AgentRunReconciliationService {
         Instant now = Instant.now();
         boolean reconciled = false;
         for (AgentRunEntity run : runningRuns) {
+            if (run.getExecutionTarget() == ExecutionTarget.REMOTE) {
+                continue;
+            }
             if (!isStale(run, now)) {
                 continue;
             }
@@ -78,6 +90,9 @@ public class AgentRunReconciliationService {
         Instant now = Instant.now();
         int reconciledCount = 0;
         for (AgentRunEntity run : runningRuns) {
+            if (run.getExecutionTarget() == ExecutionTarget.REMOTE) {
+                continue;
+            }
             run.setStatus(AgentRunStatus.FAILED);
             run.setFinishedAt(now);
             run.setOutputSummary(null);
@@ -94,6 +109,10 @@ public class AgentRunReconciliationService {
         }
 
         return reconciledCount;
+    }
+
+    public int reconcileRemoteRunsAfterStartup() {
+        return remoteAgentRunCoordinator == null ? 0 : remoteAgentRunCoordinator.reconcileAfterStartup();
     }
 
     private boolean isStale(AgentRunEntity run, Instant now) {

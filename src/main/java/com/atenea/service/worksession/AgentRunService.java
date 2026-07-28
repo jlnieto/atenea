@@ -9,9 +9,12 @@ import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,6 +55,42 @@ public class AgentRunService {
     @Transactional
     public AgentRunEntity createRunningRun(WorkSessionEntity session, SessionTurnEntity originTurn) {
         return createRunningRun(session, originTurn, Instant.now());
+    }
+
+    @Transactional
+    public AgentRunEntity createRemoteQueuedRun(
+            WorkSessionEntity session,
+            SessionTurnEntity originTurn,
+            WorkloadClass workloadClass
+    ) {
+        Instant now = Instant.now();
+        ensureNoNonTerminalRun(session.getId());
+
+        AgentRunEntity run = new AgentRunEntity();
+        run.setSession(session);
+        run.setOriginTurn(originTurn);
+        run.setResultTurn(null);
+        run.setStatus(AgentRunStatus.QUEUED);
+        run.setTargetRepoPath(session.getProject().getRepoPath());
+        run.setExternalTurnId(null);
+        run.setExecutionTarget(ExecutionTarget.REMOTE);
+        run.setSelectedWorkerId(session.getSelectedWorkerId());
+        run.setWorkspaceIdentity(session.getWorkspaceIdentity());
+        run.setDispatchId(UUID.randomUUID());
+        run.setRemoteExecutionId(null);
+        run.setWorkloadClass(workloadClass);
+        run.setLeaseGeneration(1);
+        run.setLeaseExpiresAt(now.plusSeconds(90));
+        run.setLastHeartbeatAt(null);
+        run.setLifecycleRevision(0);
+        run.setQueuedAt(now);
+        run.setStatusReason("Awaiting worker admission");
+        run.setStartedAt(now);
+        run.setFinishedAt(null);
+        run.setOutputSummary(null);
+        run.setErrorSummary(null);
+        run.setCreatedAt(now);
+        return agentRunRepository.save(run);
     }
 
     @Transactional
@@ -134,16 +173,14 @@ public class AgentRunService {
     }
 
     private void ensureRunning(AgentRunEntity run, AgentRunStatus targetStatus) {
-        if (run.getStatus() != AgentRunStatus.RUNNING) {
+        if (run.getStatus().isTerminal()) {
             throw new AgentRunTransitionNotAllowedException(run.getId(), run.getStatus(), targetStatus);
         }
     }
 
     private AgentRunEntity createRunningRun(WorkSessionEntity session, SessionTurnEntity originTurn, Instant now) {
         Long sessionId = session.getId();
-        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
-            throw new AgentRunAlreadyRunningException(sessionId);
-        }
+        ensureNoNonTerminalRun(sessionId);
 
         AgentRunEntity run = new AgentRunEntity();
         run.setSession(session);
@@ -152,6 +189,14 @@ public class AgentRunService {
         run.setStatus(AgentRunStatus.RUNNING);
         run.setTargetRepoPath(session.getProject().getRepoPath());
         run.setExternalTurnId(null);
+        run.setExecutionTarget(ExecutionTarget.LOCAL);
+        run.setSelectedWorkerId(null);
+        run.setWorkspaceIdentity(session.getWorkspaceIdentity());
+        run.setDispatchId(null);
+        run.setRemoteExecutionId(null);
+        run.setWorkloadClass(WorkloadClass.NORMAL);
+        run.setLeaseGeneration(0);
+        run.setLifecycleRevision(0);
         run.setStartedAt(now);
         run.setFinishedAt(null);
         run.setOutputSummary(null);
@@ -159,6 +204,19 @@ public class AgentRunService {
         run.setCreatedAt(now);
 
         return agentRunRepository.save(run);
+    }
+
+    private void ensureNoNonTerminalRun(Long sessionId) {
+        if (hasNonTerminalRun(sessionId)) {
+            throw new AgentRunAlreadyRunningException(sessionId);
+        }
+    }
+
+    private boolean hasNonTerminalRun(Long sessionId) {
+        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
+            return true;
+        }
+        return agentRunRepository.existsBySessionIdAndStatusIn(sessionId, AgentRunStatus.nonTerminalStatuses());
     }
 
     private SessionTurnEntity createInternalOriginTurn(WorkSessionEntity session, Instant now) {
@@ -184,7 +242,18 @@ public class AgentRunService {
                 run.getFinishedAt(),
                 run.getOutputSummary(),
                 run.getErrorSummary(),
-                run.getCreatedAt()
+                run.getCreatedAt(),
+                run.getExecutionTarget(),
+                run.getSelectedWorkerId(),
+                run.getWorkspaceIdentity(),
+                run.getDispatchId(),
+                run.getRemoteExecutionId(),
+                run.getWorkloadClass(),
+                run.getLeaseGeneration(),
+                run.getLeaseExpiresAt(),
+                run.getLastHeartbeatAt(),
+                run.getLifecycleRevision(),
+                run.getStatusReason()
         );
     }
 }

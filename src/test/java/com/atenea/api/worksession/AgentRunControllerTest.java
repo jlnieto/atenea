@@ -1,7 +1,9 @@
 package com.atenea.api.worksession;
 
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -9,6 +11,7 @@ import com.atenea.api.ApiExceptionHandler;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.service.worksession.AgentRunService;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
+import com.atenea.remoteworker.RemoteAgentRunCoordinator;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,11 +30,16 @@ class AgentRunControllerTest {
     @Mock
     private AgentRunService agentRunService;
 
+    @Mock
+    private RemoteAgentRunCoordinator remoteAgentRunCoordinator;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new AgentRunController(agentRunService))
+        AgentRunController controller = new AgentRunController(agentRunService);
+        controller.setRemoteAgentRunCoordinator(remoteAgentRunCoordinator);
+        mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -71,5 +79,13 @@ class AgentRunControllerTest {
         mockMvc.perform(get("/api/sessions/12/runs"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("WorkSession with id '12' was not found"));
+    }
+
+    @Test
+    void cancelRequestsOnlyTheExactRunIdentity() throws Exception {
+        mockMvc.perform(post("/api/runs/55/cancel"))
+                .andExpect(status().isOk());
+
+        verify(remoteAgentRunCoordinator).requestCancellation(55L);
     }
 }

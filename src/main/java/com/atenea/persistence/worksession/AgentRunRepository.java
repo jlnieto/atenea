@@ -13,6 +13,8 @@ public interface AgentRunRepository extends JpaRepository<AgentRunEntity, Long> 
 
     boolean existsBySessionIdAndStatus(Long sessionId, AgentRunStatus status);
 
+    boolean existsBySessionIdAndStatusIn(Long sessionId, List<AgentRunStatus> statuses);
+
     @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
     Optional<AgentRunEntity> findFirstBySessionIdOrderByCreatedAtDesc(Long sessionId);
 
@@ -30,6 +32,14 @@ public interface AgentRunRepository extends JpaRepository<AgentRunEntity, Long> 
 
     @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
     List<AgentRunEntity> findByStatusOrderByCreatedAtAsc(AgentRunStatus status);
+
+    @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
+    List<AgentRunEntity> findByExecutionTargetAndStatusInOrderByCreatedAtAsc(
+            ExecutionTarget executionTarget,
+            List<AgentRunStatus> statuses);
+
+    @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
+    Optional<AgentRunEntity> findByDispatchId(java.util.UUID dispatchId);
 
     @Modifying
     @Query("""

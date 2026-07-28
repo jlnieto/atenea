@@ -20,6 +20,8 @@ import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import java.time.Duration;
 import java.time.Instant;
@@ -151,6 +153,36 @@ class AgentRunServiceTest {
     }
 
     @Test
+    void createRemoteQueuedRunPersistsAffinityAndDispatchBeforeExecution() {
+        WorkSessionEntity session = buildSession(12L, 7L, "/workspace/repos/internal/atenea");
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:12");
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        originTurn.setActor(SessionTurnActor.OPERATOR);
+        originTurn.setMessageText("synthetic turn");
+        originTurn.setCreatedAt(Instant.now());
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L,
+                AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, originTurn, WorkloadClass.HEAVY);
+
+        assertEquals(AgentRunStatus.QUEUED, run.getStatus());
+        assertEquals(ExecutionTarget.REMOTE, run.getExecutionTarget());
+        assertEquals("ax42-01", run.getSelectedWorkerId());
+        assertEquals("remote:ax42-01:work-session:12", run.getWorkspaceIdentity());
+        assertNotNull(run.getDispatchId());
+        assertNull(run.getRemoteExecutionId());
+        assertEquals(1, run.getLeaseGeneration());
+        assertEquals(WorkloadClass.HEAVY, run.getWorkloadClass());
+    }
+
+    @Test
     void reconcileSessionMarksRunningRunFailedWhenItExceededTimeoutWindow() {
         AgentRunEntity run = buildRun(55L, AgentRunStatus.RUNNING);
         run.setStartedAt(Instant.now().minus(Duration.ofMinutes(7)));
@@ -207,6 +239,20 @@ class AgentRunServiceTest {
                 firstRun.getErrorSummary());
         assertNotNull(firstRun.getFinishedAt());
         assertNull(firstRun.getOutputSummary());
+    }
+
+    @Test
+    void localStartupReconciliationDoesNotFailRemoteRunningRun() {
+        AgentRunEntity remote = buildRun(55L, AgentRunStatus.RUNNING);
+        remote.setExecutionTarget(ExecutionTarget.REMOTE);
+        when(agentRunRepository.findByStatusOrderByCreatedAtAsc(AgentRunStatus.RUNNING))
+                .thenReturn(java.util.List.of(remote));
+
+        int reconciledCount = agentRunReconciliationService.reconcileRunningRunsAfterStartup();
+
+        assertEquals(0, reconciledCount);
+        assertEquals(AgentRunStatus.RUNNING, remote.getStatus());
+        assertNull(remote.getFinishedAt());
     }
 
     private static WorkSessionEntity buildSession(Long sessionId, Long projectId, String repoPath) {

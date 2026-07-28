@@ -11,7 +11,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "agent_run")
@@ -42,6 +44,54 @@ public class AgentRunEntity {
 
     @Column(name = "external_turn_id", length = 100)
     private String externalTurnId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_target", nullable = false, length = 16)
+    private ExecutionTarget executionTarget = ExecutionTarget.LOCAL;
+
+    @Column(name = "selected_worker_id", length = 80)
+    private String selectedWorkerId;
+
+    @Column(name = "workspace_identity", nullable = false, length = 200)
+    private String workspaceIdentity;
+
+    @Column(name = "dispatch_id", unique = true)
+    private UUID dispatchId;
+
+    @Column(name = "remote_execution_id", length = 100)
+    private String remoteExecutionId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "workload_class", nullable = false, length = 16)
+    private WorkloadClass workloadClass = WorkloadClass.NORMAL;
+
+    @Column(name = "lease_generation", nullable = false)
+    private long leaseGeneration;
+
+    @Column(name = "lease_expires_at")
+    private Instant leaseExpiresAt;
+
+    @Column(name = "last_heartbeat_at")
+    private Instant lastHeartbeatAt;
+
+    @Column(name = "lifecycle_revision", nullable = false)
+    private long lifecycleRevision;
+
+    @Column(name = "queued_at")
+    private Instant queuedAt;
+
+    @Column(name = "cancellation_requested_at")
+    private Instant cancellationRequestedAt;
+
+    @Column(name = "reconciliation_started_at")
+    private Instant reconciliationStartedAt;
+
+    @Column(name = "status_reason", length = 500)
+    private String statusReason;
+
+    @Version
+    @Column(name = "lock_version", nullable = false)
+    private long lockVersion;
 
     @Column(name = "started_at", nullable = false)
     private Instant startedAt;
@@ -113,6 +163,37 @@ public class AgentRunEntity {
     public void setExternalTurnId(String externalTurnId) {
         this.externalTurnId = externalTurnId;
     }
+
+    public ExecutionTarget getExecutionTarget() { return executionTarget; }
+    public void setExecutionTarget(ExecutionTarget executionTarget) { this.executionTarget = executionTarget; }
+    public String getSelectedWorkerId() { return selectedWorkerId; }
+    public void setSelectedWorkerId(String selectedWorkerId) { this.selectedWorkerId = selectedWorkerId; }
+    public String getWorkspaceIdentity() { return workspaceIdentity; }
+    public void setWorkspaceIdentity(String workspaceIdentity) { this.workspaceIdentity = workspaceIdentity; }
+    public UUID getDispatchId() { return dispatchId; }
+    public void setDispatchId(UUID dispatchId) { this.dispatchId = dispatchId; }
+    public String getRemoteExecutionId() { return remoteExecutionId; }
+    public void setRemoteExecutionId(String remoteExecutionId) { this.remoteExecutionId = remoteExecutionId; }
+    public WorkloadClass getWorkloadClass() { return workloadClass; }
+    public void setWorkloadClass(WorkloadClass workloadClass) { this.workloadClass = workloadClass; }
+    public long getLeaseGeneration() { return leaseGeneration; }
+    public void setLeaseGeneration(long leaseGeneration) { this.leaseGeneration = leaseGeneration; }
+    public Instant getLeaseExpiresAt() { return leaseExpiresAt; }
+    public void setLeaseExpiresAt(Instant leaseExpiresAt) { this.leaseExpiresAt = leaseExpiresAt; }
+    public Instant getLastHeartbeatAt() { return lastHeartbeatAt; }
+    public void setLastHeartbeatAt(Instant lastHeartbeatAt) { this.lastHeartbeatAt = lastHeartbeatAt; }
+    public long getLifecycleRevision() { return lifecycleRevision; }
+    public void setLifecycleRevision(long lifecycleRevision) { this.lifecycleRevision = lifecycleRevision; }
+    public Instant getQueuedAt() { return queuedAt; }
+    public void setQueuedAt(Instant queuedAt) { this.queuedAt = queuedAt; }
+    public Instant getCancellationRequestedAt() { return cancellationRequestedAt; }
+    public void setCancellationRequestedAt(Instant cancellationRequestedAt) { this.cancellationRequestedAt = cancellationRequestedAt; }
+    public Instant getReconciliationStartedAt() { return reconciliationStartedAt; }
+    public void setReconciliationStartedAt(Instant reconciliationStartedAt) { this.reconciliationStartedAt = reconciliationStartedAt; }
+    public String getStatusReason() { return statusReason; }
+    public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
+    public long getLockVersion() { return lockVersion; }
+    public void setLockVersion(long lockVersion) { this.lockVersion = lockVersion; }
 
     public Instant getStartedAt() {
         return startedAt;

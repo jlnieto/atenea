@@ -22,17 +22,20 @@ import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -51,6 +54,7 @@ public class WorkSessionService {
     private final AgentRunReconciliationService agentRunReconciliationService;
     private final SessionBranchService sessionBranchService;
     private final GitHubClient gitHubClient;
+    private RemoteRoutingSelector remoteRoutingSelector;
 
     public WorkSessionService(
             ProjectRepository projectRepository,
@@ -76,6 +80,11 @@ public class WorkSessionService {
         this.agentRunReconciliationService = agentRunReconciliationService;
         this.sessionBranchService = sessionBranchService;
         this.gitHubClient = gitHubClient;
+    }
+
+    @Autowired(required = false)
+    void setRemoteRoutingSelector(RemoteRoutingSelector remoteRoutingSelector) {
+        this.remoteRoutingSelector = remoteRoutingSelector;
     }
 
     @Transactional
@@ -105,6 +114,9 @@ public class WorkSessionService {
         session.setBaseBranch(baseBranch);
         session.setWorkspaceBranch(null);
         session.setExternalThreadId(null);
+        session.setExecutionTarget(ExecutionTarget.LOCAL);
+        session.setSelectedWorkerId(null);
+        session.setWorkspaceIdentity("local:pending");
         session.setPullRequestUrl(null);
         session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
         session.setFinalCommitSha(null);
@@ -120,6 +132,11 @@ public class WorkSessionService {
         session.setUpdatedAt(now);
 
         WorkSessionEntity persistedSession = workSessionRepository.save(session);
+        if (remoteRoutingSelector == null) {
+            persistedSession.setWorkspaceIdentity("local:work-session:" + persistedSession.getId());
+        } else {
+            remoteRoutingSelector.pinNewSession(persistedSession);
+        }
         persistedSession.setWorkspaceBranch(sessionBranchService.prepareWorkspaceBranch(persistedSession, normalizedRepoPath));
         persistedSession.setUpdatedAt(Instant.now());
 
@@ -286,6 +303,9 @@ public class WorkSessionService {
                 session.getCloseBlockedReason(),
                 session.getCloseBlockedAction(),
                 session.isCloseRetryable(),
+                session.getExecutionTarget(),
+                session.getSelectedWorkerId(),
+                session.getWorkspaceIdentity(),
                 snapshot
         );
     }
@@ -300,7 +320,15 @@ public class WorkSessionService {
                 run.getStartedAt(),
                 run.getFinishedAt(),
                 run.getOutputSummary(),
-                run.getErrorSummary()
+                run.getErrorSummary(),
+                run.getExecutionTarget(),
+                run.getSelectedWorkerId(),
+                run.getWorkspaceIdentity(),
+                run.getDispatchId(),
+                run.getRemoteExecutionId(),
+                run.getWorkloadClass(),
+                run.getLifecycleRevision(),
+                run.getStatusReason()
         );
     }
 
@@ -327,7 +355,10 @@ public class WorkSessionService {
     private void reconcileClose(WorkSessionEntity session) {
         Long sessionId = session.getId();
         agentRunReconciliationService.reconcileSession(sessionId);
-        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
+        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)
+                || agentRunRepository.existsBySessionIdAndStatusIn(
+                        sessionId,
+                        AgentRunStatus.nonTerminalStatuses())) {
             blockClose(
                     session,
                     "running_run",
