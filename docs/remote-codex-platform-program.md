@@ -6,7 +6,7 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `relocate-atenea-development-to-ax42` (implementation `22/27`)
+- Current phase: `relocate-atenea-development-to-ax42` (implementation `23/27`)
 - Runtime routing: unchanged; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42 (manual pilot only)
@@ -687,9 +687,56 @@ Passing evidence is beneath
 Sanitization retained no Codex auth/history/internal-session file, token,
 cookie, environment dump, private key or credential-pattern match.
 
-The next action is task 7.3. Task 7.3 remains pending: perform the separately
-authorized AX42 restart only after capturing the complete pre-reboot boundary.
-Task 8.1 and all later tasks remain out of scope.
+Task 7.3 is complete and programme progress is `23/27`. After the separately
+authorized single AX42 restart, the boot ID changed from
+`0886b4d0-485c-4035-b8bb-1b0ab910e85c` to
+`5cc2a4e3-020d-4d19-8a55-6ecae77f22ce`. Finite SSH probes first observed the
+host unavailable and reconnected on attempt 10. No second reboot was
+requested.
+
+All three RAID arrays returned `[UU]`; storage, key-only SSH, firewall,
+Tailscale, the health timer and the strict worker health suite pass. The four
+rootless user daemons and daemon sockets returned automatically. Read-only
+`docker info` through each stable proxy socket proved all four proxy paths.
+Rootful Docker, its socket and containerd remain inactive and masked.
+
+Reconciliation selected only the exact persisted workspace, allocation,
+released admission, engine owner marker and rootless immutable metadata for
+WorkSession `41c0ff95-e555-4773-b7b4-60903a3af1ad`. The allocation still names
+`slot2/heavy1`, admission remains `released/released` and no ephemeral runtime
+resource exists. The accepted outcome is therefore `stopped/stopped` with
+action `report-only`: no runtime was recreated or started, no resource was
+removed, no volume was reattached, no slot was reassigned and no ownership was
+invented.
+
+The retained PostgreSQL volume, mirror refs, worktree commit/tree/index,
+workspace/allocation/admission records, engine state, logs and every prior
+artifact survived byte-identically. The rebuildable delivery under `/tmp` was
+cleared by reboot as expected. Rootless Docker regenerated only each daemon's
+default `bridge` ID; network name/driver shape is identical and the `host`,
+`none` and persistent Beautips network IDs are exact. No session container,
+network, owned image, listener, AgentRun, lease or routing record appeared.
+
+The administrative tmux/Codex session ended with the host reboot, as expected
+for the non-persisted administrative bridge. It was not recreated or replaced.
+Production and preview remain `UP` with the same nine immutable containers.
+Beautips remains `UP` with the same three immutable containers.
+
+Two read-only preflight attempts are retained: an outer capture returned 1
+before reboot, then a doubled escape in the healthy `[UU]` assertion was
+localized and corrected. Two postflight assertion continuations distinguished
+regenerated default bridges from persistent network ownership and sorted the
+normalized network shape. None changed a resource or issued another reboot.
+
+Passing evidence is beneath
+`runs/task-7.3-restart-reconciliation`; the SHA-256 of its `SHA256SUMS` is
+`57c702382e7d9551224d19121a310adb337b6aba554fe5434bc57e553f0819ba`.
+Sanitization retained no Codex auth/history/internal-session file, token,
+cookie, environment dump, private key or credential-pattern match.
+
+The next action and exact resume point is task 8.1. Task 8.1 remains pending:
+compare final production non-impact sentinels in a new continuation. Do not
+execute 8.1 or any later task from this resume point.
 
 Recommended session title at the current resume point is
-`Migración Atenea y Codex al AX42 — reconciliación tras reinicio`.
+`Migración Atenea y Codex al AX42 — evidencia final de no impacto`.

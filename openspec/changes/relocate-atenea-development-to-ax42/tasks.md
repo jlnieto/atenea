@@ -40,7 +40,7 @@
 
 - [x] 7.1 Stop the Atenea runtime and execute rollback, proving that only exact owned ephemeral resources are removed while mirror, worktree, Git state, logs and declared artifacts remain intact
 - [x] 7.2 Repeat rollback and prove idempotence plus rejection of unlabelled, foreign and ambiguous resources with no residual containers, networks, images, brokers or browser processes
-- [ ] 7.3 After separate explicit authorization, restart AX42 and prove persisted ownership reconciliation without changing production routing or unrelated worker resources
+- [x] 7.3 After separate explicit authorization, restart AX42 and prove persisted ownership reconciliation without changing production routing or unrelated worker resources
 
 ## 8. Non-impact evidence and handoff
 

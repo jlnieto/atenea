@@ -2423,3 +2423,122 @@ SHA-256 is
 `f65acffc596e333ac3a3428c784756eeee8b73729d6046c5e810e051b84745c0`.
 The result is `pass`. Programme progress is `22/27`; task 7.3 is the first
 pending task. Task 8.1 was not started.
+
+## Task 7.3 — authorized restart and persisted reconciliation
+
+Completed on 2026-07-28 after the instruction supplied the separate explicit
+authorization for one AX42 restart. The exercise remained limited to
+administrative WorkSession `41c0ff95-e555-4773-b7b4-60903a3af1ad` and runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad`. Task 8.1 was not executed.
+
+### Complete pre-reboot boundary
+
+Before restart, evidence captured:
+
+- programme/source Git branches, commits, upstreams, worktrees and indexes;
+- mirror refs, workspace, allocation and released admission records;
+- the exact retained PostgreSQL volume, delivery source and engine state;
+- runtime logs and every prior retained artifact;
+- containers, networks, volumes, images and daemon state for all four slots;
+- boot ID, uptime, RAID, storage, mounts, services, firewall and SSH policy;
+- Tailscale, strict worker health, rootful Docker and proxy states;
+- administrative tmux identity/labels and all residual/routing sentinels;
+- independent production, preview and Beautips health/container identities.
+
+Task 7.2 verified at SHA-256
+`f65acffc596e333ac3a3428c784756eeee8b73729d6046c5e810e051b84745c0`.
+There were zero session containers, networks, owned images, allocated
+listeners, fixtures and browser/broker processes. The exact session volume
+remained. RAID had three `[UU]` arrays; production, preview and Beautips were
+`UP`.
+
+The administrative tmux session was still
+`codex-atenea-41c0ff95`, `session_created=1785262669`, window
+`administrative`, pane `%0`, zero clients and explicit AgentRun/lease/routing
+`none`.
+
+Two read-only preflight attempts are retained. The first outer invocation
+returned 1 after writing a complete snapshot; replay of every recorded gate
+passed. An xtrace-only second capture localized the actual assertion defect:
+the fixed string `[UU]` was escaped twice. Neither attempt requested a reboot
+or changed a resource. Fixed-string matching passed in the accepted preflight.
+
+### Single reboot and finite recovery
+
+The reboot request persisted the authorization, timestamp and old boot ID
+before invoking exactly one `systemctl reboot`. SSH exited zero. Finite probes
+with three-second connection timeouts observed AX42 unreachable and then
+reconnected on attempt 10.
+
+The boot ID changed:
+
+- before: `0886b4d0-485c-4035-b8bb-1b0ab910e85c`;
+- after: `5cc2a4e3-020d-4d19-8a55-6ecae77f22ce`.
+
+No second reboot was requested. All three arrays returned `[UU]`; storage,
+key-only SSH, firewall, Tailscale and the strict host health suite pass. All
+four rootless user managers, Docker daemons and daemon sockets returned.
+Their stable proxy sockets were available; one read-only `docker info` per
+socket activated and proved the four proxy paths. Rootful Docker,
+`docker.socket` and containerd remain inactive and masked.
+
+### Persisted ownership reconciliation
+
+Reconciliation used only these persisted sources:
+
+- `workspace-v1.json`;
+- `runtime-allocation-v1.json`;
+- the runtime admission record;
+- the exact `engine-v1` ownership marker;
+- rootless Docker immutable resource metadata.
+
+They select the same WorkSession/runtime and persisted `slot2/heavy1`.
+Admission remains `released/released`; the three session containers, internal
+network and three allocated listeners remain absent. The structured accepted
+outcome is `stopped/stopped`, action `report-only`.
+
+No runtime was recreated or started. No resource was removed, no volume was
+reattached, no slot was reassigned and no ownership was invented. AgentRuns
+remain zero by the unchanged retained database identity and accepted pre-stop
+data evidence; the development database was not started merely to re-query it.
+Worker lease remains `none` and routing records remain zero.
+
+The volume identity/labels, mirror refs, worktree commit/tree/index, workspace,
+allocation and admission records, engine state, runtime logs and all prior
+artifacts are byte-identical. The reconstructible delivery under `/tmp` was
+cleared by reboot, exactly as decision D-017 predicts.
+
+Rootless Docker regenerated only the default `bridge` network ID in each
+daemon. The network name/driver shape is identical across all four slots.
+`host`, `none` and the persistent Beautips network kept exact immutable IDs;
+no session or foreign network was removed or replaced. The first postflight
+assertion intentionally blocked on raw network-ID equality, and the second
+blocked until normalized shape was sorted deterministically. Both were
+read-only continuations after the same reboot.
+
+### Administrative session and non-impact
+
+The tmux/Codex administrative session did not survive the host reboot. This is
+the expected effect for the non-persisted administrative bridge. Evidence
+records it as `absent-expected-not-recreated`; no tmux session or Codex process
+was recreated or replaced.
+
+Production and preview remained `UP`, with the same nine immutable container
+IDs and clean, synchronized programme/source Git sentinels. Beautips returned
+`UP` with the same three immutable container IDs and persistent network.
+There are zero session containers, networks, owned images, listeners,
+Playwright/Chromium processes, AgentRuns, leases and routing records.
+
+Final sanitization retained no Codex authentication, history, internal session
+file, token, cookie, environment dump, private key or credential-pattern
+match. Secret-value files were not read.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-7.3-restart-reconciliation`
+
+It contains 123 regular files. `SHA256SUMS` verifies the other 122 files; its
+SHA-256 is
+`57c702382e7d9551224d19121a310adb337b6aba554fe5434bc57e553f0819ba`.
+The result is `pass`. Programme progress is `23/27`; task 8.1 is the first
+pending task and was not started.
