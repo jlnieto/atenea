@@ -982,3 +982,19 @@ the SHA-256 of its `SHA256SUMS` is
 `1d63a3ce1c6b76d2baa03b7422260796ee365e6a6f9e9200cb025b71ced7913d`.
 
 The exact resume point is task 2.1 of `add-worksession-attachments`.
+
+Tasks 2.1–2.4 are complete and change progress is `8/31`. Atenea source commit
+`631ee048e9f3f541a940e3bedcaecb8d909ca251` adds the expand-only V47 attachment
+table, immutable UUID/integrity/storage identities, ownership-derived project
+metadata, exact optional AgentRun validation, pessimistic WorkSession quota
+serialization, idempotent conflict detection and deterministic
+`createdAt DESC, id DESC` screenshot queries.
+
+The focused metadata suite passes `7/7`. A clean disposable PostgreSQL schema
+validated and applied all 47 migrations, Hibernate schema validation passed
+and the existing WorkSession integration suite passed `26/26`. The first V47
+integration attempt exposed a `CHAR`/`VARCHAR` mapping mismatch; the disposable
+test schema was recreated exactly, V47 was corrected before publication and
+the accepted rerun passed.
+
+The exact resume point is task 3.1 of `add-worksession-attachments`.

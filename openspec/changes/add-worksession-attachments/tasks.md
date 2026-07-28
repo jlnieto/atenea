@@ -7,10 +7,10 @@
 
 ## 2. Persistent attachment model
 
-- [ ] 2.1 Add an additive Flyway migration for immutable WorkSession attachment metadata and indexes
-- [ ] 2.2 Add persistence models and same-session AgentRun ownership validation
-- [ ] 2.3 Add deterministic screenshot latest, previous and bounded last-N queries
-- [ ] 2.4 Add transactional quota, idempotency and integrity reconciliation operations
+- [x] 2.1 Add an additive Flyway migration for immutable WorkSession attachment metadata and indexes
+- [x] 2.2 Add persistence models and same-session AgentRun ownership validation
+- [x] 2.3 Add deterministic screenshot latest, previous and bounded last-N queries
+- [x] 2.4 Add transactional quota, idempotency and integrity reconciliation operations
 
 ## 3. Private AX42 attachment storage
 
