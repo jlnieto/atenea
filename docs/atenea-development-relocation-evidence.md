@@ -1404,3 +1404,79 @@ separately at `runs/task-4.3-database-attempt-1-blocked`.
 
 Task 4.3 is complete. Task 4.4 is now the first pending task and was not
 started.
+
+## Task 4.4 — complete backend suite
+
+Completed on 2026-07-28 only for administrative WorkSession
+`41c0ff95-e555-4773-b7b4-60903a3af1ad`, runtime
+`ws-41c0ff95e5554773b7b460903a3af1ad` and `slot2/heavy1`. Programme progress
+is `14/27`; task 5.1 was not started.
+
+The AX42 worktree remained clean at commit
+`b6dc854d94ba5b1976926656c9a6aba330f671e2` and tree
+`f8c0dff5c7acf3d82d73885b09f9b1d142b562d2`. A commit-exact Git archive
+again reproduced SHA-256
+`a6f52b2d267750dfb4f8bc9f31d3c0d2434876ddf6517920cb882f19112b5dea`.
+The canonical committed `scripts/test.sh` was the suite entry point.
+
+Its local Compose definition is not safe to pass directly to AX42: it uses
+mutable images, fixed container names, control-plane mounts, a host-published
+port and a Codex service with development defaults. Task 4.4 therefore used
+an ephemeral exact-invocation adapter. It accepted only the two Compose calls
+made by `scripts/test.sh`, mapped them to a task-owned PostgreSQL test
+container and the pinned Maven/JDK 21 image, and rejected every other
+invocation. No `docker compose up`, application runtime or Codex App Server
+was started.
+
+The test database used a new task-only volume and internal network, the exact
+approved PostgreSQL 16 digest, no published port and no production data. Its
+empty-volume owner was initialized with the same one-shot least-authority
+`CAP_CHOWN` pattern accepted in task 4.3. The backend test container used:
+
+- `maven:3.9.9-eclipse-temurin-21` at digest
+  `sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e`;
+- a read-only rootfs, `cap_drop: ALL`, no added capabilities and
+  `no-new-privileges`;
+- the task-internal network, no port bindings, 2 CPUs, 3 GiB memory and a
+  2,048 PID limit;
+- explicit non-production database values and disabled OpenAI, DeepSeek, FCM,
+  GitHub, briefing, intent-router, bootstrap and Codex connectivity.
+
+Dependencies were prefetched without tests, then the complete suite ran once
+offline. Four earlier attempts failed closed before any test because Maven's
+offline resolution omitted dynamic Surefire dependencies; each removed its
+test database, volume, network and containers and is retained separately.
+The accepted prefetch explicitly materialized the exact Surefire provider and
+JUnit Platform launcher before the offline suite.
+
+Surefire retained 48 XML reports and 48 text reports. Their aggregate is:
+
+| Tests | Failures | Errors | Skipped |
+|---:|---:|---:|---:|
+| 327 | 0 | 0 | 0 |
+
+The accepted test container exited zero without OOM after 26 seconds.
+Thirteen resource samples recorded peak CPU `203.50%`, peak memory
+`654 MiB / 3 GiB` (`21.29%`) and peak PID count `71`. Maven recorded
+`BUILD SUCCESS`.
+
+Cleanup removed the test container, PostgreSQL container, ownership helper,
+internal network, test volume, source archive, dependency cache and scratch.
+Slot2 again has zero session-owned containers and networks, zero allocated
+host listeners and exactly one session-owned volume: the accepted task 4.3
+database volume. The retained database volume was not mounted or modified.
+AgentRun routing remains zero. No production or preview endpoint, credential,
+row, volume, backup or snapshot was used, and retained evidence contains zero
+matches for the four development secret values.
+
+Passing evidence is retained at:
+
+`/srv/atenea/artifacts/sessions/41c0ff95-e555-4773-b7b4-60903a3af1ad/runs/task-4.4-backend-tests`
+
+It includes exact source and image identities, the canonical-script adapter
+and runner, dependency and backend logs, container isolation records, timing,
+raw resource samples, a resource summary, all Surefire reports, aggregated
+test result, before/after fingerprints, cleanup proof and `SHA256SUMS`.
+
+Task 4.4 is complete. Task 5.1 is now the first pending task and was not
+started.

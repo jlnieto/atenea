@@ -410,9 +410,30 @@ Passing evidence is retained beneath `runs/task-4.3-database`; the first
 fail-closed attempt remains separately beneath
 `runs/task-4.3-database-attempt-1-blocked`.
 
-The next action is task 4.4. It has not started. Do not start the complete
-backend suite as part of this resume point without continuing from the
-retained task 4.3 volume. Detailed evidence is in
+Task 4.4 is complete and programme progress is `14/27`. The committed
+`scripts/test.sh` remained the canonical entry point, with an ephemeral
+exact-invocation adapter replacing only its unsafe local Compose operations.
+The adapter used the commit-exact source archive, a new task-only PostgreSQL
+volume, an internal network and the pinned Maven/JDK 21 and PostgreSQL 16
+digests. It did not run `docker compose up`, Codex App Server or the private
+application runtime.
+
+After dependency prefetch, the complete backend suite ran once offline:
+327 tests passed with zero failures, errors or skipped tests across 48
+Surefire XML reports. The container exited zero after 26 seconds; thirteen
+samples recorded peak CPU `203.50%`, peak memory `654 MiB / 3 GiB` and peak
+PID count `71`. All external integrations were disabled or test-local.
+
+All task 4.4 containers, networks, test volumes, caches and scratch were
+removed. Slot2 retains only the accepted task 4.3 database volume for the
+private runtime step; there are zero session-owned containers and networks,
+zero allocated-port listeners and zero AgentRun routing keys. Evidence is
+retained beneath `runs/task-4.4-backend-tests`.
+
+The next action is task 5.1. It has not started. Before starting the admitted
+private runtime, resolve the documented direct-worktree traversal gate with a
+reviewed byte-exact WorkSession-scoped delivery mechanism; do not widen ACLs,
+owners, groups or modes. Detailed evidence is in
 `docs/atenea-development-relocation-evidence.md`.
 
 The administrative Codex/tmux bridge may be used to begin work, but it is not
