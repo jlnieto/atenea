@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `28/45`, with the exact
-  resume point at task 5.4
+  `45/45` and `onboard-beautips-on-ax42` is active at `29/45`, with the exact
+  resume point at task 5.5
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3661,3 +3661,40 @@ the SHA-256 of its `SHA256SUMS` is
 `2d14e489e7315645a815b89297504c1dcbc883d8e3437c86aae5a7518b03005f`.
 
 The exact resume point is task 5.4 of `onboard-beautips-on-ax42`.
+
+Task 5.4 is complete and change progress is `29/45`. Exact container and
+volume inspection proves the managed app, PostgreSQL and Redis mount only the
+four complete-ownership WorkSession volumes. The separate administrative
+slot1 workspace, its four volumes, three containers, network, listener and
+manual boundary are absent from every managed mount and remain unchanged.
+Neither a rootless/rootful Docker socket nor another host runtime path is
+mounted.
+
+The exact runtime network is still `internal=true` with only its three managed
+endpoints. A finite fully labelled probe observed no default route, no
+`host.docker.internal` resolution, no daemon socket paths and denied loopback
+ports 18083, 2375 and 2376. Its immutable container ID was recorded and the
+helper removed itself. It used the existing PostgreSQL 16 image, so image
+inventory remained byte-identical.
+
+A separate fully labelled database probe reports zero legacy import batches,
+legacy mappings, non-synthetic import jobs, tenant WhatsApp channels,
+credentials, outbox/messages, onboarding sessions and webhook events. The
+pinned managed Compose SHA remains exact, its WhatsApp inputs are empty, the
+birthday scheduler is false and no manual path, `.env` or daemon socket is
+declared.
+
+All four rootless slot container/network/volume/image inventories and AX42
+boot, rootful Docker, Git, allocation, worktree, listeners and administrative
+health are byte-identical before and after. Atenea production, preview,
+isolated control plane, Git, listeners and complete rootful container
+inventory are also byte-identical. Every checked health is `UP`.
+
+Task 5.4 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-5.4-isolation-connectivity`;
+the SHA-256 of its `SHA256SUMS` is
+`9faeee64028161c7999ed6c1deaf9f10b913c7d7ebc71fc323ef009725a13a9c`.
+Two sealed fail-closed attempts remain beside it with their own integrity
+manifests; neither changed persistent or foreign resources.
+
+The exact resume point is task 5.5 of `onboard-beautips-on-ax42`.

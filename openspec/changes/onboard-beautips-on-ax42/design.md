@@ -284,6 +284,21 @@ task-introduced image tag and private I/O directory were exact-cleaned after
 acceptance. The failed preflight and schema/report attempts remain sealed and
 show their fail-closed or transaction-rollback boundaries.
 
+Task 5.4 proves the three exact managed containers mount only their four
+session-owned volumes and attach only to the complete-ownership internal
+network. That network has exactly the three managed endpoints, no default
+route and no host-gateway DNS. It exposes no Docker socket and cannot reach
+the administrative or daemon loopback ports from inside the network.
+
+The synthetic tenant retains zero legacy batches/mappings, non-synthetic
+imports, WhatsApp channels, credentials, outbox/messages, onboarding sessions
+and webhook events. The pinned Compose keeps every external messaging input
+empty and its scheduler false. Two fully labelled finite probes used the
+already-running PostgreSQL image and removed themselves by immutable identity.
+All four rootless slot inventories, rootful Docker state, administrative
+Beautips, canonical Git, listeners, production, preview and isolated control
+plane remain byte-identical before and after.
+
 Local backup folders are on the laptop root filesystem and AX42 has no
 configured restic, borg or rclone target. They do not satisfy independent
 external backup. Therefore every acceptance artifact remains
