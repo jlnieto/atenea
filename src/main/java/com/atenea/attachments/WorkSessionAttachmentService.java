@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
@@ -67,7 +68,9 @@ public class WorkSessionAttachmentService {
         }
         String contentType = normalizedContentType(file.getContentType());
         String sha256 = sha256(content);
-        Instant createdAt = Instant.now();
+        // PostgreSQL stores TIMESTAMPTZ at microsecond precision. Normalize
+        // before worker retention so an idempotent read-back remains identical.
+        Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
         UUID attachmentId = idempotencyKey == null ? UUID.randomUUID() : idempotencyKey;
 
         AttachmentWorkerClient.Health health = workerClient.health();

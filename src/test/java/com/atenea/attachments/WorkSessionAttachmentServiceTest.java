@@ -75,9 +75,13 @@ class WorkSessionAttachmentServiceTest {
                 any(),
                 any(),
                 org.mockito.ArgumentMatchers.any(byte[].class)))
-                .thenAnswer(invocation -> new AttachmentWorkerClient.PutResult(
-                        true,
-                        stored(invocation.getArgument(5), invocation.getArgument(6))));
+                .thenAnswer(invocation -> {
+                    Instant requestedCreatedAt = invocation.getArgument(7);
+                    assertEquals(0, requestedCreatedAt.getNano() % 1_000);
+                    return new AttachmentWorkerClient.PutResult(
+                            true,
+                            stored(invocation.getArgument(5), invocation.getArgument(6)));
+                });
         when(metadataService.index(org.mockito.ArgumentMatchers.eq(12L), any()))
                 .thenReturn(indexed);
 
