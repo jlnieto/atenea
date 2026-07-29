@@ -594,9 +594,17 @@ public class WorkSessionService {
         try {
             long pullRequestNumber = gitHubClient.extractPullRequestNumber(pullRequestUrl);
             GitHubPullRequest pullRequest = gitHubClient.getPullRequest(repository, pullRequestNumber);
+            WorkSessionPullRequestIdentity.validate(session, repository, pullRequestNumber, pullRequest);
             session.setPullRequestUrl(pullRequest.htmlUrl());
             session.setPullRequestStatus(mapPullRequestStatus(pullRequest));
             session.setUpdatedAt(Instant.now());
+        } catch (WorkSessionPublishConflictException exception) {
+            blockClose(
+                    session,
+                    "pull_request_identity_conflict",
+                    exception.getMessage(),
+                    "Restore the exact WorkSession pull request identity before retrying close",
+                    false);
         } catch (GitHubIntegrationException exception) {
             blockClose(
                     session,

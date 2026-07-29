@@ -23,6 +23,8 @@ import com.atenea.api.worksession.WorkSessionOperationalState;
 import com.atenea.api.worksession.WorkSessionResponse;
 import com.atenea.api.worksession.WorkSessionViewResponse;
 import com.atenea.github.GitHubClient;
+import com.atenea.github.GitHubPullRequest;
+import com.atenea.github.GitHubRepositoryRef;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
@@ -31,6 +33,7 @@ import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
@@ -892,6 +895,51 @@ class WorkSessionServiceTest {
 
         assertEquals(WorkSessionStatus.CLOSED, response.status());
         assertEquals(AgentRunStatus.FAILED, staleRun.getStatus());
+    }
+
+    @Test
+    void closeSessionRejectsCrossSessionPullRequestIdentityBeforeGitMutation() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
+        WorkSessionEntity session = buildSession(12L, 7L, repoPath, "main");
+        session.setWorkspaceBranch("atenea/session-12");
+        session.setPullRequestUrl("https://github.com/acme/atenea/pull/42");
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.OPEN);
+        session.setFinalCommitSha("abc123");
+        session.setPublishedAt(Instant.parse("2026-03-25T10:08:00Z"));
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("atenea/session-12");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-12")).thenReturn(true);
+        when(gitRepositoryService.remoteBranchExists(repoPath.toString(), "atenea/session-12")).thenReturn(true);
+        when(gitRepositoryService.getOriginRemoteUrl(repoPath.toString()))
+                .thenReturn("git@github.com:acme/atenea.git");
+        when(gitHubClient.resolveRepository("git@github.com:acme/atenea.git"))
+                .thenReturn(new GitHubRepositoryRef("acme", "atenea"));
+        when(gitHubClient.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
+        when(gitHubClient.getPullRequest(new GitHubRepositoryRef("acme", "atenea"), 42L))
+                .thenReturn(new GitHubPullRequest(
+                        42L,
+                        "https://github.com/acme/atenea/pull/42",
+                        "closed",
+                        true,
+                        "acme/atenea",
+                        "main",
+                        "acme/atenea",
+                        "atenea/session-99",
+                        "def456"));
+
+        WorkSessionCloseBlockedException exception = assertThrows(
+                WorkSessionCloseBlockedException.class,
+                () -> workSessionService.closeSession(12L));
+
+        assertTrue(exception.getMessage().contains("pull request identity does not match"));
+        assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
+        assertEquals("pull_request_identity_conflict", session.getCloseBlockedState());
+        verify(gitRepositoryService, never()).checkoutBranch(any(), any());
+        verify(gitRepositoryService, never()).deleteLocalBranch(any(), any());
+        verify(gitRepositoryService, never()).deleteRemoteBranch(any(), any());
     }
 
     @Test
