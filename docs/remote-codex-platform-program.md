@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–5.4 are complete and change progress is `29/45`. The entry gate pins
+Tasks 1.1–5.5 are complete and change progress is `30/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2570,4 +2570,34 @@ Task 5.4 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `03079faab79ccee57e477bcb816d16b07e28b2d366f24ecfbfec3f2ad79ddd7a`.
 
-The exact resume point is task 5.5 of `onboard-atenea-on-ax42`.
+Task 5.5 runs Playwright 1.60.0 and Chromium 148 against the real tailnet
+preview. Both `1440x900` and `390x844` loaded the SPA root with HTTP 200 and
+proved visible `Acceso de operador`, `Backend disponible`, both credential
+fields and the disabled empty-input `Entrar` action. Each viewport has exact
+document/body width, no horizontal overflow, no failed or external request and
+positive in-viewport boxes for every critical element.
+
+The first real browser attempt exposed a preview-forwarder defect:
+non-blocking `sendall()` truncated the 313,903-byte JavaScript bundle after
+43,772 bytes. The accepted bounded bidirectional pump delivers the complete
+bundle and a new 2.75 MiB regression passes with all `15/15` preview tests.
+The installed and source program SHA-256 is
+`678b3f66e18f792e29f06ae83bfc8cc08bbbeea0cc04d07bae4d06cf61ab070f`.
+
+Both original-resolution screenshots were inspected. The desktop and mobile
+login states have a clear operational-status hierarchy, readable copy and
+fields, consistent spacing, no clipping, overlap or misleading empty state.
+Their SHA-256 values are respectively
+`a00a037ecea12f4dbb805b977285144a7655d0fac6861681a866e663f9f3b03c`
+and
+`761494d34127842802f59f027a3f2794c5280795c1ba885f3dbae6b1e248839b`.
+Page, context and browser closed in `finally`; the guarded browser boundary is
+idle with no task-owned process. Runtime, production, preview, Beautips and
+WorkSession Git remain unchanged.
+
+Task 5.5 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-5.5-playwright-visual`;
+the SHA-256 of its `SHA256SUMS` is
+`ac6da0210f252e08e84e12d5b71d62614e7f1005dd74d85678d3574f2c4ae0d4`.
+
+The exact resume point is task 5.6 of `onboard-atenea-on-ax42`.

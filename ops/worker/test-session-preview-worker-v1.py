@@ -31,7 +31,11 @@ TOKEN = "phase6-test-token-" + "a" * 32
 
 class FixtureHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        encoded = f"fixture:{self.path}".encode()
+        encoded = (
+            b"large-preview-payload-" * 131072
+            if self.path == "/large"
+            else f"fixture:{self.path}".encode()
+        )
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
         self.send_header("Content-Length", str(len(encoded)))
@@ -85,6 +89,19 @@ class PreviewCoordinatorTest(unittest.TestCase):
         self.assertNotIn(str(self.fixture.server_address[1]), json.dumps(result))
         with urllib.request.urlopen(result["privateUrl"], timeout=3) as response:
             self.assertEqual(b"fixture:/ready", response.read())
+
+    def test_proxy_delivers_large_response_without_truncation(self) -> None:
+        result, _created = self.coordinator.activate(
+            PREVIEW_ID, self._activate_request()
+        )
+        expected = b"large-preview-payload-" * 131072
+        large_url = result["privateUrl"].removesuffix("/ready") + "/large"
+
+        with urllib.request.urlopen(large_url, timeout=10) as response:
+            delivered = response.read()
+
+        self.assertEqual(len(expected), len(delivered))
+        self.assertEqual(hashlib.sha256(expected).digest(), hashlib.sha256(delivered).digest())
 
     def test_uuid_work_session_identity_is_accepted(self) -> None:
         request = self._activate_request()
@@ -397,8 +414,8 @@ class PreviewCoordinatorTest(unittest.TestCase):
             try:
                 for port in range(start, start + count):
                     candidate = socket.socket()
-                    candidate.bind(("127.0.0.1", port))
                     sockets.append(candidate)
+                    candidate.bind(("127.0.0.1", port))
                 return start
             except OSError:
                 pass

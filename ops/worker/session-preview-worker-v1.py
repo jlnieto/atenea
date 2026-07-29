@@ -9,7 +9,6 @@ import hmac
 import json
 import os
 import re
-import selectors
 import signal
 import socket
 import socketserver
@@ -84,32 +83,29 @@ class PreviewForwardHandler(socketserver.BaseRequestHandler):
         except OSError:
             return
         with upstream:
-            self.request.setblocking(False)
-            upstream.setblocking(False)
-            poller = selectors.DefaultSelector()
-            poller.register(self.request, selectors.EVENT_READ, upstream)
-            poller.register(upstream, selectors.EVENT_READ, self.request)
-            idle_deadline = time.monotonic() + 120
+            self.request.settimeout(120)
+            upstream.settimeout(120)
+            request_pump = threading.Thread(
+                target=self._pump,
+                args=(self.request, upstream),
+                daemon=True,
+            )
+            request_pump.start()
+            self._pump(upstream, self.request)
+            request_pump.join(timeout=2)
+
+    @staticmethod
+    def _pump(source: socket.socket, destination: socket.socket) -> None:
+        try:
+            while chunk := source.recv(64 * 1024):
+                destination.sendall(chunk)
+        except (OSError, socket.timeout):
+            pass
+        finally:
             try:
-                while time.monotonic() < idle_deadline:
-                    events = poller.select(timeout=1)
-                    if not events:
-                        continue
-                    for key, _mask in events:
-                        destination = key.data
-                        try:
-                            chunk = key.fileobj.recv(64 * 1024)
-                        except OSError:
-                            return
-                        if not chunk:
-                            return
-                        idle_deadline = time.monotonic() + 120
-                        try:
-                            destination.sendall(chunk)
-                        except OSError:
-                            return
-            finally:
-                poller.close()
+                destination.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
 
 
 class PreviewCoordinator:
