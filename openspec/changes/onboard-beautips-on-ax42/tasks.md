@@ -59,7 +59,7 @@
 - [x] 7.2 Repeat rollback and prove zero additional deletion plus fail-closed unlabelled, partial, foreign and ambiguous cleanup
 - [x] 7.3 Preserve mirror, worktree, Git, delivery and evidence; release admission and archive exact allocation after cleanup
 - [x] 7.4 Compare the administrative slot 1 pilot, production, other slots, RAID, firewall, services and rootful Docker fingerprints
-- [ ] 7.5 Run worker, manifest, Beautips focused/full and Atenea focused/full regression suites twice
+- [x] 7.5 Run worker, manifest, Beautips focused/full and Atenea focused/full regression suites twice
 
 ## 8. Evidence and archive
 

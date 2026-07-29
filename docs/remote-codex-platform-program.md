@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `41/45`, with the exact
-  resume point at task 7.5
+  `45/45` and `onboard-beautips-on-ax42` is active at `42/45`, with the exact
+  resume point at task 8.1
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -4083,3 +4083,26 @@ the SHA-256 of its `SHA256SUMS` is
 `4c1f3d71c2030e5f5d58c911fdfd6e4d2ca9427aa10073c81ab78165fb003e22`.
 
 The exact resume point is task 7.5 of `onboard-beautips-on-ax42`.
+
+Task 7.5 is complete and change progress is `42/45`. Two independent
+regression cycles each pass the Beautips worker aggregate, manifest ownership
+and exact-cleanup `3/3`, Beautips focused `29/29`, Beautips full `30/30`,
+Atenea focused `37/37` and Atenea full `411/411`. Each full Atenea cycle
+applied all 49 migrations from a new empty PostgreSQL 16 schema on a separate
+internal network and isolated workspace.
+
+The initial harness warmup proved `-DskipTests` did not prefetch the Surefire
+JUnit provider; the internal network rejected its unplanned lookup before
+product tests. Exact cleanup returned its resources to zero. The corrected
+bounded warmup ran one unit test before both accepted internal-network cycles.
+Final test containers, networks and volumes are zero. Generated Python cache
+files were removed by exact path. Programme, Beautips and Atenea Git are clean;
+administrative Beautips, production, preview and isolated control remain
+`UP`, and RAID remains `[UU]`.
+
+Task 7.5 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-7.5-double-regressions`;
+the SHA-256 of its `SHA256SUMS` is
+`320dc72e85cc38a889423e18ed6186dc96afbf37f9bafa3f0eeed1294e4c9b7a`.
+
+The exact resume point is task 8.1 of `onboard-beautips-on-ax42`.
