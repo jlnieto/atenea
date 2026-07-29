@@ -576,6 +576,7 @@ build_application() {
     --env SPRING_DATASOURCE_URL=jdbc:postgresql://${BUILD_DB_CONTAINER}:5432/atenea_test \
     --env SPRING_DATASOURCE_USERNAME=atenea \
     --env SPRING_DATASOURCE_PASSWORD=atenea \
+    --env ATENEA_WORKSPACE_ROOT=/workspace/repos \
     --entrypoint /bin/sh \
     "${APP_IMAGE}" \
     -lc 'exec mvn -B -Dmaven.repo.local=/workspace/cache/maven/repository clean package' \
