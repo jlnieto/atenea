@@ -15,19 +15,29 @@ Every remotely executed WorkSession SHALL operate in its own Git worktree create
 - **THEN** execution is blocked with the conflicting state and a recovery action rather than resetting or overwriting files
 
 ### Requirement: Versioned project runtime manifest
+
 Each onboarded project MUST provide a schema-valid, versioned runtime manifest
 defining canonical repository identity, runtime kind, pinned toolchains,
 build/start/stop/health/preview/browser commands, internal ports, artifacts,
-named secrets and workload class. Literal secrets, host-specific home paths,
-privileged execution, host namespaces, arbitrary host mounts and daemon socket
-mounts MUST be rejected.
+named secrets and workload class. A project that declares development data
+MUST also declare a versioned database engine, development-only
+classification, pinned image, fixed migration/seed inputs, named credential
+reference, health query, snapshot format and retention. Literal secrets,
+host-specific home paths, privileged execution, host namespaces, arbitrary
+host mounts, daemon socket mounts, caller database endpoints and shell database
+commands MUST be rejected.
 
 #### Scenario: Project is registered for execution
+
 - **WHEN** Atenea attempts to activate a project on the worker
-- **THEN** the manifest is validated and unsupported, unsafe or missing requirements block activation before a run is accepted
+- **THEN** the runtime and optional database manifests are validated and
+  unsupported, unsafe or missing requirements block activation before a run is
+  accepted
 
 #### Scenario: Manifest contains a literal credential
-- **WHEN** a manifest value matches a forbidden literal-secret field instead of a named secret reference
+
+- **WHEN** a runtime or database manifest value matches a forbidden
+  literal-secret field instead of a named secret reference
 - **THEN** validation fails without persisting or echoing the credential value
 
 ### Requirement: Compatible dev command surface
@@ -50,22 +60,29 @@ allocation, health, URL and actionable error without relying on human prose.
 - **THEN** it fails closed with the required selection or recovery action and starts no runtime
 
 ### Requirement: Runtime namespace isolation
-The worker SHALL allocate every runtime namespace from the immutable WorkSession
-identity.
 
-Ports, container names, networks, volumes, process identifiers, mutable runtime
-data, Tomcat bases and logs MUST derive from an immutable WorkSession identity
-and MUST NOT collide with another active session. Allocation MUST support four
-normal sessions and no more than two concurrent declared heavy operations by
-default.
+The worker SHALL allocate every runtime and development-database namespace
+from the immutable WorkSession identity.
+
+Ports, container names, networks, volumes, process identifiers, mutable
+runtime data, database identities, Tomcat bases and logs MUST derive from an
+immutable WorkSession identity and MUST NOT collide with another active
+session. Allocation MUST support four normal sessions and no more than two
+concurrent declared heavy operations by default. Database operations SHALL use
+only the rootless slot persisted in that allocation.
 
 #### Scenario: Two projects use the same internal port
-- **WHEN** two sessions start applications that both listen internally on port 8080
-- **THEN** their private runtime namespaces and allocated preview routes remain independent
+
+- **WHEN** two sessions start applications or databases that use the same
+  internal port
+- **THEN** their private runtime namespaces, database volumes, allocation
+  endpoints and preview routes remain independent
 
 #### Scenario: Heavy-operation capacity is exhausted
+
 - **WHEN** two heavy operations are active and another session requests one
-- **THEN** the request remains queued with its capacity reason and no extra heavy process starts
+- **THEN** the request remains queued with its capacity reason and no extra
+  heavy process starts
 
 ### Requirement: Host and cross-session boundary
 Codex execution MUST NOT receive the host container-daemon socket, host root

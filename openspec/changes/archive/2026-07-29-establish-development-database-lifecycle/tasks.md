@@ -54,4 +54,4 @@
 - [x] 7.2 Repeat rollback and prove idempotence plus rejection of unlabelled, partial, foreign and ambiguous database resources
 - [x] 7.3 Clean only recorded exact synthetic resources and compare production, AX42, slots, RAID, firewall and Beautips fingerprints
 - [x] 7.4 Retain sanitized commands, exit codes, finite timeouts, durations and `SHA256SUMS` without raw dumps or credentials
-- [ ] 7.5 Run strict OpenSpec validation, archive the completed change, commit and push, then enter individual project onboarding
+- [x] 7.5 Run strict OpenSpec validation, archive the completed change, commit and push, then enter individual project onboarding

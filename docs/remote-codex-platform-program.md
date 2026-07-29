@@ -183,10 +183,14 @@ eight-hour hard lifetime and 30-day preview audit metadata. Rollback leaves
 the capability disabled with zero route/runtime projection resources. Public
 sharing remains disabled. Real-project authoritative activation remains
 blocked until independent external backup is configured and restore-tested.
-The exact resume point is the Phase 7 entry gate for
-`establish-development-database-lifecycle`.
-`establish-development-database-lifecycle` is now the active Phase 7 change;
-its entry gate is accepted at `5/37`.
+`establish-development-database-lifecycle` is archived as
+`2026-07-29-establish-development-database-lifecycle` with all `37/37` tasks
+complete. Its synthetic PostgreSQL and MariaDB fixtures were restored,
+rollback-tested and exact-cleaned; database automation remains disabled and
+real-project activation remains blocked on individual onboarding plus an
+independent restore-tested backup. The exact resume point is the Phase 8
+individual-project onboarding entry gate, beginning with an explicit pilot
+selection and repository synchronization review.
 
 ## Decision log
 
@@ -2318,3 +2322,29 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 7.5 of
 `establish-development-database-lifecycle`.
+
+Task 7.5 is complete and Phase 7 progress is `37/37`. Pre-archive strict
+validation accepted the complete change. OpenSpec applied the new
+`development-database-lifecycle` capability plus the isolated-runtime,
+operational-safety and attachment deltas, then archived the change as
+`2026-07-29-establish-development-database-lifecycle`.
+
+Post-archive strict validation passes every authoritative specification and
+OpenSpec reports no active Phase 7 change. The programme branch and Atenea
+source are clean and synchronized after the archive commit.
+
+Phase 7 closes default-disabled with zero database records, exact containers,
+session networks, labelled volumes, private snapshot files, database
+listeners or browser processes. Slot3 and slot4 admission is released; their
+allocation records are archived while worktrees, mirrors, Git and sanitized
+evidence remain. Beautips and retained slot2 resources are unchanged, RAID is
+`[UU]`, rootful Docker remains inactive and Atenea production/preview remains
+nine running containers.
+
+Accepted final archive evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-7.5-archive`;
+the SHA-256 of its `SHA256SUMS` is
+`60b29553abef2b1b0a7bbe79b5f6c1d9a85e53e581fd0bf511175c78dc44b3c1`.
+
+The exact resume point is the Phase 8 individual-project onboarding entry
+gate. No real project has been activated by Phase 7.
