@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "project-codex-allowlist-v1",
+  "projects": {
+    "beautips": {
+      "selectionEnabled": false,
+      "executionEnabled": false,
+      "projectId": "beautips",
+      "repository": "https://github.com/jlnieto/beautips.git",
+      "branch": "main",
+      "commit": "e4256d7fe1610e191099bd12ce993591a5cd4b7a",
+      "tree": "8e52657add269c84700105aa7028728d4ddf2810",
+      "manifestPath": "ops/atenea-runtime.json",
+      "manifestSha256": "365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82",
+      "composePath": "ops/docker-compose.atenea.yml",
+      "composeSha256": "840e64166e8e1ddaefb74d11763fe150e6539074bb02c3173e2175a446555941",
+      "workerId": "ax42-01",
+      "workloadClass": "normal",
+      "allowedSlots": [
+        "slot2",
+        "slot3",
+        "slot4"
+      ],
+      "workspaces": {}
+    }
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.codynwave.com/schemas/project-codex-allowlist-v1.schema.json",
+  "title": "Atenea exact project Codex allowlist v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "projects"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "project-codex-allowlist-v1"
+    },
+    "projects": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "required": [
+        "beautips"
+      ],
+      "properties": {
+        "beautips": {
+          "$ref": "#/$defs/project"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectionEnabled",
+        "executionEnabled",
+        "projectId",
+        "repository",
+        "branch",
+        "commit",
+        "tree",
+        "manifestPath",
+        "manifestSha256",
+        "composePath",
+        "composeSha256",
+        "workerId",
+        "workloadClass",
+        "allowedSlots",
+        "workspaces"
+      ],
+      "properties": {
+        "selectionEnabled": {
+          "type": "boolean"
+        },
+        "executionEnabled": {
+          "type": "boolean"
+        },
+        "projectId": {
+          "const": "beautips"
+        },
+        "repository": {
+          "const": "https://github.com/jlnieto/beautips.git"
+        },
+        "branch": {
+          "const": "main"
+        },
+        "commit": {
+          "const": "e4256d7fe1610e191099bd12ce993591a5cd4b7a"
+        },
+        "tree": {
+          "const": "8e52657add269c84700105aa7028728d4ddf2810"
+        },
+        "manifestPath": {
+          "const": "ops/atenea-runtime.json"
+        },
+        "manifestSha256": {
+          "const": "365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82"
+        },
+        "composePath": {
+          "const": "ops/docker-compose.atenea.yml"
+        },
+        "composeSha256": {
+          "const": "840e64166e8e1ddaefb74d11763fe150e6539074bb02c3173e2175a446555941"
+        },
+        "workerId": {
+          "const": "ax42-01"
+        },
+        "workloadClass": {
+          "const": "normal"
+        },
+        "allowedSlots": {
+          "const": [
+            "slot2",
+            "slot3",
+            "slot4"
+          ]
+        },
+        "workspaces": {
+          "type": "object",
+          "additionalProperties": false,
+          "maxProperties": 0
+        }
+      }
+    }
+  }
+}
