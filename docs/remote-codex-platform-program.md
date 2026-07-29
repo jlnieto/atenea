@@ -173,13 +173,14 @@ Entry, evidence, rollback and archive gates are defined in `remote-codex-platfor
 `relocate-atenea-development-to-ax42` is archived.
 `route-agent-runs-to-remote-worker` is archived as
 `2026-07-28-route-agent-runs-to-remote-worker` with all `35/35` tasks complete.
-Production routing is unchanged and disabled. `add-worksession-attachments`
-is the active Phase 5 change. Its approved preproduction boundary stores
-opaque content on AX42, indexes immutable WorkSession metadata in
-Atenea/PostgreSQL, defaults to 16 MiB per file and 256 MiB per session, and
-records 24-hour, 30-day or 180-day retention without general deletion.
-Real-project authoritative activation remains blocked until independent
-external backup is configured and restore-tested.
+Production routing is unchanged and disabled. `add-worksession-attachments` is
+archived as `2026-07-29-add-worksession-attachments` with all `31/31` tasks
+complete. `add-private-session-previews` is the active Phase 6 change. Its
+approved synthetic boundary uses an authenticated coordinator on `8789`,
+tailnet-only ingress ports `19000–19031`, a renewable five-minute lease, an
+eight-hour hard lifetime and 30-day preview audit metadata. Public sharing
+remains disabled. Real-project authoritative activation remains blocked until
+independent external backup is configured and restore-tested.
 
 ## Decision log
 
@@ -212,6 +213,9 @@ external backup is configured and restore-tested.
 | D-025 | Default attachment limits to 16 MiB per file and 256 MiB retained per WorkSession with a narrow validated media-type allowlist. | Safe bounded defaults prevent an upload surface from becoming arbitrary worker storage. | accepted | security owner | after representative preview measurements |
 | D-026 | Record `TRANSIENT` 24-hour, `SESSION` 30-day and `EVIDENCE` 180-day retention classes but perform no general deletion in Phase 5. | The contract needs deterministic retention metadata while production cleanup requires measured evidence and external backup. | accepted for preproduction | data owner | before production defaults |
 | D-027 | Keep Phase 5 default-off and exact-synthetic-only until independent external backup is configured and restore-tested. | RAID is availability, not backup, and synthetic fixtures are recreatable. | accepted | operations owner | before authoritative real-project artifacts |
+| D-028 | Use one bounded tailnet ingress port per active preview instead of a shared path-rewriting proxy. | Legacy applications commonly emit root-relative redirects, cookies and assets; a private ingress port preserves application semantics without publishing the allocation-derived runtime port. | accepted for synthetic Phase 6 | platform owner | after representative project onboarding |
+| D-029 | Give preview routes a five-minute renewable lease, eight-hour hard lifetime, 60-second revocation target and 30-day audit metadata. | Durable intent must survive restart, while abandoned development routes must not remain reachable indefinitely. Attachments keep their independent retention. | accepted for synthetic Phase 6 | operations owner | before production preview defaults |
+| D-030 | Keep Phase 6 public sharing disabled and generate localhost forwarding only for an explicit manifest declaration. | Tailnet-only access satisfies laptop/Android operation without introducing Internet ingress; per-project origin constraints must be proven rather than guessed. | accepted | security owner | each project onboarding |
 
 ## Deferred decisions and gates
 
@@ -1145,3 +1149,30 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is the Phase 6 entry gate for
 `add-private-session-previews`.
+
+## Phase 6 progress: add-private-session-previews
+
+Tasks 1.1–1.4 are complete and change progress is `4/37`. The accepted entry
+gate proves clean synchronized Atenea source and programme Git, unchanged nine
+production/preview container identities, production and preview health `UP`,
+no deployed V46/V47/V48 schema and no Phase 6 service, state, listener,
+container, browser or proxy.
+
+AX42 strict verification passes with RAID `[UU]`, rootful Docker
+inactive/masked, unchanged four-slot inventory and Beautips `UP`. The Phase 5
+attachment service is active and both retained/incoming stores are empty.
+Atenea control, the operator laptop and Pixel 7 are online in the approved
+tailnet.
+
+The synthetic contract fixes coordinator control port `8789`, tailnet-only
+ingress `19000–19031`, a renewable five-minute lease, eight-hour hard lifetime,
+60-second route revocation and 30-day preview audit metadata. Localhost
+forwarding requires a manifest declaration and public shares fail closed. The
+proposal, design, four delta specs and task plan pass strict validation.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/entry-gate`;
+the SHA-256 of its `SHA256SUMS` is
+`a1a42baa8bacd14524219f9c0a25c0255d8f0f1063770ba34c3f105153d59ec9`.
+
+The exact resume point is task 2.1 of `add-private-session-previews`.
