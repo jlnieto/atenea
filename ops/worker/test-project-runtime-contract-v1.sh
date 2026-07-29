@@ -52,10 +52,10 @@ declare -A PROTECTED_HASHES=(
   ["runtime-contract/fixtures/valid/database-mariadb/runtime.json"]="cbd2264a7900871cb4969cb6d5587863f6c4df4278ca2c408d886027cddec8a1"
   ["ops/worker/database-lifecycle-state-v1.py"]="209d4ade62737b47d2e0b1fd790c969111c0a924acfa0c386cd217eae0ce1c66"
   ["ops/worker/test-database-lifecycle-state-v1.py"]="ea3ba6489289757e3844ac0b8fdf89b36c7b22d2567bae03ebbdfdee6f39be6d"
-  ["ops/worker/database-lifecycle-worker-v1.py"]="7ad5e07c7b0507a4032629c1db86102f2f8e6bebf62a0bd982ae0f761f4250e5"
+  ["ops/worker/database-lifecycle-worker-v1.py"]="e45142209c1d0a24640f6d13ee2c7b9d56891efa36f0aa1365d24085a1272473"
   ["ops/worker/database-lifecycle-client-v1.sh"]="69dd5460ac60dd6e5e354a99f7cc8a78280ddca5c0190a8077fed755ef54b7e2"
   ["ops/worker/install-database-lifecycle-v1.sh"]="73ceb7ca810a7187b97e8746bc969af9c7b5d85893ccb260f8e5358d85b1ed25"
-  ["ops/worker/test-database-lifecycle-worker-v1.py"]="366ec91dee8b7c0232088a4dfee873e8937e594eceb204f5689f54e34b1ba49b"
+  ["ops/worker/test-database-lifecycle-worker-v1.py"]="05b16dedf4253fb1f2d341cd6186f43e4d7c9370b5e61b4c5807ec33a96c5270"
 )
 
 assert_protected_hashes() {

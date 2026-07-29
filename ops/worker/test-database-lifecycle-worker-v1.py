@@ -270,6 +270,34 @@ class WorkerTest(unittest.TestCase):
         self.assertNotEqual(0, rejected.returncode)
         self.assertNotIn("password", completed.stdout.lower())
 
+    def test_fixed_client_argv_consumes_database_once_for_both_engines(self):
+        postgresql = MODULE.Lifecycle.client_command(
+            {
+                "engine": "postgresql",
+                "containerIdentity": "exact-container",
+                "databaseName": "synthetic_phase7_postgresql",
+            },
+            "SELECT 1",
+        )
+        mariadb = MODULE.Lifecycle.client_command(
+            {
+                "engine": "mariadb",
+                "containerIdentity": "exact-container",
+                "databaseName": "synthetic_phase7_mariadb",
+            },
+            "SELECT 1",
+        )
+        self.assertIn('database="$1"; shift', postgresql[5])
+        self.assertIn('database="$1"; shift', mariadb[5])
+        self.assertEqual(
+            ["database-client", "synthetic_phase7_postgresql", "-c", "SELECT 1"],
+            postgresql[-4:],
+        )
+        self.assertEqual(
+            ["database-client", "synthetic_phase7_mariadb", "-e", "SELECT 1"],
+            mariadb[-4:],
+        )
+
     def test_default_disabled_and_reconcile_do_not_create(self):
         (self.root / "enabled").unlink()
         lifecycle = MODULE.Lifecycle()

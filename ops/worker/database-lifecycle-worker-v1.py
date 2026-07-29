@@ -427,9 +427,10 @@ class Lifecycle:
             command = [
                 "exec", "-i",
                 record["containerIdentity"], "sh", "-ceu",
-                'umask 077; credential="$(mktemp)"; trap \'rm -f "$credential"\' EXIT; '
-                'printf "*:*:%s:synthetic_user:%s\\n" "$1" "$(cat /run/secrets/database-password)" >"$credential"; '
-                'export PGPASSFILE="$credential"; psql -v ON_ERROR_STOP=1 -U synthetic_user -d "$1" "$@"',
+                'database="$1"; shift; umask 077; credential="$(mktemp)"; '
+                'trap \'rm -f "$credential"\' EXIT; '
+                'printf "*:*:%s:synthetic_user:%s\\n" "$database" "$(cat /run/secrets/database-password)" >"$credential"; '
+                'export PGPASSFILE="$credential"; psql -v ON_ERROR_STOP=1 -U synthetic_user -d "$database" "$@"',
                 "database-client", record["databaseName"],
             ]
             if sql is not None:
@@ -437,10 +438,11 @@ class Lifecycle:
             return command
         command = [
             "exec", "-i", record["containerIdentity"], "sh", "-ceu",
-            'umask 077; credential="$(mktemp)"; trap \'rm -f "$credential"\' EXIT; '
+            'database="$1"; shift; umask 077; credential="$(mktemp)"; '
+            'trap \'rm -f "$credential"\' EXIT; '
             'printf "[client]\\nuser=synthetic_user\\npassword=%s\\nprotocol=socket\\n" '
             '"$(cat /run/secrets/database-password)" >"$credential"; '
-            'mariadb --defaults-extra-file="$credential" "$1" "$@"',
+            'mariadb --defaults-extra-file="$credential" "$database" "$@"',
             "database-client", record["databaseName"],
         ]
         if sql is not None:

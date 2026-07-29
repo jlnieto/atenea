@@ -1990,3 +1990,29 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 5.2 of
 `establish-development-database-lifecycle`.
+
+Task 5.2 is complete and change progress is `23/37`. The first MariaDB
+migration stopped safely in `CREATED` after its 90-second bounded health wait.
+Read-only diagnosis proved the server and named-file authentication healthy;
+the fixed client argv had supplied the database once as `$1` and again inside
+`$@`. No SQL or lifecycle revision changed during that failed attempt.
+
+Both engine clients now bind `database="$1"` and `shift` before passing the
+remaining fixed arguments. The mediated worker suite passes `10/10`, and the
+installed worker SHA-256 is
+`e45142209c1d0a24640f6d13ee2c7b9d56891efa36f0aa1365d24085a1272473`.
+MariaDB migration, seed and health then advanced revisions `2 -> 5`; late
+retries retain `HEALTHY` revision `5` without executing SQL again.
+
+Evidence retains only one-row content digest and four-column schema digest.
+The network is internal, no listener exists on allocation port `26853`, a
+finite loopback connection fails, and isolated slot3 cannot inspect or list
+any slot4 MariaDB resource. No raw row or credential was retained.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-5.2-mariadb-migrate-seed-health`;
+the SHA-256 of its `SHA256SUMS` is
+`d457d257195f94e162ba12f03fe1ec48b3c3f17a7e302ee3ab287a2817340ea1`.
+
+The exact resume point is task 5.3 of
+`establish-development-database-lifecycle`.
