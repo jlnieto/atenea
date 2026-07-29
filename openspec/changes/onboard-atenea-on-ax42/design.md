@@ -85,6 +85,17 @@ resources are stopped and cleaned after evidence is sealed. Mirror, Git,
 delivery and sanitized evidence remain; unrelated projects and production do
 not change.
 
+### Close observation is finite and fail-closed
+
+After rollback, evidence rollup and admission release, observe the exact
+disabled/clean boundary for 15 minutes with samples at minute 0, 5, 10 and
+15. Every sample must preserve Git, persisted ownership, retained artifacts
+and the declared PostgreSQL volume; show no session projection, listener,
+process, lease or routing resurrection; and keep RAID, base services,
+unrelated slots, production, preview and Beautips healthy and unchanged. Any
+drift blocks archive rather than extending or resetting the window
+implicitly. The programme owner owns acceptance of this one-project window.
+
 ## Risks / Trade-offs
 
 - [Real prompts can attempt unsafe actions] → keep workspace sandboxing,

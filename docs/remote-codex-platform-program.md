@@ -233,6 +233,7 @@ the endpoint and real-project capability are disabled.
 | D-035 | Run the first managed real Codex workload through bounded `codex exec` as the already authenticated AX42 administrative identity without copying or reading its authentication cache. | The service identity is deliberately unauthenticated; the documented ephemeral probe proves usable ChatGPT authentication while preserving the forbidden-auth boundary. | accepted for Atenea pilot | security/runtime owners | before expanding beyond the pilot |
 | D-036 | Keep Atenea onboarding artifacts non-authoritative and its database empty-migrated plus synthetic until an external backup has passed restore. | RAID and retained acceptance evidence do not satisfy authoritative project backup. | accepted | data/operations owners | before any real retained data |
 | D-037 | Admit `project-codex-v1` only from a root-owned exact Atenea workspace registry and execute it in a per-run Bubblewrap namespace with no caller-supplied command, path, remote, endpoint or environment. | The authenticated identity can be reused without turning the worker into a general shell or mounting other workspaces, daemon sockets or production paths. Uncertain turns fail closed after restart instead of being replayed. | accepted for Atenea pilot | security/runtime owners | after Atenea archive and before a second project |
+| D-038 | Close Atenea onboarding after a 15-minute disabled/clean observation with exact samples at minute 0, 5, 10 and 15. | Four bounded samples are sufficient to detect automatic resurrection or health drift after exact rollback while keeping this disposable, non-production gate finite. Any drift blocks archive. | accepted for Atenea pilot | programme owner | before onboarding archive |
 
 ## Deferred decisions and gates
 
@@ -2915,4 +2916,29 @@ Task 8.1 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `1fede0bb37fdac444d10a7cd50c031aaca1abe244e25d18f99c063609a644512`.
 
-The exact resume point is task 8.2 of `onboard-atenea-on-ax42`.
+Task 8.2 applies D-038's finite 15-minute close window. Normalized samples at
+minute `0`, `5`, `10` and `15` are byte-identical. Across all four, project
+selection/execution stays disabled with zero registered workspaces, normal and
+heavy admission stay released, all `28` durable executions remain terminal
+and the exact session runtime, preview, listener, transient unit and browser
+process projection remains zero.
+
+The canonical PostgreSQL volume, allocation, admission, workspace, worktree,
+mirror and all accepted artifact files remain intact. All four rootless slot
+inventories, three RAID arrays `[UU]`, the reviewed firewall, base/mediator
+services and inactive/masked rootful Docker boundary remain unchanged.
+Atenea production, preview and Beautips retain their exact container
+identities and all three health probes remain `UP`.
+
+The first pre-window harness invocation exited `1` before an accepted sample
+because it used a nonexistent mirror path and lowercase terminal-state names.
+That read-only diagnostic is retained transparently. The corrected harness
+uses the canonical mirror and uppercase protocol states, restarted at minute
+zero and completed all four accepted samples without drift.
+
+Task 8.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-8.2-disabled-clean-observation`;
+the SHA-256 of its `SHA256SUMS` is
+`151165a3f9d8a045e53382dedc7b9619d0c62093e6d2b25436f8f176050ac40c`.
+
+The exact resume point is task 8.3 of `onboard-atenea-on-ax42`.
