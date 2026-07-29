@@ -236,6 +236,85 @@ print(json.dumps({
         with self.assertRaisesRegex(MODULE.ProtocolError, "disabled"):
             self.state.create(self.request())
 
+    def test_beautips_route_is_independent_and_accepts_only_its_exact_workspace(self):
+        self.state.stop()
+        root = Path(self.temporary.name)
+        atenea_config = json.loads(self.config.read_text(encoding="utf-8"))
+        atenea_config["selectionEnabled"] = False
+        atenea_config["executionEnabled"] = False
+        self.config.write_text(json.dumps(atenea_config), encoding="utf-8")
+
+        beautips_session = str(uuid.uuid4())
+        beautips_workspace = "remote:ax42-01:work-session:" + beautips_session
+        beautips_config = root / "beautips-project.json"
+        beautips_config.write_text(
+            json.dumps({
+                "schemaVersion": "project-codex-v1",
+                "selectionEnabled": True,
+                "executionEnabled": True,
+                "projectId": MODULE.BEAUTIPS_PROJECT_ID,
+                "repository": MODULE.BEAUTIPS_PROJECT_REPOSITORY,
+                "branch": MODULE.BEAUTIPS_PROJECT_BRANCH,
+                "commit": MODULE.BEAUTIPS_PROJECT_COMMIT,
+                "manifestSha256": MODULE.BEAUTIPS_PROJECT_MANIFEST_SHA256,
+                "runner": str(self.runner),
+                "workspaces": {
+                    beautips_workspace: {
+                        "sessionId": beautips_session,
+                        "worktree": (
+                            "/srv/atenea/workspaces/sessions/"
+                            + beautips_session
+                            + "/beautips"
+                        ),
+                        "allocationSha256": "b" * 64,
+                    }
+                },
+            }),
+            encoding="utf-8",
+        )
+        beautips_config.chmod(0o644)
+        self.state = MODULE.WorkerState(
+            root / "state-beautips",
+            "test-worker",
+            project_config=self.config,
+            project_runner=self.runner,
+            project_timeout=30,
+            project_config_uid=os.getuid(),
+            privilege_command=(),
+            beautips_project_config=beautips_config,
+            beautips_project_runner=self.runner,
+        )
+        self.state.start()
+        self.assertIn("project-codex-v1", self.state.health()["capabilities"])
+
+        exact = self.request()
+        exact["sessionId"] = beautips_session
+        exact["workspaceIdentity"] = beautips_workspace
+        exact["workload"].update({
+            "projectId": MODULE.BEAUTIPS_PROJECT_ID,
+            "repository": MODULE.BEAUTIPS_PROJECT_REPOSITORY,
+            "branch": MODULE.BEAUTIPS_PROJECT_BRANCH,
+            "commit": MODULE.BEAUTIPS_PROJECT_COMMIT,
+            "manifestSha256": MODULE.BEAUTIPS_PROJECT_MANIFEST_SHA256,
+        })
+        accepted, created = self.state.create(exact)
+        self.assertTrue(created)
+        self.assertEqual("SUCCEEDED", self.wait_terminal(accepted["dispatchId"])["status"])
+
+        state_before = self.state.state_file.read_bytes()
+        foreign_workspace = self.request()
+        foreign_workspace["sessionId"] = str(uuid.uuid4())
+        foreign_workspace["workspaceIdentity"] = (
+            "remote:ax42-01:work-session:" + foreign_workspace["sessionId"]
+        )
+        foreign_workspace["workload"].update(exact["workload"])
+        with self.assertRaisesRegex(MODULE.ProtocolError, "workspace identity"):
+            self.state.create(foreign_workspace)
+        self.assertEqual(state_before, self.state.state_file.read_bytes())
+
+        with self.assertRaisesRegex(MODULE.ProtocolError, "disabled"):
+            self.state.create(self.request())
+
     def test_cancel_terminates_only_exact_project_process(self):
         request = self.request(message="sleep:3")
         other = self.request(message="hello")

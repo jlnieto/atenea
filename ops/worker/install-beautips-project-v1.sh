@@ -4,6 +4,7 @@ set -Eeuo pipefail
 umask 0077
 
 ACTION="${1:-}"
+[[ "$#" -gt 0 ]] && shift
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TEST_MODE="${ATENEA_BEAUTIPS_INSTALL_TEST_MODE:-0}"
 TEST_ROOT="${ATENEA_BEAUTIPS_INSTALL_TEST_ROOT:-}"
@@ -15,12 +16,17 @@ fail() {
 
 usage() {
   printf 'Usage: %s plan|apply|verify|selection-enable|enable|disable|rollback\n' "$0" >&2
+  printf '       %s register|unregister SESSION_ID WORKSPACE_IDENTITY\n' "$0" >&2
   exit 64
 }
 
-[[ "$#" -eq 1 ]] || usage
 case "${ACTION}" in
-  plan|apply|verify|selection-enable|enable|disable|rollback) ;;
+  plan|apply|verify|selection-enable|enable|disable|rollback)
+    [[ "$#" -eq 0 ]] || usage
+    ;;
+  register|unregister)
+    [[ "$#" -eq 2 ]] || usage
+    ;;
   *) usage ;;
 esac
 
@@ -289,6 +295,155 @@ disable_all() {
   write_state false false
 }
 
+register_workspace() {
+  local session_id="$1" workspace_identity="$2"
+  [[ "${session_id}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] ||
+    fail 'workspace registration session is not a canonical UUID'
+  [[ "${workspace_identity}" == "remote:ax42-01:work-session:${session_id}" ]] ||
+    fail 'workspace registration identity is not exact'
+  verify_config
+
+  local session_root worktree mirror workspace_record allocation manifest
+  session_root="${PREFIX}/srv/atenea/workspaces/sessions/${session_id}"
+  worktree="${session_root}/beautips"
+  mirror="${PREFIX}/srv/atenea/repositories/beautips.git"
+  workspace_record="${session_root}/workspace-v1.json"
+  allocation="${session_root}/runtime-allocation-v1.json"
+  manifest="${worktree}/ops/atenea-runtime.json"
+  for path in "${workspace_record}" "${allocation}" "${manifest}"; do
+    [[ -f "${path}" && ! -L "${path}" ]] ||
+      fail 'persisted workspace registration input is missing or unsafe'
+  done
+  [[ -d "${worktree}" && ! -L "${worktree}" &&
+      -d "${mirror}" && ! -L "${mirror}" ]] ||
+    fail 'persisted workspace Git identity is missing or unsafe'
+  local workspace_owner
+  if [[ "${TEST_MODE}" == 1 ]]; then
+    workspace_owner="$(id -u)"
+  else
+    workspace_owner="$(id -u atenea-worker)"
+  fi
+  [[ "$(stat -c %u "${session_root}")" == "${workspace_owner}" &&
+      "$(stat -c %u "${worktree}")" == "${workspace_owner}" &&
+      "$(stat -c %u "${mirror}")" == "${workspace_owner}" &&
+      "$(stat -c %u "${workspace_record}")" == "${workspace_owner}" &&
+      "$(stat -c %u "${allocation}")" == "${workspace_owner}" &&
+      "$(stat -c %u "${manifest}")" == "${workspace_owner}" &&
+      "$(stat -c %a "${workspace_record}")" =~ ^6[04]0$ &&
+      "$(stat -c %a "${allocation}")" =~ ^6[04]0$ ]] ||
+    fail 'persisted workspace registration ownership is unsafe'
+
+  local expected_commit expected_manifest
+  expected_commit='e9e0b3c319c518363d4135f5378ebbddced96dfb'
+  expected_manifest='365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82'
+  if [[ "${TEST_MODE}" == 1 ]]; then
+    expected_commit="${ATENEA_BEAUTIPS_INSTALL_TEST_COMMIT:-}"
+    expected_manifest="${ATENEA_BEAUTIPS_INSTALL_TEST_MANIFEST_SHA256:-}"
+    [[ "${expected_commit}" =~ ^[0-9a-f]{40}$ &&
+        "${expected_manifest}" =~ ^[0-9a-f]{64}$ ]] ||
+      fail 'test registration identity is incomplete'
+  fi
+
+  jq -e \
+    --arg session "${session_id}" \
+    --arg worktree "${worktree}" \
+    --arg mirror "${mirror}" \
+    --arg commit "${expected_commit}" '
+      .schemaVersion == 1 and .state == "ready" and
+      .sessionId == $session and .projectId == "beautips" and
+      .canonicalRemote == "https://github.com/jlnieto/beautips.git" and
+      .baseBranch == "main" and
+      .branch == ("atenea/session-" + $session) and
+      .mirrorPath == $mirror and .worktreePath == $worktree and
+      .expectedBaseCommit == $commit and .headCommit == $commit
+    ' "${workspace_record}" >/dev/null ||
+    fail 'workspace ownership record is not exact'
+  jq -e \
+    --arg session "${session_id}" \
+    --arg worktree "${worktree}" \
+    --arg mirror "${mirror}" '
+      .schemaVersion == 1 and .state == "allocated" and
+      .sessionId == $session and .projectId == "beautips" and
+      .workloadClass == "normal" and
+      .branch == ("atenea/session-" + $session) and
+      (.slot == "slot2" or .slot == "slot3" or .slot == "slot4") and
+      .mirrorPath == $mirror and .worktreePath == $worktree and
+      .manifestRelativePath == "ops/atenea-runtime.json" and
+      (.allocatedPorts | type == "array" and length == 3) and
+      all(.allocatedPorts[]; .bindAddress == "127.0.0.1")
+    ' "${allocation}" >/dev/null ||
+    fail 'runtime allocation is not exact'
+  local actual_remote actual_head actual_common expected_common actual_manifest
+  actual_remote="$(git -c safe.directory="${worktree}" -C "${worktree}" remote get-url origin)"
+  actual_head="$(git -c safe.directory="${worktree}" -C "${worktree}" rev-parse HEAD)"
+  actual_common="$(realpath -e "$(git -c safe.directory="${worktree}" -C "${worktree}" \
+    rev-parse --path-format=absolute --git-common-dir)")"
+  expected_common="$(realpath -e "${mirror}")"
+  actual_manifest="$(sha256sum "${manifest}" | cut -d' ' -f1)"
+  [[ "${actual_remote}" == 'https://github.com/jlnieto/beautips.git' &&
+      "${actual_head}" == "${expected_commit}" &&
+      "${actual_common}" == "${expected_common}" &&
+      "${actual_manifest}" == "${expected_manifest}" ]] ||
+    fail 'workspace Git or manifest fingerprint is not exact'
+
+  local allocation_sha record workspaces temporary
+  allocation_sha="$(sha256sum "${allocation}" | cut -d' ' -f1)"
+  record="$(
+    jq -cn \
+      --arg session "${session_id}" \
+      --arg worktree "${worktree}" \
+      --arg allocation "${allocation_sha}" '{
+        sessionId: $session,
+        worktree: $worktree,
+        allocationSha256: $allocation
+      }'
+  )"
+  jq -e \
+    --arg identity "${workspace_identity}" \
+    --argjson record "${record}" '
+      (.workspaces == {} or .workspaces == {($identity): $record}) and
+      .executionEnabled == false
+    ' "${CONFIG}" >/dev/null ||
+    fail 'another workspace is already registered or execution is active'
+  workspaces="$(jq -cn --arg identity "${workspace_identity}" --argjson record "${record}" \
+    '{($identity): $record}')"
+  temporary="${CONFIG}.new"
+  [[ ! -e "${temporary}" && ! -L "${temporary}" ]] ||
+    fail 'config temporary path is occupied'
+  jq --argjson workspaces "${workspaces}" '
+    .selectionEnabled = true |
+    .executionEnabled = false |
+    .workspaces = $workspaces
+  ' "${CONFIG}" >"${temporary}"
+  chmod 0644 "${temporary}"
+  mv "${temporary}" "${CONFIG}"
+  verify
+}
+
+unregister_workspace() {
+  local session_id="$1" workspace_identity="$2"
+  verify_config
+  jq -e \
+    --arg session "${session_id}" \
+    --arg identity "${workspace_identity}" '
+      .executionEnabled == false and
+      (.workspaces | keys) == [$identity] and
+      .workspaces[$identity].sessionId == $session
+    ' "${CONFIG}" >/dev/null ||
+    fail 'exact disabled workspace registration does not match'
+  temporary="${CONFIG}.new"
+  [[ ! -e "${temporary}" && ! -L "${temporary}" ]] ||
+    fail 'config temporary path is occupied'
+  jq '
+    .selectionEnabled = false |
+    .executionEnabled = false |
+    .workspaces = {}
+  ' "${CONFIG}" >"${temporary}"
+  chmod 0644 "${temporary}"
+  mv "${temporary}" "${CONFIG}"
+  verify
+}
+
 rollback() {
   verify
   jq -e '
@@ -329,7 +484,9 @@ case "${ACTION}" in
   apply) apply_install ;;
   verify) verify ;;
   selection-enable) selection_enable ;;
+  register) register_workspace "$@" ;;
   enable) enable_execution ;;
   disable) disable_all ;;
+  unregister) unregister_workspace "$@" ;;
   rollback) rollback ;;
 esac

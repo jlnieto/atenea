@@ -3387,4 +3387,45 @@ Task 4.1 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `261a48fea26345289f454c323e0a86cb20ee03bf27a599cfd244e3373b246f98`.
 
-The exact resume point is task 4.2 of `onboard-beautips-on-ax42`.
+Task 4.2 closes the real worker composition exposed by the first canonical
+session. `project-codex-v1` now resolves through independent root-owned Atenea
+and Beautips routes. The existing Atenea route remains
+`selectionEnabled=false`, `executionEnabled=false` with zero workspaces.
+Beautips alone is enabled with the single immutable key
+`remote:ax42-01:work-session:6375c738-99da-4ef3-91f5-21e30d3b27d3`.
+Its registry record binds that UUID, the exact worker-owned worktree and
+allocation SHA-256
+`0e46cc38968509fbdd6585e3741f8c8e1eecb32f0161139400ec923780f49dbc`.
+
+The lifecycle now registers only after validating file ownership/modes,
+canonical Git common directory and HTTPS origin, branch, commit, manifest,
+normal slot 2–4 allocation and exact session/workspace identity. Unregister
+requires disabled execution plus the same one-key identity. The installed
+worker, systemd unit and final lifecycle SHA-256 values are respectively
+`fd5784155fcfe477599c72751fc0cc7064322cea25728de7573ac3c47ef46de4`,
+`aa17d70b2c482aaa329778c0629f00f4ab6db8a58233de9d7e41b2d17ed92536`
+and
+`7f5bc41255bdfb2feaf1823a50ce4a9a7aca6951fa7ed49ce7d88d7e17481d98`.
+The existing Tailscale-only worker listener, token boundary, capacity and 28
+durable terminal records were retained.
+
+The final complete AX42 aggregate passes all manifest, mediator, sandbox,
+secret, lifecycle and four selected worker-route cases in `18.230 s`.
+Lifecycle ownership hardening separately passes in `1.796 s`. Six
+authenticated negative requests reject the administrative pilot, a complete
+foreign Beautips workspace, an ambiguous session/workspace pair, disabled
+Atenea, a foreign project and an arbitrary command field with exact HTTP
+400/403 closed errors in `59 ms`. Worker state remains byte-identical before
+and after all denials. No accepted execution or prompt was submitted.
+
+The canonical worktree remains clean at its accepted commit and has zero
+runtime containers and networks. The administrative Beautips pilot,
+production, preview, isolated control plane, prior Atenea acceptance
+resources and canonical Atenea source remain unchanged and healthy.
+
+Task 4.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-4.2-exact-session-enable-denials`;
+the SHA-256 of its `SHA256SUMS` is
+`f46712a552456436595f7ac348395547e978df6c3474d1a42474a60baa1a572a`.
+
+The exact resume point is task 4.3 of `onboard-beautips-on-ax42`.

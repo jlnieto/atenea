@@ -39,6 +39,13 @@ PROJECT_REPOSITORY = "https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH = "feature/actualizar-conversacion-en-web"
 PROJECT_COMMIT = "b605c8d5b063e7321edd60fec2265ec7ddb84ea9"
 PROJECT_MANIFEST_SHA256 = "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
+BEAUTIPS_PROJECT_ID = "beautips"
+BEAUTIPS_PROJECT_REPOSITORY = "https://github.com/jlnieto/beautips.git"
+BEAUTIPS_PROJECT_BRANCH = "main"
+BEAUTIPS_PROJECT_COMMIT = "e9e0b3c319c518363d4135f5378ebbddced96dfb"
+BEAUTIPS_PROJECT_MANIFEST_SHA256 = (
+    "365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82"
+)
 
 
 def utc_now() -> str:
@@ -69,6 +76,8 @@ class WorkerState:
         project_timeout: int = 1800,
         project_config_uid: int = 0,
         privilege_command: tuple[str, ...] = ("sudo",),
+        beautips_project_config: Path | None = None,
+        beautips_project_runner: Path | None = None,
     ):
         self.state_dir = state_dir
         self.state_file = state_dir / "executions.json"
@@ -80,6 +89,8 @@ class WorkerState:
         self.project_timeout = project_timeout
         self.project_config_uid = project_config_uid
         self.privilege_command = privilege_command
+        self.beautips_project_config = beautips_project_config
+        self.beautips_project_runner = beautips_project_runner
         self.lock = threading.RLock()
         self.wakeup = threading.Event()
         self.stop_event = threading.Event()
@@ -298,15 +309,16 @@ class WorkerState:
     def _validate_project(self, request: dict[str, Any], workload: dict[str, Any]) -> None:
         if set(workload) != PROJECT_WORKLOAD_KEYS:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_workload", "project workload fields are invalid")
-        if not self._project_execution_enabled():
+        route = self._project_route(workload.get("projectId"))
+        if route is None:
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "project_ownership_conflict",
+                "project identity is not allowlisted",
+            )
+        if not self._project_execution_enabled(route):
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project workload is disabled")
-        exact = {
-            "projectId": PROJECT_ID,
-            "repository": PROJECT_REPOSITORY,
-            "branch": PROJECT_BRANCH,
-            "commit": PROJECT_COMMIT,
-            "manifestSha256": PROJECT_MANIFEST_SHA256,
-        }
+        exact = route["identity"]
         if any(workload.get(key) != value for key, value in exact.items()):
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_ownership_conflict", "project identity is not allowlisted")
         if not isinstance(workload["message"], str) or not (1 <= len(workload["message"]) <= 20_000):
@@ -317,7 +329,7 @@ class WorkerState:
                 uuid.UUID(thread_id)
             except (ValueError, TypeError, AttributeError):
                 raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_thread", "threadId must be null or a UUID")
-        config = self._read_project_config(require_execution=True)
+        config = self._read_project_config(route, require_execution=True)
         if request["workspaceIdentity"] not in config["workspaces"]:
             raise ProtocolError(
                 HTTPStatus.FORBIDDEN,
@@ -336,12 +348,43 @@ class WorkerState:
                 "persisted workspace ownership is incomplete or conflicting",
             )
 
-    def _read_project_config(self, require_execution: bool = False) -> dict[str, Any]:
-        if self.project_config is None:
+    def _project_route(self, project_id: Any) -> dict[str, Any] | None:
+        if project_id == PROJECT_ID:
+            return {
+                "config": self.project_config,
+                "runner": self.project_runner,
+                "identity": {
+                    "projectId": PROJECT_ID,
+                    "repository": PROJECT_REPOSITORY,
+                    "branch": PROJECT_BRANCH,
+                    "commit": PROJECT_COMMIT,
+                    "manifestSha256": PROJECT_MANIFEST_SHA256,
+                },
+            }
+        if project_id == BEAUTIPS_PROJECT_ID:
+            return {
+                "config": self.beautips_project_config,
+                "runner": self.beautips_project_runner,
+                "identity": {
+                    "projectId": BEAUTIPS_PROJECT_ID,
+                    "repository": BEAUTIPS_PROJECT_REPOSITORY,
+                    "branch": BEAUTIPS_PROJECT_BRANCH,
+                    "commit": BEAUTIPS_PROJECT_COMMIT,
+                    "manifestSha256": BEAUTIPS_PROJECT_MANIFEST_SHA256,
+                },
+            }
+        return None
+
+    def _read_project_config(
+        self, route: dict[str, Any], require_execution: bool = False
+    ) -> dict[str, Any]:
+        project_config = route["config"]
+        project_runner = route["runner"]
+        if project_config is None:
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project workload is disabled")
         try:
-            stat = self.project_config.stat()
-            parsed = json.loads(self.project_config.read_text(encoding="utf-8"))
+            stat = project_config.stat()
+            parsed = json.loads(project_config.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project configuration is unavailable")
         if stat.st_uid != self.project_config_uid or stat.st_mode & 0o022:
@@ -351,14 +394,7 @@ class WorkerState:
             "projectId", "repository", "branch",
             "commit", "manifestSha256", "runner", "workspaces",
         }
-        exact = {
-            "schemaVersion": PROJECT_CAPABILITY,
-            "projectId": PROJECT_ID,
-            "repository": PROJECT_REPOSITORY,
-            "branch": PROJECT_BRANCH,
-            "commit": PROJECT_COMMIT,
-            "manifestSha256": PROJECT_MANIFEST_SHA256,
-        }
+        exact = {"schemaVersion": PROJECT_CAPABILITY, **route["identity"]}
         if (
             not isinstance(parsed, dict)
             or set(parsed) != required
@@ -366,23 +402,27 @@ class WorkerState:
             or parsed.get("selectionEnabled") is not True
             or not isinstance(parsed.get("executionEnabled"), bool)
             or (require_execution and parsed.get("executionEnabled") is not True)
-            or parsed.get("runner") != str(self.project_runner)
+            or parsed.get("runner") != str(project_runner)
             or not isinstance(parsed.get("workspaces"), dict)
         ):
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project configuration is not exact")
         return parsed
 
     def _project_selection_enabled(self) -> bool:
-        try:
-            self._read_project_config()
-            return self.project_runner is not None and self.project_runner.is_file()
-        except ProtocolError:
-            return False
+        for project_id in (PROJECT_ID, BEAUTIPS_PROJECT_ID):
+            route = self._project_route(project_id)
+            try:
+                self._read_project_config(route)
+                if route["runner"] is not None and route["runner"].is_file():
+                    return True
+            except ProtocolError:
+                continue
+        return False
 
-    def _project_execution_enabled(self) -> bool:
+    def _project_execution_enabled(self, route: dict[str, Any]) -> bool:
         try:
-            self._read_project_config(require_execution=True)
-            return self.project_runner is not None and self.project_runner.is_file()
+            self._read_project_config(route, require_execution=True)
+            return route["runner"] is not None and route["runner"].is_file()
         except ProtocolError:
             return False
 
@@ -513,7 +553,18 @@ class WorkerState:
                 self.wakeup.set()
 
     def _execute_project(self, dispatch_id: str, request: dict[str, Any]) -> None:
-        command = [*self.privilege_command, str(self.project_runner), "--config", str(self.project_config)]
+        route = self._project_route(request["workload"]["projectId"])
+        if route is None or route["runner"] is None or route["config"] is None:
+            self._finish_project(
+                dispatch_id, "FAILED", "Project runner rejected or failed the exact execution", None
+            )
+            return
+        command = [
+            *self.privilege_command,
+            str(route["runner"]),
+            "--config",
+            str(route["config"]),
+        ]
         process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
@@ -742,6 +793,8 @@ def main() -> int:
     parser.add_argument("--heavy-capacity", type=int, default=2)
     parser.add_argument("--project-config", type=Path)
     parser.add_argument("--project-runner", type=Path)
+    parser.add_argument("--beautips-project-config", type=Path)
+    parser.add_argument("--beautips-project-runner", type=Path)
     parser.add_argument("--project-timeout", type=int, default=1800)
     args = parser.parse_args()
     if not (1 <= args.port <= 65535):
@@ -759,6 +812,8 @@ def main() -> int:
         args.project_config,
         args.project_runner,
         args.project_timeout,
+        beautips_project_config=args.beautips_project_config,
+        beautips_project_runner=args.beautips_project_runner,
     )
     server = AgentRunServer((args.bind, args.port), state, read_token(args.token_file))
     state.start()

@@ -38,6 +38,7 @@ python3 "${SCRIPT_DIR}/test-beautips-secret-boundary-v1.py"
 # semantics. Selection integration remains disabled until OpenSpec phase 3.
 python3 "${SCRIPT_DIR}/test-agent-run-worker-v1.py" \
   ProjectWorkerStateTest.test_exact_project_dispatch_is_idempotent_and_preserves_thread \
+  ProjectWorkerStateTest.test_beautips_route_is_independent_and_accepts_only_its_exact_workspace \
   ProjectWorkerStateTest.test_cancel_terminates_only_exact_project_process \
   ProjectWorkerStateTest.test_restart_reconciliation_does_not_duplicate_uncertain_turn
 
