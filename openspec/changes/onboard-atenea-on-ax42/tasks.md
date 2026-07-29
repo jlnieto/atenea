@@ -49,7 +49,7 @@
 - [x] 6.1 Publish the exact WorkSession branch through normal draft pull-request delivery with correct base/head
 - [x] 6.2 Prove merge/sync semantics without force update, duplicate response or cross-session mutation
 - [x] 6.3 Close the WorkSession through the canonical reconciled path and preserve Git/evidence invariants
-- [ ] 6.4 Restart the real-project worker mediator and reconcile only persisted exact ownership without rerunning the prompt
+- [x] 6.4 Restart the real-project worker mediator and reconcile only persisted exact ownership without rerunning the prompt
 - [ ] 6.5 Prove accepted Atenea remains available while non-onboarded projects remain disabled
 
 ## 7. Rollback, isolation and regression

@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–6.3 are complete and change progress is `34/45`. The entry gate pins
+Tasks 1.1–6.4 are complete and change progress is `35/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2723,4 +2723,25 @@ Task 6.3 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `49fe27c0d084a46295a2cb9803526a83ddb597b2e959433ffd0924f97078c0dd`.
 
-The exact resume point is task 6.4 of `onboard-atenea-on-ax42`.
+Task 6.4 restarted only `atenea-agent-run-worker-v1.service`. Its PID changed
+from `446520` to `538943`; the service returned healthy with the same
+`project-codex-v1` capability after a finite readiness wait. The complete
+durable state remained byte-identical: 28 executions, including the 13
+terminal records owned by the canonical WorkSession and its three successful
+turns, retained the same dispatch, execution, workspace, lease, thread,
+revision and terminal identities with `reconcileRequired=false`.
+
+No new dispatch, prompt turn, transient project unit or project process was
+created. The allowlist and installed mediator/runner hashes, AX42 WorkSession
+Git HEAD/tree/clean status and runtime health are unchanged. Canonical
+rootless Docker inspection confirms the same three slot 3 runtime containers,
+network and retained volume and the same three slot 1 Beautips containers.
+The nine accepted production/preview container identities and the clean
+control repository also match the sealed task 6.3 boundary.
+
+Task 6.4 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-6.4-worker-restart-reconciliation`;
+the SHA-256 of its `SHA256SUMS` is
+`bc0b1ebdb7d1f6d91c4cc1833f7426808a0ea0c1b40bbf939a7a5201150abf7d`.
+
+The exact resume point is task 6.5 of `onboard-atenea-on-ax42`.
