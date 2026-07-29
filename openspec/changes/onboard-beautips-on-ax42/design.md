@@ -202,6 +202,17 @@ and one CODEX result turn. Re-observing the terminal run returns without
 redispatch or duplicate turn. Existing Atenea mapping and synthetic payload
 tests remain unchanged and passing.
 
+Task 3.4 keeps the project-neutral coordinator unchanged and adds Beautips
+continuity coverage. Cancellation targets the persisted remote execution
+without replacement dispatch. Startup reconciliation polls a persisted
+non-terminal execution without redispatch. A bounded partition fails the same
+run with explicit operator review and no reassignment. Re-observation after a
+terminal result creates neither another dispatch nor another result turn.
+
+Equivalent Atenea continuity cases remain in the same suite. This source gate
+does not restart production; installed restart continuity is reserved for the
+later canonical WorkSession acceptance.
+
 ### The administrative pilot is foreign retained state
 
 The three slot 1 containers, their network, four volumes, loopback listener,

@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `18/45`, with the exact
-  resume point at task 3.4
+  `45/45` and `onboard-beautips-on-ax42` is active at `19/45`, with the exact
+  resume point at task 3.5
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -2984,7 +2984,7 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–3.3 are complete and change progress is `18/45`. GitHub
+Tasks 1.1–3.4 are complete and change progress is `19/45`. GitHub
 `jlnieto/beautips`, branch `main`, managed-manifest commit
 `e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
 `533d32f97ae362997ad003170a826da674c31c1d`, runtime manifest SHA-256
@@ -3296,9 +3296,32 @@ Task 3.3 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `e0d4a5e7a8de473027845dd181d126adc6c96b210001273475635203cb4c41c8`.
 
+Task 3.4 keeps the coordinator state machine unchanged and adds exact
+Beautips continuity cases. Cancellation uses only the persisted execution
+identity and does not redispatch. Startup reconciliation polls the persisted
+execution without replacement. A bounded partition fails the same run with
+explicit operator review and no reassignment. Re-observing a terminal
+Beautips run creates no duplicate dispatch or result turn.
+
+Equivalent Atenea cases remain in the suite. The focused coordinator set
+passes `8/8`; coordinator, client, persistence and selection pass `37/37`
+locally and `37/37` from the committed Atenea server checkout at
+`9e264e3820d6803225d57139150e1df990d9e09e`, tree
+`6046d03ac3067aad54ba9127faccd4d099e51454`.
+
+No real restart, dispatch, cancellation, production database write,
+deployment or routing activation occurred. Production and preview remain
+`UP` with zero backend restarts. AX42 retains three `[UU]` arrays, slot 1's
+administrative Beautips runtime, empty slots 2–4 and Beautips health `UP`.
+
+Task 3.4 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-3.4-continuity-semantics`;
+the SHA-256 of its `SHA256SUMS` is
+`946bf1d692bb7156beb014f991197928c41e0299780164377af691df090d4a9a`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 3.4 of `onboard-beautips-on-ax42`.
+The exact resume point is task 3.5 of `onboard-beautips-on-ax42`.
