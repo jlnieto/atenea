@@ -47,6 +47,15 @@ ADAPTER_SOURCE="${SCRIPT_DIR}/atenea-runtime-engine-adapter-v1.sh"
 [[ "$(sha256sum "${SOURCE_COMPOSE}" | cut -d' ' -f1)" == \
     "2133646b9fe6227ca417d6d62c92a74306caaa46a2957cdee810d5d7b0e5bb9f" ]] ||
   fail "Atenea Compose input hash differs"
+grep -Fq 'git -C "${WORKTREE}" merge-base --is-ancestor' "${ADAPTER_SOURCE}" ||
+  fail "Atenea adapter does not preserve admitted-source ancestry"
+if grep -Fq 'git -C "${WORKTREE}" rev-parse HEAD)" == "${EXPECTED_COMMIT}"' \
+    "${ADAPTER_SOURCE}"; then
+  fail "Atenea adapter still blocks a clean delivered descendant"
+fi
+git -C "${SOURCE_ROOT}" merge-base --is-ancestor \
+  b605c8d5b063e7321edd60fec2265ec7ddb84ea9 HEAD ||
+  fail "accepted Atenea source is not descended from the admitted commit"
 grep -Fqx \
   '      ATENEA_MOBILE_UPLOAD_ROOT: /workspace/data/uploads' \
   "${SOURCE_COMPOSE}" ||

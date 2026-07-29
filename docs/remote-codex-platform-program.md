@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–6.5 are complete and change progress is `36/45`. The entry gate pins
+Tasks 1.1–7.1 are complete and change progress is `37/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2765,4 +2765,33 @@ Task 6.5 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `0c8011a01b0667da1a5f1bbd03b777b7b287ced9fb0fa02887e10ab21a5ee198`.
 
-The exact resume point is task 7.1 of `onboard-atenea-on-ax42`.
+Task 7.1 first disabled only new Atenea real-project selection. The mediator
+remains healthy with synthetic compatibility but no longer advertises
+`project-codex-v1`; execution is disabled and the exact persisted workspace is
+retained for reconciliation.
+
+The first mediated stop blocked before resource mutation because the adapter
+required the live worktree HEAD to remain at admitted base `b605c8d`, although
+normal accepted delivery had cleanly advanced it to `0230c6b`. The adapter now
+validates the exact admitted base tree and requires it to be an ancestor of
+the clean current HEAD while retaining exact manifest and Compose hashes.
+Divergent history remains fail-closed. Focused adapter validation and the
+complete project-runtime contract pass `10/10`; real status then returned
+`ready/healthy`.
+
+The accepted mediated stop returned `stopped/stopped`. A task-scoped cleanup
+validated five exact ownership labels and immutable IDs before removing only
+the three stopped slot 3 containers and their empty internal network. It
+removed zero images and volumes. The labelled PostgreSQL volume, allocation,
+`slot3/heavy1` held admission, disabled workspace registration, mirror,
+worktree HEAD/tree/clean index, delivery, logs and sanitized evidence remain.
+The preview projection was already absent; session listeners and transient
+project/browser processes are zero. Production, preview and Beautips remain
+`UP` with unchanged container identities.
+
+Task 7.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-7.1-atenea-project-rollback`;
+the SHA-256 of its `SHA256SUMS` is
+`b5e9fbb0c7657c82ce95459bf9e0a3f6551ded59abbed32501e23fdcd77d7cb3`.
+
+The exact resume point is task 7.2 of `onboard-atenea-on-ax42`.

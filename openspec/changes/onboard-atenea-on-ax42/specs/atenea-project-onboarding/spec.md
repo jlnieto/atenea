@@ -88,6 +88,14 @@ while production and unrelated projects remain unchanged.
 - **THEN** it removes nothing further and preserves foreign, unlabelled,
   partial and ambiguous resources
 
+#### Scenario: Delivered descendant is stopped
+
+- **WHEN** normal delivery has advanced the clean WorkSession beyond the
+  admitted runtime source commit
+- **THEN** rollback validates the exact admitted commit/tree as its ancestor,
+  retains the exact manifest and Compose hashes, and stops only the persisted
+  runtime ownership without requiring the live worktree HEAD to move backwards
+
 #### Scenario: Another project is inspected
 
 - **WHEN** rollback observes Beautips or a non-onboarded project

@@ -1051,8 +1051,9 @@ validate_plan() {
   assert_regular "${MANIFEST}"
   assert_sha "${MANIFEST}" "${EXPECTED_MANIFEST_SHA256}"
   assert_sha "${WORKTREE}/ops/worker/docker-compose.ax42.yml" "${EXPECTED_COMPOSE_SHA256}"
-  [[ "$(runuser -u atenea-worker -- git -C "${WORKTREE}" rev-parse HEAD)" == "${EXPECTED_COMMIT}" &&
-      "$(runuser -u atenea-worker -- git -C "${WORKTREE}" rev-parse HEAD^{tree})" == "${EXPECTED_TREE}" ]] ||
+  [[ "$(runuser -u atenea-worker -- git -C "${WORKTREE}" rev-parse "${EXPECTED_COMMIT}^{tree}")" == "${EXPECTED_TREE}" ]] &&
+    runuser -u atenea-worker -- git -C "${WORKTREE}" merge-base --is-ancestor \
+      "${EXPECTED_COMMIT}" HEAD ||
     fail SESSION_IDENTITY_CONFLICT "The admitted Atenea source identity changed."
   runuser -u atenea-worker -- git -C "${WORKTREE}" diff --quiet ||
     fail RECONCILIATION_REQUIRED "The admitted Atenea worktree is dirty."

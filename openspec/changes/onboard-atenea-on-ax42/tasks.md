@@ -54,7 +54,7 @@
 
 ## 7. Rollback, isolation and regression
 
-- [ ] 7.1 Disable new Atenea real-project selection and stop only its exact runtime/preview/database projection
+- [x] 7.1 Disable new Atenea real-project selection and stop only its exact runtime/preview/database projection
 - [ ] 7.2 Repeat rollback and prove zero additional deletion plus fail-closed unlabelled, partial, foreign and ambiguous cleanup
 - [ ] 7.3 Preserve mirror, worktree, Git, delivery and sanitized evidence; release admission and archive exact allocation after cleanup
 - [ ] 7.4 Compare production, preview, Beautips, other slots, RAID, firewall, services and rootful Docker fingerprints
