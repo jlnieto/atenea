@@ -20,12 +20,12 @@
 
 ## 3. Atenea control-plane integration
 
-- [ ] 3.1 Send `project-codex-v1` only for a newly opened allowlisted Atenea WorkSession while preserving synthetic routing compatibility
-- [ ] 3.2 Persist exact project/repository/manifest workload identity and validate worker capability before selection
-- [ ] 3.3 Map real Codex thread/turn/final output idempotently into the existing WorkSession conversation
-- [ ] 3.4 Preserve cancellation, backend restart, partition and duplicate-terminal semantics for the real workload
-- [ ] 3.5 Add exact project selection, payload, persistence, delivery and denial tests
-- [ ] 3.6 Run focused and complete Atenea regressions twice without changing production configuration
+- [x] 3.1 Send `project-codex-v1` only for a newly opened allowlisted Atenea WorkSession while preserving synthetic routing compatibility
+- [x] 3.2 Persist exact project/repository/manifest workload identity and validate worker capability before selection
+- [x] 3.3 Map real Codex thread/turn/final output idempotently into the existing WorkSession conversation
+- [x] 3.4 Preserve cancellation, backend restart, partition and duplicate-terminal semantics for the real workload
+- [x] 3.5 Add exact project selection, payload, persistence, delivery and denial tests
+- [x] 3.6 Run focused and complete Atenea regressions twice without changing production configuration
 
 ## 4. Canonical Atenea WorkSession acceptance
 

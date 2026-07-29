@@ -189,7 +189,7 @@ complete. Its synthetic PostgreSQL and MariaDB fixtures were restored,
 rollback-tested and exact-cleaned; database automation remains disabled and
 real-project activation remains blocked on individual onboarding plus an
 independent restore-tested backup. `onboard-atenea-on-ax42` is the active
-Phase 8 project change at `14/45`; its exact protocol is installed but both
+Phase 8 project change at `20/45`; its exact protocol is installed but both
 the endpoint and real-project capability are disabled.
 
 ## Decision log
@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–2.7 are complete and change progress is `14/45`. The entry gate pins
+Tasks 1.1–3.6 are complete and change progress is `20/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2418,8 +2418,26 @@ The repository-wide test entrypoint was also attempted, but Compose stopped
 before tests because two pre-existing local test containers already owned its
 fixed names. The attempt-created empty network and unused volume were removed
 by their exact recorded identities; the older containers were left unchanged.
-The protocol suites above are green, and the two required clean complete
-Atenea regressions remain explicitly scheduled at task 3.6.
+The protocol suites above are green. The corrected source mount was then used
+for the two complete regressions recorded at task 3.6.
+
+Atenea commit `467e2abed1e86e9b8eac5fac2fcec2df59825be7` completes
+the control-plane integration. Each newly selected remote WorkSession now
+persists a UUID external session identity and one immutable workload kind;
+each project AgentRun additionally persists the exact Atenea project,
+repository, branch, base commit and manifest hash before dispatch. The
+separate `ATENEA_REMOTE_WORKER_PROJECT_CODEX_ENABLED` gate defaults false,
+synthetic routing remains compatible, and a worker lacking the exact
+capability leaves a new session local.
+
+The client sends no caller command, path, endpoint or environment and carries
+the prior external thread UUID only for continuation. Terminal application
+maps the returned thread, turn, final answer and summary once. Focused tests
+cover exact selection/denial, payload, persistence, cancellation, bounded
+partition, startup reconciliation without redispatch and duplicate terminal
+delivery. Migration V49 passed against PostgreSQL test state. Two final full
+regressions each passed `391/391` in `32.337 s` and `32.537 s`; production
+configuration and its nine running containers did not change.
 
 Accepted sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/entry-gate`;
@@ -2431,4 +2449,9 @@ Protocol evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `2bad7bca1e4771746df14b01b8441c0c2594a663d6909f88081b963447b14abf`.
 
-The exact resume point is task 3.1 of `onboard-atenea-on-ax42`.
+Control-plane integration evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-3-control-plane-integration`;
+the SHA-256 of its `SHA256SUMS` is
+`a204af05e56a8719623b80b688c75f172a81a26ba4f6a6093e059333462ae4c9`.
+
+The exact resume point is task 4.1 of `onboard-atenea-on-ax42`.
