@@ -31,7 +31,7 @@ SECRET_GENERATORS: dict[str, Callable[[str], str]] = {
     ),
     "BEAUTIPS_SYNTHETIC_SMOKE_ADMIN_PASSWORD": lambda _session: secrets.token_hex(32),
     "BEAUTIPS_SYNTHETIC_SMOKE_SEAL_CODE": (
-        lambda _session: f"{secrets.randbelow(100_000_000):08d}"
+        lambda _session: f"{secrets.randbelow(10_000):04d}"
     ),
 }
 METADATA_NAME = "metadata-v1.json"

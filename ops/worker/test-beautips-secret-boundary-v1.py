@@ -140,6 +140,11 @@ class BeautipsSecretBoundaryTest(unittest.TestCase):
         for item in self.secret_root.iterdir():
             self.assertEqual(0o600, stat.S_IMODE(item.stat().st_mode))
             self.assertNotIn(MARKER.encode(), item.read_bytes())
+        seal_code = (
+            self.secret_root / "BEAUTIPS_SYNTHETIC_SMOKE_SEAL_CODE"
+        ).read_text(encoding="utf-8").strip()
+        self.assertEqual(4, len(seal_code))
+        self.assertTrue(seal_code.isdecimal())
         metadata = json.loads(
             (self.secret_root / MODULE.METADATA_NAME).read_text(encoding="utf-8")
         )
