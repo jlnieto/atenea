@@ -1386,3 +1386,32 @@ the SHA-256 of its `SHA256SUMS` is
 `af7b6b18ff1f325bb2d66ecd2d160fa9fe832d240a43d6283c5ebfaac351f9b3`.
 
 The exact resume point is task 6.5 of `add-private-session-previews`.
+
+Task 6.5 is complete and change progress is `29/37`. The exact preview lease
+expired at `2026-07-29T02:20:01.698489Z`; the coordinator persisted
+`EXPIRED` and removed its listener at
+`2026-07-29T02:20:02.591403Z`, 0.893 seconds later. The tailnet route now
+returns HTTP 000 while the separately owned runtime remains healthy and
+loopback-only on `127.0.0.1:22243`.
+
+Both attachment metadata records and both contents remain retrievable through
+the authenticated boundary after route teardown. Their SHA-256 values remain
+exactly
+`9c52eccafaf54635063809ac3a4deabf788e821b5fecf33e7f785ae308282f26`
+and
+`e5f912bcdf5e695733df61f91cf24513d85856ae83ba398e3ee568073c27c6f5`;
+the isolated Atenea index still binds both to WorkSession `96061` and AgentRun
+`9606101`.
+
+After those retained copies were reverified, only the exact temporary browser
+scratch was deleted. There are zero preview-labelled browser containers, zero
+Chromium/Playwright processes and no local-forward listener. The runtime,
+allocation, worktree, Git, production, preview, Beautips and RAID state remain
+unchanged.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-6.5-preview-teardown-retention`;
+the SHA-256 of its `SHA256SUMS` is
+`57a1de69afa5beb591e4145efc4f004f4154f129452af2b22c0167a415aabd66`.
+
+The exact resume point is task 6.6 of `add-private-session-previews`.
