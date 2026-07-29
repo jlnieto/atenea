@@ -74,6 +74,7 @@ class ProjectCodexContractTest(unittest.TestCase):
         self.assertNotIn(workload["message"], joined)
         self.assertIn(str(worktree), command)
         self.assertIn(str(common), command)
+        self.assertIn("/srv/atenea/repositories", command)
         self.assertIn("/home/jose/.codex", command)
         self.assertIn("GIT_CONFIG_COUNT", command)
         self.assertIn("GIT_CONFIG_KEY_0", command)

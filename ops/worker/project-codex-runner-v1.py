@@ -23,7 +23,7 @@ BRANCH = "feature/actualizar-conversacion-en-web"
 BASE_COMMIT = "b605c8d5b063e7321edd60fec2265ec7ddb84ea9"
 MANIFEST_SHA256 = "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
 CODEX = "/home/jose/.codex/packages/standalone/current/bin/codex"
-GIT_COMMON_DIR = Path("/srv/atenea/workspace/repos/internal/atenea.git")
+GIT_COMMON_DIR = Path("/srv/atenea/repositories/atenea.git")
 REQUEST_KEYS = {"dispatchId", "executionId", "sessionId", "workspaceIdentity", "workload"}
 WORKLOAD_KEYS = {
     "kind", "projectId", "repository", "branch", "commit",
@@ -122,6 +122,8 @@ def validate_request(request: Any, config: dict[str, Any]) -> tuple[dict[str, An
 
 
 def checked(command: list[str], cwd: Path) -> str:
+    if command and command[0] == "git":
+        command = ["git", "-c", f"safe.directory={cwd}", *command[1:]]
     try:
         result = subprocess.run(
             command,
@@ -220,8 +222,7 @@ def sandbox_command(
         "--dir", "/srv/atenea/workspaces/sessions",
         "--dir", str(worktree.parent),
         "--bind", str(worktree), str(worktree),
-        "--dir", "/srv/atenea/workspace", "--dir", "/srv/atenea/workspace/repos",
-        "--dir", "/srv/atenea/workspace/repos/internal",
+        "--dir", "/srv/atenea/repositories",
         "--bind", str(common_dir), str(common_dir),
         "--setenv", "HOME", "/home/jose",
         "--setenv", "USER", "jose",

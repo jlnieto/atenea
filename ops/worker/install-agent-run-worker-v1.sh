@@ -202,9 +202,9 @@ project_register() {
   local allocation="/srv/atenea/workspaces/sessions/${session_id}/runtime-allocation-v1.json"
   [[ -d "$worktree" && ! -L "$worktree" && -f "$allocation" ]] \
     || fail "persisted workspace ownership is absent"
-  [[ "$(git -C "$worktree" remote get-url origin)" == "$PROJECT_REPOSITORY" ]] \
+  [[ "$(git -c safe.directory="$worktree" -C "$worktree" remote get-url origin)" == "$PROJECT_REPOSITORY" ]] \
     || fail "workspace remote is foreign"
-  git -C "$worktree" merge-base --is-ancestor "$PROJECT_COMMIT" HEAD \
+  git -c safe.directory="$worktree" -C "$worktree" merge-base --is-ancestor "$PROJECT_COMMIT" HEAD \
     || fail "workspace does not descend from the pinned commit"
   [[ "$(sha256sum "$worktree/ops/atenea-runtime.json" | cut -d' ' -f1)" == "$PROJECT_MANIFEST_SHA256" ]] \
     || fail "workspace manifest is foreign"
