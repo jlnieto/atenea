@@ -2297,3 +2297,24 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 7.4 of
 `establish-development-database-lifecycle`.
+
+Task 7.4 is complete and change progress is `36/37`. The final rollup
+reverified all `25` prior evidence packages file-by-file and records each
+relative package, file count, byte count, `SHA256SUMS` digest, result and audit
+duration. It inventories `23` sanitized command ledgers and `11`
+timeout/exit-code/duration ledgers.
+
+The complete Phase 7 artifact tree has no symlink, special file,
+world-accessible file, raw snapshot, dump, environment file, credential file
+or unmistakable private-key/token pattern. Versioned SQL migration and seed
+files are deterministic synthetic programme inputs rather than captured
+database output. No dump bytes, result rows, credential values or environment
+captures enter the rollup.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-7.4-sanitized-evidence-rollup`;
+the SHA-256 of its `SHA256SUMS` is
+`cfdc552c9078f9f907ba5f147925f7281d66562b7c72c906adfcc769774f4dac`.
+
+The exact resume point is task 7.5 of
+`establish-development-database-lifecycle`.
