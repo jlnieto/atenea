@@ -41,7 +41,7 @@
 
 ## 6. Isolation, denial and continuity acceptance
 
-- [ ] 6.1 Prove the two sessions cannot inspect, connect to, snapshot, replace, restore or clean each other's database
+- [x] 6.1 Prove the two sessions cannot inspect, connect to, snapshot, replace, restore or clean each other's database
 - [ ] 6.2 Prove unconfirmed, expired, replayed and stale-revision replacement attempts mutate nothing
 - [ ] 6.3 Prove production, preview, real-project, unlabelled, partial, foreign and ambiguous targets remain unchanged
 - [ ] 6.4 Restart the database mediator/rootless daemons and reconcile only persisted exact ownership without implicit creation

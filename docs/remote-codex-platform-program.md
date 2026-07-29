@@ -2079,3 +2079,22 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 6.1 of
 `establish-development-database-lifecycle`.
+
+Task 6.1 is complete and change progress is `27/37`. Cross-slot Docker inspect,
+DNS resolution and labelled resource enumeration all fail in both directions.
+Neither database container contains the mediator client, sudo, any Docker
+socket, worker state root or private snapshot root, so a WorkSession runtime
+has no authority to request snapshot, replace, restore or cleanup.
+
+A complete fingerprint of both records, all snapshot metadata/content and both
+live resource identities/labels is byte-identical before and after the denial
+attempts. The trusted global `atenea-worker` mediator remains the only caller
+and still requires exact persisted database ownership before an operation.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-6.1-cross-session-isolation`;
+the SHA-256 of its `SHA256SUMS` is
+`2c68ff9dfadc270ca2184f93b5a974b4574f8099e4a93fba6e6f9f71eec3c70a`.
+
+The exact resume point is task 6.2 of
+`establish-development-database-lifecycle`.
