@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.atenea.api.ApiExceptionHandler;
 import com.atenea.attachments.AttachmentFeatureDisabledException;
+import com.atenea.attachments.AttachmentWorkerException;
 import com.atenea.attachments.WorkSessionAttachmentService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AttachmentKind;
@@ -18,6 +19,7 @@ import com.atenea.persistence.worksession.AttachmentSource;
 import com.atenea.persistence.worksession.WorkSessionAttachmentEntity;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.service.worksession.AttachmentNotFoundException;
+import com.atenea.service.worksession.AttachmentLimitException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -120,6 +122,45 @@ class WorkSessionAttachmentControllerTest {
         mockMvc.perform(get("/api/sessions/13/attachments/" + ATTACHMENT_ID))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("El adjunto no existe en esta WorkSession."));
+    }
+
+    @Test
+    void uploadExposesActionableLimitTypeAndWorkerStates() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "screen.png", "image/png", "png".getBytes());
+        when(attachmentService.upload(
+                org.mockito.ArgumentMatchers.eq(12L),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(AttachmentSource.OPERATOR_UPLOAD),
+                org.mockito.ArgumentMatchers.eq(AttachmentKind.IMAGE),
+                org.mockito.ArgumentMatchers.eq(AttachmentRetentionClass.SESSION),
+                org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new AttachmentLimitException("El adjunto supera el límite de 16 MiB."))
+                .thenThrow(new AttachmentWorkerException(
+                        "El formato del adjunto no está permitido.",
+                        415,
+                        "unsupported_content_type"))
+                .thenThrow(new AttachmentWorkerException(
+                        "El almacenamiento de adjuntos no está disponible.",
+                        503,
+                        "attachment_worker_unavailable"));
+
+        mockMvc.perform(multipart("/api/mobile/sessions/12/attachments")
+                        .file(file)
+                        .param("kind", "IMAGE"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.message").value("El adjunto supera el límite de 16 MiB."));
+        mockMvc.perform(multipart("/api/mobile/sessions/12/attachments")
+                        .file(file)
+                        .param("kind", "IMAGE"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.message").value("El formato del adjunto no está permitido."));
+        mockMvc.perform(multipart("/api/mobile/sessions/12/attachments")
+                        .file(file)
+                        .param("kind", "IMAGE"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.message").value("El almacenamiento de adjuntos no está disponible."));
     }
 
     private WorkSessionAttachmentEntity attachment() {
