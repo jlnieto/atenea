@@ -52,6 +52,6 @@
 
 - [x] 7.1 Disable new preview activation and UI affordances while retained metadata and attachments remain readable
 - [x] 7.2 Repeat rollback and prove idempotence plus rejection of unlabelled, partial, foreign and ambiguous preview resources
-- [ ] 7.3 Clean only recorded exact synthetic projections and compare final production, AX42, slots, RAID, firewall and Beautips fingerprints
+- [x] 7.3 Clean only recorded exact synthetic projections and compare final production, AX42, slots, RAID, firewall and Beautips fingerprints
 - [ ] 7.4 Retain sanitized commands, exit codes, finite timeouts, durations, screenshots and `SHA256SUMS`
 - [ ] 7.5 Run strict OpenSpec validation, archive the completed change, commit and push both repositories, then enter Phase 7

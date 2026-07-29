@@ -1573,3 +1573,36 @@ the SHA-256 of its `SHA256SUMS` is
 `8a7d51fbcf435a8cbd67b5e72978b65fc8160ffc9495810f1413c67c98e50f20`.
 
 The exact resume point is task 7.3 of `add-private-session-previews`.
+
+Task 7.3 is complete and change progress is `35/37`. Before mutation, all
+three remaining terminal worker projections were resolved by immutable preview
+UUID, WorkSession `96061`, project, worker, runtime UUID, allocation
+identity/fingerprint, ingress port, lifecycle revision, terminal state,
+synthetic marker and exact record SHA-256.
+
+With the systemd coordinator still disabled/inactive, the installed
+coordinator's exact synthetic-delete contract removed only those three
+validated records in 52 ms. The worker preview state root now has zero records
+and zero child entries, with no control/ingress listener or coordinator
+process. Complete before/after worker diff contains no other change.
+
+The runtime remains healthy and loopback-only on `127.0.0.1:22243` because the
+design treats runtimes, worktrees and Git as separate resources and this task
+does not request preview-runtime teardown. Allocation/admission hashes,
+runtime container, worktree HEAD/tree/status, bare mirror HEAD/fsck, both
+attachment metadata/content pairs, all four rootless slot inventories,
+Beautips, RAID `[UU]`, base services, rootful Docker `inactive/masked` and
+every non-preview firewall rule are unchanged.
+
+The independent continuity database remains byte-identical with two preview
+audit rows, two attachment indexes and one synthetic AgentRun, proving worker
+projection cleanup did not down-migrate retained history. Atenea production
+and preview retain the same nine container identities and healthy probes.
+Only the two exact task staging files were removed after verification.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-7.3-exact-projection-cleanup`;
+the SHA-256 of its `SHA256SUMS` is
+`cf6edafe395f173e561520652278c8b65150294e3c5403f73257d6aff2153c24`.
+
+The exact resume point is task 7.4 of `add-private-session-previews`.
