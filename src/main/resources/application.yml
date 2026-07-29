@@ -44,6 +44,16 @@ atenea:
     lease-duration: ${ATENEA_REMOTE_WORKER_LEASE_DURATION:90s}
     reconciliation-timeout: ${ATENEA_REMOTE_WORKER_RECONCILIATION_TIMEOUT:2m}
     synthetic-duration: ${ATENEA_REMOTE_WORKER_SYNTHETIC_DURATION:2500ms}
+  attachments:
+    enabled: ${ATENEA_ATTACHMENTS_ENABLED:false}
+    worker-id: ${ATENEA_ATTACHMENTS_WORKER_ID:ax42-01}
+    endpoint: ${ATENEA_ATTACHMENTS_ENDPOINT:http://127.0.0.1:8788}
+    token-file: ${ATENEA_ATTACHMENTS_TOKEN_FILE:}
+    synthetic-project-allowlist: ${ATENEA_ATTACHMENTS_SYNTHETIC_PROJECT_ALLOWLIST:}
+    connect-timeout: ${ATENEA_ATTACHMENTS_CONNECT_TIMEOUT:3s}
+    request-timeout: ${ATENEA_ATTACHMENTS_REQUEST_TIMEOUT:15s}
+    max-file-bytes: ${ATENEA_ATTACHMENTS_MAX_FILE_BYTES:16777216}
+    max-session-bytes: ${ATENEA_ATTACHMENTS_MAX_SESSION_BYTES:268435456}
   codex-app-server:
     url: ${ATENEA_CODEX_APP_SERVER_URL:ws://127.0.0.1:8092}
     prompt: ${ATENEA_CODEX_APP_SERVER_PROMPT:say hello}

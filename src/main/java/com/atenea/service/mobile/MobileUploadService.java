@@ -2,6 +2,7 @@ package com.atenea.service.mobile;
 
 import com.atenea.api.mobile.MobileUploadResponse;
 import com.atenea.api.mobile.MobileUploadTelemetryResponse;
+import com.atenea.attachments.AttachmentProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -32,16 +33,23 @@ public class MobileUploadService {
 
     private final Path uploadRoot;
     private final ObjectMapper objectMapper;
+    private final AttachmentProperties attachmentProperties;
 
     public MobileUploadService(
             @Value("${atenea.mobile-uploads.root:/workspace/repos/internal/atenea/operator-uploads}") String uploadRoot,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            AttachmentProperties attachmentProperties
     ) {
         this.uploadRoot = Path.of(uploadRoot).toAbsolutePath().normalize();
         this.objectMapper = objectMapper;
+        this.attachmentProperties = attachmentProperties;
     }
 
     public MobileUploadResponse store(MultipartFile file) {
+        if (attachmentProperties.isEnabled()) {
+            throw new MobileUploadException(
+                    "Selecciona una WorkSession y adjunta el fichero desde su conversación.");
+        }
         if (file == null || file.isEmpty()) {
             throw new MobileUploadException("No se ha recibido ningún fichero.");
         }
