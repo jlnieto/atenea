@@ -75,6 +75,11 @@ class ProjectCodexContractTest(unittest.TestCase):
         self.assertIn(str(worktree), command)
         self.assertIn(str(common), command)
         self.assertIn("/home/jose/.codex", command)
+        self.assertIn("GIT_CONFIG_COUNT", command)
+        self.assertIn("GIT_CONFIG_KEY_0", command)
+        self.assertIn("safe.directory", command)
+        git_value_index = command.index("GIT_CONFIG_VALUE_0")
+        self.assertEqual(str(worktree), command[git_value_index + 1])
         self.assertNotIn("/var/run/docker.sock", joined)
         for denied in (
             "IPAddressDeny=127.0.0.0/8",
