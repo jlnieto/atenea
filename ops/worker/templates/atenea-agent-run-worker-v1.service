@@ -1,5 +1,5 @@
 [Unit]
-Description=Atenea private synthetic AgentRun worker v1
+Description=Atenea private AgentRun worker v1
 After=network-online.target tailscaled.service
 Wants=network-online.target
 
@@ -7,26 +7,26 @@ Wants=network-online.target
 Type=simple
 User=atenea-worker
 Group=atenea
-ExecStart=/usr/local/libexec/atenea/agent-run-worker-v1.py --bind ${ATENEA_WORKER_BIND} --port ${ATENEA_WORKER_PORT} --worker-id ${ATENEA_WORKER_ID} --state-dir /srv/atenea/worker/agent-runs-v1 --token-file /etc/atenea-worker/agent-run-worker-v1.token --normal-capacity 4 --heavy-capacity 2
+ExecStart=/usr/local/libexec/atenea/agent-run-worker-v1.py --bind ${ATENEA_WORKER_BIND} --port ${ATENEA_WORKER_PORT} --worker-id ${ATENEA_WORKER_ID} --state-dir /srv/atenea/worker/agent-runs-v1 --token-file /etc/atenea-worker/agent-run-worker-v1.token --normal-capacity 4 --heavy-capacity 2 --project-config /etc/atenea-worker/project-codex-v1.json --project-runner /usr/local/libexec/atenea/project-codex-runner-v1.py --project-timeout 1800
 EnvironmentFile=/etc/atenea-worker/agent-run-worker-v1.env
 Restart=on-failure
 RestartSec=2s
 TimeoutStartSec=15s
 TimeoutStopSec=15s
-NoNewPrivileges=true
+NoNewPrivileges=false
 PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=read-only
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-RestrictAddressFamilies=AF_INET AF_INET6
-RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictSUIDSGID=false
 LockPersonality=true
 MemoryDenyWriteExecute=true
-ReadWritePaths=/srv/atenea/worker/agent-runs-v1
-CapabilityBoundingSet=
+ReadWritePaths=/srv/atenea/worker/agent-runs-v1 /srv/atenea/workspaces/sessions /home/jose/.codex
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID
 AmbientCapabilities=
 
 [Install]

@@ -189,7 +189,8 @@ complete. Its synthetic PostgreSQL and MariaDB fixtures were restored,
 rollback-tested and exact-cleaned; database automation remains disabled and
 real-project activation remains blocked on individual onboarding plus an
 independent restore-tested backup. `onboard-atenea-on-ax42` is the active
-Phase 8 project change at `7/45`; no real-project workload is enabled yet.
+Phase 8 project change at `14/45`; its exact protocol is installed but both
+the endpoint and real-project capability are disabled.
 
 ## Decision log
 
@@ -231,6 +232,7 @@ Phase 8 project change at `7/45`; no real-project workload is enabled yet.
 | D-034 | Onboard Atenea first and Beautips second; keep every other project independently disabled. | Phase 8 requires one archived change per project and Atenea already has the strongest canonical manifest/relocation evidence. | accepted | programme owner | after Atenea archive |
 | D-035 | Run the first managed real Codex workload through bounded `codex exec` as the already authenticated AX42 administrative identity without copying or reading its authentication cache. | The service identity is deliberately unauthenticated; the documented ephemeral probe proves usable ChatGPT authentication while preserving the forbidden-auth boundary. | accepted for Atenea pilot | security/runtime owners | before expanding beyond the pilot |
 | D-036 | Keep Atenea onboarding artifacts non-authoritative and its database empty-migrated plus synthetic until an external backup has passed restore. | RAID and retained acceptance evidence do not satisfy authoritative project backup. | accepted | data/operations owners | before any real retained data |
+| D-037 | Admit `project-codex-v1` only from a root-owned exact Atenea workspace registry and execute it in a per-run Bubblewrap namespace with no caller-supplied command, path, remote, endpoint or environment. | The authenticated identity can be reused without turning the worker into a general shell or mounting other workspaces, daemon sockets or production paths. Uncertain turns fail closed after restart instead of being replayed. | accepted for Atenea pilot | security/runtime owners | after Atenea archive and before a second project |
 
 ## Deferred decisions and gates
 
@@ -2353,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–1.7 are complete and change progress is `7/45`. The entry gate pins
+Tasks 1.1–2.7 are complete and change progress is `14/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2373,8 +2375,21 @@ sandbox and completed in `4873 ms`. Only exit code, timeout, duration and
 expected-output SHA-256 were retained. `codex login status` identified the
 authentication method, but no `auth.json`, internal session, token, cookie,
 credential or environment was read or copied by orchestration. The real pilot
-will use bounded workspace-write execution and persist only the thread/turn
-identities required by the WorkSession contract.
+uses a bounded per-run process, workspace-write Codex sandbox, a Bubblewrap
+filesystem namespace and a collected transient cgroup. Only the exact derived
+worktree, canonical Git common directory, private result directory and
+Codex-owned authentication/session boundary are mounted. The child denies
+loopback, RFC1918, Tailscale and link-local destinations while retaining
+public Codex egress. The prompt remains on stdin and only the thread, turn,
+final answer and fixed summary enter the result.
+
+`project-codex-v1` has versioned request/result schemas and an exact root-owned
+Atenea registry. Unknown fields, caller commands, paths, remotes, endpoints,
+environments, foreign project/workspace identities and an empty allowlist fail
+closed. Duplicate dispatches retain one execution, exact cancellation does not
+affect another process, and restart reconciliation never silently duplicates
+an uncertain turn. The existing authenticated tailnet port is reused; no public
+or additional listener is introduced.
 
 AX42 retains four active rootless daemons, free container slots 2–4, three
 running Beautips containers, three RAID arrays `[UU]`, active Tailscale/UFW,
@@ -2382,9 +2397,38 @@ inactive rootful Docker and disabled real worker/preview/database capabilities.
 Atenea retains nine running production/preview containers. No runtime, route,
 database or real AgentRun was created by the gate.
 
+The worker was installed, enabled, verified, disabled and rolled back twice.
+Its final state is `disabled/inactive`, port `8787` has no listener or UFW
+rule, the exact project registry is disabled with zero workspaces, and the
+installed runner/config are root-owned. Focused tests pass locally and on
+AX42. AX42 lacks the optional `jsonschema` Python module, so schema validation
+runs in the repository environment while portable runner tests exercise argv
+isolation and thread continuity on AX42. A first remote test invocation
+recorded exit `2` because its test file had not yet been copied; corrected
+bounded invocations are retained rather than hiding that setup failure. The
+first network baseline selected a tailnet SSH destination that does not admit
+AX42 and timed out; the corrected control uses AX42's reachable tailnet
+attachment listener, proves it reachable without the child policy, then proves
+the same tailnet and loopback destinations denied while public egress remains
+available. An initial broad `pgrep -f` matched its own capture shell; the
+authoritative corrected final state uses exact listener, firewall and transient
+unit counts.
+
+The repository-wide test entrypoint was also attempted, but Compose stopped
+before tests because two pre-existing local test containers already owned its
+fixed names. The attempt-created empty network and unused volume were removed
+by their exact recorded identities; the older containers were left unchanged.
+The protocol suites above are green, and the two required clean complete
+Atenea regressions remain explicitly scheduled at task 3.6.
+
 Accepted sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `fdaf300e4057ce174785a55dee832ff1cac78db8aee4bb0ca8604a1a3a1ba049`.
 
-The exact resume point is task 2.1 of `onboard-atenea-on-ax42`.
+Protocol evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-2-project-codex-worker`;
+the SHA-256 of its `SHA256SUMS` is
+`2bad7bca1e4771746df14b01b8441c0c2594a663d6909f88081b963447b14abf`.
+
+The exact resume point is task 3.1 of `onboard-atenea-on-ax42`.

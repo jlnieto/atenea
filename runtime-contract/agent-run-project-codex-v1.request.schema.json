@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.internal/contracts/agent-run-project-codex-v1.request.schema.json",
+  "title": "Atenea exact project Codex dispatch request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "dispatchId",
+    "sessionId",
+    "workspaceIdentity",
+    "workloadClass",
+    "leaseGeneration",
+    "workload"
+  ],
+  "properties": {
+    "dispatchId": {"type": "string", "format": "uuid"},
+    "sessionId": {"type": "string", "format": "uuid"},
+    "workspaceIdentity": {"type": "string", "pattern": "^remote:"},
+    "workloadClass": {"enum": ["NORMAL", "HEAVY"]},
+    "leaseGeneration": {"type": "integer", "minimum": 1},
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "projectId",
+        "repository",
+        "branch",
+        "commit",
+        "manifestSha256",
+        "message",
+        "threadId"
+      ],
+      "properties": {
+        "kind": {"const": "project-codex-v1"},
+        "projectId": {"const": "atenea"},
+        "repository": {"const": "https://github.com/jlnieto/atenea.git"},
+        "branch": {"const": "feature/actualizar-conversacion-en-web"},
+        "commit": {"const": "b605c8d5b063e7321edd60fec2265ec7ddb84ea9"},
+        "manifestSha256": {"const": "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"},
+        "message": {"type": "string", "minLength": 1, "maxLength": 20000},
+        "threadId": {"type": ["string", "null"], "format": "uuid"}
+      }
+    }
+  }
+}

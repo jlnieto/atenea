@@ -6,6 +6,7 @@ import threading
 import time
 import unittest
 import uuid
+import os
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -110,6 +111,174 @@ class WorkerStateTest(unittest.TestCase):
         request["command"] = "id"
         with self.assertRaisesRegex(MODULE.ProtocolError, "dispatch fields"):
             self.state.create(request)
+
+
+class ProjectWorkerStateTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        self.runner = root / "fake-project-runner"
+        self.runner.write_text(
+            """#!/usr/bin/env python3
+import json
+import sys
+import time
+request = json.load(sys.stdin)
+message = request["workload"]["message"]
+if message.startswith("sleep:"):
+    time.sleep(float(message.split(":", 1)[1]))
+print(json.dumps({
+    "threadId": request["workload"]["threadId"] or "f9d68d92-71c6-4fa5-b77b-63863f8f2dc7",
+    "turnId": request["executionId"],
+    "finalAnswer": "bounded fake result",
+    "outputSummary": "project-codex-v1 completed"
+}))
+""",
+            encoding="utf-8",
+        )
+        self.runner.chmod(0o755)
+        self.session_id = str(uuid.uuid4())
+        self.workspace_identity = "remote:ax42-01:work-session:" + self.session_id
+        self.config = root / "project.json"
+        self.config.write_text(
+            json.dumps({
+                "schemaVersion": "project-codex-v1",
+                "enabled": True,
+                "projectId": "atenea",
+                "repository": MODULE.PROJECT_REPOSITORY,
+                "branch": MODULE.PROJECT_BRANCH,
+                "commit": MODULE.PROJECT_COMMIT,
+                "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+                "runner": str(self.runner),
+                "workspaces": {
+                    self.workspace_identity: {
+                        "sessionId": self.session_id,
+                        "worktree": "/srv/atenea/workspaces/sessions/" + self.session_id + "/atenea",
+                        "allocationSha256": "a" * 64,
+                    }
+                },
+            }),
+            encoding="utf-8",
+        )
+        self.config.chmod(0o644)
+        self.state = MODULE.WorkerState(
+            root / "state",
+            "test-worker",
+            project_config=self.config,
+            project_runner=self.runner,
+            project_timeout=30,
+            project_config_uid=os.getuid(),
+            privilege_command=(),
+        )
+        self.state.start()
+
+    def tearDown(self):
+        self.state.stop()
+        self.temporary.cleanup()
+
+    def request(self, message="hello", thread_id=None):
+        return {
+            "dispatchId": str(uuid.uuid4()),
+            "sessionId": self.session_id,
+            "workspaceIdentity": self.workspace_identity,
+            "workloadClass": "NORMAL",
+            "leaseGeneration": 1,
+            "workload": {
+                "kind": "project-codex-v1",
+                "projectId": "atenea",
+                "repository": MODULE.PROJECT_REPOSITORY,
+                "branch": MODULE.PROJECT_BRANCH,
+                "commit": MODULE.PROJECT_COMMIT,
+                "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+                "message": message,
+                "threadId": thread_id,
+            },
+        }
+
+    def wait_terminal(self, dispatch_id, timeout=5):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            execution = self.state.get(dispatch_id)
+            if execution["status"] in MODULE.TERMINAL:
+                return execution
+            time.sleep(0.02)
+        self.fail("execution did not become terminal")
+
+    def test_exact_project_dispatch_is_idempotent_and_preserves_thread(self):
+        thread_id = str(uuid.uuid4())
+        request = self.request(thread_id=thread_id)
+        created, was_created = self.state.create(request)
+        duplicate, was_created_again = self.state.create(json.loads(json.dumps(request)))
+        self.assertTrue(was_created)
+        self.assertFalse(was_created_again)
+        self.assertEqual(created["executionId"], duplicate["executionId"])
+        terminal = self.wait_terminal(request["dispatchId"])
+        self.assertEqual("SUCCEEDED", terminal["status"])
+        self.assertEqual(thread_id, terminal["result"]["threadId"])
+
+    def test_disabled_foreign_ambiguous_and_arbitrary_requests_fail_closed(self):
+        baseline = self.config.read_bytes()
+        for mutate in (
+            lambda request: request["workload"].__setitem__("projectId", "beautips"),
+            lambda request: request["workload"].__setitem__("command", "id"),
+            lambda request: request.__setitem__("workspaceIdentity", "remote:foreign"),
+        ):
+            request = self.request()
+            mutate(request)
+            with self.assertRaises(MODULE.ProtocolError):
+                self.state.create(request)
+            self.assertEqual(baseline, self.config.read_bytes())
+        parsed = json.loads(baseline)
+        parsed["enabled"] = False
+        self.config.write_text(json.dumps(parsed), encoding="utf-8")
+        with self.assertRaisesRegex(MODULE.ProtocolError, "disabled"):
+            self.state.create(self.request())
+
+    def test_cancel_terminates_only_exact_project_process(self):
+        request = self.request(message="sleep:3")
+        other = self.request(message="hello")
+        execution, _ = self.state.create(request)
+        self.state.create(other)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if self.state.get(request["dispatchId"])["status"] == "RUNNING":
+                break
+            time.sleep(0.02)
+        self.state.cancel(request["dispatchId"], {"executionId": execution["executionId"]})
+        terminal = self.wait_terminal(request["dispatchId"])
+        other_terminal = self.wait_terminal(other["dispatchId"])
+        self.assertEqual("CANCELLED", terminal["status"])
+        self.assertEqual("SUCCEEDED", other_terminal["status"])
+
+    def test_restart_reconciliation_does_not_duplicate_uncertain_turn(self):
+        request = self.request(message="sleep:3")
+        created, _ = self.state.create(request)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if self.state.get(request["dispatchId"])["status"] == "RUNNING":
+                break
+            time.sleep(0.02)
+        self.state.stop()
+        state_file = Path(self.temporary.name) / "state" / "executions.json"
+        persisted = json.loads(state_file.read_text(encoding="utf-8"))
+        persisted["executions"][request["dispatchId"]]["status"] = "RUNNING"
+        persisted["executions"][request["dispatchId"]]["statusReason"] = "simulated uncertain process"
+        state_file.write_text(json.dumps(persisted), encoding="utf-8")
+        recovered = MODULE.WorkerState(
+            Path(self.temporary.name) / "state",
+            "test-worker",
+            project_config=self.config,
+            project_runner=self.runner,
+            project_timeout=30,
+            project_config_uid=os.getuid(),
+            privilege_command=(),
+        )
+        recovered.start()
+        self.state = recovered
+        terminal = self.wait_terminal(request["dispatchId"])
+        self.assertEqual(created["executionId"], terminal["executionId"])
+        self.assertEqual("FAILED", terminal["status"])
+        self.assertIn("refused to duplicate", terminal["statusReason"])
 
 
 class WorkerHttpTest(unittest.TestCase):

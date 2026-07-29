@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private, durable and deliberately synthetic AgentRun worker protocol v1."""
+"""Private, durable AgentRun worker protocol with exact project opt-in."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import hmac
 import json
 import os
 import signal
+import subprocess
 import tempfile
 import threading
 import time
@@ -21,13 +22,23 @@ from typing import Any
 from urllib.parse import urlparse
 
 PROTOCOL = "agent-run-worker/v1"
-CAPABILITY = "synthetic-routing-v1"
+SYNTHETIC_CAPABILITY = "synthetic-routing-v1"
+PROJECT_CAPABILITY = "project-codex-v1"
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED"}
 NON_TERMINAL = {"QUEUED", "STARTING", "RUNNING", "CANCELLING", "RECONCILING"}
 CREATE_KEYS = {
     "dispatchId", "sessionId", "workspaceIdentity", "workloadClass", "leaseGeneration", "workload"
 }
-WORKLOAD_KEYS = {"kind", "message", "durationMs", "steps"}
+SYNTHETIC_WORKLOAD_KEYS = {"kind", "message", "durationMs", "steps"}
+PROJECT_WORKLOAD_KEYS = {
+    "kind", "projectId", "repository", "branch", "commit",
+    "manifestSha256", "message", "threadId",
+}
+PROJECT_ID = "atenea"
+PROJECT_REPOSITORY = "https://github.com/jlnieto/atenea.git"
+PROJECT_BRANCH = "feature/actualizar-conversacion-en-web"
+PROJECT_COMMIT = "b605c8d5b063e7321edd60fec2265ec7ddb84ea9"
+PROJECT_MANIFEST_SHA256 = "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
 
 
 def utc_now() -> str:
@@ -47,17 +58,34 @@ class ProtocolError(Exception):
 
 
 class WorkerState:
-    def __init__(self, state_dir: Path, worker_id: str, normal_capacity: int = 4, heavy_capacity: int = 2):
+    def __init__(
+        self,
+        state_dir: Path,
+        worker_id: str,
+        normal_capacity: int = 4,
+        heavy_capacity: int = 2,
+        project_config: Path | None = None,
+        project_runner: Path | None = None,
+        project_timeout: int = 1800,
+        project_config_uid: int = 0,
+        privilege_command: tuple[str, ...] = ("sudo",),
+    ):
         self.state_dir = state_dir
         self.state_file = state_dir / "executions.json"
         self.worker_id = worker_id
         self.normal_capacity = normal_capacity
         self.heavy_capacity = heavy_capacity
+        self.project_config = project_config
+        self.project_runner = project_runner
+        self.project_timeout = project_timeout
+        self.project_config_uid = project_config_uid
+        self.privilege_command = privilege_command
         self.lock = threading.RLock()
         self.wakeup = threading.Event()
         self.stop_event = threading.Event()
         self.executions: dict[str, dict[str, Any]] = {}
         self.threads: dict[str, threading.Thread] = {}
+        self.processes: dict[str, subprocess.Popen[str]] = {}
         self.scheduler: threading.Thread | None = None
         self._load()
 
@@ -73,9 +101,12 @@ class WorkerState:
         for execution in self.executions.values():
             if execution["status"] in {"STARTING", "RUNNING", "CANCELLING"}:
                 execution["status"] = "RECONCILING"
-                execution["statusReason"] = "Worker service restarted; resuming persisted execution"
+                execution["statusReason"] = "Worker service restarted; persisted ownership requires reconciliation"
+                execution["reconcileRequired"] = True
                 execution["revision"] += 1
                 execution["updatedAt"] = utc_now()
+            else:
+                execution.setdefault("reconcileRequired", False)
         self._persist()
 
     def _persist(self) -> None:
@@ -109,6 +140,10 @@ class WorkerState:
             self.scheduler.join(timeout=5)
         with self.lock:
             threads = list(self.threads.values())
+            processes = list(self.processes.values())
+        for process in processes:
+            if process.poll() is None:
+                process.terminate()
         for thread in threads:
             thread.join(timeout=5)
 
@@ -120,11 +155,14 @@ class WorkerState:
                 if item["status"] in {"STARTING", "RUNNING"} and item["workloadClass"] == "HEAVY"
             )
             queued = sum(1 for item in self.executions.values() if item["status"] in {"QUEUED", "RECONCILING"})
+            capabilities = [SYNTHETIC_CAPABILITY]
+            if self._project_enabled():
+                capabilities.append(PROJECT_CAPABILITY)
             return {
                 "protocolVersion": PROTOCOL,
                 "workerId": self.worker_id,
                 "healthy": True,
-                "capabilities": [CAPABILITY],
+                "capabilities": capabilities,
                 "normalCapacity": self.normal_capacity,
                 "heavyCapacity": self.heavy_capacity,
                 "normalInUse": normal,
@@ -167,6 +205,7 @@ class WorkerState:
                 "startedAt": None,
                 "finishedAt": None,
                 "cancelRequested": False,
+                "reconcileRequired": False,
                 "result": None,
             }
             self.executions[dispatch_id] = execution
@@ -207,6 +246,9 @@ class WorkerState:
             execution["revision"] += 1
             execution["updatedAt"] = utc_now()
             self._persist()
+            process = self.processes.get(dispatch_id)
+            if process and process.poll() is None:
+                process.terminate()
             self.wakeup.set()
             return self._public(execution)
 
@@ -234,16 +276,105 @@ class WorkerState:
         if not isinstance(request["leaseGeneration"], int) or request["leaseGeneration"] < 1:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_lease", "leaseGeneration must be positive")
         workload = request["workload"]
-        if not isinstance(workload, dict) or set(workload) != WORKLOAD_KEYS:
+        if not isinstance(workload, dict) or "kind" not in workload:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_workload", "workload fields are invalid")
-        if workload["kind"] != CAPABILITY:
-            raise ProtocolError(HTTPStatus.BAD_REQUEST, "unsupported_workload", "only synthetic-routing-v1 is accepted")
+        if workload["kind"] == SYNTHETIC_CAPABILITY:
+            self._validate_synthetic(workload)
+        elif workload["kind"] == PROJECT_CAPABILITY:
+            self._validate_project(request, workload)
+        else:
+            raise ProtocolError(HTTPStatus.BAD_REQUEST, "unsupported_workload", "workload kind is unsupported")
+
+    def _validate_synthetic(self, workload: dict[str, Any]) -> None:
+        if set(workload) != SYNTHETIC_WORKLOAD_KEYS:
+            raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_workload", "synthetic workload fields are invalid")
         if not isinstance(workload["message"], str) or not (1 <= len(workload["message"]) <= 2000):
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_message", "message length is invalid")
         if not isinstance(workload["durationMs"], int) or not (100 <= workload["durationMs"] <= 300_000):
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_duration", "durationMs is outside the bounded policy")
         if not isinstance(workload["steps"], int) or not (1 <= workload["steps"] <= 100):
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_steps", "steps is outside the bounded policy")
+
+    def _validate_project(self, request: dict[str, Any], workload: dict[str, Any]) -> None:
+        if set(workload) != PROJECT_WORKLOAD_KEYS:
+            raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_workload", "project workload fields are invalid")
+        if not self._project_enabled():
+            raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project workload is disabled")
+        exact = {
+            "projectId": PROJECT_ID,
+            "repository": PROJECT_REPOSITORY,
+            "branch": PROJECT_BRANCH,
+            "commit": PROJECT_COMMIT,
+            "manifestSha256": PROJECT_MANIFEST_SHA256,
+        }
+        if any(workload.get(key) != value for key, value in exact.items()):
+            raise ProtocolError(HTTPStatus.FORBIDDEN, "project_ownership_conflict", "project identity is not allowlisted")
+        if not isinstance(workload["message"], str) or not (1 <= len(workload["message"]) <= 20_000):
+            raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_message", "message length is invalid")
+        thread_id = workload["threadId"]
+        if thread_id is not None:
+            try:
+                uuid.UUID(thread_id)
+            except (ValueError, TypeError, AttributeError):
+                raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_thread", "threadId must be null or a UUID")
+        config = self._read_project_config()
+        if request["workspaceIdentity"] not in config["workspaces"]:
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "workspace_ownership_conflict",
+                "workspace identity is not persistently registered",
+            )
+        record = config["workspaces"][request["workspaceIdentity"]]
+        if (
+            not isinstance(record, dict)
+            or set(record) != {"sessionId", "worktree", "allocationSha256"}
+            or record["sessionId"] != request["sessionId"]
+        ):
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "workspace_ownership_conflict",
+                "persisted workspace ownership is incomplete or conflicting",
+            )
+
+    def _read_project_config(self) -> dict[str, Any]:
+        if self.project_config is None:
+            raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project workload is disabled")
+        try:
+            stat = self.project_config.stat()
+            parsed = json.loads(self.project_config.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project configuration is unavailable")
+        if stat.st_uid != self.project_config_uid or stat.st_mode & 0o022:
+            raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project configuration ownership is unsafe")
+        required = {
+            "schemaVersion", "enabled", "projectId", "repository", "branch",
+            "commit", "manifestSha256", "runner", "workspaces",
+        }
+        exact = {
+            "schemaVersion": PROJECT_CAPABILITY,
+            "enabled": True,
+            "projectId": PROJECT_ID,
+            "repository": PROJECT_REPOSITORY,
+            "branch": PROJECT_BRANCH,
+            "commit": PROJECT_COMMIT,
+            "manifestSha256": PROJECT_MANIFEST_SHA256,
+        }
+        if (
+            not isinstance(parsed, dict)
+            or set(parsed) != required
+            or any(parsed.get(key) != value for key, value in exact.items())
+            or parsed.get("runner") != str(self.project_runner)
+            or not isinstance(parsed.get("workspaces"), dict)
+        ):
+            raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project configuration is not exact")
+        return parsed
+
+    def _project_enabled(self) -> bool:
+        try:
+            self._read_project_config()
+            return self.project_runner is not None and self.project_runner.is_file()
+        except ProtocolError:
+            return False
 
     def _schedule_loop(self) -> None:
         while not self.stop_event.is_set():
@@ -271,6 +402,16 @@ class WorkerState:
                 for execution in candidates:
                     if execution["cancelRequested"]:
                         self._finish_cancelled(execution)
+                        continue
+                    if execution["reconcileRequired"] and execution["workload"]["kind"] == PROJECT_CAPABILITY:
+                        execution["status"] = "FAILED"
+                        execution["statusReason"] = (
+                            "Restart reconciliation refused to duplicate an uncertain Codex turn"
+                        )
+                        execution["finishedAt"] = utc_now()
+                        execution["revision"] += 1
+                        execution["updatedAt"] = execution["finishedAt"]
+                        self._persist()
                         continue
                     if active_normal >= self.normal_capacity:
                         break
@@ -301,15 +442,32 @@ class WorkerState:
                     self._finish_cancelled(execution)
                     return
                 execution["status"] = "RUNNING"
-                execution["statusReason"] = "Synthetic execution running"
+                execution["statusReason"] = (
+                    "Exact project Codex execution running"
+                    if execution["workload"]["kind"] == PROJECT_CAPABILITY
+                    else "Synthetic execution running"
+                )
                 execution["startedAt"] = execution["startedAt"] or utc_now()
                 execution["revision"] += 1
                 execution["updatedAt"] = utc_now()
                 self._persist()
-                duration = execution["workload"]["durationMs"] / 1000
-                steps = execution["workload"]["steps"]
-                completed_steps = min(steps, int(execution["progress"] * steps / 100))
+                if execution["workload"]["kind"] == PROJECT_CAPABILITY:
+                    request = {
+                        "dispatchId": execution["dispatchId"],
+                        "executionId": execution["executionId"],
+                        "sessionId": execution["sessionId"],
+                        "workspaceIdentity": execution["workspaceIdentity"],
+                        "workload": execution["workload"],
+                    }
+                else:
+                    request = None
+                    duration = execution["workload"]["durationMs"] / 1000
+                    steps = execution["workload"]["steps"]
+                    completed_steps = min(steps, int(execution["progress"] * steps / 100))
 
+            if request is not None:
+                self._execute_project(dispatch_id, request)
+                return
             delay = duration / steps
             for step in range(completed_steps + 1, steps + 1):
                 if self.stop_event.wait(delay):
@@ -344,9 +502,88 @@ class WorkerState:
                 self.threads.pop(dispatch_id, None)
                 self.wakeup.set()
 
+    def _execute_project(self, dispatch_id: str, request: dict[str, Any]) -> None:
+        command = [*self.privilege_command, str(self.project_runner), "--config", str(self.project_config)]
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        with self.lock:
+            self.processes[dispatch_id] = process
+            execution = self.executions[dispatch_id]
+            execution["progress"] = 10
+            execution["revision"] += 1
+            execution["updatedAt"] = utc_now()
+            self._persist()
+        try:
+            stdout, stderr = process.communicate(
+                json.dumps(request, sort_keys=True, separators=(",", ":")),
+                timeout=self.project_timeout,
+            )
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stdout, stderr = process.communicate(timeout=5)
+            self._finish_project(dispatch_id, "FAILED", "Bounded project execution timed out", None)
+            return
+        finally:
+            with self.lock:
+                self.processes.pop(dispatch_id, None)
+        with self.lock:
+            cancelled = self.executions[dispatch_id]["cancelRequested"]
+        if cancelled:
+            with self.lock:
+                self._finish_cancelled(self.executions[dispatch_id])
+            return
+        if process.returncode != 0:
+            reason = "Project runner rejected or failed the exact execution"
+            if stderr.strip() in {
+                "project configuration rejected",
+                "workspace ownership rejected",
+                "worktree fingerprint rejected",
+                "Codex execution failed",
+            }:
+                reason = stderr.strip()
+            self._finish_project(dispatch_id, "FAILED", reason, None)
+            return
+        try:
+            result = json.loads(stdout)
+        except json.JSONDecodeError:
+            self._finish_project(dispatch_id, "FAILED", "Project runner returned invalid output", None)
+            return
+        if (
+            not isinstance(result, dict)
+            or set(result) != {"threadId", "turnId", "finalAnswer", "outputSummary"}
+            or not all(isinstance(result[key], str) and result[key] for key in result)
+        ):
+            self._finish_project(dispatch_id, "FAILED", "Project runner returned invalid output", None)
+            return
+        self._finish_project(dispatch_id, "SUCCEEDED", "Exact project Codex execution completed", result)
+
+    def _finish_project(
+        self, dispatch_id: str, status: str, reason: str, result: dict[str, str] | None
+    ) -> None:
+        with self.lock:
+            execution = self.executions[dispatch_id]
+            execution["status"] = status
+            execution["statusReason"] = reason
+            execution["result"] = result
+            execution["progress"] = 100 if status == "SUCCEEDED" else execution["progress"]
+            execution["finishedAt"] = utc_now()
+            execution["revision"] += 1
+            execution["updatedAt"] = execution["finishedAt"]
+            self._persist()
+
     def _finish_cancelled(self, execution: dict[str, Any]) -> None:
         execution["status"] = "CANCELLED"
-        execution["statusReason"] = "Exact synthetic execution cancelled"
+        execution["statusReason"] = "Exact execution cancelled"
         execution["finishedAt"] = utc_now()
         execution["revision"] += 1
         execution["updatedAt"] = execution["finishedAt"]
@@ -468,13 +705,26 @@ def main() -> int:
     parser.add_argument("--token-file", required=True, type=Path)
     parser.add_argument("--normal-capacity", type=int, default=4)
     parser.add_argument("--heavy-capacity", type=int, default=2)
+    parser.add_argument("--project-config", type=Path)
+    parser.add_argument("--project-runner", type=Path)
+    parser.add_argument("--project-timeout", type=int, default=1800)
     args = parser.parse_args()
     if not (1 <= args.port <= 65535):
         raise SystemExit("port is outside valid range")
     if not (1 <= args.heavy_capacity <= args.normal_capacity <= 64):
         raise SystemExit("capacity is outside policy")
 
-    state = WorkerState(args.state_dir, args.worker_id, args.normal_capacity, args.heavy_capacity)
+    if not (30 <= args.project_timeout <= 3600):
+        raise SystemExit("project timeout is outside policy")
+    state = WorkerState(
+        args.state_dir,
+        args.worker_id,
+        args.normal_capacity,
+        args.heavy_capacity,
+        args.project_config,
+        args.project_runner,
+        args.project_timeout,
+    )
     server = AgentRunServer((args.bind, args.port), state, read_token(args.token_file))
     state.start()
 

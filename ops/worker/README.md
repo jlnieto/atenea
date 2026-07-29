@@ -296,6 +296,60 @@ does not print it. `disable` stops new and existing projections while retaining
 state. `rollback` additionally removes only the two exact firewall rules and
 also retains persisted records for reconciliation or audit.
 
+## Exact Atenea Codex workload
+
+`agent-run-worker-v1.py` retains the synthetic protocol and adds the closed
+`project-codex-v1` schema. The project capability is absent from health until
+the root-owned configuration contains the one exact registered Atenea
+WorkSession and is explicitly enabled. Requests contain no command, path,
+remote, endpoint or environment. The runner derives the worktree and Git
+common directory from persisted ownership, checks the pinned repository,
+ancestor commit, manifest and allocation fingerprints, and feeds the prompt
+only through stdin.
+
+The runner executes the existing authenticated `jose` Codex identity inside a
+per-process Bubblewrap filesystem namespace and a collected transient systemd
+cgroup. Only the exact worktree, its canonical Git common directory, the
+Codex-owned authentication/session boundary and a private result directory are
+mounted; host daemon sockets, other workspaces and production paths are
+absent. The child cgroup denies loopback, RFC1918, Tailscale and link-local
+destinations while retaining public HTTPS/DNS egress for Codex. Orchestration
+never reads or copies the Codex authentication cache.
+
+Installation updates the existing private tailnet worker endpoint and leaves
+the real-project capability disabled:
+
+```bash
+sudo env ATENEA_CONTROL_PLANE_TAILSCALE_IP=100.88.252.28 \
+  ./install-agent-run-worker-v1.sh apply
+sudo ./install-agent-run-worker-v1.sh disable
+```
+
+After the canonical workspace/allocation exists, register and enable only its
+exact immutable identity:
+
+```bash
+sudo ./install-agent-run-worker-v1.sh project-register \
+  018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e \
+  remote:ax42-01:work-session:018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e
+sudo ./install-agent-run-worker-v1.sh project-enable
+```
+
+Rollback first disables the project and then unregisters only the matching
+persisted identity. These operations do not remove a worktree, runtime,
+database, preview, Git record or evidence:
+
+```bash
+sudo ./install-agent-run-worker-v1.sh project-disable
+sudo ./install-agent-run-worker-v1.sh project-unregister \
+  018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e \
+  remote:ax42-01:work-session:018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e
+```
+
+An uncertain real turn found after service restart becomes terminal `FAILED`
+with its original execution identity. It is never silently replayed; a later
+operator action may resume only from a persisted Codex thread UUID.
+
 ## WorkSession-aware dev client
 
 `dev-session-v1.sh` implements task 3.3's human command surface and task 3.4's

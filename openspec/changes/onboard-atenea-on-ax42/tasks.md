@@ -10,13 +10,13 @@
 
 ## 2. Exact real-project worker protocol
 
-- [ ] 2.1 Add versioned `project-codex-v1` request/result schemas bound to dispatch, session, workspace and project identities
-- [ ] 2.2 Add a default-disabled exact Atenea allowlist with repository, branch, manifest and worker constraints
-- [ ] 2.3 Derive worktree, runtime and Codex endpoints only from persisted ownership and reject caller commands, paths, remotes, endpoints and environments
-- [ ] 2.4 Execute Codex through a bounded per-run process with monotonic progress, cancellation, lease and thread continuity
-- [ ] 2.5 Persist recoverable execution ownership and reconcile without duplicate turns or implicit workspace creation
-- [ ] 2.6 Add install, verify, enable/disable, rollback and sanitized protocol tools without opening a new public port
-- [ ] 2.7 Add idempotence, denial, sandbox, cancellation, restart and exact-cleanup worker tests
+- [x] 2.1 Add versioned `project-codex-v1` request/result schemas bound to dispatch, session, workspace and project identities
+- [x] 2.2 Add a default-disabled exact Atenea allowlist with repository, branch, manifest and worker constraints
+- [x] 2.3 Derive worktree, runtime and Codex endpoints only from persisted ownership and reject caller commands, paths, remotes, endpoints and environments
+- [x] 2.4 Execute Codex through a bounded per-run process with monotonic progress, cancellation, lease and thread continuity
+- [x] 2.5 Persist recoverable execution ownership and reconcile without duplicate turns or implicit workspace creation
+- [x] 2.6 Add install, verify, enable/disable, rollback and sanitized protocol tools without opening a new public port
+- [x] 2.7 Add idempotence, denial, sandbox, cancellation, restart and exact-cleanup worker tests
 
 ## 3. Atenea control-plane integration
 
