@@ -47,6 +47,8 @@
         "runnerPath",
         "runnerSha256",
         "baseRunnerSha256",
+        "secretBoundaryPath",
+        "secretBoundarySha256",
         "allowedSlots",
         "workspaces"
       ],
@@ -98,6 +100,12 @@
         },
         "baseRunnerSha256": {
           "const": "de84b0c96908677e334184b9290691a2116b963dd37483022f97a0fd57ed44d1"
+        },
+        "secretBoundaryPath": {
+          "const": "/usr/local/libexec/atenea/beautips-secret-boundary-v1.py"
+        },
+        "secretBoundarySha256": {
+          "const": "d0176e51278908b9803f8a4c3502ac9a9d0613ee1c88fd37a8f6733800c79b8f"
         },
         "allowedSlots": {
           "const": [

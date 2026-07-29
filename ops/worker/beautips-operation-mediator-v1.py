@@ -120,6 +120,8 @@ def validate_registry(source: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         "runnerPath",
         "runnerSha256",
         "baseRunnerSha256",
+        "secretBoundaryPath",
+        "secretBoundarySha256",
         "allowedSlots",
         "workspaces",
     }
@@ -138,6 +140,10 @@ def validate_registry(source: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         or project["runnerSha256"]
         != "55e8f585e19f6a19d3c51aaf7532b1cf0f74f6b087ae0d1ef67faaea3029b73b"
         or project["baseRunnerSha256"] != BASE_RUNNER_SHA256
+        or project["secretBoundaryPath"]
+        != "/usr/local/libexec/atenea/beautips-secret-boundary-v1.py"
+        or project["secretBoundarySha256"]
+        != "d0176e51278908b9803f8a4c3502ac9a9d0613ee1c88fd37a8f6733800c79b8f"
         or project["allowedSlots"] != list(ALLOWED_SLOTS)
         or project["workspaces"] != {}
     ):
