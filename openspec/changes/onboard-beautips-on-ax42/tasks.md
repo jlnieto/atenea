@@ -50,7 +50,7 @@
 - [x] 6.1 Publish the exact WorkSession branch through one normal draft pull-request delivery
 - [x] 6.2 Prove reviewed merge/sync semantics without force update, duplicate response or cross-session mutation
 - [x] 6.3 Close through the canonical reconciled path while retaining Git and evidence invariants
-- [ ] 6.4 Restart the real-project worker mediator and reconcile only persisted exact ownership without rerunning the prompt
+- [x] 6.4 Restart the real-project worker mediator and reconcile only persisted exact ownership without rerunning the prompt
 - [ ] 6.5 Prove accepted Beautips remains available while every non-onboarded project remains disabled
 
 ## 7. Rollback, isolation and regression

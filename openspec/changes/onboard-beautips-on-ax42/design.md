@@ -417,6 +417,15 @@ the ephemeral executable to container `/tmp` lets the retry finish
 `CLOSED/CLOSED`. Runtime, volumes, logs, attachments and accepted evidence
 remain retained.
 
+Task 6.4 restarts only `atenea-agent-run-worker-v1.service`. The durable
+execution file and its sanitized exact-ownership projection remain
+byte-identical across the PID change. The restarted mediator retrieves the
+same two terminal Beautips executions, immutable IDs and shared thread from
+persisted state. Journal classification contains zero new execution POSTs,
+the exact WorkSession has zero runner/Codex processes, and Atenea retains two
+terminal AgentRuns and four turns. No prompt is rerun; runtime, Git,
+attachments and unrelated services are unchanged.
+
 Task 5.1 projects assigned-slot access without changing ownership: shared
 ancestors receive traverse only and the exact WorkSession worktree/cache
 receive the slot ACL. Dependencies warm only into that cache; acceptance then

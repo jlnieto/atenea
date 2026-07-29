@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `35/45`, with the exact
-  resume point at task 6.4
+  `45/45` and `onboard-beautips-on-ax42` is active at `36/45`, with the exact
+  resume point at task 6.5
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3925,3 +3925,35 @@ the SHA-256 of its `SHA256SUMS` is
 `0179ea4a72eb629225289db4e93211caf4213256cd3e9b450f1367532f32fda2`.
 
 The exact resume point is task 6.4 of `onboard-beautips-on-ax42`.
+
+Task 6.4 is complete and change progress is `36/45`. Only
+`atenea-agent-run-worker-v1.service` restarted. Its PID changed from `726675`
+to `916853` and the service returned `active/running` on the same tailnet-only
+listener at `2026-07-29T22:44:53Z`. No host or project runtime restarted.
+
+The durable execution file remained byte-identical at SHA-256
+`f65e488816560e022ac8e7d4a68adf55483cf772e387e6f20b990bf31c53734a`.
+Its sanitized protocol, worker, global status histogram and exact Beautips
+ownership projection also remained byte-identical at
+`a4628fb6f07b76fcebb129e1cc3ff6f46366ce1a09485b6ce576718f317828ac`.
+
+The restarted mediator returns the same two `SUCCEEDED`, revision-5 Beautips
+executions under exact WorkSession ownership. Immutable dispatch, execution
+and turn IDs and shared thread `019faf5f-0a96-7592-a936-583cb044dae8` are
+unchanged. Its journal has zero new execution POSTs and the WorkSession has
+zero runner/Codex processes. Atenea still has two terminal AgentRuns, four
+turns and zero non-terminal runs, proving no prompt or dispatch reran.
+
+The first readiness request used noncanonical `/health` and returned 404
+without mutation. Authenticated `/v1/health` then reported worker `ax42-01`
+healthy with zero normal/heavy capacity in use and zero queued work. Git, the
+three-container runtime, network, four volumes and six attachments remain
+unchanged. Production, preview, isolated control and administrative Beautips
+remain `UP`.
+
+Task 6.4 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-6.4-worker-restart-reconciliation`;
+the SHA-256 of its `SHA256SUMS` is
+`18574badb39b2faf4045aa1a2cc36f0f43d01b5a2bd56c5ed29ece85a4fe9a19`.
+
+The exact resume point is task 6.5 of `onboard-beautips-on-ax42`.
