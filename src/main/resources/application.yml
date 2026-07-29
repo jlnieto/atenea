@@ -54,6 +54,17 @@ atenea:
     request-timeout: ${ATENEA_ATTACHMENTS_REQUEST_TIMEOUT:15s}
     max-file-bytes: ${ATENEA_ATTACHMENTS_MAX_FILE_BYTES:16777216}
     max-session-bytes: ${ATENEA_ATTACHMENTS_MAX_SESSION_BYTES:268435456}
+  previews:
+    enabled: ${ATENEA_PREVIEWS_ENABLED:false}
+    worker-id: ${ATENEA_PREVIEWS_WORKER_ID:ax42-01}
+    endpoint: ${ATENEA_PREVIEWS_ENDPOINT:http://127.0.0.1:8789}
+    private-host: ${ATENEA_PREVIEWS_PRIVATE_HOST:100.81.98.93}
+    token-file: ${ATENEA_PREVIEWS_TOKEN_FILE:}
+    synthetic-project-allowlist: ${ATENEA_PREVIEWS_SYNTHETIC_PROJECT_ALLOWLIST:}
+    connect-timeout: ${ATENEA_PREVIEWS_CONNECT_TIMEOUT:3s}
+    request-timeout: ${ATENEA_PREVIEWS_REQUEST_TIMEOUT:10s}
+    reconciliation-interval: ${ATENEA_PREVIEWS_RECONCILIATION_INTERVAL:30s}
+    reconciliation-batch-size: ${ATENEA_PREVIEWS_RECONCILIATION_BATCH_SIZE:20}
   codex-app-server:
     url: ${ATENEA_CODEX_APP_SERVER_URL:ws://127.0.0.1:8092}
     prompt: ${ATENEA_CODEX_APP_SERVER_PROMPT:say hello}

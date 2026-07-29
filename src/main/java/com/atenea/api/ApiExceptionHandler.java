@@ -2,6 +2,8 @@ package com.atenea.api;
 
 import com.atenea.attachments.AttachmentFeatureDisabledException;
 import com.atenea.attachments.AttachmentWorkerException;
+import com.atenea.previews.PreviewFeatureDisabledException;
+import com.atenea.previews.PreviewWorkerException;
 import com.atenea.auth.OperatorAuthenticationException;
 import com.atenea.service.project.CanonicalProjectConflictException;
 import com.atenea.github.GitHubIntegrationException;
@@ -34,6 +36,9 @@ import com.atenea.service.worksession.AttachmentNotFoundException;
 import com.atenea.service.worksession.AttachmentOwnershipException;
 import com.atenea.service.worksession.ApprovedPriceEstimateNotFoundException;
 import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
+import com.atenea.service.worksession.PreviewConflictException;
+import com.atenea.service.worksession.PreviewNotFoundException;
+import com.atenea.service.worksession.PreviewOwnershipException;
 import com.atenea.service.worksession.WorkSessionNotOpenException;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
 import com.atenea.service.worksession.WorkSessionOperationBlockedException;
@@ -126,6 +131,35 @@ public class ApiExceptionHandler {
             case 413 -> HttpStatus.PAYLOAD_TOO_LARGE;
             case 415 -> HttpStatus.UNSUPPORTED_MEDIA_TYPE;
             case 422 -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case 503 -> HttpStatus.SERVICE_UNAVAILABLE;
+            default -> HttpStatus.BAD_GATEWAY;
+        };
+        return ResponseEntity.status(status)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of(exception.getCode())));
+    }
+
+    @ExceptionHandler(PreviewNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handlePreviewNotFound(PreviewNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler({
+            PreviewConflictException.class,
+            PreviewOwnershipException.class,
+            PreviewFeatureDisabledException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handlePreviewConflict(RuntimeException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(PreviewWorkerException.class)
+    public ResponseEntity<ApiErrorResponse> handlePreviewWorker(PreviewWorkerException exception) {
+        HttpStatus status = switch (exception.getStatusCode()) {
+            case 401 -> HttpStatus.BAD_GATEWAY;
+            case 404 -> HttpStatus.NOT_FOUND;
+            case 409 -> HttpStatus.CONFLICT;
             case 503 -> HttpStatus.SERVICE_UNAVAILABLE;
             default -> HttpStatus.BAD_GATEWAY;
         };

@@ -132,6 +132,40 @@ public class WorkSessionPreviewMetadataService {
     }
 
     @Transactional
+    public WorkSessionPreviewEntity markReady(
+            UUID previewId,
+            long expectedRevision,
+            String privateUrl,
+            boolean localhostCompatible,
+            Instant leaseExpiresAt,
+            Instant hardExpiresAt,
+            Instant now
+    ) {
+        WorkSessionPreviewEntity preview = locked(previewId, expectedRevision);
+        requireState(preview, PreviewState.STARTING, PreviewState.RECONCILING);
+        Instant timestamp = requireBeforeHardLimit(preview, now);
+        if (leaseExpiresAt == null
+                || hardExpiresAt == null
+                || !leaseExpiresAt.isAfter(timestamp)
+                || leaseExpiresAt.isAfter(hardExpiresAt)
+                || hardExpiresAt.isAfter(preview.getHardExpiresAt().plusSeconds(5))) {
+            throw new PreviewOwnershipException(
+                    "El lease devuelto por el worker no coincide con el límite persistido.");
+        }
+        preview.setState(PreviewState.READY);
+        preview.setPrivateUrl(requirePrivateUrl(privateUrl));
+        preview.setLocalhostCompatible(localhostCompatible);
+        preview.setLeaseExpiresAt(leaseExpiresAt);
+        preview.setHardExpiresAt(hardExpiresAt);
+        preview.setFailureCode(null);
+        preview.setFailureReason(null);
+        preview.setNextAction("Abre el preview privado.");
+        preview.setReadyAt(preview.getReadyAt() == null ? timestamp : preview.getReadyAt());
+        preview.setUpdatedAt(timestamp);
+        return previewRepository.saveAndFlush(preview);
+    }
+
+    @Transactional
     public WorkSessionPreviewEntity markReconciling(
             UUID previewId,
             long expectedRevision,
@@ -155,6 +189,30 @@ public class WorkSessionPreviewMetadataService {
         requireState(preview, PreviewState.READY);
         Instant timestamp = requireBeforeHardLimit(preview, now);
         preview.setLeaseExpiresAt(boundedLease(preview, timestamp));
+        preview.setUpdatedAt(timestamp);
+        return previewRepository.saveAndFlush(preview);
+    }
+
+    @Transactional
+    public WorkSessionPreviewEntity renewFromWorker(
+            UUID previewId,
+            long expectedRevision,
+            Instant leaseExpiresAt,
+            Instant hardExpiresAt,
+            Instant now
+    ) {
+        WorkSessionPreviewEntity preview = locked(previewId, expectedRevision);
+        requireState(preview, PreviewState.READY);
+        Instant timestamp = requireBeforeHardLimit(preview, now);
+        if (leaseExpiresAt == null
+                || hardExpiresAt == null
+                || !leaseExpiresAt.isAfter(timestamp)
+                || leaseExpiresAt.isAfter(hardExpiresAt)
+                || !hardExpiresAt.equals(preview.getHardExpiresAt())) {
+            throw new PreviewOwnershipException(
+                    "La renovación devuelta por el worker no coincide con el límite persistido.");
+        }
+        preview.setLeaseExpiresAt(leaseExpiresAt);
         preview.setUpdatedAt(timestamp);
         return previewRepository.saveAndFlush(preview);
     }
@@ -255,9 +313,7 @@ public class WorkSessionPreviewMetadataService {
                 && Objects.equals(id(existing.getAgentRun()), request.agentRunId())
                 && Objects.equals(existing.getWorkerId(), request.workerId().trim())
                 && Objects.equals(existing.getAllocationIdentity(), request.allocationIdentity().trim())
-                && Objects.equals(existing.getAllocationFingerprint(), request.allocationFingerprint())
-                && existing.isLocalhostCompatible() == request.localhostCompatible()
-                && Objects.equals(existing.getCreatedAt(), request.createdAt());
+                && Objects.equals(existing.getAllocationFingerprint(), request.allocationFingerprint());
         if (!identical) {
             throw new PreviewConflictException(
                     "La identidad del preview ya existe con otro ownership o allocation.");

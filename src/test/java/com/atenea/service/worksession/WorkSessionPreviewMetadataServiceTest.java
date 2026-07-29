@@ -121,8 +121,16 @@ class WorkSessionPreviewMetadataServiceTest {
     void identicalCreateRetryReturnsExistingRecord() {
         WorkSessionPreviewEntity existing = preview(remoteSession(61L, 7L), PreviewState.STARTING, 1L);
         when(previewRepository.findById(PREVIEW_ID)).thenReturn(Optional.of(existing));
+        PreviewIndexRequest retry = new PreviewIndexRequest(
+                PREVIEW_ID,
+                null,
+                "ax42-01",
+                "runtime:session:61",
+                "a".repeat(64),
+                false,
+                CREATED_AT.plusSeconds(1));
 
-        WorkSessionPreviewEntity result = service.create(61L, request(null));
+        WorkSessionPreviewEntity result = service.create(61L, retry);
 
         assertSame(existing, result);
         verify(previewRepository, never()).save(any());
