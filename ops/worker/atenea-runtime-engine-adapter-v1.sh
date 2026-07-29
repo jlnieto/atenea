@@ -893,23 +893,23 @@ expected_counts() {
     'mobile_push_notification_log,0' \
     'operations_action_run,0' \
     'operations_incident,0' \
-    'operator_account,1' \
+    'operator_account,0' \
     'operator_push_device,0' \
     'operator_refresh_token,0' \
     'operator_session_read_state,0' \
-    'project,1' \
+    'project,0' \
     'project_database_refresh_run,0' \
     'project_verification_run,0' \
     'rescue_session,0' \
     'rescue_session_turn,0' \
     'session_deliverable,0' \
     'session_speech_briefing_cache,0' \
-    'session_turn,2' \
+    'session_turn,0' \
     'voice_command_telemetry,0' \
     'voice_focus,0' \
     'voice_note,0' \
     'voice_note_send_intent,0' \
-    'work_session,1'
+    'work_session,0'
 }
 
 health_runtime() {
@@ -937,7 +937,7 @@ health_runtime() {
     sleep 2
   done
   [[ "${ready}" == true ]] || return 1
-  [[ "$(database_summary | tr -d '[:space:]')" == '45|1|45|45|0|45' ]] ||
+  [[ "$(database_summary | tr -d '[:space:]')" == '48|1|48|48|0|48' ]] ||
     return 1
   diff -u <(expected_counts) <(domain_counts) >/dev/null || return 1
 
