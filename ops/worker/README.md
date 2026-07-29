@@ -327,12 +327,15 @@ only through stdin.
 
 The runner executes the existing authenticated `jose` Codex identity inside a
 per-process Bubblewrap filesystem namespace and a collected transient systemd
-cgroup. Only the exact worktree, its canonical Git common directory, the
-Codex-owned authentication/session boundary and a private result directory are
-mounted; host daemon sockets, other workspaces and production paths are
-absent. The child cgroup denies loopback, RFC1918, Tailscale and link-local
-destinations while retaining public HTTPS/DNS egress for Codex. Orchestration
-never reads or copies the Codex authentication cache.
+cgroup. That reviewed outer namespace is the effective workspace-write
+sandbox; the Codex CLI's nested sandbox is disabled only after entering it
+because AX42 rejects nested unprivileged user namespaces. Only the exact
+worktree, its canonical Git common directory, the Codex-owned
+authentication/session boundary and a private result directory are mounted;
+host daemon sockets, other workspaces and production paths are absent. The
+child cgroup denies loopback, RFC1918, Tailscale and link-local destinations
+while retaining public HTTPS/DNS egress for Codex. Orchestration never reads or
+copies the Codex authentication cache.
 
 Installation updates the existing private tailnet worker endpoint and leaves
 the real-project capability disabled:

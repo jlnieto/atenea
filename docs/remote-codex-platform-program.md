@@ -2375,8 +2375,10 @@ sandbox and completed in `4873 ms`. Only exit code, timeout, duration and
 expected-output SHA-256 were retained. `codex login status` identified the
 authentication method, but no `auth.json`, internal session, token, cookie,
 credential or environment was read or copied by orchestration. The real pilot
-uses a bounded per-run process, workspace-write Codex sandbox, a Bubblewrap
-filesystem namespace and a collected transient cgroup. Only the exact derived
+uses a bounded per-run process, a Bubblewrap workspace-write filesystem
+namespace and a collected transient cgroup. The Codex CLI's nested sandbox is
+disabled only inside that reviewed namespace because AX42 rejects nested
+unprivileged user namespaces. Only the exact derived
 worktree, canonical Git common directory, private result directory and
 Codex-owned authentication/session boundary are mounted. The child denies
 loopback, RFC1918, Tailscale and link-local destinations while retaining

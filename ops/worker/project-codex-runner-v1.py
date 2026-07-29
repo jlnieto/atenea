@@ -214,7 +214,7 @@ def sandbox_command(
         "--wait", "--pipe", "--collect", "--quiet", "--service-type=exec",
         "--unit", "atenea-project-codex-" + execution_id.replace("-", ""),
         "--property", "User=jose",
-        "--property", "Group=jose",
+        "--property", "Group=atenea",
         "--property", "NoNewPrivileges=yes",
         "--property", "PrivateDevices=yes",
         # A private Bubblewrap proc mount supplies the user-namespace boundary.
@@ -269,7 +269,9 @@ def sandbox_command(
         "--chdir", str(worktree),
         CODEX, "exec",
         "--ignore-user-config", "--ignore-rules",
-        "--sandbox", "workspace-write",
+        # The reviewed Bubblewrap namespace is the workspace-write boundary.
+        # A second Codex Bubblewrap namespace is unsupported by this kernel.
+        "--sandbox", "danger-full-access",
         "-C", str(worktree),
         "--json", "--output-last-message", str(final_path),
     ]
