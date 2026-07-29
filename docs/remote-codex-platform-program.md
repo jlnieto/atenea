@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `13/45`, with the exact
-  resume point at task 2.6
+  `45/45` and `onboard-beautips-on-ax42` is active at `14/45`, with the exact
+  resume point at task 2.7
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -2984,7 +2984,7 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–2.5 are complete and change progress is `13/45`. GitHub
+Tasks 1.1–2.6 are complete and change progress is `14/45`. GitHub
 `jlnieto/beautips`, branch `main`, managed-manifest commit
 `e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
 `533d32f97ae362997ad003170a826da674c31c1d`, runtime manifest SHA-256
@@ -3152,9 +3152,36 @@ Task 2.5 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `0ab26949f1ba66c1f44a2fbe5375dc49aabd88c0914cdef9ca8fe4649150cb3c`.
 
+Task 2.6 installs a durable, default-disabled Beautips lifecycle boundary on
+AX42. It installs the exact mediator, project runner, secret boundary,
+operation registry and immutable source allowlist under
+`/usr/local/libexec/atenea`, plus a separate runtime config with
+`selectionEnabled=false`, `executionEnabled=false` and zero workspaces. The
+sudoers boundary names only the exact Beautips runner and config.
+
+Plan, apply, verify, selection-enable, enable, disable and rollback are
+implemented. Repeated apply is byte-idempotent. Enable without exactly one
+persisted workspace fails with exit `65`; modified installed artifacts fail
+closed and remain untouched; rollback removes only exact disabled Beautips
+artifacts and preserves the shared base runner. The installed lifecycle tool
+also verified and rolled itself back after the deployment staging bundle was
+removed, then was installed again in the final disabled state.
+
+AX42 listener and UFW digests are identical before and after. The installed
+Atenea registry and shared runner hashes are unchanged, the worker service
+remains active, and the administrative Beautips, Atenea production and Atenea
+preview health probes are `UP` with their retained exact identities. No
+runtime, workspace, listener, firewall rule, service restart or routing was
+created.
+
+Task 2.6 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-2.6-install-lifecycle`;
+the SHA-256 of its `SHA256SUMS` is
+`eb1d01c689a09e2936eea19f7a792c289e88102e7b5e2d60acf6744c4d3e2e28`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 2.6 of `onboard-beautips-on-ax42`.
+The exact resume point is task 2.7 of `onboard-beautips-on-ax42`.

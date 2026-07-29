@@ -136,6 +136,21 @@ or unsafe-mode entry rejects the complete boundary before use. Synthetic test
 values exist only beneath automatically removed `/tmp` roots. The tool remains
 uninstalled and no real WorkSession secret is generated at this gate.
 
+Task 2.6 installs the reviewed mediator, exact Beautips runner, secret
+boundary, operation registry and immutable source allowlist under
+`/usr/local/libexec/atenea`. It creates a separate default-disabled runtime
+configuration with zero workspaces and one exact sudoers command. The
+accepted shared runner remains separately hash-pinned and is never removed.
+
+The lifecycle tool supports plan, apply, verify, selection enable, execution
+enable, disable and rollback. Apply is byte-idempotent, verification checks
+hashes, ownership, modes and sudoers syntax, and execution enable fails closed
+unless selection is already enabled with exactly one persisted workspace.
+Rollback requires disabled empty ownership and removes only exact installed
+Beautips artifacts. The tool contains no listener, firewall, Tailscale or
+service mutation and remains independently usable after deployment staging is
+removed. Its installed final state is disabled with zero workspaces.
+
 ### The administrative pilot is foreign retained state
 
 The three slot 1 containers, their network, four volumes, loopback listener,
