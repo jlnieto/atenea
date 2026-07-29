@@ -218,6 +218,9 @@ class WorkerTest(unittest.TestCase):
 
     def test_stop_and_exact_cleanup_are_repeatable(self):
         self.healthy()
+        self.lifecycle.snapshot(
+            DATABASE_ID, "71000000-0000-4000-8000-000000000020"
+        )
         stopped = self.lifecycle.stop(DATABASE_ID)
         self.assertEqual(stopped, self.lifecycle.stop(DATABASE_ID))
         restarted = self.lifecycle.create(DATABASE_ID)
@@ -227,6 +230,40 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(
             {"container": {}, "network": {}, "volume": {}}, FakeDocker.resources
         )
+        self.assertFalse(
+            (self.root / "state/records" / f"{DATABASE_ID}.json").exists()
+        )
+        self.assertFalse(
+            (self.root / "state/snapshots" / DATABASE_ID).exists()
+        )
+        self.assertFalse(
+            (
+                self.root
+                / "snapshot-content"
+                / SESSION_ID
+                / DATABASE_ID
+            ).exists()
+        )
+
+    def test_cleanup_validates_every_resource_before_first_deletion(self):
+        healthy = self.healthy()
+        snapshot = self.lifecycle.snapshot(
+            DATABASE_ID, "71000000-0000-4000-8000-000000000021"
+        )
+        record = self.lifecycle.stop(DATABASE_ID)
+        FakeDocker.resources["network"][record["networkIdentity"]]["Labels"][
+            "com.atenea.session"
+        ] = "72000000-0000-4000-8000-000000000002"
+        before = json.dumps(FakeDocker.resources, sort_keys=True)
+        with self.assertRaises(MODULE.LifecycleError) as raised:
+            self.lifecycle.cleanup(DATABASE_ID)
+        self.assertEqual("DATABASE_RESOURCE_FOREIGN", raised.exception.code)
+        self.assertEqual(before, json.dumps(FakeDocker.resources, sort_keys=True))
+        self.assertEqual(
+            healthy["databaseId"],
+            self.lifecycle.registry.read(DATABASE_ID)["databaseId"],
+        )
+        self.lifecycle.verify_snapshot(DATABASE_ID, snapshot["snapshotId"])
 
     def test_restart_reconcile_and_retention_use_persisted_records(self):
         self.healthy()

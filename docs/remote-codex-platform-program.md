@@ -2263,3 +2263,37 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 7.3 of
 `establish-development-database-lifecycle`.
+
+Task 7.3 is complete and change progress is `35/37`. Cleanup now validates the
+complete container/network/volume projection and every retained snapshot
+before its first deletion. Its `11/11` worker tests include a fail-closed case
+where a foreign network prevents all deletion; the `13/13` state and `10/10`
+integration suites also pass. The installed worker SHA-256 is
+`4dd6dc93ca36726e2c523dc0d99eb5baab75af357bf9170f111aacee96ea5196`.
+
+Exact final cleanup removed two stopped containers, two session networks, two
+labelled data volumes, six private snapshot metadata/content pairs, two
+ephemeral secret roots and two terminal database records. Reconciliation is
+empty with `enabled=false` and `implicitCreation=false`; no allocated database
+listener or Playwright/Chromium process remains.
+
+The slot3 and slot4 admissions are released. Their allocation records were
+archived byte-for-byte into accepted evidence only after exact resources were
+absent and capacity was released. Both clean worktrees, mirrors and Git heads
+remain. Four pre-existing anonymous slot4 volumes have incomplete ownership
+labels, so fail-closed cleanup deliberately preserved them unchanged; images
+also remain unchanged as shared immutable cache.
+
+Beautips remains three running containers, retained slot2 resources are
+unchanged, all three RAID arrays are `[UU]`, rootful Docker remains inactive,
+and the firewall, AgentRuns and foreign-resource fingerprint is identical.
+Atenea's clean Git and nine running production/preview containers also retain
+one unchanged fingerprint.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-7.3-exact-final-cleanup`;
+the SHA-256 of its `SHA256SUMS` is
+`667096b7bcb995753e7bae903b9a5c15bd8ffa669a182cec3fa0c749e5227be9`.
+
+The exact resume point is task 7.4 of
+`establish-development-database-lifecycle`.

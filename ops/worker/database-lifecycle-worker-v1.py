@@ -645,12 +645,24 @@ class Lifecycle:
         record, _, _, docker = self.context(database_id)
         if record["state"] != "STOPPED" or record["desiredState"] != "STOPPED":
             fail("DATABASE_CLEANUP_DENIED", "cleanup requires persisted stopped ownership")
-        for kind, identity, args in (
+        resources = (
             ("container", record["containerIdentity"], ["container", "rm", "-f", record["containerIdentity"]]),
             ("network", record["networkIdentity"], ["network", "rm", record["networkIdentity"]]),
             ("volume", record["volumeIdentity"], ["volume", "rm", record["volumeIdentity"]]),
-        ):
-            resource = self.assert_resource(docker, kind, identity, record, absent_ok=True)
+        )
+        inspected = [
+            (
+                kind,
+                args,
+                self.assert_resource(docker, kind, identity, record, absent_ok=True),
+            )
+            for kind, identity, args in resources
+        ]
+        snapshots = [
+            self.verify_snapshot(database_id, item["snapshotId"])
+            for item in self.registry.snapshots(database_id)
+        ]
+        for _, args, resource in inspected:
             if resource is not None:
                 docker.run(args)
         secret, root = self.secret_paths(record)
@@ -663,7 +675,32 @@ class Lifecycle:
             root.parent.rmdir()
         except (FileNotFoundError, OSError):
             pass
-        return {"databaseId": database_id, "resourcesPresent": False}
+        removed_snapshots = []
+        for metadata, snapshot_content in snapshots:
+            snapshot_content.unlink()
+            (
+                self.registry.snapshots_root
+                / database_id
+                / f"{metadata['snapshotId']}.json"
+            ).unlink()
+            removed_snapshots.append(metadata["snapshotId"])
+        for directory in (
+            self.registry.snapshots_root / database_id,
+            self.snapshot_root / record["workSessionId"] / database_id,
+            self.snapshot_root / record["workSessionId"],
+        ):
+            try:
+                directory.rmdir()
+            except (FileNotFoundError, OSError):
+                pass
+        (self.registry.records_root / f"{database_id}.json").unlink()
+        return {
+            "databaseId": database_id,
+            "resourcesPresent": False,
+            "recordPresent": False,
+            "snapshotsPresent": False,
+            "removedSnapshotIds": removed_snapshots,
+        }
 
     def retain(self, database_id: str) -> dict[str, Any]:
         removed: list[str] = []
