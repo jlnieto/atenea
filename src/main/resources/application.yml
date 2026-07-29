@@ -39,6 +39,7 @@ atenea:
     token-file: ${ATENEA_REMOTE_WORKER_TOKEN_FILE:}
     synthetic-project-allowlist: ${ATENEA_REMOTE_WORKER_SYNTHETIC_PROJECT_ALLOWLIST:}
     project-codex-enabled: ${ATENEA_REMOTE_WORKER_PROJECT_CODEX_ENABLED:false}
+    beautips-project-codex-enabled: ${ATENEA_REMOTE_WORKER_BEAUTIPS_PROJECT_CODEX_ENABLED:false}
     connect-timeout: ${ATENEA_REMOTE_WORKER_CONNECT_TIMEOUT:3s}
     request-timeout: ${ATENEA_REMOTE_WORKER_REQUEST_TIMEOUT:5s}
     poll-interval: ${ATENEA_REMOTE_WORKER_POLL_INTERVAL:250ms}

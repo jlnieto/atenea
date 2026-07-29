@@ -18,6 +18,7 @@ public class RemoteWorkerProperties {
     private String tokenFile = "";
     private Set<String> syntheticProjectAllowlist = new LinkedHashSet<>();
     private boolean projectCodexEnabled;
+    private boolean beautipsProjectCodexEnabled;
     private Duration connectTimeout = Duration.ofSeconds(3);
     private Duration requestTimeout = Duration.ofSeconds(5);
     private Duration pollInterval = Duration.ofMillis(250);
@@ -42,6 +43,10 @@ public class RemoteWorkerProperties {
     public boolean isProjectCodexEnabled() { return projectCodexEnabled; }
     public void setProjectCodexEnabled(boolean projectCodexEnabled) {
         this.projectCodexEnabled = projectCodexEnabled;
+    }
+    public boolean isBeautipsProjectCodexEnabled() { return beautipsProjectCodexEnabled; }
+    public void setBeautipsProjectCodexEnabled(boolean beautipsProjectCodexEnabled) {
+        this.beautipsProjectCodexEnabled = beautipsProjectCodexEnabled;
     }
     public Duration getConnectTimeout() { return connectTimeout; }
     public void setConnectTimeout(Duration connectTimeout) { this.connectTimeout = connectTimeout; }

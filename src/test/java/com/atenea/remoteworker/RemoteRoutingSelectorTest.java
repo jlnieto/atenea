@@ -145,6 +145,102 @@ class RemoteRoutingSelectorTest {
     }
 
     @Test
+    void exactBeautipsProjectUsesProjectCodexOnlyWhenSeparatelyEnabled() {
+        properties.setEnabled(true);
+        properties.setBeautipsProjectCodexEnabled(true);
+        when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.empty());
+        when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.health()).thenReturn(new RemoteWorkerClient.Health(
+                RemoteWorkerProperties.PROTOCOL,
+                "ax42-01",
+                true,
+                List.of(ProjectCodexIdentity.WORKLOAD_KIND),
+                4,
+                2,
+                0,
+                0,
+                0,
+                Instant.parse("2026-07-29T18:00:00Z")));
+        WorkSessionEntity session = beautipsSession();
+
+        selector.pinNewSession(session);
+
+        assertEquals(ExecutionTarget.REMOTE, session.getExecutionTarget());
+        assertEquals("ax42-01", session.getSelectedWorkerId());
+        assertEquals(ProjectCodexIdentity.WORKLOAD_KIND, session.getRemoteWorkloadKind());
+        assertNotNull(session.getRemoteSessionId());
+        assertEquals(
+                "remote:ax42-01:work-session:" + session.getRemoteSessionId(),
+                session.getWorkspaceIdentity());
+    }
+
+    @Test
+    void beautipsRemainsLocalWhileItsSeparateGateIsDisabled() {
+        properties.setEnabled(true);
+        properties.setProjectCodexEnabled(true);
+        WorkSessionEntity session = beautipsSession();
+
+        selector.pinNewSession(session);
+
+        assertEquals(ExecutionTarget.LOCAL, session.getExecutionTarget());
+        assertNull(session.getRemoteSessionId());
+        assertNull(session.getRemoteWorkloadKind());
+        verify(client, never()).health();
+    }
+
+    @Test
+    void beautipsSelectionRejectsEveryPartialOrForeignIdentity() {
+        properties.setEnabled(true);
+        properties.setBeautipsProjectCodexEnabled(true);
+
+        WorkSessionEntity foreignName = beautipsSession();
+        foreignName.getProject().setName("Beautips Preview");
+        WorkSessionEntity foreignPath = beautipsSession();
+        foreignPath.getProject().setRepoPath("/workspace/repos/internal/foreign");
+        WorkSessionEntity foreignDefaultBranch = beautipsSession();
+        foreignDefaultBranch.getProject().setDefaultBaseBranch("foreign");
+        WorkSessionEntity foreignSessionBranch = beautipsSession();
+        foreignSessionBranch.setBaseBranch("foreign");
+
+        for (WorkSessionEntity session : List.of(
+                foreignName, foreignPath, foreignDefaultBranch, foreignSessionBranch)) {
+            selector.pinNewSession(session);
+            assertEquals(ExecutionTarget.LOCAL, session.getExecutionTarget());
+            assertNull(session.getRemoteSessionId());
+            assertNull(session.getRemoteWorkloadKind());
+        }
+        verify(client, never()).health();
+    }
+
+    @Test
+    void exactBeautipsFailsClosedWithoutAdvertisedProjectCapability() {
+        properties.setEnabled(true);
+        properties.setBeautipsProjectCodexEnabled(true);
+        when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.empty());
+        when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.health()).thenReturn(new RemoteWorkerClient.Health(
+                RemoteWorkerProperties.PROTOCOL,
+                "ax42-01",
+                true,
+                List.of("synthetic-routing-v1"),
+                4,
+                2,
+                0,
+                0,
+                0,
+                Instant.parse("2026-07-29T18:00:00Z")));
+        WorkSessionEntity session = beautipsSession();
+
+        selector.pinNewSession(session);
+
+        assertEquals(ExecutionTarget.LOCAL, session.getExecutionTarget());
+        assertNull(session.getRemoteSessionId());
+        assertNull(session.getRemoteWorkloadKind());
+    }
+
+    @Test
     void enabledButDifferentProjectRemainsLocal() {
         properties.setEnabled(true);
         properties.setSyntheticProjectAllowlist(Set.of("Synthetic routing"));
@@ -207,6 +303,19 @@ class RemoteRoutingSelectorTest {
         session.setId(41L);
         session.setProject(project);
         session.setBaseBranch(ProjectCodexIdentity.BRANCH);
+        return session;
+    }
+
+    private WorkSessionEntity beautipsSession() {
+        ProjectEntity project = new ProjectEntity();
+        project.setId(8L);
+        project.setName(BeautipsProjectCodexIdentity.PROJECT_NAME);
+        project.setRepoPath(BeautipsProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        WorkSessionEntity session = new WorkSessionEntity();
+        session.setId(42L);
+        session.setProject(project);
+        session.setBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
         return session;
     }
 }

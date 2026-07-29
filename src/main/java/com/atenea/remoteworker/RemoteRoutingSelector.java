@@ -71,6 +71,10 @@ public class RemoteRoutingSelector {
         if (!properties.isEnabled()) {
             return null;
         }
+        if (properties.isBeautipsProjectCodexEnabled()
+                && BeautipsProjectCodexIdentity.matchesNewSession(session)) {
+            return ProjectCodexIdentity.WORKLOAD_KIND;
+        }
         if (properties.isProjectCodexEnabled() && ProjectCodexIdentity.matches(session)) {
             return ProjectCodexIdentity.WORKLOAD_KIND;
         }
