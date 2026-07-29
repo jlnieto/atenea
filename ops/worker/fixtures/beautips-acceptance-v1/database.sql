@@ -23,14 +23,14 @@ WHERE t.slug = 'aurora-acceptance'
 
 INSERT INTO customer_consents (
     customer_id, terms_accepted_at, privacy_accepted_at,
-    marketing_opt_in, whatsapp_opt_in, push_opt_in,
+    marketing_opt_in, whatsapp_opt_in,
     created_at, updated_at
 )
 SELECT
     c.id,
     TIMESTAMPTZ '2026-01-15 10:00:00+00',
     TIMESTAMPTZ '2026-01-15 10:00:00+00',
-    FALSE, FALSE, FALSE,
+    FALSE, FALSE,
     TIMESTAMPTZ '2026-01-15 10:00:00+00',
     TIMESTAMPTZ '2026-01-15 10:00:00+00'
 FROM customers c
@@ -56,14 +56,14 @@ ON CONFLICT (tenant_id, module_key) DO NOTHING;
 
 INSERT INTO loyalty_programs (
     tenant_id, name, description, program_type, status, stamp_goal,
-    points_conversion_amount, wallet_conversion_rate, seal_code,
+    points_conversion_amount, wallet_conversion_rate,
     display_order, expiration_policy, expires_on, legacy_placeholder,
     created_at, updated_at
 )
 SELECT
     t.id, 'Tarjeta Aurora', 'Programa sintético de aceptación',
     'STAMP_CARD', 'ACTIVE', 8,
-    NULL, NULL, NULL,
+    NULL, NULL,
     0, 'NEVER', NULL, FALSE,
     TIMESTAMPTZ '2026-01-15 10:00:00+00',
     TIMESTAMPTZ '2026-01-15 10:00:00+00'

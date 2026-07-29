@@ -16,6 +16,7 @@
     "role": "OWNER"
   },
   "databaseScript": "database.sql",
+  "databaseScriptSha256": "efc9d467cc760397529b45358c24032c14fc7a9fc58d36c03f23370fd7c50fa6",
   "files": [
     {
       "source": "assets/synthetic-salon-mark.svg",
