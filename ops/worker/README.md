@@ -264,6 +264,38 @@ traffic without deleting retained bytes with:
 sudo ./install-worksession-attachment-v1.sh disable
 ```
 
+## Private WorkSession previews
+
+`session-preview-worker-v1.py` projects an exact persisted synthetic preview
+identity onto one bounded tailnet listener. It derives the loopback upstream
+only from `runtime-allocation-v1.json` and the worktree runtime manifest; API
+callers cannot supply a host or port. The authenticated control protocol
+supports activate, inspect, renew, stop and exact terminal-fixture deletion.
+Retries are revision-aware and idempotent, while missing, partial, stale,
+foreign and ambiguous ownership fails closed.
+
+The public response exposes only the tailnet preview URL. When the project
+manifest explicitly requires localhost compatibility, it also returns
+credential-free tunnel inputs for the `codex-worker` SSH destination; it never
+returns the runtime loopback port.
+
+Install on the worker with an exact control-plane tailnet address:
+
+```bash
+sudo env ATENEA_CONTROL_PLANE_TAILSCALE_IP=100.88.252.28 \
+  ./install-session-preview-v1.sh plan
+sudo env ATENEA_CONTROL_PLANE_TAILSCALE_IP=100.88.252.28 \
+  ./install-session-preview-v1.sh apply
+sudo env ATENEA_CONTROL_PLANE_TAILSCALE_IP=100.88.252.28 \
+  ./install-session-preview-v1.sh verify
+```
+
+The installer binds control port `8789` to `tailscale0`, reserves private
+ingress ports `19000-19031`, stores its bearer token outside the repository and
+does not print it. `disable` stops new and existing projections while retaining
+state. `rollback` additionally removes only the two exact firewall rules and
+also retains persisted records for reconciliation or audit.
+
 ## WorkSession-aware dev client
 
 `dev-session-v1.sh` implements task 3.3's human command surface and task 3.4's

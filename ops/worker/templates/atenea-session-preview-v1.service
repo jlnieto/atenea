@@ -1,0 +1,34 @@
+[Unit]
+Description=Atenea private WorkSession preview coordinator v1
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=atenea-worker
+Group=atenea
+EnvironmentFile=/etc/atenea-worker/session-preview-v1.env
+ExecStart=/usr/local/libexec/atenea/session-preview-worker-v1.py --bind ${ATENEA_PREVIEW_BIND} --port ${ATENEA_PREVIEW_CONTROL_PORT} --worker-id ${ATENEA_PREVIEW_WORKER_ID} --root /srv/atenea/worker/session-preview-v1 --workspace-root /srv/atenea/workspaces --token-file /etc/atenea-worker/session-preview-v1.token --ingress-start ${ATENEA_PREVIEW_INGRESS_START} --ingress-end ${ATENEA_PREVIEW_INGRESS_END}
+Restart=on-failure
+RestartSec=2s
+TimeoutStartSec=15s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadOnlyPaths=/srv/atenea/workspaces
+ReadWritePaths=/srv/atenea/worker/session-preview-v1
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
