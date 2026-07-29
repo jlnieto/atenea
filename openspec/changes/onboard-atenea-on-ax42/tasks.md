@@ -29,11 +29,11 @@
 
 ## 4. Canonical Atenea WorkSession acceptance
 
-- [ ] 4.1 Create or verify the canonical GitHub mirror and allocate one free-slot Atenea WorkSession from the pinned commit
-- [ ] 4.2 Enable only the exact disposable Atenea acceptance project/session and prove every other project remains denied
-- [ ] 4.3 Submit one deterministic operator prompt and prove it changes only the intended WorkSession worktree
-- [ ] 4.4 Continue a second turn on the same Codex thread and prove duplicate dispatch/terminal delivery is idempotent
-- [ ] 4.5 Disconnect and reconnect the operator/control observer while the run retains the same execution and workspace identity
+- [x] 4.1 Create or verify the canonical GitHub mirror and allocate one free-slot Atenea WorkSession from the pinned commit
+- [x] 4.2 Enable only the exact disposable Atenea acceptance project/session and prove every other project remains denied
+- [x] 4.3 Submit one deterministic operator prompt and prove it changes only the intended WorkSession worktree
+- [x] 4.4 Continue a second turn on the same Codex thread and prove duplicate dispatch/terminal delivery is idempotent
+- [x] 4.5 Disconnect and reconnect the operator/control observer while the run retains the same execution and workspace identity
 
 ## 5. Build, runtime and private preview
 

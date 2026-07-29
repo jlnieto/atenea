@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–3.6 are complete and change progress is `20/45`. The entry gate pins
+Tasks 1.1–4.5 are complete and change progress is `25/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2456,4 +2456,31 @@ Control-plane integration evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `a204af05e56a8719623b80b688c75f172a81a26ba4f6a6093e059333462ae4c9`.
 
-The exact resume point is task 4.1 of `onboard-atenea-on-ax42`.
+The canonical acceptance owns WorkSession
+`c20f3cde-9a64-4c7b-a674-7b63f94ca475`, branch
+`atenea/session-c20f3cde-9a64-4c7b-a674-7b63f94ca475`, external Codex thread
+`019facd4-89cc-7cf3-a289-f0190b9a1767`, slot 3 and heavy admission 1. Its
+worktree remains pinned to
+`b605c8d5b063e7321edd60fec2265ec7ddb84ea9`; the two accepted turns created
+only `docs/ax42-onboarding-acceptance.md`, with SHA-256
+`5eb0ecbbe266063473e78d44b884c2d7fbab42594e1a946762d347278c3203b8`.
+The second turn reused the same thread, exact replay reused its execution and
+left both worker state and project content unchanged, and a new observer
+connection recovered the same session, workspace, branch, thread and terminal
+state.
+
+The disposable control plane records all ten failed hardening attempts and
+three successful protocol executions; only the final two successful turns are
+the accepted project mutation. Every failed attempt left the project
+unchanged. A complete foreign workspace was denied with
+`workspace_ownership_conflict` while its registry and worker-state
+fingerprints remained unchanged. No session runtime container, network,
+listener or temporary result directory remains, and production retains its
+nine unchanged containers.
+
+Canonical acceptance evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-4-canonical-worksession-acceptance`;
+the SHA-256 of its `SHA256SUMS` is
+`1f0659e909dcf05af91d1bcaf6c6af05a4b108bcfa7ed5a4b57c99f32d265394`.
+
+The exact resume point is task 5.1 of `onboard-atenea-on-ax42`.
