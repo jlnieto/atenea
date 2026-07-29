@@ -87,11 +87,11 @@ class AttachmentStore:
         stream: BinaryIO,
         length: int,
     ) -> tuple[dict[str, Any], bool]:
-        session_uuid = self._uuid(session_id, "invalid_session_id")
+        session_identity = self._session_identity(session_id)
         attachment_uuid = self._uuid(attachment_id, "invalid_attachment_id")
         self._validate_metadata(metadata, length)
-        storage_identity = f"work-sessions/{session_uuid}/{attachment_uuid}/content"
-        attachment_dir = self.sessions / session_uuid / attachment_uuid
+        storage_identity = f"work-sessions/{session_identity}/{attachment_uuid}/content"
+        attachment_dir = self.sessions / session_identity / attachment_uuid
         content_path = attachment_dir / "content"
         metadata_path = attachment_dir / "metadata.json"
         self._inside(content_path)
@@ -99,7 +99,7 @@ class AttachmentStore:
         with self.lock:
             if metadata_path.exists() or content_path.exists():
                 return self._existing(
-                    session_uuid,
+                    session_identity,
                     attachment_uuid,
                     metadata,
                     length,
@@ -107,7 +107,7 @@ class AttachmentStore:
                     metadata_path,
                 ), False
 
-            retained = self._session_bytes(session_uuid)
+            retained = self._session_bytes(session_identity)
             if length > self.max_session_bytes - retained:
                 raise ProtocolError(
                     HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
@@ -155,7 +155,7 @@ class AttachmentStore:
                 stored = {
                     "protocolVersion": PROTOCOL,
                     "workerId": self.worker_id,
-                    "sessionId": session_uuid,
+                    "sessionId": session_identity,
                     "attachmentId": attachment_uuid,
                     "storageIdentity": storage_identity,
                     "source": metadata["source"],
@@ -180,25 +180,25 @@ class AttachmentStore:
                 raise
 
     def metadata(self, session_id: str, attachment_id: str) -> dict[str, Any]:
-        session_uuid = self._uuid(session_id, "invalid_session_id")
+        session_identity = self._session_identity(session_id)
         attachment_uuid = self._uuid(attachment_id, "invalid_attachment_id")
         with self.lock:
-            stored, _, _ = self._load(session_uuid, attachment_uuid)
+            stored, _, _ = self._load(session_identity, attachment_uuid)
             return self._public(stored)
 
     def content(self, session_id: str, attachment_id: str) -> tuple[dict[str, Any], Path]:
-        session_uuid = self._uuid(session_id, "invalid_session_id")
+        session_identity = self._session_identity(session_id)
         attachment_uuid = self._uuid(attachment_id, "invalid_attachment_id")
         with self.lock:
-            stored, content_path, _ = self._load(session_uuid, attachment_uuid)
+            stored, content_path, _ = self._load(session_identity, attachment_uuid)
             self._verify_content(stored, content_path)
             return self._public(stored), content_path
 
     def delete_synthetic(self, session_id: str, attachment_id: str) -> dict[str, Any]:
-        session_uuid = self._uuid(session_id, "invalid_session_id")
+        session_identity = self._session_identity(session_id)
         attachment_uuid = self._uuid(attachment_id, "invalid_attachment_id")
         with self.lock:
-            stored, content_path, metadata_path = self._load(session_uuid, attachment_uuid)
+            stored, content_path, metadata_path = self._load(session_identity, attachment_uuid)
             if stored.get("syntheticFixture") is not True:
                 raise ProtocolError(
                     HTTPStatus.FORBIDDEN,
@@ -215,7 +215,7 @@ class AttachmentStore:
             return {
                 "protocolVersion": PROTOCOL,
                 "workerId": self.worker_id,
-                "sessionId": session_uuid,
+                "sessionId": session_identity,
                 "attachmentId": attachment_uuid,
                 "deleted": True,
                 "sha256": stored["sha256"],
@@ -404,6 +404,15 @@ class AttachmentStore:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, code, "identity must be a canonical UUID")
         if str(parsed) != value:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, code, "identity must be a canonical UUID")
+        return value
+
+    def _session_identity(self, value: str) -> str:
+        if not isinstance(value, str) or not re.fullmatch(r"[1-9][0-9]{0,18}", value):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_session_id",
+                "session identity must be a positive decimal database identity",
+            )
         return value
 
     def _inside(self, path: Path) -> None:

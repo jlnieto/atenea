@@ -23,7 +23,7 @@ class AttachmentStoreTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "attachments"
         self.store = MODULE.AttachmentStore(self.root, "test-worker")
-        self.session_id = str(uuid.uuid4())
+        self.session_id = "12"
         self.attachment_id = str(uuid.uuid4())
         self.content = b"\x89PNG\r\n\x1a\nsynthetic-image"
 
@@ -142,8 +142,8 @@ class AttachmentStoreTest(unittest.TestCase):
     def test_cross_session_and_traversal_identities_are_rejected(self):
         self.put()
         with self.assertRaisesRegex(MODULE.ProtocolError, "does not exist"):
-            self.store.content(str(uuid.uuid4()), self.attachment_id)
-        with self.assertRaisesRegex(MODULE.ProtocolError, "canonical UUID"):
+            self.store.content("13", self.attachment_id)
+        with self.assertRaisesRegex(MODULE.ProtocolError, "positive decimal"):
             self.store.content("../foreign", self.attachment_id)
         self.assertEqual(self.content, self.store.content(self.session_id, self.attachment_id)[1].read_bytes())
 
@@ -184,7 +184,7 @@ class AttachmentHttpTest(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base = f"http://127.0.0.1:{self.server.server_port}"
-        self.session_id = str(uuid.uuid4())
+        self.session_id = "12"
         self.attachment_id = str(uuid.uuid4())
         self.content = b"\x89PNG\r\n\x1a\nhttp-image"
 
