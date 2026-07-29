@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `19/45`, with the exact
-  resume point at task 3.5
+  `45/45` and `onboard-beautips-on-ax42` is active at `20/45`, with the exact
+  resume point at task 4.1
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -2984,7 +2984,7 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–3.4 are complete and change progress is `19/45`. GitHub
+Tasks 1.1–3.5 are complete and change progress is `20/45`. GitHub
 `jlnieto/beautips`, branch `main`, managed-manifest commit
 `e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
 `533d32f97ae362997ad003170a826da674c31c1d`, runtime manifest SHA-256
@@ -3319,9 +3319,40 @@ Task 3.4 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `946bf1d692bb7156beb014f991197928c41e0299780164377af691df090d4a9a`.
 
+Task 3.5 closes control-plane allowlisting at Atenea commit
+`9e264e3820d6803225d57139150e1df990d9e09e`, tree
+`6046d03ac3067aad54ba9127faccd4d099e51454`. Exact selection, payload,
+persistence, delivery, denial, Atenea project and synthetic compatibility
+pass in two final focused runs of `37/37`, lasting `7.32 s` and `7.50 s`.
+
+Two fresh full Atenea runs pass `411/411`, lasting `56.21 s` and `47.88 s`.
+Each used an internal labelled network, PostgreSQL 16 container and isolated
+workspace volume, applied all 49 migrations, and removed every fixture after
+exact name, ID and label verification. Final task container, network, volume
+and diagnostic workspace counts are zero.
+
+The first full harness omitted `ATENEA_WORKSPACE_ROOT`; the application
+correctly rejected integration repositories outside its configured `/repos`
+root, producing 25 expected-boundary failures. A one-case diagnostic proved
+the harness mismatch. Instrumentation was removed byte-for-byte, the accepted
+harness mounted `/workspace/repos` independently with the canonical root, and
+both complete passes then succeeded. No diagnostic response body or generated
+credential was retained.
+
+Atenea production and preview remain `UP` with zero backend restarts. The two
+unrelated task4 containers retain exact identities. AX42 retains RAID `[UU]`,
+slot 1's administrative Beautips runtime, empty slots 2–4 and Beautips health
+`UP`. No production deployment, real WorkSession, dispatch, database write or
+routing activation occurred.
+
+Task 3.5 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-3.5-double-regression`;
+the SHA-256 of its `SHA256SUMS` is
+`fe03bba5fc28349dc87486a98e602130731d0fd3bb81b28e09f816c03b8c0550`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 3.5 of `onboard-beautips-on-ax42`.
+The exact resume point is task 4.1 of `onboard-beautips-on-ax42`.

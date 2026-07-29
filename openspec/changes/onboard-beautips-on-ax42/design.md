@@ -213,6 +213,19 @@ Equivalent Atenea continuity cases remain in the same suite. This source gate
 does not restart production; installed restart continuity is reserved for the
 later canonical WorkSession acceptance.
 
+Task 3.5 closes control-plane allowlisting with two final focused executions
+of `37/37` and two full Atenea executions of `411/411`. Each full run uses a
+fresh internal network, PostgreSQL 16 database and isolated workspace volume;
+all 49 migrations apply. Exact selection, payload, persistence, delivery,
+denial, Atenea project and synthetic compatibility remain in the accepted
+sets.
+
+An initial full harness omitted the canonical workspace root and failed
+correctly because integration repositories fell outside configured ownership.
+The accepted harness separates source from `/workspace/repos`, sets the
+canonical root explicitly and removes every labelled fixture after exact
+identity verification. No production, task4 or AX42 resource participates.
+
 ### The administrative pilot is foreign retained state
 
 The three slot 1 containers, their network, four volumes, loopback listener,
