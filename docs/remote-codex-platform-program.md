@@ -2146,3 +2146,25 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 6.4 of
 `establish-development-database-lifecycle`.
+
+Task 6.4 is complete and change progress is `30/37`. The slot 3 and slot 4
+rootless Docker daemons were restarted with finite timeouts, then a fresh
+process-per-invocation mediator reconciled exactly the two persisted database
+records with `implicitCreation=false`. Both exact database containers remained
+exited under restart policy `no`; no container create/start event occurred and
+rootful Docker remained inactive.
+
+Container, WorkSession-network and volume identities were byte-identical
+before and after. Docker expectedly regenerated only each daemon's built-in
+unlabelled `bridge` network, so that daemon-private identity is explicitly
+normalized while every WorkSession resource ID remains strict. Records,
+snapshot metadata/content, workspaces, Git files, host boot ID and RAID have
+one unchanged static fingerprint.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-6.4-rootless-restart-reconcile`;
+the SHA-256 of its `SHA256SUMS` is
+`715a6cca3dee81475a6d6fc7add73b15dc32415525c41295439cf4bc73c01bc4`.
+
+The exact resume point is task 6.5 of
+`establish-development-database-lifecycle`.
