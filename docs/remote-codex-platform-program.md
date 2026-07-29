@@ -2941,4 +2941,8 @@ Task 8.2 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `151165a3f9d8a045e53382dedc7b9619d0c62093e6d2b25436f8f176050ac40c`.
 
-The exact resume point is task 8.3 of `onboard-atenea-on-ax42`.
+The post-archive resume point is the entry gate for a separate
+`onboard-beautips-on-ax42` change. That change has not been created and
+Beautips project routing has not been enabled or modified. Task 8.3 remains
+the final Atenea archive gate; work stops at the Beautips entry boundary after
+it passes.
