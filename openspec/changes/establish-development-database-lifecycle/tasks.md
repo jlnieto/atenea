@@ -37,7 +37,7 @@
 - [x] 5.2 Apply deterministic legacy migrations and seed data, then prove private health and session-only access
 - [x] 5.3 Snapshot, prepare and explicitly confirm one replacement with complete audit evidence
 - [x] 5.4 Restore the pre-replacement snapshot and prove schema/data identity without changing Git
-- [ ] 5.5 Repeat the complete create/migrate/seed/replace/restore lifecycle idempotently
+- [x] 5.5 Repeat the complete create/migrate/seed/replace/restore lifecycle idempotently
 
 ## 6. Isolation, denial and continuity acceptance
 

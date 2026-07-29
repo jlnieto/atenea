@@ -2055,3 +2055,27 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 5.5 of
 `establish-development-database-lifecycle`.
+
+Task 5.5 is complete, the MariaDB section is `5/5`, and total change progress
+is `26/37`. The duration-bearing second cycle repeated exact stop/cleanup,
+create plus duplicate create, migration, seed, health, explicit snapshot,
+prepare/confirmed replace, atomic restore and late migration/seed retries.
+
+All thirteen operations exited `0` within finite timeouts; durations ranged
+from 50 ms to 9268 ms. Cleanup removed only the MariaDB session's exact
+container, internal network and volume. Final state is `HEALTHY` revision
+`30`, duplicate/late retries changed no revision, data digest and Git match,
+and the confirmed replacement/restore retained no confirmation, raw dump,
+raw row or secret.
+
+PostgreSQL remains independently `HEALTHY` in slot3. Atenea production/preview
+remains nine running containers, Beautips remains three, RAID remains `[UU]`
+and rootful Docker remains inactive.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-5.5-mariadb-repeat`;
+the SHA-256 of its `SHA256SUMS` is
+`fb976c12b179c520d9e4d238d8c7b2eb131d3991adc476619fde117cc9f8e77b`.
+
+The exact resume point is task 6.1 of
+`establish-development-database-lifecycle`.
