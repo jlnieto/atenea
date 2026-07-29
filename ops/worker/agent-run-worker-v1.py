@@ -156,7 +156,7 @@ class WorkerState:
             )
             queued = sum(1 for item in self.executions.values() if item["status"] in {"QUEUED", "RECONCILING"})
             capabilities = [SYNTHETIC_CAPABILITY]
-            if self._project_enabled():
+            if self._project_selection_enabled():
                 capabilities.append(PROJECT_CAPABILITY)
             return {
                 "protocolVersion": PROTOCOL,
@@ -298,7 +298,7 @@ class WorkerState:
     def _validate_project(self, request: dict[str, Any], workload: dict[str, Any]) -> None:
         if set(workload) != PROJECT_WORKLOAD_KEYS:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_workload", "project workload fields are invalid")
-        if not self._project_enabled():
+        if not self._project_execution_enabled():
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project workload is disabled")
         exact = {
             "projectId": PROJECT_ID,
@@ -317,7 +317,7 @@ class WorkerState:
                 uuid.UUID(thread_id)
             except (ValueError, TypeError, AttributeError):
                 raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_thread", "threadId must be null or a UUID")
-        config = self._read_project_config()
+        config = self._read_project_config(require_execution=True)
         if request["workspaceIdentity"] not in config["workspaces"]:
             raise ProtocolError(
                 HTTPStatus.FORBIDDEN,
@@ -336,7 +336,7 @@ class WorkerState:
                 "persisted workspace ownership is incomplete or conflicting",
             )
 
-    def _read_project_config(self) -> dict[str, Any]:
+    def _read_project_config(self, require_execution: bool = False) -> dict[str, Any]:
         if self.project_config is None:
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project workload is disabled")
         try:
@@ -347,12 +347,12 @@ class WorkerState:
         if stat.st_uid != self.project_config_uid or stat.st_mode & 0o022:
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project configuration ownership is unsafe")
         required = {
-            "schemaVersion", "enabled", "projectId", "repository", "branch",
+            "schemaVersion", "selectionEnabled", "executionEnabled",
+            "projectId", "repository", "branch",
             "commit", "manifestSha256", "runner", "workspaces",
         }
         exact = {
             "schemaVersion": PROJECT_CAPABILITY,
-            "enabled": True,
             "projectId": PROJECT_ID,
             "repository": PROJECT_REPOSITORY,
             "branch": PROJECT_BRANCH,
@@ -363,15 +363,25 @@ class WorkerState:
             not isinstance(parsed, dict)
             or set(parsed) != required
             or any(parsed.get(key) != value for key, value in exact.items())
+            or parsed.get("selectionEnabled") is not True
+            or not isinstance(parsed.get("executionEnabled"), bool)
+            or (require_execution and parsed.get("executionEnabled") is not True)
             or parsed.get("runner") != str(self.project_runner)
             or not isinstance(parsed.get("workspaces"), dict)
         ):
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project configuration is not exact")
         return parsed
 
-    def _project_enabled(self) -> bool:
+    def _project_selection_enabled(self) -> bool:
         try:
             self._read_project_config()
+            return self.project_runner is not None and self.project_runner.is_file()
+        except ProtocolError:
+            return False
+
+    def _project_execution_enabled(self) -> bool:
+        try:
+            self._read_project_config(require_execution=True)
             return self.project_runner is not None and self.project_runner.is_file()
         except ProtocolError:
             return False

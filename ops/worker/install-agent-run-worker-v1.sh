@@ -73,13 +73,15 @@ plan() {
 }
 
 write_project_config() {
-  local enabled="$1"
-  local workspaces_json="$2"
+  local selection_enabled="$1"
+  local execution_enabled="$2"
+  local workspaces_json="$3"
   local temporary
   temporary="$(mktemp /etc/atenea-worker/.project-codex-v1.XXXXXX)"
   jq -n \
     --arg schema_version project-codex-v1 \
-    --argjson enabled "$enabled" \
+    --argjson selection_enabled "$selection_enabled" \
+    --argjson execution_enabled "$execution_enabled" \
     --arg project_id atenea \
     --arg repository "$PROJECT_REPOSITORY" \
     --arg branch "$PROJECT_BRANCH" \
@@ -89,7 +91,8 @@ write_project_config() {
     --argjson workspaces "$workspaces_json" \
     '{
       schemaVersion: $schema_version,
-      enabled: $enabled,
+      selectionEnabled: $selection_enabled,
+      executionEnabled: $execution_enabled,
       projectId: $project_id,
       repository: $repository,
       branch: $branch,
@@ -131,7 +134,7 @@ apply_install() {
   } >"$ENV_FILE"
   chown root:root "$ENV_FILE"
   chmod 0644 "$ENV_FILE"
-  write_project_config false '{}'
+  write_project_config false false '{}'
   {
     printf 'atenea-worker ALL=(root) NOPASSWD: %s --config %s\n' "$PROJECT_RUNNER" "$PROJECT_CONFIG"
   } >"$SUDOERS_FILE"
@@ -178,7 +181,8 @@ verify() {
   jq -e '
     .schemaVersion == "project-codex-v1" and
     .projectId == "atenea" and
-    (.enabled | type == "boolean") and
+    (.selectionEnabled | type == "boolean") and
+    (.executionEnabled | type == "boolean") and
     (.workspaces | type == "object")
   ' "$PROJECT_CONFIG" >/dev/null || fail "project configuration is invalid"
   visudo -cf "$SUDOERS_FILE" >/dev/null
@@ -218,7 +222,16 @@ project_register() {
         allocationSha256: $allocation_sha256
       }
     }' "$PROJECT_CONFIG")"
-  write_project_config false "$workspaces"
+  write_project_config true false "$workspaces"
+}
+
+project_selection_enable() {
+  require_root
+  local workspaces
+  workspaces="$(jq -c '.workspaces' "$PROJECT_CONFIG")"
+  [[ "$(jq 'length' <<<"$workspaces")" -le 1 ]] || fail "at most one persisted workspace may be registered"
+  write_project_config true false "$workspaces"
+  systemctl try-restart "$SERVICE"
 }
 
 project_enable() {
@@ -226,7 +239,7 @@ project_enable() {
   local workspaces
   workspaces="$(jq -c '.workspaces' "$PROJECT_CONFIG")"
   [[ "$(jq 'length' <<<"$workspaces")" -eq 1 ]] || fail "exactly one persisted workspace must be registered"
-  write_project_config true "$workspaces"
+  write_project_config true true "$workspaces"
   systemctl try-restart "$SERVICE"
 }
 
@@ -234,7 +247,7 @@ project_disable() {
   require_root
   local workspaces
   workspaces="$(jq -c '.workspaces' "$PROJECT_CONFIG")"
-  write_project_config false "$workspaces"
+  write_project_config false false "$workspaces"
   systemctl try-restart "$SERVICE"
 }
 
@@ -251,7 +264,7 @@ project_unregister() {
   [[ "$matches" == true ]] || fail "exact persisted workspace ownership does not match"
   local workspaces
   workspaces="$(jq -c --arg identity "$workspace_identity" 'del(.workspaces[$identity]) | .workspaces' "$PROJECT_CONFIG")"
-  write_project_config false "$workspaces"
+  write_project_config false false "$workspaces"
   systemctl try-restart "$SERVICE"
 }
 
@@ -285,8 +298,9 @@ case "$ACTION" in
   rollback) rollback_endpoint ;;
   enable) enable_endpoint ;;
   project-register) shift; project_register "$@" ;;
+  project-selection-enable) project_selection_enable ;;
   project-enable) project_enable ;;
   project-disable) project_disable ;;
   project-unregister) shift; project_unregister "$@" ;;
-  *) fail "usage: $0 plan|apply|verify|disable|rollback|enable|project-register|project-enable|project-disable|project-unregister" ;;
+  *) fail "usage: $0 plan|apply|verify|disable|rollback|enable|project-register|project-selection-enable|project-enable|project-disable|project-unregister" ;;
 esac

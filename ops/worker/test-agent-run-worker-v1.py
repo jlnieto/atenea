@@ -143,7 +143,8 @@ print(json.dumps({
         self.config.write_text(
             json.dumps({
                 "schemaVersion": "project-codex-v1",
-                "enabled": True,
+                "selectionEnabled": True,
+                "executionEnabled": True,
                 "projectId": "atenea",
                 "repository": MODULE.PROJECT_REPOSITORY,
                 "branch": MODULE.PROJECT_BRANCH,
@@ -229,8 +230,9 @@ print(json.dumps({
                 self.state.create(request)
             self.assertEqual(baseline, self.config.read_bytes())
         parsed = json.loads(baseline)
-        parsed["enabled"] = False
+        parsed["executionEnabled"] = False
         self.config.write_text(json.dumps(parsed), encoding="utf-8")
+        self.assertIn("project-codex-v1", self.state.health()["capabilities"])
         with self.assertRaisesRegex(MODULE.ProtocolError, "disabled"):
             self.state.create(self.request())
 

@@ -49,12 +49,14 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def validate_config(config: dict[str, Any], runner: Path) -> None:
     required = {
-        "schemaVersion", "enabled", "projectId", "repository", "branch",
+        "schemaVersion", "selectionEnabled", "executionEnabled",
+        "projectId", "repository", "branch",
         "commit", "manifestSha256", "runner", "workspaces",
     }
     exact = {
         "schemaVersion": CAPABILITY,
-        "enabled": True,
+        "selectionEnabled": True,
+        "executionEnabled": True,
         "projectId": PROJECT_ID,
         "repository": REPOSITORY,
         "branch": BRANCH,

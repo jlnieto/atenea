@@ -343,6 +343,14 @@ sudo env ATENEA_CONTROL_PLANE_TAILSCALE_IP=100.88.252.28 \
 sudo ./install-agent-run-worker-v1.sh disable
 ```
 
+Selection may be enabled with zero registered workspaces solely so Atenea can
+open a new WorkSession and persist its worker-generated UUID. Dispatch remains
+denied in this state:
+
+```bash
+sudo ./install-agent-run-worker-v1.sh project-selection-enable
+```
+
 After the canonical workspace/allocation exists, register and enable only its
 exact immutable identity:
 
