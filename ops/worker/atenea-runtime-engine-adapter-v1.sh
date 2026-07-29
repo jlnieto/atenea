@@ -297,7 +297,7 @@ build_network_owned() {
       .[0].Labels as $actual |
       all($expected | to_entries[]; $actual[.key] == .value) and
       all($actual | keys[]; startswith("com.atenea.")) and
-      .[0].Internal == true
+      .[0].Internal == false
     ' >/dev/null
 }
 
@@ -322,7 +322,6 @@ cleanup_build_database() {
 start_build_database() {
   cleanup_build_database
   docker_cmd network create \
-    --internal \
     --label "com.atenea.engine=${ENGINE_LABEL}" \
     --label "com.atenea.session=${SESSION}" \
     --label "com.atenea.runtime=${RUNTIME}" \
