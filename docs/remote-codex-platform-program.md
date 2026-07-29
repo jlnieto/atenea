@@ -1194,3 +1194,27 @@ database validated and applied all 48 migrations, Hibernate schema validation
 passed and the existing WorkSession integration suite passed `26/26`.
 
 The exact resume point is task 3.1 of `add-private-session-previews`.
+
+Tasks 3.1–3.6 are complete and change progress is `14/37`. Programme commit
+`41e2d509286964f4dd91d2f05659f334b405fe4b` adds the authenticated
+`session-preview/v1` coordinator, exact persisted projection records, bounded
+tailnet ingress forwarding and manifest-derived localhost tunnel data without
+credentials or runtime-port disclosure.
+
+The coordinator is active/enabled on AX42 at tailnet-only
+`100.81.98.93:8789`. UFW accepts that control endpoint only from Atenea
+`100.88.252.28` and accepts ingress `19000–19031` only on `tailscale0` from
+`100.64.0.0/10`. Its state store is empty and installation started no project
+runtime or ingress listener. Twelve synthetic protocol tests pass, including
+authentication, idempotence, stale revision, partial/foreign/ambiguous
+ownership, persisted restart, lease expiry and exact cleanup.
+
+Rootful Docker remains inactive/masked, all four rootless daemons are active,
+slots 2–4 remain empty and slot 1 retains only the same three Beautips
+containers. RAID remains `[UU]`; production, preview and Beautips remain `UP`.
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-3-private-coordinator`;
+the SHA-256 of its `SHA256SUMS` is
+`7084d061238835f5ee234fa38a50189fe9c0cd2b364c24acd423663dc8fcbe9e`.
+
+The exact resume point is task 4.1 of `add-private-session-previews`.

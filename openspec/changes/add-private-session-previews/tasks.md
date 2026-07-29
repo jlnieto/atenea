@@ -14,12 +14,12 @@
 
 ## 3. Private AX42 preview coordinator
 
-- [ ] 3.1 Implement the versioned authenticated preview control protocol and persistent exact-owned projections
-- [ ] 3.2 Implement bounded tailnet-only ingress allocation forwarding only to allocation-derived loopback targets
-- [ ] 3.3 Implement idempotent activate, inspect, renew and exact stop/expiry operations with fail-closed ownership checks
-- [ ] 3.4 Implement generated localhost tunnel data without credentials or runtime-port disclosure
-- [ ] 3.5 Add protocol, authentication, stale-revision, ownership, foreign/ambiguous, restart, expiry and cleanup tests
-- [ ] 3.6 Install the private coordinator and UFW rule on AX42 without changing Beautips or starting a project runtime
+- [x] 3.1 Implement the versioned authenticated preview control protocol and persistent exact-owned projections
+- [x] 3.2 Implement bounded tailnet-only ingress allocation forwarding only to allocation-derived loopback targets
+- [x] 3.3 Implement idempotent activate, inspect, renew and exact stop/expiry operations with fail-closed ownership checks
+- [x] 3.4 Implement generated localhost tunnel data without credentials or runtime-port disclosure
+- [x] 3.5 Add protocol, authentication, stale-revision, ownership, foreign/ambiguous, restart, expiry and cleanup tests
+- [x] 3.6 Install the private coordinator and UFW rule on AX42 without changing Beautips or starting a project runtime
 
 ## 4. Atenea APIs and reconciliation
 
