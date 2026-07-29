@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–7.1 are complete and change progress is `37/45`. The entry gate pins
+Tasks 1.1–7.2 are complete and change progress is `38/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2794,4 +2794,29 @@ Task 7.1 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `b5e9fbb0c7657c82ce95459bf9e0a3f6551ded59abbed32501e23fdcd77d7cb3`.
 
-The exact resume point is task 7.2 of `onboard-atenea-on-ax42`.
+Task 7.2 repeated project disable, mediated stop and exact cleanup without
+recreating the runtime. Stop remained `stopped/stopped`; cleanup removed zero
+networks and every disabled allowlist, workspace, allocation, held admission,
+durable execution and installed adapter hash remained byte-identical.
+
+Four sequential task-owned network fixtures reused the absent runtime network
+name with literal no labels, partial labels, complete foreign ownership and
+complete Atenea labels on an ambiguous immutable ID. Each immutable ID,
+creation time, driver, labels and full inspect SHA-256 was recorded first.
+The cleanup gate rejected all four with exit 65
+`RUNTIME_OWNERSHIP_CONFLICT`; every inspect fingerprint remained byte-identical
+and the resource remained present during rejection. Each fixture was then
+revalidated and removed only by its recorded immutable ID.
+
+Final inventories for all four rootless slots exactly equal their pre-fixture
+inventories. There are zero fixture/session containers, networks, owned
+images, listeners or temporary project/browser processes, while the retained
+PostgreSQL volume remains. Production, preview and Beautips are `UP` with
+unchanged identities.
+
+Task 7.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-7.2-rollback-idempotence`;
+the SHA-256 of its `SHA256SUMS` is
+`2db41894002dd536c2719a7d04f889218bfee595a35605095242efe095c5920b`.
+
+The exact resume point is task 7.3 of `onboard-atenea-on-ax42`.
