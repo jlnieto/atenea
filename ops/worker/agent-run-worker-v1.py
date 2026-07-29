@@ -569,6 +569,13 @@ class WorkerState:
                 (candidate for candidate in allowed_runner_reasons if candidate in stderr),
                 None,
             )
+            if sanitized_runner_reason is None:
+                if "Traceback (most recent call last)" in stderr:
+                    sanitized_runner_reason = "Project runner internal exception"
+                elif "sudo:" in stderr.lower():
+                    sanitized_runner_reason = "Project runner privilege boundary failed"
+                elif not stderr.strip():
+                    sanitized_runner_reason = "Project runner failed without diagnostic output"
             if sanitized_runner_reason is not None:
                 reason = sanitized_runner_reason
             self._finish_project(dispatch_id, "FAILED", reason, None)
