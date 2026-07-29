@@ -1176,3 +1176,21 @@ the SHA-256 of its `SHA256SUMS` is
 `a1a42baa8bacd14524219f9c0a25c0255d8f0f1063770ba34c3f105153d59ec9`.
 
 The exact resume point is task 2.1 of `add-private-session-previews`.
+
+Tasks 2.1–2.4 are complete and change progress is `8/37`. Atenea source commit
+`bc32118e4e3f85d20a69af953deafc90d37cece8` adds the expand-only V48 preview
+registry, immutable WorkSession/project/worker/allocation ownership, optional
+same-session AgentRun validation, one-active-preview constraint, monotonic
+optimistic revision and deterministic reconciliation/audit queries.
+
+The metadata state machine enforces `STARTING`, `READY`, `RECONCILING`,
+`BLOCKED`, `STOPPED` and `EXPIRED`; stale or invalid transitions mutate
+nothing. Ready and renewed routes remain inside the approved tailnet/range,
+five-minute lease and eight-hour hard limit. Blocked text is bounded and
+sanitized, and 30-day audit identity survives stop/expiry.
+
+The focused metadata suite passes `10/10`. A fresh disposable PostgreSQL
+database validated and applied all 48 migrations, Hibernate schema validation
+passed and the existing WorkSession integration suite passed `26/26`.
+
+The exact resume point is task 3.1 of `add-private-session-previews`.

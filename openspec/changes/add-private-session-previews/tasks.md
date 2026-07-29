@@ -7,10 +7,10 @@
 
 ## 2. Authoritative preview registry
 
-- [ ] 2.1 Add an expand-only Flyway migration for immutable preview ownership, lifecycle revision, state, expiry and indexes
-- [ ] 2.2 Implement preview persistence with exact WorkSession, project, worker and optional same-session AgentRun validation
-- [ ] 2.3 Implement monotonic idempotent state transitions, stale-revision conflict and sanitized blocked state
-- [ ] 2.4 Implement startup reconciliation selection, renewable lease, eight-hour hard limit and 30-day audit query behavior
+- [x] 2.1 Add an expand-only Flyway migration for immutable preview ownership, lifecycle revision, state, expiry and indexes
+- [x] 2.2 Implement preview persistence with exact WorkSession, project, worker and optional same-session AgentRun validation
+- [x] 2.3 Implement monotonic idempotent state transitions, stale-revision conflict and sanitized blocked state
+- [x] 2.4 Implement startup reconciliation selection, renewable lease, eight-hour hard limit and 30-day audit query behavior
 
 ## 3. Private AX42 preview coordinator
 
