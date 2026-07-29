@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–7.2 are complete and change progress is `38/45`. The entry gate pins
+Tasks 1.1–7.3 are complete and change progress is `39/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2819,4 +2819,33 @@ Task 7.2 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `2db41894002dd536c2719a7d04f889218bfee595a35605095242efe095c5920b`.
 
-The exact resume point is task 7.3 of `onboard-atenea-on-ax42`.
+Task 7.3 released `heavy1` before `slot3` through the versioned admission
+boundary. The retained admission record is now `released/released`, capacity
+reports zero normal and heavy use, and idempotent release verification returns
+the same state.
+
+After exact cleanup and capacity release, the allocation record was copied
+byte-for-byte into accepted evidence at SHA-256
+`bd45cac9d22f03ccdf2ef0d2759d850e6200c094953e8d37f419160c5e961e29`.
+The original persisted allocation remains unchanged. The disabled worker
+registry then unregistered only the exact canonical session/workspace identity
+and now contains zero workspaces.
+
+The mirror refs, WorkSession HEAD/tree/clean index, control source, merged
+GitHub pull request `#4`, persisted workspace record, durable terminal
+executions, retained PostgreSQL volume and all sealed task evidence remain
+unchanged. Runtime/preview/listener/project/browser process counts remain zero;
+production, preview and Beautips are `UP` with unchanged identities.
+
+The accepted release operations emitted harmless inaccessible inherited-cwd
+warnings after their successful fixed record scans, and one post-copy shell
+substitution probe was malformed after the archive had already been copied.
+Both are retained transparently. Clean idempotent release and direct
+persisted/archive SHA comparison supersede those non-mutating warnings.
+
+Task 7.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-7.3-release-allocation-archive`;
+the SHA-256 of its `SHA256SUMS` is
+`da48445d6f83f99119e587e6a10a5325baa0aa4fc959c61f73b49b383aa2d0aa`.
+
+The exact resume point is task 7.4 of `onboard-atenea-on-ax42`.
