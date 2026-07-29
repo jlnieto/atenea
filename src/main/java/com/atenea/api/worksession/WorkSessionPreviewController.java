@@ -1,6 +1,8 @@
 package com.atenea.api.worksession;
 
+import com.atenea.persistence.worksession.WorkSessionPreviewEntity;
 import com.atenea.previews.PreviewActivationCommand;
+import com.atenea.previews.PreviewProperties;
 import com.atenea.previews.PreviewTunnel;
 import com.atenea.previews.WorkSessionPreviewService;
 import java.util.List;
@@ -20,9 +22,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorkSessionPreviewController {
 
     private final WorkSessionPreviewService previewService;
+    private final PreviewProperties previewProperties;
 
-    public WorkSessionPreviewController(WorkSessionPreviewService previewService) {
+    public WorkSessionPreviewController(
+            WorkSessionPreviewService previewService,
+            PreviewProperties previewProperties
+    ) {
         this.previewService = previewService;
+        this.previewProperties = previewProperties;
     }
 
     @PostMapping("/activate")
@@ -31,7 +38,7 @@ public class WorkSessionPreviewController {
             @PathVariable Long sessionId,
             @RequestBody PreviewActivationRequest request
     ) {
-        return WorkSessionPreviewResponse.from(previewService.activate(
+        return response(previewService.activate(
                 sessionId,
                 new PreviewActivationCommand(
                         request.previewId(),
@@ -42,13 +49,13 @@ public class WorkSessionPreviewController {
 
     @GetMapping
     public WorkSessionPreviewResponse status(@PathVariable Long sessionId) {
-        return WorkSessionPreviewResponse.from(previewService.status(sessionId));
+        return response(previewService.status(sessionId));
     }
 
     @GetMapping("/history")
     public List<WorkSessionPreviewResponse> retained(@PathVariable Long sessionId) {
         return previewService.retained(sessionId).stream()
-                .map(WorkSessionPreviewResponse::from)
+                .map(this::response)
                 .toList();
     }
 
@@ -57,7 +64,7 @@ public class WorkSessionPreviewController {
             @PathVariable Long sessionId,
             @PathVariable UUID previewId
     ) {
-        return WorkSessionPreviewResponse.from(previewService.renew(sessionId, previewId));
+        return response(previewService.renew(sessionId, previewId));
     }
 
     @PostMapping("/{previewId}/stop")
@@ -65,7 +72,7 @@ public class WorkSessionPreviewController {
             @PathVariable Long sessionId,
             @PathVariable UUID previewId
     ) {
-        return WorkSessionPreviewResponse.from(previewService.stop(sessionId, previewId));
+        return response(previewService.stop(sessionId, previewId));
     }
 
     @GetMapping("/{previewId}/localhost")
@@ -75,5 +82,9 @@ public class WorkSessionPreviewController {
             @RequestParam int localPort
     ) {
         return previewService.localhost(sessionId, previewId, localPort);
+    }
+
+    private WorkSessionPreviewResponse response(WorkSessionPreviewEntity preview) {
+        return WorkSessionPreviewResponse.from(preview, previewProperties.isEnabled());
     }
 }

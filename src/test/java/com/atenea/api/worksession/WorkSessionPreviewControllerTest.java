@@ -12,6 +12,7 @@ import com.atenea.persistence.worksession.PreviewState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPreviewEntity;
 import com.atenea.previews.PreviewFeatureDisabledException;
+import com.atenea.previews.PreviewProperties;
 import com.atenea.previews.WorkSessionPreviewService;
 import java.time.Instant;
 import java.util.UUID;
@@ -34,11 +35,14 @@ class WorkSessionPreviewControllerTest {
 
     @Mock WorkSessionPreviewService previewService;
     private MockMvc mockMvc;
+    private PreviewProperties previewProperties;
 
     @BeforeEach
     void setUp() {
+        previewProperties = new PreviewProperties();
+        previewProperties.setEnabled(true);
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new WorkSessionPreviewController(previewService))
+                        new WorkSessionPreviewController(previewService, previewProperties))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -72,6 +76,20 @@ class WorkSessionPreviewControllerTest {
                 .andExpect(jsonPath("$.state").value("EXPIRED"))
                 .andExpect(jsonPath("$.privateUrl").doesNotExist())
                 .andExpect(jsonPath("$.primaryAction").value("START"));
+    }
+
+    @Test
+    void disabledReadRetainsStateButSuppressesEveryPreviewAffordance() throws Exception {
+        previewProperties.setEnabled(false);
+        when(previewService.status(12L)).thenReturn(preview(PreviewState.READY));
+
+        mockMvc.perform(get("/api/sessions/12/preview"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("READY"))
+                .andExpect(jsonPath("$.privateUrl").doesNotExist())
+                .andExpect(jsonPath("$.primaryAction").value("NONE"))
+                .andExpect(jsonPath("$.nextAction").value(
+                        "Los previews nuevos están desactivados; el estado retenido sigue disponible."));
     }
 
     @Test

@@ -21,7 +21,10 @@ public record WorkSessionPreviewResponse(
         String nextAction,
         String primaryAction
 ) {
-    public static WorkSessionPreviewResponse from(WorkSessionPreviewEntity preview) {
+    public static WorkSessionPreviewResponse from(
+            WorkSessionPreviewEntity preview,
+            boolean actionsEnabled
+    ) {
         return new WorkSessionPreviewResponse(
                 preview.getId(),
                 preview.getWorkSession().getId(),
@@ -29,14 +32,18 @@ public record WorkSessionPreviewResponse(
                 preview.getAgentRun() == null ? null : preview.getAgentRun().getId(),
                 preview.getState(),
                 preview.getLifecycleRevision(),
-                preview.getState() == PreviewState.READY ? preview.getPrivateUrl() : null,
+                actionsEnabled && preview.getState() == PreviewState.READY
+                        ? preview.getPrivateUrl()
+                        : null,
                 preview.isLocalhostCompatible(),
                 preview.getLeaseExpiresAt(),
                 preview.getHardExpiresAt(),
                 preview.getAuditRetainUntil(),
                 preview.getFailureReason(),
-                preview.getNextAction(),
-                action(preview.getState()));
+                actionsEnabled
+                        ? preview.getNextAction()
+                        : "Los previews nuevos están desactivados; el estado retenido sigue disponible.",
+                actionsEnabled ? action(preview.getState()) : "NONE");
     }
 
     private static String action(PreviewState state) {

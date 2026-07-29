@@ -173,7 +173,7 @@ export interface WorkSessionPreview {
   auditRetainUntil: string;
   failureReason?: string | null;
   nextAction: string;
-  primaryAction: "WAIT" | "OPEN" | "START";
+  primaryAction: "NONE" | "WAIT" | "OPEN" | "START";
 }
 
 export interface MobileSessionSummary {

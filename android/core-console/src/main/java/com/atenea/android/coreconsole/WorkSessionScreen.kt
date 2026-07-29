@@ -147,7 +147,9 @@ private fun WorkSessionPreviewPanel(
     onOpen: (String) -> Unit,
     onOpenEvidence: () -> Unit
 ) {
-    val readyUrl = preview?.privateUrl?.takeIf { preview.state == "READY" }
+    val readyUrl = preview?.privateUrl?.takeIf {
+        preview.state == "READY" && preview.primaryAction == "OPEN"
+    }
     val waiting = preview?.state in setOf("STARTING", "RECONCILING")
     AteneaPanel {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

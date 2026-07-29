@@ -763,7 +763,9 @@ function PreviewPanel({
   preview: WorkSessionPreview | null;
   onRefresh: () => void;
 }) {
-  const ready = preview?.state === "READY" && Boolean(preview.privateUrl);
+  const ready = preview?.primaryAction === "OPEN"
+    && preview.state === "READY"
+    && Boolean(preview.privateUrl);
   const waiting = preview?.state === "STARTING" || preview?.state === "RECONCILING";
   const level: Level = ready
     ? "ok"
