@@ -44,6 +44,9 @@
         "composeSha256",
         "workerId",
         "workloadClass",
+        "runnerPath",
+        "runnerSha256",
+        "baseRunnerSha256",
         "allowedSlots",
         "workspaces"
       ],
@@ -86,6 +89,15 @@
         },
         "workloadClass": {
           "const": "normal"
+        },
+        "runnerPath": {
+          "const": "/usr/local/libexec/atenea/beautips-project-codex-runner-v1.py"
+        },
+        "runnerSha256": {
+          "const": "55e8f585e19f6a19d3c51aaf7532b1cf0f74f6b087ae0d1ef67faaea3029b73b"
+        },
+        "baseRunnerSha256": {
+          "const": "de84b0c96908677e334184b9290691a2116b963dd37483022f97a0fd57ed44d1"
         },
         "allowedSlots": {
           "const": [
