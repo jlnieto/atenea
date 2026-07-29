@@ -2189,3 +2189,24 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 6.6 of
 `establish-development-database-lifecycle`.
+
+Task 6.6 is complete and change progress is `32/37`. Two independent accepted
+passes each completed `13/13` database state/manifest tests, `10/10`
+mediator/engine tests and `10/10` project-runtime integration tests. Each pass
+also read both persisted engine records/resources and reconciled exactly two
+`HEALTHY/RUNNING` records with `implicitCreation=false`.
+
+The integration harness ran as `atenea-worker` from a temporary exact source
+copy owned by that executor. Two earlier fail-closed attempts are retained:
+the harness first rejected root-owned test workspaces, then rejected an
+inaccessible inherited working directory. Neither attempt mutated database
+lifecycle state. All accepted invocations have finite timeouts, exit zero and
+recorded durations.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-6.6-double-regression`;
+the SHA-256 of its `SHA256SUMS` is
+`4fe5bce53459130a91028da6a985f71fba33bb3b3e49463b81e0dd8cdccabcf7`.
+
+The exact resume point is task 7.1 of
+`establish-development-database-lifecycle`.

@@ -46,7 +46,7 @@
 - [x] 6.3 Prove production, preview, real-project, unlabelled, partial, foreign and ambiguous targets remain unchanged
 - [x] 6.4 Restart the database mediator/rootless daemons and reconcile only persisted exact ownership without implicit creation
 - [x] 6.5 Prove bounded retention removes only expired/excess exact synthetic snapshots and preserves sanitized evidence
-- [ ] 6.6 Run complete worker, manifest, PostgreSQL and MariaDB regression suites twice
+- [x] 6.6 Run complete worker, manifest, PostgreSQL and MariaDB regression suites twice
 
 ## 7. Rollback, evidence and archive
 
