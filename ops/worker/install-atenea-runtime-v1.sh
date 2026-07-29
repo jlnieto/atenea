@@ -43,8 +43,8 @@ proxy="${SCRIPT_DIR}/images/atenea-codex-app-server/codex-loopback-proxy.mjs"
     "$(sha256sum "${proxy}" | cut -d' ' -f1)" == "${CODEX_PROXY_SHA256}" ]] ||
   fail 'Codex loopback proxy SHA-256 differs'
 
-sudo -n -u atenea-slot2 \
-  env DOCKER_HOST=unix:///run/atenea-runtime/slot2/docker.sock \
+sudo -n -u atenea-slot3 \
+  env DOCKER_HOST=unix:///run/atenea-runtime/slot3/docker.sock \
   docker image inspect "${CODEX_IMAGE}" |
   jq -e --arg id "${CODEX_IMAGE_ID}" '
     length == 1 and .[0].Id == $id and
@@ -53,7 +53,7 @@ sudo -n -u atenea-slot2 \
     .[0].Config.Labels["com.atenea.node.version"] == "22.16.0" and
     .[0].Config.Labels["com.atenea.codex.auth-boundary"] == "loopback-proxy-v1"
   ' >/dev/null ||
-  fail 'the exact reviewed Codex App Server image is unavailable in slot2'
+  fail 'the exact reviewed Codex App Server image is unavailable in slot3'
 
 install -d -o root -g root -m 0755 "${LIBEXEC}"
 install -d -o root -g root -m 2750 "${MANAGER_CONTROL_ROOT}"
