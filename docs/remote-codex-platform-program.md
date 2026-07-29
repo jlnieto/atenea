@@ -1507,3 +1507,38 @@ the SHA-256 of its `SHA256SUMS` is
 `f839c16318ef16e1a846f33f7d124bb95b6df0e3fd6c5435847e902cc9e4f0ef`.
 
 The exact resume point is task 7.1 of `add-private-session-previews`.
+
+Task 7.1 is complete and change progress is `33/37`. The canonical AX42
+preview coordinator is disabled and inactive; its control and ingress
+listeners are absent, while the separately owned synthetic runtime remains
+healthy and loopback-only on `127.0.0.1:22243`. The three terminal preview
+records, both preview firewall rules and installed worker program remained
+byte-identical for the exact rollback acceptance in task 7.2.
+
+Both retained attachment metadata documents and both PNG contents remained
+readable through the authenticated attachment boundary. Their content hashes,
+the two preview audit rows and the two independent attachment indexes were
+unchanged. The disabled control endpoint fails closed from Atenea, while
+production, preview, Beautips, RAID, rootful Docker, allocation, worktree and
+Git fingerprints remain unchanged.
+
+A retained `READY` read-model regression was found and closed before
+acceptance: with the capability disabled, Atenea now retains the state and
+audit copy but suppresses the private URL and returns primary action `NONE`.
+Web and Android also require server-derived `OPEN` before exposing an open
+action. Source commit `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` is pushed.
+Eight focused backend tests, the web build, Android core-console compile and
+the complete final Atenea regression (`380/380`) pass.
+
+Playwright used a disposable loopback-only Atenea instance and the real
+preview read boundary. At `1440x900` and `390x844`, it proved the retained
+state and disabled copy visible, zero open actions and zero horizontal
+overflow. Both screenshots were inspected, the browser/application processes
+were closed and all exact temporary authentication rows were removed.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-7.1-disable-affordances`;
+the SHA-256 of its `SHA256SUMS` is
+`f47c42242bcca2d482f0df879a455ddfbf9471483fc4b79cf1a0e52e52509e90`.
+
+The exact resume point is task 7.2 of `add-private-session-previews`.
