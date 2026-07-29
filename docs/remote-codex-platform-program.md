@@ -2016,3 +2016,23 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 5.3 of
 `establish-development-database-lifecycle`.
+
+Task 5.3 is complete and change progress is `24/37`. One explicit MariaDB
+single-transaction snapshot and one automatic verified pre-replacement
+snapshot match their private byte counts, SHA-256 values and exact immutable
+ownership metadata.
+
+Operation `ed436137-65ac-43f7-a9ea-cf0622815a6c` consumed its five-minute
+revision-6 challenge without retaining the confirmation. Replacement changed
+the container immutable ID, preserved all persisted resource/WorkSession/
+project/allocation/slot names, reapplied migration/seed/health and returned
+`HEALTHY` revision `13`. The deterministic data digest still matches, and no
+raw dump or row is attached.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-5.3-mariadb-confirmed-replacement`;
+the SHA-256 of its `SHA256SUMS` is
+`56501214400d19a216959252e89344bc9ae000345a7b69ef12a237bd0d56bef6`.
+
+The exact resume point is task 5.4 of
+`establish-development-database-lifecycle`.
