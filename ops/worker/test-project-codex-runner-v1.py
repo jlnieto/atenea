@@ -81,6 +81,10 @@ class ProjectCodexContractTest(unittest.TestCase):
         self.assertIn("safe.directory", command)
         git_value_index = command.index("GIT_CONFIG_VALUE_0")
         self.assertEqual(str(worktree), command[git_value_index + 1])
+        self.assertNotIn("ProtectKernelTunables=yes", command)
+        self.assertNotIn("ProtectKernelLogs=yes", command)
+        self.assertIn("ProtectKernelModules=yes", command)
+        self.assertIn("ProtectControlGroups=yes", command)
         self.assertNotIn("/var/run/docker.sock", joined)
         for denied in (
             "IPAddressDeny=127.0.0.0/8",

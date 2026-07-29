@@ -182,9 +182,9 @@ def sandbox_command(
         "--property", "Group=jose",
         "--property", "NoNewPrivileges=yes",
         "--property", "PrivateDevices=yes",
-        "--property", "ProtectKernelTunables=yes",
+        # A private Bubblewrap proc mount supplies the user-namespace boundary.
+        # systemd's proc overlays for tunables/logs would prevent that mount.
         "--property", "ProtectKernelModules=yes",
-        "--property", "ProtectKernelLogs=yes",
         "--property", "ProtectControlGroups=yes",
         "--property", "RestrictSUIDSGID=yes",
         "--property", "LockPersonality=yes",
