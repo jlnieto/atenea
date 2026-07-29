@@ -90,7 +90,14 @@ public class WorkSessionGitHubService {
             gitRepositoryService.commit(repoPath, commitMessage);
         }
 
-        gitRepositoryService.pushBranchSetUpstream(repoPath, workspaceBranch);
+        String localHead = gitRepositoryService.getHeadCommitSha(repoPath);
+        String remoteHead = gitRepositoryService.getRemoteBranchHeadSha(repoPath, workspaceBranch);
+        if (remoteHead == null) {
+            gitRepositoryService.pushBranchSetUpstream(repoPath, workspaceBranch);
+        } else if (!remoteHead.equals(localHead)) {
+            throw new WorkSessionPublishConflictException(sessionId,
+                    "remote workspace branch points to a different commit");
+        }
 
         GitHubRepositoryRef repository = resolveRepository(session, repoPath);
         String pullRequestTitle = generatePullRequestTitle(session, commitMessage);
