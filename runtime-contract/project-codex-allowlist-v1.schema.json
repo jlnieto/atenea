@@ -64,10 +64,10 @@
           "const": "main"
         },
         "commit": {
-          "const": "e4256d7fe1610e191099bd12ce993591a5cd4b7a"
+          "const": "e9e0b3c319c518363d4135f5378ebbddced96dfb"
         },
         "tree": {
-          "const": "8e52657add269c84700105aa7028728d4ddf2810"
+          "const": "533d32f97ae362997ad003170a826da674c31c1d"
         },
         "manifestPath": {
           "const": "ops/atenea-runtime.json"

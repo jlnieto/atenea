@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.codynwave.com/schemas/beautips-operation-plan-v1.schema.json",
+  "title": "Beautips closed operation plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "executionEnabled",
+    "sessionId",
+    "projectId",
+    "runtimeId",
+    "slot",
+    "operation",
+    "allocationPath",
+    "worktreePath",
+    "argv",
+    "environment",
+    "secretRefs",
+    "timeoutSeconds"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "beautips-operation-plan-v1"
+    },
+    "executionEnabled": {
+      "const": false
+    },
+    "sessionId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[a-f0-9-]{36}$"
+    },
+    "projectId": {
+      "const": "beautips"
+    },
+    "runtimeId": {
+      "type": "string",
+      "pattern": "^ws-[a-f0-9]{32}$"
+    },
+    "slot": {
+      "enum": [
+        "slot2",
+        "slot3",
+        "slot4"
+      ]
+    },
+    "operation": {
+      "enum": [
+        "node-build",
+        "maven-test",
+        "compose-build",
+        "runtime-start",
+        "runtime-health",
+        "functional-smoke",
+        "customer-smoke",
+        "runtime-logs",
+        "runtime-stop",
+        "runtime-cleanup"
+      ]
+    },
+    "allocationPath": {
+      "type": "string",
+      "pattern": "^/[^\\u0000]+/runtime-allocation-v1\\.json$"
+    },
+    "worktreePath": {
+      "type": "string",
+      "pattern": "^/[^\\u0000]+/beautips$"
+    },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 40,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024,
+        "pattern": "^(?!.*(?:PASSWORD|TOKEN|SECRET|API_KEY)=).*$"
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ATENEA_ENGINE_LABEL": {
+          "const": "atenea-runtime-engine-v1"
+        },
+        "ATENEA_SESSION_ID": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "ATENEA_RUNTIME_ID": {
+          "type": "string",
+          "pattern": "^ws-[a-f0-9]{32}$"
+        },
+        "ATENEA_NETWORK_NAME": {
+          "type": "string",
+          "pattern": "^ws-[a-f0-9]{32}-network$"
+        },
+        "ATENEA_VOLUME_PREFIX": {
+          "type": "string",
+          "pattern": "^ws-[a-f0-9]{32}-volume$"
+        },
+        "ATENEA_WEB_PORT": {
+          "$ref": "#/$defs/port"
+        },
+        "ATENEA_POSTGRES_PORT": {
+          "$ref": "#/$defs/port"
+        },
+        "ATENEA_REDIS_PORT": {
+          "$ref": "#/$defs/port"
+        },
+        "BEAUTIPS_SMOKE_MANAGED_MODE": {
+          "const": "true"
+        },
+        "APP_URL": {
+          "type": "string",
+          "pattern": "^http://127\\.0\\.0\\.1:[0-9]{4,5}$"
+        },
+        "POSTGRES_DB": {
+          "const": "beautips_synthetic"
+        },
+        "POSTGRES_USER": {
+          "const": "beautips_synthetic"
+        },
+        "POSTGRES_PORT": {
+          "$ref": "#/$defs/port"
+        }
+      },
+      "required": [
+        "ATENEA_ENGINE_LABEL",
+        "ATENEA_SESSION_ID",
+        "ATENEA_RUNTIME_ID",
+        "ATENEA_NETWORK_NAME",
+        "ATENEA_VOLUME_PREFIX",
+        "ATENEA_WEB_PORT",
+        "ATENEA_POSTGRES_PORT",
+        "ATENEA_REDIS_PORT"
+      ]
+    },
+    "secretRefs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^BEAUTIPS_SYNTHETIC_[A-Z0-9_]{3,63}$"
+      }
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1800
+    }
+  },
+  "$defs": {
+    "port": {
+      "type": "string",
+      "pattern": "^(?:[1-9][0-9]{3,4})$"
+    }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "beautips-runtime-operations-v1",
+  "projectId": "beautips",
+  "executionEnabled": false,
+  "operations": {
+    "node-build": {
+      "kind": "node-build",
+      "timeoutSeconds": 900,
+      "secretRefs": []
+    },
+    "maven-test": {
+      "kind": "maven-test",
+      "timeoutSeconds": 1800,
+      "secretRefs": []
+    },
+    "compose-build": {
+      "kind": "compose-build",
+      "timeoutSeconds": 1800,
+      "secretRefs": [
+        "BEAUTIPS_SYNTHETIC_POSTGRES_PASSWORD"
+      ]
+    },
+    "runtime-start": {
+      "kind": "runtime-start",
+      "timeoutSeconds": 600,
+      "secretRefs": [
+        "BEAUTIPS_SYNTHETIC_POSTGRES_PASSWORD"
+      ]
+    },
+    "runtime-health": {
+      "kind": "runtime-health",
+      "timeoutSeconds": 30,
+      "secretRefs": []
+    },
+    "functional-smoke": {
+      "kind": "functional-smoke",
+      "timeoutSeconds": 600,
+      "secretRefs": [
+        "BEAUTIPS_SYNTHETIC_SMOKE_ADMIN_EMAIL",
+        "BEAUTIPS_SYNTHETIC_SMOKE_ADMIN_PASSWORD",
+        "BEAUTIPS_SYNTHETIC_SMOKE_SEAL_CODE"
+      ]
+    },
+    "customer-smoke": {
+      "kind": "customer-smoke",
+      "timeoutSeconds": 600,
+      "secretRefs": [
+        "BEAUTIPS_SYNTHETIC_POSTGRES_PASSWORD"
+      ]
+    },
+    "runtime-logs": {
+      "kind": "runtime-logs",
+      "timeoutSeconds": 60,
+      "secretRefs": []
+    },
+    "runtime-stop": {
+      "kind": "runtime-stop",
+      "timeoutSeconds": 300,
+      "secretRefs": [
+        "BEAUTIPS_SYNTHETIC_POSTGRES_PASSWORD"
+      ]
+    },
+    "runtime-cleanup": {
+      "kind": "runtime-cleanup",
+      "timeoutSeconds": 300,
+      "secretRefs": [
+        "BEAUTIPS_SYNTHETIC_POSTGRES_PASSWORD"
+      ]
+    }
+  }
+}
