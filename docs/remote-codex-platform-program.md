@@ -1475,3 +1475,35 @@ the SHA-256 of its `SHA256SUMS` is
 `8112ff5559db5221ba4fefc06097f9c4b9395cf7addf941968bce710eed644ef`.
 
 The exact resume point is task 6.8 of `add-private-session-previews`.
+
+Task 6.8 is complete and change progress is `32/37`. The first canonical
+Atenea run executed 379 tests with zero failures and 27 setup errors, all from
+the same foreign-key guard: the exact Phase 6 attachment index created for
+task 6.4 still referenced synthetic AgentRun `9606101` in the shared test
+database. Immutable ownership checks resolved only the two attachment rows,
+one preview row, AgentRun, internal turn, WorkSession and project created by
+this acceptance. Their exact transactional removal left all seven fixture
+counts at zero; physical AX42 attachments and the independent continuity
+database were not changed.
+
+The repeated canonical regression passed all 379 tests with zero failures,
+errors or skips in 31.683 seconds. The programme-source worker regressions also
+passed: preview protocol 12/12, attachment protocol 11/11, runtime engine, and
+the complete project-runtime contract 8/8. The preview and attachment protocol
+suites were independently repeated on AX42 and passed 12/12 and 11/11.
+
+The installed coordinator verification passed service, listener, permission,
+firewall and systemd-hardening checks using the persisted Atenea control-plane
+identity. A preceding verification deliberately made no change and rejected
+the operator-host address because it did not match that exact firewall rule.
+All temporary suite directories are absent. Canonical Git trees are clean,
+the preview ingress remains absent, the runtime remains loopback-only, and
+production, preview, Beautips, RAID, firewall and rootful Docker remain
+unchanged.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-6.8-regression-suites`;
+the SHA-256 of its `SHA256SUMS` is
+`f839c16318ef16e1a846f33f7d124bb95b6df0e3fd6c5435847e902cc9e4f0ef`.
+
+The exact resume point is task 7.1 of `add-private-session-previews`.

@@ -46,7 +46,7 @@
 - [x] 6.5 Prove artifacts survive preview teardown while route/listener/browser processes disappear
 - [x] 6.6 Prove coordinator and Atenea restart reconciliation restores only persisted unexpired ownership
 - [x] 6.7 Prove lease expiry and hard-stop behavior revoke the route within 60 seconds without changing runtime, Git or attachments
-- [ ] 6.8 Run the complete Atenea regression and worker preview protocol suites
+- [x] 6.8 Run the complete Atenea regression and worker preview protocol suites
 
 ## 7. Rollback, evidence and archive
 
