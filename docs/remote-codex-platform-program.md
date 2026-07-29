@@ -1300,3 +1300,30 @@ the SHA-256 of its `SHA256SUMS` is
 `ed59877411b6eafb5e3d1668a826a5ed8d48c3c946debe936339e028522d3147`.
 
 The exact resume point is task 6.2 of `add-private-session-previews`.
+
+Task 6.2 is complete and change progress is `26/37`. The operator laptop and
+an independent Atenea private client both resolved preview
+`f106453b-601a-47f3-9272-adafaa58ec7b` as `READY` for WorkSession `96061`
+and reached the same tailnet URL. Their live response bodies are byte-identical
+with SHA-256
+`54c244c22440ed1f09203f79bb0d45387b8ddc543146fb87a736bf7f6572e4d6`.
+
+The Pixel 7 Android private peer is online on the approved tailnet and answered
+a finite peer probe in 126 ms. It exposes no ADB transport, so no automated
+physical-device browser claim is made; the accepted `Android/private-client`
+case uses the independent private client while the previously accepted Android
+build/read model remains unchanged.
+
+An authenticated inspect using foreign WorkSession `96062` returned
+`ownership_conflict`. The coordinator record was byte-identical before and
+after that denial at SHA-256
+`27823e1a510cd5fdf7202d466adae0c99ea48940c56184bf3c8ef5f29526ebb1`,
+and the coordinator still contains exactly one preview record. No foreign
+WorkSession was resolved or changed.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-6.2-private-clients`;
+the SHA-256 of its `SHA256SUMS` is
+`9d87f73687a8054b02c3cec8cf6ccf30012a0e516efb5c51b3291e1bed27a8aa`.
+
+The exact resume point is task 6.3 of `add-private-session-previews`.
