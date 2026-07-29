@@ -5,9 +5,7 @@
 Define immutable WorkSession-scoped attachment ownership, private content
 storage, deterministic screenshot resolution, bounded validation, retention
 and rollback behavior.
-
 ## Requirements
-
 ### Requirement: Immutable WorkSession attachment ownership
 
 Every attachment SHALL be indexed under exactly one WorkSession and project
@@ -113,3 +111,25 @@ and restore-tested.
 - **WHEN** a real-project WorkSession attempts retained attachment creation
 - **THEN** Atenea keeps the capability disabled without falling back to a global
   upload directory
+
+### Requirement: Preview browser evidence ownership
+
+Every screenshot, trace or browser report accepted for a preview SHALL be
+registered through the attachment boundary under the exact preview
+WorkSession, project and optional same-session AgentRun with `PLAYWRIGHT` source
+and recorded preview identity. Preview teardown or expiry SHALL NOT change its
+attachment ordering, integrity or retention.
+
+#### Scenario: Browser captures desktop and mobile evidence
+
+- **WHEN** the mediated check accepts the ready preview at both required
+  viewports
+- **THEN** each retained artifact is indexed only under the originating
+  WorkSession and optional AgentRun and remains byte-identical after route
+  teardown
+
+#### Scenario: Foreign AgentRun is supplied
+
+- **WHEN** preview evidence names an AgentRun owned by another WorkSession
+- **THEN** attachment registration and preview acceptance fail without
+  retaining content or modifying the foreign run

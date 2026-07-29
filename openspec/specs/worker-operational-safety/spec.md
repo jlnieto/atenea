@@ -11,11 +11,26 @@ Worker users, packages, SSH policy, firewall, private networking, runtime servic
 - **THEN** it produces the declared security and service state without depending on undocumented manual shell history
 
 ### Requirement: Private service exposure
-Worker API, Codex App Server, runtime control endpoints, databases and previews MUST bind only to loopback, isolated runtime networks or approved private interfaces.
+
+Worker API, Codex App Server, runtime control endpoints, databases and previews MUST
+bind only to loopback, isolated runtime networks or approved private
+interfaces. Preview ingress SHALL use a bounded dedicated port range admitted
+only on the private interface, SHALL forward only to allocation-derived
+loopback targets and SHALL expose no arbitrary proxy operation.
 
 #### Scenario: Public interface is scanned
-- **WHEN** an unauthenticated Internet client scans the worker
-- **THEN** only explicitly approved bootstrap or break-glass services are reachable
+
+- **WHEN** an unauthenticated Internet client scans the worker while a synthetic
+  preview is ready
+- **THEN** only explicitly approved bootstrap or break-glass services are
+  reachable and the preview content is not
+
+#### Scenario: Arbitrary upstream is requested
+
+- **WHEN** a preview request supplies a host, port, path or route identity not
+  derived from the persisted WorkSession allocation
+- **THEN** the worker rejects it before creating a listener and preserves every
+  existing route
 
 ### Requirement: Least-privilege execution
 Routine Codex and project workloads SHALL run without host root authority and without credentials or capabilities unrelated to their session.
@@ -53,11 +68,25 @@ Operators SHALL be able to inspect worker health, slot use, queue depth, run age
 - **THEN** Atenea surfaces a stale warning with worker, session and recovery action rather than silently waiting forever
 
 ### Requirement: Safe garbage collection
-The worker SHALL identify and clean orphaned containers, worktrees, ports and temporary artifacts only after proving they are not owned by an active or recoverable session.
+
+The worker SHALL identify and clean orphaned containers, worktrees, ports,
+preview projections and temporary artifacts only after proving they are not
+owned by an active or recoverable session. Preview deletion SHALL require the
+complete immutable ownership tuple and SHALL fail closed on absent, partial,
+foreign or ambiguous labels.
 
 #### Scenario: Worker restarts with orphaned resources
-- **WHEN** reconciliation finds resources without a valid active lease
-- **THEN** they are quarantined or removed according to retention policy and the action is audited
+
+- **WHEN** reconciliation finds a complete exact-owned synthetic preview whose
+  persisted lease has expired
+- **THEN** its live projection is removed, the action is audited and unrelated
+  runtime, Git and attachment state remains
+
+#### Scenario: Foreign preview-like listener exists
+
+- **WHEN** cleanup observes an unlabelled, partially labelled, foreign or
+  ambiguously owned listener or process
+- **THEN** it rejects the candidate unchanged and reports the ownership reason
 
 ### Requirement: Break-glass and rollback
 The platform SHALL maintain tested key-based break-glass access and a rollback procedure that can stop new worker routing without deleting active Git or audit state.
@@ -139,3 +168,24 @@ Before changing sshd, firewall or managed systemd configuration, automation SHAL
 #### Scenario: New sshd policy fails after reload
 - **WHEN** fresh access cannot be proven from the named administrator
 - **THEN** the original active recovery session restores the previous configuration and verifies service syntax before another attempt
+
+### Requirement: Authenticated preview control protocol
+
+The AX42 preview coordinator SHALL expose a versioned authenticated control
+protocol only to Atenea over the approved private network. Requests SHALL carry
+the immutable preview, WorkSession, project, worker, allocation and expected
+revision identities; malformed, stale or conflicting requests SHALL mutate
+nothing.
+
+#### Scenario: Duplicate activation is retried
+
+- **WHEN** Atenea repeats an identical activation after losing the response
+- **THEN** the worker returns the same preview route and revision without
+  starting another listener
+
+#### Scenario: Stale revision is submitted
+
+- **WHEN** a client submits an ownership-valid request with an older lifecycle
+  revision
+- **THEN** the worker returns conflict and leaves the current projection
+  unchanged

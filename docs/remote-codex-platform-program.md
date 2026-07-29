@@ -175,12 +175,16 @@ Entry, evidence, rollback and archive gates are defined in `remote-codex-platfor
 `2026-07-28-route-agent-runs-to-remote-worker` with all `35/35` tasks complete.
 Production routing is unchanged and disabled. `add-worksession-attachments` is
 archived as `2026-07-29-add-worksession-attachments` with all `31/31` tasks
-complete. `add-private-session-previews` is the active Phase 6 change. Its
-approved synthetic boundary uses an authenticated coordinator on `8789`,
+complete. `add-private-session-previews` is archived as
+`2026-07-29-add-private-session-previews` with all `37/37` tasks complete. Its
+accepted synthetic boundary used an authenticated coordinator on `8789`,
 tailnet-only ingress ports `19000–19031`, a renewable five-minute lease, an
-eight-hour hard lifetime and 30-day preview audit metadata. Public sharing
-remains disabled. Real-project authoritative activation remains blocked until
-independent external backup is configured and restore-tested.
+eight-hour hard lifetime and 30-day preview audit metadata. Rollback leaves
+the capability disabled with zero route/runtime projection resources. Public
+sharing remains disabled. Real-project authoritative activation remains
+blocked until independent external backup is configured and restore-tested.
+The exact resume point is the Phase 7 entry gate for
+`establish-development-database-lifecycle`.
 
 ## Decision log
 
@@ -1662,3 +1666,26 @@ the SHA-256 of its `SHA256SUMS` is
 `1c1b57d6a4f828e569e388b52c2439af02bde20ed91f7984bb2b1f4192563e28`.
 
 The exact resume point is task 7.5 of `add-private-session-previews`.
+
+Task 7.5 is complete and Phase 6 progress is `37/37`. Pre-archive strict
+validation accepted the complete change. OpenSpec applied three added and
+eight modified requirements across `isolated-project-runtime`,
+`private-development-preview`, `worker-operational-safety` and
+`worksession-attachments`, then archived the change as
+`2026-07-29-add-private-session-previews`.
+
+Post-archive strict validation passes all eight authoritative specifications
+with zero failures and OpenSpec reports no active changes. Atenea source is
+clean and synchronized at
+`b605c8d5b063e7321edd60fec2265ec7ddb84ea9`; the programme branch is clean
+and synchronized after the archive commit.
+
+Phase 6 closes with the capability disabled, zero preview records/routes,
+zero session-owned containers, networks, images or volumes, zero runtime or
+preview listeners, released slot3 admission, preserved allocation, worktree,
+mirror, Git, logs, artifacts and attachments, unchanged production and
+Beautips, RAID `[UU]` and rootful Docker `inactive/masked`.
+
+The exact resume point is the Phase 7 entry gate for
+`establish-development-database-lifecycle`. No Phase 7 implementation or
+authoritative development database operation has been executed yet.
