@@ -554,13 +554,26 @@ class WorkerState:
             return
         if process.returncode != 0:
             reason = "Project runner rejected or failed the exact execution"
-            if stderr.strip() in {
-                "project configuration rejected",
-                "workspace ownership rejected",
-                "worktree fingerprint rejected",
-                "Codex execution failed",
-            }:
-                reason = stderr.strip()
+            sanitized_runner_reason = next(
+                (
+                    line.strip()
+                    for line in reversed(stderr.splitlines())
+                    if line.strip() in {
+                        "project configuration rejected",
+                        "workspace ownership rejected",
+                        "worktree fingerprint rejected",
+                        "Codex execution failed: filesystem boundary",
+                        "Codex execution failed: authentication unavailable",
+                        "Codex execution failed: CLI contract",
+                        "Codex execution failed: network unavailable",
+                        "Codex execution failed: thread persistence unavailable",
+                        "Codex execution failed: unclassified",
+                    }
+                ),
+                None,
+            )
+            if sanitized_runner_reason is not None:
+                reason = sanitized_runner_reason
             self._finish_project(dispatch_id, "FAILED", reason, None)
             return
         try:

@@ -58,6 +58,18 @@ class ProjectCodexContractTest(unittest.TestCase):
         Draft202012Validator(request_schema, format_checker=FormatChecker()).validate(request)
         Draft202012Validator(result_schema, format_checker=FormatChecker()).validate(result)
 
+    def test_codex_failure_classification_is_closed_and_sanitized(self):
+        cases = (
+            ("database is locked at /secret/path", "Codex execution failed: thread persistence unavailable"),
+            ("permission denied: token-value", "Codex execution failed: filesystem boundary"),
+            ("totally novel token-value", "Codex execution failed: unclassified"),
+        )
+        for stderr, expected in cases:
+            reason = MODULE.codex_failure_reason(stderr)
+            self.assertEqual(expected, reason)
+            self.assertNotIn("token-value", reason)
+            self.assertNotIn("/secret/path", reason)
+
     def test_sandbox_command_has_only_derived_mounts_and_prompt_stays_on_stdin(self):
         session_id = str(uuid.uuid4())
         worktree = Path("/srv/atenea/workspaces/sessions") / session_id / "atenea"

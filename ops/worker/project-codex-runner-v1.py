@@ -36,6 +36,26 @@ def reject(message: str) -> None:
     raise SystemExit(2)
 
 
+def codex_failure_reason(stderr: str) -> str:
+    lowered = stderr.lower()
+    categories = (
+        (("permission denied", "read-only file system", "operation not permitted"),
+         "Codex execution failed: filesystem boundary"),
+        (("not logged in", "authentication", "unauthorized"),
+         "Codex execution failed: authentication unavailable"),
+        (("unknown argument", "unexpected argument", "invalid value"),
+         "Codex execution failed: CLI contract"),
+        (("failed to lookup address", "connection", "dns", "request failed"),
+         "Codex execution failed: network unavailable"),
+        (("thread", "session", "state database", "database is locked"),
+         "Codex execution failed: thread persistence unavailable"),
+    )
+    for needles, reason in categories:
+        if any(needle in lowered for needle in needles):
+            return reason
+    return "Codex execution failed: unclassified"
+
+
 def load_json(path: Path) -> dict[str, Any]:
     try:
         stat = path.stat()
@@ -273,7 +293,7 @@ def execute(
             command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             start_new_session=True,
         )
@@ -286,7 +306,7 @@ def execute(
 
         signal.signal(signal.SIGTERM, terminate)
         try:
-            stream, _ = process.communicate(workload["message"], timeout=timeout)
+            stream, error_stream = process.communicate(workload["message"], timeout=timeout)
         except subprocess.TimeoutExpired:
             terminate(signal.SIGTERM, None)
             try:
@@ -296,7 +316,7 @@ def execute(
                 process.wait(timeout=5)
             reject("Codex execution failed")
         if process.returncode != 0:
-            reject("Codex execution failed")
+            reject(codex_failure_reason(error_stream))
         thread_id = workload["threadId"]
         for line in stream.splitlines():
             try:
