@@ -46,7 +46,7 @@ INSERT INTO tenant_modules (
     created_at, updated_at
 )
 SELECT
-    t.id, 'LOYALTY', 'ACTIVE', 'SYNTHETIC_ACCEPTANCE',
+    t.id, 'LOYALTY', 'ACTIVE', 'ADMIN',
     TIMESTAMPTZ '2026-01-15 10:00:00+00',
     TIMESTAMPTZ '2026-01-15 10:00:00+00',
     TIMESTAMPTZ '2026-01-15 10:00:00+00'
