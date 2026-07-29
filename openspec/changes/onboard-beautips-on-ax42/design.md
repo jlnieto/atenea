@@ -64,10 +64,10 @@ executing it before the reviewed mediator and exact registry exist.
 
 Task 2.2 adds the source registry
 `ops/worker/project-codex-allowlist-v1.json`, SHA-256
-`31694d1e345f7c40f5a7287fa5ee91cd8f8c2df39031a4771c0f931b907d3418`,
+`ab8f6db2418adee60c195f29a8e96d41dba5b14622011f866eb747c88f7ec8e9`,
 under the closed Draft 2020-12 schema
 `runtime-contract/project-codex-allowlist-v1.schema.json`, SHA-256
-`97e49b814f0a339fead7bf8598bb05dda53b3ddb2078457994c233f8b4d271cc`.
+`aa9873b7fa466e93adda5607bd845dd40fdba4dac37d77c3a73bc8e29c0ae610`.
 It contains exactly Beautips and pins repository, branch, commit, tree,
 manifest and managed Compose identities to worker `ax42-01`, normal workload
 and slots 2–4. Selection and execution are both false and the workspace map is
@@ -99,6 +99,24 @@ start/health/logs/stop/cleanup and the two reviewed smoke scripts. Unknown
 operations, slot 1, noncanonical sessions, duplicate or foreign ports, foreign
 project/path/Git identity and modified manifest or Compose fail closed before
 any operation can execute.
+
+Task 2.4 adds
+`ops/worker/beautips-project-codex-runner-v1.py`, SHA-256
+`55e8f585e19f6a19d3c51aaf7532b1cf0f74f6b087ae0d1ef67faaea3029b73b`.
+It hash-pins and reuses the accepted per-run runner at SHA-256
+`de84b0c96908677e334184b9290691a2116b963dd37483022f97a0fd57ed44d1`;
+only the immutable project, repository, branch, commit, manifest and Git
+common-directory identity changes to Beautips.
+
+The inherited boundary retains its collected transient systemd cgroup,
+Bubblewrap workspace-write namespace, exact worktree and mirror mounts,
+private-result directory, finite timeout, cancellation, thread continuity and
+network denials for loopback, RFC1918, Tailscale and link-local destinations.
+It does not mount the manual Beautips workspace, a Docker socket or a caller
+path. The existing Codex-owned authentication/session boundary is referenced
+only inside the accepted sandbox and is never read by onboarding
+orchestration or evidence. The adapter remains uninstalled and no Codex
+process runs at this gate.
 
 ### The administrative pilot is foreign retained state
 
