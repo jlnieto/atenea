@@ -259,6 +259,31 @@ The exact runtime parent is setgid. Secret creation therefore applies mode
 `0700` after ownership so inheritance cannot leave the closed boundary at
 `2700`; the regression suite covers this real parent mode.
 
+Task 5.3 loads fixture bundle `beautips-acceptance-v1` from programme commit
+`4f87be85b97dabcf5fcd975537b611e19815a7ee`. The canonical bootstrap APIs
+create one invented tenant and owner using only the named synthetic secret
+boundary. Idempotent SQL adds one invented customer, consent, loyalty module,
+program, account, transaction, event, service catalog and completed import
+record. The exact SVG and CSV bytes are projected only into the session-owned
+asset/import volumes.
+
+Two complete repeated loads retain byte-identical sanitized database
+projections, file hashes and zero-key Redis state. Each declared synthetic
+table contains exactly one row while tenant WhatsApp credentials and outbox
+rows remain zero. A discovered boundary mismatch was corrected: the synthetic
+seal generator now emits the four digits required by the canonical Beautips
+domain, with focused boundary and lifecycle tests. Only the existing synthetic
+seal for this WorkSession was shortened; every other named secret and the
+enabled exact workspace configuration remain unchanged.
+
+The running containers stopped accepting `docker exec` commands during this
+gate without reporting a daemon error. Finite, fully session-labelled
+PostgreSQL client containers therefore executed only on the exact internal
+network, recorded their immutable IDs and removed themselves. Their
+task-introduced image tag and private I/O directory were exact-cleaned after
+acceptance. The failed preflight and schema/report attempts remain sealed and
+show their fail-closed or transaction-rollback boundaries.
+
 Local backup folders are on the laptop root filesystem and AX42 has no
 configured restic, borg or rclone target. They do not satisfy independent
 external backup. Therefore every acceptance artifact remains

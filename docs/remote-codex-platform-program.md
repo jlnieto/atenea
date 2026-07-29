@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `27/45`, with the exact
-  resume point at task 5.3
+  `45/45` and `onboard-beautips-on-ax42` is active at `28/45`, with the exact
+  resume point at task 5.4
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3609,3 +3609,55 @@ SHA-256
 `3355d7533d84fb8caf3c2abec414dca6244d459fd74b429a02f78f88ee451920`.
 
 The exact resume point is task 5.3 of `onboard-beautips-on-ax42`.
+
+Task 5.3 is complete and change progress is `28/45`. Versioned fixture bundle
+`beautips-acceptance-v1` is pinned to programme commit
+`4f87be85b97dabcf5fcd975537b611e19815a7ee`; its manifest and SQL SHA-256
+values are respectively
+`f528ee45070f020b1d57d411f2916308dbb51222dfbe14b341ef5d7bb5347c55`
+and
+`efc9d467cc760397529b45358c24032c14fc7a9fc58d36c03f23370fd7c50fa6`.
+It contains only invented `.invalid` identities, one SVG and one CSV; no
+backup, legacy import, production row or manual asset participates.
+
+The canonical APIs created one invented tenant and owner from the exact named
+synthetic boundary. Idempotent SQL created exactly one customer, consent,
+LOYALTY module, stamp-card program, account, transaction, program event,
+service catalog and completed import job. The exact SVG and CSV exist only in
+the session-owned asset/import volumes. Two full repeated loads produced
+byte-identical sanitized database, file and Redis snapshots. Every declared
+synthetic table reports one row; tenant WhatsApp credentials, outbox rows and
+Redis keys report zero.
+
+Acceptance exposed an eight-versus-four digit synthetic seal mismatch before
+tenant persistence. Programme commit
+`858e946c4e5c0ac704e2776179e2667dd73d6f66` corrects the generator and focused
+boundary/lifecycle tests pass. The installed boundary and lifecycle hashes
+are now respectively
+`6f79b5f4cfae1924a479d541e4189c3db9cc8abcb0357a38603bdc7d7d4d21b1`
+and
+`c39b0a578a87161c79025de2c5b72930e7a2c834bdecbed074c0ecdbe8ad782b`.
+Only this WorkSession's synthetic seal was shortened; the other named secrets
+and exact enabled workspace config remained unchanged. Remediation evidence
+is sealed with `SHA256SUMS` SHA-256
+`ed5cb97c057a190ead56405609f9d829d980b12d4533f0b9c92afb0e4eaf3cb4`.
+
+The running rootless containers ceased executing `docker exec` during
+preflight. Fully session-labelled client containers therefore used only the
+exact `internal=true` network, recorded immutable IDs and removed themselves.
+The introduced PostgreSQL client image tag, private slot4 I/O directory and
+all helper containers are absent after acceptance. Thirteen sealed blocked
+attempt directories retain the output-transport, contract, schema and
+evidence-query boundaries without secret values.
+
+The three managed containers remain running, app/PostgreSQL/Redis are healthy,
+and Redis is empty. Canonical Git, worktree change, allocation and routing
+remain unchanged. Administrative Beautips, production, preview and the
+isolated control plane remain healthy with their exact foreign identities.
+
+Task 5.3 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-5.3-versioned-synthetic-fixtures`;
+the SHA-256 of its `SHA256SUMS` is
+`2d14e489e7315645a815b89297504c1dcbc883d8e3437c86aae5a7518b03005f`.
+
+The exact resume point is task 5.4 of `onboard-beautips-on-ax42`.

@@ -39,7 +39,7 @@
 
 - [x] 5.1 Run the canonical Node/Maven build and complete test suite from the accepted WorkSession commit
 - [x] 5.2 Start a separate rootless Beautips runtime with empty PostgreSQL, disposable Redis and session-owned volumes
-- [ ] 5.3 Load only versioned invented tenants/users/loyalty/assets/import fixtures and prove deterministic persistence
+- [x] 5.3 Load only versioned invented tenants/users/loyalty/assets/import fixtures and prove deterministic persistence
 - [ ] 5.4 Prove no manual-volume, production, legacy-import, WhatsApp, host-daemon or unrelated-workspace connectivity
 - [ ] 5.5 Create one tailnet-only preview and verify the declared no-localhost requirement
 - [ ] 5.6 Run functional smoke plus Playwright DOM assertions and inspect desktop `1440x900` and mobile `390x844` screenshots
