@@ -50,7 +50,7 @@
 
 ## 7. Rollback, evidence and archive
 
-- [ ] 7.1 Disable new database operations and stop exact synthetic containers while preserving volumes, snapshots and records
+- [x] 7.1 Disable new database operations and stop exact synthetic containers while preserving volumes, snapshots and records
 - [ ] 7.2 Repeat rollback and prove idempotence plus rejection of unlabelled, partial, foreign and ambiguous database resources
 - [ ] 7.3 Clean only recorded exact synthetic resources and compare production, AX42, slots, RAID, firewall and Beautips fingerprints
 - [ ] 7.4 Retain sanitized commands, exit codes, finite timeouts, durations and `SHA256SUMS` without raw dumps or credentials

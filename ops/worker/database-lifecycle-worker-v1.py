@@ -34,6 +34,7 @@ MUTATING_ACTIONS = {
     "cleanup",
     "retain",
 }
+DISABLED_ROLLBACK_ACTIONS = {"stop", "cleanup"}
 
 
 def load_state_module():
@@ -727,7 +728,10 @@ def parser() -> argparse.ArgumentParser:
 def main() -> int:
     arguments = parser().parse_args()
     lifecycle = Lifecycle()
-    if arguments.action in MUTATING_ACTIONS:
+    if (
+        arguments.action in MUTATING_ACTIONS
+        and arguments.action not in DISABLED_ROLLBACK_ACTIONS
+    ):
         lifecycle.require_enabled()
     if arguments.action == "register":
         output = lifecycle.register(arguments.database_id, arguments.session_id)

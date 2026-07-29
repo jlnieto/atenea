@@ -2210,3 +2210,30 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 7.1 of
 `establish-development-database-lifecycle`.
+
+Task 7.1 is complete and change progress is `33/37`. New database operations
+are disabled and both exact synthetic records are `STOPPED/STOPPED`.
+Containers remain present and exited; their networks, volumes, six retained
+snapshots, records, worktrees and allocations are preserved. Reconciliation
+reports only the two persisted stopped records and creates nothing.
+
+The first rollback attempt exposed a contract gap before any container
+mutation: the disabled mediator also rejected `stop`. The boundary was
+minimally corrected so only exact-ownership `stop` and `cleanup` remain
+available as rollback actions while registration, creation, snapshots,
+replacement and other new work stay disabled. The corrected implementation
+passed `13/13` state tests, `10/10` worker tests and `10/10` integration tests;
+its installed SHA-256 is
+`d4bf3ea20bbd1ea5d083a4a46de61aa3c52a45c64a4a74bd97e3084c91764ab8`.
+
+Snapshots, exact resource IDs and the protected platform fingerprint are
+byte-identical across the accepted run. Atenea's clean Git and nine-container
+production/preview inventory are unchanged.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-7.1-disable-stop-preserve`;
+the SHA-256 of its `SHA256SUMS` is
+`f07c7b394466c6c5d36e38d30757798206baba1484c424903bbee899afbb1685`.
+
+The exact resume point is task 7.2 of
+`establish-development-database-lifecycle`.

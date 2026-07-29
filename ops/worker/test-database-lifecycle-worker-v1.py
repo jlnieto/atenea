@@ -308,6 +308,10 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(
             {"container": {}, "network": {}, "volume": {}}, FakeDocker.resources
         )
+        self.assertEqual({"stop", "cleanup"}, MODULE.DISABLED_ROLLBACK_ACTIONS)
+        self.assertTrue(
+            MODULE.DISABLED_ROLLBACK_ACTIONS < MODULE.MUTATING_ACTIONS
+        )
 
 
 if __name__ == "__main__":
