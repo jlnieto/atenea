@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
+  <title id="title">Marca sintética Salón Aurora</title>
+  <desc id="desc">Semicírculo coral sobre un fondo crema, creado únicamente para aceptación.</desc>
+  <rect width="320" height="180" rx="24" fill="#fff7ed"/>
+  <path d="M80 125a80 80 0 0 1 160 0Z" fill="#fb7185"/>
+  <circle cx="160" cy="85" r="22" fill="#7c3aed"/>
+</svg>

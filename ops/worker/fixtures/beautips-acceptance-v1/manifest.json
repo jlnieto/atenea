@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "fixtureVersion": "beautips-acceptance-v1",
+  "classification": "invented-disposable",
+  "tenantSlug": "aurora-acceptance",
+  "tenantBootstrap": {
+    "endpoint": "/api/platform/setup/tenants",
+    "businessName": "Salón Aurora de Pruebas",
+    "businessType": "SYNTHETIC_ACCEPTANCE",
+    "contactEmail": "operations@aurora-acceptance.invalid"
+  },
+  "businessUserBootstrap": {
+    "endpoint": "/api/platform/setup/business-users",
+    "emailSecretRef": "BEAUTIPS_SYNTHETIC_SMOKE_ADMIN_EMAIL",
+    "passwordSecretRef": "BEAUTIPS_SYNTHETIC_SMOKE_ADMIN_PASSWORD",
+    "role": "OWNER"
+  },
+  "databaseScript": "database.sql",
+  "files": [
+    {
+      "source": "assets/synthetic-salon-mark.svg",
+      "volume": "assets",
+      "target": "acceptance-v1/synthetic-salon-mark.svg",
+      "sha256": "35280badff948455d69c38c4a452211c9b6957c01066fbced70f00c5a57283b8"
+    },
+    {
+      "source": "imports/invented-customers.csv",
+      "volume": "imports",
+      "target": "acceptance-v1/invented-customers.csv",
+      "sha256": "dce3a9674a7fb75ebf9c89ccfab9a3b8c8b43e68459698fbba4a43661908513a"
+    }
+  ],
+  "expectedSyntheticRows": {
+    "tenants": 1,
+    "businessUsers": 1,
+    "customers": 1,
+    "customerConsents": 1,
+    "tenantModules": 1,
+    "loyaltyPrograms": 1,
+    "loyaltyAccounts": 1,
+    "loyaltyTransactions": 1,
+    "loyaltyProgramEvents": 1,
+    "serviceCatalogs": 1,
+    "importJobs": 1
+  },
+  "externalMessagingEnabled": false,
+  "productionDerivedData": false
+}
