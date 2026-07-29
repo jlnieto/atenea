@@ -1072,3 +1072,31 @@ the SHA-256 of its `SHA256SUMS` is
 `3dc344dd8f446a2990e9ea8952432c040bf7bccbe31a90144b113177dbe38ff7`.
 
 The exact resume point is task 6.1 of `add-worksession-attachments`.
+
+Tasks 6.1–6.5 are complete and change progress is `26/31`. The accepted
+disposable control plane applied all 47 migrations and the complete Atenea
+regression passed `356/356`. Exact synthetic HTTP acceptance proved private
+authentication, one-row/one-object idempotency, stable integrity, prompt/image
+ownership under WorkSession `51001` and AgentRun `51001`, bounded ordering by
+session/source and exclusion of a newer cross-project sentinel.
+
+Unauthorized, foreign-session, foreign-run, conflicting, unsupported,
+content-mismatched, oversized, quota, empty and traversal inputs failed closed
+with their expected actionable status. Rejected identities left no database
+rows, retained objects or incoming temporary files. Four accepted fixtures
+remained byte-identical after client disconnect, disposable control-plane
+restart and the real attachment-service restart; no preview runtime was
+required or coupled to retained content.
+
+The first real idempotency retry exposed nanosecond/microsecond timestamp drift
+at PostgreSQL persistence. Atenea source commit
+`3beee9de0f6a75434cc92175627ecd276e06fbb4` normalizes attachment creation time
+before worker retention. Focused tests and the complete regression passed
+before the clean accepted rerun.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-worksession-attachments/runs/task-6-automated-continuity`;
+the SHA-256 of its `SHA256SUMS` is
+`7e32a0efcfb1a2c9d0da5b87d3bacfedbc83c631554cd072934125bf2557caf4`.
+
+The exact resume point is task 7.1 of `add-worksession-attachments`.

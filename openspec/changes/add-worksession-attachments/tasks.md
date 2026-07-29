@@ -36,11 +36,11 @@
 
 ## 6. Automated validation and continuity
 
-- [ ] 6.1 Run migration, persistence, service, controller, worker-protocol and complete backend regression suites
-- [ ] 6.2 Prove prompt plus image content reaches only the intended synthetic WorkSession and AgentRun
-- [ ] 6.3 Prove latest, previous and last-N ordering cannot cross sessions, projects or sources
-- [ ] 6.4 Prove retained content survives client disconnect, attachment-service restart and preview teardown
-- [ ] 6.5 Prove unauthorized, oversized, unsupported, empty, traversal and conflicting inputs fail closed without residual metadata or content
+- [x] 6.1 Run migration, persistence, service, controller, worker-protocol and complete backend regression suites
+- [x] 6.2 Prove prompt plus image content reaches only the intended synthetic WorkSession and AgentRun
+- [x] 6.3 Prove latest, previous and last-N ordering cannot cross sessions, projects or sources
+- [x] 6.4 Prove retained content survives client disconnect, attachment-service restart and preview teardown
+- [x] 6.5 Prove unauthorized, oversized, unsupported, empty, traversal and conflicting inputs fail closed without residual metadata or content
 
 ## 7. Rollback, evidence and archive
 
