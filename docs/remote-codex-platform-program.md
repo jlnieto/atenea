@@ -2168,3 +2168,24 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 6.5 of
 `establish-development-database-lifecycle`.
+
+Task 6.5 is complete and change progress is `31/37`. Two immutable fixture IDs
+were recorded before creating one expired, exact-owned synthetic snapshot per
+database. The first retention pass removed exactly the registry-computed
+expired/excess IDs; PostgreSQL and MariaDB each retain the three newest
+verified copies within seven days. A second pass removed nothing.
+
+Every retained content file was checked against its recorded SHA-256 and size,
+but no dump bytes or rows enter evidence. Database records, workspaces, host
+boot, RAID, rootful Docker and all four slots' complete container, network and
+volume inventories share one unchanged before/after fingerprint. Atenea's
+clean Git and nine-container production/preview inventory also remain
+byte-identical.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-6.5-bounded-snapshot-retention`;
+the SHA-256 of its `SHA256SUMS` is
+`888f28b9a182b0690fc14222880de06e5c6f05d07aaa8d72a4d0566b64b168bf`.
+
+The exact resume point is task 6.6 of
+`establish-development-database-lifecycle`.
