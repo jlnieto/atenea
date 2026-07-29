@@ -47,6 +47,10 @@ jq -e '
 
 run_installer apply >"${TEST_ROOT}/apply.json"
 run_installer verify >"${TEST_ROOT}/verify.json"
+ATENEA_BEAUTIPS_INSTALL_TEST_MODE=1 \
+ATENEA_BEAUTIPS_INSTALL_TEST_ROOT="${TEST_ROOT}" \
+  "${TEST_ROOT}/usr/local/libexec/atenea/install-beautips-project-v1.sh" verify \
+  >"${TEST_ROOT}/installed-verify.json"
 jq -e '
   .state == "verified" and
   .selectionEnabled == false and
@@ -101,6 +105,7 @@ for path in \
   "${TEST_ROOT}/usr/local/libexec/atenea/beautips-secret-boundary-v1.py" \
   "${TEST_ROOT}/usr/local/libexec/atenea/beautips-runtime-operations-v1.json" \
   "${TEST_ROOT}/usr/local/libexec/atenea/project-codex-allowlist-v1.json" \
+  "${TEST_ROOT}/usr/local/libexec/atenea/install-beautips-project-v1.sh" \
   "${TEST_ROOT}/etc/atenea-worker/beautips-project-codex-v1.json" \
   "${TEST_ROOT}/etc/sudoers.d/92-atenea-beautips-project-v1"; do
   [[ ! -e "${path}" && ! -L "${path}" ]] ||

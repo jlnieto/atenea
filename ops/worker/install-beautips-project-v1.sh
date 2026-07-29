@@ -40,6 +40,7 @@ CONFIG_ROOT="${PREFIX}/etc/atenea-worker"
 CONFIG="${CONFIG_ROOT}/beautips-project-codex-v1.json"
 SUDOERS="${PREFIX}/etc/sudoers.d/92-atenea-beautips-project-v1"
 BASE_RUNNER="${LIBEXEC}/project-codex-runner-v1.py"
+INSTALLED_INSTALLER="${LIBEXEC}/install-beautips-project-v1.sh"
 
 declare -A HASHES=(
   [beautips-operation-mediator-v1.py]='7efb6cc530049a2325819b6e245391362d5f068b6734196530b37f5e7eb8246d'
@@ -107,6 +108,7 @@ plan() {
   validate_sources
   jq -cn \
     --arg config "${CONFIG}" \
+    --arg installer "${INSTALLED_INSTALLER}" \
     --arg runner "${LIBEXEC}/beautips-project-codex-runner-v1.py" \
     --arg mediator "${LIBEXEC}/beautips-operation-mediator-v1.py" \
     --arg secrets "${LIBEXEC}/beautips-secret-boundary-v1.py" '{
@@ -118,6 +120,7 @@ plan() {
       },
       paths: {
         config: $config,
+        installer: $installer,
         runner: $runner,
         mediator: $mediator,
         secretBoundary: $secrets
@@ -151,6 +154,11 @@ verify() {
   [[ -f "${BASE_RUNNER}" && ! -L "${BASE_RUNNER}" &&
       "$(sha256sum "${BASE_RUNNER}" | cut -d' ' -f1)" == "${BASE_RUNNER_SHA256}" ]] ||
     fail 'accepted base runner is absent or changed'
+  [[ -f "${INSTALLED_INSTALLER}" && ! -L "${INSTALLED_INSTALLER}" &&
+      "$(stat -c %U:%G:%a "${INSTALLED_INSTALLER}")" == "${EXPECTED_OWNER}:755" &&
+      "$(sha256sum "${INSTALLED_INSTALLER}" | cut -d' ' -f1)" == \
+        "$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)" ]] ||
+    fail 'installed lifecycle tool is absent or changed'
   local name installed mode
   for name in "${!HASHES[@]}"; do
     installed="$(installed_path "${name}")"
@@ -190,6 +198,14 @@ apply_install() {
   [[ -f "${BASE_RUNNER}" && ! -L "${BASE_RUNNER}" &&
       "$(sha256sum "${BASE_RUNNER}" | cut -d' ' -f1)" == "${BASE_RUNNER_SHA256}" ]] ||
     fail 'accepted base runner is absent or changed'
+  if [[ -e "${INSTALLED_INSTALLER}" || -L "${INSTALLED_INSTALLER}" ]]; then
+    [[ -f "${INSTALLED_INSTALLER}" && ! -L "${INSTALLED_INSTALLER}" &&
+        "$(sha256sum "${INSTALLED_INSTALLER}" | cut -d' ' -f1)" == \
+          "$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)" ]] ||
+      fail 'existing lifecycle tool is foreign'
+  else
+    install -m 0755 "${BASH_SOURCE[0]}" "${INSTALLED_INSTALLER}"
+  fi
   local name destination mode
   for name in \
     beautips-operation-mediator-v1.py \
@@ -281,6 +297,9 @@ rollback() {
     .workspaces == {}
   ' "${CONFIG}" >/dev/null ||
     fail 'rollback requires disabled empty Beautips ownership'
+  [[ "$(sha256sum "${INSTALLED_INSTALLER}" | cut -d' ' -f1)" == \
+      "$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)" ]] ||
+    fail 'rollback lifecycle tool identity differs'
   local name installed
   for name in \
     beautips-operation-mediator-v1.py \
@@ -300,7 +319,8 @@ rollback() {
     "${LIBEXEC}/beautips-runtime-operations-v1.json" \
     "${LIBEXEC}/project-codex-allowlist-v1.json" \
     "${CONFIG}" \
-    "${SUDOERS}"
+    "${SUDOERS}" \
+    "${INSTALLED_INSTALLER}"
   printf 'BEAUTIPS_PROJECT_V1_ROLLED_BACK\n'
 }
 
