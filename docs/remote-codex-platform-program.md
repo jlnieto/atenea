@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `33/45`, with the exact
-  resume point at task 6.2
+  `45/45` and `onboard-beautips-on-ax42` is active at `34/45`, with the exact
+  resume point at task 6.3
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3854,3 +3854,39 @@ the SHA-256 of its `SHA256SUMS` is
 `9538eeed1f53788fc35b7da7bcad10fa2db948f0bc363a4742bd56b36ad7f82f`.
 
 The exact resume point is task 6.2 of `onboard-beautips-on-ax42`.
+
+Task 6.2 is complete and change progress is `34/45`. GitHub CI `Test and
+build` passed for exact draft `jlnieto/beautips#1`. The one-file diff, base,
+head and commit were reviewed before marking it ready and performing a normal
+merge without branch deletion. Merge commit
+`f836940d71ed761a4d12e560c3790eeba9778f85` has exactly pre-merge `main`
+`e9e0b3c319c518363d4135f5378ebbddced96dfb` and immutable WorkSession head
+`03f77b0389f5303153c47bc3f890b1e0e9e92eb8` as parents. Remote `main` points
+to the merge and the WorkSession branch remains at its original head.
+
+The real Atenea pull-request synchronization endpoint ran twice with finite
+timeouts. Both calls returned HTTP 200 and retained byte-identical material
+delivery fields: WorkSession `OPEN`, pull-request status `MERGED`, exact URL,
+branch, final commit and original publication timestamp. Non-terminal
+AgentRuns and push-notification rows remain zero.
+
+Exact isolated-database project and WorkSession IDs `6102` acted as a
+cross-session sentinel. Its selected-row MD5
+`58e081bb652ef8549e821b086d94eb3b` remained unchanged across both real sync
+calls. Cleanup required that MD5 plus the exact IDs, project, workspace
+identity and final SHA, then removed only those two rows. Both fixture IDs are
+absent.
+
+Focused `WorkSessionGitHubServiceTest` passed `9/9`. The sync credential was
+consumed only through a finite-lived FIFO and cached only by the ephemeral
+process for the repeat call. The exact FIFO, temporary control and image are
+absent. No force update, duplicate delivery response, cross-session mutation,
+credential value, authorization header, cookie or environment dump is
+retained.
+
+Task 6.2 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-6.2-merge-sync`;
+the SHA-256 of its `SHA256SUMS` is
+`5d988f75682a2e8c830b1d7b1f31b5f5805bb1e9170d864382a6e34bf27e644d`.
+
+The exact resume point is task 6.3 of `onboard-beautips-on-ax42`.

@@ -396,6 +396,16 @@ GitHub mutation; the accepted retry uses only finite-lived credential pipes
 and removes the helper, control, image, bundle and transfer ref by exact
 identity.
 
+Task 6.2 reviews the exact one-file pull request after its CI succeeds, marks
+it ready and creates normal merge commit
+`f836940d71ed761a4d12e560c3790eeba9778f85`. Its parents are the immutable
+pre-merge `main` and WorkSession heads; the remote WorkSession branch remains
+unchanged. Two real Atenea synchronization calls return identical persisted
+`MERGED` delivery state. An exact isolated-database cross-session sentinel
+retains the same selected-row MD5 across both calls and is then deleted only
+after its immutable ID, project, workspace identity, final SHA and MD5 match.
+The focused delivery identity/idempotence regression passes `9/9`.
+
 Task 5.1 projects assigned-slot access without changing ownership: shared
 ancestors receive traverse only and the exact WorkSession worktree/cache
 receive the slot ACL. Dependencies warm only into that cache; acceptance then
