@@ -33,7 +33,7 @@
 - [x] 4.2 Enable only the exact disposable Beautips session and prove the administrative pilot and every other project remain denied
 - [x] 4.3 Submit one deterministic operator prompt and prove only the intended WorkSession worktree changes
 - [x] 4.4 Continue a second turn on the same Codex thread and prove duplicate dispatch/terminal delivery is idempotent
-- [ ] 4.5 Disconnect and reconnect the observer while execution and workspace identity persist
+- [x] 4.5 Disconnect and reconnect the observer while execution and workspace identity persist
 
 ## 5. Build, synthetic runtime and private preview
 

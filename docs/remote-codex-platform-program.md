@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `20/45`, with the exact
-  resume point at task 4.1
+  `45/45` and `onboard-beautips-on-ax42` is active at `25/45`, with the exact
+  resume point at task 5.1
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3491,3 +3491,32 @@ the SHA-256 of its `SHA256SUMS` is
 `f02bde3306fea98eacf0109bc67fb64f275ee8923fbee09e688fbbf1fdc39d8b`.
 
 The exact resume point is task 4.5 of `onboard-beautips-on-ax42`.
+
+Task 4.5 is complete and change progress is `25/45`. Two independent, finite
+SSH observer processes read the same isolated non-production Atenea state in
+sequence. Observer A exited completely before observer B started; the detached
+interval contained zero matching observer processes and zero established
+connections to the isolated control plane. The processes had distinct process
+IDs while their normalized WorkSession, AgentRun, turn, Codex thread and
+workspace observation SHA-256 values were identical at
+`5088c79bc22085fde50582ef0d8c887f8d0f52c095554deb7886659230d0a58e`.
+
+The WorkSession remained `OPEN` with the same remote execution target,
+`ax42-01` worker, external thread and exact workspace identity. The isolated
+control plane retained exactly one WorkSession, two successful AgentRuns and
+four turns. No prompt or worker execution was submitted during observer
+reconnection.
+
+AX42 worker state and its 30 retained execution records remained
+byte-identical. Worktree HEAD, tree, index, expected two-line untracked target,
+workspace registry, allocation and admission fingerprints remained unchanged.
+No session runtime resource was created. Administrative Beautips, production,
+preview and the isolated control plane remained healthy. Synthetic
+authentication values were transient and are absent from evidence.
+
+Task 4.5 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-4.5-observer-reconnect`;
+the SHA-256 of its `SHA256SUMS` is
+`17dd85832424cc065eb537ae66f3d4f3355bf8579887dd88361d8d5610a89b22`.
+
+The exact resume point is task 5.1 of `onboard-beautips-on-ax42`.
