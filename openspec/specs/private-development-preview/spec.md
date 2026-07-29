@@ -36,18 +36,25 @@ The worker SHALL support project-defined Playwright/Chromium checks that validat
 - **THEN** the verification records critical visible-state assertions and inspected desktop and mobile screenshots before reporting success
 
 ### Requirement: Session artifact registration
-Screenshots, traces, reports and other browser evidence SHALL be registered with session, run, source, timestamp, content type and retention metadata.
+Screenshots, traces, reports and other browser evidence SHALL be registered
+through the WorkSession attachment boundary with immutable session, optional
+run, source, timestamp, content type, size, retention and integrity metadata.
 
 #### Scenario: Playwright captures a screenshot
-- **WHEN** a browser check saves an image
-- **THEN** Atenea can display or download that exact artifact from the originating WorkSession and AgentRun
+- **WHEN** Playwright captures an accepted screenshot for a session preview
+- **THEN** Atenea can display or download that exact retained attachment from
+  the originating WorkSession and optional AgentRun without exposing a worker
+  path
 
 ### Requirement: Latest screenshot semantics
-“Latest screenshot”, “previous screenshot” and “last N screenshots” SHALL resolve deterministically within the current session and requested source by descending creation time.
+“Latest screenshot”, “previous screenshot” and “last N screenshots” SHALL
+resolve deterministically inside the current WorkSession and optional requested
+source by descending creation time and attachment identity.
 
 #### Scenario: Operator asks for the last three screenshots
-- **WHEN** the session has at least three matching images
-- **THEN** Codex receives the three newest ordered artifacts and does not inspect an unrelated project's global image folder
+- **WHEN** a session contains screenshots from multiple sources
+- **THEN** Codex receives the three newest matching retained attachments and
+  does not inspect another session, project or global image folder
 
 ### Requirement: Mobile preview access
 An authenticated mobile operator on the private network SHALL be able to see preview readiness, open compatible previews and inspect browser evidence without keeping the laptop online.

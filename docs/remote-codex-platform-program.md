@@ -1100,3 +1100,44 @@ the SHA-256 of its `SHA256SUMS` is
 `7e32a0efcfb1a2c9d0da5b87d3bacfedbc83c631554cd072934125bf2557caf4`.
 
 The exact resume point is task 7.1 of `add-worksession-attachments`.
+
+Tasks 7.1–7.5 are complete and change progress is `31/31`. Creation was
+disabled twice without rebuilding the worker service. Both executions retained
+the same four indexed synthetic attachments and exact downloadable content;
+the repeated rollback produced empty worker-hash and authoritative-metadata
+diffs, proving idempotence. A new upload failed closed with `409` and left zero
+metadata or worker residue.
+
+Cleanup first validated every recorded attachment identity, WorkSession,
+SHA-256 and synthetic-fixture marker. The worker deleted exactly four objects,
+the disposable database deleted exactly four matching rows and all rejected
+and accepted synthetic residue is zero. Temporary control-plane and local
+containers, volumes, networks, scripts and installer harnesses were removed
+only after their immutable identities or exact Compose labels matched the
+recorded harness.
+
+Final fingerprints preserve the AX42 boot identity, healthy RAID `[UU]`, all
+four rootless slot inventories, Beautips and the nine production/preview
+containers. Production and preview remain `UP` and unchanged. The sole
+intentional AX42 delta is the empty tailnet-only attachment service and retained
+root introduced by Phase 5; it contains no fixture, incoming, browser or proxy
+residue. Atenea source commit
+`1f3598691df09f5a54dfb940519a2c36cbb60884` also retains the actionable
+limit, unsupported-type and worker-unavailable controller regression coverage.
+
+Accepted sanitized rollback/final evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-worksession-attachments/runs/task-7-rollback-final`;
+the SHA-256 of its `SHA256SUMS` is
+`2edf4d395c0f893a723cdead42072ec70ec465a41fdff295bf53e88c66972c74`.
+The operator-render evidence remains in the accepted task 5 bundle and the
+complete `356/356` regression plus real continuity evidence remains in the
+accepted task 6 bundle.
+
+Strict validation passed with all tasks checked. The attachment delta adds the
+new `worksession-attachments` capability and synchronizes the scoped artifact
+requirements in `private-development-preview` and `remote-work-continuity`.
+The completed change is archived at
+`openspec/changes/archive/2026-07-29-add-worksession-attachments`.
+
+The exact resume point is the Phase 6 entry gate for
+`add-private-session-previews`.

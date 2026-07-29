@@ -47,11 +47,18 @@ Atenea SHALL notify configured operator devices when a run completes, fails or r
 - **THEN** Atenea persists it and sends no more than one applicable completion notification per configured device/event policy
 
 ### Requirement: Durable artifact continuity
-Artifacts retained by policy SHALL remain accessible after client disconnect, worker service restart and preview shutdown.
+Artifacts retained by policy SHALL remain accessible by exact WorkSession
+identity after client disconnect, attachment-service restart and preview
+shutdown. Restart reconciliation SHALL use persisted metadata and opaque storage
+identity without inventing ownership or re-uploading bytes.
 
-#### Scenario: Preview has been cleaned up
-- **WHEN** the operator later opens the completed session
-- **THEN** retained screenshots and reports remain available even though ephemeral runtime resources are gone
+#### Scenario: Operator returns after preview teardown
+
+- **WHEN** the operator reconnects after the preview and attachment service have
+  stopped and the attachment service is restarted
+- **THEN** retained screenshots and reports remain byte-identical and available
+  from the originating WorkSession even though ephemeral preview resources are
+  gone
 
 ### Requirement: Thread continuity with bounded recovery
 The platform SHALL reuse a valid session Codex thread and SHALL create a fresh thread only through an explicit stale-thread recovery that preserves the visible WorkSession history.

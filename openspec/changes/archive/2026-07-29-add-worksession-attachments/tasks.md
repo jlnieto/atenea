@@ -44,8 +44,8 @@
 
 ## 7. Rollback, evidence and archive
 
-- [ ] 7.1 Disable new attachment creation while retained indexed evidence remains retrievable
-- [ ] 7.2 Repeat rollback and prove idempotence plus exact cleanup of only recorded synthetic fixtures
-- [ ] 7.3 Compare final Git, production, routing, AX42, storage, RAID, firewall, slots and Beautips fingerprints with the baseline
-- [ ] 7.4 Retain sanitized commands, exit codes, timeouts, durations, UI evidence and `SHA256SUMS`
-- [ ] 7.5 Run strict OpenSpec validation, archive the completed change, commit and push both repositories, then enter Phase 6
+- [x] 7.1 Disable new attachment creation while retained indexed evidence remains retrievable
+- [x] 7.2 Repeat rollback and prove idempotence plus exact cleanup of only recorded synthetic fixtures
+- [x] 7.3 Compare final Git, production, routing, AX42, storage, RAID, firewall, slots and Beautips fingerprints with the baseline
+- [x] 7.4 Retain sanitized commands, exit codes, timeouts, durations, UI evidence and `SHA256SUMS`
+- [x] 7.5 Run strict OpenSpec validation, archive the completed change, commit and push both repositories, then enter Phase 6
