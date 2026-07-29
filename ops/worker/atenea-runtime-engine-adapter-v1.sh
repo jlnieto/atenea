@@ -291,6 +291,92 @@ assert_network_owned_or_absent() {
   fi
 }
 
+build_network_owned() {
+  docker_cmd network inspect "${BUILD_NETWORK}" |
+    jq -e --argjson expected "$(label_json build)" '
+      .[0].Labels as $actual |
+      all($expected | to_entries[]; $actual[.key] == .value) and
+      all($actual | keys[]; startswith("com.atenea.")) and
+      .[0].Internal == true
+    ' >/dev/null
+}
+
+cleanup_build_database() {
+  if container_exists "${BUILD_CONTAINER}"; then
+    container_owned "${BUILD_CONTAINER}" build ||
+      fail RUNTIME_OWNERSHIP_CONFLICT "The Atenea build container is foreign."
+    docker_cmd rm -f "${BUILD_CONTAINER}" >/dev/null
+  fi
+  if container_exists "${BUILD_DB_CONTAINER}"; then
+    container_owned "${BUILD_DB_CONTAINER}" build-db ||
+      fail RUNTIME_OWNERSHIP_CONFLICT "The Atenea test database container is foreign."
+    docker_cmd rm -f "${BUILD_DB_CONTAINER}" >/dev/null
+  fi
+  if docker_cmd network inspect "${BUILD_NETWORK}" >/dev/null 2>&1; then
+    build_network_owned ||
+      fail RUNTIME_OWNERSHIP_CONFLICT "The Atenea test network is foreign."
+    docker_cmd network rm "${BUILD_NETWORK}" >/dev/null
+  fi
+}
+
+start_build_database() {
+  cleanup_build_database
+  docker_cmd network create \
+    --internal \
+    --label "com.atenea.engine=${ENGINE_LABEL}" \
+    --label "com.atenea.session=${SESSION}" \
+    --label "com.atenea.runtime=${RUNTIME}" \
+    --label com.atenea.project=atenea \
+    --label com.atenea.service=build \
+    "${BUILD_NETWORK}" >/dev/null
+  build_network_owned ||
+    fail RUNTIME_OWNERSHIP_CONFLICT "The Atenea test network was not created safely."
+
+  docker_cmd run --detach \
+    --name "${BUILD_DB_CONTAINER}" \
+    --network "${BUILD_NETWORK}" \
+    --read-only \
+    --tmpfs /var/lib/postgresql/data:rw,nosuid,nodev,size=512m \
+    --tmpfs /var/run/postgresql:rw,noexec,nosuid,nodev,size=16m \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
+    --cap-drop ALL \
+    --cap-add CHOWN \
+    --cap-add DAC_OVERRIDE \
+    --cap-add SETGID \
+    --cap-add SETUID \
+    --security-opt no-new-privileges:true \
+    --pids-limit 256 \
+    --memory 1g \
+    --cpus 1 \
+    --restart no \
+    --label "com.atenea.engine=${ENGINE_LABEL}" \
+    --label "com.atenea.session=${SESSION}" \
+    --label "com.atenea.runtime=${RUNTIME}" \
+    --label com.atenea.project=atenea \
+    --label com.atenea.service=build-db \
+    --env POSTGRES_DB=atenea_test \
+    --env POSTGRES_USER=atenea \
+    --env POSTGRES_PASSWORD=atenea \
+    --health-cmd 'pg_isready --host=127.0.0.1 --username=atenea --dbname=atenea_test' \
+    --health-interval 2s \
+    --health-timeout 2s \
+    --health-retries 30 \
+    "${POSTGRES_IMAGE}" >/dev/null
+  container_owned "${BUILD_DB_CONTAINER}" build-db ||
+    fail RUNTIME_OWNERSHIP_CONFLICT "The Atenea test database was not created safely."
+
+  local healthy=false
+  for unused in $(seq 1 60); do
+    if [[ "$(docker_cmd inspect -f '{{.State.Health.Status}}' "${BUILD_DB_CONTAINER}")" == healthy ]]; then
+      healthy=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "${healthy}" == true ]] ||
+    fail HEALTH_CHECK_FAILED "The isolated Atenea test database did not become healthy."
+}
+
 assert_retained_volume() {
   docker_cmd volume inspect "${VOLUME}" |
     jq -e --arg name "${VOLUME}" --argjson expected "$(label_json db)" '
@@ -409,11 +495,14 @@ retain_container_inspect() {
 }
 
 build_application() {
+  trap cleanup_build_database EXIT
   prepare_delivery
   assert_image "${APP_IMAGE}" \
     'sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e'
   assert_image "${NODE_IMAGE}" \
     'sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34'
+  assert_image "${POSTGRES_IMAGE}" \
+    'sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20'
   assert_container_owned_or_absent "${BUILD_CONTAINER}" build
   if container_exists "${BUILD_CONTAINER}"; then
     docker_cmd rm -f "${BUILD_CONTAINER}" >/dev/null
@@ -463,9 +552,10 @@ build_application() {
   [[ "${exit_code}" == 0 ]] ||
     fail OPERATION_FAILED "The exact Atenea web build failed."
 
+  start_build_database
   docker_cmd run --detach \
     --name "${BUILD_CONTAINER}" \
-    --network bridge \
+    --network "${BUILD_NETWORK}" \
     --read-only \
     --tmpfs /tmp:rw,noexec,nosuid,nodev,size=256m \
     --cap-drop ALL \
@@ -483,6 +573,9 @@ build_application() {
     --mount "type=bind,source=${DELIVERY}/cache/maven,target=/workspace/cache/maven" \
     --workdir /workspace/atenea \
     --env HOME=/workspace/cache/maven \
+    --env SPRING_DATASOURCE_URL=jdbc:postgresql://${BUILD_DB_CONTAINER}:5432/atenea_test \
+    --env SPRING_DATASOURCE_USERNAME=atenea \
+    --env SPRING_DATASOURCE_PASSWORD=atenea \
     --entrypoint /bin/sh \
     "${APP_IMAGE}" \
     -lc 'exec mvn -B -Dmaven.repo.local=/workspace/cache/maven/repository clean package' \
@@ -502,6 +595,8 @@ build_application() {
     fail OPERATION_FAILED "The Atenea application build exceeded its finite timeout."
   exit_code="$(docker_cmd inspect -f '{{.State.ExitCode}}' "${BUILD_CONTAINER}")"
   docker_cmd rm "${BUILD_CONTAINER}" >/dev/null
+  cleanup_build_database
+  trap - EXIT
   [[ "${exit_code}" == 0 ]] ||
     fail OPERATION_FAILED "The exact Atenea application build failed."
 
@@ -894,6 +989,8 @@ validate_plan() {
   CODEX_CONTAINER="${RUNTIME}-codex-app-server"
   APP_CONTAINER="${RUNTIME}-atenea-dev"
   BUILD_CONTAINER="${RUNTIME}-build"
+  BUILD_DB_CONTAINER="${RUNTIME}-build-db"
+  BUILD_NETWORK="${RUNTIME}-build-network"
   ENGINE_ROOT="${RUNTIME_ROOT}/engine-v1"
   COMPOSE_FILE="${ENGINE_ROOT}/compose.atenea.generated.json"
   POSTGRES_PORT="$(jq -r '.allocatedPorts[] | select(.name == "postgres") | .loopbackPort' "${PLAN}")"
