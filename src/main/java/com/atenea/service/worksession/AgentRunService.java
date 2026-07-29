@@ -12,6 +12,7 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.remoteworker.ProjectCodexIdentity;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -65,6 +66,13 @@ public class AgentRunService {
     ) {
         Instant now = Instant.now();
         ensureNoNonTerminalRun(session.getId());
+        if (session.getRemoteSessionId() == null
+                || (!"synthetic-routing-v1".equals(session.getRemoteWorkloadKind())
+                    && !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind()))
+                || (ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
+                    && !ProjectCodexIdentity.matches(session))) {
+            throw new IllegalStateException("Remote WorkSession workload ownership is incomplete or incompatible");
+        }
 
         AgentRunEntity run = new AgentRunEntity();
         run.setSession(session);
@@ -76,6 +84,9 @@ public class AgentRunService {
         run.setExecutionTarget(ExecutionTarget.REMOTE);
         run.setSelectedWorkerId(session.getSelectedWorkerId());
         run.setWorkspaceIdentity(session.getWorkspaceIdentity());
+        run.setRemoteSessionId(session.getRemoteSessionId());
+        run.setWorkloadKind(session.getRemoteWorkloadKind());
+        applyProjectIdentity(run);
         run.setDispatchId(UUID.randomUUID());
         run.setRemoteExecutionId(null);
         run.setWorkloadClass(workloadClass);
@@ -192,6 +203,9 @@ public class AgentRunService {
         run.setExecutionTarget(ExecutionTarget.LOCAL);
         run.setSelectedWorkerId(null);
         run.setWorkspaceIdentity(session.getWorkspaceIdentity());
+        run.setRemoteSessionId(null);
+        run.setWorkloadKind(null);
+        clearProjectIdentity(run);
         run.setDispatchId(null);
         run.setRemoteExecutionId(null);
         run.setWorkloadClass(WorkloadClass.NORMAL);
@@ -204,6 +218,26 @@ public class AgentRunService {
         run.setCreatedAt(now);
 
         return agentRunRepository.save(run);
+    }
+
+    private void applyProjectIdentity(AgentRunEntity run) {
+        if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())) {
+            run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
+            run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);
+            run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
+            run.setRepositoryCommit(ProjectCodexIdentity.COMMIT);
+            run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
+        } else {
+            clearProjectIdentity(run);
+        }
+    }
+
+    private void clearProjectIdentity(AgentRunEntity run) {
+        run.setProjectIdentity(null);
+        run.setRepositoryUrl(null);
+        run.setRepositoryBranch(null);
+        run.setRepositoryCommit(null);
+        run.setManifestSha256(null);
     }
 
     private void ensureNoNonTerminalRun(Long sessionId) {

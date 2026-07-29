@@ -11,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -35,14 +36,10 @@ public class RemoteWorkerClient {
     }
 
     public Execution dispatch(AgentRunEntity run, String message) {
-        Map<String, Object> workload = Map.of(
-                "kind", "synthetic-routing-v1",
-                "message", message,
-                "durationMs", properties.getSyntheticDuration().toMillis(),
-                "steps", 10);
+        Map<String, Object> workload = workload(run, message);
         Map<String, Object> body = Map.of(
                 "dispatchId", run.getDispatchId().toString(),
-                "sessionId", run.getSession().getId().toString(),
+                "sessionId", run.getRemoteSessionId().toString(),
                 "workspaceIdentity", run.getWorkspaceIdentity(),
                 "workloadClass", run.getWorkloadClass().name(),
                 "leaseGeneration", run.getLeaseGeneration(),
@@ -53,6 +50,31 @@ public class RemoteWorkerClient {
                 body,
                 Execution.class,
                 run.getDispatchId().toString());
+    }
+
+    private Map<String, Object> workload(AgentRunEntity run, String message) {
+        if ("synthetic-routing-v1".equals(run.getWorkloadKind())) {
+            return Map.of(
+                    "kind", "synthetic-routing-v1",
+                    "message", message,
+                    "durationMs", properties.getSyntheticDuration().toMillis(),
+                    "steps", 10);
+        }
+        if (!ProjectCodexIdentity.matches(run)) {
+            throw new RemoteWorkerException(
+                    "Persisted project workload identity is incomplete or incompatible",
+                    409);
+        }
+        Map<String, Object> workload = new LinkedHashMap<>();
+        workload.put("kind", ProjectCodexIdentity.WORKLOAD_KIND);
+        workload.put("projectId", run.getProjectIdentity());
+        workload.put("repository", run.getRepositoryUrl());
+        workload.put("branch", run.getRepositoryBranch());
+        workload.put("commit", run.getRepositoryCommit());
+        workload.put("manifestSha256", run.getManifestSha256());
+        workload.put("message", message);
+        workload.put("threadId", run.getSession().getExternalThreadId());
+        return workload;
     }
 
     public Execution get(AgentRunEntity run) {

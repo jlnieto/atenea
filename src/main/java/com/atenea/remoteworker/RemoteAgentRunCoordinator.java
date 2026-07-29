@@ -222,7 +222,8 @@ public class RemoteAgentRunCoordinator {
     private void verifyOwnership(AgentRunEntity run, RemoteWorkerClient.Execution response) {
         if (!run.getDispatchId().toString().equals(response.dispatchId())
                 || !run.getWorkspaceIdentity().equals(response.workspaceIdentity())
-                || !run.getSession().getId().toString().equals(response.sessionId())
+                || run.getRemoteSessionId() == null
+                || !run.getRemoteSessionId().toString().equals(response.sessionId())
                 || (run.getRemoteExecutionId() != null
                     && !run.getRemoteExecutionId().equals(response.executionId()))) {
             throw new RemoteWorkerException("Remote worker ownership response does not match persisted AgentRun", 409);

@@ -117,6 +117,8 @@ public class WorkSessionService {
         session.setExecutionTarget(ExecutionTarget.LOCAL);
         session.setSelectedWorkerId(null);
         session.setWorkspaceIdentity("local:pending");
+        session.setRemoteSessionId(null);
+        session.setRemoteWorkloadKind(null);
         session.setPullRequestUrl(null);
         session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
         session.setFinalCommitSha(null);

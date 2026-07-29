@@ -13,6 +13,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "work_session")
@@ -51,6 +52,12 @@ public class WorkSessionEntity {
 
     @Column(name = "workspace_identity", nullable = false, length = 200)
     private String workspaceIdentity;
+
+    @Column(name = "remote_session_id")
+    private UUID remoteSessionId;
+
+    @Column(name = "remote_workload_kind", length = 80)
+    private String remoteWorkloadKind;
 
     @Column(name = "pull_request_url", length = 500)
     private String pullRequestUrl;
@@ -170,6 +177,22 @@ public class WorkSessionEntity {
 
     public void setWorkspaceIdentity(String workspaceIdentity) {
         this.workspaceIdentity = workspaceIdentity;
+    }
+
+    public UUID getRemoteSessionId() {
+        return remoteSessionId;
+    }
+
+    public void setRemoteSessionId(UUID remoteSessionId) {
+        this.remoteSessionId = remoteSessionId;
+    }
+
+    public String getRemoteWorkloadKind() {
+        return remoteWorkloadKind;
+    }
+
+    public void setRemoteWorkloadKind(String remoteWorkloadKind) {
+        this.remoteWorkloadKind = remoteWorkloadKind;
     }
 
     public String getPullRequestUrl() {

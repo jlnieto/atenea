@@ -26,6 +26,8 @@ import com.atenea.mobilepush.MobilePushDispatchService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
+import com.atenea.remoteworker.ProjectCodexIdentity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -157,7 +159,10 @@ class AgentRunServiceTest {
         WorkSessionEntity session = buildSession(12L, 7L, "/workspace/repos/internal/atenea");
         session.setExecutionTarget(ExecutionTarget.REMOTE);
         session.setSelectedWorkerId("ax42-01");
-        session.setWorkspaceIdentity("remote:ax42-01:work-session:12");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind("synthetic-routing-v1");
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
         SessionTurnEntity originTurn = new SessionTurnEntity();
         originTurn.setId(101L);
         originTurn.setSession(session);
@@ -175,11 +180,45 @@ class AgentRunServiceTest {
         assertEquals(AgentRunStatus.QUEUED, run.getStatus());
         assertEquals(ExecutionTarget.REMOTE, run.getExecutionTarget());
         assertEquals("ax42-01", run.getSelectedWorkerId());
-        assertEquals("remote:ax42-01:work-session:12", run.getWorkspaceIdentity());
+        assertEquals("remote:ax42-01:work-session:" + remoteSessionId, run.getWorkspaceIdentity());
+        assertEquals(remoteSessionId, run.getRemoteSessionId());
+        assertEquals("synthetic-routing-v1", run.getWorkloadKind());
         assertNotNull(run.getDispatchId());
         assertNull(run.getRemoteExecutionId());
         assertEquals(1, run.getLeaseGeneration());
         assertEquals(WorkloadClass.HEAVY, run.getWorkloadClass());
+    }
+
+    @Test
+    void createRemoteProjectRunPersistsExactImmutableWorkloadIdentity() {
+        WorkSessionEntity session = buildSession(12L, 7L, "/workspace/repos/internal/atenea");
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        originTurn.setActor(SessionTurnActor.OPERATOR);
+        originTurn.setMessageText("project turn");
+        originTurn.setCreatedAt(Instant.now());
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L,
+                AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, originTurn, WorkloadClass.NORMAL);
+
+        assertEquals(ProjectCodexIdentity.WORKLOAD_KIND, run.getWorkloadKind());
+        assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, run.getProjectIdentity());
+        assertEquals(ProjectCodexIdentity.REPOSITORY, run.getRepositoryUrl());
+        assertEquals(ProjectCodexIdentity.BRANCH, run.getRepositoryBranch());
+        assertEquals(ProjectCodexIdentity.COMMIT, run.getRepositoryCommit());
+        assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, run.getManifestSha256());
     }
 
     @Test

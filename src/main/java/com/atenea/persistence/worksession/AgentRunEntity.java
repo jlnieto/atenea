@@ -55,6 +55,27 @@ public class AgentRunEntity {
     @Column(name = "workspace_identity", nullable = false, length = 200)
     private String workspaceIdentity;
 
+    @Column(name = "remote_session_id")
+    private UUID remoteSessionId;
+
+    @Column(name = "workload_kind", length = 80)
+    private String workloadKind;
+
+    @Column(name = "project_identity", length = 80)
+    private String projectIdentity;
+
+    @Column(name = "repository_url", length = 500)
+    private String repositoryUrl;
+
+    @Column(name = "repository_branch", length = 180)
+    private String repositoryBranch;
+
+    @Column(name = "repository_commit", length = 64)
+    private String repositoryCommit;
+
+    @Column(name = "manifest_sha256", length = 64)
+    private String manifestSha256;
+
     @Column(name = "dispatch_id", unique = true)
     private UUID dispatchId;
 
@@ -170,6 +191,20 @@ public class AgentRunEntity {
     public void setSelectedWorkerId(String selectedWorkerId) { this.selectedWorkerId = selectedWorkerId; }
     public String getWorkspaceIdentity() { return workspaceIdentity; }
     public void setWorkspaceIdentity(String workspaceIdentity) { this.workspaceIdentity = workspaceIdentity; }
+    public UUID getRemoteSessionId() { return remoteSessionId; }
+    public void setRemoteSessionId(UUID remoteSessionId) { this.remoteSessionId = remoteSessionId; }
+    public String getWorkloadKind() { return workloadKind; }
+    public void setWorkloadKind(String workloadKind) { this.workloadKind = workloadKind; }
+    public String getProjectIdentity() { return projectIdentity; }
+    public void setProjectIdentity(String projectIdentity) { this.projectIdentity = projectIdentity; }
+    public String getRepositoryUrl() { return repositoryUrl; }
+    public void setRepositoryUrl(String repositoryUrl) { this.repositoryUrl = repositoryUrl; }
+    public String getRepositoryBranch() { return repositoryBranch; }
+    public void setRepositoryBranch(String repositoryBranch) { this.repositoryBranch = repositoryBranch; }
+    public String getRepositoryCommit() { return repositoryCommit; }
+    public void setRepositoryCommit(String repositoryCommit) { this.repositoryCommit = repositoryCommit; }
+    public String getManifestSha256() { return manifestSha256; }
+    public void setManifestSha256(String manifestSha256) { this.manifestSha256 = manifestSha256; }
     public UUID getDispatchId() { return dispatchId; }
     public void setDispatchId(UUID dispatchId) { this.dispatchId = dispatchId; }
     public String getRemoteExecutionId() { return remoteExecutionId; }

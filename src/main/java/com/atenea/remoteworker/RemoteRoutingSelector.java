@@ -5,6 +5,7 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkerNodeEntity;
 import com.atenea.persistence.worksession.WorkerNodeRepository;
 import java.time.Instant;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,8 +33,10 @@ public class RemoteRoutingSelector {
         session.setExecutionTarget(ExecutionTarget.LOCAL);
         session.setSelectedWorkerId(null);
         session.setWorkspaceIdentity("local:work-session:" + session.getId());
-        if (!properties.isEnabled()
-                || !properties.getSyntheticProjectAllowlist().contains(session.getProject().getName())) {
+        session.setRemoteSessionId(null);
+        session.setRemoteWorkloadKind(null);
+        String workloadKind = selectedWorkloadKind(session);
+        if (workloadKind == null) {
             return;
         }
 
@@ -42,7 +45,7 @@ public class RemoteRoutingSelector {
             WorkerNodeEntity worker = recordHealth(health, null);
             if (!health.healthy()
                     || !RemoteWorkerProperties.PROTOCOL.equals(health.protocolVersion())
-                    || !health.capabilities().contains("synthetic-routing-v1")
+                    || !health.capabilities().contains(workloadKind)
                     || !properties.getWorkerId().equals(health.workerId())) {
                 worker.setEnabled(false);
                 worker.setUnavailableReason("Worker is unhealthy, incompatible or has an unexpected identity");
@@ -53,11 +56,28 @@ public class RemoteRoutingSelector {
             workerNodeRepository.save(worker);
             session.setExecutionTarget(ExecutionTarget.REMOTE);
             session.setSelectedWorkerId(health.workerId());
-            session.setWorkspaceIdentity("remote:" + health.workerId() + ":work-session:" + session.getId());
+            UUID remoteSessionId = UUID.randomUUID();
+            session.setRemoteSessionId(remoteSessionId);
+            session.setRemoteWorkloadKind(workloadKind);
+            session.setWorkspaceIdentity(
+                    "remote:" + health.workerId() + ":work-session:" + remoteSessionId);
         } catch (RemoteWorkerException exception) {
             recordUnavailable(exception.getMessage());
             log.warn("new WorkSession remains local because remote worker selection failed: {}", exception.getMessage());
         }
+    }
+
+    private String selectedWorkloadKind(WorkSessionEntity session) {
+        if (!properties.isEnabled()) {
+            return null;
+        }
+        if (properties.isProjectCodexEnabled() && ProjectCodexIdentity.matches(session)) {
+            return ProjectCodexIdentity.WORKLOAD_KIND;
+        }
+        if (properties.getSyntheticProjectAllowlist().contains(session.getProject().getName())) {
+            return "synthetic-routing-v1";
+        }
+        return null;
     }
 
     private WorkerNodeEntity recordHealth(RemoteWorkerClient.Health health, String unavailableReason) {

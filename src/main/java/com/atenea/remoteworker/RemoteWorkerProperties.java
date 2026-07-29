@@ -17,6 +17,7 @@ public class RemoteWorkerProperties {
     private String endpoint = "http://127.0.0.1:8787";
     private String tokenFile = "";
     private Set<String> syntheticProjectAllowlist = new LinkedHashSet<>();
+    private boolean projectCodexEnabled;
     private Duration connectTimeout = Duration.ofSeconds(3);
     private Duration requestTimeout = Duration.ofSeconds(5);
     private Duration pollInterval = Duration.ofMillis(250);
@@ -37,6 +38,10 @@ public class RemoteWorkerProperties {
         this.syntheticProjectAllowlist = syntheticProjectAllowlist == null
                 ? new LinkedHashSet<>()
                 : new LinkedHashSet<>(syntheticProjectAllowlist);
+    }
+    public boolean isProjectCodexEnabled() { return projectCodexEnabled; }
+    public void setProjectCodexEnabled(boolean projectCodexEnabled) {
+        this.projectCodexEnabled = projectCodexEnabled;
     }
     public Duration getConnectTimeout() { return connectTimeout; }
     public void setConnectTimeout(Duration connectTimeout) { this.connectTimeout = connectTimeout; }

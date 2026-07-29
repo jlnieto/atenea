@@ -2,6 +2,8 @@ package com.atenea.remoteworker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -51,6 +53,8 @@ class RemoteRoutingSelectorTest {
         assertEquals(ExecutionTarget.LOCAL, session.getExecutionTarget());
         assertEquals("local:work-session:41", session.getWorkspaceIdentity());
         assertNull(session.getSelectedWorkerId());
+        assertNull(session.getRemoteSessionId());
+        assertNull(session.getRemoteWorkloadKind());
         verify(client, never()).health();
     }
 
@@ -78,7 +82,66 @@ class RemoteRoutingSelectorTest {
 
         assertEquals(ExecutionTarget.REMOTE, session.getExecutionTarget());
         assertEquals("ax42-01", session.getSelectedWorkerId());
-        assertEquals("remote:ax42-01:work-session:41", session.getWorkspaceIdentity());
+        assertNotNull(session.getRemoteSessionId());
+        assertEquals("synthetic-routing-v1", session.getRemoteWorkloadKind());
+        assertEquals(
+                "remote:ax42-01:work-session:" + session.getRemoteSessionId(),
+                session.getWorkspaceIdentity());
+    }
+
+    @Test
+    void exactAteneaProjectUsesProjectCodexCapabilityOnlyWhenSeparatelyEnabled() {
+        properties.setEnabled(true);
+        properties.setProjectCodexEnabled(true);
+        when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.empty());
+        when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.health()).thenReturn(new RemoteWorkerClient.Health(
+                RemoteWorkerProperties.PROTOCOL,
+                "ax42-01",
+                true,
+                List.of("synthetic-routing-v1", ProjectCodexIdentity.WORKLOAD_KIND),
+                4,
+                2,
+                0,
+                0,
+                0,
+                Instant.parse("2026-07-29T06:00:00Z")));
+        WorkSessionEntity session = session(ProjectCodexIdentity.PROJECT_NAME);
+
+        selector.pinNewSession(session);
+
+        assertEquals(ExecutionTarget.REMOTE, session.getExecutionTarget());
+        assertEquals(ProjectCodexIdentity.WORKLOAD_KIND, session.getRemoteWorkloadKind());
+        assertNotNull(session.getRemoteSessionId());
+        assertTrue(session.getWorkspaceIdentity().endsWith(session.getRemoteSessionId().toString()));
+    }
+
+    @Test
+    void exactAteneaProjectFailsClosedWhenWorkerDoesNotAdvertiseProjectCapability() {
+        properties.setEnabled(true);
+        properties.setProjectCodexEnabled(true);
+        when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.empty());
+        when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.health()).thenReturn(new RemoteWorkerClient.Health(
+                RemoteWorkerProperties.PROTOCOL,
+                "ax42-01",
+                true,
+                List.of("synthetic-routing-v1"),
+                4,
+                2,
+                0,
+                0,
+                0,
+                Instant.parse("2026-07-29T06:00:00Z")));
+        WorkSessionEntity session = session(ProjectCodexIdentity.PROJECT_NAME);
+
+        selector.pinNewSession(session);
+
+        assertEquals(ExecutionTarget.LOCAL, session.getExecutionTarget());
+        assertNull(session.getRemoteSessionId());
+        assertNull(session.getRemoteWorkloadKind());
     }
 
     @Test
@@ -143,6 +206,7 @@ class RemoteRoutingSelectorTest {
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(41L);
         session.setProject(project);
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
         return session;
     }
 }
