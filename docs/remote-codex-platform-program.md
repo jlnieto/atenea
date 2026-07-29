@@ -1920,3 +1920,24 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 4.4 of
 `establish-development-database-lifecycle`.
+
+Task 4.4 is complete and change progress is `20/37`. The automatic
+pre-replacement snapshot `c0417c78-8b0b-4669-bccd-d83cd6a7057a` was
+re-verified by size, SHA-256, database, WorkSession, engine, allocation and
+synthetic ownership before restore.
+
+Fixed `pg_restore --clean --if-exists --single-transaction` advanced
+`HEALTHY 13 -> RESTORING 14 -> HEALTHY 15`. The restored row-count/content
+digest exactly matches the pre-replacement digest. Restore changed neither the
+container immutable ID nor the worktree: HEAD remains
+`102057745733de264b335a1ae77a0b6c3268c54d`, tree remains
+`6cb26b9cce81496ca5e02e8ea0a7d1ce5e04b1b4`, status is clean and `git fsck`
+passes. No raw dump or row entered evidence.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-4.4-postgresql-restore`;
+the SHA-256 of its `SHA256SUMS` is
+`c6b624c7cb138ae29a6f60b68309a0b93d15fc18c1c728ece84f9af824780ff2`.
+
+The exact resume point is task 4.5 of
+`establish-development-database-lifecycle`.
