@@ -62,6 +62,7 @@ class ProjectCodexContractTest(unittest.TestCase):
         cases = (
             ("database is locked at /secret/path", "Codex execution failed: thread persistence unavailable"),
             ("permission denied: token-value", "Codex execution failed: filesystem boundary"),
+            ("bwrap: can't find source path token-value", "Codex execution failed: filesystem boundary"),
             ("totally novel token-value", "Codex execution failed: unclassified"),
         )
         for stderr, expected in cases:

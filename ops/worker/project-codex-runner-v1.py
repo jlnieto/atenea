@@ -39,7 +39,8 @@ def reject(message: str) -> None:
 def codex_failure_reason(stderr: str) -> str:
     lowered = stderr.lower()
     categories = (
-        (("permission denied", "read-only file system", "operation not permitted"),
+        (("permission denied", "read-only file system", "operation not permitted",
+          "can't find source path"),
          "Codex execution failed: filesystem boundary"),
         (("not logged in", "authentication", "unauthorized"),
          "Codex execution failed: authentication unavailable"),
@@ -286,7 +287,10 @@ def execute(
     execution_id: str,
     timeout: int,
 ) -> dict[str, str]:
-    with tempfile.TemporaryDirectory(prefix="atenea-codex-result-") as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix=".atenea-codex-result-",
+        dir=worktree.parent,
+    ) as temporary:
         jose = pwd.getpwnam("jose")
         os.chmod(temporary, 0o700)
         os.chown(temporary, jose.pw_uid, jose.pw_gid)
