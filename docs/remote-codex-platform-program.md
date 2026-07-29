@@ -1689,3 +1689,8 @@ Beautips, RAID `[UU]` and rootful Docker `inactive/masked`.
 The exact resume point is the Phase 7 entry gate for
 `establish-development-database-lifecycle`. No Phase 7 implementation or
 authoritative development database operation has been executed yet.
+
+Accepted final archive evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-7.5-archive`;
+the SHA-256 of its `SHA256SUMS` is
+`a86cc97f7847efe832b2d72aece0231341eccb73c708a06eebe2753f6b132bcb`.
