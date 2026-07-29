@@ -12,6 +12,7 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import java.time.Instant;
 import java.util.List;
@@ -70,7 +71,7 @@ public class AgentRunService {
                 || (!"synthetic-routing-v1".equals(session.getRemoteWorkloadKind())
                     && !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind()))
                 || (ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
-                    && !ProjectCodexIdentity.matches(session))) {
+                    && !matchesProjectWorkload(session))) {
             throw new IllegalStateException("Remote WorkSession workload ownership is incomplete or incompatible");
         }
 
@@ -221,7 +222,15 @@ public class AgentRunService {
     }
 
     private void applyProjectIdentity(AgentRunEntity run) {
-        if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())) {
+        if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
+                && BeautipsProjectCodexIdentity.matchesPinnedSession(run.getSession())) {
+            run.setProjectIdentity(BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
+            run.setRepositoryUrl(BeautipsProjectCodexIdentity.REPOSITORY);
+            run.setRepositoryBranch(BeautipsProjectCodexIdentity.BRANCH);
+            run.setRepositoryCommit(BeautipsProjectCodexIdentity.COMMIT);
+            run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
+        } else if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
+                && ProjectCodexIdentity.matches(run.getSession())) {
             run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
             run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);
             run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
@@ -230,6 +239,11 @@ public class AgentRunService {
         } else {
             clearProjectIdentity(run);
         }
+    }
+
+    private boolean matchesProjectWorkload(WorkSessionEntity session) {
+        return ProjectCodexIdentity.matches(session)
+                || BeautipsProjectCodexIdentity.matchesPinnedSession(session);
     }
 
     private void clearProjectIdentity(AgentRunEntity run) {

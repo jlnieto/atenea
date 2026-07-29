@@ -7,9 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
@@ -22,12 +24,12 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkloadClass;
-import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
+import com.atenea.remoteworker.ProjectCodexIdentity;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
-import com.atenea.remoteworker.ProjectCodexIdentity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -219,6 +221,76 @@ class AgentRunServiceTest {
         assertEquals(ProjectCodexIdentity.BRANCH, run.getRepositoryBranch());
         assertEquals(ProjectCodexIdentity.COMMIT, run.getRepositoryCommit());
         assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, run.getManifestSha256());
+    }
+
+    @Test
+    void createRemoteBeautipsRunPersistsExactImmutableIdentityBeforeDispatch() {
+        WorkSessionEntity session = buildSession(
+                12L,
+                8L,
+                BeautipsProjectCodexIdentity.REPO_PATH);
+        session.getProject().setName(BeautipsProjectCodexIdentity.PROJECT_NAME);
+        session.getProject().setDefaultBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        session.setBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        originTurn.setActor(SessionTurnActor.OPERATOR);
+        originTurn.setMessageText("beautips project turn");
+        originTurn.setCreatedAt(Instant.now());
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L,
+                AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, originTurn, WorkloadClass.NORMAL);
+
+        assertEquals(AgentRunStatus.QUEUED, run.getStatus());
+        assertEquals(BeautipsProjectCodexIdentity.REPO_PATH, run.getTargetRepoPath());
+        assertEquals("ax42-01", run.getSelectedWorkerId());
+        assertEquals("remote:ax42-01:work-session:" + remoteSessionId, run.getWorkspaceIdentity());
+        assertEquals(remoteSessionId, run.getRemoteSessionId());
+        assertEquals(ProjectCodexIdentity.WORKLOAD_KIND, run.getWorkloadKind());
+        assertEquals(BeautipsProjectCodexIdentity.PROJECT_IDENTITY, run.getProjectIdentity());
+        assertEquals(BeautipsProjectCodexIdentity.REPOSITORY, run.getRepositoryUrl());
+        assertEquals(BeautipsProjectCodexIdentity.BRANCH, run.getRepositoryBranch());
+        assertEquals(BeautipsProjectCodexIdentity.COMMIT, run.getRepositoryCommit());
+        assertEquals(BeautipsProjectCodexIdentity.MANIFEST_SHA256, run.getManifestSha256());
+        assertNotNull(run.getDispatchId());
+        assertNull(run.getRemoteExecutionId());
+        assertTrue(BeautipsProjectCodexIdentity.matches(run));
+    }
+
+    @Test
+    void createRemoteBeautipsRunRejectsPartialIdentityBeforePersistence() {
+        WorkSessionEntity session = buildSession(
+                12L,
+                8L,
+                BeautipsProjectCodexIdentity.REPO_PATH);
+        session.getProject().setName(BeautipsProjectCodexIdentity.PROJECT_NAME);
+        session.getProject().setDefaultBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        session.setBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId(BeautipsProjectCodexIdentity.WORKER_ID);
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setWorkspaceIdentity("remote:foreign:work-session:" + remoteSessionId);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> agentRunService.createRemoteQueuedRun(
+                        session,
+                        new SessionTurnEntity(),
+                        WorkloadClass.NORMAL));
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
     }
 
     @Test
