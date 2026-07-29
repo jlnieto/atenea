@@ -29,7 +29,7 @@
 - [x] 4.2 Apply deterministic migrations and seed data, then prove private health and session-only access
 - [x] 4.3 Snapshot, prepare and explicitly confirm one replacement with complete audit evidence
 - [x] 4.4 Restore the pre-replacement snapshot and prove schema/data identity without changing Git
-- [ ] 4.5 Repeat the complete create/migrate/seed/replace/restore lifecycle idempotently
+- [x] 4.5 Repeat the complete create/migrate/seed/replace/restore lifecycle idempotently
 
 ## 5. MariaDB synthetic lifecycle
 

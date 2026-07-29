@@ -1941,3 +1941,31 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 4.5 of
 `establish-development-database-lifecycle`.
+
+Task 4.5 is complete, the PostgreSQL section is `5/5`, and total change
+progress is `21/37`. A duration-bearing harness repeated the complete
+lifecycle from revision `15`: exact stop/cleanup, create plus duplicate
+create, migration, seed, health, explicit snapshot, prepare/confirmed replace,
+restore and late migration/seed retries.
+
+Exact cleanup removed only the PostgreSQL session's container, internal
+network and volume. Recreate regenerated the same persisted names with a new
+container identity. The duplicate create retained revision `17`; late
+migrate/seed retries retained final revision `30`. Confirmed replacement
+created and verified another pre-snapshot, returned healthy revision `28`,
+and restore of the explicit snapshot returned healthy revision `30`.
+
+All thirteen measured operations exited `0` within their finite timeouts.
+Observed durations ranged from 52 ms to 3982 ms. Final data fingerprint equals
+the original/restored fingerprint, Git is byte-identical and clean, snapshots
+remain private, and no confirmation/secret/raw row/raw dump entered evidence.
+Atenea production/preview remains nine running containers, Beautips remains
+three, RAID remains `[UU]` and rootful Docker remains inactive.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-4.5-postgresql-repeat`;
+the SHA-256 of its `SHA256SUMS` is
+`3497a6da2a888283633c99172ffa07dba702cf273a347a43b37c695788617cd2`.
+
+The exact resume point is task 5.1 of
+`establish-development-database-lifecycle`.
