@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–5.2 are complete and change progress is `27/45`. The entry gate pins
+Tasks 1.1–5.3 are complete and change progress is `28/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2526,4 +2526,22 @@ Task 5.2 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `4a09f4067af42718cb8c88690724543ff67d24fff247a6ea98f935e5ea295390`.
 
-The exact resume point is task 5.3 of `onboard-atenea-on-ax42`.
+Task 5.3 proves the running application cannot reach public Internet, Atenea
+production/preview, Atenea SSH or PostgreSQL. Its root filesystem is
+read-only, all capabilities are dropped, no devices or privileged mode exist,
+and Docker sockets, runtime proxies, host root and foreign workspace paths are
+absent.
+
+An exact mediated restart passed in 14,879 ms. The three container IDs and
+retained volume fingerprint remained unchanged, the migration summary stayed
+`48|1|48|48|0|48`, declared domain rows stayed zero and the actuator returned
+`UP`. Only the three exact RootlessKit projection-record IDs rotated; their
+loopback addresses and allocated ports did not. WorkSession Git and the nine
+production containers remain unchanged.
+
+Task 5.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-5.3-isolation-persistence`;
+the SHA-256 of its `SHA256SUMS` is
+`118400fe8660e0012ab77f4a64bc61f3b761ce4b7876484b3a32f194e8dc120c`.
+
+The exact resume point is task 5.4 of `onboard-atenea-on-ax42`.
