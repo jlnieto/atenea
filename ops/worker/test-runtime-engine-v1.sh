@@ -230,7 +230,7 @@ DOCKER
 chmod 0750 "${DOCKER}"
 
 prepare_session() {
-  local session="$1" project="$2" port="$3" fixture="$4"
+  local session="$1" project="$2" port="$3" fixture="$4" slot="${5:-slot2}"
   local session_root="${WORKSPACE_ROOT}/sessions/${session}"
   local worktree="${session_root}/${project}"
   local runtime="ws-${session//-/}"
@@ -259,7 +259,8 @@ prepare_session() {
     --arg project "${project}" \
     --arg worktree "${worktree}" \
     --arg runtime "${runtime}" \
-    --argjson port "${port}" '{
+    --argjson port "${port}" \
+    --arg slot "${slot}" '{
       schemaVersion: 1,
       sessionId: $session,
       projectId: $project,
@@ -268,7 +269,7 @@ prepare_session() {
       worktreePath: $worktree,
       runtimeId: $runtime,
       manifestRelativePath: "runtime.json",
-      slot: "slot2",
+      slot: $slot,
       workloadClass: "normal",
       state: "allocated",
       runtimeNames: {
@@ -314,8 +315,8 @@ prepare_session() {
 
 SESSION_COMPOSE="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e"
 SESSION_TOMCAT="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9f"
-prepare_session "${SESSION_COMPOSE}" dummy-compose 27101 dummy-compose
-prepare_session "${SESSION_TOMCAT}" dummy-tomcat 27102 dummy-tomcat
+prepare_session "${SESSION_COMPOSE}" dummy-compose 27101 dummy-compose slot2
+prepare_session "${SESSION_TOMCAT}" dummy-tomcat 27102 dummy-tomcat slot3
 
 for port in 27101 27102; do
   python3 -m http.server "${port}" --bind 127.0.0.1 \

@@ -890,12 +890,11 @@ validate_plan() {
     --arg project "${PROJECT}" \
     --arg runtime "${RUNTIME}" '
       .sessionId == $session and .projectId == $project and
-      .runtimeId == $runtime and .slot == "slot2" and .state == "allocated"
+      .runtimeId == $runtime and
+      (.slot | test("^slot[1-4]$")) and .state == "allocated"
     ' "${ALLOCATION}" >/dev/null ||
     fail "RUNTIME_OWNERSHIP_CONFLICT" "The plan does not own the assigned slot."
   SLOT="$(jq -r '.slot' "${ALLOCATION}")"
-  [[ "${SLOT}" == "${ATENEA_RUNTIME_ALLOWED_SLOT:-slot2}" ]] ||
-    fail "RUNTIME_OWNERSHIP_CONFLICT" "The engine is not authorized for this slot."
   RUNTIME_ROOT="$(jq -r '.runtimeRoot' "${ALLOCATION}")"
   LOGS_PATH="$(jq -r '.logsPath' "${ALLOCATION}")"
   ARTIFACTS_ROOT="$(jq -r '.artifactsRoot' "${ALLOCATION}")"
@@ -934,7 +933,7 @@ validate_plan() {
   if [[ "${TEST_MODE}" == "1" ]]; then
     DOCKER_HOST_VALUE="${ATENEA_RUNTIME_DOCKER_HOST:-}"
     [[ "${DOCKER_HOST_VALUE}" == unix:///tmp/* ||
-        "${DOCKER_HOST_VALUE}" == "unix:///run/atenea-runtime/slot2/docker.sock" ]] ||
+        "${DOCKER_HOST_VALUE}" =~ ^unix:///run/atenea-runtime/slot[1-4]/docker\.sock$ ]] ||
       fail "RUNTIME_OWNERSHIP_CONFLICT" "Synthetic Docker host is outside the allowed slot."
   else
     DOCKER_HOST_VALUE="unix:///run/atenea-runtime/${SLOT}/docker.sock"
