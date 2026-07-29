@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–5.3 are complete and change progress is `28/45`. The entry gate pins
+Tasks 1.1–5.4 are complete and change progress is `29/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2544,4 +2544,30 @@ Task 5.3 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `118400fe8660e0012ab77f4a64bc61f3b761ce4b7876484b3a32f194e8dc120c`.
 
-The exact resume point is task 5.4 of `onboard-atenea-on-ax42`.
+Task 5.4 creates exact synthetic preview
+`a6b4a872-8cfe-495f-a457-25af7593f256` on tailnet-only ingress
+`100.81.98.93:19000`. Operator and Atenea probes retrieved the SPA root with
+HTTP 200 and the same 449-byte body SHA-256
+`3555271f84b38f49b72634d5134693d82b96607332f3f92a738ba5abb7480404`.
+Both public probes to `167.235.186.151:19000` timed out after 15 seconds with
+HTTP 000 and zero response bytes. UFW limits ingress to `tailscale0` from the
+tailnet range and limits control to the exact Atenea tailnet identity.
+
+Atenea declares no localhost compatibility requirement, so the coordinator
+returned `localhostCompatible=false` and `tunnel=null`; no localhost forward
+or temporary listener was created. The known committed manifest path
+`/admin/login` still returns HTTP 404 while the relocation-accepted SPA route
+`/` returns HTTP 200. The discrepancy remains explicit and no WorkSession pin,
+source or runtime was changed to conceal it.
+
+The exploratory preview expired under its bounded lease and was deleted only
+through its exact persisted synthetic identity. The accepted preview was
+created and renewed once to revision 3. Production, preview, Beautips, the
+slot-3 runtime and Git fingerprints remain unchanged.
+
+Task 5.4 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-5.4-tailnet-preview`;
+the SHA-256 of its `SHA256SUMS` is
+`03079faab79ccee57e477bcb816d16b07e28b2d366f24ecfbfec3f2ad79ddd7a`.
+
+The exact resume point is task 5.5 of `onboard-atenea-on-ax42`.
