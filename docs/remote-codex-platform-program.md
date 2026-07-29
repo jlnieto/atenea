@@ -1969,3 +1969,24 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 5.1 of
 `establish-development-database-lifecycle`.
+
+Task 5.1 is complete and change progress is `22/37`. MariaDB owns separate
+WorkSession `0fd2c888-07f0-4a47-a762-0eae444a166a`, database
+`7b15eb56-86a7-465b-bc28-f00e47b57068` and slot4. Its independent mirror,
+clean worktree, allocation and held admission are persisted at programme
+commit `1e0ac9e42051cac6b768f09de8ad65507fd09791`.
+
+The idempotent create persisted `CREATED` revision `2`, one exact labelled
+container, one internal-only network and one named volume. Its secret is a
+mode-0600 file owned by `atenea-slot4` beneath that slot's XDG runtime tmpfs.
+There is no host publication, loopback listener or firewall rule. The
+PostgreSQL WorkSession remains independently `HEALTHY` in slot3, Beautips
+remains three running containers and RAID remains `[UU]`.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-5.1-mariadb-create`;
+the SHA-256 of its `SHA256SUMS` is
+`83e182e3c4c011fc55d089e4e9587f04eee82277171f8e46fb379961a450afff`.
+
+The exact resume point is task 5.2 of
+`establish-development-database-lifecycle`.

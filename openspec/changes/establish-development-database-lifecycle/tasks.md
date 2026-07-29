@@ -33,7 +33,7 @@
 
 ## 5. MariaDB synthetic lifecycle
 
-- [ ] 5.1 Allocate a separate free-slot synthetic MariaDB WorkSession and create its exact labelled volume/runtime
+- [x] 5.1 Allocate a separate free-slot synthetic MariaDB WorkSession and create its exact labelled volume/runtime
 - [ ] 5.2 Apply deterministic legacy migrations and seed data, then prove private health and session-only access
 - [ ] 5.3 Snapshot, prepare and explicitly confirm one replacement with complete audit evidence
 - [ ] 5.4 Restore the pre-replacement snapshot and prove schema/data identity without changing Git
