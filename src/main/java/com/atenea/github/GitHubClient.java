@@ -6,6 +6,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -18,6 +20,7 @@ public class GitHubClient {
     private final ObjectMapper objectMapper;
     private final GitHubProperties properties;
     private final HttpClient httpClient;
+    private volatile String fileToken;
 
     public GitHubClient(ObjectMapper objectMapper, GitHubProperties properties) {
         this.objectMapper = objectMapper;
@@ -107,7 +110,7 @@ public class GitHubClient {
     }
 
     private void ensureConfigured() {
-        if (properties.getToken() == null || properties.getToken().isBlank()) {
+        if (configuredToken() == null) {
             throw new GitHubIntegrationException("GitHub token is not configured");
         }
 
@@ -119,11 +122,15 @@ public class GitHubClient {
 
     private JsonNode sendJsonRequest(String method, URI uri, String body) {
         try {
+            String token = configuredToken();
+            if (token == null) {
+                throw new GitHubIntegrationException("GitHub token is not configured");
+            }
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .uri(uri)
                     .timeout(properties.getReadTimeout())
                     .header("Accept", "application/vnd.github+json")
-                    .header("Authorization", "Bearer " + properties.getToken())
+                    .header("Authorization", "Bearer " + token)
                     .header("X-GitHub-Api-Version", "2022-11-28");
 
             if (body != null) {
@@ -145,6 +152,34 @@ public class GitHubClient {
             throw exception;
         } catch (Exception exception) {
             throw new GitHubIntegrationException("Failed to call GitHub: " + exception.getMessage(), exception);
+        }
+    }
+
+    private String configuredToken() {
+        String configured = properties.getToken();
+        if (configured != null && !configured.isBlank()) {
+            return configured.trim();
+        }
+        if (fileToken != null) {
+            return fileToken;
+        }
+        String tokenFile = properties.getTokenFile();
+        if (tokenFile == null || tokenFile.isBlank()) {
+            return null;
+        }
+        synchronized (this) {
+            if (fileToken != null) {
+                return fileToken;
+            }
+            try {
+                String loaded = Files.readString(Path.of(tokenFile.trim())).trim();
+                if (!loaded.isBlank()) {
+                    fileToken = loaded;
+                }
+                return fileToken;
+            } catch (Exception exception) {
+                throw new GitHubIntegrationException("GitHub token file could not be read", exception);
+            }
         }
     }
 
