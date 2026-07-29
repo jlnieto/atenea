@@ -3428,4 +3428,34 @@ Task 4.2 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `f46712a552456436595f7ac348395547e978df6c3474d1a42474a60baa1a572a`.
 
-The exact resume point is task 4.3 of `onboard-beautips-on-ax42`.
+Task 4.3 submits the first and only accepted Beautips operator turn at this
+gate. The deterministic prompt required exactly one new file,
+`docs/ax42-onboarding-acceptance.md`, containing the single line
+`AX42 Beautips onboarding acceptance.`, no other change, commit or push.
+AgentRun 1 reached `SUCCEEDED` in `36.743 s` with dispatch
+`7f08985d-2dd9-4c8a-addb-b12176d5e743`, execution/turn
+`a8f7ffaf-2a44-4cbb-a344-a8b4a183a968`, thread
+`019faf5f-0a96-7592-a936-583cb044dae8` and exact answer
+`BEAUTIPS_TURN_1_OK`.
+
+The target is 37 bytes, one line and has SHA-256
+`83368013af053c2ede88faf4728abf9a30ddf352fbc47a09ad91707f63166fd3`.
+The full pre-turn content manifest is byte-identical after the turn when that
+single target is excluded. Worktree HEAD, tree and index are unchanged, and
+Git status contains only the expected untracked file. Workspace, allocation,
+admission and registry fingerprints remain exact. Atenea persists one
+AgentRun, one operator turn and one Codex result turn with the complete
+canonical Beautips identity.
+
+No session runtime container or network was created. The isolated control
+project/source and canonical Atenea checkouts remain clean. Administrative
+Beautips, production, preview and prior foreign acceptance controls remain
+unchanged and healthy. No second turn, duplicate replay, commit or push
+occurred.
+
+Task 4.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-4.3-deterministic-first-turn`;
+the SHA-256 of its `SHA256SUMS` is
+`d163c82caf3daac1668d672b731e800bdd625998c165ef2e3b0bd3e38d4142bf`.
+
+The exact resume point is task 4.4 of `onboard-beautips-on-ax42`.
