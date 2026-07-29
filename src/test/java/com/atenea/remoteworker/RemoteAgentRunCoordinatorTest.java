@@ -102,6 +102,40 @@ class RemoteAgentRunCoordinatorTest {
     }
 
     @Test
+    void beautipsTerminalResultReusesThreadTurnAndAnswerMappingExactlyOnce() throws Exception {
+        AgentRunEntity run = beautipsRun();
+        WorkSessionEntity session = run.getSession();
+        AtomicInteger resultTurns = new AtomicInteger();
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionRepository.findById(session.getId())).thenReturn(Optional.of(session));
+        when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> {
+            SessionTurnEntity turn = invocation.getArgument(0);
+            turn.setId(900L + resultTurns.incrementAndGet());
+            return turn;
+        });
+        when(client.dispatch(run, "First managed turn")).thenReturn(succeeded(run));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals(AgentRunStatus.SUCCEEDED, run.getStatus());
+        assertEquals("bd312352-28b8-44d0-835f-e1afc5181cc9", session.getExternalThreadId());
+        assertEquals("37f0d8f6-4b7f-44cb-b75c-105f51773283", run.getExternalTurnId());
+        assertEquals("Managed answer", run.getResultTurn().getMessageText());
+        assertEquals("project-codex-v1 completed", run.getOutputSummary());
+        assertEquals(1, resultTurns.get());
+
+        coordinator.dispatchAfterCommit(run.getId());
+        Thread.sleep(50);
+
+        assertEquals(1, resultTurns.get());
+        verify(client, times(1)).dispatch(run, "First managed turn");
+    }
+
+    @Test
     void startupReconciliationWithPersistedExecutionPollsWithoutRedispatch() throws Exception {
         AgentRunEntity run = projectRun();
         run.setRemoteExecutionId("4ee2d311-b9da-4307-89b6-dd3110ef2057");
@@ -201,6 +235,21 @@ class RemoteAgentRunCoordinatorTest {
         run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
         run.setRepositoryCommit(ProjectCodexIdentity.COMMIT);
         run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
+        return run;
+    }
+
+    private AgentRunEntity beautipsRun() {
+        AgentRunEntity run = projectRun();
+        ProjectEntity project = run.getSession().getProject();
+        project.setName(BeautipsProjectCodexIdentity.PROJECT_NAME);
+        project.setRepoPath(BeautipsProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        run.getSession().setBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        run.setProjectIdentity(BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
+        run.setRepositoryUrl(BeautipsProjectCodexIdentity.REPOSITORY);
+        run.setRepositoryBranch(BeautipsProjectCodexIdentity.BRANCH);
+        run.setRepositoryCommit(BeautipsProjectCodexIdentity.COMMIT);
+        run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
         return run;
     }
 

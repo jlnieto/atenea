@@ -60,7 +60,8 @@ public class RemoteWorkerClient {
                     "durationMs", properties.getSyntheticDuration().toMillis(),
                     "steps", 10);
         }
-        if (!ProjectCodexIdentity.matches(run)) {
+        if (!ProjectCodexIdentity.matches(run)
+                && !BeautipsProjectCodexIdentity.matches(run)) {
             throw new RemoteWorkerException(
                     "Persisted project workload identity is incomplete or incompatible",
                     409);

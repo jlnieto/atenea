@@ -96,6 +96,30 @@ class RemoteWorkerClientTest {
     }
 
     @Test
+    void beautipsDispatchReusesPersistedIdentityAndContinuesThread() {
+        UUID threadId = UUID.fromString("bcf43e2e-c9e8-42df-96b2-e9183462c2f4");
+        AgentRunEntity run = beautipsRun(threadId.toString());
+
+        client.dispatch(run, "Update only the accepted Beautips fixture.");
+
+        JsonNode body = requestBody.get();
+        JsonNode workload = body.get("workload");
+        assertEquals(run.getRemoteSessionId().toString(), body.get("sessionId").asText());
+        assertEquals(run.getWorkspaceIdentity(), body.get("workspaceIdentity").asText());
+        assertEquals(ProjectCodexIdentity.WORKLOAD_KIND, workload.get("kind").asText());
+        assertEquals(BeautipsProjectCodexIdentity.PROJECT_IDENTITY, workload.get("projectId").asText());
+        assertEquals(BeautipsProjectCodexIdentity.REPOSITORY, workload.get("repository").asText());
+        assertEquals(BeautipsProjectCodexIdentity.BRANCH, workload.get("branch").asText());
+        assertEquals(BeautipsProjectCodexIdentity.COMMIT, workload.get("commit").asText());
+        assertEquals(BeautipsProjectCodexIdentity.MANIFEST_SHA256, workload.get("manifestSha256").asText());
+        assertEquals(threadId.toString(), workload.get("threadId").asText());
+        assertNull(workload.get("command"));
+        assertNull(workload.get("path"));
+        assertNull(workload.get("endpoint"));
+        assertNull(workload.get("environment"));
+    }
+
+    @Test
     void firstProjectDispatchSendsExplicitNullThread() {
         client.dispatch(projectRun(null), "First turn.");
 
@@ -155,6 +179,22 @@ class RemoteWorkerClientTest {
         run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
         run.setRepositoryCommit(ProjectCodexIdentity.COMMIT);
         run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
+        return run;
+    }
+
+    private AgentRunEntity beautipsRun(String threadId) {
+        AgentRunEntity run = projectRun(threadId);
+        ProjectEntity project = run.getSession().getProject();
+        project.setName(BeautipsProjectCodexIdentity.PROJECT_NAME);
+        project.setRepoPath(BeautipsProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        run.getSession().setBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        run.setSelectedWorkerId(BeautipsProjectCodexIdentity.WORKER_ID);
+        run.setProjectIdentity(BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
+        run.setRepositoryUrl(BeautipsProjectCodexIdentity.REPOSITORY);
+        run.setRepositoryBranch(BeautipsProjectCodexIdentity.BRANCH);
+        run.setRepositoryCommit(BeautipsProjectCodexIdentity.COMMIT);
+        run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
         return run;
     }
 }
