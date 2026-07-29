@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `38/45`, with the exact
-  resume point at task 7.2
+  `45/45` and `onboard-beautips-on-ax42` is active at `39/45`, with the exact
+  resume point at task 7.3
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -4025,3 +4025,29 @@ the SHA-256 of its `SHA256SUMS` is
 `27225617d206dc430f9ccc7eb349f15333afb2ae3475980f4b39aab96ce8199d`.
 
 The exact resume point is task 7.2 of `onboard-beautips-on-ax42`.
+
+Task 7.2 is complete and change progress is `39/45`. Repeating the exact
+worker disable and allocation-derived mediated cleanup from the 7.1 empty
+boundary returned exit 0 and deleted nothing: managed container, network,
+volume and image counts remained zero.
+
+Four stopped slot 4 internal-network fixtures represented unlabelled, partial,
+foreign full ownership and ambiguous exact labels with a non-allocation name.
+Their normalized immutable ID, name, labels and internal-state projection had
+SHA-256
+`42c7ecbb4bd3253556242ca3b733cbc2fe8cfbdc060702ef721183b0406b9e34`
+both before and after cleanup. Every rejected resource therefore remained
+intact. Only after equality passed were the four fixtures deleted by their
+recorded immutable IDs; fixture count is now zero.
+
+Selection/execution remains `false/false` with one persisted workspace.
+Worktree, mirror, allocation, six attachments and evidence remain retained.
+Administrative Beautips, production, preview and isolated control remain
+`UP`.
+
+Task 7.2 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-7.2-idempotent-rejection`;
+the SHA-256 of its `SHA256SUMS` is
+`2e6f5a561ff71c75db9c4b8cd3f4a53dd4303276cb461e8932d84b1024aea467`.
+
+The exact resume point is task 7.3 of `onboard-beautips-on-ax42`.

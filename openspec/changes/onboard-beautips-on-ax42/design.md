@@ -467,6 +467,13 @@ is then path/ownership checked and removed. Final owned resource and listener
 counts are zero while mirror, allocation, worktree, attachments and evidence
 remain.
 
+Task 7.2 repeats the exact mediated cleanup from a zero-resource boundary and
+deletes nothing further. Four stopped rootless network fixtures model
+unlabelled, partial, foreign and ambiguous ownership. Their immutable
+ID/name/label/internal projection is byte-identical before and after the
+repeat, proving fail-closed rejection. Only after equality passes are the
+fixtures deleted by their four recorded immutable IDs.
+
 ## Migration Plan
 
 1. Seal the canonical identity, administrative control and decisions.
