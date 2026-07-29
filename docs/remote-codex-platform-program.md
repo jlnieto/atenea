@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `9/45`, with the exact
-  resume point at task 2.2
+  `45/45` and `onboard-beautips-on-ax42` is active at `10/45`, with the exact
+  resume point at task 2.3
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -2984,7 +2984,7 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–2.1 are complete and change progress is `9/45`. GitHub
+Tasks 1.1–2.2 are complete and change progress is `10/45`. GitHub
 `jlnieto/beautips`, branch `main`, managed-manifest commit
 `e4256d7fe1610e191099bd12ce993591a5cd4b7a`, tree
 `8e52657add269c84700105aa7028728d4ddf2810`, runtime manifest SHA-256
@@ -3053,9 +3053,35 @@ Task 2.1 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `43ca64baf25a2a4f76a51f5ca0362cc4640ca02dedc9b0d19683beb070e8d621`.
 
+Task 2.2 adds one closed source allowlist containing exactly Beautips. It pins
+GitHub repository, branch, commit, tree, runtime manifest, managed Compose,
+worker `ax42-01`, normal workload and allowed slots 2–4. Both selection and
+execution are false, slot 1 is excluded and the workspace map is empty.
+
+The allowlist SHA-256 is
+`1311050ba6a8c117d8e92314e0c48a1cf24e106677aa248d8ad0d39da05f7b77`;
+its exact Draft 2020-12 schema SHA-256 is
+`30c15010f5f66e1ea020b524c959f67fa6913a7e261eca2320ddda9aebd9e027`.
+Valid-format foreign repository, branch, commit, tree, manifest, Compose,
+worker, slot, workspace, project and unknown-field mutations all fail schema
+validation.
+
+The registry remains source-only and was not installed on AX42. The installed
+Atenea registry retains SHA-256
+`26a7d75cc4c3d919b82ee6efeb8e7d4214e53d4854ad34dc1985d36aceb7a94a`,
+is disabled with zero workspaces and the existing worker remains active.
+Focused worker and project-runner regressions pass `11/11` and `6/6`.
+Administrative Beautips and Atenea production/preview retain their exact
+running identities and all health probes are `UP`.
+
+Task 2.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-2.2-disabled-exact-allowlist`;
+the SHA-256 of its `SHA256SUMS` is
+`a4c60545032856054db1b9980a83cfb1413fddde59c632aacc09998d5555b9d2`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 2.2 of `onboard-beautips-on-ax42`.
+The exact resume point is task 2.3 of `onboard-beautips-on-ax42`.

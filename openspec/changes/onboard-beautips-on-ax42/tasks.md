@@ -12,7 +12,7 @@
 ## 2. Session-safe Beautips worker contract
 
 - [x] 2.1 Replace fixed/manual manifest behavior with allocation-derived WorkSession project, paths, ports, names and mandatory cleanup
-- [ ] 2.2 Add a default-disabled exact Beautips allowlist pinned to repository, branch, commit and manifest
+- [x] 2.2 Add a default-disabled exact Beautips allowlist pinned to repository, branch, commit and manifest
 - [ ] 2.3 Mediate only reviewed Node/Maven build, test, smoke, runtime and cleanup operations
 - [ ] 2.4 Execute Codex through the existing bounded per-run workspace sandbox with exact Beautips ownership
 - [ ] 2.5 Create an exact session secret boundary using only named synthetic inputs and deny manual/WhatsApp credentials

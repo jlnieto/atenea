@@ -62,6 +62,23 @@ are mandatory. Its stop operation always requests volumes, orphans and local
 images be removed. This declares the cleanup boundary without enabling or
 executing it before the reviewed mediator and exact registry exist.
 
+Task 2.2 adds the source registry
+`ops/worker/project-codex-allowlist-v1.json`, SHA-256
+`1311050ba6a8c117d8e92314e0c48a1cf24e106677aa248d8ad0d39da05f7b77`,
+under the closed Draft 2020-12 schema
+`runtime-contract/project-codex-allowlist-v1.schema.json`, SHA-256
+`30c15010f5f66e1ea020b524c959f67fa6913a7e261eca2320ddda9aebd9e027`.
+It contains exactly Beautips and pins repository, branch, commit, tree,
+manifest and managed Compose identities to worker `ax42-01`, normal workload
+and slots 2–4. Selection and execution are both false and the workspace map is
+empty.
+
+This registry is reviewed source only at this gate. It is not installed over
+the disabled Atenea registry, consumed by routing or capable of lifecycle
+execution. Tasks 2.3–2.6 must add the mediated operations, exact sandbox,
+secret boundary and install/rollback tooling before any installed Beautips
+record can exist.
+
 ### The administrative pilot is foreign retained state
 
 The three slot 1 containers, their network, four volumes, loopback listener,
