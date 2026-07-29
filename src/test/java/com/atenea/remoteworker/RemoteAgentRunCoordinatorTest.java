@@ -164,6 +164,34 @@ class RemoteAgentRunCoordinatorTest {
     }
 
     @Test
+    void beautipsStartupReconciliationPollsPersistedExecutionWithoutRedispatch() throws Exception {
+        AgentRunEntity run = beautipsRun();
+        run.setRemoteExecutionId("4ee2d311-b9da-4307-89b6-dd3110ef2057");
+        run.setStatus(AgentRunStatus.RUNNING);
+        when(agentRunRepository.findByExecutionTargetAndStatusInOrderByCreatedAtAsc(
+                ExecutionTarget.REMOTE,
+                AgentRunStatus.nonTerminalStatuses())).thenReturn(java.util.List.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionRepository.findById(run.getSession().getId()))
+                .thenReturn(Optional.of(run.getSession()));
+        when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> {
+            SessionTurnEntity turn = invocation.getArgument(0);
+            turn.setId(901L);
+            return turn;
+        });
+        when(client.get(run)).thenReturn(succeeded(run));
+
+        assertEquals(1, coordinator.reconcileAfterStartup());
+        waitForTerminal(run);
+
+        assertEquals(AgentRunStatus.SUCCEEDED, run.getStatus());
+        verify(client, never()).dispatch(any(), any());
+        verify(client).get(run);
+    }
+
+    @Test
     void exactProjectCancellationUsesPersistedExecutionAndDoesNotRedispatch() throws Exception {
         AgentRunEntity run = projectRun();
         run.setRemoteExecutionId("4ee2d311-b9da-4307-89b6-dd3110ef2057");
@@ -183,8 +211,47 @@ class RemoteAgentRunCoordinatorTest {
     }
 
     @Test
+    void exactBeautipsCancellationUsesPersistedExecutionAndDoesNotRedispatch() throws Exception {
+        AgentRunEntity run = beautipsRun();
+        run.setRemoteExecutionId("4ee2d311-b9da-4307-89b6-dd3110ef2057");
+        run.setStatus(AgentRunStatus.RUNNING);
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        RemoteWorkerClient.Execution cancelled = execution(run, "CANCELLED", null);
+        when(client.cancel(run)).thenReturn(cancelled);
+
+        coordinator.requestCancellation(run.getId());
+        waitForTerminal(run);
+
+        assertEquals(AgentRunStatus.CANCELLED, run.getStatus());
+        verify(client).cancel(run);
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
     void boundedPartitionFailsPersistedProjectRunWithoutReplacementDispatch() throws Exception {
         AgentRunEntity run = projectRun();
+        run.setRemoteExecutionId("4ee2d311-b9da-4307-89b6-dd3110ef2057");
+        run.setStatus(AgentRunStatus.RUNNING);
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.get(run)).thenThrow(new RemoteWorkerException("partition", 503));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertEquals(
+                "Explicit operator review required; execution was not reassigned",
+                run.getStatusReason());
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void boundedPartitionFailsPersistedBeautipsRunWithoutReplacementDispatch() throws Exception {
+        AgentRunEntity run = beautipsRun();
         run.setRemoteExecutionId("4ee2d311-b9da-4307-89b6-dd3110ef2057");
         run.setStatus(AgentRunStatus.RUNNING);
         when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
