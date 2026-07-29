@@ -3458,4 +3458,36 @@ Task 4.3 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `d163c82caf3daac1668d672b731e800bdd625998c165ef2e3b0bd3e38d4142bf`.
 
-The exact resume point is task 4.4 of `onboard-beautips-on-ax42`.
+Task 4.4 continues the same Beautips WorkSession with a deterministic second
+turn. AgentRun 2 appended only
+`Turn 2: same Codex thread continued idempotently.` and reached `SUCCEEDED` in
+`28.528 s`. Dispatch `7bcc0c89-d94d-4fdf-bc5c-e5d3a71b5c12` maps to
+execution/turn `f27cc38e-0aa0-4b30-9dce-3b540fee139b`; both its thread input
+and result equal the first turn thread
+`019faf5f-0a96-7592-a936-583cb044dae8`. Its exact answer is
+`BEAUTIPS_TURN_2_OK`.
+
+The target now contains exactly the two accepted lines, 87 bytes, with
+SHA-256
+`28fc81714c03aa8d640c01cb1cdc6f47a1a129aff143f0a3cc9aa691a3438eaf`.
+HEAD, tree and index remain unchanged and Git status still contains only this
+untracked file.
+
+Replaying the complete immutable second request with the same dispatch ID
+returned HTTP 200 in `11 ms`, the same execution ID, terminal status and
+revision 5. Worker state remained byte-identical at 30 records and the target
+SHA-256 did not change. Atenea retained exactly two AgentRuns and four turns
+before and after replay, with one result turn per run; no duplicate terminal
+delivery was created.
+
+Workspace, allocation and admission fingerprints remain unchanged and no
+session runtime resource exists. Administrative Beautips, production,
+preview, canonical Atenea and the isolated control-plane checkout remain
+unchanged and healthy.
+
+Task 4.4 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-4.4-thread-continuity-idempotence`;
+the SHA-256 of its `SHA256SUMS` is
+`f02bde3306fea98eacf0109bc67fb64f275ee8923fbee09e688fbbf1fdc39d8b`.
+
+The exact resume point is task 4.5 of `onboard-beautips-on-ax42`.
