@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `36/45`, with the exact
-  resume point at task 6.5
+  `45/45` and `onboard-beautips-on-ax42` is active at `37/45`, with the exact
+  resume point at task 7.1
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3957,3 +3957,37 @@ the SHA-256 of its `SHA256SUMS` is
 `18574badb39b2faf4045aa1a2cc36f0f43d01b5a2bd56c5ed29ece85a4fe9a19`.
 
 The exact resume point is task 6.5 of `onboard-beautips-on-ax42`.
+
+Task 6.5 is complete and change progress is `37/45`; phase 6 delivery, close
+and continuity is complete. The installed Beautips contract verifies with
+selection and execution enabled and one exact persisted workspace. Its
+configuration SHA-256 is
+`f3fb28e3f4b81ae6b584e8f21bfa3a1742e77772d1a2701fdf56b14b1e12592a`.
+The allocation-owned managed web health returns `UP` with the same three
+containers.
+
+The worker loads only the exact Beautips config/runner and the generic Atenea
+config/runner. Atenea remains `false/false` with no workspace; the root-owned
+static allowlist has only key `beautips`. The isolated control has only its
+exact Beautips project gate enabled and the generic project gate disabled.
+Unknown projects have no installed config or runner authority.
+
+Focused Atenea routing tests pass `11/11`, covering exact selection, disabled
+selection, partial/foreign identity, missing capability and unknown-project
+denials. The worker's exact Beautips route test passes `1/1` and accepts only
+the exact registered workspace. No real session, run, dispatch or prompt is
+created: durable worker SHA-256 is unchanged, Atenea remains at two terminal
+AgentRuns, four turns and zero non-terminal runs.
+
+A first HTTP probe targeted allocated Redis port `23826` and received an empty
+reply. The persisted allocation identified correct managed web port `21379`,
+where `/actuator/health` returns `UP`; the failed probe mutated nothing.
+Production, preview, isolated control and administrative Beautips remain
+healthy.
+
+Task 6.5 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-6.5-availability-denials`;
+the SHA-256 of its `SHA256SUMS` is
+`912123af504fb6f672cb191bdcdfdc02c67279d9ee1dfbb9423499f4543e6a26`.
+
+The exact resume point is task 7.1 of `onboard-beautips-on-ax42`.

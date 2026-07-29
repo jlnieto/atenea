@@ -426,6 +426,15 @@ the exact WorkSession has zero runner/Codex processes, and Atenea retains two
 terminal AgentRuns and four turns. No prompt is rerun; runtime, Git,
 attachments and unrelated services are unchanged.
 
+Task 6.5 verifies the installed Beautips lifecycle at exact selection/execution
+`true/true` with one persisted workspace while the generic Atenea project
+config remains `false/false` and empty. The root-owned static allowlist names
+only Beautips. Atenea's exact Beautips gate is enabled and its generic project
+gate disabled. Focused routing tests pass `11/11` and the worker exact-route
+test passes `1/1`, covering partial, foreign, capability-missing and unknown
+denials without creating a real dispatch. The allocation-owned managed web
+health remains `UP`; durable worker and control-plane counts do not change.
+
 Task 5.1 projects assigned-slot access without changing ownership: shared
 ancestors receive traverse only and the exact WorkSession worktree/cache
 receive the slot ACL. Dependencies warm only into that cache; acceptance then
