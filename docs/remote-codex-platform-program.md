@@ -1415,3 +1415,36 @@ the SHA-256 of its `SHA256SUMS` is
 `57a1de69afa5beb591e4145efc4f004f4154f129452af2b22c0167a415aabd66`.
 
 The exact resume point is task 6.6 of `add-private-session-previews`.
+
+Task 6.6 is complete and change progress is `30/37`. Preview
+`05aa7e6e-f4a7-4621-aeda-248e491eeee6` was activated for the same exact
+WorkSession, project, worker and allocation while the prior preview remained
+terminal. Restarting only the AX42 preview coordinator changed its PID and
+restored the same persisted unexpired route in 790 ms. Preview identity,
+revision, ingress, upstream, lease and hard lifetime remained exact; the
+runtime container and retained attachment hashes were byte-identical. The
+prior expired record was byte-identical and was not restored.
+
+An independent disposable Atenea acceptance database applied all 48 Flyway
+migrations and retained the exact synthetic WorkSession, AgentRun, two
+attachments, one expired preview and one unexpired ready preview. Two separate
+Atenea startups reconciled only the ready row through authenticated finite
+requests; the AX42 journal contains four successful exact-ownership inspections
+and no request for the expired preview. Database state was unchanged across
+both startups, no runtime was created or reassigned, and each application
+process stopped cleanly without a remaining listener.
+
+The worker credential was streamed only into an anonymous in-memory file
+descriptor and was neither printed nor written to a filesystem. The final
+credential helper inventory is empty. Production, preview, Beautips, rootful
+Docker, RAID, runtime allocation and canonical Git state remain unchanged.
+The preview subsequently reached its recorded lease expiry normally; that
+post-window terminal state is retained separately and is not used to claim
+that the accepted reconciliation remained ready indefinitely.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-6.6-restart-reconciliation`;
+the SHA-256 of its `SHA256SUMS` is
+`07836ce14b406d6fdb27d5b90653de02213b62b0ea91c94db6b0e234d1f21ea9`.
+
+The exact resume point is task 6.7 of `add-private-session-previews`.
