@@ -321,6 +321,18 @@ port. Any absolute-localhost, cookie, redirect or browser failure blocks this
 decision and requires an explicit manifest revision rather than an implicit
 tunnel.
 
+Task 5.5 activates one exact persisted synthetic preview through the installed
+`session-preview/v1` coordinator. Its only ingress listener binds AX42
+Tailscale IPv4 `100.81.98.93` inside the approved `19000–19031` range and
+forwards to the allocation-owned loopback web port. The private admin login
+returns HTTP 200 from AX42 and the operator laptop.
+
+The manifest, persisted record and public response all retain
+`localhostCompatible=false`. The response contains no tunnel metadata or
+runtime port, localhost connection is denied, no localhost/wildcard ingress
+listener exists and the page/headers contain zero absolute localhost
+references. The single READY preview is retained only for tasks 5.6 and 5.7.
+
 ### Build, verification and delivery are fixed
 
 The build uses the committed Node 22/Maven 3.9.9/Java 21 Dockerfile and the

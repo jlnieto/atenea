@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `29/45`, with the exact
-  resume point at task 5.5
+  `45/45` and `onboard-beautips-on-ax42` is active at `30/45`, with the exact
+  resume point at task 5.6
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3698,3 +3698,34 @@ Two sealed fail-closed attempts remain beside it with their own integrity
 manifests; neither changed persistent or foreign resources.
 
 The exact resume point is task 5.5 of `onboard-beautips-on-ax42`.
+
+Task 5.5 is complete and change progress is `30/45`. The installed active
+`session-preview/v1` coordinator created exactly one persisted synthetic
+preview for control-plane WorkSession database ID 2 and runtime session
+`6375c738-99da-4ef3-91f5-21e30d3b27d3`. Allocation fingerprint remains
+`0e46cc38968509fbdd6585e3741f8c8e1eecb32f0161139400ec923780f49dbc`.
+
+The READY preview has one listener on AX42 Tailscale IPv4 `100.81.98.93`
+inside ingress range `19000–19031` and forwards only to allocation-owned
+loopback port 21379. The private `/admin/login` route returns HTTP 200 both
+from AX42 and the operator laptop over the tailnet. There is no wildcard or
+localhost ingress listener.
+
+The canonical manifest, persisted record and response all retain
+`localhostCompatible=false`. The response has no tunnel metadata and does not
+expose the runtime port. A localhost connection to the ingress port fails, and
+the response page plus headers contain no `localhost` or `127.0.0.1`
+reference. No public share, firewall change, production route or unrelated
+preview was created.
+
+Canonical Git and the intended untracked two-line WorkSession file remain
+unchanged. Production, preview, isolated control plane, managed runtime and
+administrative Beautips remain `UP`; Atenea boot, Git and complete container
+inventory are byte-identical before and after.
+
+Task 5.5 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-5.5-tailnet-preview`;
+the SHA-256 of its `SHA256SUMS` is
+`00949ceff54bc1fcf2efe5472e6973325332dbc9b0ce4f19c64d945840e39f66`.
+
+The exact resume point is task 5.6 of `onboard-beautips-on-ax42`.
