@@ -3355,4 +3355,36 @@ Accepted sanitized entry evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 4.1 of `onboard-beautips-on-ax42`.
+Task 4.1 creates the canonical managed Beautips identity without starting a
+runtime. A fresh isolated Atenea control plane persists one remote WorkSession,
+`6375c738-99da-4ef3-91f5-21e30d3b27d3`, for exact project `Beautips`,
+worker `ax42-01`, workload `project-codex-v1`, repository
+`https://github.com/jlnieto/beautips.git`, branch `main` and workspace branch
+`atenea/session-6375c738-99da-4ef3-91f5-21e30d3b27d3`. Its fresh PostgreSQL
+contains one project, one open WorkSession and zero AgentRuns or SessionTurns.
+
+The AX42 service identity fetched the private canonical repository through an
+ephemeral mode-0700 Git credential-cache boundary fed by the already
+configured operator credential. No credential value was emitted or persisted;
+the daemon, socket and directory are absent after provisioning. The canonical
+bare mirror has exact HTTPS origin and remote-only fetch mapping. Mirror,
+worktree and manifest resolve to commit
+`e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
+`533d32f97ae362997ad003170a826da674c31c1d` and manifest SHA-256
+`365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82`.
+The worktree is clean.
+
+Historical persisted allocations retain slots 2 and 3, so the new normal
+admission correctly holds the only unclaimed managed slot, slot 4. Allocation
+reserves three collision-free loopback ports but starts no runtime: session
+container, network and listener counts are all zero. Project execution remains
+disabled with zero registered workspaces. The administrative slot 1 Beautips
+pilot, production, preview, prior Atenea acceptance resources, rootful Docker
+state and canonical Atenea checkout are unchanged and healthy.
+
+Task 4.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-4.1-canonical-mirror-allocation`;
+the SHA-256 of its `SHA256SUMS` is
+`261a48fea26345289f454c323e0a86cb20ee03bf27a599cfd244e3373b246f98`.
+
+The exact resume point is task 4.2 of `onboard-beautips-on-ax42`.
