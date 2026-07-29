@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `17/45`, with the exact
-  resume point at task 3.3
+  `45/45` and `onboard-beautips-on-ax42` is active at `18/45`, with the exact
+  resume point at task 3.4
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -2984,7 +2984,7 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–3.2 are complete and change progress is `17/45`. GitHub
+Tasks 1.1–3.3 are complete and change progress is `18/45`. GitHub
 `jlnieto/beautips`, branch `main`, managed-manifest commit
 `e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
 `533d32f97ae362997ad003170a826da674c31c1d`, runtime manifest SHA-256
@@ -3268,9 +3268,37 @@ Task 3.2 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `add7b084323e1af19cc3c85c23289aa15eff0cadf91060aca93a191f6b2c5d3f`.
 
+Task 3.3 extends the existing exact project-payload acceptance to Beautips
+without a new protocol or endpoint. Repository, branch, commit and manifest
+are read only from the persisted AgentRun; its dispatch UUID remains the
+idempotency boundary and the WorkSession external thread ID is forwarded for
+continuation. Caller command, path, endpoint and environment are absent.
+
+The existing project-neutral coordinator maps a Beautips terminal success to
+the saved WorkSession thread, AgentRun external turn and exactly one CODEX
+result turn. A second observation after terminal returns without redispatch
+or duplicate turn. Existing Atenea project mapping and four-field synthetic
+payload compatibility remain passing.
+
+Atenea source is clean and synchronized at
+`dc6d5ef2f037e6b88d7fa63107622d5859aceb5b`, tree
+`92d8123f34b9a17d9afc96813eccfb197dfd8415`. The focused payload,
+coordinator, persistence and selection set passes `34/34` locally and `34/34`
+from the committed server checkout. No real dispatch, production database
+write, deployment or routing activation occurred.
+
+Production and preview remain `UP` with zero backend restarts and no deployed
+Beautips selector key. AX42 retains three `[UU]` arrays, slot 1's three
+administrative containers, empty slots 2–4 and Beautips health `UP`.
+
+Task 3.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-3.3-idempotent-turn-mapping`;
+the SHA-256 of its `SHA256SUMS` is
+`e0d4a5e7a8de473027845dd181d126adc6c96b210001273475635203cb4c41c8`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 3.3 of `onboard-beautips-on-ax42`.
+The exact resume point is task 3.4 of `onboard-beautips-on-ax42`.

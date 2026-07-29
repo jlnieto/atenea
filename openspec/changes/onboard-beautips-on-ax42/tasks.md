@@ -23,7 +23,7 @@
 
 - [x] 3.1 Select `project-codex-v1` only for a new exact allowlisted Beautips WorkSession
 - [x] 3.2 Persist Beautips repository, commit, manifest, workspace and workload identity before dispatch
-- [ ] 3.3 Reuse idempotent thread/turn/terminal mapping without changing synthetic or Atenea compatibility
+- [x] 3.3 Reuse idempotent thread/turn/terminal mapping without changing synthetic or Atenea compatibility
 - [ ] 3.4 Preserve cancellation, backend restart, partition and duplicate-terminal semantics
 - [ ] 3.5 Add exact selection, payload, persistence, delivery and denial tests and run focused/full Atenea regressions twice
 

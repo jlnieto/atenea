@@ -189,6 +189,19 @@ Atenea project and synthetic identities retain their current persistence
 behavior. Worker payload, thread/turn mapping and terminal handling are not
 changed here; task 3.3 consumes the exact persisted Beautips identity.
 
+Task 3.3 lets the existing project payload accept the exact persisted
+Beautips fingerprint from 3.2. Payload shape and protocol remain unchanged:
+repository, branch, commit and manifest come only from the persisted AgentRun,
+the saved dispatch UUID remains the idempotency key, and the WorkSession's
+external thread ID is forwarded for continuation. Caller command, path,
+endpoint and environment remain absent.
+
+The project-neutral coordinator maps a Beautips terminal success through its
+existing path: returned thread to WorkSession, returned turn ID to AgentRun
+and one CODEX result turn. Re-observing the terminal run returns without
+redispatch or duplicate turn. Existing Atenea mapping and synthetic payload
+tests remain unchanged and passing.
+
 ### The administrative pilot is foreign retained state
 
 The three slot 1 containers, their network, four volumes, loopback listener,
