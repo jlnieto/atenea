@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–5.5 are complete and change progress is `30/45`. The entry gate pins
+Tasks 1.1–5.6 are complete and change progress is `31/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2600,4 +2600,30 @@ Task 5.5 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `ac6da0210f252e08e84e12d5b71d62614e7f1005dd74d85678d3574f2c4ae0d4`.
 
-The exact resume point is task 5.6 of `onboard-atenea-on-ax42`.
+Task 5.6 registers the desktop PNG, mobile PNG and DOM report as three exact
+`EVIDENCE`-retained synthetic attachments for WorkSession
+`c20f3cde-9a64-4c7b-a674-7b63f94ca475`. The first PUTs returned HTTP 201;
+repeating the same immutable attachment identities returned HTTP 200 with the
+original metadata and introduced no duplicate bytes.
+
+The attachment boundary now accepts the existing positive-decimal WorkSession
+identity or a canonical UUID while malformed/non-canonical values still fail
+closed. All `12/12` attachment tests pass, and the installed/source program
+SHA-256 is
+`139401e9b336264af29d6f3a20493ed3185e630496e9d261628b62364121be12`.
+
+After registration, the expired preview was deleted only through exact
+preview ID `a6b4a872-8cfe-495f-a457-25af7593f256`, revision 5 and complete
+synthetic ownership. Its record and ingress listener are absent. Two complete
+post-teardown retrieval passes returned HTTP 200 for all three metadata and
+content identities; every byte count and SHA-256 matches the original
+registered artifact. The records remain explicitly non-authoritative
+synthetic evidence. Runtime, production, preview, Beautips and WorkSession Git
+remain unchanged.
+
+Task 5.6 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-5.6-artifact-retention`;
+the SHA-256 of its `SHA256SUMS` is
+`8e68d17226bff549222d9166fe1fd175fa51879ef8b52169f0846c3dd307ed55`.
+
+The exact resume point is task 6.1 of `onboard-atenea-on-ax42`.

@@ -143,9 +143,21 @@ class AttachmentStoreTest(unittest.TestCase):
         self.put()
         with self.assertRaisesRegex(MODULE.ProtocolError, "does not exist"):
             self.store.content("13", self.attachment_id)
-        with self.assertRaisesRegex(MODULE.ProtocolError, "positive decimal"):
+        with self.assertRaisesRegex(MODULE.ProtocolError, "positive decimal or canonical UUID"):
             self.store.content("../foreign", self.attachment_id)
         self.assertEqual(self.content, self.store.content(self.session_id, self.attachment_id)[1].read_bytes())
+
+    def test_uuid_work_session_identity_is_scoped_and_retained(self):
+        self.session_id = str(uuid.uuid4())
+
+        stored, created = self.put()
+
+        self.assertTrue(created)
+        self.assertEqual(self.session_id, stored["sessionId"])
+        self.assertEqual(
+            self.content,
+            self.store.content(self.session_id, self.attachment_id)[1].read_bytes(),
+        )
 
     def test_restart_preserves_identical_content(self):
         first, _ = self.put()

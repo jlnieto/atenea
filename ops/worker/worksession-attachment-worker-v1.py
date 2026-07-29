@@ -406,13 +406,16 @@ class AttachmentStore:
         return value
 
     def _session_identity(self, value: str) -> str:
-        if not isinstance(value, str) or not re.fullmatch(r"[1-9][0-9]{0,18}", value):
+        if isinstance(value, str) and re.fullmatch(r"[1-9][0-9]{0,18}", value):
+            return value
+        try:
+            return self._uuid(value, "invalid_session_id")
+        except ProtocolError as error:
             raise ProtocolError(
                 HTTPStatus.BAD_REQUEST,
                 "invalid_session_id",
-                "session identity must be a positive decimal database identity",
-            )
-        return value
+                "session identity must be a positive decimal or canonical UUID",
+            ) from error
 
     def _inside(self, path: Path) -> None:
         try:

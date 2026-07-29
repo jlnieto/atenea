@@ -42,7 +42,7 @@
 - [x] 5.3 Prove runtime health, data/persistence and no production connectivity or host-daemon authority
 - [x] 5.4 Create one tailnet-only preview and prove Internet/public denial plus declared localhost behavior
 - [x] 5.5 Run Playwright DOM assertions and inspect desktop `1440x900` and mobile `390x844` screenshots
-- [ ] 5.6 Register sanitized artifacts to the exact session and prove deterministic retrieval after preview teardown
+- [x] 5.6 Register sanitized artifacts to the exact session and prove deterministic retrieval after preview teardown
 
 ## 6. Delivery, close and continuity
 
