@@ -2098,3 +2098,24 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 6.2 of
 `establish-development-database-lifecycle`.
+
+Task 6.2 is complete and change progress is `28/37`. Against PostgreSQL
+revision `30`, missing confirmation arguments, stale revision `29` and an
+incorrect confirmation were rejected with unchanged complete fingerprints.
+After an actual 305-second wait without changing system time, the exact
+revision-31 challenge returned `REPLACEMENT_CONFIRMATION_EXPIRED` and the
+record, snapshots and resources remained byte-identical.
+
+One new explicitly confirmed replacement was then executed only to establish
+a consumed revision-32 operation; it returned `HEALTHY` revision `39`.
+Replaying the exact same operation returned `STALE_REVISION`, and its complete
+post-success fingerprint remained byte-identical. Confirmation values existed
+only in shell memory and are absent from artifacts.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-6.2-confirmation-denials`;
+the SHA-256 of its `SHA256SUMS` is
+`446d0dc6b9786bc18ffe1f93f7373ad819633e7578fd08eeb638ef0127309d87`.
+
+The exact resume point is task 6.3 of
+`establish-development-database-lifecycle`.
