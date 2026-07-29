@@ -21,7 +21,9 @@ SPEC.loader.exec_module(MODULE)
 
 SESSION = "018f47a2-6b0c-7a31-9c2d-4f5a6b7c8db1"
 RUNTIME = "ws-" + SESSION.replace("-", "")
-BEAUTIPS_SOURCE = Path("/home/jose/IdeaProjects/beautips")
+BEAUTIPS_SOURCE = Path(
+    os.environ.get("ATENEA_BEAUTIPS_SOURCE", "/home/jose/IdeaProjects/beautips")
+)
 
 
 class BeautipsOperationMediatorTest(unittest.TestCase):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -20,7 +21,9 @@ BASE = MODULE.BASE
 SESSION = "018f47a2-6b0c-7a31-9c2d-4f5a6b7c8db1"
 EXECUTION = "028f47a2-6b0c-7a31-9c2d-4f5a6b7c8db2"
 WORKSPACE_IDENTITY = f"remote:ax42-01:work-session:{SESSION}"
-SOURCE = Path("/home/jose/IdeaProjects/beautips")
+SOURCE = Path(
+    os.environ.get("ATENEA_BEAUTIPS_SOURCE", "/home/jose/IdeaProjects/beautips")
+)
 
 
 class BeautipsProjectCodexRunnerTest(unittest.TestCase):
