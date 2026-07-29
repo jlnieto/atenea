@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `14/45`, with the exact
-  resume point at task 2.7
+  `45/45` and `onboard-beautips-on-ax42` is active at `15/45`, with the exact
+  resume point at task 3.1
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -2984,7 +2984,7 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–2.6 are complete and change progress is `14/45`. GitHub
+Tasks 1.1–2.7 are complete and change progress is `15/45`. GitHub
 `jlnieto/beautips`, branch `main`, managed-manifest commit
 `e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
 `533d32f97ae362997ad003170a826da674c31c1d`, runtime manifest SHA-256
@@ -3179,9 +3179,38 @@ Task 2.6 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `eb1d01c689a09e2936eea19f7a792c289e88102e7b5e2d60acf6744c4d3e2e28`.
 
+Task 2.7 adds an aggregate Beautips worker-contract regression. Three focused
+cases validate the Draft 2020-12 manifest, exact cleanup argv, private
+no-localhost preview, three service identities, loopback ports, internal
+network, four session-labelled volumes and absence of fixed containers,
+manual paths or env files. Two mediation calls produce an identical cleanup
+plan bound to the exact slot socket, Compose project, WorkSession and runtime.
+
+The aggregate also passes mediator ownership `4/4`, Codex identity/sandbox
+`4/4`, secret boundary `3/3`, the complete install lifecycle and inherited
+project idempotence/cancellation/restart `3/3`. The final source passes locally
+in `71.38 s` and twice on AX42 in `20.75 s` and `17.86 s`.
+
+The administrative checkout remains intentionally at its retained entry
+commit and was not used as the managed source. AX42 tests used an exact
+temporary checkout of the pinned managed commit and removed it afterwards.
+Ubuntu `python3-jsonschema` and `python3-pyrsistent` were installed as the
+missing worker test prerequisite; apt reported no service or container
+restart. All temporary roots and test processes are absent.
+
+Final Beautips selection/execution remains false/false with zero workspaces.
+AX42 listener/UFW fingerprints, the active worker, exact administrative
+Beautips identities and Atenea production/preview identities and health are
+unchanged.
+
+Task 2.7 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-2.7-worker-contract-tests`;
+the SHA-256 of its `SHA256SUMS` is
+`5978278bc7db11f36258040bd3969d2c85fc6196c9afac5d7c65feef2bb97983`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 2.7 of `onboard-beautips-on-ax42`.
+The exact resume point is task 3.1 of `onboard-beautips-on-ax42`.

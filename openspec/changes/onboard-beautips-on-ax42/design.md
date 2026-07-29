@@ -151,6 +151,18 @@ Beautips artifacts. The tool contains no listener, firewall, Tailscale or
 service mutation and remains independently usable after deployment staging is
 removed. Its installed final state is disabled with zero workspaces.
 
+Task 2.7 adds one aggregate worker-contract regression over the pinned
+Beautips commit. It validates the manifest schema, complete Compose ownership,
+allocation-derived ports/names, exact cleanup command and absence of manual
+paths or env files. Repeated mediation produces an identical exact cleanup
+plan.
+
+The aggregate also runs the existing ownership, sandbox, secret and lifecycle
+tests plus the inherited project dispatch idempotence, exact cancellation and
+restart reconciliation semantics. Test source paths are parameterized so the
+same suite runs locally and from an exact temporary AX42 checkout. No
+WorkSession, runtime or routing is enabled by these tests.
+
 ### The administrative pilot is foreign retained state
 
 The three slot 1 containers, their network, four volumes, loopback listener,

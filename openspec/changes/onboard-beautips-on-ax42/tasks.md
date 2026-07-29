@@ -17,7 +17,7 @@
 - [x] 2.4 Execute Codex through the existing bounded per-run workspace sandbox with exact Beautips ownership
 - [x] 2.5 Create an exact session secret boundary using only named synthetic inputs and deny manual/WhatsApp credentials
 - [x] 2.6 Add install, verify, enable/disable and rollback tooling without changing public listeners
-- [ ] 2.7 Add manifest, ownership, sandbox, idempotence, cancellation, restart and exact-cleanup tests
+- [x] 2.7 Add manifest, ownership, sandbox, idempotence, cancellation, restart and exact-cleanup tests
 
 ## 3. Atenea control-plane allowlisting
 
