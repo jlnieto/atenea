@@ -51,7 +51,7 @@ argument() {
   return 1
 }
 
-for command in curl find flock git install jq realpath runuser sha256sum stat tar timeout; do
+for command in curl find flock git install jq openssl realpath runuser sha256sum stat tar timeout; do
   command -v "${command}" >/dev/null ||
     fail OPERATION_FAILED "A fixed Atenea adapter prerequisite is unavailable."
 done
@@ -405,6 +405,32 @@ assert_image() {
       'length == 1 and .[0].Id == $id and .[0].Architecture == "amd64" and .[0].Os == "linux"' \
       >/dev/null ||
     fail TOOLCHAIN_UNAVAILABLE "An exact Atenea runtime image is unavailable."
+}
+
+ensure_runtime_secret() {
+  local name="$1" target_mode="$2"
+  local source="${SECRET_ROOT}/${name}"
+  local target="${DELIVERY}/secrets/$3"
+  [[ -f "${source}" && ! -L "${source}" &&
+      "$(stat -c %U:%G:%a "${source}")" == 'atenea-worker:atenea:600' ]] ||
+    fail RUNTIME_OWNERSHIP_CONFLICT "An Atenea development secret boundary is unsafe."
+  if [[ ! -s "${source}" ]]; then
+    local temporary
+    temporary="$(mktemp "${SECRET_ROOT}/.${name}.XXXXXX")"
+    openssl rand -hex 32 >"${temporary}"
+    chown atenea-worker:atenea "${temporary}"
+    chmod 0600 "${temporary}"
+    mv "${temporary}" "${source}"
+  fi
+  [[ "$(stat -c %s "${source}")" -eq 65 ]] ||
+    fail RUNTIME_OWNERSHIP_CONFLICT "An Atenea development secret has an invalid size."
+  install -o "${SLOT_USER}" -g "${SLOT_USER}" -m "${target_mode}" \
+    "${source}" "${target}"
+}
+
+ensure_runtime_secrets() {
+  ensure_runtime_secret ATENEA_DEV_POSTGRES_PASSWORD 0444 postgres-password
+  ensure_runtime_secret ATENEA_DEV_JWT_SECRET 0400 jwt-secret
 }
 
 clear_owned_delivery() {
@@ -786,6 +812,7 @@ write_compose() {
 
 start_runtime() {
   ensure_retained_volume
+  ensure_runtime_secrets
   assert_image "${POSTGRES_IMAGE}" \
     'sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20'
   assert_image "${CODEX_IMAGE}" "${CODEX_IMAGE_ID}"

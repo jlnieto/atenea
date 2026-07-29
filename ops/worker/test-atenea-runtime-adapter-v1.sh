@@ -58,6 +58,7 @@ for required in \
   'ATENEA_WORKSPACE_ROOT=/workspace/repos' \
   '--tmpfs /workspace/repos:rw,nosuid,nodev,size=512m' \
   'ensure_retained_volume' \
+  'ensure_runtime_secrets' \
   'mvn -B -Dmaven.repo.local=/workspace/cache/maven/repository clean package'; do
   grep -Fq -- "${required}" "${ADAPTER_SOURCE}" ||
     fail "Atenea build adapter omits required command: ${required}"
