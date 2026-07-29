@@ -13,6 +13,7 @@ WORKSPACE_BRANCH="${6:-}"
 TEST_MODE="${ATENEA_WORKSPACE_TEST_MODE:-0}"
 SERVICE_USER="${ATENEA_WORKER_SERVICE_USER:-atenea-worker}"
 GIT_TIMEOUT_SECONDS="${ATENEA_GIT_TIMEOUT_SECONDS:-120}"
+PINNED_BASE_COMMIT="${ATENEA_PINNED_BASE_COMMIT:-}"
 
 fail() {
   local code="$1" message="$2" action="$3"
@@ -39,6 +40,9 @@ done
       "${GIT_TIMEOUT_SECONDS}" -le 600 ]] ||
   fail "OPERATION_FAILED" "Git timeout must be between 1 and 600 seconds." \
     "Correct ATENEA_GIT_TIMEOUT_SECONDS and retry."
+[[ -z "${PINNED_BASE_COMMIT}" || "${PINNED_BASE_COMMIT}" =~ ^[0-9a-f]{40}$ ]] ||
+  fail "WORKTREE_CONFLICT" "Pinned base commit must be an exact lowercase Git SHA." \
+    "Use the reviewed commit from the project onboarding decision."
 
 [[ "${SESSION_ID}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] ||
   fail "SESSION_REQUIRED" "Session identity is not a canonical lowercase UUID." \
@@ -314,9 +318,19 @@ write_record() {
 canonical_base_commit="$(git --git-dir="${MIRROR_PATH}" rev-parse "${BASE_REF}^{commit}")"
 if "${record_exists}"; then
   expected_base_commit="$(jq -r '.expectedBaseCommit' "${RECORD_PATH}")"
+  [[ -z "${PINNED_BASE_COMMIT}" || "${PINNED_BASE_COMMIT}" == "${expected_base_commit}" ]] ||
+    fail "SESSION_IDENTITY_CONFLICT" "Pinned base commit conflicts with persisted workspace ownership." \
+      "Use the persisted onboarding commit or reconcile the WorkSession explicitly."
 else
-  expected_base_commit="${canonical_base_commit}"
+  expected_base_commit="${PINNED_BASE_COMMIT:-${canonical_base_commit}}"
 fi
+git --git-dir="${MIRROR_PATH}" cat-file -e "${expected_base_commit}^{commit}" 2>/dev/null ||
+  fail "WORKTREE_CONFLICT" "Pinned base commit is absent from the canonical mirror." \
+    "Fetch the reviewed commit from the credential-free canonical remote."
+git --git-dir="${MIRROR_PATH}" merge-base --is-ancestor \
+  "${expected_base_commit}" "${canonical_base_commit}" ||
+  fail "WORKTREE_CONFLICT" "Pinned base commit is not an ancestor of the canonical base branch." \
+    "Review the canonical branch or correct the onboarding commit."
 install -d -m 2770 "${SESSION_ROOT}"
 
 if [[ -e "${WORKTREE_PATH}" ]]; then
@@ -356,7 +370,7 @@ else
         "Inspect Git worktree registration and retry without resetting the branch."
   else
     git --git-dir="${MIRROR_PATH}" worktree add \
-      -b "${WORKSPACE_BRANCH}" "${WORKTREE_PATH}" "${BASE_REF}" >/dev/null ||
+      -b "${WORKSPACE_BRANCH}" "${WORKTREE_PATH}" "${expected_base_commit}" >/dev/null ||
       fail "OPERATION_FAILED" "The session worktree could not be created." \
         "Inspect the provisioning record and Git error before retrying."
   fi

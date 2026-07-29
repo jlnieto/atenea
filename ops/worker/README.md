@@ -194,6 +194,24 @@ sudo -u atenea-worker ./session-workspace-v1.sh ensure \
   atenea/session-018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e
 ```
 
+An individual onboarding may pin a reviewed ancestor of the canonical base
+branch without publishing a temporary base branch:
+
+```bash
+sudo -u atenea-worker env \
+  ATENEA_PINNED_BASE_COMMIT=0123456789abcdef0123456789abcdef01234567 \
+  ./session-workspace-v1.sh ensure \
+  018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e \
+  dummy-compose \
+  https://github.com/example/dummy-compose.git \
+  main \
+  atenea/session-018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e
+```
+
+The exact commit must already exist in the credential-free mirror and be an
+ancestor of the fetched canonical branch. It becomes part of immutable
+workspace ownership; a later conflicting pin fails closed.
+
 The helper keeps fetched canonical branches under `refs/remotes/origin/*` so a
 fetch cannot overwrite a session branch. It serializes changes per project,
 persists a worker-owned `workspace-v1.json` beside the worktree and fails closed

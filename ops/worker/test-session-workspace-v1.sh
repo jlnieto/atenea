@@ -42,9 +42,11 @@ SESSION_ONE="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e"
 SESSION_TWO="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9f"
 SESSION_THREE="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8da0"
 SESSION_FOUR="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8da1"
+SESSION_FIVE="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8da6"
 PROJECT="dummy-compose"
 BRANCH_ONE="atenea/session-${SESSION_ONE}"
 BRANCH_FOUR="atenea/session-${SESSION_FOUR}"
+BRANCH_FIVE="atenea/session-${SESSION_FIVE}"
 
 git init -q -b main "${SEED}"
 git -C "${SEED}" config user.name "Atenea fixture"
@@ -56,6 +58,17 @@ git clone -q --bare "${SEED}" "${ORIGIN}"
 initial_commit="$(git -C "${SEED}" rev-parse HEAD)"
 
 run_helper() {
+  ATENEA_WORKSPACE_TEST_MODE=1 \
+  ATENEA_MIRROR_ROOT="${MIRROR_ROOT}" \
+  ATENEA_WORKSPACE_ROOT="${WORKSPACE_ROOT}" \
+  ATENEA_WORKSPACE_LOCK_ROOT="${LOCK_ROOT}" \
+    "${HELPER}" "$@"
+}
+
+run_helper_pinned() {
+  local pinned="$1"
+  shift
+  ATENEA_PINNED_BASE_COMMIT="${pinned}" \
   ATENEA_WORKSPACE_TEST_MODE=1 \
   ATENEA_MIRROR_ROOT="${MIRROR_ROOT}" \
   ATENEA_WORKSPACE_ROOT="${WORKSPACE_ROOT}" \
@@ -98,6 +111,26 @@ cmp -s "${TEST_ROOT}/first.json" "${TEST_ROOT}/second.json" ||
   fail "idempotent ensure changed allocation output"
 [[ "$(git -C "${WORKTREE_ONE}" rev-parse HEAD)" == "${initial_commit}" ]] ||
   fail "canonical fetch overwrote the session branch"
+
+run_helper_pinned "${initial_commit}" ensure \
+  "${SESSION_FIVE}" "${PROJECT}" "${REMOTE}" main "${BRANCH_FIVE}" \
+  >"${TEST_ROOT}/five.json"
+WORKTREE_FIVE="${WORKSPACE_ROOT}/sessions/${SESSION_FIVE}/${PROJECT}"
+[[ "$(git -C "${WORKTREE_FIVE}" rev-parse HEAD)" == "${initial_commit}" ]] ||
+  fail "pinned workspace did not start at its reviewed ancestor"
+jq -e --arg commit "${initial_commit}" \
+  '.expectedBaseCommit == $commit and .headCommit == $commit' \
+  "${TEST_ROOT}/five.json" >/dev/null ||
+  fail "pinned workspace did not persist its reviewed ancestor"
+run_helper_pinned "${initial_commit}" ensure \
+  "${SESSION_FIVE}" "${PROJECT}" "${REMOTE}" main "${BRANCH_FIVE}" \
+  >"${TEST_ROOT}/five-repeat.json"
+cmp -s "${TEST_ROOT}/five.json" "${TEST_ROOT}/five-repeat.json" ||
+  fail "idempotent pinned ensure changed ownership"
+canonical_commit="$(git -C "${SEED}" rev-parse HEAD)"
+expect_failure SESSION_IDENTITY_CONFLICT \
+  run_helper_pinned "${canonical_commit}" ensure \
+    "${SESSION_FIVE}" "${PROJECT}" "${REMOTE}" main "${BRANCH_FIVE}"
 
 jq '.state = "provisioning"' "${RECORD_ONE}" >"${TEST_ROOT}/record.tmp"
 chmod 0640 "${TEST_ROOT}/record.tmp"
