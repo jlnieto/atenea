@@ -185,6 +185,8 @@ sharing remains disabled. Real-project authoritative activation remains
 blocked until independent external backup is configured and restore-tested.
 The exact resume point is the Phase 7 entry gate for
 `establish-development-database-lifecycle`.
+`establish-development-database-lifecycle` is now the active Phase 7 change;
+its entry gate is accepted at `5/37`.
 
 ## Decision log
 
@@ -220,6 +222,8 @@ The exact resume point is the Phase 7 entry gate for
 | D-028 | Use one bounded tailnet ingress port per active preview instead of a shared path-rewriting proxy. | Legacy applications commonly emit root-relative redirects, cookies and assets; a private ingress port preserves application semantics without publishing the allocation-derived runtime port. | accepted for synthetic Phase 6 | platform owner | after representative project onboarding |
 | D-029 | Give preview routes a five-minute renewable lease, eight-hour hard lifetime, 60-second revocation target and 30-day audit metadata. | Durable intent must survive restart, while abandoned development routes must not remain reachable indefinitely. Attachments keep their independent retention. | accepted for synthetic Phase 6 | operations owner | before production preview defaults |
 | D-030 | Keep Phase 6 public sharing disabled and generate localhost forwarding only for an explicit manifest declaration. | Tailnet-only access satisfies laptop/Android operation without introducing Internet ingress; per-project origin constraints must be proven rather than guessed. | accepted | security owner | each project onboarding |
+| D-031 | Limit Phase 7 to deterministic PostgreSQL and MariaDB fixtures containing no production-derived rows. | Database ownership, replacement and restore can be proven without granting AX42 production connectivity or adopting retained real-project volumes. | accepted for synthetic Phase 7 | data owner | each project onboarding |
+| D-032 | Keep at most three synthetic snapshots for seven days and require a one-use five-minute revision-bound replacement challenge plus verified pre-snapshot. | Bounded local evidence and explicit destructive intent are sufficient for recreatable fixtures; authoritative retention remains blocked on external backup. | accepted for synthetic Phase 7 | data/operations owners | before authoritative database activation |
 
 ## Deferred decisions and gates
 
@@ -1694,3 +1698,38 @@ Accepted final archive evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-7.5-archive`;
 the SHA-256 of its `SHA256SUMS` is
 `a86cc97f7847efe832b2d72aece0231341eccb73c708a06eebe2753f6b132bcb`.
+
+## Phase 7 progress: establish-development-database-lifecycle
+
+Tasks 1.1–1.5 are complete and change progress is `5/37`. The entry gate
+proves clean synchronized programme and Atenea source Git, archived Phase 6,
+strictly valid authoritative specs, unchanged nine-container Atenea
+production/preview inventory and healthy public probes.
+
+AX42 has RAID `[UU]`, 419826200576 bytes available, rootful Docker
+inactive/masked, all four rootless engines and proxies healthy, unchanged
+three-container Beautips in slot1, the foreign retained Phase 3 volumes in
+slot2 and empty slots 3–4. Phase 6 left zero preview state, listener or
+session-owned runtime resource.
+
+Atenea production/preview PostgreSQL, Beautips and the retained Phase 3 Atenea
+volumes are classified out of scope and were not read, mounted, started,
+labelled, adopted or changed. Phase 7 accepts only two new deterministic
+synthetic fixtures: pinned PostgreSQL and MariaDB with versioned migration/seed
+rows and no production-derived data.
+
+The approved contract uses named ephemeral secret files, private
+integrity-addressed snapshots capped at three copies/seven days, sanitized
+reports without raw dumps, a one-use five-minute revision-bound replacement
+challenge and a verified pre-replacement snapshot. Authoritative activation
+remains blocked until independent external backup passes restore.
+
+The proposal, design, new `development-database-lifecycle` capability, three
+modified capability deltas and 37-task plan pass strict OpenSpec validation.
+Accepted sanitized entry evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/entry-gate`;
+the SHA-256 of its `SHA256SUMS` is
+`2acf24c1ac3a39b1dec979eea43ddcc50b87dffd8cd8b5a2a27baf65587b033a`.
+
+The exact resume point is task 2.1 of
+`establish-development-database-lifecycle`.
