@@ -1327,3 +1327,25 @@ the SHA-256 of its `SHA256SUMS` is
 `9d87f73687a8054b02c3cec8cf6ccf30012a0e516efb5c51b3291e1bed27a8aa`.
 
 The exact resume point is task 6.3 of `add-private-session-previews`.
+
+Task 6.3 is complete and change progress is `27/37`. The manifest-declared
+localhost case returned only credential-free SSH destination
+`codex-worker`, tailnet ingress `100.81.98.93:19000` and path `/`; it
+explicitly reports `runtimePortExposed=false` and never discloses upstream
+port `22243`.
+
+One bounded key-authenticated SSH forward bound
+`127.0.0.1:39061` to the exact preview ingress. The localhost response and
+the direct tailnet response are byte-identical at SHA-256
+`54c244c22440ed1f09203f79bb0d45387b8ddc543146fb87a736bf7f6572e4d6`.
+The listener never bound `0.0.0.0` or the operator's tailnet address, and a
+non-loopback probe failed without content. The recorded SSH PID was terminated
+and awaited; the localhost listener is absent after cleanup while the private
+preview remains ready.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-6.3-localhost-tunnel`;
+the SHA-256 of its `SHA256SUMS` is
+`71afeff381ff56b83c20d24ef4c7b75226420fa4dc62ebbec06ed457e19c2f8a`.
+
+The exact resume point is task 6.4 of `add-private-session-previews`.
