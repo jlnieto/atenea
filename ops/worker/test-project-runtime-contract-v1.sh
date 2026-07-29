@@ -52,6 +52,10 @@ declare -A PROTECTED_HASHES=(
   ["runtime-contract/fixtures/valid/database-mariadb/runtime.json"]="cbd2264a7900871cb4969cb6d5587863f6c4df4278ca2c408d886027cddec8a1"
   ["ops/worker/database-lifecycle-state-v1.py"]="209d4ade62737b47d2e0b1fd790c969111c0a924acfa0c386cd217eae0ce1c66"
   ["ops/worker/test-database-lifecycle-state-v1.py"]="ea3ba6489289757e3844ac0b8fdf89b36c7b22d2567bae03ebbdfdee6f39be6d"
+  ["ops/worker/database-lifecycle-worker-v1.py"]="785780ba9a29310f884300aecb4ec274bc9c72cdb196f7f7506550b42dc8d216"
+  ["ops/worker/database-lifecycle-client-v1.sh"]="69dd5460ac60dd6e5e354a99f7cc8a78280ddca5c0190a8077fed755ef54b7e2"
+  ["ops/worker/install-database-lifecycle-v1.sh"]="73ceb7ca810a7187b97e8746bc969af9c7b5d85893ccb260f8e5358d85b1ed25"
+  ["ops/worker/test-database-lifecycle-worker-v1.py"]="5d770da329858ce8ca1a9a74f0a8c5015a7f18c62b0fb081f14ef485e77efbe4"
 )
 
 assert_protected_hashes() {
@@ -438,6 +442,8 @@ run_case dev-regression "${SCRIPT_DIR}/test-dev-session-v1.sh"
 run_case manager-regression "${SCRIPT_DIR}/test-runtime-manager-v1.sh"
 run_case engine-regression "${SCRIPT_DIR}/test-runtime-engine-v1.sh"
 run_case admission-regression "${SCRIPT_DIR}/test-runtime-admission-v1.sh"
+run_case database-state-regression python3 "${SCRIPT_DIR}/test-database-lifecycle-state-v1.py"
+run_case database-worker-regression python3 "${SCRIPT_DIR}/test-database-lifecycle-worker-v1.py"
 run_case integrated-capacity run_integrated_allocation_and_admission
 assert_protected_hashes
 
@@ -452,4 +458,4 @@ if find /tmp -maxdepth 1 -type d \
   fail "a regression suite left a temporary fixture behind"
 fi
 
-printf 'Project runtime contract v1 integration tests passed (8/8).\n'
+printf 'Project runtime contract v1 integration tests passed (10/10).\n'

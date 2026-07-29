@@ -16,12 +16,12 @@
 
 ## 3. Mediated AX42 database lifecycle
 
-- [ ] 3.1 Implement fixed create, migrate, seed, health, status, snapshot, replace, restore, stop and cleanup operations
-- [ ] 3.2 Derive rootless container, network, volume, endpoint and snapshot identities only from persisted ownership
-- [ ] 3.3 Implement verified pre-replacement snapshots and engine-specific atomic restore
-- [ ] 3.4 Reject caller endpoints, literal credentials, production-like targets and foreign/partial/ambiguous resources before mutation
-- [ ] 3.5 Add install, verify, default-disabled rollback and reconciliation tools without opening a host firewall port
-- [ ] 3.6 Add protocol/CLI, idempotence, ownership, confirmation, restart, retention and exact-cleanup tests
+- [x] 3.1 Implement fixed create, migrate, seed, health, status, snapshot, replace, restore, stop and cleanup operations
+- [x] 3.2 Derive rootless container, network, volume, endpoint and snapshot identities only from persisted ownership
+- [x] 3.3 Implement verified pre-replacement snapshots and engine-specific atomic restore
+- [x] 3.4 Reject caller endpoints, literal credentials, production-like targets and foreign/partial/ambiguous resources before mutation
+- [x] 3.5 Add install, verify, default-disabled rollback and reconciliation tools without opening a host firewall port
+- [x] 3.6 Add protocol/CLI, idempotence, ownership, confirmation, restart, retention and exact-cleanup tests
 
 ## 4. PostgreSQL synthetic lifecycle
 

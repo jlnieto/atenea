@@ -1766,3 +1766,56 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 3.1 of
 `establish-development-database-lifecycle`.
+
+Tasks 3.1–3.6 are complete and change progress is `16/37`. AX42 now has a
+root-owned fixed-operation database mediator, immutable state module, narrow
+`atenea-worker` client and one exact sudoers delegation. The installation is
+deliberately disabled: the enable marker is absent, reconciliation reports
+zero records and performs no implicit create or start, and there is no
+service, host listener, published database port or firewall rule.
+
+The mediator accepts only `register`, `create`, `migrate`, `seed`, `health`,
+`status`, `snapshot`, `prepare-replace`, `replace`, `restore`, `stop`,
+`cleanup`, `retain`, `reconcile` and `verify`. It derives the rootless slot,
+container, internal-only network, volume, image, endpoint and private snapshot
+path from the exact allocation, manifest and persisted database ownership.
+Caller endpoints, literal credentials, arbitrary Docker arguments,
+production-like manifests and partial/foreign/ambiguous resources have no
+accepted command surface and fail before resource mutation.
+
+PostgreSQL uses custom-format `pg_dump`/transactional `pg_restore`; MariaDB
+uses a single-transaction engine dump and fixed client restore. Replacement
+first consumes a one-use five-minute revision-bound confirmation, then creates
+and verifies an engine-native pre-replacement snapshot before deleting the
+complete exact projection. Secret values exist only in a mode-0600 ephemeral
+file owned by the admitted rootless slot user; outputs and evidence contain no
+value.
+
+The focused state suite passes `13/13`, the mediated worker suite passes
+`9/9`, and the expanded project-runtime integration suite passes `10/10`
+locally and on AX42. Repeated installation is idempotent and remains disabled.
+The four rootless inventories still match entry: Beautips remains the only
+slot1 workload, the two retained Phase 3 volumes remain in slot2, and slots
+3–4 have no project resources. There are zero database lifecycle containers,
+networks or volumes in every slot. Atenea is clean and synchronized at
+`b605c8d5b063e7321edd60fec2265ec7ddb84ea9` with all nine production/preview
+containers running; RAID remains `[UU]` and rootful Docker remains
+inactive/masked.
+
+The first AX42 integration invocation inherited an inaccessible administrative
+working directory and stopped before mutation; repeating from `/tmp` passed.
+The first install also exposed inherited setgid mode `2700` on the new state
+root and stopped while disabled; the installer now normalizes both private
+roots to `0700`, and its exact idempotent repetition passes. These corrections
+did not create a database record or Docker resource.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-3d-final-accepted`;
+the SHA-256 of its `SHA256SUMS` is
+`71692f364c6844745b698607e9441fe9cf4bad8626baaa5d26712b4a07613e25`.
+Earlier task-3, task-3b and task-3c runs are retained as superseded audit
+history; the accepted task-3d run proves the final warning-free binary at
+SHA-256 `785780ba9a29310f884300aecb4ec274bc9c72cdb196f7f7506550b42dc8d216`.
+
+The exact resume point is task 4.1 of
+`establish-development-database-lifecycle`.

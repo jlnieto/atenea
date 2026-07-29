@@ -471,6 +471,38 @@ On AX42 invoke it as `atenea-worker`. The staged schema and invalid corpus are
 test inputs only. The suite does not create a real mirror, WorkSession,
 project deployment, service, sudoers rule or rootful Docker authority.
 
+## Synthetic development database lifecycle
+
+`database-lifecycle-worker-v1.py` is the root-owned, fixed-operation boundary
+for PostgreSQL and MariaDB development fixtures. It accepts no caller endpoint,
+literal credential, arbitrary Docker argument or raw command. An exact
+persisted allocation and manifest determine the rootless slot, internal-only
+network, container, volume, engine image, migration/seed inputs and private
+snapshot identity.
+
+`install-database-lifecycle-v1.sh apply` installs the reviewed mediator, state
+module, narrow client and sudoers rule but deliberately leaves new operations
+disabled. `enable` creates one mode-0640 marker; `disable` removes it;
+`reconcile` reads persisted records without creating or starting resources;
+and `rollback` removes only the installed program boundary. No service,
+listener or firewall rule is introduced.
+
+The fixed CLI actions are `register`, `create`, `migrate`, `seed`, `health`,
+`status`, `snapshot`, `prepare-replace`, `replace`, `restore`, `stop`,
+`cleanup`, `retain`, `reconcile` and `verify`. Replacement consumes a one-use,
+five-minute, revision-bound confirmation, takes and verifies an engine-native
+pre-replacement snapshot before deleting an exact resource, and applies the
+fixed migration and seed sequence. Restore verifies size and SHA-256 before
+using the engine-native client. Cleanup first validates the complete persisted
+label set and can remove only the exact stopped synthetic projection.
+
+Run the focused non-Docker tests with:
+
+```bash
+python3 ./test-database-lifecycle-state-v1.py
+python3 ./test-database-lifecycle-worker-v1.py
+```
+
 ## Runtime health, browser evidence and cleanup
 
 Task 5.2 adds:
