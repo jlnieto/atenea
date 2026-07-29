@@ -62,7 +62,7 @@
 
 ## 8. Evidence and archive
 
-- [ ] 8.1 Retain sanitized commands, exit codes, finite timeouts, durations, screenshots and `SHA256SUMS`
+- [x] 8.1 Retain sanitized commands, exit codes, finite timeouts, durations, screenshots and `SHA256SUMS`
 - [ ] 8.2 Observe the disabled/clean project boundary through the declared finite window and rerun health/non-impact checks
 - [ ] 8.3 Run strict OpenSpec validation, confirm `45/45`, archive the completed change, commit and push both repositories
 - [ ] 8.4 Update the programme resume point to `onboard-beautips-on-ax42` and stop before enabling Beautips

@@ -2898,4 +2898,21 @@ Task 7.5 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `c39f1e78f4a57660c6975c0fc07bc09a22da21ed316b6d3884d0e31abee21091`.
 
-The exact resume point is task 8.1 of `onboard-atenea-on-ax42`.
+Task 8.1 revalidates all `20/20` preceding accepted evidence packages
+file-by-file. The rollup covers `381` files and `743150` bytes; all `85/85`
+modern command metadata records contain the sanitized command description,
+start/end timestamps, duration, exit code and finite timeout. It indexes the
+two retained Playwright screenshots and `97` command/meta ledger files.
+
+The prohibited-material audit finds zero forbidden filenames and zero risky
+content files. The final boundary remains disabled with zero registered
+workspaces, released normal/heavy admission, clean synchronized programme and
+Atenea Git, intact task 7.5 evidence and all three production, preview and
+Beautips health probes `UP`.
+
+Task 8.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-8.1-evidence-rollup`;
+the SHA-256 of its `SHA256SUMS` is
+`1fede0bb37fdac444d10a7cd50c031aaca1abe244e25d18f99c063609a644512`.
+
+The exact resume point is task 8.2 of `onboard-atenea-on-ax42`.
