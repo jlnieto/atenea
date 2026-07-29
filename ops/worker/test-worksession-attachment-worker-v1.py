@@ -57,7 +57,7 @@ class AttachmentStoreTest(unittest.TestCase):
 
     def test_create_is_atomic_scoped_and_idempotent(self):
         first, created = self.put()
-        second, created_again = self.put()
+        second, created_again = self.put(metadata=self.metadata(createdAt="2026-07-29T00:00:00Z"))
 
         self.assertTrue(created)
         self.assertFalse(created_again)

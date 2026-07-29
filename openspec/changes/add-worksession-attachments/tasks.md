@@ -22,10 +22,10 @@
 
 ## 4. Atenea API and clients
 
-- [ ] 4.1 Add default-off configuration and a finite-timeout authenticated worker client
-- [ ] 4.2 Add authenticated WorkSession upload, ordered list, exact metadata/content and screenshot-resolution APIs
-- [ ] 4.3 Prevent cross-session/project/run access and avoid exposing worker paths or sensitive errors
-- [ ] 4.4 Replace the global mobile upload path when the scoped capability is enabled while preserving disabled-mode compatibility
+- [x] 4.1 Add default-off configuration and a finite-timeout authenticated worker client
+- [x] 4.2 Add authenticated WorkSession upload, ordered list, exact metadata/content and screenshot-resolution APIs
+- [x] 4.3 Prevent cross-session/project/run access and avoid exposing worker paths or sensitive errors
+- [x] 4.4 Replace the global mobile upload path when the scoped capability is enabled while preserving disabled-mode compatibility
 
 ## 5. Operator web/mobile experience
 

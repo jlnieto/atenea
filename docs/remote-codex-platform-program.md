@@ -1022,13 +1022,34 @@ from Atenea tailnet identity `100.88.252.28`. The retained root is
 `0700 atenea-worker:atenea`, initially contains only its owned `.incoming` and
 `work-sessions` directories and starts no project runtime. Installed programme
 and unit SHA-256 identities match commit
-`dbf358c9b967e52999716a27873a7a5a4a2740b8`.
+`0cc8b7b09d00f45dde160400560890de15cbef52`. The follow-up aligns the worker
+route with Atenea's canonical positive-decimal WorkSession database identity;
+the attachment identity remains a UUID.
 
 AX42 strict verification and RAID pass after installation. All four slot
 inventories remain untouched and Beautips reports actuator health `UP`.
 Accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-worksession-attachments/runs/task-3-worker-storage`;
 the SHA-256 of its `SHA256SUMS` is
-`33ff974eb1131de2d7b60cb7279da2a7c33deef177812d63e500594a09c1013b`.
+`f81c159f533b399331c130187f94b7c17d2fe1f73410512aa59862ad4a55dc44`.
 
 The exact resume point is task 4.1 of `add-worksession-attachments`.
+
+Tasks 4.1–4.4 are complete and change progress is `17/31`. Atenea source commit
+`7a77923da458a4488aabb897860d13afb7c4ad58` adds default-off configuration,
+finite-timeout private worker authentication, WorkSession-scoped web/mobile
+upload and read APIs, exact integrity-checked download and bounded screenshot
+resolution. API responses omit worker paths and storage identities; existing
+Spring Security authentication covers every new `/api/**` route.
+
+Creation is limited to an exact synthetic project allowlist plus persisted
+remote worker affinity. Project identity is derived from the WorkSession and an
+optional AgentRun must belong to that same session. The legacy global mobile
+upload remains compatible while the capability is disabled and fails with an
+actionable WorkSession instruction when scoped attachment creation is enabled.
+The focused client, service, controller, metadata and compatibility suites pass
+`20/20`. The worker protocol also accepts a content-identical idempotent retry
+with a later request timestamp while retaining the original immutable
+`createdAt`; all other classification or content changes remain conflicts.
+
+The exact resume point is task 5.1 of `add-worksession-attachments`.

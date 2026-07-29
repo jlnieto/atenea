@@ -247,7 +247,6 @@ class AttachmentStore:
             "retentionClass": requested["retentionClass"],
             "sha256": requested["sha256"],
             "syntheticFixture": requested["syntheticFixture"],
-            "createdAt": requested["createdAt"],
         }
         if any(stored.get(key) != value for key, value in expected.items()):
             raise ProtocolError(
