@@ -385,6 +385,19 @@ assert_retained_volume() {
     fail RUNTIME_OWNERSHIP_CONFLICT "The retained PostgreSQL volume is absent or differs."
 }
 
+ensure_retained_volume() {
+  if ! docker_cmd volume inspect "${VOLUME}" >/dev/null 2>&1; then
+    docker_cmd volume create \
+      --label "com.atenea.engine=${ENGINE_LABEL}" \
+      --label "com.atenea.session=${SESSION}" \
+      --label "com.atenea.runtime=${RUNTIME}" \
+      --label com.atenea.project=atenea \
+      --label com.atenea.service=db \
+      "${VOLUME}" >/dev/null
+  fi
+  assert_retained_volume
+}
+
 assert_image() {
   local image="$1" expected_id="$2"
   docker_cmd image inspect "${image}" |
@@ -772,7 +785,7 @@ write_compose() {
 }
 
 start_runtime() {
-  assert_retained_volume
+  ensure_retained_volume
   assert_image "${POSTGRES_IMAGE}" \
     'sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20'
   assert_image "${CODEX_IMAGE}" "${CODEX_IMAGE_ID}"

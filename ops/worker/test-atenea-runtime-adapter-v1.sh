@@ -57,6 +57,7 @@ for required in \
   'SPRING_DATASOURCE_URL=jdbc:postgresql://${BUILD_DB_CONTAINER}:5432/atenea_test' \
   'ATENEA_WORKSPACE_ROOT=/workspace/repos' \
   '--tmpfs /workspace/repos:rw,nosuid,nodev,size=512m' \
+  'ensure_retained_volume' \
   'mvn -B -Dmaven.repo.local=/workspace/cache/maven/repository clean package'; do
   grep -Fq -- "${required}" "${ADAPTER_SOURCE}" ||
     fail "Atenea build adapter omits required command: ${required}"
