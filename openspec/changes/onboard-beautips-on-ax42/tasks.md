@@ -63,6 +63,6 @@
 
 ## 8. Evidence and archive
 
-- [ ] 8.1 Retain sanitized commands, exit codes, finite timeouts, durations, screenshots and `SHA256SUMS`
+- [x] 8.1 Retain sanitized commands, exit codes, finite timeouts, durations, screenshots and `SHA256SUMS`
 - [ ] 8.2 Observe the disabled/clean boundary for 15 minutes at minute 0, 5, 10 and 15 and rerun health/non-impact checks
 - [ ] 8.3 Confirm `45/45`, strictly validate, archive, commit/push affected repositories and stop before the next project

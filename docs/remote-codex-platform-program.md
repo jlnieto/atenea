@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `42/45`, with the exact
-  resume point at task 8.1
+  `45/45` and `onboard-beautips-on-ax42` is active at `43/45`, with the exact
+  resume point at task 8.2
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -4106,3 +4106,17 @@ the SHA-256 of its `SHA256SUMS` is
 `320dc72e85cc38a889423e18ed6186dc96afbf37f9bafa3f0eeed1294e4c9b7a`.
 
 The exact resume point is task 8.1 of `onboard-beautips-on-ax42`.
+
+Task 8.1 is complete and change progress is `43/45`. All 60 pre-existing
+sealed evidence packages validate file by file, covering 579 files and
+1,417,430 bytes. The rollup indexes the two accepted Playwright screenshots
+and 36 command metadata files. Filename and value-shape audits found zero
+retained auth files, environment dumps, cookies, credentials, tokens,
+authorization values, GitHub-token shapes or JWT shapes.
+
+Task 8.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-8.1-evidence-rollup`;
+the SHA-256 of its `SHA256SUMS` is
+`39b6a069bd459c2a7820edd4d7c47bce5385d672abd015ec11e28eb19526951f`.
+
+The exact resume point is task 8.2 of `onboard-beautips-on-ax42`.
