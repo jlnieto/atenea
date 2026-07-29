@@ -1586,13 +1586,27 @@ validated records in 52 ms. The worker preview state root now has zero records
 and zero child entries, with no control/ingress listener or coordinator
 process. Complete before/after worker diff contains no other change.
 
-The runtime remains healthy and loopback-only on `127.0.0.1:22243` because the
-design treats runtimes, worktrees and Git as separate resources and this task
-does not request preview-runtime teardown. Allocation/admission hashes,
-runtime container, worktree HEAD/tree/status, bare mirror HEAD/fsck, both
-attachment metadata/content pairs, all four rootless slot inventories,
-Beautips, RAID `[UU]`, base services, rootful Docker `inactive/masked` and
-every non-preview firewall rule are unchanged.
+The first projection-cleanup pass preserved the runtime because the design
+treats runtime, worktree and Git as separate resources. Before archive, the
+common Phase 6 rollback contract was rechecked and its explicit requirement to
+stop the synthetic preview runtime was correctly treated as the separate
+teardown authorization required by that design.
+
+The installed mediated runtime client then stopped the exact slot3 runtime as
+`stopped/stopped` in 616 ms. Only after validating immutable container,
+network and image IDs, their complete engine/session/runtime labels, the
+allocation hash, stopped state, engine owner marker and held admission record,
+the correction removed container `f08f9993b621…`, network `9fd22daf1cb5…`,
+image `sha256:b73b260ae26b…`, the owner-marked engine temporary root and its
+regular lock. Cleanup exited 0 in 670 ms and released only this WorkSession's
+slot3 admission.
+
+There are now zero session-owned containers, networks, images, volumes,
+runtime/preview listeners, browser processes and preview processes. The
+allocation record, released admission record, worktree HEAD/status, bare
+mirror HEAD/fsck, Git, logs, artifacts and both attachments remain. Beautips,
+RAID `[UU]`, base services, rootful Docker `inactive/masked`, every non-preview
+firewall rule and Atenea production/preview remain unchanged.
 
 The independent continuity database remains byte-identical with two preview
 audit rows, two attachment indexes and one synthetic AgentRun, proving worker
@@ -1604,6 +1618,11 @@ Accepted sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-7.3-exact-projection-cleanup`;
 the SHA-256 of its `SHA256SUMS` is
 `cf6edafe395f173e561520652278c8b65150294e3c5403f73257d6aff2153c24`.
+
+Accepted supplemental teardown evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-7.3b-runtime-teardown-correction`;
+the SHA-256 of its `SHA256SUMS` is
+`ccfcd5612968eb43aa50549a5f1197447ff5513beb7bc750f49a52f2f65f4903`.
 
 The exact resume point is task 7.4 of `add-private-session-previews`.
 
@@ -1630,10 +1649,12 @@ were stopped and removed, exiting 0 in 475 ms; both are absent. This does not
 down-migrate authoritative history, and the sealed task 7.3 evidence retains
 the observed audit, attachment-index and AgentRun counts.
 
-Final summaries retain zero AX42 preview records, listeners, processes and
-firewall rules, exact runtime identity, three unchanged Beautips containers,
-RAID `[UU]`, rootful Docker `inactive/masked`, nine unchanged Atenea
-production/preview containers and successful health probes.
+The supplemental task 7.3 teardown supersedes the rollup's interim live-runtime
+line. Final state retains zero AX42 preview records, session-owned containers,
+networks, images, volumes, runtime/preview listeners, browser/preview processes
+and preview firewall rules; three unchanged Beautips containers, RAID `[UU]`,
+rootful Docker `inactive/masked`, nine unchanged Atenea production/preview
+containers and successful health probes remain.
 
 Accepted sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-7.4-evidence-rollup`;
