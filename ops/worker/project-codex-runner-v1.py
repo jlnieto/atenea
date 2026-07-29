@@ -56,6 +56,20 @@ def codex_failure_reason(stderr: str) -> str:
     return "Codex execution failed: unclassified"
 
 
+def internal_failure_reason(exception: Exception) -> str:
+    allowed = {
+        "AttributeError",
+        "FileNotFoundError",
+        "OSError",
+        "PermissionError",
+        "TypeError",
+        "UnboundLocalError",
+        "ValueError",
+    }
+    name = type(exception).__name__
+    return "Project runner internal exception: " + (name if name in allowed else "Other")
+
+
 def load_json(path: Path) -> dict[str, Any]:
     try:
         stat = path.stat()
@@ -358,7 +372,12 @@ def main() -> int:
     workload, worktree = validate_request(request, config)
     record = config["workspaces"][request["workspaceIdentity"]]
     common_dir = validate_worktree(worktree, record)
-    result = execute(workload, worktree, common_dir, request["executionId"], args.timeout)
+    try:
+        result = execute(workload, worktree, common_dir, request["executionId"], args.timeout)
+    except SystemExit:
+        raise
+    except Exception as exception:
+        reject(internal_failure_reason(exception))
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
     return 0
 

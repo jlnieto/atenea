@@ -564,6 +564,14 @@ class WorkerState:
                 "Codex execution failed: network unavailable",
                 "Codex execution failed: thread persistence unavailable",
                 "Codex execution failed: unclassified",
+                "Project runner internal exception: AttributeError",
+                "Project runner internal exception: FileNotFoundError",
+                "Project runner internal exception: OSError",
+                "Project runner internal exception: PermissionError",
+                "Project runner internal exception: TypeError",
+                "Project runner internal exception: UnboundLocalError",
+                "Project runner internal exception: ValueError",
+                "Project runner internal exception: Other",
             )
             sanitized_runner_reason = next(
                 (candidate for candidate in allowed_runner_reasons if candidate in stderr),

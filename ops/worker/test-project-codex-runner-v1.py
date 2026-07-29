@@ -70,6 +70,16 @@ class ProjectCodexContractTest(unittest.TestCase):
             self.assertNotIn("token-value", reason)
             self.assertNotIn("/secret/path", reason)
 
+    def test_internal_failure_classification_retains_only_allowlisted_type(self):
+        self.assertEqual(
+            "Project runner internal exception: PermissionError",
+            MODULE.internal_failure_reason(PermissionError("token-value")),
+        )
+        self.assertEqual(
+            "Project runner internal exception: Other",
+            MODULE.internal_failure_reason(RuntimeError("token-value")),
+        )
+
     def test_sandbox_command_has_only_derived_mounts_and_prompt_stays_on_stdin(self):
         session_id = str(uuid.uuid4())
         worktree = Path("/srv/atenea/workspaces/sessions") / session_id / "atenea"
