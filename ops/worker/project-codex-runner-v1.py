@@ -288,13 +288,13 @@ def execute(
 ) -> dict[str, str]:
     with tempfile.TemporaryDirectory(prefix="atenea-codex-result-") as temporary:
         jose = pwd.getpwnam("jose")
-        os.chown(temporary, jose.pw_uid, jose.pw_gid)
         os.chmod(temporary, 0o700)
+        os.chown(temporary, jose.pw_uid, jose.pw_gid)
         final_path = Path(temporary) / "final.txt"
         resolv_path = Path(temporary) / "resolv.conf"
         resolv_path.write_text("nameserver 1.1.1.1\noptions timeout:2 attempts:2\n", encoding="ascii")
-        os.chown(resolv_path, jose.pw_uid, jose.pw_gid)
         os.chmod(resolv_path, 0o600)
+        os.chown(resolv_path, jose.pw_uid, jose.pw_gid)
         command = sandbox_command(
             workload,
             worktree,
