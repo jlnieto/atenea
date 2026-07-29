@@ -557,6 +557,7 @@ build_application() {
     --network "${BUILD_NETWORK}" \
     --read-only \
     --tmpfs /tmp:rw,noexec,nosuid,nodev,size=256m \
+    --tmpfs /workspace/repos:rw,nosuid,nodev,size=512m \
     --cap-drop ALL \
     --security-opt no-new-privileges:true \
     --pids-limit 1024 \

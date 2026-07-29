@@ -55,8 +55,9 @@ for required in \
   'npm ci --prefer-offline --no-audit' \
   'npm run build' \
   'SPRING_DATASOURCE_URL=jdbc:postgresql://${BUILD_DB_CONTAINER}:5432/atenea_test' \
+  '--tmpfs /workspace/repos:rw,nosuid,nodev,size=512m' \
   'mvn -B -Dmaven.repo.local=/workspace/cache/maven/repository clean package'; do
-  grep -Fq "${required}" "${ADAPTER_SOURCE}" ||
+  grep -Fq -- "${required}" "${ADAPTER_SOURCE}" ||
     fail "Atenea build adapter omits required command: ${required}"
 done
 if grep -Fq -- '-DskipTests' "${ADAPTER_SOURCE}"; then
