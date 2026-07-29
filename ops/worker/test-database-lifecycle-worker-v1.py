@@ -134,6 +134,8 @@ class WorkerTest(unittest.TestCase):
         self.lifecycle.apply_sql(DATABASE_ID, "seedPaths")
         healthy = self.lifecycle.health(DATABASE_ID)
         self.assertEqual("HEALTHY", healthy["state"])
+        self.assertEqual(healthy, self.lifecycle.apply_sql(DATABASE_ID, "migrationPaths"))
+        self.assertEqual(healthy, self.lifecycle.apply_sql(DATABASE_ID, "seedPaths"))
         status = self.lifecycle.status(DATABASE_ID)
         self.assertEqual(
             {"container": "present", "network": "present", "volume": "present"},

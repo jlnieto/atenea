@@ -10,6 +10,7 @@ import os
 import pwd
 import secrets
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -77,7 +78,12 @@ class Docker:
     def __init__(self, slot: str, timeout_seconds: int = 120):
         self.slot = slot
         self.timeout_seconds = timeout_seconds
-        self.socket = f"unix:///run/atenea-runtime/{slot}/docker.sock"
+        owner = pwd.getpwnam(f"atenea-{slot}")
+        socket_path = Path(f"/run/user/{owner.pw_uid}/docker.sock")
+        metadata = socket_path.stat()
+        if not stat.S_ISSOCK(metadata.st_mode) or metadata.st_uid != owner.pw_uid:
+            fail("DATABASE_ENGINE_UNAVAILABLE", "exact rootless slot socket is unsafe")
+        self.socket = f"unix://{socket_path}"
 
     def run(
         self,
@@ -445,7 +451,12 @@ class Lifecycle:
         record, manifest, worktree, docker = self.context(database_id)
         required = "CREATED" if kind == "migrationPaths" else "MIGRATED"
         target = "MIGRATED" if kind == "migrationPaths" else "SEEDED"
-        if record["state"] == target:
+        completed_states = (
+            {"MIGRATED", "SEEDED", "HEALTHY"}
+            if kind == "migrationPaths"
+            else {"SEEDED", "HEALTHY"}
+        )
+        if record["state"] in completed_states:
             return record
         if record["state"] != required:
             fail("DATABASE_TRANSITION_INVALID", "SQL operation is not valid in current state")

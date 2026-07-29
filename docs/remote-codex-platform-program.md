@@ -1859,3 +1859,35 @@ correction, SHA-256
 
 The exact resume point is task 4.2 of
 `establish-development-database-lifecycle`.
+
+Task 4.2 is complete and change progress is `18/37`. The fixed PostgreSQL
+migration advanced revision `2 -> 3`, the fixed seed advanced `3 -> 4`, and
+the fixed `select-one` health acceptance advanced `4 -> 5`. The resulting
+synthetic identity is one row and four declared columns; evidence retains only
+their counts and SHA-256-like MD5 comparison digests, never raw row content.
+
+Late retries of migrate, seed and health now return the existing `HEALTHY`
+revision `5` without re-executing SQL or changing state. The initial mediator
+had used the stable rootless proxy for `docker exec`; real acceptance showed
+that proxy carries normal Docker calls and stdin but drops hijacked stdout.
+The corrected mediator validates the persisted slot user's real Unix socket
+type and owner, then executes as that user against
+`/run/user/<slot-uid>/docker.sock`. It still cannot select rootful Docker or a
+caller-provided/foreign slot.
+
+The accepted resource has an internal-only network, no published port and no
+listener on allocated loopback port `24752`; a finite connection attempt is
+denied. Slot4 cannot inspect or enumerate any container, network or volume for
+the PostgreSQL WorkSession. Atenea production/preview remains nine running
+containers, Beautips remains three, RAID remains `[UU]` and rootful Docker
+remains inactive.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-4.2-postgresql-migrate-seed-health`;
+the SHA-256 of its `SHA256SUMS` is
+`d6672c69e49cdf11cae44974c4d6fbb4c585f0a8485ec13aab95d24b1948755f`.
+The accepted mediator SHA-256 is now
+`7ad5e07c7b0507a4032629c1db86102f2f8e6bebf62a0bd982ae0f761f4250e5`.
+
+The exact resume point is task 4.3 of
+`establish-development-database-lifecycle`.
