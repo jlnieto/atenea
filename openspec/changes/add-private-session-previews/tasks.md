@@ -39,7 +39,7 @@
 
 ## 6. Synthetic acceptance and continuity
 
-- [ ] 6.1 Activate one exact synthetic runtime preview and prove Internet/public-interface denial plus tailnet access
+- [x] 6.1 Activate one exact synthetic runtime preview and prove Internet/public-interface denial plus tailnet access
 - [ ] 6.2 Prove laptop and Android/private-client access resolve the same ready identity and no foreign WorkSession
 - [ ] 6.3 Prove the declared localhost tunnel case reaches the same preview without public exposure
 - [ ] 6.4 Run Playwright DOM and visual checks at `1440x900` and `390x844` and index exact WorkSession/AgentRun attachments

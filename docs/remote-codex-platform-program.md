@@ -1266,3 +1266,37 @@ the SHA-256 of its `SHA256SUMS` is
 `915d0f6ff2828c5a1b006d0e37f5ef1eea1f34fb8e6b17812d80cf0bb259b94a`.
 
 The exact resume point is task 6.1 of `add-private-session-previews`.
+
+Task 6.1 is complete and change progress is `25/37`. Exact synthetic
+WorkSession runtime `80b54495-88cf-4354-b1e4-aada1921644a` is
+`ready/healthy` in its persisted free `slot3` allocation, with runtime
+upstream bound only to `127.0.0.1:22243`. Preview
+`f106453b-601a-47f3-9272-adafaa58ec7b` is `READY` at the single tailnet
+projection `100.81.98.93:19000`; an exact duplicate activation returned the
+same byte-identical identity and created no second listener.
+
+The initial `slot2` allocation stopped before runtime creation because the
+retained Phase 2 allocation still owns that slot. No historical record was
+changed. Runtime-engine commit
+`4bc325c3e7d9cc1a2ad87d78a7ef60f3f63040ed` removed the synthetic fixture's
+obsolete `slot2` constant, accepts only the allocation's validated
+`slot1`–`slot4` identity and adds `slot3` regression coverage. The new
+session's admission was released from `slot2`, reacquired exactly in free
+`slot3`, and the root-owned engine was installed with SHA-256
+`48bc54324bf39086401fc7430a1b9b8048bcb6bd37e028bf8cad80e92bc4360e`.
+
+Atenea reached the fixture over Tailscale with HTTP 200. Independent probes
+from Atenea and the operator host to AX42's public address on ingress,
+coordinator and runtime ports all timed out with HTTP 000. `ss` proves the
+preview listener binds only the AX42 tailnet address, the runtime remains
+loopback-only, unauthenticated control returned 401 and an injected public
+sharing request returned 400 without changing the private route. Rootful
+Docker remains inactive/masked; RAID is `[UU]`; production, preview and
+Beautips retain their accepted inventories.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-6.1-synthetic-private-preview`;
+the SHA-256 of its `SHA256SUMS` is
+`ed59877411b6eafb5e3d1668a826a5ed8d48c3c946debe936339e028522d3147`.
+
+The exact resume point is task 6.2 of `add-private-session-previews`.
