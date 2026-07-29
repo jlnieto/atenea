@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `40/45`, with the exact
-  resume point at task 7.4
+  `45/45` and `onboard-beautips-on-ax42` is active at `41/45`, with the exact
+  resume point at task 7.5
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -4067,3 +4067,19 @@ its `SHA256SUMS` hash is
 `6d351ceea4a05eaad092fec129e1f31694fe5deb860ff1022be186171cffb3db`.
 
 The exact resume point is task 7.4 of `onboard-beautips-on-ax42`.
+
+Task 7.4 is complete and change progress is `41/45`. Read-only comparison
+retained the three exact administrative slot 1 container IDs and proved all
+nine accepted Atenea production/preview rootful Docker identities byte-exact.
+Slots 2–4 contain no containers; all four rootless Docker daemons and
+restricted proxies are active. AX42 RAID remains `[UU]`, storage is healthy,
+SSH, Tailscale and platform services are active, and administrative Beautips,
+production, preview and isolated control are `UP`. No lifecycle or foreign
+resource mutation was performed.
+
+Task 7.4 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-7.4-nonimpact-fingerprints`;
+the SHA-256 of its `SHA256SUMS` is
+`4c1f3d71c2030e5f5d58c911fdfd6e4d2ca9427aa10073c81ab78165fb003e22`.
+
+The exact resume point is task 7.5 of `onboard-beautips-on-ax42`.
