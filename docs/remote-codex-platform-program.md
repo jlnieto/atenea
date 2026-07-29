@@ -1891,3 +1891,32 @@ The accepted mediator SHA-256 is now
 
 The exact resume point is task 4.3 of
 `establish-development-database-lifecycle`.
+
+Task 4.3 is complete and change progress is `19/37`. An explicit
+custom-format PostgreSQL snapshot was stored privately at revision `5`, then
+one replacement challenge advanced the bound revision to `6`. Its value lived
+only in memory, expired after five minutes by contract and is absent from
+evidence; persisted audit retains only its SHA-256, operation UUID
+`276ea038-61ad-4058-9cad-dcd1f039b45e`, bound revision and consumed state.
+
+Confirmed replacement created and verified a second engine-native snapshot
+before removing any exact database resource. It then replaced only the
+session-labelled container/network/volume projection, reapplied the fixed
+migration and seed, and returned `HEALTHY` at revision `13`. The container
+immutable ID changed while the persisted resource names, allocation, slot,
+project, WorkSession and database identities remained constant. The
+deterministic row count/digest still matches.
+
+Both raw snapshots remain mode-0600 beneath the private snapshot root. Their
+byte counts and SHA-256 values match immutable metadata; neither dump nor a raw
+row is attached. The accepted initial interactive run retained fixed
+timeouts/exit codes but not per-command duration, so task 4.5 will repeat the
+whole lifecycle with a duration-bearing harness.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-4.3-postgresql-confirmed-replacement`;
+the SHA-256 of its `SHA256SUMS` is
+`6f42070eba6b6490d0d6eb1c3cd8f9a2dc7c48426458e1d4e7aef4e47cb2ddd2`.
+
+The exact resume point is task 4.4 of
+`establish-development-database-lifecycle`.
