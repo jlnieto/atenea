@@ -1606,3 +1606,38 @@ the SHA-256 of its `SHA256SUMS` is
 `cf6edafe395f173e561520652278c8b65150294e3c5403f73257d6aff2153c24`.
 
 The exact resume point is task 7.4 of `add-private-session-previews`.
+
+Task 7.4 is complete and change progress is `36/37`. The Phase 6 chain of
+custody now indexes and independently verifies 15 artifact sets across their
+owning hosts: entry gate and tasks 3–5 on Atenea, then tasks 6.1–7.3 on AX42.
+Every internal `sha256sum -c SHA256SUMS` passes and every outer hash matches
+the immutable value in this ledger.
+
+Fifteen accepted PNGs remain indexed by exact SHA-256 across the operator UI,
+private Playwright attachment and disabled-affordance evidence, including
+desktop and mobile viewports. Command ledgers retain exit codes, finite
+timeouts and durations. Bounded filename-only sanitization audits on both
+artifact roots found zero credential-bearing patterns and zero forbidden auth,
+cookie or credential filenames.
+
+After task 7.3 sealed its retained database counts, the independent local
+continuity database was resolved as disposable acceptance infrastructure by
+its pre-recorded container and anonymous-volume identities. Only container
+`2a18dabc20cd1716106e2ec82c08829ecdc879d239f4b11f28cfe88f8b055c1c`
+and volume
+`bf9b660be492ab5eda170dc449a8ec887e79b7894faa4de51cdbcf16352923b8`
+were stopped and removed, exiting 0 in 475 ms; both are absent. This does not
+down-migrate authoritative history, and the sealed task 7.3 evidence retains
+the observed audit, attachment-index and AgentRun counts.
+
+Final summaries retain zero AX42 preview records, listeners, processes and
+firewall rules, exact runtime identity, three unchanged Beautips containers,
+RAID `[UU]`, rootful Docker `inactive/masked`, nine unchanged Atenea
+production/preview containers and successful health probes.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-7.4-evidence-rollup`;
+the SHA-256 of its `SHA256SUMS` is
+`1c1b57d6a4f828e569e388b52c2439af02bde20ed91f7984bb2b1f4192563e28`.
+
+The exact resume point is task 7.5 of `add-private-session-previews`.
