@@ -188,9 +188,8 @@ blocked until independent external backup is configured and restore-tested.
 complete. Its synthetic PostgreSQL and MariaDB fixtures were restored,
 rollback-tested and exact-cleaned; database automation remains disabled and
 real-project activation remains blocked on individual onboarding plus an
-independent restore-tested backup. The exact resume point is the Phase 8
-individual-project onboarding entry gate, beginning with an explicit pilot
-selection and repository synchronization review.
+independent restore-tested backup. `onboard-atenea-on-ax42` is the active
+Phase 8 project change at `7/45`; no real-project workload is enabled yet.
 
 ## Decision log
 
@@ -229,6 +228,9 @@ selection and repository synchronization review.
 | D-031 | Limit Phase 7 to deterministic PostgreSQL and MariaDB fixtures containing no production-derived rows. | Database ownership, replacement and restore can be proven without granting AX42 production connectivity or adopting retained real-project volumes. | accepted for synthetic Phase 7 | data owner | each project onboarding |
 | D-032 | Keep at most three synthetic snapshots for seven days and require a one-use five-minute revision-bound replacement challenge plus verified pre-snapshot. | Bounded local evidence and explicit destructive intent are sufficient for recreatable fixtures; authoritative retention remains blocked on external backup. | accepted for synthetic Phase 7 | data/operations owners | before authoritative database activation |
 | D-033 | Archive a closed synthetic WorkSession's byte-exact allocation record only after its admission is released and its exact runtime resources are absent. | A released slot must become reusable without discarding immutable allocation evidence, worktree, mirror, Git, logs or artifacts. | accepted for completed synthetic fixtures | runtime owner | before general allocation retirement support |
+| D-034 | Onboard Atenea first and Beautips second; keep every other project independently disabled. | Phase 8 requires one archived change per project and Atenea already has the strongest canonical manifest/relocation evidence. | accepted | programme owner | after Atenea archive |
+| D-035 | Run the first managed real Codex workload through bounded `codex exec` as the already authenticated AX42 administrative identity without copying or reading its authentication cache. | The service identity is deliberately unauthenticated; the documented ephemeral probe proves usable ChatGPT authentication while preserving the forbidden-auth boundary. | accepted for Atenea pilot | security/runtime owners | before expanding beyond the pilot |
+| D-036 | Keep Atenea onboarding artifacts non-authoritative and its database empty-migrated plus synthetic until an external backup has passed restore. | RAID and retained acceptance evidence do not satisfy authoritative project backup. | accepted | data/operations owners | before any real retained data |
 
 ## Deferred decisions and gates
 
@@ -2348,3 +2350,41 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is the Phase 8 individual-project onboarding entry
 gate. No real project has been activated by Phase 7.
+
+## Phase 8 progress: onboard-atenea-on-ax42
+
+Tasks 1.1–1.7 are complete and change progress is `7/45`. The entry gate pins
+GitHub `jlnieto/atenea`, branch
+`feature/actualizar-conversacion-en-web`, commit
+`b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
+`3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3`.
+Atenea source and its control-plane checkout are clean and synchronized; the
+Dropbox `atenea` folder is four documentation files, not a Git source.
+
+The first two projects are explicitly ordered Atenea then Beautips. All other
+projects remain disabled. Atenea uses empty migrated PostgreSQL plus declared
+synthetic fixtures, requires no localhost preview compatibility, publishes
+only an exact WorkSession draft delivery and keeps all non-Git artifacts
+non-authoritative until an external backup passes restore.
+
+Following the current Codex non-interactive contract, an isolated probe used
+`codex exec --ephemeral`, ignored user config/rules, selected a read-only
+sandbox and completed in `4873 ms`. Only exit code, timeout, duration and
+expected-output SHA-256 were retained. `codex login status` identified the
+authentication method, but no `auth.json`, internal session, token, cookie,
+credential or environment was read or copied by orchestration. The real pilot
+will use bounded workspace-write execution and persist only the thread/turn
+identities required by the WorkSession contract.
+
+AX42 retains four active rootless daemons, free container slots 2–4, three
+running Beautips containers, three RAID arrays `[UU]`, active Tailscale/UFW,
+inactive rootful Docker and disabled real worker/preview/database capabilities.
+Atenea retains nine running production/preview containers. No runtime, route,
+database or real AgentRun was created by the gate.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/entry-gate`;
+the SHA-256 of its `SHA256SUMS` is
+`fdaf300e4057ce174785a55dee832ff1cac78db8aee4bb0ca8604a1a3a1ba049`.
+
+The exact resume point is task 2.1 of `onboard-atenea-on-ax42`.
