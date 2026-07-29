@@ -159,6 +159,21 @@ class PreviewCoordinatorTest(unittest.TestCase):
         self.assertTrue(deleted["deleted"])
         self.assertFalse((self.state_root / "previews" / PREVIEW_ID).exists())
 
+    def test_unlabelled_candidate_cannot_be_deleted_or_modified(self) -> None:
+        candidate = self.state_root / "previews" / PREVIEW_ID
+        candidate.mkdir(parents=True)
+        payload = candidate / "foreign-resource"
+        payload.write_bytes(b"unlabelled-preview-like-resource")
+        fingerprint = hashlib.sha256(payload.read_bytes()).hexdigest()
+
+        with self.assertRaisesRegex(MODULE.ProtocolError, "does not exist"):
+            self.coordinator.delete_synthetic(
+                PREVIEW_ID, self._operation_request(expected_revision=3)
+            )
+
+        self.assertTrue(candidate.is_dir())
+        self.assertEqual(fingerprint, hashlib.sha256(payload.read_bytes()).hexdigest())
+
     def test_partial_persisted_record_fails_closed_and_remains_unchanged(self) -> None:
         self.coordinator.activate(PREVIEW_ID, self._activate_request())
         self.coordinator.close()

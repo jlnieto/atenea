@@ -1542,3 +1542,34 @@ the SHA-256 of its `SHA256SUMS` is
 `f47c42242bcca2d482f0df879a455ddfbf9471483fc4b79cf1a0e52e52509e90`.
 
 The exact resume point is task 7.2 of `add-private-session-previews`.
+
+Task 7.2 is complete and change progress is `34/37`. The first exact AX42
+rollback exited 0 in 547 ms and changed only the two Phase 6 UFW entries: the
+control rule on `8789/tcp` from Atenea and the bounded tailnet ingress rule on
+`19000–19031/tcp`. The coordinator remained disabled/inactive and no
+coordinator or ingress process was started.
+
+The identical rollback was repeated with the same immutable control-plane
+identity and finite timeout. It exited 0 in 264 ms; complete worker
+fingerprints after the first and second executions are byte-identical.
+All three terminal preview record hashes, the runtime allocation/admission,
+runtime container, worktree Git, attachment service, rootless inventories,
+Beautips, RAID and every non-preview firewall rule remained unchanged.
+Production and preview retained the same nine container identities and both
+health probes returned HTTP 302.
+
+The coordinator regression now includes an explicit unlabelled preview-like
+candidate and proves its directory and payload hash remain unchanged after
+rejection. Together with the existing partial-record, foreign non-synthetic
+record and ambiguous allocation cases, it proves fail-closed preservation for
+all four required classes. The accepted suite passes `13/13` locally and
+`13/13` on AX42 from isolated temporary directories. No installed coordinator,
+listener or projection was created, all suite directories are absent and only
+the exact three-file staging directory was removed.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-7.2-idempotent-rollback-rejection`;
+the SHA-256 of its `SHA256SUMS` is
+`8a7d51fbcf435a8cbd67b5e72978b65fc8160ffc9495810f1413c67c98e50f20`.
+
+The exact resume point is task 7.3 of `add-private-session-previews`.
