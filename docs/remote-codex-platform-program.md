@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–5.6 are complete and change progress is `31/45`. The entry gate pins
+Tasks 1.1–6.1 are complete and change progress is `32/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2626,4 +2626,38 @@ Task 5.6 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `8e68d17226bff549222d9166fe1fd175fa51879ef8b52169f0846c3dd307ed55`.
 
-The exact resume point is task 6.1 of `onboard-atenea-on-ax42`.
+Task 6.1 commits the canonical documentation change as
+`0230c6b973692205ed9a17f8015cd151269d8080`, tree
+`d2feee00f9ab2efdb858f77b47536dcb638e1639`, on exact branch
+`atenea/session-c20f3cde-9a64-4c7b-a674-7b63f94ca475`. The AX42 worktree and
+both disposable control-plane checkouts are clean.
+
+The normal authenticated Atenea publish endpoint created draft pull request
+`jlnieto/atenea#4`. GitHub reports exact base
+`feature/actualizar-conversacion-en-web` at
+`649edba356e104695ce7ca0713f9b86e54b02d36`, exact WorkSession head at the
+commit above, one documentation commit, state `OPEN`, `isDraft=true` and
+`MERGEABLE`. Atenea persisted the same branch, URL and final commit.
+
+Delivery now creates draft pull requests and reuses a pre-existing remote
+WorkSession branch only when its head equals the local head. Missing branches
+use a normal non-force push; different or ambiguous heads fail closed before
+GitHub mutation. The disposable control plane additionally consumes GitHub
+authentication through a named token file. Its first tokenless real publish
+failed closed with HTTP 502; the accepted attempt consumed an ephemeral
+credential without putting it in configuration, arguments, output or
+evidence. The exact secret file, external acceptance configuration, Git bundle
+and transfer ref were removed immediately after use.
+
+Focused delivery tests pass `7/7`, the named-token-file test passes `1/1` and
+the final complete regression passes `397/397`. The runtime remains `UP` with
+the same three containers, internal network and retained PostgreSQL volume;
+the nine production/preview containers and three Beautips containers remain
+unchanged.
+
+Task 6.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-6.1-draft-delivery`;
+the SHA-256 of its `SHA256SUMS` is
+`01631b47930c76270433c15c876a0686b6af476516edddaa152e2f0eed8fae78`.
+
+The exact resume point is task 6.2 of `onboard-atenea-on-ax42`.
