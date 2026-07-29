@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "id": "database-mariadb",
+    "repository": {
+      "url": "https://github.com/example/database-mariadb.git",
+      "defaultBranch": "main"
+    }
+  },
+  "toolchains": [
+    {"name": "docker", "version": "29.6.2", "source": "worker-package"}
+  ],
+  "runtime": {
+    "kind": "compose",
+    "composeFiles": ["compose.json"],
+    "services": ["fixture"],
+    "internalPorts": [
+      {"name": "database", "port": 3306, "protocol": "tcp"}
+    ]
+  },
+  "lifecycle": {
+    "build": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "build"], "timeoutSeconds": 600},
+    "start": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "up"], "timeoutSeconds": 120},
+    "stop": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "stop"], "timeoutSeconds": 120},
+    "health": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "health"], "timeoutSeconds": 30},
+    "logs": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "logs"], "timeoutSeconds": 30}
+  },
+  "preview": {
+    "internalPort": "database",
+    "path": "/",
+    "publish": "private",
+    "command": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "preview"], "timeoutSeconds": 30},
+    "localhostCompatibilityRequired": false
+  },
+  "browserChecks": [
+    {
+      "name": "database-health",
+      "path": "/health",
+      "command": {"argv": ["MANIFEST_ARGV_MUST_NOT_RUN", "browser"], "timeoutSeconds": 30},
+      "viewports": ["desktop-1440x900"],
+      "artifact": "artifacts/database/health"
+    }
+  ],
+  "artifacts": [
+    {"name": "database-report", "path": "artifacts/database", "retention": "session"}
+  ],
+  "secrets": [
+    {
+      "name": "PHASE7_DATABASE_PASSWORD",
+      "purpose": "Synthetic MariaDB fixture authentication",
+      "exposure": "database",
+      "required": true
+    }
+  ],
+  "workloadClass": "normal",
+  "database": {
+    "schemaVersion": 1,
+    "classification": "synthetic-development",
+    "syntheticDevelopmentFixture": true,
+    "engine": "mariadb",
+    "image": "mariadb:11.4@sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+    "databaseName": "synthetic_phase7_mariadb",
+    "portName": "database",
+    "migrationPaths": ["database/migrations/001-create-items.sql"],
+    "seedPaths": ["database/seeds/001-items.sql"],
+    "secretRef": "PHASE7_DATABASE_PASSWORD",
+    "healthCheck": "select-one",
+    "snapshotFormat": "mariadb-sql-v1",
+    "retention": {"maxCopies": 3, "maxAgeDays": 7},
+    "replacementMode": "explicit-confirmed"
+  }
+}

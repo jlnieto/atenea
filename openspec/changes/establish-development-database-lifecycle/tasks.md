@@ -8,11 +8,11 @@
 
 ## 2. Manifest and ownership contract
 
-- [ ] 2.1 Add a versioned optional database manifest schema with pinned engines, fixed migration/seed inputs and named secrets
-- [ ] 2.2 Add immutable database, WorkSession, project, worker, allocation, slot, volume, manifest and lifecycle records
-- [ ] 2.3 Add monotonic idempotent transitions and one-use five-minute replacement challenges
-- [ ] 2.4 Add private SHA-256 snapshot metadata with three-copy/seven-day synthetic retention
-- [ ] 2.5 Add schema, ownership, revision, challenge, retention and production-denial unit tests
+- [x] 2.1 Add a versioned optional database manifest schema with pinned engines, fixed migration/seed inputs and named secrets
+- [x] 2.2 Add immutable database, WorkSession, project, worker, allocation, slot, volume, manifest and lifecycle records
+- [x] 2.3 Add monotonic idempotent transitions and one-use five-minute replacement challenges
+- [x] 2.4 Add private SHA-256 snapshot metadata with three-copy/seven-day synthetic retention
+- [x] 2.5 Add schema, ownership, revision, challenge, retention and production-denial unit tests
 
 ## 3. Mediated AX42 database lifecycle
 

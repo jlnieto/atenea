@@ -1733,3 +1733,36 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 2.1 of
 `establish-development-database-lifecycle`.
+
+Tasks 2.1–2.5 are complete and change progress is `10/37`. The runtime
+manifest now has one optional closed database contract accepting only pinned
+PostgreSQL or MariaDB images, exact synthetic-development classification,
+relative deterministic migration/seed inputs, one declared database port,
+one required named database secret and fixed health, snapshot, retention and
+explicit-replacement policies.
+
+The two accepted fixtures contain only versioned generated schema and one seed
+row each. A dependency-free state layer persists canonical database/
+WorkSession/project/worker/allocation/slot/manifest ownership, derives
+container/network/volume identities and writes strictly validated atomic
+mode-0600 records. Lifecycle revisions are monotonic and idempotent.
+Replacement challenges store only a SHA-256, bind to one revision, expire
+after five minutes and are consumable once.
+
+Private snapshot metadata binds exact ownership, lifecycle revision, byte
+count and SHA-256. Retention selects but does not delete only exact synthetic
+snapshots older than seven days or beyond three copies; foreign metadata fails
+closed unchanged.
+
+The focused state/schema suite passes `13/13` locally and `13/13` on AX42.
+The complete project-runtime contract passes `8/8`. All isolated staging and
+state-test directories are absent; no worker component was installed and no
+runtime, volume, service, firewall, Beautips or production resource changed.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-2-manifest-state-contract`;
+the SHA-256 of its `SHA256SUMS` is
+`883533db49f7e1ffb98c088f053f838e935186dfe413b158fdf725b6088b2a47`.
+
+The exact resume point is task 3.1 of
+`establish-development-database-lifecycle`.

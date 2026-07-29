@@ -71,6 +71,9 @@
         "normal",
         "heavy"
       ]
+    },
+    "database": {
+      "$ref": "#/$defs/database"
     }
   },
   "$defs": {
@@ -401,6 +404,144 @@
         }
       }
     },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "classification",
+        "syntheticDevelopmentFixture",
+        "engine",
+        "image",
+        "databaseName",
+        "portName",
+        "migrationPaths",
+        "seedPaths",
+        "secretRef",
+        "healthCheck",
+        "snapshotFormat",
+        "retention",
+        "replacementMode"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "classification": {
+          "const": "synthetic-development"
+        },
+        "syntheticDevelopmentFixture": {
+          "const": true
+        },
+        "engine": {
+          "enum": [
+            "postgresql",
+            "mariadb"
+          ]
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^(postgres|mariadb):[0-9]+(?:\\.[0-9]+){0,2}@sha256:[a-f0-9]{64}$"
+        },
+        "databaseName": {
+          "type": "string",
+          "pattern": "^synthetic_[a-z][a-z0-9_]{2,47}$"
+        },
+        "portName": {
+          "$ref": "#/$defs/identifier"
+        },
+        "migrationPaths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/relativePath"
+          }
+        },
+        "seedPaths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/relativePath"
+          }
+        },
+        "secretRef": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "healthCheck": {
+          "const": "select-one"
+        },
+        "snapshotFormat": {
+          "enum": [
+            "postgres-custom-v1",
+            "mariadb-sql-v1"
+          ]
+        },
+        "retention": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maxCopies",
+            "maxAgeDays"
+          ],
+          "properties": {
+            "maxCopies": {
+              "const": 3
+            },
+            "maxAgeDays": {
+              "const": 7
+            }
+          }
+        },
+        "replacementMode": {
+          "const": "explicit-confirmed"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "engine": {
+                "const": "postgresql"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "image": {
+                "pattern": "^postgres:"
+              },
+              "snapshotFormat": {
+                "const": "postgres-custom-v1"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "engine": {
+                "const": "mariadb"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "image": {
+                "pattern": "^mariadb:"
+              },
+              "snapshotFormat": {
+                "const": "mariadb-sql-v1"
+              }
+            }
+          }
+        }
+      ]
+    },
     "secret": {
       "type": "object",
       "additionalProperties": false,
@@ -423,7 +564,8 @@
           "enum": [
             "build",
             "runtime",
-            "browser"
+            "browser",
+            "database"
           ]
         },
         "required": {

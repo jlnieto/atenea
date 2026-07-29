@@ -47,6 +47,11 @@ declare -A PROTECTED_HASHES=(
   ["ops/worker/test-runtime-admission-v1.sh"]="aaa1b37d2dfc9d5eefecd7f9128b724bd8db69e138a719b977acec2d21bcaa86"
   ["runtime-contract/fixtures/valid/dummy-compose/runtime.json"]="db26ac0eb81d38c23c7883f2dda2c95c7dcbd3e4a9ee3509438293096938c5cb"
   ["runtime-contract/fixtures/valid/dummy-tomcat/runtime.json"]="f36c7a10e65cd148f4bbc0aa29fa6efdd5e097a0d9d573967cea20cf469f9d6a"
+  ["runtime-contract/project-runtime-v1.schema.json"]="b5292048a54f3cb4952dd7f7a0dab15e4dddb71fcc7dbe05e228c11a2ffd8652"
+  ["runtime-contract/fixtures/valid/database-postgresql/runtime.json"]="c1d55666315020eb439cffdf35d352ac343d7dfc75ea80ea842660dedc8db603"
+  ["runtime-contract/fixtures/valid/database-mariadb/runtime.json"]="cbd2264a7900871cb4969cb6d5587863f6c4df4278ca2c408d886027cddec8a1"
+  ["ops/worker/database-lifecycle-state-v1.py"]="209d4ade62737b47d2e0b1fd790c969111c0a924acfa0c386cd217eae0ce1c66"
+  ["ops/worker/test-database-lifecycle-state-v1.py"]="ea3ba6489289757e3844ac0b8fdf89b36c7b22d2567bae03ebbdfdee6f39be6d"
 )
 
 assert_protected_hashes() {
@@ -93,6 +98,8 @@ validate_schema_corpus() {
       python3 - "${schema}" \
         "${REPO_ROOT}/runtime-contract/fixtures/valid/dummy-compose/runtime.json" \
         "${REPO_ROOT}/runtime-contract/fixtures/valid/dummy-tomcat/runtime.json" \
+        "${REPO_ROOT}/runtime-contract/fixtures/valid/database-postgresql/runtime.json" \
+        "${REPO_ROOT}/runtime-contract/fixtures/valid/database-mariadb/runtime.json" \
         "${REPO_ROOT}/runtime-contract/fixtures/invalid" <<'PY'
 import json
 import pathlib
@@ -100,12 +107,12 @@ import sys
 
 from jsonschema import Draft202012Validator, FormatChecker
 
-schema_path, compose_path, tomcat_path, invalid_root = sys.argv[1:]
+schema_path, compose_path, tomcat_path, postgresql_path, mariadb_path, invalid_root = sys.argv[1:]
 with open(schema_path, encoding="utf-8") as handle:
     schema = json.load(handle)
 Draft202012Validator.check_schema(schema)
 validator = Draft202012Validator(schema, format_checker=FormatChecker())
-for valid_path in (compose_path, tomcat_path):
+for valid_path in (compose_path, tomcat_path, postgresql_path, mariadb_path):
     with open(valid_path, encoding="utf-8") as handle:
         validator.validate(json.load(handle))
 for invalid_path in sorted(pathlib.Path(invalid_root).glob("*.json")):
@@ -120,6 +127,7 @@ PY
   # AX42 intentionally has no host-global jsonschema package. Keep its
   # dependency-free check explicit and pair it with the manager denial suite.
   jq -e '
+    . as $manifest |
     .schemaVersion == 1 and
     (.project.id == "dummy-compose" or .project.id == "dummy-tomcat") and
     (.runtime.internalPorts == [
@@ -128,6 +136,23 @@ PY
   ' \
     "${REPO_ROOT}/runtime-contract/fixtures/valid/dummy-compose/runtime.json" \
     "${REPO_ROOT}/runtime-contract/fixtures/valid/dummy-tomcat/runtime.json" \
+    >/dev/null
+  jq -e '
+    .schemaVersion == 1 and
+    .database.schemaVersion == 1 and
+    .database.classification == "synthetic-development" and
+    .database.syntheticDevelopmentFixture == true and
+    .database.replacementMode == "explicit-confirmed" and
+    .database.retention == {maxCopies: 3, maxAgeDays: 7} and
+    (.database.image | test("@sha256:[a-f0-9]{64}$")) and
+    ([.secrets[] | select(
+      .name == $manifest.database.secretRef and
+      .exposure == "database" and
+      .required == true
+    )] | length == 1)
+  ' \
+    "${REPO_ROOT}/runtime-contract/fixtures/valid/database-postgresql/runtime.json" \
+    "${REPO_ROOT}/runtime-contract/fixtures/valid/database-mariadb/runtime.json" \
     >/dev/null
   jq -e '.runtime.composeFiles[0] | startswith("/")' \
     "${REPO_ROOT}/runtime-contract/fixtures/invalid/absolute-path.json" >/dev/null
