@@ -42,7 +42,7 @@
 - [x] 6.1 Activate one exact synthetic runtime preview and prove Internet/public-interface denial plus tailnet access
 - [x] 6.2 Prove laptop and Android/private-client access resolve the same ready identity and no foreign WorkSession
 - [x] 6.3 Prove the declared localhost tunnel case reaches the same preview without public exposure
-- [ ] 6.4 Run Playwright DOM and visual checks at `1440x900` and `390x844` and index exact WorkSession/AgentRun attachments
+- [x] 6.4 Run Playwright DOM and visual checks at `1440x900` and `390x844` and index exact WorkSession/AgentRun attachments
 - [ ] 6.5 Prove artifacts survive preview teardown while route/listener/browser processes disappear
 - [ ] 6.6 Prove coordinator and Atenea restart reconciliation restores only persisted unexpired ownership
 - [ ] 6.7 Prove lease expiry and hard-stop behavior revoke the route within 60 seconds without changing runtime, Git or attachments

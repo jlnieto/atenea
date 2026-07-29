@@ -1349,3 +1349,40 @@ the SHA-256 of its `SHA256SUMS` is
 `71afeff381ff56b83c20d24ef4c7b75226420fa4dc62ebbec06ed457e19c2f8a`.
 
 The exact resume point is task 6.4 of `add-private-session-previews`.
+
+Task 6.4 is complete and change progress is `28/37`. A single exact-labelled
+Playwright 1.60.0 container ran on the synthetic runtime network with no
+published port, all capabilities dropped, read-only root and finite timeouts.
+It asserted HTTP success, visible body text and the expected fixture identity
+at `1440x900` and `390x844`. Both records report `textLength=66`, no clipping
+and no horizontal overflow. The inspected desktop and mobile screenshots show
+all content visibly within their viewports; the narrow rendering wraps without
+overflow.
+
+The first browser attempt stopped before navigation because the read-only
+container lacked a writable Playwright `/tmp`. Its exact diagnostic container
+was removed. The accepted run uses a bounded noexec/nosuid tmpfs, completed in
+1968 ms, closed pages, contexts and Chromium in `finally`, and left zero
+browser containers or browser processes.
+
+Desktop attachment `905681df-c014-47f0-9e0c-01f59c3d1eae` and mobile
+attachment `5639d847-445b-441d-8a33-70037709bc53` were accepted through the
+authenticated AX42 attachment boundary as `BROWSER_SCREENSHOT/IMAGE` evidence.
+Their downloaded SHA-256 values exactly match the Playwright registry:
+`9c52eccafaf54635063809ac3a4deabf788e821b5fecf33e7f785ae308282f26`
+and
+`e5f912bcdf5e695733df61f91cf24513d85856ae83ba398e3ee568073c27c6f5`.
+
+The isolated non-production `atenea_test` database has all 48 Flyway rows and
+indexes both attachments under exact WorkSession `96061`, project `9606`,
+AgentRun `9606101`, worker `ax42-01` and preview
+`f106453b-601a-47f3-9272-adafaa58ec7b`. The transactional index took 76 ms.
+The physical Android device exposes no ADB transport; no device-browser claim
+is included in this browser acceptance.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-6.4-playwright-attachments`;
+the SHA-256 of its `SHA256SUMS` is
+`af7b6b18ff1f325bb2d66ecd2d160fa9fe832d240a43d6283c5ebfaac351f9b3`.
+
+The exact resume point is task 6.5 of `add-private-session-previews`.
