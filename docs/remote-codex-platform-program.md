@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `31/45`, with the exact
-  resume point at task 5.7
+  `45/45` and `onboard-beautips-on-ax42` is active at `32/45`, with the exact
+  resume point at task 6.1
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3779,3 +3779,43 @@ the SHA-256 of its `SHA256SUMS` is
 `4e6c5ded2a688a8d8d12d5846e354500b0c8dfd2fce8f459620fa31b8e95aefa`.
 
 The exact resume point is task 5.7 of `onboard-beautips-on-ax42`.
+
+Task 5.7 is complete and change progress is `32/45`. The sanitized desktop
+PNG, mobile PNG and Playwright DOM JSON report are registered through the
+authenticated `worksession-attachment/v1` boundary under exact WorkSession
+UUID `6375c738-99da-4ef3-91f5-21e30d3b27d3`. Their deterministic immutable
+attachment UUIDs are respectively
+`8fdb5346-57c7-5aff-baa9-5c1b676ad4ad`,
+`c420ebd1-b76b-5dcd-9a3e-58accf4be087` and
+`a501aac8-2c2d-54e3-8b6e-f455eb5d785f`.
+
+All three records declare synthetic identity and `EVIDENCE` retention with
+opaque storage identities. Initial registrations returned HTTP 201. Repeating
+the same identities, metadata and bytes returned HTTP 200 with the original
+metadata and no duplicate retained files.
+
+The finite preview was already `EXPIRED`. Its complete persisted ownership,
+revision 4, exact UUID and absent listener were checked before exact terminal
+synthetic deletion. Its record and the entire preview ingress range are now
+absent while the three-container managed runtime remains running.
+
+Two complete retrieval passes after teardown returned HTTP 200 for all three
+metadata and all three content identities. Every byte count and SHA-256
+matches the sanitized source and both passes are identical. No temporary
+retrieval copy, token value, credential, cookie, authorization header,
+environment dump or production data remains in evidence.
+
+The first continuation observed the historical internal name `sessions/`
+after registration and stopped before preview mutation. Canonical continuation
+used `work-sessions/`, retained the failed non-mutating check and reused the
+already idempotently accepted records.
+
+Administrative Beautips, the managed runtime and Atenea production, preview
+and isolated control remain `UP`. Canonical WorkSession Git remains unchanged.
+
+Task 5.7 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-5.7-artifact-retention`;
+the SHA-256 of its `SHA256SUMS` is
+`aa7e4667e09ca367c3826563c7d8e8a254a1862ff6ea72b4096dc335fd1754fb`.
+
+The exact resume point is task 6.1 of `onboard-beautips-on-ax42`.

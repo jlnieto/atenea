@@ -362,6 +362,21 @@ hierarchy, no clipping or overlap and no horizontal overflow. No task-owned
 browser, database helper, helper image, private I/O directory or transient
 tenant remains; the operator's graphical Chrome is foreign and untouched.
 
+Task 5.7 registers the two sanitized PNGs and DOM JSON report as three
+deterministic immutable attachment UUIDs beneath the exact WorkSession. All
+use explicit synthetic identity and `EVIDENCE` retention. Initial PUTs return
+HTTP 201 and exact repeats return HTTP 200 with byte-identical metadata,
+proving idempotence without duplicate stored bytes.
+
+The expired preview is complete-ownership checked at revision 4 and deleted by
+exact UUID. Its record and ingress listener are absent while the runtime
+remains running. Two full metadata/content retrieval passes after teardown
+return HTTP 200 and reproduce every registered byte count and SHA-256. The
+temporary retrieval projection is removed. One pre-teardown observation used
+the historical `sessions/` storage name and stopped after successful
+registration; canonical continuation used `work-sessions/`, mutated neither
+registered bytes nor preview during the failed check, and retains the attempt.
+
 ### Build, verification and delivery are fixed
 
 The build uses the committed Node 22/Maven 3.9.9/Java 21 Dockerfile and the
