@@ -283,7 +283,15 @@ class Lifecycle:
         self.assert_resource(docker, "volume", record["volumeIdentity"], record, absent_ok=absent_ok)
 
     def secret_paths(self, record: dict[str, Any]) -> tuple[Path, Path]:
-        root = self.secret_root / record["slot"] / record["databaseId"]
+        if self.test_mode:
+            root = self.secret_root / record["slot"] / record["databaseId"]
+        else:
+            owner = pwd.getpwnam(f"atenea-{record['slot']}")
+            root = (
+                Path(f"/run/user/{owner.pw_uid}")
+                / "atenea-database-v1"
+                / record["databaseId"]
+            )
         return root / "password", root
 
     def ensure_secret(self, record: dict[str, Any]) -> Path:
@@ -294,9 +302,14 @@ class Lifecycle:
             owner = None
         else:
             slot_owner = pwd.getpwnam(f"atenea-{record['slot']}")
-            self.secret_root.mkdir(mode=0o711, exist_ok=True)
-            self.secret_root.chmod(0o711)
-            slot_root = self.secret_root / record["slot"]
+            runtime_root = root.parent.parent
+            if (
+                not runtime_root.is_dir()
+                or runtime_root.is_symlink()
+                or runtime_root.stat().st_uid != slot_owner.pw_uid
+            ):
+                fail("DATABASE_SECRET_INVALID", "rootless runtime directory is unsafe")
+            slot_root = root.parent
             slot_root.mkdir(mode=0o700, exist_ok=True)
             os.chown(slot_root, slot_owner.pw_uid, slot_owner.pw_gid)
             root.mkdir(mode=0o700, exist_ok=True)
@@ -631,6 +644,10 @@ class Lifecycle:
         try:
             root.rmdir()
         except FileNotFoundError:
+            pass
+        try:
+            root.parent.rmdir()
+        except (FileNotFoundError, OSError):
             pass
         return {"databaseId": database_id, "resourcesPresent": False}
 

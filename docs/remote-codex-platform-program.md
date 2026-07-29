@@ -224,6 +224,7 @@ its entry gate is accepted at `5/37`.
 | D-030 | Keep Phase 6 public sharing disabled and generate localhost forwarding only for an explicit manifest declaration. | Tailnet-only access satisfies laptop/Android operation without introducing Internet ingress; per-project origin constraints must be proven rather than guessed. | accepted | security owner | each project onboarding |
 | D-031 | Limit Phase 7 to deterministic PostgreSQL and MariaDB fixtures containing no production-derived rows. | Database ownership, replacement and restore can be proven without granting AX42 production connectivity or adopting retained real-project volumes. | accepted for synthetic Phase 7 | data owner | each project onboarding |
 | D-032 | Keep at most three synthetic snapshots for seven days and require a one-use five-minute revision-bound replacement challenge plus verified pre-snapshot. | Bounded local evidence and explicit destructive intent are sufficient for recreatable fixtures; authoritative retention remains blocked on external backup. | accepted for synthetic Phase 7 | data/operations owners | before authoritative database activation |
+| D-033 | Archive a closed synthetic WorkSession's byte-exact allocation record only after its admission is released and its exact runtime resources are absent. | A released slot must become reusable without discarding immutable allocation evidence, worktree, mirror, Git, logs or artifacts. | accepted for completed synthetic fixtures | runtime owner | before general allocation retirement support |
 
 ## Deferred decisions and gates
 
@@ -1818,4 +1819,43 @@ history; the accepted task-3d run proves the final warning-free binary at
 SHA-256 `785780ba9a29310f884300aecb4ec274bc9c72cdb196f7f7506550b42dc8d216`.
 
 The exact resume point is task 4.1 of
+`establish-development-database-lifecycle`.
+
+Task 4.1 is complete and change progress is `17/37`. PostgreSQL owns
+WorkSession `1e452a4a-8b06-40a6-837e-952bcaa74c7e`, database
+`925bce0d-7662-4e15-97d1-13f7e1f97a5a` and slot3. Its canonical mirror,
+session worktree, immutable allocation and admission record are persisted.
+The worktree is clean at programme commit
+`102057745733de264b335a1ae77a0b6c3268c54d`.
+
+Slot3 admission was free, but the archived Phase 6 allocation record still
+claimed the slot. Before reuse, its sealed SHA-256
+`58b77d11384d79fd50a88fc5d3052048337859e9fd97eac1b027ba7ed5203672`,
+released admission and zero exact resources were re-proven. The byte-exact
+record was moved into task 4.1 evidence; its worktree, mirror, Git, logs and
+artifacts remain in place. No foreign allocation or resource changed.
+
+The first database create exposed that the rootless daemon cannot bind a
+secret from host-global `/run`, even though the slot user can read it. The
+attempt created no container and its exact new network/volume were removed by
+the mediator. The corrected boundary uses the slot's own XDG runtime tmpfs,
+`/run/user/1103`, with a mode-0600 file owned only by `atenea-slot3`. No
+secret value appears in output, process arguments or evidence.
+
+The final idempotent create persists state `CREATED`, revision `2`, one
+completely labelled container, one internal-only network and one named volume.
+There are no published host ports, database listeners or firewall rules.
+Beautips remains three running containers, Atenea remains clean/synchronized
+with nine running production/preview containers, RAID has three `[UU]` arrays
+and rootful Docker remains inactive.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-4.1-postgresql-create`;
+the SHA-256 of its `SHA256SUMS` is
+`4d5e9f55072401ba973c23bd4b99ccf3c8e33ca44dd49eac1d6ebe1cfdf62158`.
+It also supersedes the task-3d installed-worker hash with the XDG-runtime
+correction, SHA-256
+`07e250df652120bd3a3d6a07e0b28f2d8dff12e1aafcd5cf1fe79f9690366c01`.
+
+The exact resume point is task 4.2 of
 `establish-development-database-lifecycle`.
