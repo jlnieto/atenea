@@ -2036,3 +2036,22 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 5.4 of
 `establish-development-database-lifecycle`.
+
+Task 5.4 is complete and change progress is `25/37`. The verified automatic
+snapshot was imported first into a derived staging database. Only after the
+import succeeded, one MariaDB `RENAME TABLE` statement atomically exchanged
+`phase7_items`; the staging and backup databases were then removed.
+
+Restore advanced `HEALTHY 13 -> RESTORING 14 -> HEALTHY 15`. Zero derived
+restore/backup databases remain, the data digest matches pre-replacement, the
+container immutable ID is unchanged, and MariaDB worktree HEAD
+`1e0ac9e42051cac6b768f09de8ad65507fd09791`, tree and clean status are
+unchanged with passing `git fsck`. No raw dump or row entered evidence.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-5.4-mariadb-restore`;
+the SHA-256 of its `SHA256SUMS` is
+`f432db394e1410dc00390537f3c24eb3b81a812a3437fac5e4ea9b3e2d6cbf55`.
+
+The exact resume point is task 5.5 of
+`establish-development-database-lifecycle`.
