@@ -6,13 +6,16 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `route-agent-runs-to-remote-worker` (complete and archived
-  `35/35`)
-- Runtime routing: unchanged; Atenea production is not connected to the AX42
+- Current phase: Phase 8, individual project onboarding; Atenea is complete
+  and archived `45/45`, with the exact resume point at the
+  `onboard-beautips-on-ax42` entry gate
+- Runtime routing: default remote routing and all real-project selection remain
+  disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
-- Development/execution plane: Hetzner AX42 (manual pilot only)
+- Development/execution plane: Hetzner AX42; Atenea acceptance passed and was
+  rolled back to its disabled/released boundary
 - Canonical source: GitHub
-- Last evidence refresh: 2026-07-28
+- Last evidence refresh: 2026-07-29
 
 The normative requirements live in OpenSpec. This ledger records phase state, decisions, evidence locations and the exact resume point. Code, tests and migrations remain authoritative for existing Atenea runtime behaviour.
 
