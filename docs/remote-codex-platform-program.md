@@ -1138,6 +1138,10 @@ new `worksession-attachments` capability and synchronizes the scoped artifact
 requirements in `private-development-preview` and `remote-work-continuity`.
 The completed change is archived at
 `openspec/changes/archive/2026-07-29-add-worksession-attachments`.
+Accepted archive evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-worksession-attachments/runs/task-7.5-openspec-archive`;
+the SHA-256 of its `SHA256SUMS` is
+`db2a837afa470543f8917cadac1d4cd7ea6f7f0f2c388d91ea3f375b4ff1ffc5`.
 
 The exact resume point is the Phase 6 entry gate for
 `add-private-session-previews`.
