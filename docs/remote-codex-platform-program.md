@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `34/45`, with the exact
-  resume point at task 6.3
+  `45/45` and `onboard-beautips-on-ax42` is active at `35/45`, with the exact
+  resume point at task 6.4
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3890,3 +3890,38 @@ the SHA-256 of its `SHA256SUMS` is
 `5d988f75682a2e8c830b1d7b1f31b5f5805bb1e9170d864382a6e34bf27e644d`.
 
 The exact resume point is task 6.3 of `onboard-beautips-on-ax42`.
+
+Task 6.3 is complete and change progress is `35/45`. Atenea's authenticated
+close endpoint reconciled database WorkSession `2` and external WorkSession
+`6375c738-99da-4ef3-91f5-21e30d3b27d3` to `CLOSED/CLOSED` at
+`2026-07-29T22:38:08.356739Z`. Pull-request status remains `MERGED`; exact
+workspace identity, URL, publication timestamp and final commit are unchanged.
+There is no close block and retryable state is false.
+
+The canonical close revalidated the GitHub repository, pull-request number,
+base, head and head SHA. It fetched origin, checked out `main`, fast-forwarded
+only to exact merge `f836940d71ed761a4d12e560c3790eeba9778f85`, then deleted
+only the merged session branch from the disposable control clone and GitHub.
+Both are absent. AX42 retains its clean local WorkSession branch at
+`03f77b0389f5303153c47bc3f890b1e0e9e92eb8`; merged history and the pull
+request retain the same commit.
+
+The first close attempt stopped at retryable `CLOSING/fetch_failed` before
+branch mutation because the ephemeral helper executable was placed on a
+`noexec` tmpfs. Moving only that executable to temporary container `/tmp`
+preserved the in-memory token and allowed the same canonical close to return
+HTTP 200. The repository helper, temporary control and image are absent, and
+no credential value or environment dump is retained.
+
+Focused close reconciliation tests passed `38/38`. The three-container managed
+runtime, network, four volumes and three log files remain present. The exact
+six registered attachment files remain `158452` bytes. Tasks 5.6, 5.7, 6.1
+and 6.2 checksum hashes are unchanged. Atenea production, preview and the
+foreign administrative Beautips runtime remain `UP`.
+
+Task 6.3 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-6.3-canonical-close`;
+the SHA-256 of its `SHA256SUMS` is
+`0179ea4a72eb629225289db4e93211caf4213256cd3e9b450f1367532f32fda2`.
+
+The exact resume point is task 6.4 of `onboard-beautips-on-ax42`.

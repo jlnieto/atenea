@@ -406,6 +406,17 @@ retains the same selected-row MD5 across both calls and is then deleted only
 after its immutable ID, project, workspace identity, final SHA and MD5 match.
 The focused delivery identity/idempotence regression passes `9/9`.
 
+Task 6.3 closes the exact database WorkSession through Atenea's authenticated
+canonical endpoint. The close revalidates the merged pull-request identity,
+fetches origin, checks out `main`, fast-forwards only to exact merge
+`f836940d71ed761a4d12e560c3790eeba9778f85`, and deletes only the merged
+session branch from the disposable control clone and GitHub. AX42 retains its
+clean local WorkSession branch and commit. A `noexec` helper placement first
+produces retryable `CLOSING/fetch_failed` without branch mutation; moving only
+the ephemeral executable to container `/tmp` lets the retry finish
+`CLOSED/CLOSED`. Runtime, volumes, logs, attachments and accepted evidence
+remain retained.
+
 Task 5.1 projects assigned-slot access without changing ownership: shared
 ancestors receive traverse only and the exact WorkSession worktree/cache
 receive the slot ACL. Dependencies warm only into that cache; acceptance then
