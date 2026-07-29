@@ -20,6 +20,7 @@ import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -147,6 +148,7 @@ public class WorkSessionGitHubService {
         if (pullRequest == null) {
             throw new GitHubIntegrationException("GitHub did not return pull request metadata during synchronization");
         }
+        validatePullRequestIdentity(session, repository, pullRequestNumber, pullRequest);
 
         Instant now = Instant.now();
         session.setPullRequestUrl(pullRequest.htmlUrl());
@@ -158,6 +160,26 @@ public class WorkSessionGitHubService {
             mobilePushDispatchService.notifyPullRequestMerged(savedSession);
         }
         return workSessionService.toResponse(savedSession);
+    }
+
+    private void validatePullRequestIdentity(
+            WorkSessionEntity session,
+            GitHubRepositoryRef repository,
+            long expectedNumber,
+            GitHubPullRequest pullRequest
+    ) {
+        String expectedRepository = repository.owner() + "/" + repository.repo();
+        String expectedUrl = "https://github.com/" + expectedRepository + "/pull/" + expectedNumber;
+        if (pullRequest.number() != expectedNumber
+                || !expectedUrl.equalsIgnoreCase(normalizeNullableText(pullRequest.htmlUrl()))
+                || !expectedRepository.equalsIgnoreCase(normalizeNullableText(pullRequest.baseRepository()))
+                || !expectedRepository.equalsIgnoreCase(normalizeNullableText(pullRequest.headRepository()))
+                || !Objects.equals(session.getBaseBranch(), normalizeNullableText(pullRequest.baseRef()))
+                || !Objects.equals(session.getWorkspaceBranch(), normalizeNullableText(pullRequest.headRef()))
+                || !Objects.equals(session.getFinalCommitSha(), normalizeNullableText(pullRequest.headSha()))) {
+            throw new WorkSessionPublishConflictException(session.getId(),
+                    "pull request identity does not match persisted repository, base, head and commit");
+        }
     }
 
     @Transactional

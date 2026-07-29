@@ -25,7 +25,14 @@ class GitHubClientTest {
         server.createContext("/", exchange -> {
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
             byte[] response = """
-                    {"number":17,"html_url":"https://github.com/jlnieto/atenea/pull/17","state":"open","merged":false}
+                    {
+                      "number":17,
+                      "html_url":"https://github.com/jlnieto/atenea/pull/17",
+                      "state":"open",
+                      "merged":false,
+                      "base":{"ref":"main","repo":{"full_name":"jlnieto/atenea"}},
+                      "head":{"ref":"atenea/session-17","sha":"abc123","repo":{"full_name":"jlnieto/atenea"}}
+                    }
                     """.getBytes();
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
@@ -42,6 +49,11 @@ class GitHubClientTest {
                     .getPullRequest(new GitHubRepositoryRef("jlnieto", "atenea"), 17);
 
             assertThat(pullRequest.number()).isEqualTo(17);
+            assertThat(pullRequest.baseRepository()).isEqualTo("jlnieto/atenea");
+            assertThat(pullRequest.baseRef()).isEqualTo("main");
+            assertThat(pullRequest.headRepository()).isEqualTo("jlnieto/atenea");
+            assertThat(pullRequest.headRef()).isEqualTo("atenea/session-17");
+            assertThat(pullRequest.headSha()).isEqualTo("abc123");
             assertThat(authorization.get()).isEqualTo("Bearer ephemeral-test-token");
             assertThat(properties.getToken()).isNull();
         } finally {

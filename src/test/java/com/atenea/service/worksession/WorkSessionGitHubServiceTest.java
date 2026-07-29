@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -257,6 +258,7 @@ class WorkSessionGitHubServiceTest {
         WorkSessionEntity session = buildSession(repoPath);
         session.setPullRequestUrl("https://github.com/acme/atenea/pull/42");
         session.setPullRequestStatus(WorkSessionPullRequestStatus.OPEN);
+        session.setFinalCommitSha("abc123");
 
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
         when(gitRepositoryService.getOriginRemoteUrl(repoPath.toString())).thenReturn("git@github.com:acme/atenea.git");
@@ -264,13 +266,92 @@ class WorkSessionGitHubServiceTest {
                 .thenReturn(new GitHubRepositoryRef("acme", "atenea"));
         when(gitHubClient.extractPullRequestNumber("https://github.com/acme/atenea/pull/42")).thenReturn(42L);
         when(gitHubClient.getPullRequest(new GitHubRepositoryRef("acme", "atenea"), 42L))
-                .thenReturn(new GitHubPullRequest(42L, "https://github.com/acme/atenea/pull/42", "closed", true));
+                .thenReturn(new GitHubPullRequest(
+                        42L,
+                        "https://github.com/acme/atenea/pull/42",
+                        "closed",
+                        true,
+                        "acme/atenea",
+                        "main",
+                        "acme/atenea",
+                        "atenea/session-12",
+                        "abc123"));
         when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(workSessionService.toResponse(any(WorkSessionEntity.class))).thenAnswer(invocation -> responseFor(invocation.getArgument(0)));
 
         WorkSessionResponse response = workSessionGitHubService.syncPullRequest(12L);
 
         assertEquals(WorkSessionPullRequestStatus.MERGED, response.pullRequestStatus());
+    }
+
+    @Test
+    void repeatedMergedSyncNotifiesOnlyOnce() throws Exception {
+        Path repoPath = createRepoPath();
+        WorkSessionEntity session = buildSession(repoPath);
+        session.setPullRequestUrl("https://github.com/acme/atenea/pull/42");
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.OPEN);
+        session.setFinalCommitSha("abc123");
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(gitRepositoryService.getOriginRemoteUrl(repoPath.toString()))
+                .thenReturn("git@github.com:acme/atenea.git");
+        when(gitHubClient.resolveRepository("git@github.com:acme/atenea.git"))
+                .thenReturn(new GitHubRepositoryRef("acme", "atenea"));
+        when(gitHubClient.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
+        when(gitHubClient.getPullRequest(new GitHubRepositoryRef("acme", "atenea"), 42L))
+                .thenReturn(new GitHubPullRequest(
+                        42L,
+                        "https://github.com/acme/atenea/pull/42",
+                        "closed",
+                        true,
+                        "acme/atenea",
+                        "main",
+                        "acme/atenea",
+                        "atenea/session-12",
+                        "abc123"));
+        when(workSessionRepository.save(any(WorkSessionEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionService.toResponse(any(WorkSessionEntity.class)))
+                .thenAnswer(invocation -> responseFor(invocation.getArgument(0)));
+
+        workSessionGitHubService.syncPullRequest(12L);
+        workSessionGitHubService.syncPullRequest(12L);
+
+        verify(mobilePushDispatchService, times(1)).notifyPullRequestMerged(session);
+    }
+
+    @Test
+    void syncRejectsCrossSessionHeadWithoutPersisting() throws Exception {
+        Path repoPath = createRepoPath();
+        WorkSessionEntity session = buildSession(repoPath);
+        session.setPullRequestUrl("https://github.com/acme/atenea/pull/42");
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.OPEN);
+        session.setFinalCommitSha("abc123");
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(gitRepositoryService.getOriginRemoteUrl(repoPath.toString()))
+                .thenReturn("git@github.com:acme/atenea.git");
+        when(gitHubClient.resolveRepository("git@github.com:acme/atenea.git"))
+                .thenReturn(new GitHubRepositoryRef("acme", "atenea"));
+        when(gitHubClient.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
+        when(gitHubClient.getPullRequest(new GitHubRepositoryRef("acme", "atenea"), 42L))
+                .thenReturn(new GitHubPullRequest(
+                        42L,
+                        "https://github.com/acme/atenea/pull/42",
+                        "closed",
+                        true,
+                        "acme/atenea",
+                        "main",
+                        "acme/atenea",
+                        "atenea/session-99",
+                        "def456"));
+
+        WorkSessionPublishConflictException exception = assertThrows(
+                WorkSessionPublishConflictException.class,
+                () -> workSessionGitHubService.syncPullRequest(12L));
+
+        assertTrue(exception.getMessage().contains("pull request identity does not match"));
+        verify(workSessionRepository, never()).save(any());
+        verifyNoInteractions(mobilePushDispatchService);
     }
 
     @Test

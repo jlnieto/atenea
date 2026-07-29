@@ -219,7 +219,12 @@ public class GitHubClient {
                 json.path("number").asLong(),
                 json.path("html_url").asText(null),
                 json.path("state").asText(null),
-                json.path("merged").asBoolean(false)
+                json.path("merged").asBoolean(false),
+                json.path("base").path("repo").path("full_name").asText(null),
+                json.path("base").path("ref").asText(null),
+                json.path("head").path("repo").path("full_name").asText(null),
+                json.path("head").path("ref").asText(null),
+                json.path("head").path("sha").asText(null)
         );
     }
 

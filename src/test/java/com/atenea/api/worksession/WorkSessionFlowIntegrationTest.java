@@ -448,17 +448,22 @@ class WorkSessionFlowIntegrationTest {
                         false));
         when(gitHubClient.extractPullRequestNumber("https://github.com/acme/publish-sync-close-flow/pull/42"))
                 .thenReturn(42L);
-        when(gitHubClient.getPullRequest(new GitHubRepositoryRef("acme", "publish-sync-close-flow"), 42L))
-                .thenReturn(new GitHubPullRequest(
-                        42L,
-                        "https://github.com/acme/publish-sync-close-flow/pull/42",
-                        "closed",
-                        true));
 
         JsonNode published = postJson("/api/sessions/%d/publish/conversation-view".formatted(sessionId), "{}", 200);
         assertEquals("OPEN", published.get("view").get("view").get("session").get("status").asText());
         assertEquals("OPEN", published.get("view").get("view").get("session").get("pullRequestStatus").asText());
         assertTrue(!published.get("view").get("view").get("session").get("publishedAt").isNull());
+        when(gitHubClient.getPullRequest(new GitHubRepositoryRef("acme", "publish-sync-close-flow"), 42L))
+                .thenReturn(new GitHubPullRequest(
+                        42L,
+                        "https://github.com/acme/publish-sync-close-flow/pull/42",
+                        "closed",
+                        true,
+                        "acme/publish-sync-close-flow",
+                        "main",
+                        "acme/publish-sync-close-flow",
+                        "atenea/session-" + sessionId,
+                        published.get("view").get("view").get("session").get("finalCommitSha").asText()));
 
         JsonNode synced = postJson("/api/sessions/%d/pull-request/sync/conversation-view".formatted(sessionId), null, 200);
         assertEquals("MERGED", synced.get("view").get("view").get("session").get("pullRequestStatus").asText());
