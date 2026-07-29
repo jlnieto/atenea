@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–4.5 are complete and change progress is `25/45`. The entry gate pins
+Tasks 1.1–5.1 are complete and change progress is `26/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2483,4 +2483,26 @@ Canonical acceptance evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `1f0659e909dcf05af91d1bcaf6c6af05a4b108bcfa7ed5a4b57c99f32d265394`.
 
-The exact resume point is task 5.1 of `onboard-atenea-on-ax42`.
+Task 5.1 builds the archived exact WorkSession commit rather than the dirty
+operator worktree. The final mediated invocation completed the Vite production
+build with 1,583 modules and Maven `clean package` with `380/380` tests, zero
+failures, zero errors and zero skips. It produced executable JAR SHA-256
+`aaed96b9639bf8501c7692b39fcfdfb9ef66f597811b178fe8b08998523ab9e8`
+in 53,211 ms.
+
+Four preceding fail-closed invocations remain in the evidence ledger. They
+exposed, in order, the missing isolated test PostgreSQL, dependency resolution
+on an internal-only build network, the absent writable integration-test
+scratch and its missing exact workspace-root setting. The accepted adapter now
+uses an ephemeral exact-owned PostgreSQL container and test network plus a
+tmpfs `/workspace/repos`; every temporary build resource is removed after the
+invocation. No runtime, PostgreSQL volume or allocated listener was started.
+The WorkSession still has only its task-4 documentation change, and Atenea
+production retains its nine unchanged containers.
+
+Task 5.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-5.1-build-tests`;
+the SHA-256 of its `SHA256SUMS` is
+`be08c49c59b805356a9a50a6a3e82b94cc290c9bdf3d16391a29c1fa19ba564d`.
+
+The exact resume point is task 5.2 of `onboard-atenea-on-ax42`.

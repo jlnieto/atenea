@@ -37,7 +37,7 @@
 
 ## 5. Build, runtime and private preview
 
-- [ ] 5.1 Run canonical web/backend build and complete tests from the accepted WorkSession commit
+- [x] 5.1 Run canonical web/backend build and complete tests from the accepted WorkSession commit
 - [ ] 5.2 Start the exact rootless Atenea runtime with empty migrated PostgreSQL and declared synthetic fixtures
 - [ ] 5.3 Prove runtime health, data/persistence and no production connectivity or host-daemon authority
 - [ ] 5.4 Create one tailnet-only preview and prove Internet/public denial plus declared localhost behavior
