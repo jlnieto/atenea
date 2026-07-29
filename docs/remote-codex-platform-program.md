@@ -1244,3 +1244,25 @@ the SHA-256 of its `SHA256SUMS` is
 `78e614b3b5a5657fabb83d1de1d493b8aef755bc5dbc0c8690d8d76a63361cfa`.
 
 The exact resume point is task 5.1 of `add-private-session-previews`.
+
+Tasks 5.1–5.5 are complete and change progress is `24/37`. Atenea source
+commit `24ad3dcfaea8974d4f18fbd83f3df68ac4ee7182` adds one compact preview
+surface immediately beneath the WorkSession header on web and Android.
+`READY` alone exposes the primary `Abrir preview` action; starting and
+reconciling visibly wait, while blocked, expired and stopped remain concise,
+actionable and omit stale URLs. Android opens the same tailnet URL directly
+and links secondarily to the existing retained-evidence surface.
+
+The production web build, isolated secret-free Android debug build and focused
+UI API regression pass. Playwright asserted all six lifecycle states and
+verified the ready surface at `1440x900` and `390x844`: state and action remain
+inside the first viewport, with no horizontal overflow, clipping or overlap.
+The final desktop, mobile and blocked-state screenshots were visually
+inspected. No deployment occurred and production/preview remain `UP`.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-5-operator-experience`;
+the SHA-256 of its `SHA256SUMS` is
+`915d0f6ff2828c5a1b006d0e37f5ef1eea1f34fb8e6b17812d80cf0bb259b94a`.
+
+The exact resume point is task 6.1 of `add-private-session-previews`.

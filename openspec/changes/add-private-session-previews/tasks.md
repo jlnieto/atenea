@@ -31,11 +31,11 @@
 
 ## 5. Operator web and Android experience
 
-- [ ] 5.1 Add one compact web preview surface with state visible above the fold and one primary action
-- [ ] 5.2 Add Android preview state, private open action, expiry and retained-evidence access without laptop dependency
-- [ ] 5.3 Keep starting, reconciling, blocked, expired and stopped copy concise and actionable
-- [ ] 5.4 Build the web and Android clients and run focused API/UI regressions
-- [ ] 5.5 Validate exact rendered states with DOM assertions and inspected desktop/mobile screenshots
+- [x] 5.1 Add one compact web preview surface with state visible above the fold and one primary action
+- [x] 5.2 Add Android preview state, private open action, expiry and retained-evidence access without laptop dependency
+- [x] 5.3 Keep starting, reconciling, blocked, expired and stopped copy concise and actionable
+- [x] 5.4 Build the web and Android clients and run focused API/UI regressions
+- [x] 5.5 Validate exact rendered states with DOM assertions and inspected desktop/mobile screenshots
 
 ## 6. Synthetic acceptance and continuity
 
