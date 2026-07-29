@@ -385,6 +385,17 @@ checks use reviewed bounded smoke scripts and Playwright verifies exact
 desktop/mobile states. Delivery uses one exact WorkSession draft pull request,
 reviewed non-force merge synchronization and canonical close.
 
+Task 6.1 commits only `docs/ax42-onboarding-acceptance.md` as
+`03f77b0389f5303153c47bc3f890b1e0e9e92eb8` on the exact WorkSession branch.
+The branch is transferred with complete history and created remotely by a
+normal non-force push. Atenea verifies the equal remote head and creates
+`jlnieto/beautips#1` through its authenticated publish endpoint. GitHub reports
+one open draft with exact `main` base, exact WorkSession head, one commit and
+one changed file. A missing disposable Git credential fails closed before
+GitHub mutation; the accepted retry uses only finite-lived credential pipes
+and removes the helper, control, image, bundle and transfer ref by exact
+identity.
+
 Task 5.1 projects assigned-slot access without changing ownership: shared
 ancestors receive traverse only and the exact WorkSession worktree/cache
 receive the slot ACL. Dependencies warm only into that cache; acceptance then

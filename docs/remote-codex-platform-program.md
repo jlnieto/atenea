@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `32/45`, with the exact
-  resume point at task 6.1
+  `45/45` and `onboard-beautips-on-ax42` is active at `33/45`, with the exact
+  resume point at task 6.2
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3819,3 +3819,38 @@ the SHA-256 of its `SHA256SUMS` is
 `aa7e4667e09ca367c3826563c7d8e8a254a1862ff6ea72b4096dc335fd1754fb`.
 
 The exact resume point is task 6.1 of `onboard-beautips-on-ax42`.
+
+Task 6.1 is complete and change progress is `33/45`. The exact WorkSession
+branch `atenea/session-6375c738-99da-4ef3-91f5-21e30d3b27d3` contains one new
+commit, `03f77b0389f5303153c47bc3f890b1e0e9e92eb8`, with tree
+`ea2050c15dc7949515a432cce70f1b6f4362d7e0`. It adds only the two-line
+`docs/ax42-onboarding-acceptance.md`; the AX42 and isolated-control worktrees
+are clean.
+
+The remote branch was absent at entry. Complete history moved through an
+exact SHA-256-matched bundle, the isolated checkout advanced only by
+`merge --ff-only`, and a normal push created the branch without force.
+Atenea's authenticated `POST /api/sessions/2/publish` then created
+`jlnieto/beautips#1`. GitHub reports one `OPEN` draft based on exact `main`
+`e9e0b3c319c518363d4135f5378ebbddced96dfb`, headed by the exact WorkSession
+commit, mergeable, with one commit, one file and two insertions. Atenea
+persisted the same URL, branch and final commit.
+
+The first endpoint attempt failed closed with HTTP 409 before GitHub mutation
+because its disposable control lacked Git authentication for the remote-head
+read. The accepted retry returned HTTP 200 through a temporary isolated
+control and finite-lived credential pipes. The helper, FIFOs, control
+container, temporary image, bundle and transfer ref were all removed by exact
+identity. No credential value, authorization header, cookie, environment dump
+or token is retained.
+
+The WorkSession remains `OPEN` with zero running AgentRuns. Its exact managed
+runtime, Git state and registered evidence remain present. Atenea production
+and preview and the foreign administrative Beautips runtime remain `UP`.
+
+Task 6.1 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-6.1-draft-delivery`;
+the SHA-256 of its `SHA256SUMS` is
+`9538eeed1f53788fc35b7da7bcad10fa2db948f0bc363a4742bd56b36ad7f82f`.
+
+The exact resume point is task 6.2 of `onboard-beautips-on-ax42`.

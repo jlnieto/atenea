@@ -47,7 +47,7 @@
 
 ## 6. Delivery, close and continuity
 
-- [ ] 6.1 Publish the exact WorkSession branch through one normal draft pull-request delivery
+- [x] 6.1 Publish the exact WorkSession branch through one normal draft pull-request delivery
 - [ ] 6.2 Prove reviewed merge/sync semantics without force update, duplicate response or cross-session mutation
 - [ ] 6.3 Close through the canonical reconciled path while retaining Git and evidence invariants
 - [ ] 6.4 Restart the real-project worker mediator and reconcile only persisted exact ownership without rerunning the prompt
