@@ -1218,3 +1218,29 @@ the SHA-256 of its `SHA256SUMS` is
 `7084d061238835f5ee234fa38a50189fe9c0cd2b364c24acd423663dc8fcbe9e`.
 
 The exact resume point is task 4.1 of `add-private-session-previews`.
+
+Tasks 4.1–4.5 are complete and change progress is `19/37`. Atenea source
+commit `0b6a8178d52e325e9c86cddfb16d03920bba496c` adds a default-off,
+finite-timeout authenticated preview client plus WorkSession-scoped activate,
+status, retained history, renew, stop and declared-localhost APIs.
+
+Atenea derives project, worker and allocation identity from the persisted
+WorkSession plus the submitted runtime UUID; AX42 remains the authority that
+validates the supplied allocation fingerprint against its exact persisted
+record. Web and mobile share one read model that exposes the private URL only
+for `READY`, bounded expiry and one primary next action, without worker or
+allocation internals.
+
+Startup and 30-second periodic reconciliation select only persisted
+reconcilable records, cap each batch, renew only exact ready ownership and
+never create or reassign a runtime. Twenty-three focused client, service,
+persistence, reconciliation and controller tests pass, including default-off,
+foreign ownership, stale identity and sanitized worker rejection paths.
+
+No deployment occurred; production and preview remain default-off and `UP`.
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-4-atenea-api-reconciliation`;
+the SHA-256 of its `SHA256SUMS` is
+`78e614b3b5a5657fabb83d1de1d493b8aef755bc5dbc0c8690d8d76a63361cfa`.
+
+The exact resume point is task 5.1 of `add-private-session-previews`.

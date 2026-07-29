@@ -23,11 +23,11 @@
 
 ## 4. Atenea APIs and reconciliation
 
-- [ ] 4.1 Add default-off preview configuration and finite-timeout authenticated worker client
-- [ ] 4.2 Add WorkSession-scoped activate, status, renew, stop and localhost APIs with server-derived ownership
-- [ ] 4.3 Add bounded startup/periodic reconciliation without runtime reassignment or implicit creation
-- [ ] 4.4 Add web/mobile read models that expose state, expiry, URL and one actionable next step only
-- [ ] 4.5 Add controller, service, client, persistence and reconciliation tests for success and fail-closed paths
+- [x] 4.1 Add default-off preview configuration and finite-timeout authenticated worker client
+- [x] 4.2 Add WorkSession-scoped activate, status, renew, stop and localhost APIs with server-derived ownership
+- [x] 4.3 Add bounded startup/periodic reconciliation without runtime reassignment or implicit creation
+- [x] 4.4 Add web/mobile read models that expose state, expiry, URL and one actionable next step only
+- [x] 4.5 Add controller, service, client, persistence and reconciliation tests for success and fail-closed paths
 
 ## 5. Operator web and Android experience
 
