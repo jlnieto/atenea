@@ -40,11 +40,27 @@ GitHub `jlnieto/beautips` branch `main` at
 only by `pull --ff-only`; AX42 already matched GitHub. All three are now clean
 and synchronized.
 
-The reviewed source manifest is `ops/atenea-runtime.yml`, SHA-256
+The entry-gate source manifest was `ops/atenea-runtime.yml`, SHA-256
 `09717d5633fe3909f97bdcd0cb7b30817f02b202a9b8d57933323efa041a44ec`.
-It is pinned as an input, not accepted unchanged: fixed project names, ports,
-the tracked env-file reference and `cleanupAfterVerification: false` must be
-replaced by allocation-derived WorkSession behavior before enablement.
+It was pinned as an input, not accepted unchanged.
+
+Task 2.1 replaces it at commit
+`e4256d7fe1610e191099bd12ce993591a5cd4b7a`, tree
+`8e52657add269c84700105aa7028728d4ddf2810`, with the runtime-contract v1
+manifest `ops/atenea-runtime.json`, SHA-256
+`365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82`,
+and the separate managed Compose definition `ops/docker-compose.atenea.yml`,
+SHA-256
+`840e64166e8e1ddaefb74d11763fe150e6539074bb02c3173e2175a446555941`.
+The manual Compose definition remains unchanged.
+
+The managed definition has no fixed container name, project name, host port,
+network or volume identity and does not reference a tracked or manual env
+file. The worker allocation supplies the exact WorkSession paths, Compose
+project, loopback ports, network and volume prefix; complete ownership labels
+are mandatory. Its stop operation always requests volumes, orphans and local
+images be removed. This declares the cleanup boundary without enabling or
+executing it before the reviewed mediator and exact registry exist.
 
 ### The administrative pilot is foreign retained state
 

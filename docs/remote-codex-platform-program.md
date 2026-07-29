@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `8/45`, with the exact
-  resume point at task 2.1
+  `45/45` and `onboard-beautips-on-ax42` is active at `9/45`, with the exact
+  resume point at task 2.2
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -239,7 +239,7 @@ separate `onboard-beautips-on-ax42` change; Beautips routing is not enabled.
 | D-036 | Keep Atenea onboarding artifacts non-authoritative and its database empty-migrated plus synthetic until an external backup has passed restore. | RAID and retained acceptance evidence do not satisfy authoritative project backup. | accepted | data/operations owners | before any real retained data |
 | D-037 | Admit `project-codex-v1` only from a root-owned exact Atenea workspace registry and execute it in a per-run Bubblewrap namespace with no caller-supplied command, path, remote, endpoint or environment. | The authenticated identity can be reused without turning the worker into a general shell or mounting other workspaces, daemon sockets or production paths. Uncertain turns fail closed after restart instead of being replayed. | accepted for Atenea pilot | security/runtime owners | after Atenea archive and before a second project |
 | D-038 | Close Atenea onboarding after a 15-minute disabled/clean observation with exact samples at minute 0, 5, 10 and 15. | Four bounded samples are sufficient to detect automatic resurrection or health drift after exact rollback while keeping this disposable, non-production gate finite. Any drift blocks archive. | accepted for Atenea pilot | programme owner | before onboarding archive |
-| D-039 | Pin Beautips to GitHub `jlnieto/beautips` `main` at `5044a3b07b3db82895e9c8ff47bc4bc9b0e97130`; reconcile clean local/Atenea ancestors only by fast-forward. | GitHub and AX42 already agreed, both older copies were strict ancestors, and the head includes the reviewed dependency restart fix. | accepted for Beautips pilot | programme owner | before any managed Beautips allocation |
+| D-039 | Pin Beautips to GitHub `jlnieto/beautips` `main`; accept the entry commit `5044a3b07b3db82895e9c8ff47bc4bc9b0e97130` only as the reviewed ancestor and task 2.1 commit `e4256d7fe1610e191099bd12ce993591a5cd4b7a` as the managed-manifest source. | GitHub and AX42 agreed at entry, both older copies were strict ancestors, and the accepted descendant removes fixed manual runtime authority before allocation. | accepted for Beautips pilot | programme owner | before any managed Beautips allocation |
 | D-040 | Treat the existing manual slot 1 Beautips workspace, runtime, listener, secret boundary and persistent data/files as foreign retained state. | The administrative pilot is healthy but has no WorkSession ownership or independent restore-tested external backup. | accepted | runtime/data owners | throughout Beautips onboarding |
 | D-041 | Use only empty migrated PostgreSQL, disposable Redis, invented fixtures/files and disabled WhatsApp for managed acceptance. | Platform ownership can be proven without copying administrative, legacy or production-derived data and without external messaging authority. | accepted | data/security owners | before managed runtime start |
 | D-042 | Declare no localhost requirement for the disabled-WhatsApp acceptance; block on any absolute-origin failure rather than generating a tunnel implicitly. | Relative application paths can be verified through the private preview while excluded OAuth/messaging flows cannot justify broader compatibility. | accepted for Beautips pilot | runtime/product owners | private preview acceptance |
@@ -2984,12 +2984,15 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–1.8 are complete and change progress is `8/45`. GitHub
-`jlnieto/beautips`, branch `main`, commit
-`5044a3b07b3db82895e9c8ff47bc4bc9b0e97130`, tree
-`132719df7a400f7ba9e724499425e0a64f5b8991` and source manifest SHA-256
-`09717d5633fe3909f97bdcd0cb7b30817f02b202a9b8d57933323efa041a44ec`
-are pinned.
+Tasks 1.1–2.1 are complete and change progress is `9/45`. GitHub
+`jlnieto/beautips`, branch `main`, managed-manifest commit
+`e4256d7fe1610e191099bd12ce993591a5cd4b7a`, tree
+`8e52657add269c84700105aa7028728d4ddf2810`, runtime manifest SHA-256
+`365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82`
+and managed Compose SHA-256
+`840e64166e8e1ddaefb74d11763fe150e6539074bb02c3173e2175a446555941`
+are pinned. The entry commit and legacy manifest remain recorded as reviewed
+ancestors, not as enabled runtime authority.
 
 The clean laptop commit `a6d2f28` and clean Atenea commit `bd15a16` were strict
 ancestors of GitHub; AX42 already matched. Only ancestry-proven
@@ -3021,9 +3024,38 @@ workspaces. Atenea production/preview, the administrative Beautips pilot, all
 four rootless daemons, RAID `[UU]`, firewall and inactive/masked rootful Docker
 remain healthy and unchanged.
 
+Task 2.1 removes the legacy fixed port, project, Docker network, tracked
+env-file and cleanup-disabled command contract. The accepted runtime-contract
+v1 manifest points only to a separate managed Compose definition. That
+definition receives the WorkSession identity, runtime identity, loopback web,
+PostgreSQL and Redis ports, network and four volume names from persisted
+allocation values and applies complete ownership labels. It declares an
+internal network, disables restart and WhatsApp scheduling/credentials, and
+requires stop cleanup of volumes, orphans and locally built images. The manual
+`docker-compose.yml` remains byte-identical.
+
+Draft 2020-12 schema validation, Compose non-interpolating validation and
+static denial of the legacy literals pass. Two identical synthetic allocation
+calls produced byte-identical session paths, Compose/network/volume names and
+three unique loopback ports; the fixture was then moved to trash. The mandatory
+local `dev redeploy beautips` completed and local health is `UP`.
+
+The AX42 registry remains
+`selectionEnabled=false`, `executionEnabled=false`, with zero workspaces. The
+three exact slot 1 administrative container identities remain running and
+Beautips health is `UP`. Atenea's exact nine production/preview identities
+remain running and both health probes are `UP`. Two unrelated
+`atenea-onboard-task4-*` containers observed on the control-plane host were
+retained unchanged and excluded from this task.
+
+Task 2.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-2.1-session-safe-manifest`;
+the SHA-256 of its `SHA256SUMS` is
+`43ca64baf25a2a4f76a51f5ca0362cc4640ca02dedc9b0d19683beb070e8d621`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 2.1 of `onboard-beautips-on-ax42`.
+The exact resume point is task 2.2 of `onboard-beautips-on-ax42`.
