@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `12/45`, with the exact
-  resume point at task 2.5
+  `45/45` and `onboard-beautips-on-ax42` is active at `13/45`, with the exact
+  resume point at task 2.6
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -2984,7 +2984,7 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–2.4 are complete and change progress is `12/45`. GitHub
+Tasks 1.1–2.5 are complete and change progress is `13/45`. GitHub
 `jlnieto/beautips`, branch `main`, managed-manifest commit
 `e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
 `533d32f97ae362997ad003170a826da674c31c1d`, runtime manifest SHA-256
@@ -3059,9 +3059,9 @@ worker `ax42-01`, normal workload and allowed slots 2–4. Both selection and
 execution are false, slot 1 is excluded and the workspace map is empty.
 
 The allowlist SHA-256 is
-`ab8f6db2418adee60c195f29a8e96d41dba5b14622011f866eb747c88f7ec8e9`;
+`e3ad1824c7a134280f907b2831b75391c3791373060806fb1827dc05cb6756fc`;
 its exact Draft 2020-12 schema SHA-256 is
-`aa9873b7fa466e93adda5607bd845dd40fdba4dac37d77c3a73bc8e29c0ae610`.
+`1fc4d61a46e10ea9a6b7201573daef5b50267f13d252e20c6dab062e6fee10e2`.
 Valid-format foreign repository, branch, commit, tree, manifest, Compose,
 worker, slot, workspace, project and unknown-field mutations all fail schema
 validation.
@@ -3131,9 +3131,30 @@ Task 2.4 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `d4853f1712db7130fdb3442957684e4799977774de567448f304835dec9de37b`.
 
+Task 2.5 adds a WorkSession-derived synthetic secret boundary with exactly
+four separate names: PostgreSQL password, smoke administrator email/password
+and smoke seal code. The exact directory is mode `0700`; files and value-free
+metadata are mode `0600` under the worker service identity. Preparation is
+byte-idempotent and outputs only names plus `valuesExposed=false`.
+
+The tool accepts no caller value, env file or path. Ambient manual/WhatsApp
+variables are ignored. `.env`, WhatsApp, token, cookie, unknown, symlink,
+partial and unsafe-mode entries all reject the boundary. Three focused tests
+and the four dependent mediator tests pass; generated values lived only under
+automatically removed `/tmp` roots and none entered evidence.
+
+The secret tool remains uninstalled, no real WorkSession secret was generated,
+the installed Atenea registry remains disabled with zero workspaces and
+administrative Beautips health is `UP`.
+
+Task 2.5 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-2.5-synthetic-secret-boundary`;
+the SHA-256 of its `SHA256SUMS` is
+`0ab26949f1ba66c1f44a2fbe5375dc49aabd88c0914cdef9ca8fe4649150cb3c`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 2.5 of `onboard-beautips-on-ax42`.
+The exact resume point is task 2.6 of `onboard-beautips-on-ax42`.

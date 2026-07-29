@@ -64,10 +64,10 @@ executing it before the reviewed mediator and exact registry exist.
 
 Task 2.2 adds the source registry
 `ops/worker/project-codex-allowlist-v1.json`, SHA-256
-`ab8f6db2418adee60c195f29a8e96d41dba5b14622011f866eb747c88f7ec8e9`,
+`e3ad1824c7a134280f907b2831b75391c3791373060806fb1827dc05cb6756fc`,
 under the closed Draft 2020-12 schema
 `runtime-contract/project-codex-allowlist-v1.schema.json`, SHA-256
-`aa9873b7fa466e93adda5607bd845dd40fdba4dac37d77c3a73bc8e29c0ae610`.
+`1fc4d61a46e10ea9a6b7201573daef5b50267f13d252e20c6dab062e6fee10e2`.
 It contains exactly Beautips and pins repository, branch, commit, tree,
 manifest and managed Compose identities to worker `ax42-01`, normal workload
 and slots 2–4. Selection and execution are both false and the workspace map is
@@ -117,6 +117,24 @@ path. The existing Codex-owned authentication/session boundary is referenced
 only inside the accepted sandbox and is never read by onboarding
 orchestration or evidence. The adapter remains uninstalled and no Codex
 process runs at this gate.
+
+Task 2.5 adds
+`ops/worker/beautips-secret-boundary-v1.py`, SHA-256
+`d0176e51278908b9803f8a4c3502ac9a9d0613ee1c88fd37a8f6733800c79b8f`.
+It derives one exact secret directory from the validated WorkSession
+allocation and creates only four separate synthetic names: PostgreSQL
+password, smoke administrator email/password and smoke seal code.
+
+The directory is mode `0700`; files and value-free metadata are mode `0600`
+under the worker service ownership. Repeated preparation retains existing
+valid files byte-for-byte. The result reports names and ownership state only,
+with `valuesExposed=false`. The tool accepts no value, env-file or path
+argument and never reads ambient manual or WhatsApp variables.
+
+Any `.env`, WhatsApp, token, cookie, unknown, symlink, partial, foreign-owner
+or unsafe-mode entry rejects the complete boundary before use. Synthetic test
+values exist only beneath automatically removed `/tmp` roots. The tool remains
+uninstalled and no real WorkSession secret is generated at this gate.
 
 ### The administrative pilot is foreign retained state
 
