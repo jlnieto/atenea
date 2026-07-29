@@ -159,6 +159,23 @@ export interface WorkSessionAttachment {
   indexedAt: string;
 }
 
+export interface WorkSessionPreview {
+  id: string;
+  workSessionId: number;
+  projectId: number;
+  agentRunId?: number | null;
+  state: "STARTING" | "READY" | "BLOCKED" | "RECONCILING" | "STOPPED" | "EXPIRED";
+  lifecycleRevision: number;
+  privateUrl?: string | null;
+  localhostCompatible: boolean;
+  leaseExpiresAt: string;
+  hardExpiresAt: string;
+  auditRetainUntil: string;
+  failureReason?: string | null;
+  nextAction: string;
+  primaryAction: "WAIT" | "OPEN" | "START";
+}
+
 export interface MobileSessionSummary {
   conversation: MobileWorkSessionConversation;
   approvedDeliverables: SessionDeliverablesView;

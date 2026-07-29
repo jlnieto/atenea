@@ -19,7 +19,8 @@ import {
   ResolveMobileWorkSessionResult,
   SessionDeliverable,
   SessionDeliverablesView,
-  WorkSessionAttachment
+  WorkSessionAttachment,
+  WorkSessionPreview
 } from "./types";
 
 const AUTH_KEY = "atenea.web.console.auth.v2";
@@ -184,6 +185,10 @@ export class AteneaApi {
     return this.get<WorkSessionAttachment[]>(
       `/api/mobile/sessions/${sessionId}/attachments?limit=50`
     );
+  }
+
+  workSessionPreview(sessionId: number) {
+    return this.get<WorkSessionPreview>(`/api/mobile/sessions/${sessionId}/preview`);
   }
 
   async uploadWorkSessionAttachment(sessionId: number, file: File) {

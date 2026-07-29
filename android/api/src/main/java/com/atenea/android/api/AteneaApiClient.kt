@@ -171,6 +171,12 @@ class AteneaApiClient(
         parser = ::parseMobileSessionSummary
     )
 
+    suspend fun fetchMobileSessionPreview(sessionId: Long): MobileSessionPreview = getJson(
+        path = "/api/mobile/sessions/$sessionId/preview",
+        authenticated = true,
+        parser = ::parseMobileSessionPreview
+    )
+
     suspend fun fetchMobileSessionDeliverables(sessionId: Long): SessionDeliverablesView = getJson(
         path = "/api/mobile/sessions/$sessionId/deliverables",
         authenticated = true,
@@ -927,6 +933,23 @@ data class MobileSessionSummary(
     val insights: MobileSessionInsights
 )
 
+data class MobileSessionPreview(
+    val id: String,
+    val workSessionId: Long,
+    val projectId: Long,
+    val agentRunId: Long?,
+    val state: String,
+    val lifecycleRevision: Long,
+    val privateUrl: String?,
+    val localhostCompatible: Boolean,
+    val leaseExpiresAt: String,
+    val hardExpiresAt: String,
+    val auditRetainUntil: String,
+    val failureReason: String?,
+    val nextAction: String,
+    val primaryAction: String
+)
+
 data class MobileSessionActions(
     val canCreateTurn: Boolean,
     val canPublish: Boolean,
@@ -1565,6 +1588,24 @@ private fun parseMobileSessionSummary(json: JSONObject): MobileSessionSummary =
         approvedPriceEstimate = json.optJSONObject("approvedPriceEstimate")?.let(::parseApprovedPriceEstimateSummary),
         actions = parseMobileSessionActions(json.optJSONObject("actions") ?: JSONObject()),
         insights = parseMobileSessionInsights(json.optJSONObject("insights") ?: JSONObject())
+    )
+
+private fun parseMobileSessionPreview(json: JSONObject): MobileSessionPreview =
+    MobileSessionPreview(
+        id = json.getString("id"),
+        workSessionId = json.getLong("workSessionId"),
+        projectId = json.getLong("projectId"),
+        agentRunId = json.optNullableLong("agentRunId"),
+        state = json.getString("state"),
+        lifecycleRevision = json.getLong("lifecycleRevision"),
+        privateUrl = json.optNullableString("privateUrl"),
+        localhostCompatible = json.optBoolean("localhostCompatible", false),
+        leaseExpiresAt = json.getString("leaseExpiresAt"),
+        hardExpiresAt = json.getString("hardExpiresAt"),
+        auditRetainUntil = json.getString("auditRetainUntil"),
+        failureReason = json.optNullableString("failureReason"),
+        nextAction = json.optString("nextAction"),
+        primaryAction = json.optString("primaryAction")
     )
 
 private fun parseMobileSessionActions(json: JSONObject): MobileSessionActions =

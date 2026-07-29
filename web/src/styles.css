@@ -705,6 +705,50 @@ select:focus {
   box-shadow: var(--shadow);
 }
 
+.preview-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.preview-panel__copy {
+  min-width: 0;
+}
+
+.preview-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.preview-panel__title .eyebrow {
+  flex-basis: 100%;
+}
+
+.preview-panel h2,
+.preview-panel p {
+  margin: 0;
+}
+
+.preview-panel h2 {
+  font-size: 18px;
+}
+
+.preview-panel p {
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 20px;
+}
+
+.preview-panel__expiry {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .command-panel {
   display: flex;
   flex-direction: column;
@@ -1174,11 +1218,16 @@ select:focus {
 
   .toolbar,
   .session-hero,
+  .preview-panel,
   .panel__header,
   .command-card__top,
   .detail-title {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .preview-panel .button {
+    width: 100%;
   }
 
   .button-grid,

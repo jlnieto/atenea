@@ -1,5 +1,7 @@
 package com.atenea.android.coreconsole
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,6 +32,7 @@ import com.atenea.android.api.ApprovedPriceEstimateSummary
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.MobileSessionActions
 import com.atenea.android.api.MobileSessionEvent
+import com.atenea.android.api.MobileSessionPreview
 import com.atenea.android.api.MobileSessionSummary
 import com.atenea.android.api.SessionDeliverable
 import com.atenea.android.api.SessionDeliverableSummary
@@ -62,6 +66,7 @@ internal fun WorkSessionScreen(
 
     val state by repository.state.collectAsState()
     val summary = state.summary
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -76,6 +81,15 @@ internal fun WorkSessionScreen(
             onOpenConversation = onOpenConversation,
             onOpenCore = onOpenCore,
             onBackToProjects = onBackToProjects
+        )
+
+        WorkSessionPreviewPanel(
+            preview = state.preview,
+            onRefresh = repository::refreshNow,
+            onOpen = { url ->
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            },
+            onOpenEvidence = onOpenConversation
         )
 
         state.error?.let { ErrorPanel(it) }
@@ -123,6 +137,67 @@ internal fun WorkSessionScreen(
         }
 
         WorkSessionEventsPanel(events = state.events)
+    }
+}
+
+@Composable
+private fun WorkSessionPreviewPanel(
+    preview: MobileSessionPreview?,
+    onRefresh: () -> Unit,
+    onOpen: (String) -> Unit,
+    onOpenEvidence: () -> Unit
+) {
+    val readyUrl = preview?.privateUrl?.takeIf { preview.state == "READY" }
+    val waiting = preview?.state in setOf("STARTING", "RECONCILING")
+    AteneaPanel {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Preview privado", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    preview?.state?.displayLabel() ?: "Sin preview",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            StatusPill(
+                level = when {
+                    readyUrl != null -> OperationalLevel.OK
+                    waiting -> OperationalLevel.WARNING
+                    preview?.state == "BLOCKED" -> OperationalLevel.CRITICAL
+                    preview == null -> OperationalLevel.UNKNOWN
+                    else -> OperationalLevel.WARNING
+                }
+            )
+        }
+        Text(
+            preview?.failureReason
+                ?: preview?.nextAction?.takeIf { it.isNotBlank() }
+                ?: "Inícialo desde el runtime asignado.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        when {
+            readyUrl != null -> AteneaButton(
+                text = "Abrir preview",
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onOpen(readyUrl) }
+            )
+            waiting -> AteneaButton(
+                text = "Preparando ruta",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = false,
+                onClick = {}
+            )
+            else -> AteneaOutlinedButton(
+                text = "Actualizar estado",
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onRefresh
+            )
+        }
+        AteneaTextButton(
+            text = "Ver evidencia retenida",
+            onClick = onOpenEvidence
+        )
     }
 }
 

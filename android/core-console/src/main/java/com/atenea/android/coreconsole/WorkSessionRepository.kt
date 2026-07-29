@@ -1,11 +1,13 @@
 package com.atenea.android.coreconsole
 
 import com.atenea.android.api.AteneaApiClient
+import com.atenea.android.api.AteneaApiException
 import com.atenea.android.api.CoreClarificationOption
 import com.atenea.android.api.CoreCommandResponse
 import com.atenea.android.api.CoreScope
 import com.atenea.android.api.MobileSessionEvent
 import com.atenea.android.api.MobileSessionSummary
+import com.atenea.android.api.MobileSessionPreview
 import com.atenea.android.api.SessionDeliverable
 import com.atenea.android.api.SessionDeliverablesView
 import kotlinx.coroutines.CoroutineScope
@@ -224,6 +226,11 @@ internal class WorkSessionRepository(
         try {
             val summary = apiClient.fetchMobileWorkSessionSummary(sessionId)
             val deliverables = apiClient.fetchMobileSessionDeliverables(sessionId)
+            val preview = try {
+                apiClient.fetchMobileSessionPreview(sessionId)
+            } catch (previewError: AteneaApiException) {
+                if (previewError.status == 404) null else throw previewError
+            }
             mutableState.update {
                 it.copy(
                     loading = false,
@@ -232,6 +239,7 @@ internal class WorkSessionRepository(
                     syncLabel = "Sincronizado",
                     summary = summary,
                     deliverables = deliverables,
+                    preview = preview,
                     lastSyncedAt = summary.conversation.session.lastActivityAt
                         ?: summary.conversation.session.openedAt
                         ?: it.lastSyncedAt
@@ -299,6 +307,7 @@ internal data class WorkSessionUiState(
     val syncLabel: String = "Sin sincronizar",
     val summary: MobileSessionSummary? = null,
     val deliverables: SessionDeliverablesView? = null,
+    val preview: MobileSessionPreview? = null,
     val events: List<MobileSessionEvent> = emptyList(),
     val activeCommand: CoreCommandResponse? = null,
     val commandPending: Boolean = false,

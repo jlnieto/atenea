@@ -50,7 +50,8 @@ import {
   SessionDeliverable,
   SessionDeliverableSummary,
   SessionDeliverablesView,
-  WorkSessionAttachment
+  WorkSessionAttachment,
+  WorkSessionPreview
 } from "./types";
 
 type RouteName =
@@ -548,6 +549,7 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
   const [summary, setSummary] = useState<MobileSessionSummary | null>(null);
   const [deliverables, setDeliverables] = useState<SessionDeliverablesView | null>(null);
   const [events, setEvents] = useState<MobileSessionEvent[]>([]);
+  const [preview, setPreview] = useState<WorkSessionPreview | null>(null);
   const [selected, setSelected] = useState<SessionDeliverable | null>(null);
   const [command, setCommand] = useState<CoreCommandResponse | null>(null);
   const [billingReference, setBillingReference] = useState("");
@@ -558,14 +560,21 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
     setLoading(true);
     setError("");
     try {
-      const [nextSummary, nextDeliverables, nextEvents] = await Promise.all([
+      const [nextSummary, nextDeliverables, nextEvents, nextPreview] = await Promise.all([
         api.workSessionSummary(sessionId),
         api.sessionDeliverables(sessionId),
-        api.sessionEvents(sessionId).catch(() => ({ events: [] }))
+        api.sessionEvents(sessionId).catch(() => ({ events: [] })),
+        api.workSessionPreview(sessionId).catch((previewError) => {
+          if (previewError instanceof ApiError && previewError.status === 404) {
+            return null;
+          }
+          throw previewError;
+        })
       ]);
       setSummary(nextSummary);
       setDeliverables(nextDeliverables);
       setEvents(nextEvents.events || []);
+      setPreview(nextPreview);
       if (!selected && nextDeliverables.deliverables[0]) {
         selectDeliverable(nextDeliverables.deliverables[0]);
       }
@@ -631,6 +640,7 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
         </div>
         <StatusPill level={sessionLevel(session.operationalState)}>{session.operationalState}</StatusPill>
       </section>
+      <PreviewPanel preview={preview} onRefresh={load} />
       {command && <CommandCard command={command} onChanged={setCommand} afterResolve={load} />}
       {session.closeBlockedReason && (
         <Banner level="warning" title="Cierre bloqueado">
@@ -743,6 +753,67 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
         </Panel>
       </div>
     </Page>
+  );
+}
+
+function PreviewPanel({
+  preview,
+  onRefresh
+}: {
+  preview: WorkSessionPreview | null;
+  onRefresh: () => void;
+}) {
+  const ready = preview?.state === "READY" && Boolean(preview.privateUrl);
+  const waiting = preview?.state === "STARTING" || preview?.state === "RECONCILING";
+  const level: Level = ready
+    ? "ok"
+    : waiting
+      ? "running"
+      : preview?.state === "BLOCKED"
+        ? "critical"
+        : preview
+          ? "warning"
+          : "neutral";
+
+  function openPrivatePreview() {
+    if (preview?.privateUrl) {
+      window.open(preview.privateUrl, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  return (
+    <Panel className="preview-panel">
+      <div className="preview-panel__copy">
+        <div className="preview-panel__title">
+          <span className="eyebrow">Acceso tailnet</span>
+          <h2>Preview privado</h2>
+          <StatusPill level={level}>{preview?.state || "SIN PREVIEW"}</StatusPill>
+        </div>
+        <p>
+          {preview?.failureReason
+            || preview?.nextAction
+            || "Inícialo desde el runtime asignado a esta WorkSession."}
+        </p>
+        {preview && (
+          <span className="preview-panel__expiry">
+            {ready ? "Lease" : "Estado retenido"} · {formatAbsoluteDate(preview.leaseExpiresAt)}
+          </span>
+        )}
+      </div>
+      {ready ? (
+        <Button variant="primary" icon={<MonitorCheck />} onClick={openPrivatePreview}>
+          Abrir preview
+        </Button>
+      ) : waiting ? (
+        <Button variant="primary" disabled>
+          Preparando ruta
+        </Button>
+      ) : (
+        <Button onClick={onRefresh}>
+          Actualizar estado
+        </Button>
+      )}
+    </Panel>
   );
 }
 
@@ -1827,6 +1898,17 @@ function formatRelative(value?: string | null) {
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `hace ${hours} h`;
   return date.toLocaleDateString();
+}
+
+function formatAbsoluteDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function formatMoney(value: number, currency = "EUR") {
