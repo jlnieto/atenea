@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–6.4 are complete and change progress is `35/45`. The entry gate pins
+Tasks 1.1–6.5 are complete and change progress is `36/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2744,4 +2744,25 @@ Task 6.4 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `bc0b1ebdb7d1f6d91c4cc1833f7426808a0ea0c1b40bbf939a7a5201150abf7d`.
 
-The exact resume point is task 6.5 of `onboard-atenea-on-ax42`.
+Task 6.5 proves the accepted Atenea boundary remains available without opening
+a session or rerunning a prompt. The healthy mediator advertises
+`project-codex-v1`; its exact selection/execution allowlist retains only
+Atenea and the canonical workspace. Authenticated retrieval returned the three
+accepted terminal turns with their original dispatch, execution, workspace,
+thread and turn identities.
+
+Immutable denial probes for Beautips, Yvateve, ISC, Recambios, Fomasys and
+Checkpol each returned HTTP 403 `project_ownership_conflict`. An exact Atenea
+identity with an unknown workspace progressed to the narrower fail-closed
+`workspace_ownership_conflict`, proving that availability does not bypass
+persisted ownership. All seven dispatch IDs remain absent and the complete
+durable execution file is byte-identical at 28 records with zero non-terminal
+executions. Runtime, WorkSession Git, production, preview and Beautips remain
+`UP` with their accepted identities.
+
+Task 6.5 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-6.5-atenea-availability-denial`;
+the SHA-256 of its `SHA256SUMS` is
+`0c8011a01b0667da1a5f1bbd03b777b7b287ced9fb0fa02887e10ab21a5ee198`.
+
+The exact resume point is task 7.1 of `onboard-atenea-on-ax42`.
