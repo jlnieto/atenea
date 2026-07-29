@@ -38,6 +38,7 @@ expect_failure() {
   fail "ATENEA_RELOCATION_SOURCE_ROOT must be a synthetic copy beneath /tmp"
 SOURCE_MANIFEST="${SOURCE_ROOT}/ops/atenea-runtime.json"
 SOURCE_COMPOSE="${SOURCE_ROOT}/ops/worker/docker-compose.ax42.yml"
+ADAPTER_SOURCE="${SCRIPT_DIR}/atenea-runtime-engine-adapter-v1.sh"
 [[ -f "${SOURCE_MANIFEST}" && -f "${SOURCE_COMPOSE}" ]] ||
   fail "the exact Atenea manifest and AX42 Compose inputs are required"
 [[ "$(sha256sum "${SOURCE_MANIFEST}" | cut -d' ' -f1)" == \
@@ -50,6 +51,16 @@ grep -Fqx \
   '      ATENEA_MOBILE_UPLOAD_ROOT: /workspace/data/uploads' \
   "${SOURCE_COMPOSE}" ||
   fail "Atenea Compose does not bind mobile uploads to the owned runtime path"
+for required in \
+  'npm ci --prefer-offline --no-audit' \
+  'npm run build' \
+  'mvn -B -Dmaven.repo.local=/workspace/cache/maven/repository clean package'; do
+  grep -Fq "${required}" "${ADAPTER_SOURCE}" ||
+    fail "Atenea build adapter omits required command: ${required}"
+done
+if grep -Fq -- '-DskipTests' "${ADAPTER_SOURCE}"; then
+  fail "Atenea build adapter skips the complete backend test suite"
+fi
 
 SESSION="018f47a2-6b0c-7a31-9c2d-4f5a6b7c8daa"
 RUNTIME="ws-${SESSION//-/}"

@@ -7,17 +7,18 @@ ACTION="${1:-}"
 [[ "$#" -gt 0 ]] && shift
 
 ENGINE_LABEL='atenea-runtime-engine-v1'
-EXPECTED_SESSION='41c0ff95-e555-4773-b7b4-60903a3af1ad'
-EXPECTED_RUNTIME='ws-41c0ff95e5554773b7b460903a3af1ad'
-EXPECTED_COMMIT='b6dc854d94ba5b1976926656c9a6aba330f671e2'
-EXPECTED_TREE='f8c0dff5c7acf3d82d73885b09f9b1d142b562d2'
-EXPECTED_ARCHIVE_SHA256='a6f52b2d267750dfb4f8bc9f31d3c0d2434876ddf6517920cb882f19112b5dea'
+EXPECTED_SESSION='c20f3cde-9a64-4c7b-a674-7b63f94ca475'
+EXPECTED_RUNTIME='ws-c20f3cde9a644c7ba6747b63f94ca475'
+EXPECTED_COMMIT='b605c8d5b063e7321edd60fec2265ec7ddb84ea9'
+EXPECTED_TREE='7a661346cbe0cab61485e52593d4ddfc8a4068a8'
+EXPECTED_ARCHIVE_SHA256='ef785418b977fcab10b3cc2451c2ed6a2f15c7a1ec659a3ed14f03ec1a5b1a76'
 EXPECTED_MANIFEST_SHA256='3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3'
 EXPECTED_COMPOSE_SHA256='2133646b9fe6227ca417d6d62c92a74306caaa46a2957cdee810d5d7b0e5bb9f'
 POSTGRES_IMAGE='postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20'
 CODEX_IMAGE='atenea/codex-app-server@sha256:c081aaa9d40afa4d8b57297000fe9aff5635e52a94b2b87abf8626b128c55e2d'
 CODEX_IMAGE_ID='sha256:c081aaa9d40afa4d8b57297000fe9aff5635e52a94b2b87abf8626b128c55e2d'
 APP_IMAGE='maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e'
+NODE_IMAGE='node:22.16.0-bookworm-slim@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34'
 
 PLAN=''
 JSON_MODE=false
@@ -78,7 +79,7 @@ docker_exec_cmd() {
   if [[ "${TEST_MODE}" == '1' ]]; then
     docker_cmd exec "$@"
   else
-    DOCKER_HOST='unix:///run/user/1102/docker.sock' \
+    DOCKER_HOST='unix:///run/user/1103/docker.sock' \
       timeout --foreground 600 "${DOCKER_BIN}" exec "$@"
   fi
 }
@@ -89,7 +90,7 @@ rootlesskit_api() {
   runuser -u "${SLOT_USER}" -- \
     curl --silent --show-error --fail \
       --request "${method}" \
-      --unix-socket /run/user/1102/dockerd-rootless/api.sock \
+      --unix-socket /run/user/1103/dockerd-rootless/api.sock \
       "$@" "http://rootlesskit/v1/${path}"
 }
 
@@ -103,12 +104,12 @@ assert_rootlesskit_port_boundary() {
     jq -e '
       .apiVersion == "1.1.2" and
       .version == "3.0.2" and
-      .stateDir == "/run/user/1102/dockerd-rootless" and
+      .stateDir == "/run/user/1103/dockerd-rootless" and
       .networkDriver.driver == "slirp4netns" and
       .portDriver.driver == "builtin" and
       (.portDriver.protos | index("tcp4")) != null
     ' >/dev/null ||
-    fail TOOLCHAIN_UNAVAILABLE "The slot2 RootlessKit port boundary differs from the reviewed contract."
+    fail TOOLCHAIN_UNAVAILABLE "The slot3 RootlessKit port boundary differs from the reviewed contract."
 }
 
 remove_owned_rootless_ports() {
@@ -191,7 +192,7 @@ EOF
       rootlesskit_api DELETE "ports/$(jq -r '.id' <<<"${response}")" >/dev/null || true
     done <"${state_temporary}"
     find "${state_temporary}" -maxdepth 0 -type f -delete
-    fail OPERATION_FAILED "The exact slot2 loopback publication failed."
+    fail OPERATION_FAILED "The exact slot3 loopback publication failed."
   fi
   jq -s '.' "${state_temporary}" >"${ENGINE_ROOT}/rootlesskit-ports-v1.json"
   chmod 0600 "${ENGINE_ROOT}/rootlesskit-ports-v1.json"
@@ -411,13 +412,57 @@ build_application() {
   prepare_delivery
   assert_image "${APP_IMAGE}" \
     'sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e'
-  assert_image "${CODEX_IMAGE}" "${CODEX_IMAGE_ID}"
+  assert_image "${NODE_IMAGE}" \
+    'sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34'
   assert_container_owned_or_absent "${BUILD_CONTAINER}" build
   if container_exists "${BUILD_CONTAINER}"; then
     docker_cmd rm -f "${BUILD_CONTAINER}" >/dev/null
   fi
 
   install -d -m 0750 "${LOGS_PATH}"
+  docker_cmd run --detach \
+    --name "${BUILD_CONTAINER}" \
+    --network bridge \
+    --read-only \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,size=256m \
+    --cap-drop ALL \
+    --security-opt no-new-privileges:true \
+    --pids-limit 1024 \
+    --memory 2g \
+    --cpus 2 \
+    --restart no \
+    --label "com.atenea.engine=${ENGINE_LABEL}" \
+    --label "com.atenea.session=${SESSION}" \
+    --label "com.atenea.runtime=${RUNTIME}" \
+    --label com.atenea.project=atenea \
+    --label com.atenea.service=build \
+    --mount "type=bind,source=${SOURCE},target=/workspace/atenea" \
+    --mount "type=bind,source=${DELIVERY}/cache/node,target=/workspace/cache/node" \
+    --workdir /workspace/atenea/web \
+    --env npm_config_cache=/workspace/cache/node \
+    --entrypoint /bin/sh \
+    "${NODE_IMAGE}" \
+    -lc 'exec sh -lc "npm ci --prefer-offline --no-audit && npm run build"' \
+    >/dev/null
+
+  local completed=false
+  for unused in $(seq 1 900); do
+    if [[ "$(docker_cmd inspect -f '{{.State.Running}}' "${BUILD_CONTAINER}")" == false ]]; then
+      completed=true
+      break
+    fi
+    sleep 1
+  done
+  docker_cmd logs "${BUILD_CONTAINER}" >"${LOGS_PATH}/web-build.log" 2>&1 || true
+  retain_container_inspect "${BUILD_CONTAINER}" "${LOGS_PATH}/web-build-container.json"
+  [[ "${completed}" == true ]] ||
+    fail OPERATION_FAILED "The Atenea web build exceeded its finite timeout."
+  local exit_code
+  exit_code="$(docker_cmd inspect -f '{{.State.ExitCode}}' "${BUILD_CONTAINER}")"
+  docker_cmd rm "${BUILD_CONTAINER}" >/dev/null
+  [[ "${exit_code}" == 0 ]] ||
+    fail OPERATION_FAILED "The exact Atenea web build failed."
+
   docker_cmd run --detach \
     --name "${BUILD_CONTAINER}" \
     --network bridge \
@@ -440,10 +485,10 @@ build_application() {
     --env HOME=/workspace/cache/maven \
     --entrypoint /bin/sh \
     "${APP_IMAGE}" \
-    -lc 'exec mvn -B -DskipTests -Dmaven.repo.local=/workspace/cache/maven/repository package' \
+    -lc 'exec mvn -B -Dmaven.repo.local=/workspace/cache/maven/repository clean package' \
     >/dev/null
 
-  local completed=false
+  completed=false
   for unused in $(seq 1 900); do
     if [[ "$(docker_cmd inspect -f '{{.State.Running}}' "${BUILD_CONTAINER}")" == false ]]; then
       completed=true
@@ -455,7 +500,6 @@ build_application() {
   retain_container_inspect "${BUILD_CONTAINER}" "${LOGS_PATH}/build-container.json"
   [[ "${completed}" == true ]] ||
     fail OPERATION_FAILED "The Atenea application build exceeded its finite timeout."
-  local exit_code
   exit_code="$(docker_cmd inspect -f '{{.State.ExitCode}}' "${BUILD_CONTAINER}")"
   docker_cmd rm "${BUILD_CONTAINER}" >/dev/null
   [[ "${exit_code}" == 0 ]] ||
@@ -858,11 +902,11 @@ validate_plan() {
 
   [[ "${SESSION}" == "${EXPECTED_SESSION}" &&
       "${RUNTIME}" == "${EXPECTED_RUNTIME}" &&
-      "${SLOT}" == slot2 &&
-      "${SLOT_USER}" == atenea-slot2 &&
+      "${SLOT}" == slot3 &&
+      "${SLOT_USER}" == atenea-slot3 &&
       "${DELIVERY}" == "${DELIVERY_BASE}/${RUNTIME}" &&
       "${SOURCE}" == "${DELIVERY}/source" ]] ||
-    fail RUNTIME_OWNERSHIP_CONFLICT "The Atenea adapter accepts only the admitted administrative WorkSession."
+    fail RUNTIME_OWNERSHIP_CONFLICT "The Atenea adapter accepts only the exact admitted WorkSession."
   [[ "$(jq -r '.projectId' "${PLAN}")" == atenea ]] ||
     fail RUNTIME_OWNERSHIP_CONFLICT "The Atenea adapter received another project."
   assert_regular "${ALLOCATION}"
@@ -885,11 +929,10 @@ validate_plan() {
   id "${SLOT_USER}" >/dev/null 2>&1 ||
     fail RUNTIME_OWNERSHIP_CONFLICT "The admitted rootless slot identity is absent."
   if [[ "${TEST_MODE}" != '1' ]]; then
-    [[ -S /run/user/1102/docker.sock &&
-        "$(stat -c %u:%a /run/user/1102/docker.sock)" == '1102:1660' ]] ||
-      fail TOOLCHAIN_UNAVAILABLE "The exact slot2 exec-stream socket is unavailable."
+    [[ -S /run/user/1103/docker.sock &&
+        "$(stat -c %u:%a /run/user/1103/docker.sock)" == '1103:1660' ]] ||
+      fail TOOLCHAIN_UNAVAILABLE "The exact slot3 exec-stream socket is unavailable."
   fi
-  assert_retained_volume
 }
 
 execute() {
@@ -898,9 +941,9 @@ execute() {
   for item in "$@"; do
     [[ "${item}" == --json ]] && JSON_MODE=true
   done
-  [[ "${DOCKER_HOST_VALUE}" == 'unix:///run/atenea-runtime/slot2/docker.sock' ||
+  [[ "${DOCKER_HOST_VALUE}" == 'unix:///run/atenea-runtime/slot3/docker.sock' ||
       ( "${TEST_MODE}" == 1 && "${DOCKER_HOST_VALUE}" == unix:///tmp/* ) ]] ||
-    fail RUNTIME_OWNERSHIP_CONFLICT "The adapter Docker socket is outside slot2."
+    fail RUNTIME_OWNERSHIP_CONFLICT "The adapter Docker socket is outside slot3."
   [[ -S "${DOCKER_HOST_VALUE#unix://}" ||
       "${ATENEA_RUNTIME_FAKE_DOCKER:-0}" == 1 ]] ||
     fail TOOLCHAIN_UNAVAILABLE "The admitted rootless slot socket is unavailable."

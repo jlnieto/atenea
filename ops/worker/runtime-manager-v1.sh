@@ -536,9 +536,9 @@ if [[ "${IS_ATENEA}" == "true" ]]; then
         delivery: {
           root: $delivery,
           source: ($delivery + "/source"),
-          archiveSha256: "a6f52b2d267750dfb4f8bc9f31d3c0d2434876ddf6517920cb882f19112b5dea",
-          commit: "b6dc854d94ba5b1976926656c9a6aba330f671e2",
-          tree: "f8c0dff5c7acf3d82d73885b09f9b1d142b562d2",
+          archiveSha256: "ef785418b977fcab10b3cc2451c2ed6a2f15c7a1ec659a3ed14f03ec1a5b1a76",
+          commit: "b605c8d5b063e7321edd60fec2265ec7ddb84ea9",
+          tree: "7a661346cbe0cab61485e52593d4ddfc8a4068a8",
           logs: $logs
         },
         network: {

@@ -34,11 +34,11 @@ for command in curl find jq python3 sha256sum stat timeout; do
 done
 
 declare -A PROTECTED_HASHES=(
-  ["ops/worker/runtime-manager-v1.sh"]="e3ecfd2bb84dfd72d067dfe7bfa7426f062f4617a0800015e8f3e12dd2c7473f"
+  ["ops/worker/runtime-manager-v1.sh"]="9692ce13ea23e009cbec71580cbcd130afa3cc47c14aaf61f5ae665fcd83cb2b"
   ["ops/worker/runtime-client-v1.sh"]="0792bfae3f583474f51fef0d18169e4e7ffaad445efcc5f0de2470892b4089cb"
   ["ops/worker/test-runtime-manager-v1.sh"]="4e77070cbbbd5ca913297d7beb035d85af34bda22fcb64e64e0955fa8049a9cc"
-  ["ops/worker/runtime-engine-v1.sh"]="48bc54324bf39086401fc7430a1b9b8048bcb6bd37e028bf8cad80e92bc4360e"
-  ["ops/worker/atenea-runtime-engine-adapter-v1.sh"]="7e2a7b3007acd43e31ae1499bfcdafc3f5a0addce7bdba471bdcaf86b4e82600"
+  ["ops/worker/runtime-engine-v1.sh"]="23e95fbbc59819de0c1fe80643c5093987579fe34836e42827899c475fa663fb"
+  ["ops/worker/atenea-runtime-engine-adapter-v1.sh"]="413e72aa03c654e50eae6debf292e1a3e38e4240de94ab61f2afc9ca54590929"
   ["ops/worker/install-atenea-runtime-v1.sh"]="2dcfbbe58eedd2b0dbd6f046416d90c9b8df52a5c6e415367d3e93fa481b296c"
   ["ops/worker/images/atenea-codex-app-server/Dockerfile"]="d6a5688825f46533074d800cd11b29a1656413cdf68249a07a4924b17829d27e"
   ["ops/worker/images/atenea-codex-app-server/codex-loopback-proxy.mjs"]="b62771d89fe1a26ca804f34c8712c3156b41134d235825c03a90a90daa7de64f"
