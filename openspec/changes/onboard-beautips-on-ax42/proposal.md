@@ -14,7 +14,7 @@ administrative pilot, its data or its credentials into shared platform state.
 ## What Changes
 
 - Pin Beautips to GitHub `jlnieto/beautips`, branch `main`, accepted manifest
-  commit `e4256d7fe1610e191099bd12ce993591a5cd4b7a` and its reviewed runtime
+  descendant `e9e0b3c319c518363d4135f5378ebbddced96dfb` and its reviewed runtime
   manifest.
 - Treat the existing slot 1 administrative runtime, PostgreSQL, Redis,
   assets/imports volumes and manual secret file as foreign retained resources.

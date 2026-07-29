@@ -64,10 +64,10 @@ executing it before the reviewed mediator and exact registry exist.
 
 Task 2.2 adds the source registry
 `ops/worker/project-codex-allowlist-v1.json`, SHA-256
-`1311050ba6a8c117d8e92314e0c48a1cf24e106677aa248d8ad0d39da05f7b77`,
+`31694d1e345f7c40f5a7287fa5ee91cd8f8c2df39031a4771c0f931b907d3418`,
 under the closed Draft 2020-12 schema
 `runtime-contract/project-codex-allowlist-v1.schema.json`, SHA-256
-`30c15010f5f66e1ea020b524c959f67fa6913a7e261eca2320ddda9aebd9e027`.
+`97e49b814f0a339fead7bf8598bb05dda53b3ddb2078457994c233f8b4d271cc`.
 It contains exactly Beautips and pins repository, branch, commit, tree,
 manifest and managed Compose identities to worker `ax42-01`, normal workload
 and slots 2–4. Selection and execution are both false and the workspace map is
@@ -78,6 +78,27 @@ the disabled Atenea registry, consumed by routing or capable of lifecycle
 execution. Tasks 2.3–2.6 must add the mediated operations, exact sandbox,
 secret boundary and install/rollback tooling before any installed Beautips
 record can exist.
+
+Task 2.3 advances the accepted source to
+`e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
+`533d32f97ae362997ad003170a826da674c31c1d`, solely to make both smoke
+scripts reject repository `.env` and missing named inputs in managed mode.
+Their manual default mode remains compatible.
+
+The source-only mediator
+`ops/worker/beautips-operation-mediator-v1.py` accepts only a canonical
+WorkSession UUID and one of ten symbolic operations. It derives allocation,
+slot, worktree, Git, manifest, Compose, ports, runtime names, cache paths,
+timeouts, fixed images and named secret references without accepting caller
+commands, paths, endpoints or environment. Every generated plan validates
+against `runtime-contract/beautips-operation-plan-v1.schema.json` and remains
+`executionEnabled=false` until the later installation gate.
+
+The exact operation set is Node build, Maven test, Compose build, runtime
+start/health/logs/stop/cleanup and the two reviewed smoke scripts. Unknown
+operations, slot 1, noncanonical sessions, duplicate or foreign ports, foreign
+project/path/Git identity and modified manifest or Compose fail closed before
+any operation can execute.
 
 ### The administrative pilot is foreign retained state
 

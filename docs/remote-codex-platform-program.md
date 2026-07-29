@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `10/45`, with the exact
-  resume point at task 2.3
+  `45/45` and `onboard-beautips-on-ax42` is active at `11/45`, with the exact
+  resume point at task 2.4
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -239,7 +239,7 @@ separate `onboard-beautips-on-ax42` change; Beautips routing is not enabled.
 | D-036 | Keep Atenea onboarding artifacts non-authoritative and its database empty-migrated plus synthetic until an external backup has passed restore. | RAID and retained acceptance evidence do not satisfy authoritative project backup. | accepted | data/operations owners | before any real retained data |
 | D-037 | Admit `project-codex-v1` only from a root-owned exact Atenea workspace registry and execute it in a per-run Bubblewrap namespace with no caller-supplied command, path, remote, endpoint or environment. | The authenticated identity can be reused without turning the worker into a general shell or mounting other workspaces, daemon sockets or production paths. Uncertain turns fail closed after restart instead of being replayed. | accepted for Atenea pilot | security/runtime owners | after Atenea archive and before a second project |
 | D-038 | Close Atenea onboarding after a 15-minute disabled/clean observation with exact samples at minute 0, 5, 10 and 15. | Four bounded samples are sufficient to detect automatic resurrection or health drift after exact rollback while keeping this disposable, non-production gate finite. Any drift blocks archive. | accepted for Atenea pilot | programme owner | before onboarding archive |
-| D-039 | Pin Beautips to GitHub `jlnieto/beautips` `main`; accept the entry commit `5044a3b07b3db82895e9c8ff47bc4bc9b0e97130` only as the reviewed ancestor and task 2.1 commit `e4256d7fe1610e191099bd12ce993591a5cd4b7a` as the managed-manifest source. | GitHub and AX42 agreed at entry, both older copies were strict ancestors, and the accepted descendant removes fixed manual runtime authority before allocation. | accepted for Beautips pilot | programme owner | before any managed Beautips allocation |
+| D-039 | Pin Beautips to GitHub `jlnieto/beautips` `main`; retain entry commit `5044a3b07b3db82895e9c8ff47bc4bc9b0e97130` and manifest commit `e4256d7fe1610e191099bd12ce993591a5cd4b7a` as reviewed ancestors, with task 2.3 descendant `e9e0b3c319c518363d4135f5378ebbddced96dfb` as current mediated source. | GitHub and AX42 agreed at entry, both older copies were strict ancestors, and accepted descendants remove fixed manual runtime authority plus unmanaged smoke fallbacks before allocation. | accepted for Beautips pilot | programme owner | before any managed Beautips allocation |
 | D-040 | Treat the existing manual slot 1 Beautips workspace, runtime, listener, secret boundary and persistent data/files as foreign retained state. | The administrative pilot is healthy but has no WorkSession ownership or independent restore-tested external backup. | accepted | runtime/data owners | throughout Beautips onboarding |
 | D-041 | Use only empty migrated PostgreSQL, disposable Redis, invented fixtures/files and disabled WhatsApp for managed acceptance. | Platform ownership can be proven without copying administrative, legacy or production-derived data and without external messaging authority. | accepted | data/security owners | before managed runtime start |
 | D-042 | Declare no localhost requirement for the disabled-WhatsApp acceptance; block on any absolute-origin failure rather than generating a tunnel implicitly. | Relative application paths can be verified through the private preview while excluded OAuth/messaging flows cannot justify broader compatibility. | accepted for Beautips pilot | runtime/product owners | private preview acceptance |
@@ -2984,10 +2984,10 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–2.2 are complete and change progress is `10/45`. GitHub
+Tasks 1.1–2.3 are complete and change progress is `11/45`. GitHub
 `jlnieto/beautips`, branch `main`, managed-manifest commit
-`e4256d7fe1610e191099bd12ce993591a5cd4b7a`, tree
-`8e52657add269c84700105aa7028728d4ddf2810`, runtime manifest SHA-256
+`e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
+`533d32f97ae362997ad003170a826da674c31c1d`, runtime manifest SHA-256
 `365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82`
 and managed Compose SHA-256
 `840e64166e8e1ddaefb74d11763fe150e6539074bb02c3173e2175a446555941`
@@ -3059,9 +3059,9 @@ worker `ax42-01`, normal workload and allowed slots 2–4. Both selection and
 execution are false, slot 1 is excluded and the workspace map is empty.
 
 The allowlist SHA-256 is
-`1311050ba6a8c117d8e92314e0c48a1cf24e106677aa248d8ad0d39da05f7b77`;
+`31694d1e345f7c40f5a7287fa5ee91cd8f8c2df39031a4771c0f931b907d3418`;
 its exact Draft 2020-12 schema SHA-256 is
-`30c15010f5f66e1ea020b524c959f67fa6913a7e261eca2320ddda9aebd9e027`.
+`97e49b814f0a339fead7bf8598bb05dda53b3ddb2078457994c233f8b4d271cc`.
 Valid-format foreign repository, branch, commit, tree, manifest, Compose,
 worker, slot, workspace, project and unknown-field mutations all fail schema
 validation.
@@ -3079,9 +3079,36 @@ Task 2.2 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `a4c60545032856054db1b9980a83cfb1413fddde59c632aacc09998d5555b9d2`.
 
+Task 2.3 adds a closed, source-only mediator for exactly ten reviewed
+operations: Node build, Maven test, Compose build, runtime
+start/health/logs/stop/cleanup and functional/customer smoke. It accepts only
+the canonical WorkSession UUID plus a symbolic operation and derives every
+other identity from persisted allocation and the exact source allowlist.
+
+All plans have a finite timeout, named synthetic secret references and
+`executionEnabled=false`. Caller commands, paths, endpoints and environments
+are not request fields. The plan schema rejects unknown fields; the mediator
+rejects unknown operations, `slot1`, noncanonical sessions, duplicate or
+foreign ports, project/path/Git drift and altered manifest or Compose before
+operation execution.
+
+The two Beautips smoke scripts now have a managed mode that does not load
+repository `.env` and requires explicit named inputs. Manual mode remains
+unchanged. Mandatory local redeploy completed and health is `UP`. Four focused
+mediator tests, worker `11/11` and runner `6/6` regressions pass. The mediator
+and updated allowlist remain absent from installed AX42 paths; the existing
+Atenea registry is still disabled with zero workspaces. Administrative
+Beautips and Atenea production/preview retain exact running identities and all
+health probes are `UP`.
+
+Task 2.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-2.3-reviewed-operation-mediator`;
+the SHA-256 of its `SHA256SUMS` is
+`940e412d45833ce2a25223e4a279966258faedf57c77e4f2f7ae377f9f3c1e1f`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 2.3 of `onboard-beautips-on-ax42`.
+The exact resume point is task 2.4 of `onboard-beautips-on-ax42`.
