@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `25/45`, with the exact
-  resume point at task 5.1
+  `45/45` and `onboard-beautips-on-ax42` is active at `26/45`, with the exact
+  resume point at task 5.2
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3520,3 +3520,44 @@ the SHA-256 of its `SHA256SUMS` is
 `17dd85832424cc065eb537ae66f3d4f3355bf8579887dd88361d8d5610a89b22`.
 
 The exact resume point is task 5.1 of `onboard-beautips-on-ax42`.
+
+Task 5.1 is complete and change progress is `26/45`. The canonical Beautips
+commit `e9e0b3c319c518363d4135f5378ebbddced96dfb` passed the fixed Node 22
+CSS build and the complete Maven 3.9.9/Java 21 suite on assigned rootless
+`slot4`. Surefire retained 30 tests with zero failures, errors or skips. Both
+acceptance commands used the exact reviewed digest-pinned plans with
+`--network none` after public dependencies were populated only in this
+WorkSession's isolated cache.
+
+The assigned slot receives traverse-only ACLs on shared ancestors and access
+only to the exact WorkSession worktree and cache. Ownership, group, allocation,
+workspace record and Git remain unchanged. Pre/post fingerprints prove the
+same HEAD, tree, index, expected two-line untracked target, allocation,
+workspace, worker state and 30 durable worker executions. Slot4 retained zero
+task containers and only its three default networks.
+
+Preflight exposed three closed plan defects before acceptance. Git now receives
+an invocation-local `safe.directory` for only the already validated worktree;
+npm explicitly uses `/workspace/.npm`; and Maven uses the canonical
+`-Dfrontend.build.skip=true` because Node has already built CSS. Focused
+mediator and installer tests pass. Installed mediator and lifecycle SHA-256
+values are respectively
+`6cbb65d4b667c08220e40b4b03df5d0143c28bf444fed1bf1305c22ba61917da`
+and
+`c85d05a2220b9d42a8696884669d83996159e7dae15876bd66e531b7b93d26be`.
+
+The failed attempts stopped at their documented boundary; all partial ACL
+projections were reverted before retry. One diagnostic container was removed
+by its recorded immutable ID. No failed or passing attempt changed production,
+preview, administrative Beautips, other slots, foreign WorkSessions, routing
+or canonical Git. Production, preview, administrative Beautips and the
+isolated control plane remained healthy.
+
+Task 5.1 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-5.1-canonical-build-tests`;
+the SHA-256 of its `SHA256SUMS` is
+`e3b5c63bd6b7de888504a0807d806201d16aa25de01cb5aaa1c37728b9791ae8`.
+Five sealed blocked-attempt directories remain beside it with their own
+integrity manifests and are indexed by the accepted attempt ledger.
+
+The exact resume point is task 5.2 of `onboard-beautips-on-ax42`.

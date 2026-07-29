@@ -64,9 +64,17 @@ def sha256(path: Path) -> str:
 
 
 def checked(argv: list[str], cwd: Path) -> str:
+    if not argv or argv[0] != "git":
+        reject("canonical Git command rejected")
+    command = [
+        "git",
+        "-c",
+        f"safe.directory={cwd}",
+        *argv[1:],
+    ]
     try:
         result = subprocess.run(
-            argv,
+            command,
             cwd=cwd,
             text=True,
             stdout=subprocess.PIPE,
@@ -268,7 +276,8 @@ def command_for(name: str, allocation: dict[str, Any], worktree: Path) -> list[s
             "--mount", f"type=bind,source={cache_root}/node,target=/workspace/.npm",
             "--workdir", "/workspace", NODE_IMAGE,
             "sh", "-lc",
-            "npm ci --prefer-offline --no-audit && npm run build:css",
+            "npm ci --cache /workspace/.npm --prefer-offline --no-audit "
+            "&& npm run build:css",
         ],
         "maven-test": [
             *docker, "run", "--rm", "--name", runtime + "-maven-test",
@@ -277,7 +286,9 @@ def command_for(name: str, allocation: dict[str, Any], worktree: Path) -> list[s
             "--mount", f"type=bind,source={cache_root}/maven,target=/workspace/.m2",
             "--workdir", "/workspace", MAVEN_IMAGE,
             "mvn", "-B", "-f", "backend/pom.xml",
-            "-Dmaven.repo.local=/workspace/.m2/repository", "test",
+            "-Dmaven.repo.local=/workspace/.m2/repository",
+            "-Dfrontend.build.skip=true",
+            "test",
         ],
         "compose-build": [*compose_base, "build", "app"],
         "runtime-start": [*compose_base, "up", "-d", "--no-build"],

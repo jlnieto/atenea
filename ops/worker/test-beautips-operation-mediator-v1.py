@@ -113,6 +113,29 @@ class BeautipsOperationMediatorTest(unittest.TestCase):
             json.dumps(self.allocation), encoding="utf-8"
         )
 
+    def test_git_safe_directory_is_scoped_to_exact_validated_worktree(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="expected\n", stderr=""
+        )
+        with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
+            self.assertEqual(
+                "expected",
+                MODULE.checked(["git", "rev-parse", "HEAD"], self.worktree),
+            )
+        command = run.call_args.args[0]
+        self.assertEqual(
+            [
+                "git",
+                "-c",
+                f"safe.directory={self.worktree}",
+                "rev-parse",
+                "HEAD",
+            ],
+            command,
+        )
+        with self.assertRaises(MODULE.Rejected):
+            MODULE.checked(["sh", "-c", "true"], self.worktree)
+
     def test_all_ten_operations_produce_closed_non_executable_plans(self) -> None:
         operations = json.loads(
             SCRIPT.with_name("beautips-runtime-operations-v1.json").read_text()
@@ -144,6 +167,14 @@ class BeautipsOperationMediatorTest(unittest.TestCase):
             self.assertTrue(plan["argv"])
         self.assertIn("--volumes", plans["runtime-cleanup"]["argv"])
         self.assertIn("--rmi", plans["runtime-cleanup"]["argv"])
+        self.assertIn(
+            "-Dfrontend.build.skip=true",
+            plans["maven-test"]["argv"],
+        )
+        self.assertIn(
+            "--cache /workspace/.npm",
+            plans["node-build"]["argv"][-1],
+        )
         self.assertEqual(
             "true",
             plans["functional-smoke"]["environment"]["BEAUTIPS_SMOKE_MANAGED_MODE"],

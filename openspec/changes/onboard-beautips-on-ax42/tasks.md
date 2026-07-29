@@ -37,7 +37,7 @@
 
 ## 5. Build, synthetic runtime and private preview
 
-- [ ] 5.1 Run the canonical Node/Maven build and complete test suite from the accepted WorkSession commit
+- [x] 5.1 Run the canonical Node/Maven build and complete test suite from the accepted WorkSession commit
 - [ ] 5.2 Start a separate rootless Beautips runtime with empty PostgreSQL, disposable Redis and session-owned volumes
 - [ ] 5.3 Load only versioned invented tenants/users/loyalty/assets/import fixtures and prove deterministic persistence
 - [ ] 5.4 Prove no manual-volume, production, legacy-import, WhatsApp, host-daemon or unrelated-workspace connectivity

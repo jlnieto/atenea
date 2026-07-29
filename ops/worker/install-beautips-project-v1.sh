@@ -49,7 +49,7 @@ BASE_RUNNER="${LIBEXEC}/project-codex-runner-v1.py"
 INSTALLED_INSTALLER="${LIBEXEC}/install-beautips-project-v1.sh"
 
 declare -A HASHES=(
-  [beautips-operation-mediator-v1.py]='7efb6cc530049a2325819b6e245391362d5f068b6734196530b37f5e7eb8246d'
+  [beautips-operation-mediator-v1.py]='6cbb65d4b667c08220e40b4b03df5d0143c28bf444fed1bf1305c22ba61917da'
   [beautips-project-codex-runner-v1.py]='55e8f585e19f6a19d3c51aaf7532b1cf0f74f6b087ae0d1ef67faaea3029b73b'
   [beautips-secret-boundary-v1.py]='d0176e51278908b9803f8a4c3502ac9a9d0613ee1c88fd37a8f6733800c79b8f'
   [beautips-runtime-operations-v1.json]='a334708bb1a052b413f7b3068408d17472099a439d7afb6117d4d86dce342350'

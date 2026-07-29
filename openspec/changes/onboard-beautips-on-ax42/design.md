@@ -272,6 +272,17 @@ checks use reviewed bounded smoke scripts and Playwright verifies exact
 desktop/mobile states. Delivery uses one exact WorkSession draft pull request,
 reviewed non-force merge synchronization and canonical close.
 
+Task 5.1 projects assigned-slot access without changing ownership: shared
+ancestors receive traverse only and the exact WorkSession worktree/cache
+receive the slot ACL. Dependencies warm only into that cache; acceptance then
+runs the exact digest-pinned Node and Maven plans with network none.
+
+Real preflight closed three plan defects before acceptance. Root-owned Git
+inspection now scopes `safe.directory` to the already validated exact
+worktree, npm explicitly selects its mounted session cache, and Maven skips
+the separately completed frontend goal using the same property as the
+canonical Dockerfile. Focused mediator/install tests cover all three.
+
 ### Rollback is exact and observation is finite
 
 Rollback first disables new Beautips selection, reconciles/cancels only the
