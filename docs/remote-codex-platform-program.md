@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–6.1 are complete and change progress is `32/45`. The entry gate pins
+Tasks 1.1–6.2 are complete and change progress is `33/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2660,4 +2660,36 @@ Task 6.1 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `01631b47930c76270433c15c876a0686b6af476516edddaa152e2f0eed8fae78`.
 
-The exact resume point is task 6.2 of `onboard-atenea-on-ax42`.
+Task 6.2 merges pull request `#4` through the normal GitHub merge operation.
+Merge commit `b94aacd4dae52f7567156e15710faae66062e814` has exact latest base
+`849ceee3293dcc7ce461ee04a564ea12958f5dd3` and immutable WorkSession head
+`0230c6b973692205ed9a17f8015cd151269d8080` as its two parents. Both are
+ancestors of the merge commit. The WorkSession remote branch still points to
+its original head, so no force update or branch deletion occurred.
+
+Atenea synchronization now requires the GitHub pull request number, canonical
+URL, base repository/ref, head repository/ref and head SHA to match the exact
+persisted WorkSession identity. Cross-session metadata fails closed before
+persistence or notification. Repeating a successful `MERGED` sync does not
+emit a second merge notification. The complete regression passes `399/399`.
+
+The real sync endpoint ran twice and returned identical material delivery
+state: WorkSession `OPEN`, pull request `MERGED`, the same workspace identity,
+branch, final commit and original publication timestamp. A disposable
+cross-session fixture retained MD5
+`d6c507484f57e9e7270c5c9bbe38bf25` across both calls, then exact ID,
+ownership, SHA and MD5 preconditions removed only its project and WorkSession
+records. Both fixture IDs are absent.
+
+The ephemeral GitHub token file was deleted after the first sync; the second
+used only the running control process's in-memory credential. Zero
+non-terminal AgentRuns and zero push-notification log rows remain. Runtime,
+production/preview, Beautips, the AX42 worktree and both control-plane
+checkouts remain healthy and clean.
+
+Task 6.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-6.2-merge-sync`;
+the SHA-256 of its `SHA256SUMS` is
+`89f10cbfd82d576cf54b94860d4586e209a4d18f4eb794603fc52879b0455b3b`.
+
+The exact resume point is task 6.3 of `onboard-atenea-on-ax42`.
