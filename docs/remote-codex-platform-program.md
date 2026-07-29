@@ -1015,3 +1015,20 @@ integrity, MIME, file/quota bounds, cross-session/traversal rejection,
 restart persistence, download and exact synthetic cleanup.
 
 The exact resume point is task 3.5 of `add-worksession-attachments`.
+
+Task 3.5 is complete and change progress is `13/31`. AX42 runs the
+enabled/active service only on `100.81.98.93:8788`; UFW admits that port only
+from Atenea tailnet identity `100.88.252.28`. The retained root is
+`0700 atenea-worker:atenea`, initially contains only its owned `.incoming` and
+`work-sessions` directories and starts no project runtime. Installed programme
+and unit SHA-256 identities match commit
+`dbf358c9b967e52999716a27873a7a5a4a2740b8`.
+
+AX42 strict verification and RAID pass after installation. All four slot
+inventories remain untouched and Beautips reports actuator health `UP`.
+Accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-worksession-attachments/runs/task-3-worker-storage`;
+the SHA-256 of its `SHA256SUMS` is
+`33ff974eb1131de2d7b60cb7279da2a7c33deef177812d63e500594a09c1013b`.
+
+The exact resume point is task 4.1 of `add-worksession-attachments`.
