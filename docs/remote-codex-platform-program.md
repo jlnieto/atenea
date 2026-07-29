@@ -1448,3 +1448,30 @@ the SHA-256 of its `SHA256SUMS` is
 `07836ce14b406d6fdb27d5b90653de02213b62b0ea91c94db6b0e234d1f21ea9`.
 
 The exact resume point is task 6.7 of `add-private-session-previews`.
+
+Task 6.7 is complete and change progress is `31/37`. Preview
+`05aa7e6e-f4a7-4621-aeda-248e491eeee6` stopped receiving renewals and
+reached its persisted lease at `2026-07-29T02:37:20.908708Z`. The coordinator
+persisted `EXPIRED` and removed its route 0.881 seconds later, well inside the
+60-second bound.
+
+A separate exact synthetic preview,
+`62f6ac6d-3248-48b0-9e16-710775a28a7d`, became `READY` revision 2 at the
+same private ingress and returned HTTP 200 to Atenea. Its exact authenticated
+stop completed in 49 ms as `STOPPED` revision 3 with no private URL. The
+ingress listener was absent immediately after the response, and an independent
+Atenea route probe failed closed with exit 7 and HTTP 000 in 107 ms.
+
+Before and after fingerprints for the persisted allocation, runtime container,
+worktree HEAD/tree/status and both attachment metadata/content pairs are
+byte-identical. The runtime remains healthy and loopback-only at
+`127.0.0.1:22243`; both preview services remain active and no browser process
+exists. Production, preview, Beautips, rootful Docker, RAID and firewall state
+remain unchanged.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-private-session-previews/runs/task-6.7-expiry-hard-stop`;
+the SHA-256 of its `SHA256SUMS` is
+`8112ff5559db5221ba4fefc06097f9c4b9395cf7addf941968bce710eed644ef`.
+
+The exact resume point is task 6.8 of `add-private-session-previews`.
