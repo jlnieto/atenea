@@ -49,7 +49,8 @@ import {
   OperationsIncident,
   SessionDeliverable,
   SessionDeliverableSummary,
-  SessionDeliverablesView
+  SessionDeliverablesView,
+  WorkSessionAttachment
 } from "./types";
 
 type RouteName =
@@ -747,17 +748,29 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
 
 function ConversationScreen({ sessionId, projectId }: { sessionId: number; projectId?: number }) {
   const [conversation, setConversation] = useState<MobileWorkSessionConversation | null>(null);
+  const [attachments, setAttachments] = useState<WorkSessionAttachment[]>([]);
   const [command, setCommand] = useState<CoreCommandResponse | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [attachmentError, setAttachmentError] = useState("");
 
   async function load() {
     setError("");
+    setAttachmentsLoading(true);
     try {
-      setConversation(await api.workSessionConversation(sessionId));
+      const [nextConversation, nextAttachments] = await Promise.all([
+        api.workSessionConversation(sessionId),
+        api.workSessionAttachments(sessionId)
+      ]);
+      setConversation(nextConversation);
+      setAttachments(nextAttachments);
     } catch (loadError) {
       setError(errorMessage(loadError));
+    } finally {
+      setAttachmentsLoading(false);
     }
   }
 
@@ -784,6 +797,39 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     }
   }
 
+  async function uploadAttachment(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+    setUploading(true);
+    setAttachmentError("");
+    try {
+      await api.uploadWorkSessionAttachment(sessionId, file);
+      setAttachments(await api.workSessionAttachments(sessionId));
+    } catch (uploadError) {
+      setAttachmentError(errorMessage(uploadError));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function downloadAttachment(attachment: WorkSessionAttachment) {
+    setAttachmentError("");
+    try {
+      const blob = await api.downloadWorkSessionAttachment(sessionId, attachment.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = attachment.originalFilename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setAttachmentError(errorMessage(downloadError));
+    }
+  }
+
   return (
     <ConversationLayout
       title={conversation?.session.title || `WorkSession #${sessionId}`}
@@ -793,12 +839,85 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     >
       {error && <InlineError>{error}</InlineError>}
       {command && <CommandCard command={command} onChanged={setCommand} afterResolve={load} />}
+      <AttachmentPanel
+        attachments={attachments}
+        loading={attachmentsLoading}
+        uploading={uploading}
+        error={attachmentError}
+        onUpload={uploadAttachment}
+        onDownload={downloadAttachment}
+      />
       <TurnList turns={conversation?.recentTurns || []} />
       <form className="conversation-composer" onSubmit={submit}>
         <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Instrucción para Codex dentro de esta sesión..." />
         <Button variant="primary" disabled={loading || !message.trim()}>{loading ? "Enviando" : "Enviar"}</Button>
       </form>
     </ConversationLayout>
+  );
+}
+
+function AttachmentPanel({
+  attachments,
+  loading,
+  uploading,
+  error,
+  onUpload,
+  onDownload
+}: {
+  attachments: WorkSessionAttachment[];
+  loading: boolean;
+  uploading: boolean;
+  error: string;
+  onUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onDownload: (attachment: WorkSessionAttachment) => void;
+}) {
+  const state = uploading
+    ? "Subiendo"
+    : loading
+      ? "Cargando"
+      : attachments.length
+        ? `${attachments.length} retenido${attachments.length === 1 ? "" : "s"}`
+        : "Sin adjuntos";
+  return (
+    <section className="attachment-panel" aria-label="Adjuntos de la WorkSession">
+      <div className="attachment-panel__header">
+        <div>
+          <span className="eyebrow">WorkSession actual</span>
+          <h2>Adjuntos</h2>
+          <p>{state} · máximo 16 MiB · PNG, JPEG, WebP, texto, JSON, PDF o ZIP</p>
+        </div>
+        <label className={`button button--primary ${uploading ? "is-disabled" : ""}`}>
+          <Upload />
+          <span>{uploading ? "Subiendo…" : "Adjuntar archivo"}</span>
+          <input
+            aria-label="Seleccionar adjunto"
+            type="file"
+            accept=".png,.jpg,.jpeg,.webp,.txt,.json,.pdf,.zip,image/png,image/jpeg,image/webp,text/plain,application/json,application/pdf,application/zip"
+            disabled={uploading}
+            onChange={onUpload}
+          />
+        </label>
+      </div>
+      {error && <InlineError>{error}</InlineError>}
+      {!loading && attachments.length > 0 && (
+        <div className="attachment-list">
+          {attachments.map((attachment) => (
+            <button
+              className="attachment-item"
+              type="button"
+              onClick={() => onDownload(attachment)}
+              key={attachment.id}
+            >
+              <span>
+                <strong>{attachment.originalFilename}</strong>
+                <small>{attachment.kind} · {formatBytes(attachment.sizeBytes)}</small>
+              </span>
+              <em>Descargar</em>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

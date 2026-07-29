@@ -971,6 +971,95 @@ select:focus {
   padding: 18px 16px 120px;
 }
 
+.attachment-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid #303638;
+  border-radius: 5px;
+  background: #171b1d;
+}
+
+.attachment-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.attachment-panel h2,
+.attachment-panel p {
+  margin: 0;
+}
+
+.attachment-panel h2 {
+  margin-top: 2px;
+  font-size: 17px;
+}
+
+.attachment-panel p {
+  margin-top: 4px;
+  color: #9aa5a8;
+  font-size: 12px;
+}
+
+.attachment-panel label.button {
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.attachment-panel label.button.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.attachment-panel label.button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.attachment-list {
+  display: grid;
+  gap: 7px;
+}
+
+.attachment-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid #303638;
+  border-radius: 4px;
+  background: #1e252b;
+  color: #e7ece9;
+  text-align: left;
+}
+
+.attachment-item span {
+  min-width: 0;
+}
+
+.attachment-item strong,
+.attachment-item small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.attachment-item small,
+.attachment-item em {
+  color: #9aa5a8;
+  font-size: 12px;
+  font-style: normal;
+}
+
 .turn-list {
   list-style: none;
   padding: 0;
@@ -1106,5 +1195,14 @@ select:focus {
 
   .conversation-body {
     padding-bottom: 180px;
+  }
+
+  .attachment-panel__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .attachment-panel label.button {
+    width: 100%;
   }
 }

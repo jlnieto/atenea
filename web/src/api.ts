@@ -18,7 +18,8 @@ import {
   ResolveMobileRescueSessionResult,
   ResolveMobileWorkSessionResult,
   SessionDeliverable,
-  SessionDeliverablesView
+  SessionDeliverablesView,
+  WorkSessionAttachment
 } from "./types";
 
 const AUTH_KEY = "atenea.web.console.auth.v2";
@@ -179,6 +180,45 @@ export class AteneaApi {
     });
   }
 
+  workSessionAttachments(sessionId: number) {
+    return this.get<WorkSessionAttachment[]>(
+      `/api/mobile/sessions/${sessionId}/attachments?limit=50`
+    );
+  }
+
+  async uploadWorkSessionAttachment(sessionId: number, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("source", "OPERATOR_UPLOAD");
+    form.append("kind", file.type.startsWith("image/") ? "IMAGE" : "FILE");
+    form.append("retentionClass", "SESSION");
+    return this.request<WorkSessionAttachment>(
+      `/api/mobile/sessions/${sessionId}/attachments`,
+      {
+        method: "POST",
+        body: form,
+        authenticated: true,
+        jsonBody: false,
+        headers: { "Idempotency-Key": crypto.randomUUID() }
+      }
+    );
+  }
+
+  async downloadWorkSessionAttachment(sessionId: number, attachmentId: string) {
+    const path = `/api/mobile/sessions/${sessionId}/attachments/${attachmentId}/content`;
+    let response = await this.authenticatedFetch(path);
+    if (response.status === 401 && await this.refresh()) {
+      response = await this.authenticatedFetch(path);
+    }
+    if (response.status === 401) {
+      this.setSession(null);
+    }
+    if (!response.ok) {
+      await parseResponse<never>(response);
+    }
+    return response.blob();
+  }
+
   get<T>(path: string, authenticated = true) {
     return this.request<T>(path, { method: "GET", authenticated });
   }
@@ -218,6 +258,14 @@ export class AteneaApi {
     }
 
     return parseResponse<T>(response);
+  }
+
+  private authenticatedFetch(path: string) {
+    const headers = new Headers({ Accept: "*/*" });
+    if (this.session?.accessToken) {
+      headers.set("Authorization", `Bearer ${this.session.accessToken}`);
+    }
+    return fetch(path, { method: "GET", headers });
   }
 
   private async refresh() {

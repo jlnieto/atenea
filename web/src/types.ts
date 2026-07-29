@@ -142,6 +142,23 @@ export interface MobileConversationTurn {
   createdAt?: string | null;
 }
 
+export interface WorkSessionAttachment {
+  id: string;
+  workSessionId: number;
+  projectId: number;
+  agentRunId?: number | null;
+  source: "OPERATOR_UPLOAD" | "BROWSER_SCREENSHOT" | "BROWSER_TRACE" | "REPORT";
+  kind: "IMAGE" | "TRACE" | "REPORT" | "FILE";
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: number;
+  retentionClass: "TRANSIENT" | "SESSION" | "EVIDENCE";
+  retainUntil: string;
+  sha256: string;
+  createdAt: string;
+  indexedAt: string;
+}
+
 export interface MobileSessionSummary {
   conversation: MobileWorkSessionConversation;
   approvedDeliverables: SessionDeliverablesView;
