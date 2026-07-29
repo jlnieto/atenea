@@ -26,7 +26,7 @@ RestrictSUIDSGID=false
 LockPersonality=true
 MemoryDenyWriteExecute=true
 ReadWritePaths=/srv/atenea/worker/agent-runs-v1 /srv/atenea/workspaces/sessions /home/jose/.codex
-CapabilityBoundingSet=CAP_SETUID CAP_SETGID
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN
 AmbientCapabilities=
 
 [Install]
