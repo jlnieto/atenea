@@ -29,10 +29,10 @@
 
 ## 5. Operator web/mobile experience
 
-- [ ] 5.1 Add a WorkSession-scoped upload and retained-attachment panel with one clear current state and action
-- [ ] 5.2 Expose actionable unauthorized, oversized, unsupported, quota and worker-unavailable states
-- [ ] 5.3 Add API/UI tests for upload, ordered retrieval and exact download
-- [ ] 5.4 Verify the rendered flow at desktop and mobile viewports with DOM assertions and inspected screenshots
+- [x] 5.1 Add a WorkSession-scoped upload and retained-attachment panel with one clear current state and action
+- [x] 5.2 Expose actionable unauthorized, oversized, unsupported, quota and worker-unavailable states
+- [x] 5.3 Add API/UI tests for upload, ordered retrieval and exact download
+- [x] 5.4 Verify the rendered flow at desktop and mobile viewports with DOM assertions and inspected screenshots
 
 ## 6. Automated validation and continuity
 

@@ -1053,3 +1053,22 @@ with a later request timestamp while retaining the original immutable
 `createdAt`; all other classification or content changes remain conflicts.
 
 The exact resume point is task 5.1 of `add-worksession-attachments`.
+
+Tasks 5.1–5.4 are complete and change progress is `21/31`. Atenea source commit
+`e98138dd2e82e928399502a040f6c01557d2a1ad` adds one compact attachment surface
+to the existing WorkSession conversation: current retained count, accepted
+types and 16 MiB bound are visible immediately, one primary upload action is
+available, retained items download through the authenticated client and
+backend failures remain actionable.
+
+The production web bundle builds successfully. Focused backend tests pass
+`21/21`. A controlled Playwright validation exercised a successful list/upload
+refresh at `1440x900` and an unsupported-format state at `390x844`; DOM
+assertions passed, screenshots were visually inspected, no horizontal overflow
+was present and the browser closed cleanly. Accepted sanitized evidence is
+beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-worksession-attachments/runs/task-5-operator-experience`;
+the SHA-256 of its `SHA256SUMS` is
+`3dc344dd8f446a2990e9ea8952432c040bf7bccbe31a90144b113177dbe38ff7`.
+
+The exact resume point is task 6.1 of `add-worksession-attachments`.
