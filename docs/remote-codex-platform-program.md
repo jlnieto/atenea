@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–7.3 are complete and change progress is `39/45`. The entry gate pins
+Tasks 1.1–7.4 are complete and change progress is `40/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2848,4 +2848,32 @@ Task 7.3 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `da48445d6f83f99119e587e6a10a5325baa0aa4fc959c61f73b49b383aa2d0aa`.
 
-The exact resume point is task 7.4 of `onboard-atenea-on-ax42`.
+Task 7.4 proves slot 1/Beautips and the complete slot 2 and slot 4
+container/network/volume inventories are byte-identical to the sealed entry
+gate. Slot 3 has no session container, network, owned image or listener and
+retains only the expected labelled PostgreSQL volume beyond its unchanged
+default networks.
+
+All three RAID1 arrays report `[UU]` with filesystem headroom. SSH, Tailscale,
+UFW, the three private mediators, worker-health timer, four rootless daemons
+and four stable socket proxies are active. Rootful Docker, its socket and
+containerd remain inactive/masked, `/var/run/docker.sock` is absent and the
+database lifecycle gate remains disabled.
+
+UFW has the eight original IPv4/IPv6 base rules plus exactly four reviewed
+IPv4 tailnet-only mediator rules: attachment `8788`, AgentRun `8787`, preview
+control `8789` from the control-plane address and preview ingress
+`19000:19031` from the tailnet CIDR. The expected nftables hash therefore
+differs from the pre-install entry hash only after these reviewed additions.
+
+Production and preview retain the same nine full container identities and both
+actuator probes are `UP`. Beautips retains its three full identities and is
+`UP`. Programme, Atenea source and WorkSession Git are clean and synchronized
+at their expected heads.
+
+Task 7.4 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-7.4-final-nonimpact`;
+the SHA-256 of its `SHA256SUMS` is
+`70a039182d7400e8f80f9d0640e35ebf2389c4fc40e2dc8827ae9a5044116b75`.
+
+The exact resume point is task 7.5 of `onboard-atenea-on-ax42`.
