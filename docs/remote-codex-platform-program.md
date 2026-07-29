@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–5.1 are complete and change progress is `26/45`. The entry gate pins
+Tasks 1.1–5.2 are complete and change progress is `27/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2505,4 +2505,25 @@ Task 5.1 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `be08c49c59b805356a9a50a6a3e82b94cc290c9bdf3d16391a29c1fa19ba564d`.
 
-The exact resume point is task 5.2 of `onboard-atenea-on-ax42`.
+Task 5.2 starts the exact slot-3 runtime with three session-labelled
+containers, one internal network, one retained PostgreSQL volume and only the
+three allocated loopback projections. The web actuator is `UP`. PostgreSQL
+initialized from the empty volume, applied `48/48` successful migrations and
+retains zero rows across the declared domain tables; the declared fixture set
+is empty.
+
+The first fail-closed start found that the allocation had persisted
+zero-length development secret placeholders. The mediator now generates only
+those exact placeholders atomically after validating ownership, mode and
+length, and never emits or retains their values. A second start reached a
+healthy migrated runtime but rejected historical administrative expectations
+of 45 migrations and non-empty fixtures. The corrected status check accepted
+the already-running resources in 718 ms without recreating any identity.
+Production retains its nine unchanged containers.
+
+Task 5.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-5.2-rootless-runtime`;
+the SHA-256 of its `SHA256SUMS` is
+`4a09f4067af42718cb8c88690724543ff67d24fff247a6ea98f935e5ea295390`.
+
+The exact resume point is task 5.3 of `onboard-atenea-on-ax42`.
