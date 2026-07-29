@@ -43,7 +43,8 @@ public class GitHubClient {
                           "title": %s,
                           "body": %s,
                           "head": %s,
-                          "base": %s
+                          "base": %s,
+                          "draft": true
                         }
                         """.formatted(
                         jsonString(title),
