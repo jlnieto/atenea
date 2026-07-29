@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `37/45`, with the exact
-  resume point at task 7.1
+  `45/45` and `onboard-beautips-on-ax42` is active at `38/45`, with the exact
+  resume point at task 7.2
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3991,3 +3991,37 @@ the SHA-256 of its `SHA256SUMS` is
 `912123af504fb6f672cb191bdcdfdc02c67279d9ee1dfbb9423499f4543e6a26`.
 
 The exact resume point is task 7.1 of `onboard-beautips-on-ax42`.
+
+Task 7.1 is complete and change progress is `38/45`. New Beautips selection
+and execution are disabled in the AX42 installed config while its exact
+persisted workspace remains registered for reconciliation. The disposable
+Atenea control was replaced from its own committed image with only the
+Beautips project gate overridden to false; its database, port and health
+remain unchanged.
+
+Accepted RootlessKit records `1`, `2` and `3` first matched their complete
+parent/child tuples and were then deleted by immutable ID. The exact mediated
+`runtime-cleanup` removed only containers `5e59b7d8e112`, `adaa784a6bc2`,
+`4096ca2c7a3c`, network `f5b9c323b395`, four session volumes and local image
+`aaefc03e7b80`. The exact runtime root contained only
+`fixtures`, `secrets` and `tomcat`; realpath, non-symlink and top-level-name
+checks passed before removing that file projection.
+
+Final exact-session counts are zero containers, networks, volumes, images,
+RootlessKit records, allocated listeners and runtime root. Preview records
+remain zero. Mirror, allocation, clean worktree at
+`03f77b0389f5303153c47bc3f890b1e0e9e92eb8`, six attachments and programme
+evidence remain retained. WorkSession state is `CLOSED/MERGED` with zero
+non-terminal AgentRuns.
+
+Administrative Beautips retains its original three containers and remains
+`UP`. Atenea production, preview and disabled isolated control remain `UP`;
+no production, foreign WorkSession, unrelated slot or routing resource
+changed.
+
+Task 7.1 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-7.1-disable-exact-cleanup`;
+the SHA-256 of its `SHA256SUMS` is
+`27225617d206dc430f9ccc7eb349f15333afb2ae3475980f4b39aab96ce8199d`.
+
+The exact resume point is task 7.2 of `onboard-beautips-on-ax42`.

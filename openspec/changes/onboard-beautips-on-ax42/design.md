@@ -458,6 +458,15 @@ Close observation lasts 15 minutes with normalized samples at minute 0, 5, 10
 and 15. Any drift in the administrative pilot, production, other slots,
 persisted ownership or health blocks archive.
 
+Task 7.1 disables Beautips selection/execution at the worker and isolated
+Atenea gate, retaining the persisted workspace only for reconciliation. Exact
+RootlessKit records `1/2/3` are tuple-checked and deleted. The mediated cleanup
+removes only the three managed containers, internal network, four volumes and
+local application image; the exact runtime fixtures/secrets/tomcat projection
+is then path/ownership checked and removed. Final owned resource and listener
+counts are zero while mirror, allocation, worktree, attachments and evidence
+remain.
+
 ## Migration Plan
 
 1. Seal the canonical identity, administrative control and decisions.
