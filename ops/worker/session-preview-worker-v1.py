@@ -349,11 +349,7 @@ class PreviewCoordinator:
             )
         session_id = str(request.get("workSessionId", ""))
         if not SESSION_DATABASE_ID.fullmatch(session_id):
-            raise ProtocolError(
-                HTTPStatus.BAD_REQUEST,
-                "invalid_work_session_id",
-                "WorkSession identity must be a positive decimal value",
-            )
+            self._canonical_uuid(session_id, "invalid_work_session_id")
         project_id = request.get("projectId")
         if not isinstance(project_id, str) or not PROJECT_ID.fullmatch(project_id):
             raise ProtocolError(

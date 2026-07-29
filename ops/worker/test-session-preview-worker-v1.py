@@ -86,6 +86,15 @@ class PreviewCoordinatorTest(unittest.TestCase):
         with urllib.request.urlopen(result["privateUrl"], timeout=3) as response:
             self.assertEqual(b"fixture:/ready", response.read())
 
+    def test_uuid_work_session_identity_is_accepted(self) -> None:
+        request = self._activate_request()
+        request["workSessionId"] = RUNTIME_SESSION_ID
+
+        result, created = self.coordinator.activate(PREVIEW_ID, request)
+
+        self.assertTrue(created)
+        self.assertEqual(RUNTIME_SESSION_ID, result["workSessionId"])
+
     def test_identical_activation_retry_returns_one_listener_and_record(self) -> None:
         first, first_created = self.coordinator.activate(PREVIEW_ID, self._activate_request())
         second, second_created = self.coordinator.activate(PREVIEW_ID, self._activate_request())
