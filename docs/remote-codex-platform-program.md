@@ -2237,3 +2237,29 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 7.2 of
 `establish-development-database-lifecycle`.
+
+Task 7.2 is complete and change progress is `34/37`. Disabling the lifecycle
+and stopping both exact persisted database IDs was repeated with finite
+timeouts. Both records were already stopped, all calls were idempotent and a
+complete fingerprint of records, snapshots, workspaces, allocations,
+admission, every rootless container/network/volume/image, boot, RAID, rootful
+Docker and firewall remained byte-identical. No additional resource was
+deleted.
+
+The sealed task 6.3 evidence was reverified file-by-file and its accepted
+`SHA256SUMS` hash remains
+`e1baca72a4fbacd2a94507a5bfdbfbec5a94d1f301a59ac8af4cd9a3036f5e4b`.
+That real acceptance proves unlabelled, partial, fully foreign and ambiguous
+fixtures retained identical inspect hashes throughout rejection and were
+removed afterward only by pre-recorded exact IDs. A fresh `10/10` mediator
+suite reconfirmed the denial paths. No fixture needed recreation during the
+no-mutation rollback repeat. Atenea production/preview also has one unchanged
+fingerprint.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-7.2-repeat-rollback-denials`;
+the SHA-256 of its `SHA256SUMS` is
+`34a137f6ab06b676800dd7198b6f2934587f3cc7a9fcc5d4e31a82c621599f99`.
+
+The exact resume point is task 7.3 of
+`establish-development-database-lifecycle`.
