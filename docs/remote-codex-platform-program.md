@@ -6,9 +6,9 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: Phase 8, individual project onboarding; Atenea is complete
-  and archived `45/45`, with the exact resume point at the
-  `onboard-beautips-on-ax42` entry gate
+- Current phase: Phase 8, individual project onboarding; Atenea is archived
+  `45/45` and `onboard-beautips-on-ax42` is active at `8/45`, with the exact
+  resume point at task 2.1
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -239,6 +239,11 @@ separate `onboard-beautips-on-ax42` change; Beautips routing is not enabled.
 | D-036 | Keep Atenea onboarding artifacts non-authoritative and its database empty-migrated plus synthetic until an external backup has passed restore. | RAID and retained acceptance evidence do not satisfy authoritative project backup. | accepted | data/operations owners | before any real retained data |
 | D-037 | Admit `project-codex-v1` only from a root-owned exact Atenea workspace registry and execute it in a per-run Bubblewrap namespace with no caller-supplied command, path, remote, endpoint or environment. | The authenticated identity can be reused without turning the worker into a general shell or mounting other workspaces, daemon sockets or production paths. Uncertain turns fail closed after restart instead of being replayed. | accepted for Atenea pilot | security/runtime owners | after Atenea archive and before a second project |
 | D-038 | Close Atenea onboarding after a 15-minute disabled/clean observation with exact samples at minute 0, 5, 10 and 15. | Four bounded samples are sufficient to detect automatic resurrection or health drift after exact rollback while keeping this disposable, non-production gate finite. Any drift blocks archive. | accepted for Atenea pilot | programme owner | before onboarding archive |
+| D-039 | Pin Beautips to GitHub `jlnieto/beautips` `main` at `5044a3b07b3db82895e9c8ff47bc4bc9b0e97130`; reconcile clean local/Atenea ancestors only by fast-forward. | GitHub and AX42 already agreed, both older copies were strict ancestors, and the head includes the reviewed dependency restart fix. | accepted for Beautips pilot | programme owner | before any managed Beautips allocation |
+| D-040 | Treat the existing manual slot 1 Beautips workspace, runtime, listener, secret boundary and persistent data/files as foreign retained state. | The administrative pilot is healthy but has no WorkSession ownership or independent restore-tested external backup. | accepted | runtime/data owners | throughout Beautips onboarding |
+| D-041 | Use only empty migrated PostgreSQL, disposable Redis, invented fixtures/files and disabled WhatsApp for managed acceptance. | Platform ownership can be proven without copying administrative, legacy or production-derived data and without external messaging authority. | accepted | data/security owners | before managed runtime start |
+| D-042 | Declare no localhost requirement for the disabled-WhatsApp acceptance; block on any absolute-origin failure rather than generating a tunnel implicitly. | Relative application paths can be verified through the private preview while excluded OAuth/messaging flows cannot justify broader compatibility. | accepted for Beautips pilot | runtime/product owners | private preview acceptance |
+| D-043 | Close Beautips after a 15-minute disabled/clean window with samples at minute 0, 5, 10 and 15. | The same bounded post-rollback control detects resurrection and protects the administrative pilot and production. | accepted for Beautips pilot | programme owner | before onboarding archive |
 
 ## Deferred decisions and gates
 
@@ -246,7 +251,6 @@ separate `onboard-beautips-on-ax42` change; Beautips routing is not enabled.
 |---|---|---|
 | Second independent tailnet administrator | The operator chose one paid seat initially. `info@codynwave.com` is Owner; Microsoft recovery and public SSH break-glass remain mandatory. | removing public SSH break-glass or expanding beyond one operator |
 | External backup target and retention | Compare Hetzner Storage Box with an independent provider and existing storage. | storing authoritative non-Git artifacts or completing operational hardening |
-| Final pilot | Beautips is provisional; first reconcile its local and Atenea commits. | enabling first real project run |
 | Per-project localhost requirement | Discover through cookies, callbacks and browser tests. | declaring that project's private preview ready |
 | Initial runtime sandbox implementation | Prototype mediated rootless/container alternatives against the no-host-socket requirement. | accepting the runtime contract phase |
 | Terminal AgentRun, artifact and preview retention durations | Non-terminal Phase 4 lease/lifecycle retention is fixed; measure representative runs before choosing terminal cleanup. | production defaults in remote routing/preview phases |
@@ -2973,7 +2977,53 @@ Task 8.3 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `79475771be27cc2297f38fc4cec0b15b3f77a46bf834b188f1bc72aab300eb13`.
 
-The exact resume point is the entry gate for a separate
-`onboard-beautips-on-ax42` change. That change has not been created and
-Beautips project routing has not been enabled or modified. Work stops at this
-boundary.
+The exact resume point at the Atenea archive boundary was the entry gate for a
+separate `onboard-beautips-on-ax42` change. At that boundary it had not yet
+been created and Beautips managed routing had not been enabled or modified;
+the separate entry gate below begins from that preserved state.
+
+## Phase 8 progress: onboard-beautips-on-ax42
+
+Tasks 1.1–1.8 are complete and change progress is `8/45`. GitHub
+`jlnieto/beautips`, branch `main`, commit
+`5044a3b07b3db82895e9c8ff47bc4bc9b0e97130`, tree
+`132719df7a400f7ba9e724499425e0a64f5b8991` and source manifest SHA-256
+`09717d5633fe3909f97bdcd0cb7b30817f02b202a9b8d57933323efa041a44ec`
+are pinned.
+
+The clean laptop commit `a6d2f28` and clean Atenea commit `bd15a16` were strict
+ancestors of GitHub; AX42 already matched. Only ancestry-proven
+`pull --ff-only` was used. All three copies are now clean and synchronized at
+the pinned head without merge, reset, force update, deployment or container
+restart.
+
+The healthy administrative Beautips pilot remains three rootless slot 1
+containers with its existing network, loopback listener, root-owned manual
+secret boundary and four persistent PostgreSQL/Redis/assets/imports volumes.
+These are foreign retained controls and cannot be registered, mounted,
+relabeled, snapshotted, stopped or cleaned by the managed WorkSession.
+
+The managed acceptance will use another admitted slot with empty migrated
+PostgreSQL, disposable Redis, invented versioned tenants/users/loyalty/files
+and distinct session volumes. Current manual data, backups, legacy dumps,
+production rows and credential values are excluded. WhatsApp embedded signup,
+webhooks, scheduler, outbox and external Graph API access remain disabled.
+
+The two local backup folders are on the laptop root filesystem, and AX42 has
+no restic, borg or rclone target. They are not an independent restore-tested
+backup, so all non-Git acceptance state remains synthetic, non-authoritative
+and cleanup-bound. The pilot declares no required localhost compatibility;
+any origin/cookie/redirect failure blocks and requires an explicit manifest
+revision.
+
+Managed project selection/execution remains disabled with zero registered
+workspaces. Atenea production/preview, the administrative Beautips pilot, all
+four rootless daemons, RAID `[UU]`, firewall and inactive/masked rootful Docker
+remain healthy and unchanged.
+
+Accepted sanitized entry evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
+the SHA-256 of its `SHA256SUMS` is
+`87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
+
+The exact resume point is task 2.1 of `onboard-beautips-on-ax42`.

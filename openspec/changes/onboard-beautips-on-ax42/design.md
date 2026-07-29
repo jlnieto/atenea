@@ -1,0 +1,122 @@
+## Context
+
+The Atenea onboarding proved the generic real-project protocol and then
+returned it to a disabled/released boundary. Beautips is a different
+composition: Java 21 plus a Node 22 frontend build, PostgreSQL 16, Redis 7,
+persistent assets/imports and optional WhatsApp/bootstrap secrets.
+
+AX42 already runs Beautips administratively in rootless slot 1 from
+`/srv/atenea/workspaces/manual/beautips`. This is useful non-impact control
+evidence, not a WorkSession that may be adopted. Its database and files have no
+independent restore-tested external backup.
+
+## Goals / Non-Goals
+
+**Goals:**
+
+- onboard only Beautips from one canonical GitHub identity;
+- prove a separate session-owned worktree and runtime without touching slot 1;
+- execute real Codex turns with exact ownership and normal Git delivery;
+- verify build, tests, synthetic data, health and desktop/mobile UI;
+- leave production, WhatsApp, the administrative pilot and other projects
+  unchanged.
+
+**Non-Goals:**
+
+- migrating or backing up the existing administrative Beautips data;
+- importing legacy or production-derived salon data;
+- enabling WhatsApp, public preview or production deployment;
+- reusing the manual `.env`, database, Redis, assets or imports volumes;
+- enabling a wildcard or any other project.
+
+## Decisions
+
+### GitHub main is canonical
+
+GitHub `jlnieto/beautips` branch `main` at
+`5044a3b07b3db82895e9c8ff47bc4bc9b0e97130`, tree
+`132719df7a400f7ba9e724499425e0a64f5b8991`, is canonical. The local
+`a6d2f28` and Atenea `bd15a16` copies were clean ancestors and were advanced
+only by `pull --ff-only`; AX42 already matched GitHub. All three are now clean
+and synchronized.
+
+The reviewed source manifest is `ops/atenea-runtime.yml`, SHA-256
+`09717d5633fe3909f97bdcd0cb7b30817f02b202a9b8d57933323efa041a44ec`.
+It is pinned as an input, not accepted unchanged: fixed project names, ports,
+the tracked env-file reference and `cleanupAfterVerification: false` must be
+replaced by allocation-derived WorkSession behavior before enablement.
+
+### The administrative pilot is foreign retained state
+
+The three slot 1 containers, their network, four volumes, loopback listener,
+manual workspace and root-owned secret boundary are immutable non-impact
+controls. Managed allocation MUST use a different free slot and MUST reject
+any attempt to register, relabel, attach, stop, snapshot or clean those
+identities.
+
+### Acceptance data is synthetic and disposable
+
+The managed runtime starts with empty PostgreSQL migrations, empty Redis and a
+small versioned fixture containing only invented tenants, users, loyalty
+events and files. It uses separate session-labelled database, Redis,
+assets/imports volumes. No existing dump, backup, legacy import, production row
+or administrative volume is mounted or copied.
+
+Local backup folders are on the laptop root filesystem and AX42 has no
+configured restic, borg or rclone target. They do not satisfy independent
+external backup. Therefore every acceptance artifact remains
+non-authoritative and cleanup is mandatory.
+
+### Secrets and external messaging fail closed
+
+Only named secret requirements may enter manifests. No current manual env
+file, value, token, cookie, credential or Codex authentication material enters
+requests or evidence. Acceptance uses generated synthetic bootstrap values in
+an exact session secret boundary. WhatsApp embedded signup, webhook,
+scheduler, outbox delivery and external Graph API egress remain disabled.
+
+### Tailnet preview; no localhost contract
+
+The accepted UI paths use relative navigation and the WhatsApp/OAuth paths are
+disabled. Beautips therefore declares no required localhost compatibility for
+this acceptance. The managed preview is tailnet-only on an allocation-derived
+port. Any absolute-localhost, cookie, redirect or browser failure blocks this
+decision and requires an explicit manifest revision rather than an implicit
+tunnel.
+
+### Build, verification and delivery are fixed
+
+The build uses the committed Node 22/Maven 3.9.9/Java 21 Dockerfile and the
+canonical Maven test entrypoint. Health uses `/actuator/health`; functional
+checks use reviewed bounded smoke scripts and Playwright verifies exact
+desktop/mobile states. Delivery uses one exact WorkSession draft pull request,
+reviewed non-force merge synchronization and canonical close.
+
+### Rollback is exact and observation is finite
+
+Rollback first disables new Beautips selection, reconciles/cancels only the
+persisted WorkSession execution and removes only its fully owned runtime,
+preview, PostgreSQL, Redis, assets/imports and browser resources. Git and
+sanitized evidence remain. The slot 1 administrative pilot and every foreign,
+partial or ambiguous resource remain untouched.
+
+Close observation lasts 15 minutes with normalized samples at minute 0, 5, 10
+and 15. Any drift in the administrative pilot, production, other slots,
+persisted ownership or health blocks archive.
+
+## Migration Plan
+
+1. Seal the canonical identity, administrative control and decisions.
+2. Make the Beautips manifest and project registry session-safe while disabled.
+3. Add control-plane allowlisting and focused denial tests.
+4. Allocate one disposable WorkSession outside slot 1 and enable only it.
+5. Execute real turns, build/tests, synthetic runtime, preview and browser
+   acceptance.
+6. Publish, synchronize, close, restart, disable, rollback and exact-clean.
+7. Observe, retain evidence and archive before another project begins.
+
+## Open Questions
+
+No question may be answered implicitly. Independent external backup remains a
+gate for authoritative non-Git Beautips state, and production promotion remains
+outside this change.
