@@ -2355,7 +2355,7 @@ gate. No real project has been activated by Phase 7.
 
 ## Phase 8 progress: onboard-atenea-on-ax42
 
-Tasks 1.1–6.2 are complete and change progress is `33/45`. The entry gate pins
+Tasks 1.1–6.3 are complete and change progress is `34/45`. The entry gate pins
 GitHub `jlnieto/atenea`, branch
 `feature/actualizar-conversacion-en-web`, commit
 `b605c8d5b063e7321edd60fec2265ec7ddb84ea9` and manifest SHA-256
@@ -2692,4 +2692,35 @@ Task 6.2 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `89f10cbfd82d576cf54b94860d4586e209a4d18f4eb794603fc52879b0455b3b`.
 
-The exact resume point is task 6.3 of `onboard-atenea-on-ax42`.
+Task 6.3 closes the canonical WorkSession through Atenea's normal reconciled
+endpoint at `2026-07-29T10:01:03.245941289Z`. Final state is
+`CLOSED/CLOSED`, delivery remains `MERGED`, the exact workspace identity,
+pull-request URL and final commit remain persisted, and there is no close
+block or retryable close state.
+
+The shared exact PR validator now also protects close. A repository, number,
+base, head or SHA mismatch blocks before checkout or branch deletion; the
+complete regression passes `400/400`. Accepted close fetched origin, checked
+out base branch `feature/actualizar-conversacion-en-web`, fast-forwarded to
+`b18f8a38d41006728c2cdf9518e3f9af20cccc87` and removed only the merged
+WorkSession branch locally and remotely.
+
+The merged base history, pull request and AX42 worktree retain exact
+WorkSession commit `0230c6b973692205ed9a17f8015cd151269d8080`. The AX42
+worktree remains clean on its local WorkSession branch. The exact runtime
+remains `UP` with its original three containers, internal network and retained
+volume. Ten session artifacts, ten runtime logs and six retained attachment
+files survive, and the accepted 5.6, 6.1 and 6.2 checksum files remain
+unchanged.
+
+An exact repository-local credential helper consumed the named ephemeral
+token only for the normal remote branch deletion. Its config entry, helper,
+token and external configuration were removed immediately after close.
+Production/preview and Beautips fingerprints remain unchanged.
+
+Task 6.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-6.3-canonical-close`;
+the SHA-256 of its `SHA256SUMS` is
+`49fe27c0d084a46295a2cb9803526a83ddb597b2e959433ffd0924f97078c0dd`.
+
+The exact resume point is task 6.4 of `onboard-atenea-on-ax42`.
