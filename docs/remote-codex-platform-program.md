@@ -188,9 +188,11 @@ blocked until independent external backup is configured and restore-tested.
 complete. Its synthetic PostgreSQL and MariaDB fixtures were restored,
 rollback-tested and exact-cleaned; database automation remains disabled and
 real-project activation remains blocked on individual onboarding plus an
-independent restore-tested backup. `onboard-atenea-on-ax42` is the active
-Phase 8 project change at `20/45`; its exact protocol is installed but both
-the endpoint and real-project capability are disabled.
+independent restore-tested backup. `onboard-atenea-on-ax42` is archived as
+`2026-07-29-onboard-atenea-on-ax42` with all `45/45` tasks complete. Its exact
+protocol remains installed but project selection/execution is disabled with
+zero registered workspaces. The next resume point is the entry gate for a
+separate `onboard-beautips-on-ax42` change; Beautips routing is not enabled.
 
 ## Decision log
 
@@ -2941,8 +2943,34 @@ Task 8.2 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `151165a3f9d8a045e53382dedc7b9619d0c62093e6d2b25436f8f176050ac40c`.
 
-The post-archive resume point is the entry gate for a separate
+Task 8.3 passes pre-archive strict validation at `45/45`. OpenSpec creates the
+`atenea-project-onboarding` capability, applies five reviewed requirement
+updates and archives the completed change as
+`2026-07-29-onboard-atenea-on-ax42`. Post-archive strict validation passes all
+`10/10` authoritative specifications and reports zero active changes.
+
+The first pre-archive count assertion exited `2` after successful validation
+because an empty pending-task match was not normalized to integer zero. A
+subsequent archive attempt exited `1` without changing files because the
+active safety delta referenced a requirement title superseded by an earlier
+archive. The delta was reconciled with the authoritative
+`Least-privilege execution` and `Safe garbage collection` requirements while
+preserving their existing scenarios. OpenSpec then archived successfully. Its
+generated trailing blank lines caused one post-archive `git diff --check` exit
+`2`; those three formatting-only lines were removed and the complete strict
+and boundary validation passed. All diagnostics are retained transparently.
+
+Atenea source remains clean and synchronized at
+`b18f8a38d41006728c2cdf9518e3f9af20cccc87`; its explicit push was already
+up-to-date. The worker remains disabled/released, task 8.2 evidence revalidates
+and production, preview and Beautips remain `UP`.
+
+Task 8.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-atenea-on-ax42/runs/task-8.3-openspec-archive`;
+the SHA-256 of its `SHA256SUMS` is
+`79475771be27cc2297f38fc4cec0b15b3f77a46bf834b188f1bc72aab300eb13`.
+
+The exact resume point is the entry gate for a separate
 `onboard-beautips-on-ax42` change. That change has not been created and
-Beautips project routing has not been enabled or modified. Task 8.3 remains
-the final Atenea archive gate; work stops at the Beautips entry boundary after
-it passes.
+Beautips project routing has not been enabled or modified. Work stops at this
+boundary.

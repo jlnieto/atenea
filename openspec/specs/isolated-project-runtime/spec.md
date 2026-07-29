@@ -133,20 +133,28 @@ WorkSession record and MUST NOT accept caller-supplied alternatives.
 - **THEN** cleanup rejects it unchanged and reports the ambiguous ownership
 
 ### Requirement: Project onboarding gate
-Atenea SHALL be treated as AX42-resident for development only after its
-dedicated relocation gate proves canonical GitHub source, a schema-valid
-manifest, isolated empty development data, build, tests, runtime health,
-desktop/mobile browser evidence, restart reconciliation, rollback and
-production non-impact.
+
+Atenea SHALL be treated as AX42-resident for administrative development only
+after its relocation gate, and SHALL become schedulable for real AgentRuns only
+after `onboard-atenea-on-ax42` proves canonical GitHub source, exact project
+allowlisting, real prompt/thread continuity, schema-valid manifest, isolated
+empty development data, build, tests, runtime health, private preview,
+desktop/mobile browser evidence, normal delivery/close, restart
+reconciliation, rollback and production non-impact.
 
 Yvateve, Beautips, ISC, Recambios, Fomasys and Checkpol SHALL become schedulable
-only after their own build, runtime, health, preview, browser and cleanup
-evidence passes.
+only after their own independent build, runtime, health, preview, browser,
+delivery and cleanup evidence passes. No cohort-wide enablement is permitted.
 
-#### Scenario: Atenea development relocation fails
-- **WHEN** Atenea cannot prove any required relocation or production non-impact check
-- **THEN** its normal development location remains the existing control-plane fallback and no AgentRun routing to AX42 is enabled
+#### Scenario: Atenea real-project onboarding fails
+
+- **WHEN** Atenea cannot prove any required source, execution, delivery,
+  runtime, visual, rollback or production non-impact check
+- **THEN** administrative development remains available as its fallback and no
+  real Atenea AgentRun routing is enabled
 
 #### Scenario: One project fails compatibility validation
-- **WHEN** a project's representative runtime or browser check fails
-- **THEN** that project remains disabled on the worker while already accepted projects remain available
+
+- **WHEN** a project's independent compatibility gate fails
+- **THEN** only that project remains disabled while already accepted projects
+  remain available
