@@ -2119,3 +2119,30 @@ the SHA-256 of its `SHA256SUMS` is
 
 The exact resume point is task 6.3 of
 `establish-development-database-lifecycle`.
+
+Task 6.3 is complete and change progress is `29/37`. MariaDB was stopped and
+exact-cleaned while preserving its record/snapshots. Four temporary collisions
+were then created with pre-recorded immutable Docker IDs: unlabelled,
+partially labelled, fully labelled foreign, and an ambiguous exact-container/
+foreign-network projection.
+
+Every mediated create returned ownership denial before mutation, and each
+fixture's complete inspect SHA-256 was identical before/after rejection. Only
+then was each fixture removed by its recorded exact container/network ID.
+MariaDB was reconstructed from persisted ownership and returned `HEALTHY`
+revision `35`.
+
+The PostgreSQL record remained byte-identical. Beautips, slot2 retained Phase
+3 resources, RAID and firewall share one unchanged before/after fingerprint.
+Atenea's clean Git plus exact nine-container production/preview fingerprint is
+also identical. The `13/13` state suite reconfirmed production-like manifest
+denial, while the CLI still exposes no caller endpoint, literal credential or
+arbitrary resource argument.
+
+Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-development-database-lifecycle/runs/task-6.3-target-and-resource-denials`;
+the SHA-256 of its `SHA256SUMS` is
+`e1baca72a4fbacd2a94507a5bfdbfbec5a94d1f301a59ac8af4cd9a3036f5e4b`.
+
+The exact resume point is task 6.4 of
+`establish-development-database-lifecycle`.
