@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `39/45`, with the exact
-  resume point at task 7.3
+  `45/45` and `onboard-beautips-on-ax42` is active at `40/45`, with the exact
+  resume point at task 7.4
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -4051,3 +4051,19 @@ the SHA-256 of its `SHA256SUMS` is
 `2e6f5a561ff71c75db9c4b8cd3f4a53dd4303276cb461e8932d84b1024aea467`.
 
 The exact resume point is task 7.3 of `onboard-beautips-on-ax42`.
+
+Task 7.3 is complete and change progress is `40/45`. Versioned admission
+released exact `slot4`; normal usage is `0/4`, heavy usage `0/2` and this
+session has no heavy permit. The original allocation remains retained and its
+archived evidence copy is byte-exact at SHA-256
+`0e46cc38968509fbdd6585e3741f8c8e1eecb32f0161139400ec923780f49dbc`.
+After release/archive verification, the exact disabled workspace registration
+was removed; selection/execution remains false and workspace count is zero.
+Mirror, worktree, Git, merged delivery, attachments and evidence remain.
+
+Task 7.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-7.3-release-allocation-archive`;
+its `SHA256SUMS` hash is
+`6d351ceea4a05eaad092fec129e1f31694fe5deb860ff1022be186171cffb3db`.
+
+The exact resume point is task 7.4 of `onboard-beautips-on-ax42`.
