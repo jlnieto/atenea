@@ -333,6 +333,35 @@ runtime port, localhost connection is denied, no localhost/wildcard ingress
 listener exists and the page/headers contain zero absolute localhost
 references. The single READY preview is retained only for tasks 5.6 and 5.7.
 
+Task 5.6 passes both reviewed mediated smoke operations. The functional smoke
+creates one invented tenant, records its immutable database id and slug, and
+exact-deletes only that identity after the customer-web smoke. Every
+tenant-scoped residual is zero and the deterministic `aurora-acceptance`
+inventory is restored.
+
+Finite five-minute preview leases expired during authorised pauses. Each
+terminal synthetic record was ownership-checked and deleted by exact UUID
+before one replacement was activated; no two READY previews coexisted and no
+runtime, production route or foreign preview changed.
+
+The customer smoke exposed an invalid raw-SQL fixture enum:
+`SYNTHETIC_ACCEPTANCE` is not a canonical
+`TenantModuleActivationSource`. Programme commit
+`a30117789d1bddfde804dbaa00a71f2975178d60` changes only that fixture value to
+valid source `ADMIN` and updates its pinned SQL hash. The exact runtime
+projection was replaced only after matching both old hashes. Two repeated
+idempotent reloads are byte-identical and the public synthetic salon changes
+from HTTP 500 to HTTP 200.
+
+Playwright on the operator laptop authenticates through the tailnet-only
+preview using named synthetic values streamed only through stdin. It asserts
+the login, exact filtered salon, primary action and customer/program/access
+KPIs before sanitizing the credential identifier in screenshots. Inspected
+desktop `1440x900` and mobile `390x844` images have clear state/action
+hierarchy, no clipping or overlap and no horizontal overflow. No task-owned
+browser, database helper, helper image, private I/O directory or transient
+tenant remains; the operator's graphical Chrome is foreign and untouched.
+
 ### Build, verification and delivery are fixed
 
 The build uses the committed Node 22/Maven 3.9.9/Java 21 Dockerfile and the

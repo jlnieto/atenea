@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `30/45`, with the exact
-  resume point at task 5.6
+  `45/45` and `onboard-beautips-on-ax42` is active at `31/45`, with the exact
+  resume point at task 5.7
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3612,11 +3612,11 @@ The exact resume point is task 5.3 of `onboard-beautips-on-ax42`.
 
 Task 5.3 is complete and change progress is `28/45`. Versioned fixture bundle
 `beautips-acceptance-v1` is pinned to programme commit
-`4f87be85b97dabcf5fcd975537b611e19815a7ee`; its manifest and SQL SHA-256
+`a30117789d1bddfde804dbaa00a71f2975178d60`; its manifest and SQL SHA-256
 values are respectively
-`f528ee45070f020b1d57d411f2916308dbb51222dfbe14b341ef5d7bb5347c55`
+`3be6c7609a33272aec519058061dfbf98df66e773f1824792c9df609bae5e2fe`
 and
-`efc9d467cc760397529b45358c24032c14fc7a9fc58d36c03f23370fd7c50fa6`.
+`aa49558debab93c5f044663fcd01f76e8a5028cb635d4e9572c7eea2b71cb3db`.
 It contains only invented `.invalid` identities, one SVG and one CSV; no
 backup, legacy import, production row or manual asset participates.
 
@@ -3729,3 +3729,53 @@ the SHA-256 of its `SHA256SUMS` is
 `00949ceff54bc1fcf2efe5472e6973325332dbc9b0ce4f19c64d945840e39f66`.
 
 The exact resume point is task 5.6 of `onboard-beautips-on-ax42`.
+
+Task 5.6 is complete and change progress is `31/45`. The reviewed
+`functional-smoke` and `customer-smoke` mediator plans remain execution
+disabled by default and were invoked with their exact bounded argv and
+600-second timeouts. The functional smoke passed its health, setup, admin,
+salon, catalog, public customer, registration, QR accumulation/redemption and
+business-query checks. Its one invented tenant was recorded by immutable
+database id plus slug and exact-deleted after the customer smoke; all
+tenant-scoped residual counts are zero and only `aurora-acceptance` remains.
+
+Finite preview leases expired during authorised pauses. Each terminal
+synthetic record was matched to the exact persisted ownership and deleted by
+UUID before one replacement was activated. At most one preview was READY at
+any time; runtime state, production routing and foreign preview resources did
+not change.
+
+The customer smoke found a real versioned fixture defect before acceptance:
+raw value `SYNTHETIC_ACCEPTANCE` is not a valid
+`TenantModuleActivationSource` and caused the public synthetic salon to return
+HTTP 500. Programme commit
+`a30117789d1bddfde804dbaa00a71f2975178d60` uses valid source `ADMIN`, updates
+the SQL/manifest hashes, and changes no application or production data. The
+exact runtime projection was replaced only after matching both previous
+hashes. Two repeated idempotent reloads are byte-identical, the public page
+returns HTTP 200 and the complete customer smoke then passes both invented
+salons.
+
+Playwright 1.60.0 ran from the operator laptop through the private tailnet
+listener. Named synthetic login values travelled only through stdin and were
+not retained. DOM assertions passed for the login, filtered single salon,
+primary management action and exact customer `1`, active-program `1 / 1` and
+active-access `1` KPIs. The credential identifier was sanitized before
+capture. Inspected desktop `1440x900` and mobile `390x844` screenshots show
+clear state/action hierarchy with no clipping, overlap or horizontal
+overflow.
+
+All helper containers were fully labelled and recorded by immutable ID. The
+functional tenant, helper containers, newly pulled helper image, task-private
+I/O directories and Playwright browser processes are absent. The pre-existing
+operator Chrome is foreign and untouched. The three managed containers, four
+volumes, internal network, canonical worktree and finite READY preview remain;
+administrative Beautips and Atenea production, preview and isolated control
+all remain `UP`.
+
+Task 5.6 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-5.6-functional-playwright`;
+the SHA-256 of its `SHA256SUMS` is
+`4e6c5ded2a688a8d8d12d5846e354500b0c8dfd2fce8f459620fa31b8e95aefa`.
+
+The exact resume point is task 5.7 of `onboard-beautips-on-ax42`.
