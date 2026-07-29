@@ -163,6 +163,19 @@ restart reconciliation semantics. Test source paths are parameterized so the
 same suite runs locally and from an exact temporary AX42 checkout. No
 WorkSession, runtime or routing is enabled by these tests.
 
+Task 3.1 adds a separate default-false Beautips selection gate to Atenea. A new
+session selects `project-codex-v1` only when the global remote-worker gate and
+the Beautips gate are both enabled, its project name and canonical repository
+path match exactly, both project and session branches are `main`, and AX42
+advertises the required workload capability. The existing generic
+real-project gate cannot select Beautips.
+
+Partial or foreign name, path, project branch and session branch identities
+remain local without contacting the worker. Missing capability also fails
+closed. Repository, commit, manifest, workspace and workload persistence are
+not inferred at selection time; task 3.2 must pin them durably before
+dispatch. No selector configuration is deployed or enabled at this gate.
+
 ### The administrative pilot is foreign retained state
 
 The three slot 1 containers, their network, four volumes, loopback listener,

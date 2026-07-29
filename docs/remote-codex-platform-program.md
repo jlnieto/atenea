@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `15/45`, with the exact
-  resume point at task 3.1
+  `45/45` and `onboard-beautips-on-ax42` is active at `16/45`, with the exact
+  resume point at task 3.2
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -2984,7 +2984,7 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–2.7 are complete and change progress is `15/45`. GitHub
+Tasks 1.1–3.1 are complete and change progress is `16/45`. GitHub
 `jlnieto/beautips`, branch `main`, managed-manifest commit
 `e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
 `533d32f97ae362997ad003170a826da674c31c1d`, runtime manifest SHA-256
@@ -3208,9 +3208,39 @@ Task 2.7 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `5978278bc7db11f36258040bd3969d2c85fc6196c9afac5d7c65feef2bb97983`.
 
+Task 3.1 adds a separate default-false Beautips control-plane gate. Exact
+project name `Beautips`, canonical repository path, project branch `main` and
+WorkSession base branch `main` select `project-codex-v1` only when the global
+worker gate and the Beautips gate are enabled and AX42 advertises that
+capability. The existing real-project gate cannot select Beautips. Partial or
+foreign name, path or either branch remain local without contacting the
+worker; missing capability also fails closed.
+
+Atenea source is committed and synchronized at
+`2f92c7ba8d869d79ed3a12f5758661d01174f7c7`, tree
+`88e348b688f63a6f0ae6e827d817fe60aa93fe86`. Its laptop and server checkouts
+were reconciled by exact ancestry guards and `ff-only`. The Beautips
+control-plane checkout was likewise ancestry-reconciled to the already
+accepted GitHub commit and tree. Focused selector tests pass `11/11`; the
+selector, client and AgentRun set passes `26/26` both locally and from the
+committed Atenea server source.
+
+No production deployment, selector environment, WorkSession, AgentRun, lease,
+routing record or database mutation was created. Production and preview
+actuator checks are `UP` over their loopback-published ports. AX42 retains
+three exact administrative Beautips containers in slot 1, empty slots 2–4,
+four active rootless daemons, RAID `[UU]`, inactive/masked rootful Docker and
+administrative Beautips health `UP`. Canonical identity persistence before
+dispatch remains exclusively task 3.2.
+
+Task 3.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-3.1-exact-beautips-selection`;
+the SHA-256 of its `SHA256SUMS` is
+`1558e608f35e6b9412bfdc4e1dbfb3eea0af0b62a89ffd44848f14cf8c3142f9`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 3.1 of `onboard-beautips-on-ax42`.
+The exact resume point is task 3.2 of `onboard-beautips-on-ax42`.
