@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `16/45`, with the exact
-  resume point at task 3.2
+  `45/45` and `onboard-beautips-on-ax42` is active at `17/45`, with the exact
+  resume point at task 3.3
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -2984,7 +2984,7 @@ the separate entry gate below begins from that preserved state.
 
 ## Phase 8 progress: onboard-beautips-on-ax42
 
-Tasks 1.1–3.1 are complete and change progress is `16/45`. GitHub
+Tasks 1.1–3.2 are complete and change progress is `17/45`. GitHub
 `jlnieto/beautips`, branch `main`, managed-manifest commit
 `e9e0b3c319c518363d4135f5378ebbddced96dfb`, tree
 `533d32f97ae362997ad003170a826da674c31c1d`, runtime manifest SHA-256
@@ -3238,9 +3238,39 @@ Task 3.1 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `1558e608f35e6b9412bfdc4e1dbfb3eea0af0b62a89ffd44848f14cf8c3142f9`.
 
+Task 3.2 reuses the additive remote-routing persistence model and adds no
+database migration. An exact Beautips queued run now persists target
+repository path, selected worker, remote session UUID, derived workspace,
+workload, project identity, repository URL, branch, accepted commit and
+manifest SHA-256 before dispatch registration. The remote execution identity
+remains null until the worker accepts that persisted dispatch UUID.
+
+Acceptance requires worker `ax42-01`, workload `project-codex-v1` and workspace
+`remote:ax42-01:work-session:<remote UUID>` in addition to the exact project
+and branch identity from 3.1. A foreign workspace fails before
+`AgentRunRepository.save`. Atenea project persistence and synthetic
+compatibility remain passing.
+
+Atenea source is clean and synchronized at
+`dab379b3d11cfacd2e1714d4f56dc1210948d5c5`, tree
+`9068166413e9ab85ba4829e4929b1a0e43303c4c`. The focused persistence,
+selection and client suites pass `28/28` locally and `28/28` from the
+committed server checkout. No deployment, database write, real WorkSession,
+AgentRun or remote dispatch occurred.
+
+Production and preview actuator checks remain `UP`; no Beautips selector key
+is deployed. AX42 retains boot identity, RAID `[UU]`, slot 1's three exact
+administrative Beautips containers, empty slots 2–4 and administrative health
+`UP`.
+
+Task 3.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-3.2-persisted-beautips-identity`;
+the SHA-256 of its `SHA256SUMS` is
+`add7b084323e1af19cc3c85c23289aa15eff0cadf91060aca93a191f6b2c5d3f`.
+
 Accepted sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/entry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `87fe021a4e9ba914d7ca2cb8e12910b2eb184cde3f4d5783ed05af2067a183e6`.
 
-The exact resume point is task 3.2 of `onboard-beautips-on-ax42`.
+The exact resume point is task 3.3 of `onboard-beautips-on-ax42`.

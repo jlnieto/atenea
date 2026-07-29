@@ -176,6 +176,19 @@ closed. Repository, commit, manifest, workspace and workload persistence are
 not inferred at selection time; task 3.2 must pin them durably before
 dispatch. No selector configuration is deployed or enabled at this gate.
 
+Task 3.2 extends the existing additive AgentRun identity columns without a new
+migration. A queued Beautips run is accepted only from an exact selected
+session whose worker is `ax42-01`, remote UUID exists, workload is
+`project-codex-v1` and workspace identity is derived exactly from that worker
+and UUID. Before dispatch registration, the persisted run receives that
+affinity plus project `beautips`, canonical repository URL/path, branch
+`main`, accepted commit and manifest SHA-256.
+
+A foreign workspace identity rejects before repository save. The existing
+Atenea project and synthetic identities retain their current persistence
+behavior. Worker payload, thread/turn mapping and terminal handling are not
+changed here; task 3.3 consumes the exact persisted Beautips identity.
+
 ### The administrative pilot is foreign retained state
 
 The three slot 1 containers, their network, four volumes, loopback listener,
