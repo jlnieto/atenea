@@ -64,7 +64,7 @@ executing it before the reviewed mediator and exact registry exist.
 
 Task 2.2 adds the source registry
 `ops/worker/project-codex-allowlist-v1.json`, SHA-256
-`e3ad1824c7a134280f907b2831b75391c3791373060806fb1827dc05cb6756fc`,
+`696a00eae3d35f9e54d3eebc55441252705c982dc19adb0aa9aa7aecd59a61b0`,
 under the closed Draft 2020-12 schema
 `runtime-contract/project-codex-allowlist-v1.schema.json`, SHA-256
 `1fc4d61a46e10ea9a6b7201573daef5b50267f13d252e20c6dab062e6fee10e2`.
@@ -120,7 +120,7 @@ process runs at this gate.
 
 Task 2.5 adds
 `ops/worker/beautips-secret-boundary-v1.py`, SHA-256
-`d0176e51278908b9803f8a4c3502ac9a9d0613ee1c88fd37a8f6733800c79b8f`.
+`acbbb58f5ead82f47288fa499009c46797655bd277071d57e21b5c6ccfd504f6`.
 It derives one exact secret directory from the validated WorkSession
 allocation and creates only four separate synthetic names: PostgreSQL
 password, smoke administrator email/password and smoke seal code.
@@ -241,6 +241,23 @@ small versioned fixture containing only invented tenants, users, loyalty
 events and files. It uses separate session-labelled database, Redis,
 assets/imports volumes. No existing dump, backup, legacy import, production row
 or administrative volume is mounted or copied.
+
+Task 5.2 accepts 41 Flyway migrations and only their 13 source-versioned static
+catalog rows as empty-migrated state. All tenant, user, customer, loyalty,
+import, credential, channel, outbox and event tables remain empty and Redis
+reports zero keys before task 5.3 fixtures.
+
+The rootless runtime uses three exact containers, one `internal=true` network,
+four labelled volumes and one local application image in assigned slot 4.
+RootlessKit does not automatically publish Docker `PortBindings` from an
+internal network, so three allocation-derived API records forward only
+`127.0.0.1` to the exact container IP/ports while preserving no runtime
+egress. Their immutable IDs and complete specs are retained for reconciliation
+and exact cleanup.
+
+The exact runtime parent is setgid. Secret creation therefore applies mode
+`0700` after ownership so inheritance cannot leave the closed boundary at
+`2700`; the regression suite covers this real parent mode.
 
 Local backup folders are on the laptop root filesystem and AX42 has no
 configured restic, borg or rclone target. They do not satisfy independent

@@ -126,6 +126,7 @@ class BeautipsSecretBoundaryTest(unittest.TestCase):
         }
 
     def test_prepare_is_exact_idempotent_and_never_exposes_values(self) -> None:
+        os.chmod(self.runtime_root, 0o2770)
         first = MODULE.prepare(SESSION)
         before = self.fingerprints()
         second = MODULE.prepare(SESSION)

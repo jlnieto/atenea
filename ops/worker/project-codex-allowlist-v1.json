@@ -19,7 +19,7 @@
       "runnerSha256": "55e8f585e19f6a19d3c51aaf7532b1cf0f74f6b087ae0d1ef67faaea3029b73b",
       "baseRunnerSha256": "de84b0c96908677e334184b9290691a2116b963dd37483022f97a0fd57ed44d1",
       "secretBoundaryPath": "/usr/local/libexec/atenea/beautips-secret-boundary-v1.py",
-      "secretBoundarySha256": "d0176e51278908b9803f8a4c3502ac9a9d0613ee1c88fd37a8f6733800c79b8f",
+      "secretBoundarySha256": "acbbb58f5ead82f47288fa499009c46797655bd277071d57e21b5c6ccfd504f6",
       "allowedSlots": [
         "slot2",
         "slot3",

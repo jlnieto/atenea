@@ -151,7 +151,7 @@ def validate_registry(source: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         or project["secretBoundaryPath"]
         != "/usr/local/libexec/atenea/beautips-secret-boundary-v1.py"
         or project["secretBoundarySha256"]
-        != "d0176e51278908b9803f8a4c3502ac9a9d0613ee1c88fd37a8f6733800c79b8f"
+        != "acbbb58f5ead82f47288fa499009c46797655bd277071d57e21b5c6ccfd504f6"
         or project["allowedSlots"] != list(ALLOWED_SLOTS)
         or project["workspaces"] != {}
     ):

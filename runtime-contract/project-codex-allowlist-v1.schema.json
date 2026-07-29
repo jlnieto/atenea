@@ -105,7 +105,7 @@
           "const": "/usr/local/libexec/atenea/beautips-secret-boundary-v1.py"
         },
         "secretBoundarySha256": {
-          "const": "d0176e51278908b9803f8a4c3502ac9a9d0613ee1c88fd37a8f6733800c79b8f"
+          "const": "acbbb58f5ead82f47288fa499009c46797655bd277071d57e21b5c6ccfd504f6"
         },
         "allowedSlots": {
           "const": [

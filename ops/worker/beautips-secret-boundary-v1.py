@@ -117,6 +117,7 @@ def ensure_directory(path: Path, uid: int, gid: int) -> None:
     if not path.exists():
         path.mkdir(mode=0o700)
         os.chown(path, uid, gid)
+        os.chmod(path, 0o700)
     assert_directory(path, uid, gid)
 
 

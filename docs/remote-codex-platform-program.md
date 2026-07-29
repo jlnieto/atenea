@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `26/45`, with the exact
-  resume point at task 5.2
+  `45/45` and `onboard-beautips-on-ax42` is active at `27/45`, with the exact
+  resume point at task 5.3
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -3561,3 +3561,51 @@ Five sealed blocked-attempt directories remain beside it with their own
 integrity manifests and are indexed by the accepted attempt ledger.
 
 The exact resume point is task 5.2 of `onboard-beautips-on-ax42`.
+
+Task 5.2 is complete and change progress is `27/45`. The exact Beautips
+WorkSession now owns three running rootless slot4 containers, one internal
+network, four labelled PostgreSQL/Redis/assets/imports volumes and one local
+Compose application image. PostgreSQL and Redis are healthy and the app
+actuator is `UP`.
+
+PostgreSQL applied 41 source migrations. All tenant, user, customer, loyalty,
+import, credential, channel, outbox and event tables remain empty. Thirteen
+rows exist only in three migration-defined static catalog tables; these are
+versioned schema bootstrap records, not fixtures or production-derived data.
+Redis `DBSIZE` is zero.
+
+Docker retained the requested `PortBindings` but RootlessKit created no host
+listeners for the `internal=true` network. A finite 300-second wait closed.
+RootlessKit records 1, 2 and 3 now forward only allocation-derived
+`127.0.0.1` ports 21379, 25592 and 23826 to the exact app, PostgreSQL and Redis
+container IP/ports. The runtime network remains internal with no egress; the
+three complete records are retained for reconciliation and exact cleanup.
+
+The first secret preparation stopped before values or Docker resources because
+setgid inheritance produced directory mode `2700`. The exact empty directory
+was removed. Creation now normalizes mode `0700` after ownership and the
+regression test covers a setgid parent. Four synthetic named values plus
+value-free metadata are retained as `0600`; no value appears in evidence.
+
+Current installed secret boundary, source allowlist, mediator and lifecycle
+SHA-256 values are respectively
+`acbbb58f5ead82f47288fa499009c46797655bd277071d57e21b5c6ccfd504f6`,
+`696a00eae3d35f9e54d3eebc55441252705c982dc19adb0aa9aa7aecd59a61b0`,
+`a4ca6dc559ccf92868fe85d6419a674cc069d5da186365f4d269870748fe331c`
+and
+`ef05e83d9f38ce6858417d3b088ad47f0b8c4e08802654c2ee0a49ebf3fcba05`.
+
+Canonical Git, allocation and worker state remain unchanged. Four pre-existing
+foreign anonymous slot4 volumes and all default networks are byte-identical.
+Administrative Beautips, production, preview and the isolated control plane
+remain healthy; rootful Docker remains inactive.
+
+Task 5.2 passing evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-5.2-rootless-empty-runtime`;
+the SHA-256 of its `SHA256SUMS` is
+`9ff3a320071c79043a5e5761db23428f51c5cf7210507c1f06609534f10886b8`.
+The sealed pre-resource blocked attempt remains beside it with manifest
+SHA-256
+`3355d7533d84fb8caf3c2abec414dca6244d459fd74b429a02f78f88ee451920`.
+
+The exact resume point is task 5.3 of `onboard-beautips-on-ax42`.
