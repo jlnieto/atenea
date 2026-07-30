@@ -113,6 +113,85 @@ class WorkerStateTest(unittest.TestCase):
             self.state.create(request)
 
 
+class WorkspaceActivationTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        self.calls = root / "calls"
+        self.activator = root / "activator"
+        self.activator.write_text(
+            """#!/usr/bin/env python3
+import json
+import pathlib
+import sys
+calls = pathlib.Path(sys.argv[0]).with_name("calls")
+calls.write_text(calls.read_text() + "1\\n" if calls.exists() else "1\\n")
+session_id = sys.argv[2]
+branch = sys.argv[3]
+print(json.dumps({
+    "state": "ready",
+    "sessionId": session_id,
+    "workspaceIdentity": "remote:ax42-01:work-session:" + session_id,
+    "projectId": "beautips",
+    "workspaceBranch": branch,
+    "slot": "slot4",
+    "selectionEnabled": True,
+    "executionEnabled": True,
+    "valuesExposed": False,
+}))
+""",
+            encoding="utf-8",
+        )
+        self.activator.chmod(0o755)
+        self.state = MODULE.WorkerState(
+            root / "state",
+            "ax42-01",
+            privilege_command=(),
+            beautips_workspace_activator=self.activator,
+        )
+        self.session_id = str(uuid.uuid4())
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def request(self):
+        return {
+            "sessionId": self.session_id,
+            "workspaceIdentity": "remote:ax42-01:work-session:" + self.session_id,
+            "projectId": MODULE.BEAUTIPS_PROJECT_ID,
+            "repository": MODULE.BEAUTIPS_PROJECT_REPOSITORY,
+            "branch": MODULE.BEAUTIPS_PROJECT_BRANCH,
+            "commit": MODULE.BEAUTIPS_PROJECT_COMMIT,
+            "manifestSha256": MODULE.BEAUTIPS_PROJECT_MANIFEST_SHA256,
+            "workspaceBranch": "codex/work-session-91",
+        }
+
+    def test_exact_workspace_can_be_ensured_repeatedly(self):
+        first = self.state.ensure_workspace(self.request())
+        second = self.state.ensure_workspace(self.request())
+        self.assertEqual(first, second)
+        self.assertEqual("ready", first["state"])
+        self.assertEqual(2, len(self.calls.read_text().splitlines()))
+
+    def test_foreign_identity_and_arbitrary_field_fail_before_activation(self):
+        foreign = self.request()
+        foreign["repository"] = "https://github.com/foreign/beautips.git"
+        with self.assertRaisesRegex(MODULE.ProtocolError, "not exact"):
+            self.state.ensure_workspace(foreign)
+        arbitrary = self.request()
+        arbitrary["command"] = "id"
+        with self.assertRaisesRegex(MODULE.ProtocolError, "fields"):
+            self.state.ensure_workspace(arbitrary)
+        self.assertFalse(self.calls.exists())
+
+    def test_noncanonical_branch_fails_before_activation(self):
+        request = self.request()
+        request["workspaceBranch"] = "main"
+        with self.assertRaisesRegex(MODULE.ProtocolError, "persisted WorkSession"):
+            self.state.ensure_workspace(request)
+        self.assertFalse(self.calls.exists())
+
+
 class ProjectWorkerStateTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

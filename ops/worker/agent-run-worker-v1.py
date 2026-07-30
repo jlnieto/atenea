@@ -34,6 +34,10 @@ PROJECT_WORKLOAD_KEYS = {
     "kind", "projectId", "repository", "branch", "commit",
     "manifestSha256", "message", "threadId",
 }
+WORKSPACE_ENSURE_KEYS = {
+    "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
+    "commit", "manifestSha256", "workspaceBranch",
+}
 PROJECT_ID = "atenea"
 PROJECT_REPOSITORY = "https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH = "feature/actualizar-conversacion-en-web"
@@ -78,6 +82,7 @@ class WorkerState:
         privilege_command: tuple[str, ...] = ("sudo",),
         beautips_project_config: Path | None = None,
         beautips_project_runner: Path | None = None,
+        beautips_workspace_activator: Path | None = None,
     ):
         self.state_dir = state_dir
         self.state_file = state_dir / "executions.json"
@@ -91,6 +96,7 @@ class WorkerState:
         self.privilege_command = privilege_command
         self.beautips_project_config = beautips_project_config
         self.beautips_project_runner = beautips_project_runner
+        self.beautips_workspace_activator = beautips_workspace_activator
         self.lock = threading.RLock()
         self.wakeup = threading.Event()
         self.stop_event = threading.Event()
@@ -223,6 +229,109 @@ class WorkerState:
             self._persist()
             self.wakeup.set()
             return self._public(execution), True
+
+    def ensure_workspace(self, request: dict[str, Any]) -> dict[str, Any]:
+        if set(request) != WORKSPACE_ENSURE_KEYS:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_workspace_request",
+                "workspace request fields are invalid",
+            )
+        session_id = request["sessionId"]
+        try:
+            parsed_session = str(uuid.UUID(session_id))
+        except (ValueError, TypeError, AttributeError):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_session",
+                "sessionId must be a canonical UUID",
+            )
+        if parsed_session != session_id:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_session",
+                "sessionId must be a canonical UUID",
+            )
+        exact = {
+            "workspaceIdentity": f"remote:ax42-01:work-session:{session_id}",
+            "projectId": BEAUTIPS_PROJECT_ID,
+            "repository": BEAUTIPS_PROJECT_REPOSITORY,
+            "branch": BEAUTIPS_PROJECT_BRANCH,
+            "commit": BEAUTIPS_PROJECT_COMMIT,
+            "manifestSha256": BEAUTIPS_PROJECT_MANIFEST_SHA256,
+        }
+        if any(request.get(key) != value for key, value in exact.items()):
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "workspace_ownership_conflict",
+                "workspace activation identity is not exact",
+            )
+        workspace_branch = request["workspaceBranch"]
+        if (
+            not isinstance(workspace_branch, str)
+            or not workspace_branch.startswith("codex/work-session-")
+            or not workspace_branch.removeprefix("codex/work-session-").isdigit()
+        ):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_workspace_branch",
+                "workspace branch is not a persisted WorkSession branch",
+            )
+        activator = self.beautips_workspace_activator
+        if activator is None or not activator.is_file():
+            raise ProtocolError(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "workspace_activation_unavailable",
+                "workspace activation is unavailable",
+            )
+        try:
+            completed = subprocess.run(
+                [*self.privilege_command, str(activator), "ensure", session_id, workspace_branch],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            raise ProtocolError(
+                HTTPStatus.GATEWAY_TIMEOUT,
+                "workspace_activation_timeout",
+                "workspace activation exceeded its finite timeout",
+            )
+        if completed.returncode != 0:
+            detail = completed.stderr.strip().splitlines()
+            message = detail[-1][:300] if detail else "workspace activation failed closed"
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "workspace_activation_failed",
+                message,
+            )
+        try:
+            result = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            raise ProtocolError(
+                HTTPStatus.BAD_GATEWAY,
+                "workspace_activation_invalid",
+                "workspace activation returned an invalid response",
+            )
+        if (
+            not isinstance(result, dict)
+            or result.get("state") != "ready"
+            or result.get("sessionId") != session_id
+            or result.get("workspaceIdentity") != exact["workspaceIdentity"]
+            or result.get("projectId") != BEAUTIPS_PROJECT_ID
+            or result.get("workspaceBranch") != workspace_branch
+            or result.get("slot") not in {"slot2", "slot3", "slot4"}
+            or result.get("valuesExposed") is not False
+        ):
+            raise ProtocolError(
+                HTTPStatus.BAD_GATEWAY,
+                "workspace_activation_invalid",
+                "workspace activation response ownership is incomplete",
+            )
+        return result
 
     def get(self, dispatch_id: str) -> dict[str, Any]:
         with self.lock:
@@ -726,6 +835,9 @@ class AgentRunHandler(BaseHTTPRequestHandler):
                 execution, created = self.server.state.create(body)
                 self._write(HTTPStatus.CREATED if created else HTTPStatus.OK, execution)
                 return
+            if path == "/v1/project-workspaces/ensure":
+                self._write(HTTPStatus.OK, self.server.state.ensure_workspace(body))
+                return
             parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["v1", "executions"]:
                 if parts[3] == "lease":
@@ -795,6 +907,11 @@ def main() -> int:
     parser.add_argument("--project-runner", type=Path)
     parser.add_argument("--beautips-project-config", type=Path)
     parser.add_argument("--beautips-project-runner", type=Path)
+    parser.add_argument(
+        "--beautips-workspace-activator",
+        type=Path,
+        default=Path("/usr/local/libexec/atenea/beautips-workspace-activation-v1.sh"),
+    )
     parser.add_argument("--project-timeout", type=int, default=1800)
     args = parser.parse_args()
     if not (1 <= args.port <= 65535):
@@ -814,6 +931,7 @@ def main() -> int:
         args.project_timeout,
         beautips_project_config=args.beautips_project_config,
         beautips_project_runner=args.beautips_project_runner,
+        beautips_workspace_activator=args.beautips_workspace_activator,
     )
     server = AgentRunServer((args.bind, args.port), state, read_token(args.token_file))
     state.start()
