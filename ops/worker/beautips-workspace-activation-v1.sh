@@ -2,6 +2,7 @@
 
 set -Eeuo pipefail
 umask 0077
+export PYTHONDONTWRITEBYTECODE=1
 
 ACTION="${1:-}"
 SESSION_ID="${2:-}"
