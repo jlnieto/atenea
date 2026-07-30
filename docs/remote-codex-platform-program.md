@@ -4425,3 +4425,25 @@ the SHA-256 of its `SHA256SUMS` is
 
 The Atenea activation change is complete and archived. Atenea and Beautips are
 ready for normal remote work from the laptop and mobile application.
+
+## Codex session operations
+
+The active OpenSpec change is `add-codex-session-operations`. It defines the
+next programme phase for professional day-to-day Codex operation through
+Atenea: effective model and reasoning-effort selection, sanitized intermediate
+progress, self-service run recovery, reusable Android notifications and a
+separately authorized managed Codex version lifecycle.
+
+The change contains 47 ordered tasks across contracts, the Atenea control
+plane, AX42, web and Android experience, notifications, version administration
+and final acceptance. Progress is `0/47`; the exact resume point is task 1.1.
+Implementation must proceed task by task and retain the disable-first rollback
+boundary. A real AX42 Codex version activation remains subject to separate
+explicit authorization at task 6.7.
+
+The accepted control boundary does not expose arbitrary Codex flags, commands,
+providers, endpoints, paths, environment values or host services. Model and
+effort changes apply only to future AgentRuns; each run retains its immutable
+effective profile and Codex version. Intermediate progress is bounded and
+sanitized and must never retain hidden reasoning, raw command output, prompts,
+answers, credentials or tokens.
