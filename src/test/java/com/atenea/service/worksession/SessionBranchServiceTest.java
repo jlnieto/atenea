@@ -3,6 +3,7 @@ package com.atenea.service.worksession;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionEntity;
@@ -17,6 +18,8 @@ class SessionBranchServiceTest {
 
     @Test
     void remoteSessionBranchUsesPersistedExternalUuid() {
+        GitRepositoryService gitRepositoryService = mock(GitRepositoryService.class);
+        SessionBranchService remoteService = new SessionBranchService(gitRepositoryService);
         UUID remoteSessionId = UUID.fromString("4bb26a65-0a0a-4ae0-b8e0-b41e03a695bf");
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(41L);
@@ -25,7 +28,8 @@ class SessionBranchServiceTest {
 
         assertEquals(
                 "atenea/session-" + remoteSessionId,
-                service.resolveWorkspaceBranch(session));
+                remoteService.prepareWorkspaceBranch(session, "/workspace/repos/internal/atenea"));
+        verifyNoInteractions(gitRepositoryService);
     }
 
     @Test

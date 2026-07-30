@@ -17,6 +17,9 @@ public class SessionBranchService {
 
     public String prepareWorkspaceBranch(WorkSessionEntity session, String repoPath) {
         String workspaceBranch = resolveWorkspaceBranch(session);
+        if (session.getExecutionTarget() == ExecutionTarget.REMOTE) {
+            return workspaceBranch;
+        }
 
         try {
             String currentBranch = gitRepositoryService.getCurrentBranch(repoPath);
