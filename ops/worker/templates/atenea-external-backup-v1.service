@@ -1,0 +1,34 @@
+[Unit]
+Description=Atenea encrypted external backup v1
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/atenea-backup/repository.env
+ConditionPathExists=/etc/atenea-backup/repository-password
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/atenea-backup/repository.env
+Environment=RESTIC_PASSWORD_FILE=/etc/atenea-backup/repository-password
+ExecStart=/usr/local/libexec/atenea/external-backup-v1.py backup
+ExecStart=/usr/local/libexec/atenea/external-backup-v1.py check
+ExecStart=/usr/local/libexec/atenea/external-backup-v1.py retain --apply
+TimeoutStartSec=4h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadOnlyPaths=/srv/atenea/worker /srv/atenea/attachments-v1 /srv/atenea/artifacts /etc/atenea-worker
+ReadWritePaths=/var/lib/atenea-external-backup-v1 /srv/atenea/backups-staging /run/lock
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly Atenea external backup integrity check v1
+
+[Timer]
+OnCalendar=Sun *-*-* 05:15:00
+RandomizedDelaySec=45m
+Persistent=true
+Unit=atenea-external-backup-check-v1.service
+
+[Install]
+WantedBy=timers.target

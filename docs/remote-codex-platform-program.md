@@ -6,15 +6,16 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: Phase 8, individual project onboarding; Atenea and Beautips
-  are archived at `45/45`; no subsequent project onboarding has started
+- Current phase: independent external-backup prerequisite after Phase 8;
+  Atenea and Beautips onboarding are archived at `45/45`, and
+  `establish-independent-worker-backup` is active
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
 - Development/execution plane: Hetzner AX42; Atenea acceptance passed and was
   rolled back to its disabled/released boundary
 - Canonical source: GitHub
-- Last evidence refresh: 2026-07-29
+- Last evidence refresh: 2026-07-30
 
 The normative requirements live in OpenSpec. This ledger records phase state, decisions, evidence locations and the exact resume point. Code, tests and migrations remain authoritative for existing Atenea runtime behaviour.
 
@@ -243,13 +244,13 @@ separate `onboard-beautips-on-ax42` change; Beautips routing is not enabled.
 | D-041 | Use only empty migrated PostgreSQL, disposable Redis, invented fixtures/files and disabled WhatsApp for managed acceptance. | Platform ownership can be proven without copying administrative, legacy or production-derived data and without external messaging authority. | accepted | data/security owners | before managed runtime start |
 | D-042 | Declare no localhost requirement for the disabled-WhatsApp acceptance; block on any absolute-origin failure rather than generating a tunnel implicitly. | Relative application paths can be verified through the private preview while excluded OAuth/messaging flows cannot justify broader compatibility. | accepted for Beautips pilot | runtime/product owners | private preview acceptance |
 | D-043 | Close Beautips after a 15-minute disabled/clean window with samples at minute 0, 5, 10 and 15. | The same bounded post-rollback control detects resurrection and protects the administrative pilot and production. | accepted for Beautips pilot | programme owner | before onboarding archive |
+| D-044 | Use a private Backblaze B2 bucket in an operator-owned account as AX42's independent encrypted backup target, keeping 14 daily, 8 weekly and 12 monthly exact-host restic snapshots. | A separate provider and recovery boundary protects against complete AX42/Hetzner loss; bucket-scoped credentials, bounded retention and restore evidence are required before authoritative retained state. | accepted for implementation; external provisioning pending | operations owner | before lifting the external-backup gate |
 
 ## Deferred decisions and gates
 
 | Decision | Deferral | Must be resolved before |
 |---|---|---|
 | Second independent tailnet administrator | The operator chose one paid seat initially. `info@codynwave.com` is Owner; Microsoft recovery and public SSH break-glass remain mandatory. | removing public SSH break-glass or expanding beyond one operator |
-| External backup target and retention | Compare Hetzner Storage Box with an independent provider and existing storage. | storing authoritative non-Git artifacts or completing operational hardening |
 | Per-project localhost requirement | Discover through cookies, callbacks and browser tests. | declaring that project's private preview ready |
 | Initial runtime sandbox implementation | Prototype mediated rootless/container alternatives against the no-host-socket requirement. | accepting the runtime contract phase |
 | Terminal AgentRun, artifact and preview retention durations | Non-terminal Phase 4 lease/lifecycle retention is fixed; measure representative runs before choosing terminal cleanup. | production defaults in remote routing/preview phases |
@@ -4171,3 +4172,32 @@ the SHA-256 of its `SHA256SUMS` is
 
 The programme is paused after Beautips onboarding. No next project has been
 selected or started.
+
+## Independent external backup progress
+
+The dedicated `establish-independent-worker-backup` change is active. Its
+entry fingerprint confirms clean programme, Atenea and Beautips Git; AX42 boot
+ID `5cc2a4e3-020d-4d19-8a55-6ecae77f22ce`; three healthy RAID1 arrays at
+`[UU]`; active SSH, Tailscale, worker, preview and attachment services; four
+active rootless daemons; slot container counts `3/0/0/0`; and admission usage
+`0/4` normal plus `0/2` heavy. Atenea has 13 running and zero unhealthy
+rootful containers.
+
+The source-boundary inventory reads no content or secret value. The accepted
+roots contain 61 worker-state files, 16 attachment files and 3,205 sanitized
+artifact files, with zero symlinks or special files. Six top-level worker
+credential/environment files and the one-file manual Beautips secret boundary
+are counted only as prohibited categories and remain excluded. Atenea and
+Beautips project configs both retain `selectionEnabled=false`,
+`executionEnabled=false` and zero registered workspaces.
+
+Backblaze B2 is selected as the independent provider with client-side restic
+encryption and 14-daily, 8-weekly and 12-monthly retention. Hetzner Storage
+Box is not accepted for this gate because it shares the worker provider
+failure domain. The external account, private bucket and bucket-scoped
+application key remain an out-of-band operator provisioning gate; no
+credential may enter chat, Git, commands, logs or evidence.
+
+The exact resume point is task 3.3 of
+`establish-independent-worker-backup`. Beautips routing and authoritative
+retained state remain disabled.

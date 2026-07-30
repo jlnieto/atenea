@@ -629,3 +629,51 @@ The AX42 acceptance uses the pinned Playwright image and rootless slot selected
 by synthetic admission. Browser transport may use the exact session network
 and container name while the registered operator URL remains the allocation's
 loopback URL. This avoids widening a loopback binding or using host networking.
+
+## Independent encrypted backup
+
+`external-backup-v1.py` mediates the AX42 authoritative backup policy. It
+selects only regular non-symlink files from worker ownership state,
+WorkSession attachments, sanitized artifacts and explicitly non-secret worker
+configuration. Git mirrors/worktrees, deployed source, caches, runtime state,
+Codex homes, manual Beautips state, tokens, environment files, keys, cookies
+and dumps are never accepted sources.
+
+The fixed operations are `init`, `manifest`, `backup`, `check`, `retain` and
+`restore`. Every operation shares one finite lock. Backup snapshots are tagged
+for worker `ax42-01` and policy `atenea-authoritative-v1`; retention requires
+the exact latest backup and check identities before selecting 14 daily, 8
+weekly and 12 monthly snapshots. Restore requires one immutable snapshot and a
+previously absent target beneath
+`/srv/atenea/backups-staging/restore-tests`; it never overlays live paths.
+
+Install the reviewed automation in disabled state:
+
+```bash
+sudo ./install-external-backup-v1.sh apply
+```
+
+The operator must create `/etc/atenea-backup/repository.env` and
+`/etc/atenea-backup/repository-password` out of band as `root:root` mode
+`0600`. The environment file contains the restic repository and provider
+variables; neither file is committed, printed, backed up or collected as
+evidence. Enable timers only after the independent repository and isolated
+restore have passed:
+
+```bash
+sudo ./install-external-backup-v1.sh enable
+```
+
+`disable` stops both timers while preserving all state. `rollback` additionally
+removes only the installed units and mediator; it preserves repository
+credentials, remote snapshots, local state and evidence.
+
+Run the dependency-free contract suite twice. Set
+`RESTIC_REAL_INTEGRATION=1` only inside a disposable test root to include an
+encrypted local repository, repeated backup/check, ambiguous-retention denial
+and isolated restore:
+
+```bash
+python3 ./test-external-backup-v1.py
+RESTIC_REAL_INTEGRATION=1 python3 ./test-external-backup-v1.py
+```

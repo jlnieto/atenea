@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Atenea encrypted external backup v1
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=45m
+Persistent=true
+Unit=atenea-external-backup-v1.service
+
+[Install]
+WantedBy=timers.target
