@@ -10,6 +10,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,6 +51,31 @@ public class RemoteWorkerClient {
                 body,
                 Execution.class,
                 run.getDispatchId().toString());
+    }
+
+    public Workspace ensureWorkspace(AgentRunEntity run) {
+        if (!BeautipsProjectCodexIdentity.matches(run)
+                || run.getSession().getWorkspaceBranch() == null) {
+            throw new RemoteWorkerException(
+                    "Persisted Beautips workspace identity is incomplete or incompatible",
+                    409);
+        }
+        Map<String, Object> body = Map.of(
+                "sessionId", run.getRemoteSessionId().toString(),
+                "workspaceIdentity", run.getWorkspaceIdentity(),
+                "projectId", run.getProjectIdentity(),
+                "repository", run.getRepositoryUrl(),
+                "branch", run.getRepositoryBranch(),
+                "commit", run.getRepositoryCommit(),
+                "manifestSha256", run.getManifestSha256(),
+                "workspaceBranch", run.getSession().getWorkspaceBranch());
+        return exchange(
+                "POST",
+                "/v1/project-workspaces/ensure",
+                body,
+                Workspace.class,
+                run.getDispatchId().toString(),
+                properties.getWorkspaceProvisionTimeout());
     }
 
     private Map<String, Object> workload(AgentRunEntity run, String message) {
@@ -105,10 +131,21 @@ public class RemoteWorkerClient {
             Class<T> responseType,
             String idempotencyKey
     ) {
+        return exchange(method, path, body, responseType, idempotencyKey, properties.getRequestTimeout());
+    }
+
+    private <T> T exchange(
+            String method,
+            String path,
+            Object body,
+            Class<T> responseType,
+            String idempotencyKey,
+            Duration timeout
+    ) {
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(stripTrailingSlash(properties.getEndpoint()) + path))
-                    .timeout(properties.getRequestTimeout())
+                    .timeout(timeout)
                     .header("Authorization", "Bearer " + readToken())
                     .header("Accept", "application/json");
             if (idempotencyKey != null) {
@@ -188,6 +225,20 @@ public class RemoteWorkerClient {
             Instant startedAt,
             Instant finishedAt,
             Result result
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record Workspace(
+            String state,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String workspaceBranch,
+            String slot,
+            boolean selectionEnabled,
+            boolean executionEnabled,
+            boolean valuesExposed
     ) {
     }
 

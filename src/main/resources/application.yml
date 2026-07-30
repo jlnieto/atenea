@@ -45,6 +45,7 @@ atenea:
     poll-interval: ${ATENEA_REMOTE_WORKER_POLL_INTERVAL:250ms}
     lease-duration: ${ATENEA_REMOTE_WORKER_LEASE_DURATION:90s}
     reconciliation-timeout: ${ATENEA_REMOTE_WORKER_RECONCILIATION_TIMEOUT:2m}
+    workspace-provision-timeout: ${ATENEA_REMOTE_WORKER_WORKSPACE_PROVISION_TIMEOUT:5m}
     synthetic-duration: ${ATENEA_REMOTE_WORKER_SYNTHETIC_DURATION:2500ms}
   attachments:
     enabled: ${ATENEA_ATTACHMENTS_ENABLED:false}

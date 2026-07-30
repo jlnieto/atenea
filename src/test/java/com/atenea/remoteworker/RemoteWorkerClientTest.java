@@ -60,6 +60,23 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/project-workspaces/ensure", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
+                    java.util.Map.entry("state", "ready"),
+                    java.util.Map.entry("sessionId", request.get("sessionId").asText()),
+                    java.util.Map.entry("workspaceIdentity", request.get("workspaceIdentity").asText()),
+                    java.util.Map.entry("projectId", request.get("projectId").asText()),
+                    java.util.Map.entry("workspaceBranch", request.get("workspaceBranch").asText()),
+                    java.util.Map.entry("slot", "slot4"),
+                    java.util.Map.entry("selectionEnabled", true),
+                    java.util.Map.entry("executionEnabled", true),
+                    java.util.Map.entry("valuesExposed", false)));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.start();
         properties = new RemoteWorkerProperties();
         properties.setEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
@@ -117,6 +134,43 @@ class RemoteWorkerClientTest {
         assertNull(workload.get("path"));
         assertNull(workload.get("endpoint"));
         assertNull(workload.get("environment"));
+    }
+
+    @Test
+    void beautipsWorkspaceEnsureUsesOnlyPersistedExactIdentity() {
+        AgentRunEntity run = beautipsRun(null);
+        run.getSession().setWorkspaceBranch("codex/work-session-41");
+
+        RemoteWorkerClient.Workspace workspace = client.ensureWorkspace(run);
+
+        JsonNode body = requestBody.get();
+        assertEquals(run.getRemoteSessionId().toString(), body.get("sessionId").asText());
+        assertEquals(run.getWorkspaceIdentity(), body.get("workspaceIdentity").asText());
+        assertEquals(BeautipsProjectCodexIdentity.PROJECT_IDENTITY, body.get("projectId").asText());
+        assertEquals(BeautipsProjectCodexIdentity.REPOSITORY, body.get("repository").asText());
+        assertEquals(BeautipsProjectCodexIdentity.BRANCH, body.get("branch").asText());
+        assertEquals(BeautipsProjectCodexIdentity.COMMIT, body.get("commit").asText());
+        assertEquals(BeautipsProjectCodexIdentity.MANIFEST_SHA256, body.get("manifestSha256").asText());
+        assertEquals("codex/work-session-41", body.get("workspaceBranch").asText());
+        assertNull(body.get("command"));
+        assertNull(body.get("path"));
+        assertNull(body.get("endpoint"));
+        assertNull(body.get("environment"));
+        assertEquals("ready", workspace.state());
+        assertEquals(false, workspace.valuesExposed());
+    }
+
+    @Test
+    void nonBeautipsWorkspaceEnsureFailsBeforeNetwork() {
+        AgentRunEntity run = projectRun(null);
+        run.getSession().setWorkspaceBranch("codex/work-session-41");
+
+        RemoteWorkerException exception = assertThrows(
+                RemoteWorkerException.class,
+                () -> client.ensureWorkspace(run));
+
+        assertEquals(409, exception.getStatusCode());
+        assertNull(requestBody.get());
     }
 
     @Test

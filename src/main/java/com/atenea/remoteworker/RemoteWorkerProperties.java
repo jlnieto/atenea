@@ -24,6 +24,7 @@ public class RemoteWorkerProperties {
     private Duration pollInterval = Duration.ofMillis(250);
     private Duration leaseDuration = Duration.ofSeconds(90);
     private Duration reconciliationTimeout = Duration.ofMinutes(2);
+    private Duration workspaceProvisionTimeout = Duration.ofMinutes(5);
     private Duration syntheticDuration = Duration.ofMillis(2_500);
 
     public boolean isEnabled() { return enabled; }
@@ -58,6 +59,10 @@ public class RemoteWorkerProperties {
     public void setLeaseDuration(Duration leaseDuration) { this.leaseDuration = leaseDuration; }
     public Duration getReconciliationTimeout() { return reconciliationTimeout; }
     public void setReconciliationTimeout(Duration reconciliationTimeout) { this.reconciliationTimeout = reconciliationTimeout; }
+    public Duration getWorkspaceProvisionTimeout() { return workspaceProvisionTimeout; }
+    public void setWorkspaceProvisionTimeout(Duration workspaceProvisionTimeout) {
+        this.workspaceProvisionTimeout = workspaceProvisionTimeout;
+    }
     public Duration getSyntheticDuration() { return syntheticDuration; }
     public void setSyntheticDuration(Duration syntheticDuration) { this.syntheticDuration = syntheticDuration; }
 }

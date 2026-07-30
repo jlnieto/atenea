@@ -98,6 +98,7 @@ class RemoteAgentRunCoordinatorTest {
         Thread.sleep(50);
 
         assertEquals(1, resultTurns.get());
+        verify(client, never()).ensureWorkspace(any());
         verify(client, times(1)).dispatch(run, "First managed turn");
     }
 
@@ -132,6 +133,7 @@ class RemoteAgentRunCoordinatorTest {
         Thread.sleep(50);
 
         assertEquals(1, resultTurns.get());
+        verify(client, times(1)).ensureWorkspace(run);
         verify(client, times(1)).dispatch(run, "First managed turn");
     }
 
