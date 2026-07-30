@@ -127,13 +127,7 @@ internal fun WorkSessionConversationScreen(
         scope.launch {
             error = null
             try {
-                activeCommand = apiClient.runCoreCommand(
-                    input = message,
-                    scope = CoreScope.SESSION,
-                    projectId = projectId,
-                    workSessionId = id
-                )
-                conversation = apiClient.fetchMobileWorkSessionConversation(id)
+                conversation = apiClient.createMobileWorkSessionTurn(id, message)
                 input = ""
             } catch (sendError: Exception) {
                 error = sendError.message ?: "No se pudo enviar el turno."
@@ -194,13 +188,7 @@ internal fun WorkSessionConversationScreen(
                     error = "La transcripción llegó vacía. Prueba a grabar de nuevo."
                     return@launch
                 }
-                activeCommand = apiClient.runVoiceCommand(
-                    input = transcript,
-                    scope = CoreScope.SESSION,
-                    projectId = projectId,
-                    workSessionId = id
-                )
-                conversation = apiClient.fetchMobileWorkSessionConversation(id)
+                conversation = apiClient.createMobileWorkSessionTurn(id, transcript)
                 input = ""
             } catch (sendError: Exception) {
                 error = sendError.message ?: "No se pudo transcribir y enviar el audio."
