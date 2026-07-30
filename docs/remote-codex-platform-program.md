@@ -4337,5 +4337,23 @@ Sanitized task-3.4 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `b04248a347f18adae29b74f7411909f2e1707fc29673d2cc1f7003b8c2424168`.
 
-The exact resume point is task 3.5: final activation-window non-impact
-comparison. It has not been started.
+Task 3.5 is complete and change progress is `14/19`. Production and preview
+are `UP`; all 13 Atenea containers are running with zero unhealthy. All three
+RAID arrays remain `[UU]` and the worker service is active with zero
+non-terminal AgentRuns and zero active leases.
+
+Slot container counts remain `3/0/0/3`. The Atenea session has zero owned
+containers, networks, allocated listeners and residual execution processes,
+while its worktree remains clean. Administrative Beautips in slot 1 retains
+its three containers. Routed Beautips in slot 4 retains its three containers,
+one session network and all three allocated listeners. The only remote
+WorkSessions are the accepted Beautips and Atenea identities; the unrelated
+remote-session count is zero.
+
+Sanitized task-3.5 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-remote-routing/runs/task-3.5-nonimpact`;
+the SHA-256 of its `SHA256SUMS` is
+`c1a031d8450a1d6b88eba91ce0bdca60e4bc4ec2bee2b912f2a689fea6df8698`.
+
+The exact resume point is task 4.1: disable only Atenea selection/execution
+while retaining its open pinned WorkSession. It has not been started.
