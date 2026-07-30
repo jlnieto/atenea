@@ -139,7 +139,7 @@ class RemoteWorkerClientTest {
     @Test
     void beautipsWorkspaceEnsureUsesOnlyPersistedExactIdentity() {
         AgentRunEntity run = beautipsRun(null);
-        run.getSession().setWorkspaceBranch("codex/work-session-41");
+        run.getSession().setWorkspaceBranch("atenea/session-11111111-1111-4111-8111-111111111111");
 
         RemoteWorkerClient.Workspace workspace = client.ensureWorkspace(run);
 
@@ -151,7 +151,9 @@ class RemoteWorkerClientTest {
         assertEquals(BeautipsProjectCodexIdentity.BRANCH, body.get("branch").asText());
         assertEquals(BeautipsProjectCodexIdentity.COMMIT, body.get("commit").asText());
         assertEquals(BeautipsProjectCodexIdentity.MANIFEST_SHA256, body.get("manifestSha256").asText());
-        assertEquals("codex/work-session-41", body.get("workspaceBranch").asText());
+        assertEquals(
+                "atenea/session-11111111-1111-4111-8111-111111111111",
+                body.get("workspaceBranch").asText());
         assertNull(body.get("command"));
         assertNull(body.get("path"));
         assertNull(body.get("endpoint"));
@@ -163,7 +165,7 @@ class RemoteWorkerClientTest {
     @Test
     void nonBeautipsWorkspaceEnsureFailsBeforeNetwork() {
         AgentRunEntity run = projectRun(null);
-        run.getSession().setWorkspaceBranch("codex/work-session-41");
+        run.getSession().setWorkspaceBranch("atenea/session-11111111-1111-4111-8111-111111111111");
 
         RemoteWorkerException exception = assertThrows(
                 RemoteWorkerException.class,
