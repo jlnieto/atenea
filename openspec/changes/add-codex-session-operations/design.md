@@ -58,6 +58,16 @@ selected repository, branch, canonical commit and mirror observation. The
 worker admits the run only when the clean WorkSession HEAD equals that commit.
 An ancestor relationship is insufficient for a new implementation.
 
+The canonical commit is runtime state, not a compile-time constant in the
+repository being observed. Embedding a branch HEAD in that repository would
+be self-invalidating because the commit that changes the constant creates a
+new HEAD. A fixed control-plane mediator observes the configured remote branch,
+persists the commit and observation identity, and copies that value into the
+WorkSession and AgentRun. AX42 independently resolves the same fixed ref in its
+mirror immediately before admission. The observed control-plane commit,
+worker-mirror commit, WorkSession HEAD and workload commit must all be equal.
+Missing refs, a moved branch or unequal observations fail closed.
+
 If an existing dirty WorkSession is stale, Atenea marks it `DRAFT_BLOCKED`,
 retains a sanitized fingerprint and makes no automatic rebase, merge, reset,
 commit or copy. Recovery creates a new clean WorkSession from the accepted

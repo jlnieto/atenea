@@ -5,9 +5,12 @@
 Every write-capable AgentRun SHALL bind an exact repository, branch, canonical
 commit, mirror observation and clean WorkSession HEAD before execution. For a
 new implementation the HEAD MUST equal the accepted canonical commit; merely
-being its ancestor is insufficient. A dirty stale WorkSession SHALL be
-retained as a blocked draft and SHALL NOT be automatically rebased, merged,
-reset, committed, copied or discarded.
+being its ancestor is insufficient. The canonical commit SHALL be observed and
+persisted at runtime by fixed control-plane and worker mirror authorities and
+MUST NOT be a self-referential compile-time constant in the observed
+repository. A dirty stale WorkSession SHALL be retained as a blocked draft and
+SHALL NOT be automatically rebased, merged, reset, committed, copied or
+discarded.
 
 #### Scenario: Clean WorkSession matches canonical source
 
@@ -18,6 +21,11 @@ reset, committed, copied or discarded.
 
 - **WHEN** the WorkSession HEAD is an ancestor of a newer accepted canonical HEAD
 - **THEN** the write is blocked before Codex starts and Atenea offers creation of a new clean WorkSession
+
+#### Scenario: Canonical observations differ or move
+
+- **WHEN** the control plane and worker mirror observe different commits, the configured ref is missing, or the ref moves before admission
+- **THEN** dispatch is blocked without substituting a compile-time pin or accepting an ancestor
 
 #### Scenario: Stale WorkSession contains a draft
 

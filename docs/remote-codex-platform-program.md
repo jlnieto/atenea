@@ -4479,3 +4479,11 @@ Sanitized task-0.1 evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.1-stale-draft-fingerprint`;
 the SHA-256 of its `SHA256SUMS` is
 `7cdfa7a4b8861bd4a27cd59e1742bd79db156ca508eaa6b84044e3275da38ee9`.
+
+Task 0.2 remains pending. Its initial static-pin experiment was deliberately
+discarded before commit after proving that a repository cannot embed its own
+current branch HEAD as a stable constant: the commit containing that constant
+immediately creates a different HEAD. The accepted design now requires a
+runtime control-plane observation persisted into WorkSession and AgentRun plus
+an independent AX42 mirror observation at admission. No Atenea, worker or
+production source change from that experiment was retained.
