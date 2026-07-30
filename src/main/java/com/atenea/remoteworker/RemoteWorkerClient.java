@@ -54,10 +54,10 @@ public class RemoteWorkerClient {
     }
 
     public Workspace ensureWorkspace(AgentRunEntity run) {
-        if (!BeautipsProjectCodexIdentity.matches(run)
+        if ((!ProjectCodexIdentity.matches(run) && !BeautipsProjectCodexIdentity.matches(run))
                 || run.getSession().getWorkspaceBranch() == null) {
             throw new RemoteWorkerException(
-                    "Persisted Beautips workspace identity is incomplete or incompatible",
+                    "Persisted project workspace identity is incomplete or incompatible",
                     409);
         }
         Map<String, Object> body = Map.of(

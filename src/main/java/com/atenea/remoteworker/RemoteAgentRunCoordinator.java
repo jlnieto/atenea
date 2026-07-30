@@ -129,7 +129,8 @@ public class RemoteAgentRunCoordinator {
             try {
                 RemoteWorkerClient.Execution response;
                 if (run.getRemoteExecutionId() == null) {
-                    if (BeautipsProjectCodexIdentity.matches(run)) {
+                    if (ProjectCodexIdentity.matches(run)
+                            || BeautipsProjectCodexIdentity.matches(run)) {
                         client.ensureWorkspace(run);
                     }
                     response = client.dispatch(run, run.getOriginTurn().getMessageText());

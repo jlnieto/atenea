@@ -9,8 +9,9 @@ public final class ProjectCodexIdentity {
     public static final String PROJECT_NAME = "Atenea";
     public static final String PROJECT_IDENTITY = "atenea";
     public static final String REPOSITORY = "https://github.com/jlnieto/atenea.git";
+    public static final String REPO_PATH = "/workspace/repos/internal/atenea";
     public static final String BRANCH = "feature/actualizar-conversacion-en-web";
-    public static final String COMMIT = "b605c8d5b063e7321edd60fec2265ec7ddb84ea9";
+    public static final String COMMIT = "05111c1d874d5acb81b8013ec81069ae4cc05b74";
     public static final String MANIFEST_SHA256 =
             "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3";
 
@@ -21,6 +22,7 @@ public final class ProjectCodexIdentity {
         return session != null
                 && session.getProject() != null
                 && PROJECT_NAME.equals(session.getProject().getName())
+                && REPO_PATH.equals(session.getProject().getRepoPath())
                 && BRANCH.equals(session.getBaseBranch());
     }
 

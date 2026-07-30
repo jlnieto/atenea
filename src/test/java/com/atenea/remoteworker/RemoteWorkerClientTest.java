@@ -163,16 +163,22 @@ class RemoteWorkerClientTest {
     }
 
     @Test
-    void nonBeautipsWorkspaceEnsureFailsBeforeNetwork() {
+    void ateneaWorkspaceEnsureUsesOnlyPersistedExactIdentity() {
         AgentRunEntity run = projectRun(null);
         run.getSession().setWorkspaceBranch("atenea/session-11111111-1111-4111-8111-111111111111");
 
-        RemoteWorkerException exception = assertThrows(
-                RemoteWorkerException.class,
-                () -> client.ensureWorkspace(run));
+        RemoteWorkerClient.Workspace workspace = client.ensureWorkspace(run);
 
-        assertEquals(409, exception.getStatusCode());
-        assertNull(requestBody.get());
+        JsonNode body = requestBody.get();
+        assertEquals(run.getRemoteSessionId().toString(), body.get("sessionId").asText());
+        assertEquals(run.getWorkspaceIdentity(), body.get("workspaceIdentity").asText());
+        assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, body.get("projectId").asText());
+        assertEquals(ProjectCodexIdentity.REPOSITORY, body.get("repository").asText());
+        assertEquals(ProjectCodexIdentity.BRANCH, body.get("branch").asText());
+        assertEquals(ProjectCodexIdentity.COMMIT, body.get("commit").asText());
+        assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, body.get("manifestSha256").asText());
+        assertEquals("ready", workspace.state());
+        assertEquals(false, workspace.valuesExposed());
     }
 
     @Test
@@ -216,6 +222,7 @@ class RemoteWorkerClientTest {
         UUID remoteSessionId = UUID.fromString("4bb26a65-0a0a-4ae0-b8e0-b41e03a695bf");
         ProjectEntity project = new ProjectEntity();
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
+        project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(41L);
         session.setProject(project);

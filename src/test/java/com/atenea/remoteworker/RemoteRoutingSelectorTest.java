@@ -299,6 +299,7 @@ class RemoteRoutingSelectorTest {
         ProjectEntity project = new ProjectEntity();
         project.setId(7L);
         project.setName(projectName);
+        project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(41L);
         session.setProject(project);

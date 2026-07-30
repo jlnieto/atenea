@@ -98,7 +98,7 @@ class RemoteAgentRunCoordinatorTest {
         Thread.sleep(50);
 
         assertEquals(1, resultTurns.get());
-        verify(client, never()).ensureWorkspace(any());
+        verify(client, times(1)).ensureWorkspace(run);
         verify(client, times(1)).dispatch(run, "First managed turn");
     }
 
@@ -275,6 +275,7 @@ class RemoteAgentRunCoordinatorTest {
         UUID remoteSessionId = UUID.fromString("4bb26a65-0a0a-4ae0-b8e0-b41e03a695bf");
         ProjectEntity project = new ProjectEntity();
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
+        project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(41L);
         session.setProject(project);
