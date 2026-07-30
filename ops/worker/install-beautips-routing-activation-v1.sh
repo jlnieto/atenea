@@ -7,6 +7,12 @@ ACTION="${1:-}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROGRAM=/usr/local/libexec/atenea/beautips-workspace-activation-v1.sh
 SUDOERS=/etc/sudoers.d/93-atenea-beautips-routing-activation-v1
+WORKER_BUNDLE=/srv/atenea/worker/workspace-v1/ops/worker
+DEPENDENCIES=(
+  session-workspace-v1.sh
+  runtime-admission-v1.sh
+  session-runtime-allocation-v1.sh
+)
 
 fail() {
   printf 'BEAUTIPS_ROUTING_ACTIVATION_INSTALL_REJECTED: %s\n' "$1" >&2
@@ -36,6 +42,15 @@ verify() {
     fail 'sudoers boundary differs'
   visudo -cf "${SUDOERS}" >/dev/null ||
     fail 'sudoers boundary is invalid'
+  for dependency in "${DEPENDENCIES[@]}"; do
+    installed="${WORKER_BUNDLE}/${dependency}"
+    source="${SCRIPT_DIR}/${dependency}"
+    [[ -f "${installed}" && ! -L "${installed}" &&
+        "$(stat -c %U:%G:%a "${installed}")" == atenea-worker:atenea:750 &&
+        "$(sha256sum "${installed}" | cut -d' ' -f1)" == \
+          "$(sha256sum "${source}" | cut -d' ' -f1)" ]] ||
+      fail "reviewed dependency differs: ${dependency}"
+  done
   jq -cn --arg program "${PROGRAM}" '{
     state: "verified",
     program: $program,
@@ -57,6 +72,11 @@ case "${ACTION}" in
   apply)
     [[ "${EUID}" -eq 0 ]] || fail 'installation requires root'
     install -d -o root -g root -m 0755 "$(dirname -- "${PROGRAM}")"
+    install -d -o atenea-worker -g atenea -m 0750 "${WORKER_BUNDLE}"
+    for dependency in "${DEPENDENCIES[@]}"; do
+      install -o atenea-worker -g atenea -m 0750 \
+        "${SCRIPT_DIR}/${dependency}" "${WORKER_BUNDLE}/${dependency}"
+    done
     install -o root -g root -m 0755 \
       "${SCRIPT_DIR}/beautips-workspace-activation-v1.sh" "${PROGRAM}"
     temporary="$(mktemp /etc/sudoers.d/.beautips-routing.XXXXXX)"

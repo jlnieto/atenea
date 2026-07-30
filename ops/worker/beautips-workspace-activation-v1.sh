@@ -24,22 +24,24 @@ if [[ "${TEST_MODE}" == 1 ]]; then
   [[ "${ATENEA_BEAUTIPS_ACTIVATION_TEST_ROOT:-}" == /tmp/* &&
       "${ATENEA_BEAUTIPS_ACTIVATION_TEST_ROOT}" != *'..'* ]] ||
     fail 'test root must be an explicit path beneath /tmp'
-  LIBEXEC="${ATENEA_BEAUTIPS_ACTIVATION_TEST_ROOT}/usr/local/libexec/atenea"
+  TOOL_ROOT="${ATENEA_BEAUTIPS_ACTIVATION_TEST_ROOT}/usr/local/libexec/atenea"
+  PROJECT_ROOT="${TOOL_ROOT}"
   CONFIG="${ATENEA_BEAUTIPS_ACTIVATION_TEST_ROOT}/etc/atenea-worker/beautips-project-codex-v1.json"
   PREFIX_COMMAND=()
 else
   [[ "${EUID}" -eq 0 ]] || fail 'activation mediator requires root'
   [[ -z "${SUDO_USER:-}" || "${SUDO_USER}" == atenea-worker ]] ||
     fail 'activation caller is foreign'
-  LIBEXEC=/usr/local/libexec/atenea
+  TOOL_ROOT=/srv/atenea/worker/workspace-v1/ops/worker
+  PROJECT_ROOT=/usr/local/libexec/atenea
   CONFIG=/etc/atenea-worker/beautips-project-codex-v1.json
   PREFIX_COMMAND=(runuser -u atenea-worker --)
 fi
 
-WORKSPACE_TOOL="${LIBEXEC}/session-workspace-v1.sh"
-ADMISSION_TOOL="${LIBEXEC}/runtime-admission-v1.sh"
-ALLOCATION_TOOL="${LIBEXEC}/session-runtime-allocation-v1.sh"
-PROJECT_TOOL="${LIBEXEC}/install-beautips-project-v1.sh"
+WORKSPACE_TOOL="${TOOL_ROOT}/session-workspace-v1.sh"
+ADMISSION_TOOL="${TOOL_ROOT}/runtime-admission-v1.sh"
+ALLOCATION_TOOL="${TOOL_ROOT}/session-runtime-allocation-v1.sh"
+PROJECT_TOOL="${PROJECT_ROOT}/install-beautips-project-v1.sh"
 for tool in \
   "${WORKSPACE_TOOL}" "${ADMISSION_TOOL}" "${ALLOCATION_TOOL}" "${PROJECT_TOOL}"; do
   [[ -f "${tool}" && ! -L "${tool}" && -x "${tool}" ]] ||
