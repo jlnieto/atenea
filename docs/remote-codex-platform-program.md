@@ -4324,5 +4324,18 @@ Sanitized task-3.3 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `1c617cf8c5f538725448268cc272a97b7d0ed630f62223d74ce90f3b43e2f2d1`.
 
-The exact resume point is task 3.4: one continued bounded turn on the same
-Codex thread. It has not been started.
+Task 3.4 is complete and change progress is `13/19`. Run `75` completed with
+dispatch `e94aa212-da6b-4a26-a193-2c460eb8b4fd` and execution
+`a1cafad8-0909-44b0-bd2a-7781f09118ca`. Runs `74` and `75` both use exact
+persisted Codex thread `019fb47f-1934-75f1-889a-506ec94c71d8`, have distinct
+turn identities, reached terminal revision 5 and retained one response each.
+Each dispatch occurs once in the control plane; there is no duplicate
+delivery.
+
+Sanitized task-3.4 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-remote-routing/runs/task-3.4-thread-continuation`;
+the SHA-256 of its `SHA256SUMS` is
+`b04248a347f18adae29b74f7411909f2e1707fc29673d2cc1f7003b8c2424168`.
+
+The exact resume point is task 3.5: final activation-window non-impact
+comparison. It has not been started.
