@@ -4457,3 +4457,25 @@ duplicate parameter in `RemoteAgentRunCoordinator`. AgentRun `78` records
 successful Codex process completion, not accepted work. No draft file may be
 committed, rebased, ported, deployed or discarded before task 0.1 fingerprints
 it and the foundation gates permit reviewed recovery.
+
+Task 0.1 is complete and change progress is `1/57`; the exact resume point is
+task 0.2. The retained draft remains byte-identical before and after capture
+at HEAD `d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b`, with an unchanged clean index,
+28 tracked modified files and 16 untracked files. Its tracked binary diff
+fingerprint is
+`fe004b66dc9d76da024c6c514ccd7992b6846b2556fab8694bbfd3feb6257fa8`;
+its untracked manifest fingerprint is
+`b7b2d520213300600bdbb3bd005ede283fd505f24be31d4e018e90a144fc4fa8`.
+
+Canonical Atenea remains clean and synchronized at
+`1bef4b01a0ddd71f71279721bad908867cc21c3c`, four commits ahead. The exact
+overlap is limited to `WorkSessionConversationScreen.kt`, `web/src/App.tsx`
+and `web/src/api.ts`. Allocation remains `slot2/heavy1`; the slot and rootless
+Docker service are active while owned containers, networks, listeners,
+session processes, Codex executions, project runners and Playwright/Chromium
+processes are all zero.
+
+Sanitized task-0.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.1-stale-draft-fingerprint`;
+the SHA-256 of its `SHA256SUMS` is
+`7cdfa7a4b8861bd4a27cd59e1742bd79db156ca508eaa6b84044e3275da38ee9`.

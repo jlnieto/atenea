@@ -1,6 +1,6 @@
 ## 0. Safe execution foundation and draft recovery
 
-- [ ] 0.1 Capture sanitized immutable fingerprints of the stale Atenea draft, its canonical overlap, allocation and zero active processes without changing, committing, rebasing or discarding it
+- [x] 0.1 Capture sanitized immutable fingerprints of the stale Atenea draft, its canonical overlap, allocation and zero active processes without changing, committing, rebasing or discarding it
 - [ ] 0.2 Add canonical branch observation and exact clean-HEAD admission, including stale, diverged, dirty, ambiguous and moved-head rejection tests
 - [ ] 0.3 Add retained `DRAFT_BLOCKED` state and mediated creation of a new clean WorkSession from the accepted canonical commit without automatic draft transfer
 - [ ] 0.4 Persist separate AgentRun process outcome, validation projection, source-tree fingerprint and integration-readiness state with invalidation on any tree change
