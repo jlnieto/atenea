@@ -7,8 +7,8 @@ This document is the durable programme ledger for moving Atenea development exec
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
 - Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `43/45`, with the exact
-  resume point at task 8.2
+  `45/45` and `onboard-beautips-on-ax42` is active at `44/45`, with the exact
+  resume point at task 8.3
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -4120,3 +4120,32 @@ the SHA-256 of its `SHA256SUMS` is
 `39b6a069bd459c2a7820edd4d7c47bce5385d672abd015ec11e28eb19526951f`.
 
 The exact resume point is task 8.2 of `onboard-beautips-on-ax42`.
+
+Task 8.2 is complete and change progress is `44/45`. The accepted close
+window lasted 909 seconds. Normalized samples at minute `0`, `5`, `10` and
+`15` are byte-identical at SHA-256
+`26dd67580ef414aa28c66c39074d0572a79b6a467bf0565e1b55cb9ddddf1685`.
+Selection/execution and workspace count remain false/false/zero; admission is
+released; exact owned resources, listeners, non-terminal AgentRuns, active
+leases, active remote routing, preview records and browser processes remain
+zero.
+
+Allocation, mirror, clean worktree, six attachments and evidence remain.
+Administrative Beautips retains its exact three identities; RAID is `[UU]`;
+production, preview, administrative Beautips and isolated control remain
+`UP`. The isolated acceptance control retains 17 active refresh-token rows
+for its one synthetic operator, all created before task 7.1 and stable across
+the four samples. They are not WorkSession or production ownership; no hash
+or value was read, retained or modified.
+
+Three pre-window read-only diagnostics rejected a nonexistent mirror ref,
+untrusted Git ownership and attachment traversal before an accepted sample.
+The corrected harness restarted at minute zero and completed without drift or
+mutation.
+
+Task 8.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-8.2-disabled-clean-observation`;
+the SHA-256 of its `SHA256SUMS` is
+`76999878fcce8fc53ea5310f02e391d304daf74005a3fb70384410da88ee30c1`.
+
+The exact resume point is task 8.3 of `onboard-beautips-on-ax42`.
