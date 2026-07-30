@@ -46,7 +46,7 @@ class WorkSessionPreviewServiceTest {
     void setUp() {
         properties = new PreviewProperties();
         properties.setEnabled(true);
-        properties.setSyntheticProjectAllowlist(Set.of("synthetic-preview"));
+        properties.setSyntheticProjectAllowlist(Set.of("Beautips"));
         service = new WorkSessionPreviewService(
                 properties, workerClient, sessionRepository, metadataService);
     }
@@ -71,7 +71,7 @@ class WorkSessionPreviewServiceTest {
         verify(workerClient).activate(
                 org.mockito.ArgumentMatchers.argThat(value ->
                         value.workSessionId().equals("12")
-                                && value.projectId().equals("synthetic-preview")
+                                && value.projectId().equals("beautips")
                                 && value.workerId().equals("ax42-01")
                                 && value.allocationIdentity().equals(
                                 "ws-61000000000040008000000000000002")),
@@ -135,7 +135,7 @@ class WorkSessionPreviewServiceTest {
                 PreviewProperties.PROTOCOL,
                 PREVIEW,
                 "12",
-                "synthetic-preview",
+                "beautips",
                 "ax42-01",
                 "ws-61000000000040008000000000000002",
                 "a".repeat(64),
@@ -153,7 +153,7 @@ class WorkSessionPreviewServiceTest {
     private WorkSessionEntity session() {
         ProjectEntity project = new ProjectEntity();
         project.setId(7L);
-        project.setName("synthetic-preview");
+        project.setName("Beautips");
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(12L);
         session.setProject(project);

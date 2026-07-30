@@ -13,12 +13,17 @@ import com.atenea.service.worksession.WorkSessionPreviewMetadataService;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 
 @Service
 public class WorkSessionPreviewService {
+
+    private static final Pattern WORKER_PROJECT_ID =
+            Pattern.compile("[a-z0-9][a-z0-9-]{0,79}");
 
     private final PreviewProperties properties;
     private final PreviewWorkerClient workerClient;
@@ -151,7 +156,7 @@ public class WorkSessionPreviewService {
         return new PreviewWorkerClient.Ownership(
                 preview.getId(),
                 preview.getWorkSession().getId().toString(),
-                preview.getProject().getName(),
+                projectIdentity(preview.getProject().getName()),
                 preview.getWorkerId(),
                 preview.getAllocationIdentity(),
                 preview.getAllocationFingerprint(),
@@ -168,7 +173,7 @@ public class WorkSessionPreviewService {
                 || !PreviewProperties.PROTOCOL.equals(projection.protocolVersion())
                 || !Objects.equals(preview.getId(), projection.previewId())
                 || !Objects.equals(preview.getWorkSession().getId().toString(), projection.workSessionId())
-                || !Objects.equals(preview.getProject().getName(), projection.projectId())
+                || !Objects.equals(projectIdentity(preview.getProject().getName()), projection.projectId())
                 || !Objects.equals(preview.getWorkerId(), projection.workerId())
                 || !Objects.equals(preview.getAllocationIdentity(), projection.allocationIdentity())
                 || !Objects.equals(preview.getAllocationFingerprint(), projection.allocationFingerprint())
@@ -257,5 +262,16 @@ public class WorkSessionPreviewService {
 
     private String allocationIdentity(UUID runtimeSessionId) {
         return "ws-" + runtimeSessionId.toString().replace("-", "");
+    }
+
+    private String projectIdentity(String projectName) {
+        String identity = projectName == null
+                ? ""
+                : projectName.trim().toLowerCase(Locale.ROOT);
+        if (!WORKER_PROJECT_ID.matcher(identity).matches()) {
+            throw new PreviewOwnershipException(
+                    "El proyecto no tiene una identidad canónica compatible con el worker.");
+        }
+        return identity;
     }
 }
