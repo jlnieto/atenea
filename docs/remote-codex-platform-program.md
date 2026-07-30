@@ -6,14 +6,13 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: independent external backup accepted and restore-tested after
-  Phase 8; Atenea and Beautips onboarding are archived at `45/45`, while
-  Beautips production routing remains a separate unopened gate
-- Runtime routing: default remote routing and all real-project selection remain
-  disabled; Atenea production is not connected to the AX42
+- Current phase: Beautips production remote routing accepted after independent
+  backup, exact rollback/reactivation and real laptop preview validation
+- Runtime routing: only the exact Beautips route is enabled; the generic
+  project route, Atenea and every unrelated project remain disabled
 - Production/control plane: current Atenea VPS
-- Development/execution plane: Hetzner AX42; Atenea acceptance passed and was
-  rolled back to its disabled/released boundary
+- Development/execution plane: Hetzner AX42; Beautips owns one active
+  WorkSession in slot 4 while the administrative slot 1 stack remains foreign
 - Canonical source: GitHub
 - Last evidence refresh: 2026-07-30
 
@@ -176,7 +175,8 @@ Entry, evidence, rollback and archive gates are defined in `remote-codex-platfor
 `relocate-atenea-development-to-ax42` is archived.
 `route-agent-runs-to-remote-worker` is archived as
 `2026-07-28-route-agent-runs-to-remote-worker` with all `35/35` tasks complete.
-Production routing is unchanged and disabled. `add-worksession-attachments` is
+Production routing was unchanged and disabled at that archive.
+`add-worksession-attachments` is
 archived as `2026-07-29-add-worksession-attachments` with all `31/31` tasks
 complete. `add-private-session-previews` is archived as
 `2026-07-29-add-private-session-previews` with all `37/37` tasks complete. Its
@@ -184,8 +184,8 @@ accepted synthetic boundary used an authenticated coordinator on `8789`,
 tailnet-only ingress ports `19000–19031`, a renewable five-minute lease, an
 eight-hour hard lifetime and 30-day preview audit metadata. Rollback leaves
 the capability disabled with zero route/runtime projection resources. Public
-sharing remains disabled. Real-project authoritative activation remains
-blocked until independent external backup is configured and restore-tested.
+sharing remains disabled. The former real-project backup gate was later
+lifted by the accepted independent external backup.
 `establish-development-database-lifecycle` is archived as
 `2026-07-29-establish-development-database-lifecycle` with all `37/37` tasks
 complete. Its synthetic PostgreSQL and MariaDB fixtures were restored,
@@ -194,8 +194,8 @@ real-project activation remains blocked on individual onboarding plus an
 independent restore-tested backup. `onboard-atenea-on-ax42` is archived as
 `2026-07-29-onboard-atenea-on-ax42` with all `45/45` tasks complete. Its exact
 protocol remains installed but project selection/execution is disabled with
-zero registered workspaces. The next resume point is the entry gate for a
-separate `onboard-beautips-on-ax42` change; Beautips routing is not enabled.
+zero registered workspaces. Beautips onboarding and its subsequent exact
+production activation are recorded later in this ledger.
 
 ## Decision log
 
@@ -245,6 +245,12 @@ separate `onboard-beautips-on-ax42` change; Beautips routing is not enabled.
 | D-042 | Declare no localhost requirement for the disabled-WhatsApp acceptance; block on any absolute-origin failure rather than generating a tunnel implicitly. | Relative application paths can be verified through the private preview while excluded OAuth/messaging flows cannot justify broader compatibility. | accepted for Beautips pilot | runtime/product owners | private preview acceptance |
 | D-043 | Close Beautips after a 15-minute disabled/clean window with samples at minute 0, 5, 10 and 15. | The same bounded post-rollback control detects resurrection and protects the administrative pilot and production. | accepted for Beautips pilot | programme owner | before onboarding archive |
 | D-044 | Use a private Backblaze B2 bucket in an operator-owned account as AX42's independent encrypted backup target, keeping 14 daily, 8 weekly and 12 monthly exact-host restic snapshots. | A separate provider and recovery boundary protects against complete AX42/Hetzner loss; bucket-scoped credentials, bounded retention and restore evidence are required before authoritative retained state. | accepted, provisioned and restore-tested | operations owner | before lifting the external-backup gate |
+| D-045 | Enable production remote selection only for the exact Beautips project after its workspace is durably provisioned; keep the generic route and every unrelated project disabled. | A project-specific gate permits normal laptop operation without widening remote authority or moving existing sessions. | accepted and active | platform owner | before a second real project |
+| D-046 | Give AX42 a dedicated read-only Beautips GitHub deploy key and pin GitHub's Ed25519 host identity while preserving the canonical HTTPS remote URL. | Automated workspace creation needs private repository read access without reusing an operator credential or storing a transport-specific canonical remote. | accepted and active | security/runtime owners | deploy-key rotation |
+| D-047 | Derive preview worker project identity as a bounded lowercase project name while retaining the exact Atenea project name for allowlisting and UI. | Atenea persists `Beautips`, while the runtime allocation contract owns `beautips`; explicit canonicalization prevents a case-only ownership conflict. | accepted and regression-tested | backend owner | before project names requiring a non-trivial slug |
+| D-048 | Retire the closed onboarding session's stale active allocation marker only after its released admission, absent runtime resources and archived byte-identical allocation are proved. | The retained active marker contradicted reusable slot ownership even though the closed fixture had completed the D-033 release gate. | accepted for the exact onboarding record | runtime owner | general allocation-retirement support |
+| D-049 | Activate private previews in production Atenea with a dedicated host-to-host credential, the exact `Beautips` allowlist and tailnet-only AX42 control/ingress. | Real browser acceptance must use the same control plane as normal operation without public sharing, runtime-port disclosure or credential exposure. | accepted and active | platform/security owners | preview credential rotation or public-sharing proposal |
+| D-050 | Retain the four fail-closed activation AgentRuns as immutable audit history and accept only subsequent terminal successes. | Rewriting failed attempts would destroy evidence of prerequisite enforcement; successful runs on the same workspace and thread prove the corrected path. | accepted | backend/programme owners | terminal audit-retention policy |
 
 ## Deferred decisions and gates
 
@@ -4222,5 +4228,62 @@ The external-backup prerequisite is lifted and all 32 tasks are complete.
 `establish-independent-worker-backup` is archived at
 `openspec/changes/archive/2026-07-30-establish-independent-worker-backup`;
 post-archive strict validation passes all 11 authoritative specs. No active
-OpenSpec change remains. Beautips routing and authoritative retained state
-remain disabled and require a separate explicit activation change.
+OpenSpec change remained at that acceptance point. Beautips routing and
+authoritative retained state were then disabled pending the separate
+activation recorded below.
+
+## Beautips production remote routing activation
+
+`activate-beautips-remote-routing` promotes only Beautips from accepted
+onboarding to normal remote operation. All `32/32` tasks are complete and the
+change is archived as
+`openspec/changes/archive/2026-07-30-activate-beautips-remote-routing`.
+Atenea source
+`4efd3f9b96924e9d2668a19ba1110eca18b49791` is deployed and synchronized.
+The production backend has the global and exact Beautips gates enabled, the
+generic project gate disabled, the private AX42 endpoint configured and
+previews allowlisted only for `Beautips`.
+
+WorkSession `4` is open and pinned to worker `ax42-01`, remote UUID
+`2ac2a5fd-2981-49cf-8fac-8132e46a2d64`, workspace identity
+`remote:ax42-01:work-session:2ac2a5fd-2981-49cf-8fac-8132e46a2d64` and branch
+`atenea/session-2ac2a5fd-2981-49cf-8fac-8132e46a2d64`. AX42 retains the clean
+accepted Beautips commit `e9e0b3c319c518363d4135f5378ebbddced96dfb` in
+slot 4 with one normal admission, one allocation, three healthy runtime
+containers, one network, four volumes and the exact three loopback listeners.
+
+Runs `63`, `64` and `65` succeeded on Codex thread
+`019fb299-8752-7f31-bfe5-6bc91f7d0551`. The final dispatch
+`fdc7c547-fd07-42e2-abfe-863cfb30eb58` has one terminal worker execution and
+two byte-identical terminal reads. The four earlier fail-closed attempts remain
+auditable and were not rewritten.
+
+The invented acceptance dataset contains one tenant, operator, customer,
+consent, module, loyalty chain, catalogue and import; WhatsApp credentials,
+outbox and Redis remain empty. Preview
+`eeaa6195-322f-43ff-b84b-06fe9d55c430` is `READY` only on
+`100.81.98.93:19000`; loopback ingress is rejected. Playwright verified the
+real Beautips login at `1440x900` and `390x844`, with all critical controls
+visible and zero horizontal overflow.
+
+Disable was repeated without moving the open WorkSession or deleting retained
+ownership. Both disabled configurations had SHA-256
+`20957d326aadf1a00ca516972ad4010669b5335aa0c1f4378ed4df2d3be7aad7`;
+workspace, allocation, admission, Git, runtime resources, preview, backup and
+the foreign slot 1 stack remained unchanged. Two isolated reconciliation and
+rejection cycles passed, including `16/16` worker tests per cycle. Exact
+reconciliation restored the original enabled configuration SHA-256
+`87ba464a62af351912407f7fe9fd225d7b9826b1d5c5c6fbe791326f1b5fd0ad`.
+
+Two final Atenea regressions pass `413/413`. RAID remains `[UU]` on all three
+arrays, rootful Docker remains inactive, external-backup timers are
+enabled/active, production and preview are `UP`, all 13 Atenea containers are
+running with zero unhealthy, and no unrelated remote WorkSession exists.
+
+Sanitized acceptance evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-beautips-remote-routing/runs/task-7-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`bd9a02bd00281e3ee400ae24365f2d12a9f1c32b6b3f58f94bd5c02b87906006`.
+
+The programme resume point is the next separately approved real project
+activation. No unrelated project has been enabled or started.

@@ -379,6 +379,64 @@ An uncertain real turn found after service restart becomes terminal `FAILED`
 with its original execution identity. It is never silently replayed; a later
 operator action may resume only from a persisted Codex thread UUID.
 
+## Active Beautips route
+
+Beautips is the first production-control-plane project enabled on AX42. Normal
+operation requires all of these identities to agree before dispatch:
+
+- Atenea project name `Beautips` and worker project identity `beautips`;
+- worker `ax42-01`;
+- remote WorkSession UUID and workspace branch
+  `atenea/session-<uuid>`;
+- workspace identity `remote:ax42-01:work-session:<uuid>`;
+- accepted commit `e9e0b3c319c518363d4135f5378ebbddced96dfb`;
+- one normal slot in `slot2`–`slot4`;
+- one exact registered workspace with selection and execution enabled.
+
+The production compose configuration enables the global and exact Beautips
+gates while keeping `ATENEA_REMOTE_WORKER_PROJECT_CODEX_ENABLED=false`.
+Preview operation additionally requires `ATENEA_PREVIEWS_ENABLED=true`, the
+exact `Beautips` allowlist, private coordinator `100.81.98.93:8789` and a
+dedicated file-mounted credential. Never print or copy either credential into
+logs or evidence.
+
+Read-only normal checks:
+
+```bash
+sudo /usr/local/libexec/atenea/install-beautips-project-v1.sh verify
+curl --fail --max-time 10 http://127.0.0.1:25378/actuator/health
+git -C /srv/atenea/workspaces/sessions/<uuid>/beautips status --short
+```
+
+Rollback first changes only the exact production Beautips selector to `false`,
+validates the compose model and recreates only `atenea-backend-prod`. After
+zero non-terminal AgentRuns are confirmed, disable worker selection/execution:
+
+```bash
+sudo /usr/local/libexec/atenea/install-beautips-project-v1.sh disable
+```
+
+This retains the pinned open WorkSession, workspace registration, admission,
+allocation, mirror, worktree, Git, runtime, database volume, logs, artifacts
+and private preview. Repeat `disable` to prove byte-idempotence. Do not
+unregister or clean resources as part of routing rollback.
+
+Re-enable only after worker, RAID, external backup, production and foreign
+slot checks pass. Invoke the closed mediator through its installed
+`atenea-worker` sudo boundary; callers must not supply any path, repository,
+slot, port or credential:
+
+```bash
+sudo -u atenea-worker sudo \
+  /usr/local/libexec/atenea/beautips-workspace-activation-v1.sh ensure \
+  <uuid> atenea/session-<uuid>
+```
+
+The operation must return the same workspace identity and restore exactly one
+registered workspace. Only then restore the exact production Beautips gate,
+validate compose and recreate only the backend. A final deterministic turn
+must retain the existing Codex thread and produce one dispatch/execution.
+
 ## WorkSession-aware dev client
 
 `dev-session-v1.sh` implements task 3.3's human command surface and task 3.4's

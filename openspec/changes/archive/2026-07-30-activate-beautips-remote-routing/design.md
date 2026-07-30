@@ -96,6 +96,34 @@ identity while denying access to users outside the exact operator and service
 group. No credential value, hash, command argument or intermediate local file
 enters evidence. Deployment configuration references only the file path.
 
+The private preview coordinator uses the same direct host-to-host transfer
+pattern but retains a separate credential and file mount. Production Atenea
+enables preview creation only for the exact `Beautips` allowlist and private
+AX42 endpoint; the generic project route and public sharing remain disabled.
+
+### Separate display names from worker project identity
+
+Atenea's canonical project display name is `Beautips`, while the runtime and
+allocation ownership contract uses `beautips`. The preview coordinator derives
+the worker identity as a bounded lowercase identifier and continues to use the
+exact display name for the control-plane allowlist and UI. Invalid names fail
+closed instead of inventing a slug.
+
+### Use repository-scoped read-only Git transport
+
+AX42 uses one dedicated read-only Beautips deploy key and the pinned GitHub
+Ed25519 host identity. The transport rewrite is process-scoped and preserves
+the stored canonical HTTPS remote URL. No operator GitHub credential or
+general write authority is copied to the worker.
+
+### Retire only the proven stale onboarding marker
+
+The archived onboarding session retained a byte-identical allocation record
+whose active filename contradicted its closed WorkSession, released admission
+and absent runtime resources. Its exact active marker was moved to the
+retired allocation filename only after comparison with the sealed archive.
+No live or foreign allocation was inferred, reassigned or removed.
+
 ## Risks / Trade-offs
 
 - **Provisioning succeeds but dispatch is interrupted** → the persisted queued

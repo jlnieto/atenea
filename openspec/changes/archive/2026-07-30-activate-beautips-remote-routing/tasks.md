@@ -46,7 +46,7 @@
 
 ## 7. Evidence and closure
 
-- [ ] 7.1 Seal sanitized commands, codes, finite timeouts, durations, ownership fingerprints, screenshots and SHA256SUMS
-- [ ] 7.2 Update the programme decision ledger and normal-operation/rollback runbook
-- [ ] 7.3 Complete all tasks, strictly validate, sync specifications, archive, commit and push
-- [ ] 7.4 Confirm clean local/remote Git, no active OpenSpec change and Beautips ready while every unrelated route remains disabled
+- [x] 7.1 Seal sanitized commands, codes, finite timeouts, durations, ownership fingerprints, screenshots and SHA256SUMS
+- [x] 7.2 Update the programme decision ledger and normal-operation/rollback runbook
+- [x] 7.3 Complete all tasks, strictly validate, sync specifications, archive, commit and push
+- [x] 7.4 Confirm clean local/remote Git, no active OpenSpec change and Beautips ready while every unrelated route remains disabled
