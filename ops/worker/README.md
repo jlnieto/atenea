@@ -657,8 +657,18 @@ The operator must create `/etc/atenea-backup/repository.env` and
 `/etc/atenea-backup/repository-password` out of band as `root:root` mode
 `0600`. The environment file contains the restic repository and provider
 variables; neither file is committed, printed, backed up or collected as
-evidence. Enable timers only after the independent repository and isolated
-restore have passed:
+evidence. After creating the bucket-scoped Backblaze key, install both values
+through an interactive terminal without command-line or shell-history
+exposure:
+
+```bash
+sudo /usr/local/libexec/atenea/configure-external-backup-v1.sh
+```
+
+The helper also requests a new Restic repository password twice. The operator
+must retain that password in an independent password manager because a
+complete AX42 loss cannot be recovered without it. Enable timers only after
+the independent repository and isolated restore have passed:
 
 ```bash
 sudo ./install-external-backup-v1.sh enable
@@ -676,4 +686,5 @@ and isolated restore:
 ```bash
 python3 ./test-external-backup-v1.py
 RESTIC_REAL_INTEGRATION=1 python3 ./test-external-backup-v1.py
+./test-configure-external-backup-v1.sh
 ```

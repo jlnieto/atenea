@@ -4,6 +4,7 @@ set -Eeuo pipefail
 ACTION="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROGRAM="/usr/local/libexec/atenea/external-backup-v1.py"
+CONFIGURE_PROGRAM="/usr/local/libexec/atenea/configure-external-backup-v1.sh"
 CONFIG_ROOT="/etc/atenea-backup"
 STATE_ROOT="/var/lib/atenea-external-backup-v1"
 STAGING_ROOT="/srv/atenea/backups-staging"
@@ -30,6 +31,8 @@ require_root() {
 validate_sources() {
   [[ -f "${SCRIPT_DIR}/external-backup-v1.py" ]] ||
     fail "external backup program is missing"
+  [[ -f "${SCRIPT_DIR}/configure-external-backup-v1.sh" ]] ||
+    fail "external backup configuration helper is missing"
   for unit in "${UNITS[@]}"; do
     [[ -f "${SCRIPT_DIR}/templates/${unit}" ]] ||
       fail "systemd template is missing: ${unit}"
@@ -59,6 +62,8 @@ apply_install() {
   install -d -o root -g root -m 0755 /usr/local/libexec/atenea
   install -o root -g root -m 0755 \
     "${SCRIPT_DIR}/external-backup-v1.py" "${PROGRAM}"
+  install -o root -g root -m 0755 \
+    "${SCRIPT_DIR}/configure-external-backup-v1.sh" "${CONFIGURE_PROGRAM}"
   install -d -o root -g root -m 0700 "${CONFIG_ROOT}"
   install -d -o root -g root -m 0700 "${STATE_ROOT}"
   install -d -o atenea-worker -g atenea -m 2770 "${STAGING_ROOT}"
@@ -81,6 +86,8 @@ verify() {
     fail "state root ownership or mode is invalid"
   [[ -x "${PROGRAM}" && ! -L "${PROGRAM}" ]] ||
     fail "installed backup program is missing or unsafe"
+  [[ -x "${CONFIGURE_PROGRAM}" && ! -L "${CONFIGURE_PROGRAM}" ]] ||
+    fail "installed backup configuration helper is missing or unsafe"
   for unit in "${UNITS[@]}"; do
     systemd-analyze verify "/etc/systemd/system/${unit}" >/dev/null
   done
@@ -121,7 +128,11 @@ rollback() {
   done
   [[ ! -e "${PROGRAM}" || (-f "${PROGRAM}" && ! -L "${PROGRAM}") ]] ||
     fail "refusing to remove unsafe installed program"
+  [[ ! -e "${CONFIGURE_PROGRAM}" ||
+      (-f "${CONFIGURE_PROGRAM}" && ! -L "${CONFIGURE_PROGRAM}") ]] ||
+    fail "refusing to remove unsafe installed configuration helper"
   rm -f -- "${PROGRAM}"
+  rm -f -- "${CONFIGURE_PROGRAM}"
   systemctl daemon-reload
   printf '%s\n' 'external backup automation rolled back; repository, credentials, state and evidence preserved'
 }
