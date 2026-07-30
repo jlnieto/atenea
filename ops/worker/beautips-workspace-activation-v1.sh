@@ -35,6 +35,8 @@ else
   TOOL_ROOT=/srv/atenea/worker/workspace-v1/ops/worker
   PROJECT_ROOT=/usr/local/libexec/atenea
   CONFIG=/etc/atenea-worker/beautips-project-codex-v1.json
+  DEPLOY_KEY=/etc/atenea-worker/beautips-deploy-key
+  KNOWN_HOSTS=/etc/atenea-worker/github-known-hosts
   PREFIX_COMMAND=(runuser -u atenea-worker --)
 fi
 
@@ -49,6 +51,14 @@ for tool in \
 done
 [[ -f "${CONFIG}" && ! -L "${CONFIG}" ]] ||
   fail 'Beautips project configuration is unavailable'
+if [[ "${TEST_MODE}" != 1 ]]; then
+  [[ -f "${DEPLOY_KEY}" && ! -L "${DEPLOY_KEY}" &&
+      "$(stat -c %U:%G:%a "${DEPLOY_KEY}")" == root:atenea:640 ]] ||
+    fail 'Beautips read-only deploy key is unavailable'
+  [[ -f "${KNOWN_HOSTS}" && ! -L "${KNOWN_HOSTS}" &&
+      "$(stat -c %U:%G:%a "${KNOWN_HOSTS}")" == root:root:644 ]] ||
+    fail 'pinned GitHub host key is unavailable'
+fi
 
 PROJECT_ID=beautips
 REPOSITORY=https://github.com/jlnieto/beautips.git
@@ -58,9 +68,20 @@ MANIFEST_SHA256=365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82
 SLOT=slot4
 WORKSPACE_IDENTITY="remote:ax42-01:work-session:${SESSION_ID}"
 
-"${PREFIX_COMMAND[@]}" env ATENEA_PINNED_BASE_COMMIT="${PINNED_COMMIT}" \
-  "${WORKSPACE_TOOL}" ensure "${SESSION_ID}" "${PROJECT_ID}" "${REPOSITORY}" \
-  "${BASE_BRANCH}" "${WORKSPACE_BRANCH}" >/dev/null
+if [[ "${TEST_MODE}" == 1 ]]; then
+  env ATENEA_PINNED_BASE_COMMIT="${PINNED_COMMIT}" \
+    "${WORKSPACE_TOOL}" ensure "${SESSION_ID}" "${PROJECT_ID}" "${REPOSITORY}" \
+    "${BASE_BRANCH}" "${WORKSPACE_BRANCH}" >/dev/null
+else
+  "${PREFIX_COMMAND[@]}" env \
+    GIT_SSH_COMMAND="ssh -i ${DEPLOY_KEY} -o IdentitiesOnly=yes -o UserKnownHostsFile=${KNOWN_HOSTS} -o StrictHostKeyChecking=yes" \
+    GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0=url.git@github.com:.insteadOf \
+    GIT_CONFIG_VALUE_0=https://github.com/ \
+    ATENEA_PINNED_BASE_COMMIT="${PINNED_COMMIT}" \
+    "${WORKSPACE_TOOL}" ensure "${SESSION_ID}" "${PROJECT_ID}" "${REPOSITORY}" \
+    "${BASE_BRANCH}" "${WORKSPACE_BRANCH}" >/dev/null
+fi
 
 if [[ "${TEST_MODE}" == 1 ]]; then
   "${ADMISSION_TOOL}" --json acquire-normal "${SESSION_ID}" "${SLOT}" >/dev/null

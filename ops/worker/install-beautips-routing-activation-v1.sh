@@ -8,6 +8,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROGRAM=/usr/local/libexec/atenea/beautips-workspace-activation-v1.sh
 SUDOERS=/etc/sudoers.d/93-atenea-beautips-routing-activation-v1
 WORKER_BUNDLE=/srv/atenea/worker/workspace-v1/ops/worker
+DEPLOY_KEY=/etc/atenea-worker/beautips-deploy-key
+KNOWN_HOSTS=/etc/atenea-worker/github-known-hosts
 DEPENDENCIES=(
   session-workspace-v1.sh
   runtime-admission-v1.sh
@@ -51,6 +53,14 @@ verify() {
           "$(sha256sum "${source}" | cut -d' ' -f1)" ]] ||
       fail "reviewed dependency differs: ${dependency}"
   done
+  [[ -f "${DEPLOY_KEY}" && ! -L "${DEPLOY_KEY}" &&
+      "$(stat -c %U:%G:%a "${DEPLOY_KEY}")" == root:atenea:640 ]] ||
+    fail 'Beautips read-only deploy key differs'
+  [[ -f "${KNOWN_HOSTS}" && ! -L "${KNOWN_HOSTS}" &&
+      "$(stat -c %U:%G:%a "${KNOWN_HOSTS}")" == root:root:644 &&
+      "$(sha256sum "${KNOWN_HOSTS}" | cut -d' ' -f1)" == \
+        "$(sha256sum "${SCRIPT_DIR}/templates/github-known-hosts" | cut -d' ' -f1)" ]] ||
+    fail 'pinned GitHub host key differs'
   jq -cn --arg program "${PROGRAM}" '{
     state: "verified",
     program: $program,
@@ -72,6 +82,12 @@ case "${ACTION}" in
   apply)
     [[ "${EUID}" -eq 0 ]] || fail 'installation requires root'
     install -d -o root -g root -m 0755 "$(dirname -- "${PROGRAM}")"
+    [[ -f "${DEPLOY_KEY}" && ! -L "${DEPLOY_KEY}" ]] ||
+      fail 'generate and register the Beautips read-only deploy key first'
+    chown root:atenea "${DEPLOY_KEY}"
+    chmod 0640 "${DEPLOY_KEY}"
+    install -o root -g root -m 0644 \
+      "${SCRIPT_DIR}/templates/github-known-hosts" "${KNOWN_HOSTS}"
     install -d -o atenea-worker -g atenea -m 0750 "${WORKER_BUNDLE}"
     for dependency in "${DEPENDENCIES[@]}"; do
       install -o atenea-worker -g atenea -m 0750 \
