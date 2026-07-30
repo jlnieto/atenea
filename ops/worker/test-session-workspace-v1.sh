@@ -95,6 +95,16 @@ jq -e \
 [[ "$(git --git-dir="${MIRROR}" config remote.origin.fetch)" == "+refs/heads/*:refs/remotes/origin/*" ]] ||
   fail "canonical refs are not separated from session branches"
 
+GIT_CONFIG_COUNT=1 \
+GIT_CONFIG_KEY_0="url.${ORIGIN}.insteadOf" \
+GIT_CONFIG_VALUE_0="${REMOTE}" \
+  run_helper ensure "${SESSION_ONE}" "${PROJECT}" "${REMOTE}" main "${BRANCH_ONE}" \
+    >"${TEST_ROOT}/rewritten-transport.json"
+cmp -s "${TEST_ROOT}/first.json" "${TEST_ROOT}/rewritten-transport.json" ||
+  fail "transport URL rewrite changed persisted remote identity"
+[[ "$(git --git-dir="${MIRROR}" config --get remote.origin.url)" == "${REMOTE}" ]] ||
+  fail "transport URL rewrite replaced the stored remote identity"
+
 printf 'preserve me\n' >"${WORKTREE_ONE}/uncommitted.txt"
 first_git_file_hash="$(sha256sum "${WORKTREE_ONE}/.git" | cut -d' ' -f1)"
 printf 'canonical update\n' >>"${SEED}/README.md"

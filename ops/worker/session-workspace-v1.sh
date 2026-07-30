@@ -226,7 +226,9 @@ if [[ -e "${MIRROR_PATH}" ]]; then
   [[ "$(git --git-dir="${MIRROR_PATH}" rev-parse --is-bare-repository 2>/dev/null)" == "true" ]] ||
     fail "WORKTREE_CONFLICT" "The canonical mirror path is not a bare Git repository." \
       "Move or repair the conflicting path only after review."
-  existing_remote="$(git --git-dir="${MIRROR_PATH}" remote get-url origin 2>/dev/null || true)"
+  existing_remote="$(
+    git --git-dir="${MIRROR_PATH}" config --get remote.origin.url 2>/dev/null || true
+  )"
   [[ "${existing_remote}" == "${CANONICAL_REMOTE}" ]] ||
     fail "SESSION_IDENTITY_CONFLICT" "The project mirror points to a different canonical remote." \
       "Use the registered remote or reconcile the project mirror explicitly."
