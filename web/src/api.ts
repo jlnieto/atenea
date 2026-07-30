@@ -33,6 +33,22 @@ type ApiRequestOptions = Omit<RequestInit, "body"> & {
   jsonBody?: boolean;
 };
 
+type WorkSessionConversationEnvelope = {
+  view: Omit<MobileWorkSessionConversation, "recentTurns">;
+  recentTurns: MobileWorkSessionConversation["recentTurns"];
+  recentTurnLimit: number;
+  historyTruncated: boolean;
+};
+
+function unwrapWorkSessionConversation(
+  response: WorkSessionConversationEnvelope
+): MobileWorkSessionConversation {
+  return {
+    ...response.view,
+    recentTurns: response.recentTurns
+  };
+}
+
 export class AteneaApi {
   private session: AuthSession | null;
   private listeners = new Set<AuthListener>();
@@ -106,18 +122,28 @@ export class AteneaApi {
     return this.get<MobileProjectOverview[]>("/api/mobile/projects/overview");
   }
 
-  resolveWorkSession(projectId: number, title?: string | null) {
-    return this.post<ResolveMobileWorkSessionResult>(`/api/mobile/projects/${projectId}/sessions/resolve`, {
+  async resolveWorkSession(projectId: number, title?: string | null): Promise<ResolveMobileWorkSessionResult> {
+    const response = await this.post<{
+      created: boolean;
+      view: WorkSessionConversationEnvelope;
+    }>(`/api/mobile/projects/${projectId}/sessions/resolve`, {
       title: title || null
     });
+    return {
+      created: response.created,
+      view: unwrapWorkSessionConversation(response.view)
+    };
   }
 
   workSessionSummary(sessionId: number) {
     return this.get<MobileSessionSummary>(`/api/mobile/sessions/${sessionId}/summary`);
   }
 
-  workSessionConversation(sessionId: number) {
-    return this.get<MobileWorkSessionConversation>(`/api/mobile/sessions/${sessionId}/conversation`);
+  async workSessionConversation(sessionId: number) {
+    const response = await this.get<WorkSessionConversationEnvelope>(
+      `/api/mobile/sessions/${sessionId}/conversation`
+    );
+    return unwrapWorkSessionConversation(response);
   }
 
   sessionDeliverables(sessionId: number) {
