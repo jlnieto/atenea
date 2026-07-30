@@ -254,6 +254,18 @@ project_enable() {
   systemctl try-restart "$SERVICE"
 }
 
+project_activate() {
+  require_root
+  [[ "$#" -eq 2 ]] || fail "project-activate requires SESSION_ID and WORKSPACE_IDENTITY"
+  project_register "$1" "$2"
+  local workspaces
+  workspaces="$(jq -c '.workspaces' "$PROJECT_CONFIG")"
+  [[ "$(jq 'length' <<<"$workspaces")" -eq 1 ]] || fail "exactly one persisted workspace must be registered"
+  # The worker reads this file for every request. Avoid restarting the service
+  # from inside the workspace-ensure request that is currently serving activation.
+  write_project_config true true "$workspaces"
+}
+
 project_disable() {
   require_root
   local workspaces
@@ -309,9 +321,10 @@ case "$ACTION" in
   rollback) rollback_endpoint ;;
   enable) enable_endpoint ;;
   project-register) shift; project_register "$@" ;;
+  project-activate) shift; project_activate "$@" ;;
   project-selection-enable) project_selection_enable ;;
   project-enable) project_enable ;;
   project-disable) project_disable ;;
   project-unregister) shift; project_unregister "$@" ;;
-  *) fail "usage: $0 plan|apply|verify|disable|rollback|enable|project-register|project-selection-enable|project-enable|project-disable|project-unregister" ;;
+  *) fail "usage: $0 plan|apply|verify|disable|rollback|enable|project-register|project-activate|project-selection-enable|project-enable|project-disable|project-unregister" ;;
 esac

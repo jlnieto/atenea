@@ -66,9 +66,7 @@ MANIFEST="${WORKTREE}/ops/atenea-runtime.json"
 
 "${PREFIX_COMMAND[@]}" "${ALLOCATION_TOOL}" ensure \
   "${SESSION_ID}" "${SLOT}" "${MANIFEST}" >/dev/null
-"${PROJECT_TOOL}" project-selection-enable >/dev/null
-"${PROJECT_TOOL}" project-register "${SESSION_ID}" "${WORKSPACE_IDENTITY}" >/dev/null
-"${PROJECT_TOOL}" project-enable >/dev/null
+"${PROJECT_TOOL}" project-activate "${SESSION_ID}" "${WORKSPACE_IDENTITY}" >/dev/null
 
 jq -e \
   --arg session "${SESSION_ID}" \
