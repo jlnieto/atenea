@@ -4405,5 +4405,23 @@ Sanitized task-4.4 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `70ba3ebb5f3be3c8ad689302c81a7190f128777fe7143619c5da1f28ebdd9e22`.
 
-The exact resume point is archived task 4.5: final Atenea, Beautips, routing
-and Git comparison. It has not been started.
+Task 4.5 completes `activate-atenea-remote-routing` at `19/19`. Atenea source
+is clean and synchronized at
+`1bef4b01a0ddd71f71279721bad908867cc21c3c`; the programme archive parent is
+clean and synchronized at
+`a3b8add8afeaf6a01691f9abe79789d2a7030dfd`. All 11 authoritative OpenSpec
+specifications pass strict validation and no active change remains.
+
+Atenea and Beautips selection/execution are enabled only for their exact
+retained workspace identities. Production and preview are `UP`; the worker is
+active; all three RAID arrays are `[UU]`; slot container counts remain
+`3/0/0/3`; and non-terminal AgentRuns plus unexpected remote WorkSessions are
+zero.
+
+Sanitized task-4.5 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-remote-routing/runs/task-4.5-final-state`;
+the SHA-256 of its `SHA256SUMS` is
+`5ceeff47febe959e5b9b3dd3dc64a9eb87947e4d1fe7e685aae2c37ea5bd3473`.
+
+The Atenea activation change is complete and archived. Atenea and Beautips are
+ready for normal remote work from the laptop and mobile application.
