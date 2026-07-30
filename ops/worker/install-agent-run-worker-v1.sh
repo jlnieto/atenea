@@ -178,6 +178,10 @@ verify() {
     || fail "state directory ownership or mode is invalid"
   [[ "$(stat -c '%a:%U:%G' "$PROJECT_CONFIG")" == "644:root:root" ]] \
     || fail "project configuration ownership or mode is invalid"
+  [[ -f "/etc/systemd/system/$SERVICE" \
+      && "$(sha256sum "/etc/systemd/system/$SERVICE" | cut -d' ' -f1)" \
+        == "$(sha256sum "$SCRIPT_DIR/templates/$SERVICE" | cut -d' ' -f1)" ]] \
+    || fail "worker systemd unit differs from the reviewed template"
   jq -e '
     .schemaVersion == "project-codex-v1" and
     .projectId == "atenea" and

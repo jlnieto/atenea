@@ -25,7 +25,7 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictSUIDSGID=false
 LockPersonality=true
 MemoryDenyWriteExecute=true
-ReadWritePaths=/srv/atenea/worker/agent-runs-v1 /srv/atenea/workspaces/sessions /home/jose/.codex
+ReadWritePaths=/srv/atenea/worker/agent-runs-v1 /srv/atenea/worker/workspace-locks /srv/atenea/worker/runtime-admission-v1 /srv/atenea/worker/runtime-allocation-v1 /srv/atenea/repositories /srv/atenea/workspaces/sessions /srv/atenea/artifacts /srv/atenea/caches /home/jose/.codex
 CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE
 AmbientCapabilities=
 
