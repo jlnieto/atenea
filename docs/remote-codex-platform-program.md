@@ -4355,5 +4355,18 @@ Sanitized task-3.5 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `c1a031d8450a1d6b88eba91ce0bdca60e4bc4ec2bee2b912f2a689fea6df8698`.
 
-The exact resume point is task 4.1: disable only Atenea selection/execution
-while retaining its open pinned WorkSession. It has not been started.
+Task 4.1 is complete and change progress is `15/19`. Only Atenea selection
+and execution were disabled. WorkSession `6` remains `OPEN` with exact worker,
+remote UUID, workspace identity and persisted Codex thread unchanged.
+Workspace and allocation records are byte-identical. The Beautips
+configuration remains byte-identical at SHA-256
+`87ba464a62af351912407f7fe9fd225d7b9826b1d5c5c6fbe791326f1b5fd0ad`;
+there are zero non-terminal Atenea AgentRuns.
+
+Sanitized task-4.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-remote-routing/runs/task-4.1-disable-retain`;
+the SHA-256 of its `SHA256SUMS` is
+`7d425a082e4c1bd77788abbfc849dbb950bc46889334c06add85360a0d5cb5d1`.
+
+The exact resume point is task 4.2: re-enable the retained exact workspace and
+complete one final continued turn. It has not been started.

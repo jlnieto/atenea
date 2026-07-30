@@ -23,7 +23,7 @@
 
 ## 4. Reversibility and closure
 
-- [ ] 4.1 Disable Atenea selection/execution and prove its open session remains pinned and retained
+- [x] 4.1 Disable Atenea selection/execution and prove its open session remains pinned and retained
 - [ ] 4.2 Re-enable the exact accepted workspace and complete one final continued turn
 - [ ] 4.3 Seal sanitized evidence, finite durations, fingerprints and SHA256SUMS
 - [ ] 4.4 Strictly validate, sync specifications, archive, commit and push both repositories
