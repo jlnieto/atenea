@@ -10,12 +10,12 @@
 
 - [x] 2.1 Run focused and complete worker tests twice
 - [x] 2.2 Run focused and complete Atenea tests twice
-- [ ] 2.3 Install the reviewed AX42 worker and mediator with Atenea disabled
-- [ ] 2.4 Deploy the reviewed Atenea backend with its project gate disabled
+- [x] 2.3 Install the reviewed AX42 worker and mediator with Atenea disabled
+- [x] 2.4 Deploy the reviewed Atenea backend with its project gate disabled
 
 ## 3. Real activation
 
-- [ ] 3.1 Enable only the existing global gate and exact Atenea project gate
+- [x] 3.1 Enable only the existing global gate and exact Atenea project gate
 - [ ] 3.2 Open one canonical Atenea WorkSession and verify durable AX42 affinity
 - [ ] 3.3 Send one bounded read-only turn and prove automatic exact provisioning and terminal response
 - [ ] 3.4 Continue once on the same Codex thread and prove no duplicate delivery
