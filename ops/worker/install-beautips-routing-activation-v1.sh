@@ -6,6 +6,7 @@ umask 0077
 ACTION="${1:-}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROGRAM=/usr/local/libexec/atenea/beautips-workspace-activation-v1.sh
+PROJECT_LIFECYCLE=/usr/local/libexec/atenea/install-beautips-project-v1.sh
 SUDOERS=/etc/sudoers.d/93-atenea-beautips-routing-activation-v1
 WORKER_BUNDLE=/srv/atenea/worker/workspace-v1/ops/worker
 DEPLOY_KEY=/etc/atenea-worker/beautips-deploy-key
@@ -38,6 +39,11 @@ verify() {
       "$(stat -c %U:%G:%a "${PROGRAM}")" == root:root:755 &&
       "$(sha256sum "${PROGRAM}" | cut -d' ' -f1)" == "$(source_hash)" ]] ||
     fail 'installed mediator differs'
+  [[ -f "${PROJECT_LIFECYCLE}" && ! -L "${PROJECT_LIFECYCLE}" &&
+      "$(stat -c %U:%G:%a "${PROJECT_LIFECYCLE}")" == root:root:755 &&
+      "$(sha256sum "${PROJECT_LIFECYCLE}" | cut -d' ' -f1)" == \
+        "$(sha256sum "${SCRIPT_DIR}/install-beautips-project-v1.sh" | cut -d' ' -f1)" ]] ||
+    fail 'installed Beautips lifecycle differs'
   [[ -f "${SUDOERS}" && ! -L "${SUDOERS}" &&
       "$(stat -c %U:%G:%a "${SUDOERS}")" == root:root:440 &&
       "$(cat "${SUDOERS}")" == "$(sudoers_content)" ]] ||
@@ -95,6 +101,8 @@ case "${ACTION}" in
     done
     install -o root -g root -m 0755 \
       "${SCRIPT_DIR}/beautips-workspace-activation-v1.sh" "${PROGRAM}"
+    install -o root -g root -m 0755 \
+      "${SCRIPT_DIR}/install-beautips-project-v1.sh" "${PROJECT_LIFECYCLE}"
     temporary="$(mktemp /etc/sudoers.d/.beautips-routing.XXXXXX)"
     sudoers_content >"${temporary}"
     chown root:root "${temporary}"

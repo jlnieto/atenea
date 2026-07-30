@@ -74,10 +74,16 @@ validate_sources() {
     [[ "$(sha256sum "${source}" | cut -d' ' -f1)" == "${HASHES[${name}]}" ]] ||
       fail "reviewed source hash differs: ${name}"
   done
-  python3 -m py_compile \
+  python3 - \
     "$(source_path beautips-operation-mediator-v1.py)" \
     "$(source_path beautips-project-codex-runner-v1.py)" \
-    "$(source_path beautips-secret-boundary-v1.py)"
+    "$(source_path beautips-secret-boundary-v1.py)" <<'PY'
+from pathlib import Path
+import sys
+
+for source in sys.argv[1:]:
+    compile(Path(source).read_bytes(), source, "exec")
+PY
   jq -e '
     .schemaVersion == "project-codex-allowlist-v1" and
     (.projects | keys) == ["beautips"] and
