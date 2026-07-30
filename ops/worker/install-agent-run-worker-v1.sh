@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE="atenea-agent-run-worker-v1.service"
 PROGRAM="/usr/local/libexec/atenea/agent-run-worker-v1.py"
 PROJECT_RUNNER="/usr/local/libexec/atenea/project-codex-runner-v1.py"
+INSTALLER="/usr/local/libexec/atenea/install-agent-run-worker-v1.sh"
 ENV_FILE="/etc/atenea-worker/agent-run-worker-v1.env"
 TOKEN_FILE="/etc/atenea-worker/agent-run-worker-v1.token"
 PROJECT_CONFIG="/etc/atenea-worker/project-codex-v1.json"
@@ -118,6 +119,7 @@ apply_install() {
   install -d -o root -g root -m 0755 /usr/local/libexec/atenea
   install -o root -g root -m 0755 "$SCRIPT_DIR/agent-run-worker-v1.py" "$PROGRAM"
   install -o root -g root -m 0755 "$SCRIPT_DIR/project-codex-runner-v1.py" "$PROJECT_RUNNER"
+  install -o root -g root -m 0755 "$SCRIPT_DIR/install-agent-run-worker-v1.sh" "$INSTALLER"
   install -d -o root -g atenea -m 0750 /etc/atenea-worker
   install -d -o atenea-worker -g atenea -m 0700 "$STATE_DIR"
   if [[ ! -e "$TOKEN_FILE" ]]; then
@@ -182,6 +184,11 @@ verify() {
       && "$(sha256sum "/etc/systemd/system/$SERVICE" | cut -d' ' -f1)" \
         == "$(sha256sum "$SCRIPT_DIR/templates/$SERVICE" | cut -d' ' -f1)" ]] \
     || fail "worker systemd unit differs from the reviewed template"
+  [[ -f "$INSTALLER" && ! -L "$INSTALLER" \
+      && "$(stat -c '%a:%U:%G' "$INSTALLER")" == "755:root:root" \
+      && "$(sha256sum "$INSTALLER" | cut -d' ' -f1)" \
+        == "$(sha256sum "$SCRIPT_DIR/install-agent-run-worker-v1.sh" | cut -d' ' -f1)" ]] \
+    || fail "worker installer differs from the reviewed source"
   jq -e '
     .schemaVersion == "project-codex-v1" and
     .projectId == "atenea" and
