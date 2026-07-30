@@ -6,9 +6,8 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: Phase 8, individual project onboarding; Atenea is archived
-  `45/45` and `onboard-beautips-on-ax42` is active at `44/45`, with the exact
-  resume point at task 8.3
+- Current phase: Phase 8, individual project onboarding; Atenea and Beautips
+  are archived at `45/45`; no subsequent project onboarding has started
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -4149,3 +4148,26 @@ the SHA-256 of its `SHA256SUMS` is
 `76999878fcce8fc53ea5310f02e391d304daf74005a3fb70384410da88ee30c1`.
 
 The exact resume point is task 8.3 of `onboard-beautips-on-ax42`.
+
+Task 8.3 completes `onboard-beautips-on-ax42` at `45/45`. Pre-archive strict
+validation passes, and the programme stops after canonical archive, final
+all-spec validation and synchronized push. No subsequent project onboarding,
+routing activation, runtime, deployment or production mutation is started.
+
+Canonical OpenSpec archive creates
+`openspec/changes/archive/2026-07-30-onboard-beautips-on-ax42` and promotes
+the seven accepted requirements into authoritative capability
+`openspec/specs/beautips-project-onboarding/spec.md`. Post-archive strict
+validation passes all 11 authoritative specs. Final non-impact checks retain
+disabled zero-workspace selection/execution, released slot 4 admission, clean
+WorkSession Git, RAID `[UU]`, exact administrative Beautips identities and
+`UP` health for administrative Beautips, production, preview and isolated
+control.
+
+Task 8.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/onboard-beautips-on-ax42/runs/task-8.3-strict-archive`;
+the SHA-256 of its `SHA256SUMS` is
+`6e5912431f7f5201119a1e7b0f3e00684a2c8f9ba88907586b728d4ac8c890a4`.
+
+The programme is paused after Beautips onboarding. No next project has been
+selected or started.
