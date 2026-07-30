@@ -11,7 +11,7 @@ public final class ProjectCodexIdentity {
     public static final String REPOSITORY = "https://github.com/jlnieto/atenea.git";
     public static final String REPO_PATH = "/workspace/repos/internal/atenea";
     public static final String BRANCH = "feature/actualizar-conversacion-en-web";
-    public static final String COMMIT = "05111c1d874d5acb81b8013ec81069ae4cc05b74";
+    public static final String COMMIT = "d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b";
     public static final String MANIFEST_SHA256 =
             "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3";
 
