@@ -4287,3 +4287,42 @@ the SHA-256 of its `SHA256SUMS` is
 
 The programme resume point is the next separately approved real project
 activation. No unrelated project has been enabled or started.
+
+## Atenea production remote routing activation
+
+`activate-atenea-remote-routing` is complete through task 3.3 at `12/19`.
+The global and exact Atenea gates are enabled for one open WorkSession pinned
+to worker `ax42-01`, remote UUID
+`c750641d-3226-44c3-81dc-d9149aac0de1`, workspace identity
+`remote:ax42-01:work-session:c750641d-3226-44c3-81dc-d9149aac0de1` and branch
+`atenea/session-c750641d-3226-44c3-81dc-d9149aac0de1`.
+
+The archived development session's released slot-2 allocation marker was
+retired only after its exact SHA-256 matched sealed task-7.3 evidence and its
+containers, networks, images and listeners were proven absent. The record was
+preserved byte-for-byte under its retired filename; no runtime or foreign
+resource was removed.
+
+The first two operator turns remain as auditable pre-dispatch failures: neither
+received a remote execution identity. They exposed that activation commands
+restarted the worker from inside its own workspace-ensure request. Programme
+commit `8631dcb5cb26dfd7b76698c5d5158caac505ad4a` replaces that sequence with
+one atomic project activation write. The worker reads the configuration on
+every request, so no self-restart is required. An idempotent activation repeat
+kept the exact worker PID and zero restart count.
+
+Run `74` then completed automatically with dispatch
+`bf03e0d2-289c-44d9-911c-934614968240`, execution
+`fd8042b4-4422-46dd-9a1f-43c11882efd0` and one persisted Codex response.
+The bounded read-only answer reported the session branch, accepted commit
+`d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b` and a clean worktree without
+modifying a file. The control plane contains one row for the successful
+dispatch and the worker retains one terminal revision-5 execution.
+
+Sanitized task-3.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-remote-routing/runs/task-3.3-first-terminal-turn`;
+the SHA-256 of its `SHA256SUMS` is
+`1c617cf8c5f538725448268cc272a97b7d0ed630f62223d74ce90f3b43e2f2d1`.
+
+The exact resume point is task 3.4: one continued bounded turn on the same
+Codex thread. It has not been started.

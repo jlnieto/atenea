@@ -17,7 +17,7 @@
 
 - [x] 3.1 Enable only the existing global gate and exact Atenea project gate
 - [x] 3.2 Open one canonical Atenea WorkSession and verify durable AX42 affinity
-- [ ] 3.3 Send one bounded read-only turn and prove automatic exact provisioning and terminal response
+- [x] 3.3 Send one bounded read-only turn and prove automatic exact provisioning and terminal response
 - [ ] 3.4 Continue once on the same Codex thread and prove no duplicate delivery
 - [ ] 3.5 Confirm no unexpected runtime, preview, production, Beautips or unrelated-slot change
 
