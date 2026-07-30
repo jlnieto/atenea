@@ -154,6 +154,14 @@ export class AteneaApi {
     return unwrapWorkSessionConversation(response);
   }
 
+  async createWorkSessionTurn(sessionId: number, message: string) {
+    const response = await this.post<WorkSessionConversationEnvelope>(
+      `/api/mobile/sessions/${sessionId}/turns`,
+      { message }
+    );
+    return unwrapWorkSessionConversation(response);
+  }
+
   sessionDeliverables(sessionId: number) {
     return this.get<SessionDeliverablesView>(`/api/mobile/sessions/${sessionId}/deliverables`);
   }

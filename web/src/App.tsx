@@ -822,7 +822,6 @@ function PreviewPanel({
 function ConversationScreen({ sessionId, projectId }: { sessionId: number; projectId?: number }) {
   const [conversation, setConversation] = useState<MobileWorkSessionConversation | null>(null);
   const [attachments, setAttachments] = useState<WorkSessionAttachment[]>([]);
-  const [command, setCommand] = useState<CoreCommandResponse | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [attachmentsLoading, setAttachmentsLoading] = useState(true);
@@ -859,10 +858,9 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     setLoading(true);
     setError("");
     try {
-      const response = await api.runCoreCommand(message.trim(), "SESSION", projectId, sessionId);
-      setCommand(response);
+      const response = await api.createWorkSessionTurn(sessionId, message.trim());
+      setConversation(response);
       setMessage("");
-      await load();
     } catch (submitError) {
       setError(errorMessage(submitError));
     } finally {
@@ -911,7 +909,6 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       refresh={load}
     >
       {error && <InlineError>{error}</InlineError>}
-      {command && <CommandCard command={command} onChanged={setCommand} afterResolve={load} />}
       <AttachmentPanel
         attachments={attachments}
         loading={attachmentsLoading}
