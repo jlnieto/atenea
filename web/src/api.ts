@@ -135,8 +135,16 @@ export class AteneaApi {
     };
   }
 
-  workSessionSummary(sessionId: number) {
-    return this.get<MobileSessionSummary>(`/api/mobile/sessions/${sessionId}/summary`);
+  async workSessionSummary(sessionId: number): Promise<MobileSessionSummary> {
+    const response = await this.get<
+      Omit<MobileSessionSummary, "conversation"> & {
+        conversation: WorkSessionConversationEnvelope;
+      }
+    >(`/api/mobile/sessions/${sessionId}/summary`);
+    return {
+      ...response,
+      conversation: unwrapWorkSessionConversation(response.conversation)
+    };
   }
 
   async workSessionConversation(sessionId: number) {
