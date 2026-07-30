@@ -30,12 +30,12 @@
 
 ## 5. Real Beautips activation
 
-- [ ] 5.1 Enable only the global remote-worker and exact Beautips selector gates
-- [ ] 5.2 Open one canonical Beautips WorkSession and prove AX42 affinity is durably pinned
-- [ ] 5.3 Submit one small deterministic turn and prove automatic exact workspace, allocation, admission, registration and dispatch
-- [ ] 5.4 Continue the same WorkSession and prove one Codex thread with idempotent terminal delivery
-- [ ] 5.5 Start and verify the managed runtime with synthetic data, tailnet-only preview and desktop/mobile browser evidence
-- [ ] 5.6 Confirm administrative Beautips, production, unrelated routing, other slots, backup and RAID remain unchanged
+- [x] 5.1 Enable only the global remote-worker and exact Beautips selector gates
+- [x] 5.2 Open one canonical Beautips WorkSession and prove AX42 affinity is durably pinned
+- [x] 5.3 Submit one small deterministic turn and prove automatic exact workspace, allocation, admission, registration and dispatch
+- [x] 5.4 Continue the same WorkSession and prove one Codex thread with idempotent terminal delivery
+- [x] 5.5 Start and verify the managed runtime with synthetic data, tailnet-only preview and desktop/mobile browser evidence
+- [x] 5.6 Confirm administrative Beautips, production, unrelated routing, other slots, backup and RAID remain unchanged
 
 ## 6. Disable, rollback and accepted re-enable
 
