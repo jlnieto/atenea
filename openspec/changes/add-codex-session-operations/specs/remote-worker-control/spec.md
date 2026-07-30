@@ -26,7 +26,9 @@ The control plane SHALL expose queued, starting, running, cancelling,
 reconciling and terminal execution state with monotonic revision, timestamps,
 worker identity, immutable effective Codex profile and actionable failure
 information. It SHALL additionally persist and publish only newer normalized
-progress sequences from the accepted safe taxonomy.
+progress sequences from the accepted safe taxonomy. AgentRun process outcome
+MUST remain distinct from the owning WorkSession's validation and integration
+readiness.
 
 #### Scenario: Worker reports progress
 
@@ -42,3 +44,8 @@ progress sequences from the accepted safe taxonomy.
 
 - **WHEN** the worker repeats the same terminal execution revision
 - **THEN** Atenea retains one terminal outcome, one visible result and one applicable notification event without duplicating a response turn
+
+#### Scenario: Successful process has missing acceptance checks
+
+- **WHEN** the worker reports a successful Codex process but required build, test, visual or source-freshness evidence is absent
+- **THEN** Atenea records process success while keeping the WorkSession blocked from integration with the exact missing check visible

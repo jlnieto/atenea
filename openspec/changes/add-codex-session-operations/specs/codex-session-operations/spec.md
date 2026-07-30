@@ -1,5 +1,114 @@
 ## ADDED Requirements
 
+### Requirement: Canonical source admission and draft quarantine
+
+Every write-capable AgentRun SHALL bind an exact repository, branch, canonical
+commit, mirror observation and clean WorkSession HEAD before execution. For a
+new implementation the HEAD MUST equal the accepted canonical commit; merely
+being its ancestor is insufficient. A dirty stale WorkSession SHALL be
+retained as a blocked draft and SHALL NOT be automatically rebased, merged,
+reset, committed, copied or discarded.
+
+#### Scenario: Clean WorkSession matches canonical source
+
+- **WHEN** a write-capable run names a clean WorkSession whose exact HEAD equals the persisted canonical branch HEAD
+- **THEN** the worker admits the run with that immutable source fingerprint
+
+#### Scenario: WorkSession is behind canonical source
+
+- **WHEN** the WorkSession HEAD is an ancestor of a newer accepted canonical HEAD
+- **THEN** the write is blocked before Codex starts and Atenea offers creation of a new clean WorkSession
+
+#### Scenario: Stale WorkSession contains a draft
+
+- **WHEN** a stale WorkSession has modified or untracked files
+- **THEN** Atenea fingerprints and retains the draft unchanged and requires reviewed file-by-file porting into a new current WorkSession
+
+### Requirement: Closed mediated validation
+
+Atenea SHALL provide versioned symbolic operations for backend tests, web
+build, Android build, Playwright acceptance, strict OpenSpec validation and
+worker contract suites. Each operation SHALL bind exact WorkSession,
+repository, source tree and validator ownership, use a finite timeout, retain
+sanitized results and artifacts, and SHALL NOT expose a Docker socket,
+arbitrary command, image, compose file, environment, path, host, slot,
+endpoint or credential to the caller.
+
+#### Scenario: Operator requests an accepted backend validation
+
+- **WHEN** the exact WorkSession and source tree request the reviewed backend-test operation
+- **THEN** the mediator runs its fixed definition with bounded authority and persists the exit status, duration and sanitized artifact manifest
+
+#### Scenario: Caller changes validator authority
+
+- **WHEN** a request supplies or alters a command, path, image, environment, service, slot, endpoint or foreign workspace identity
+- **THEN** the mediator rejects it before starting a process or mounting a resource
+
+#### Scenario: Validation request is repeated
+
+- **WHEN** the same validation identity, source tree and validator revision are submitted again
+- **THEN** Atenea returns or reconciles the same operation and does not start an ambiguous duplicate
+
+### Requirement: Truthful work acceptance
+
+Atenea SHALL represent Codex process outcome separately from validation and
+integration readiness. A successful AgentRun SHALL mean only that Codex
+returned a terminal result. Work SHALL remain draft, validating or blocked
+until every required check for the immutable source tree passes, and SHALL
+become integration-ready only after freshness and review gates also pass.
+
+#### Scenario: Codex returns an uncompiled draft
+
+- **WHEN** Codex exits successfully but a required build or test is missing or failed
+- **THEN** the AgentRun may show process success while the WorkSession remains blocked and identifies the required next validation
+
+#### Scenario: Source changes after validation
+
+- **WHEN** any tracked or untracked source content changes after required checks passed
+- **THEN** prior validation is invalidated and integration readiness is removed
+
+#### Scenario: Every acceptance gate passes
+
+- **WHEN** required builds, tests, visual checks, source freshness and review pass for one exact tree
+- **THEN** Atenea marks that tree integration-ready without committing, publishing or deploying it implicitly
+
+### Requirement: Reviewed instruction bundle
+
+Every AgentRun SHALL persist the fingerprint and sources of a reviewed
+platform/project instruction bundle. Ambient user configuration SHALL remain
+excluded, but the runner MUST NOT silently ignore applicable repository
+operating rules. Unknown, mutable, secret-bearing or caller-supplied rule
+sources SHALL be rejected.
+
+#### Scenario: Project has an accepted AGENTS contract
+
+- **WHEN** Atenea resolves a platform bundle and repository-owned `AGENTS.md` for an exact source revision
+- **THEN** the runner applies that immutable reviewed bundle and persists its fingerprint with the AgentRun
+
+#### Scenario: Rule source is ambiguous
+
+- **WHEN** rules resolve outside accepted repository/platform ownership or change after fingerprinting
+- **THEN** dispatch is blocked without falling back to ignored or ambient instructions
+
+### Requirement: Exact multi-repository authority
+
+A cross-repository change SHALL declare each repository's exact identity,
+branch, commit, mirror, WorkSession role and read/write authority. Code,
+programme OpenSpec and worker source SHALL use separate owned worktrees and
+validation profiles linked by one change identity. No repository or installed
+root-owned file SHALL become writable merely because another repository is in
+scope.
+
+#### Scenario: Code change also requires worker and OpenSpec updates
+
+- **WHEN** an accepted change declares all three exact repository roles
+- **THEN** Atenea creates or selects separate owned worktrees and tracks validation/readiness for each component
+
+#### Scenario: Code-only WorkSession attempts worker modification
+
+- **WHEN** a code-only session targets the installed worker or an undeclared repository
+- **THEN** the write is rejected and existing worker, repositories and services remain unchanged
+
 ### Requirement: Immutable effective Codex execution profile
 
 Every AgentRun SHALL persist the canonical model, reasoning effort, catalog

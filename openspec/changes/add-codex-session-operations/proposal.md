@@ -13,6 +13,14 @@ and AX42 directly. Atenea already has FCM device registration and event-specific
 push delivery, but remote terminal completion does not use that path and the
 current dispatch design is not a reusable notification platform.
 
+The first real broad implementation attempt also proved that a successful
+Codex process is not yet a trustworthy completion signal. The accepted
+WorkSession was four commits behind canonical Atenea, the sandbox could edit
+but not invoke the project Docker, web, Android, Playwright or OpenSpec
+validation paths, worker source was outside its write authority, and the
+unvalidated draft contained a compile-time error. These are platform
+prerequisites, not reasons to weaken isolation.
+
 ## What Changes
 
 - Persist an immutable effective model, reasoning effort and Codex version for
@@ -34,6 +42,15 @@ current dispatch design is not a reusable notification platform.
   action even when the application is closed or in the background.
 - Add a managed Codex inventory, compatibility, staged update, canary and
   rollback workflow. Routine WorkSessions never receive update authority.
+- Gate writes on an exact canonical source revision and quarantine stale dirty
+  drafts instead of rebasing or merging them automatically.
+- Add closed mediated backend, web, Android, Playwright, OpenSpec and worker
+  validation operations without exposing Docker sockets, secrets or arbitrary
+  commands to Codex.
+- Distinguish process completion, implementation validation and integration
+  readiness so Atenea cannot present an uncompiled draft as completed work.
+- Bind a reviewed instruction bundle and exact multi-repository authority to
+  each run instead of silently ignoring project rules or inventing access.
 
 ## Capabilities
 
@@ -57,9 +74,12 @@ current dispatch design is not a reusable notification platform.
 - Atenea web and Android: execution settings, visible progress, recovery
   actions, notification preferences, deep links and actionable error states.
 - AX42 worker: protocol evolution, model catalog, exact profile validation,
-  normalized progress and version inventory.
+  normalized progress, source-freshness gates, mediated validators and version
+  inventory.
 - AX42 administration: separately authorized staged Codex update and rollback
   mediator retaining current and previous verified versions.
+- Git/workspaces: immutable draft quarantine, exact canonical-head admission
+  and explicitly authorized code/spec/worker repository identities.
 - Production: additive schema and backend/mobile rollout; no production data
   copy, project deployment authority, arbitrary host command API or secret
   exposure.

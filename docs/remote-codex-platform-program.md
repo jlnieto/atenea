@@ -4434,12 +4434,12 @@ Atenea: effective model and reasoning-effort selection, sanitized intermediate
 progress, self-service run recovery, reusable Android notifications and a
 separately authorized managed Codex version lifecycle.
 
-The change contains 47 ordered tasks across contracts, the Atenea control
-plane, AX42, web and Android experience, notifications, version administration
-and final acceptance. Progress is `0/47`; the exact resume point is task 1.1.
-Implementation must proceed task by task and retain the disable-first rollback
-boundary. A real AX42 Codex version activation remains subject to separate
-explicit authorization at task 6.7.
+The change contains 57 ordered tasks across safe execution foundations,
+contracts, the Atenea control plane, AX42, web and Android experience,
+notifications, version administration and final acceptance. Progress is
+`0/57`; the exact resume point is task 0.1. Implementation must proceed task by
+task and retain the disable-first rollback boundary. A real AX42 Codex version
+activation remains subject to separate explicit authorization at task 6.7.
 
 The accepted control boundary does not expose arbitrary Codex flags, commands,
 providers, endpoints, paths, environment values or host services. Model and
@@ -4447,3 +4447,13 @@ effort changes apply only to future AgentRuns; each run retains its immutable
 effective profile and Codex version. Intermediate progress is bounded and
 sanitized and must never retain hidden reasoning, raw command output, prompts,
 answers, credentials or tokens.
+
+The first broad Atenea implementation attempt is retained only as a stale
+unvalidated draft. It started from
+`d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b`, four commits behind canonical
+`1bef4b01a0ddd71f71279721bad908867cc21c3c`, overlaps newer canonical web and
+Android prompt-delivery fixes, contains no new tests and has a compile-time
+duplicate parameter in `RemoteAgentRunCoordinator`. AgentRun `78` records
+successful Codex process completion, not accepted work. No draft file may be
+committed, rebased, ported, deployed or discarded before task 0.1 fingerprints
+it and the foundation gates permit reviewed recovery.

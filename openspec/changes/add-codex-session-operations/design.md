@@ -22,6 +22,12 @@ operator experience.
 
 **Goals:**
 
+- prevent a stale or ambiguous WorkSession from modifying an outdated project
+  snapshot;
+- make build, test, OpenSpec and visual validation available through closed
+  mediated operations;
+- distinguish Codex process completion from validated and integration-ready
+  work;
 - show the effective Codex profile before and after every run;
 - allow safe model/effort selection for future turns without changing history;
 - show meaningful progress within seconds on web and Android;
@@ -32,6 +38,10 @@ operator experience.
 
 **Non-Goals:**
 
+- granting a WorkSession a Docker socket, shell, arbitrary repository or
+  secret directory;
+- automatically rebasing, merging, discarding or committing a dirty stale
+  draft;
 - exposing raw reasoning, hidden chain-of-thought or unrestricted command logs;
 - letting prompts edit Codex, worker, slot, credential or host configuration;
 - supporting arbitrary providers, model identifiers or experimental settings;
@@ -40,6 +50,74 @@ operator experience.
 - replacing key-based break-glass administration.
 
 ## Decisions
+
+### Admit writes only from an exact canonical source
+
+Before the first write-capable AgentRun, Atenea resolves and persists the
+selected repository, branch, canonical commit and mirror observation. The
+worker admits the run only when the clean WorkSession HEAD equals that commit.
+An ancestor relationship is insufficient for a new implementation.
+
+If an existing dirty WorkSession is stale, Atenea marks it `DRAFT_BLOCKED`,
+retains a sanitized fingerprint and makes no automatic rebase, merge, reset,
+commit or copy. Recovery creates a new clean WorkSession from the accepted
+canonical commit. An operator may later request a reviewed file-by-file port
+from the retained draft; conflicts and overlapping canonical changes remain
+explicit.
+
+### Validate through closed mediated operations
+
+Codex does not receive a Docker socket, privileged shell, secret directory or
+host toolchain. Atenea instead exposes reviewed symbolic validation operations
+bound to an exact WorkSession, repository revision and validator definition:
+
+- backend tests;
+- web build;
+- Android build;
+- Playwright data, DOM and visual acceptance;
+- strict OpenSpec validation;
+- worker protocol and runner contract suites.
+
+Each operation owns a versioned command definition outside caller input,
+finite timeout, isolated service account, permitted mounts, sanitized output,
+artifact manifest and exit status. The caller cannot supply a command, image,
+compose file, environment, path, host, slot, endpoint or credential. Repeating
+the same operation against the same source and definition returns or
+reconciles the existing result.
+
+### Separate execution, validation and integration readiness
+
+An AgentRun terminal state reports only the Codex process outcome. WorkSession
+readiness is a separate persisted acceptance projection:
+
+1. `DRAFT` — writes exist but are not accepted;
+2. `VALIDATING` — required mediated checks are in progress;
+3. `BLOCKED` — one or more required checks or authorities are unavailable;
+4. `VALIDATED` — every required check passed for the exact source tree;
+5. `INTEGRATION_READY` — validated source is current, reviewed and eligible
+   for the separately authorized commit/publish operation.
+
+The UI may say that Codex finished, but it MUST NOT say the task is complete
+unless its declared acceptance profile is satisfied. Every blocked state
+names the failed or missing check and the next permitted action. A changed
+tree invalidates prior validation.
+
+### Bind reviewed rules and multi-repository authority
+
+`--ignore-user-config` remains appropriate for preventing ambient host
+configuration from changing execution, but `--ignore-rules` cannot silently
+discard the project's operating contract. The control plane resolves a
+reviewed instruction bundle from platform and repository-owned `AGENTS.md`
+sources, persists its fingerprint and injects only that accepted bundle into
+the runner.
+
+A WorkSession receives a closed set of repository roles, such as Atenea code,
+the remote-platform OpenSpec programme or worker source. Every repository has
+an exact URL, branch, commit, mirror and writable/read-only role. A normal code
+session cannot modify the programme or installed root-owned worker. A
+cross-repository change uses separate owned worktrees, validations and commits
+linked by one change identity; partial publication remains visible and
+rollbackable.
 
 ### Persist one immutable effective execution profile per AgentRun
 
@@ -168,6 +246,14 @@ is available.
 
 ## Risks / Trade-offs
 
+- Freshness gates can block a long-lived WorkSession after canonical advances;
+  retained draft quarantine and reviewed porting preserve work without hiding
+  conflicts.
+- Mediated validators add operational machinery; symbolic definitions and
+  exact ownership keep that authority narrower than exposing Docker or shell.
+- Multi-repository work may produce partially ready components; linked
+  readiness and separate commits make that state explicit rather than
+  pretending atomicity across repositories.
 - Too many progress events create noise and storage growth; closed categories,
   coalescing and a 200-event bound keep the timeline useful.
 - Model availability changes remotely; persisted catalog revision and
@@ -183,20 +269,29 @@ is available.
 
 ## Migration Plan
 
-1. Capture current schema, API, worker protocol, FCM, installed versions,
+1. Fingerprint and quarantine the existing stale Atenea draft without
+   changing, committing, rebasing or discarding it.
+2. Implement canonical-source admission, reviewed rules, mediated validators,
+   multi-repository authority and truthful acceptance state.
+3. Prove backend, web, Android, Playwright, OpenSpec and worker validation
+   operations against exact synthetic identities, including all negative
+   authority cases.
+4. Create a clean Atenea WorkSession from the accepted canonical HEAD and port
+   only reviewed draft changes after overlap analysis.
+5. Capture current schema, API, worker protocol, FCM, installed versions,
    routing and production fingerprints.
-2. Add expand-only persistence for profiles, progress, recovery operations,
+6. Add expand-only persistence for profiles, progress, recovery operations,
    notification events/preferences/deliveries and worker inventory.
-3. Deploy backend and worker readers/writers with all new controls disabled.
-4. Enable profile persistence and safe progress for one synthetic session.
-5. Enable web and Android settings/progress/recovery surfaces.
-6. Adapt existing push events to the outbox, then enable remote terminal
+7. Deploy backend and worker readers/writers with all new controls disabled.
+8. Enable profile persistence and safe progress for one synthetic session.
+9. Enable web and Android settings/progress/recovery surfaces.
+10. Adapt existing push events to the outbox, then enable remote terminal
    notifications for one configured device.
-7. Exercise cancellation, reconciliation, failed retry, disconnect and backend
+11. Exercise cancellation, reconciliation, failed retry, disconnect and backend
    restart without duplicate execution or notification.
-8. Exercise update planning and rollback synthetically. Perform a real AX42
+12. Exercise update planning and rollback synthetically. Perform a real AX42
    Codex update only after separate explicit administrator authorization.
-9. Run complete backend, worker, Android and Playwright validation, seal
+13. Run complete backend, worker, Android and Playwright validation, seal
    sanitized evidence and archive the change.
 
 Rollback disables new settings, progress publication, recovery actions and
