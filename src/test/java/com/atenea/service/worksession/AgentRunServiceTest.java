@@ -39,6 +39,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class AgentRunServiceTest {
+    private static final String TEST_CANONICAL_COMMIT = "1".repeat(40);
 
     @Mock
     private WorkSessionRepository workSessionRepository;
@@ -200,6 +201,10 @@ class AgentRunServiceTest {
         UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
         session.setRemoteSessionId(remoteSessionId);
         session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
+        session.setCanonicalSourceCommit(TEST_CANONICAL_COMMIT);
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(Instant.now());
         session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
         SessionTurnEntity originTurn = new SessionTurnEntity();
         originTurn.setId(101L);
@@ -219,7 +224,7 @@ class AgentRunServiceTest {
         assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, run.getProjectIdentity());
         assertEquals(ProjectCodexIdentity.REPOSITORY, run.getRepositoryUrl());
         assertEquals(ProjectCodexIdentity.BRANCH, run.getRepositoryBranch());
-        assertEquals(ProjectCodexIdentity.COMMIT, run.getRepositoryCommit());
+        assertEquals(TEST_CANONICAL_COMMIT, run.getRepositoryCommit());
         assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, run.getManifestSha256());
     }
 

@@ -17,6 +17,7 @@ import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.remoteworker.RemoteAgentRunCoordinator;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
@@ -49,6 +50,7 @@ public class SessionTurnService {
     private final AgentRunReconciliationService agentRunReconciliationService;
     private final SessionCodexOrchestrator sessionCodexOrchestrator;
     private final SessionTurnCompletionService sessionTurnCompletionService;
+    private final CanonicalSourceAdmissionService canonicalSourceAdmissionService;
     private RemoteAgentRunCoordinator remoteAgentRunCoordinator;
 
     public SessionTurnService(
@@ -61,7 +63,8 @@ public class SessionTurnService {
             AgentRunProgressService agentRunProgressService,
             AgentRunReconciliationService agentRunReconciliationService,
             SessionCodexOrchestrator sessionCodexOrchestrator,
-            SessionTurnCompletionService sessionTurnCompletionService
+            SessionTurnCompletionService sessionTurnCompletionService,
+            CanonicalSourceAdmissionService canonicalSourceAdmissionService
     ) {
         this.workSessionRepository = workSessionRepository;
         this.sessionTurnRepository = sessionTurnRepository;
@@ -73,6 +76,7 @@ public class SessionTurnService {
         this.agentRunReconciliationService = agentRunReconciliationService;
         this.sessionCodexOrchestrator = sessionCodexOrchestrator;
         this.sessionTurnCompletionService = sessionTurnCompletionService;
+        this.canonicalSourceAdmissionService = canonicalSourceAdmissionService;
     }
 
     @Autowired(required = false)
@@ -133,6 +137,7 @@ public class SessionTurnService {
         if (session.getStatus() != WorkSessionStatus.OPEN) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
+        canonicalSourceAdmissionService.admitBeforeWrite(session);
         agentRunReconciliationService.reconcileSession(sessionId);
         if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)
                 || agentRunRepository.existsBySessionIdAndStatusIn(

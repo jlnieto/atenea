@@ -28,6 +28,7 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.service.git.GitRepositoryOperationException;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -71,6 +72,9 @@ class SessionTurnCreateServiceTest {
     @Mock
     private SessionTurnCompletionService sessionTurnCompletionService;
 
+    @Mock
+    private CanonicalSourceAdmissionService canonicalSourceAdmissionService;
+
     @TempDir
     Path tempDir;
 
@@ -89,8 +93,25 @@ class SessionTurnCreateServiceTest {
                 new AgentRunProgressService(),
                 agentRunReconciliationService,
                 sessionCodexOrchestrator,
-                sessionTurnCompletionService
+                sessionTurnCompletionService,
+                canonicalSourceAdmissionService
         );
+    }
+
+    @Test
+    void canonicalAdmissionFailureCreatesNoOperatorTurnOrAgentRun() throws Exception {
+        Path repoPath = createRepoPath("internal/atenea");
+        WorkSessionEntity session = buildSession(12L, 7L, repoPath.toString(), WorkSessionStatus.OPEN, null);
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        org.mockito.Mockito.doThrow(new WorkSessionOperationBlockedException("canonical source blocked"))
+                .when(canonicalSourceAdmissionService).admitBeforeWrite(session);
+
+        assertThrows(
+                WorkSessionOperationBlockedException.class,
+                () -> sessionTurnService.createTurn(12L, new CreateSessionTurnRequest("Do not persist")));
+
+        verify(sessionTurnRepository, never()).save(any(SessionTurnEntity.class));
+        verify(agentRunService, never()).createRunningRun(any(), any());
     }
 
     @Test

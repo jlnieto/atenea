@@ -230,11 +230,11 @@ public class AgentRunService {
             run.setRepositoryCommit(BeautipsProjectCodexIdentity.COMMIT);
             run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
         } else if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
-                && ProjectCodexIdentity.matches(run.getSession())) {
+                && ProjectCodexIdentity.hasCanonicalSourceObservation(run.getSession())) {
             run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
             run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);
             run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
-            run.setRepositoryCommit(ProjectCodexIdentity.COMMIT);
+            run.setRepositoryCommit(run.getSession().getCanonicalSourceCommit());
             run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
         } else {
             clearProjectIdentity(run);
@@ -242,7 +242,7 @@ public class AgentRunService {
     }
 
     private boolean matchesProjectWorkload(WorkSessionEntity session) {
-        return ProjectCodexIdentity.matches(session)
+        return ProjectCodexIdentity.hasCanonicalSourceObservation(session)
                 || BeautipsProjectCodexIdentity.matchesPinnedSession(session);
     }
 
@@ -252,6 +252,7 @@ public class AgentRunService {
         run.setRepositoryBranch(null);
         run.setRepositoryCommit(null);
         run.setManifestSha256(null);
+        run.setWorkerMirrorCommit(null);
     }
 
     private void ensureNoNonTerminalRun(Long sessionId) {

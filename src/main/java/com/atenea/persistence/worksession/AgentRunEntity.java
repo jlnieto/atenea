@@ -73,6 +73,9 @@ public class AgentRunEntity {
     @Column(name = "repository_commit", length = 64)
     private String repositoryCommit;
 
+    @Column(name = "worker_mirror_commit", length = 64)
+    private String workerMirrorCommit;
+
     @Column(name = "manifest_sha256", length = 64)
     private String manifestSha256;
 
@@ -203,6 +206,8 @@ public class AgentRunEntity {
     public void setRepositoryBranch(String repositoryBranch) { this.repositoryBranch = repositoryBranch; }
     public String getRepositoryCommit() { return repositoryCommit; }
     public void setRepositoryCommit(String repositoryCommit) { this.repositoryCommit = repositoryCommit; }
+    public String getWorkerMirrorCommit() { return workerMirrorCommit; }
+    public void setWorkerMirrorCommit(String workerMirrorCommit) { this.workerMirrorCommit = workerMirrorCommit; }
     public String getManifestSha256() { return manifestSha256; }
     public void setManifestSha256(String manifestSha256) { this.manifestSha256 = manifestSha256; }
     public UUID getDispatchId() { return dispatchId; }

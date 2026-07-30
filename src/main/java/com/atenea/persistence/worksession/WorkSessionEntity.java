@@ -59,6 +59,18 @@ public class WorkSessionEntity {
     @Column(name = "remote_workload_kind", length = 80)
     private String remoteWorkloadKind;
 
+    @Column(name = "canonical_source_ref", length = 220)
+    private String canonicalSourceRef;
+
+    @Column(name = "canonical_source_commit", length = 64)
+    private String canonicalSourceCommit;
+
+    @Column(name = "canonical_source_observation_sha256", length = 64)
+    private String canonicalSourceObservationSha256;
+
+    @Column(name = "canonical_source_observed_at")
+    private Instant canonicalSourceObservedAt;
+
     @Column(name = "pull_request_url", length = 500)
     private String pullRequestUrl;
 
@@ -193,6 +205,38 @@ public class WorkSessionEntity {
 
     public void setRemoteWorkloadKind(String remoteWorkloadKind) {
         this.remoteWorkloadKind = remoteWorkloadKind;
+    }
+
+    public String getCanonicalSourceRef() {
+        return canonicalSourceRef;
+    }
+
+    public void setCanonicalSourceRef(String canonicalSourceRef) {
+        this.canonicalSourceRef = canonicalSourceRef;
+    }
+
+    public String getCanonicalSourceCommit() {
+        return canonicalSourceCommit;
+    }
+
+    public void setCanonicalSourceCommit(String canonicalSourceCommit) {
+        this.canonicalSourceCommit = canonicalSourceCommit;
+    }
+
+    public String getCanonicalSourceObservationSha256() {
+        return canonicalSourceObservationSha256;
+    }
+
+    public void setCanonicalSourceObservationSha256(String canonicalSourceObservationSha256) {
+        this.canonicalSourceObservationSha256 = canonicalSourceObservationSha256;
+    }
+
+    public Instant getCanonicalSourceObservedAt() {
+        return canonicalSourceObservedAt;
+    }
+
+    public void setCanonicalSourceObservedAt(Instant canonicalSourceObservedAt) {
+        this.canonicalSourceObservedAt = canonicalSourceObservedAt;
     }
 
     public String getPullRequestUrl() {

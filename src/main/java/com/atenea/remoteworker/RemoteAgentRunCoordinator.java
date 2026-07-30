@@ -131,7 +131,13 @@ public class RemoteAgentRunCoordinator {
                 if (run.getRemoteExecutionId() == null) {
                     if (ProjectCodexIdentity.matches(run)
                             || BeautipsProjectCodexIdentity.matches(run)) {
-                        client.ensureWorkspace(run);
+                        RemoteWorkerClient.Workspace workspace = client.ensureWorkspace(run);
+                        if (!run.getRepositoryCommit().equals(workspace.canonicalCommit())) {
+                            throw new RemoteWorkerException(
+                                    "Worker mirror canonical source differs from persisted admission",
+                                    409);
+                        }
+                        persistWorkerMirrorObservation(runId, workspace.canonicalCommit());
                     }
                     response = client.dispatch(run, run.getOriginTurn().getMessageText());
                 } else if (run.getLeaseExpiresAt() != null
@@ -162,6 +168,18 @@ public class RemoteAgentRunCoordinator {
                 return;
             }
         }
+    }
+
+    private void persistWorkerMirrorObservation(Long runId, String commit) {
+        transaction.executeWithoutResult(status -> {
+            AgentRunEntity owned = agentRunRepository.findWithSessionById(runId)
+                    .orElseThrow(() -> new IllegalStateException("AgentRun disappeared during admission"));
+            if (!commit.equals(owned.getRepositoryCommit())) {
+                throw new IllegalStateException("Worker mirror observation conflicts with AgentRun source");
+            }
+            owned.setWorkerMirrorCommit(commit);
+            agentRunRepository.save(owned);
+        });
     }
 
     private void apply(Long runId, RemoteWorkerClient.Execution response) {

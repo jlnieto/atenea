@@ -11,7 +11,6 @@ public final class ProjectCodexIdentity {
     public static final String REPOSITORY = "https://github.com/jlnieto/atenea.git";
     public static final String REPO_PATH = "/workspace/repos/internal/atenea";
     public static final String BRANCH = "feature/actualizar-conversacion-en-web";
-    public static final String COMMIT = "d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b";
     public static final String MANIFEST_SHA256 =
             "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3";
 
@@ -32,7 +31,20 @@ public final class ProjectCodexIdentity {
                 && PROJECT_IDENTITY.equals(run.getProjectIdentity())
                 && REPOSITORY.equals(run.getRepositoryUrl())
                 && BRANCH.equals(run.getRepositoryBranch())
-                && COMMIT.equals(run.getRepositoryCommit())
+                && hasCanonicalSourceObservation(run.getSession())
+                && run.getRepositoryCommit() != null
+                && run.getRepositoryCommit().matches("^[0-9a-f]{40}$")
+                && run.getRepositoryCommit().equals(run.getSession().getCanonicalSourceCommit())
                 && MANIFEST_SHA256.equals(run.getManifestSha256());
+    }
+
+    public static boolean hasCanonicalSourceObservation(WorkSessionEntity session) {
+        return matches(session)
+                && session.getCanonicalSourceCommit() != null
+                && session.getCanonicalSourceCommit().matches("^[0-9a-f]{40}$")
+                && ("refs/heads/" + BRANCH).equals(session.getCanonicalSourceRef())
+                && session.getCanonicalSourceObservationSha256() != null
+                && session.getCanonicalSourceObservationSha256().matches("^[0-9a-f]{64}$")
+                && session.getCanonicalSourceObservedAt() != null;
     }
 }

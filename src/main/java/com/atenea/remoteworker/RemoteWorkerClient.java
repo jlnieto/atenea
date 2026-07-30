@@ -236,6 +236,7 @@ public class RemoteWorkerClient {
             String projectId,
             String workspaceBranch,
             String slot,
+            String canonicalCommit,
             boolean selectionEnabled,
             boolean executionEnabled,
             boolean valuesExposed

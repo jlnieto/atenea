@@ -33,6 +33,7 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 
 class RemoteAgentRunCoordinatorTest {
+    private static final String TEST_CANONICAL_COMMIT = "1".repeat(40);
 
     private AgentRunRepository agentRunRepository;
     private WorkSessionRepository workSessionRepository;
@@ -53,6 +54,20 @@ class RemoteAgentRunCoordinatorTest {
         PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
         when(transactionManager.getTransaction(any(TransactionDefinition.class)))
                 .thenReturn(mock(TransactionStatus.class));
+        when(client.ensureWorkspace(any(AgentRunEntity.class))).thenAnswer(invocation -> {
+            AgentRunEntity run = invocation.getArgument(0);
+            return new RemoteWorkerClient.Workspace(
+                    "ready",
+                    run.getRemoteSessionId().toString(),
+                    run.getWorkspaceIdentity(),
+                    run.getProjectIdentity(),
+                    run.getSession().getWorkspaceBranch(),
+                    "slot2",
+                    run.getRepositoryCommit(),
+                    true,
+                    true,
+                    false);
+        });
         coordinator = new RemoteAgentRunCoordinator(
                 agentRunRepository,
                 workSessionRepository,
@@ -279,8 +294,13 @@ class RemoteAgentRunCoordinatorTest {
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(41L);
         session.setProject(project);
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
         session.setRemoteSessionId(remoteSessionId);
         session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
+        session.setCanonicalSourceCommit(TEST_CANONICAL_COMMIT);
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(Instant.now());
         SessionTurnEntity origin = new SessionTurnEntity();
         origin.setId(101L);
         origin.setSession(session);
@@ -303,7 +323,7 @@ class RemoteAgentRunCoordinatorTest {
         run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
         run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);
         run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
-        run.setRepositoryCommit(ProjectCodexIdentity.COMMIT);
+        run.setRepositoryCommit(TEST_CANONICAL_COMMIT);
         run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
         return run;
     }

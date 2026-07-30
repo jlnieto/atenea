@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class RemoteWorkerClientTest {
+    private static final String TEST_CANONICAL_COMMIT = "1".repeat(40);
 
     @TempDir
     Path temporary;
@@ -70,6 +71,7 @@ class RemoteWorkerClientTest {
                     java.util.Map.entry("projectId", request.get("projectId").asText()),
                     java.util.Map.entry("workspaceBranch", request.get("workspaceBranch").asText()),
                     java.util.Map.entry("slot", "slot4"),
+                    java.util.Map.entry("canonicalCommit", request.get("commit").asText()),
                     java.util.Map.entry("selectionEnabled", true),
                     java.util.Map.entry("executionEnabled", true),
                     java.util.Map.entry("valuesExposed", false)));
@@ -103,7 +105,7 @@ class RemoteWorkerClientTest {
         assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, workload.get("projectId").asText());
         assertEquals(ProjectCodexIdentity.REPOSITORY, workload.get("repository").asText());
         assertEquals(ProjectCodexIdentity.BRANCH, workload.get("branch").asText());
-        assertEquals(ProjectCodexIdentity.COMMIT, workload.get("commit").asText());
+        assertEquals(TEST_CANONICAL_COMMIT, workload.get("commit").asText());
         assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, workload.get("manifestSha256").asText());
         assertEquals(threadId.toString(), workload.get("threadId").asText());
         assertNull(workload.get("command"));
@@ -146,6 +148,7 @@ class RemoteWorkerClientTest {
         JsonNode body = requestBody.get();
         assertEquals(run.getRemoteSessionId().toString(), body.get("sessionId").asText());
         assertEquals(run.getWorkspaceIdentity(), body.get("workspaceIdentity").asText());
+        assertEquals(run.getRepositoryCommit(), workspace.canonicalCommit());
         assertEquals(BeautipsProjectCodexIdentity.PROJECT_IDENTITY, body.get("projectId").asText());
         assertEquals(BeautipsProjectCodexIdentity.REPOSITORY, body.get("repository").asText());
         assertEquals(BeautipsProjectCodexIdentity.BRANCH, body.get("branch").asText());
@@ -172,10 +175,11 @@ class RemoteWorkerClientTest {
         JsonNode body = requestBody.get();
         assertEquals(run.getRemoteSessionId().toString(), body.get("sessionId").asText());
         assertEquals(run.getWorkspaceIdentity(), body.get("workspaceIdentity").asText());
+        assertEquals(run.getRepositoryCommit(), workspace.canonicalCommit());
         assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, body.get("projectId").asText());
         assertEquals(ProjectCodexIdentity.REPOSITORY, body.get("repository").asText());
         assertEquals(ProjectCodexIdentity.BRANCH, body.get("branch").asText());
-        assertEquals(ProjectCodexIdentity.COMMIT, body.get("commit").asText());
+        assertEquals(TEST_CANONICAL_COMMIT, body.get("commit").asText());
         assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, body.get("manifestSha256").asText());
         assertEquals("ready", workspace.state());
         assertEquals(false, workspace.valuesExposed());
@@ -226,8 +230,13 @@ class RemoteWorkerClientTest {
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(41L);
         session.setProject(project);
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
         session.setExternalThreadId(threadId);
         session.setRemoteSessionId(remoteSessionId);
+        session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
+        session.setCanonicalSourceCommit(TEST_CANONICAL_COMMIT);
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(Instant.now());
         AgentRunEntity run = new AgentRunEntity();
         run.setSession(session);
         run.setDispatchId(UUID.fromString("3bb4ab61-6439-452d-a1cc-90e2eb9d9310"));
@@ -240,7 +249,7 @@ class RemoteWorkerClientTest {
         run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
         run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);
         run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
-        run.setRepositoryCommit(ProjectCodexIdentity.COMMIT);
+        run.setRepositoryCommit(TEST_CANONICAL_COMMIT);
         run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
         return run;
     }
