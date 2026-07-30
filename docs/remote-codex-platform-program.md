@@ -4392,5 +4392,18 @@ Sanitized task-4.3 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `a931b973b04dca14fce3ab1cf59e9941f76e339ce98149ca70b2ef091519b353`.
 
-The exact resume point is task 4.4: strict validation, specification sync and
-canonical OpenSpec archive. It has not been started.
+Task 4.4 is complete and change progress is `18/19`. Pre-archive strict
+validation passed. Canonical archive moved the change to
+`openspec/changes/archive/2026-07-30-activate-atenea-remote-routing` and
+synchronized the accepted Atenea activation behavior into authoritative
+`atenea-project-onboarding` and `remote-worker-control`. Post-archive strict
+validation passes all 11 authoritative specifications; there are no active
+changes.
+
+Sanitized task-4.4 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-remote-routing/runs/task-4.4-openspec-archive`;
+the SHA-256 of its `SHA256SUMS` is
+`70ba3ebb5f3be3c8ad689302c81a7190f128777fe7143619c5da1f28ebdd9e22`.
+
+The exact resume point is archived task 4.5: final Atenea, Beautips, routing
+and Git comparison. It has not been started.
