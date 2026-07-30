@@ -134,14 +134,15 @@ class ExternalBackupContractTest(unittest.TestCase):
         ):
             self.assertNotIn(value, joined)
 
-    def test_prohibited_file_below_authoritative_root_fails_closed(self) -> None:
+    def test_prohibited_file_below_authoritative_root_is_not_selected(self) -> None:
         (self.root / "srv/atenea/artifacts/evidence/session.env").write_text(
             "not-a-secret\n", encoding="utf-8"
         )
         result = self.run_program("manifest")
-        self.assertEqual(result.returncode, 65)
-        self.assertIn("prohibited source rejected", result.stderr)
-        self.assertFalse(self.state.exists())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        joined = json.dumps(json.loads(result.stdout))
+        self.assertNotIn("session.env", joined)
+        self.assertNotIn("not-a-secret", joined)
 
     def test_symlink_and_special_file_fail_closed(self) -> None:
         link = self.root / "srv/atenea/artifacts/evidence/foreign-link"

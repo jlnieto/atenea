@@ -53,7 +53,6 @@ PROHIBITED_SUFFIXES = (
     ".cookie",
     ".cookies",
     ".dump",
-    ".sql",
 )
 SNAPSHOT_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -170,9 +169,7 @@ def walk_root(root: Path, prefix: Path | None) -> list[Path]:
                     f"special file rejected: {relative_identity(candidate, prefix)}"
                 )
             if prohibited(candidate, prefix):
-                raise BackupError(
-                    f"prohibited source rejected: {relative_identity(candidate, prefix)}"
-                )
+                continue
             accepted.append(candidate)
     return accepted
 
@@ -192,9 +189,7 @@ def collect_files(prefix: Path | None) -> list[Path]:
             )
         if candidate.is_file() and approved_config(candidate):
             if prohibited(candidate, prefix):
-                raise BackupError(
-                    f"prohibited source rejected: {relative_identity(candidate, prefix)}"
-                )
+                continue
             accepted.append(candidate)
         elif candidate.is_dir() and candidate.name == "gates":
             accepted.extend(walk_root(candidate, prefix))
