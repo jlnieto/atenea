@@ -90,9 +90,11 @@ workspace. Existing open sessions retain their persisted target.
 ### Transfer the existing worker credential without exposing it
 
 The already-installed worker credential will be copied directly between the
-two authenticated hosts into a root-owned mode-0600 Atenea secret file. No
-credential value, hash, command argument or intermediate local file enters
-evidence. Deployment configuration references only the file path.
+two authenticated hosts into an operator-owned, backend-group-readable Atenea
+secret file with mode `0640`. This matches the non-root backend service
+identity while denying access to users outside the exact operator and service
+group. No credential value, hash, command argument or intermediate local file
+enters evidence. Deployment configuration references only the file path.
 
 ## Risks / Trade-offs
 

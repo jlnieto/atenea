@@ -23,10 +23,10 @@
 
 ## 4. Disabled deployment
 
-- [ ] 4.1 Install the reviewed worker version on AX42 with Beautips selection and execution still disabled
-- [ ] 4.2 Deploy reviewed Atenea code with all remote routing gates still false
-- [ ] 4.3 Transfer the existing worker credential directly host-to-host into a root-owned mode-0600 Atenea file without exposing its value
-- [ ] 4.4 Configure only the private AX42 endpoint and credential path, restart only the production backend and prove disabled non-impact
+- [x] 4.1 Install the reviewed worker version on AX42 with Beautips selection and execution still disabled
+- [x] 4.2 Deploy reviewed Atenea code with all remote routing gates still false
+- [x] 4.3 Transfer the existing worker credential directly host-to-host into an operator-owned mode-0640 file readable only by the backend service group, without exposing its value
+- [x] 4.4 Configure only the private AX42 endpoint and credential path, restart only the production backend and prove disabled non-impact
 
 ## 5. Real Beautips activation
 
