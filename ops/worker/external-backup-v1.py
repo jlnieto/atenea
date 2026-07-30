@@ -32,6 +32,8 @@ SOURCE_ROOTS = (
 CONFIG_ROOT = Path("/etc/atenea-worker")
 CONFIG_SUFFIXES = (".json", ".enabled")
 EXCLUDED_PREFIXES = (
+    Path("/srv/atenea/worker/context-v1"),
+    Path("/srv/atenea/worker/toolchain-v1"),
     Path("/srv/atenea/worker/workspace-v1"),
     Path("/srv/atenea/worker/workspace-locks"),
 )

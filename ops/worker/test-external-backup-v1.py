@@ -89,6 +89,8 @@ class ExternalBackupContractTest(unittest.TestCase):
 
     def test_prohibited_boundaries_are_not_selected(self) -> None:
         excluded = (
+            self.root / "srv/atenea/worker/context-v1/.codex",
+            self.root / "srv/atenea/worker/toolchain-v1/bin",
             self.root / "srv/atenea/worker/workspace-v1/repository/.git",
             self.root / "srv/atenea/worker/workspace-locks",
             self.root / "srv/atenea/worker/caches/dependency",
@@ -100,14 +102,16 @@ class ExternalBackupContractTest(unittest.TestCase):
         )
         for path in excluded:
             path.mkdir(parents=True, exist_ok=True)
-        (excluded[0] / "config").write_text("git\n", encoding="utf-8")
-        (excluded[1] / "runtime.lock").write_text("lock\n", encoding="utf-8")
-        (excluded[2] / "cached.jar").write_text("cache\n", encoding="utf-8")
-        (excluded[3] / "HEAD").write_text("ref: main\n", encoding="utf-8")
-        (excluded[4] / "runtime.json").write_text("{}\n", encoding="utf-8")
-        (excluded[5] / "auth.json").write_text("not-auth\n", encoding="utf-8")
-        (excluded[6] / "history.jsonl").write_text("not-history\n", encoding="utf-8")
-        (excluded[7] / "beautips.env").write_text("not-a-secret\n", encoding="utf-8")
+        (excluded[0] / "SKILL.md").write_text("versioned\n", encoding="utf-8")
+        (excluded[1] / "java").write_text("versioned\n", encoding="utf-8")
+        (excluded[2] / "config").write_text("git\n", encoding="utf-8")
+        (excluded[3] / "runtime.lock").write_text("lock\n", encoding="utf-8")
+        (excluded[4] / "cached.jar").write_text("cache\n", encoding="utf-8")
+        (excluded[5] / "HEAD").write_text("ref: main\n", encoding="utf-8")
+        (excluded[6] / "runtime.json").write_text("{}\n", encoding="utf-8")
+        (excluded[7] / "auth.json").write_text("not-auth\n", encoding="utf-8")
+        (excluded[8] / "history.jsonl").write_text("not-history\n", encoding="utf-8")
+        (excluded[9] / "beautips.env").write_text("not-a-secret\n", encoding="utf-8")
         (self.root / "etc/atenea-worker/service.token").write_text(
             "not-a-token\n", encoding="utf-8"
         )
@@ -117,6 +121,8 @@ class ExternalBackupContractTest(unittest.TestCase):
         for value in (
             "workspace-v1",
             "workspace-locks",
+            "context-v1",
+            "toolchain-v1",
             "cached.jar",
             "repositories",
             "workspaces",
