@@ -4368,5 +4368,29 @@ Sanitized task-4.1 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `7d425a082e4c1bd77788abbfc849dbb950bc46889334c06add85360a0d5cb5d1`.
 
-The exact resume point is task 4.2: re-enable the retained exact workspace and
-complete one final continued turn. It has not been started.
+Task 4.2 is complete and change progress is `16/19`. Exact retained Atenea
+selection/execution was re-enabled without replacing its workspace. Run `76`
+completed with dispatch `5370587e-b583-4fb5-82d1-667eb436ed26`, execution
+`14eccdcd-22b8-4270-98da-98c3bb859b26` and the same persisted Codex thread
+`019fb47f-1934-75f1-889a-506ec94c71d8`. The dispatch occurs once, one response
+is persisted and the read-only turn reports accepted commit
+`d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b` without changing a file.
+
+Sanitized task-4.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-remote-routing/runs/task-4.2-reenable-final-turn`;
+the SHA-256 of its `SHA256SUMS` is
+`c5563f8d4f4e665a845ab994a95ed62ed29f3b138952de4f7827728d489265e4`.
+
+Task 4.3 is complete and change progress is `17/19`. The rollup verifies six
+task `SHA256SUMS` manifests, nine root evidence sidecars and 52 pre-rollup
+files totalling 76,528 bytes. Filename and value-shape audits found zero
+retained auth files, environment dumps, cookies, credentials, tokens,
+authorization values, private keys or JWT-shaped values.
+
+Sanitized task-4.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-remote-routing/runs/task-4.3-evidence-rollup`;
+the SHA-256 of its `SHA256SUMS` is
+`a931b973b04dca14fce3ab1cf59e9941f76e339ce98149ca70b2ef091519b353`.
+
+The exact resume point is task 4.4: strict validation, specification sync and
+canonical OpenSpec archive. It has not been started.
