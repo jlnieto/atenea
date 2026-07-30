@@ -41,7 +41,7 @@ WORKSPACE_ENSURE_KEYS = {
 PROJECT_ID = "atenea"
 PROJECT_REPOSITORY = "https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH = "feature/actualizar-conversacion-en-web"
-PROJECT_COMMIT = "b605c8d5b063e7321edd60fec2265ec7ddb84ea9"
+PROJECT_COMMIT = "d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b"
 PROJECT_MANIFEST_SHA256 = "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
 BEAUTIPS_PROJECT_ID = "beautips"
 BEAUTIPS_PROJECT_REPOSITORY = "https://github.com/jlnieto/beautips.git"
@@ -80,6 +80,7 @@ class WorkerState:
         project_timeout: int = 1800,
         project_config_uid: int = 0,
         privilege_command: tuple[str, ...] = ("sudo",),
+        project_workspace_activator: Path | None = None,
         beautips_project_config: Path | None = None,
         beautips_project_runner: Path | None = None,
         beautips_workspace_activator: Path | None = None,
@@ -94,6 +95,7 @@ class WorkerState:
         self.project_timeout = project_timeout
         self.project_config_uid = project_config_uid
         self.privilege_command = privilege_command
+        self.project_workspace_activator = project_workspace_activator
         self.beautips_project_config = beautips_project_config
         self.beautips_project_runner = beautips_project_runner
         self.beautips_workspace_activator = beautips_workspace_activator
@@ -252,13 +254,36 @@ class WorkerState:
                 "invalid_session",
                 "sessionId must be a canonical UUID",
             )
+        project_id = request.get("projectId")
+        if project_id == PROJECT_ID:
+            route_identity = {
+                "projectId": PROJECT_ID,
+                "repository": PROJECT_REPOSITORY,
+                "branch": PROJECT_BRANCH,
+                "commit": PROJECT_COMMIT,
+                "manifestSha256": PROJECT_MANIFEST_SHA256,
+            }
+            activator = self.project_workspace_activator
+            allowed_slots = {"slot2", "slot3", "slot4"}
+        elif project_id == BEAUTIPS_PROJECT_ID:
+            route_identity = {
+                "projectId": BEAUTIPS_PROJECT_ID,
+                "repository": BEAUTIPS_PROJECT_REPOSITORY,
+                "branch": BEAUTIPS_PROJECT_BRANCH,
+                "commit": BEAUTIPS_PROJECT_COMMIT,
+                "manifestSha256": BEAUTIPS_PROJECT_MANIFEST_SHA256,
+            }
+            activator = self.beautips_workspace_activator
+            allowed_slots = {"slot2", "slot3", "slot4"}
+        else:
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "workspace_ownership_conflict",
+                "workspace activation identity is not exact",
+            )
         exact = {
             "workspaceIdentity": f"remote:ax42-01:work-session:{session_id}",
-            "projectId": BEAUTIPS_PROJECT_ID,
-            "repository": BEAUTIPS_PROJECT_REPOSITORY,
-            "branch": BEAUTIPS_PROJECT_BRANCH,
-            "commit": BEAUTIPS_PROJECT_COMMIT,
-            "manifestSha256": BEAUTIPS_PROJECT_MANIFEST_SHA256,
+            **route_identity,
         }
         if any(request.get(key) != value for key, value in exact.items()):
             raise ProtocolError(
@@ -276,7 +301,6 @@ class WorkerState:
                 "invalid_workspace_branch",
                 "workspace branch is not a persisted WorkSession branch",
             )
-        activator = self.beautips_workspace_activator
         if activator is None or not activator.is_file():
             raise ProtocolError(
                 HTTPStatus.SERVICE_UNAVAILABLE,
@@ -320,9 +344,9 @@ class WorkerState:
             or result.get("state") != "ready"
             or result.get("sessionId") != session_id
             or result.get("workspaceIdentity") != exact["workspaceIdentity"]
-            or result.get("projectId") != BEAUTIPS_PROJECT_ID
+            or result.get("projectId") != project_id
             or result.get("workspaceBranch") != workspace_branch
-            or result.get("slot") not in {"slot2", "slot3", "slot4"}
+            or result.get("slot") not in allowed_slots
             or result.get("valuesExposed") is not False
         ):
             raise ProtocolError(
@@ -904,6 +928,11 @@ def main() -> int:
     parser.add_argument("--heavy-capacity", type=int, default=2)
     parser.add_argument("--project-config", type=Path)
     parser.add_argument("--project-runner", type=Path)
+    parser.add_argument(
+        "--project-workspace-activator",
+        type=Path,
+        default=Path("/usr/local/libexec/atenea/atenea-workspace-activation-v1.sh"),
+    )
     parser.add_argument("--beautips-project-config", type=Path)
     parser.add_argument("--beautips-project-runner", type=Path)
     parser.add_argument(
@@ -928,6 +957,7 @@ def main() -> int:
         args.project_config,
         args.project_runner,
         args.project_timeout,
+        project_workspace_activator=args.project_workspace_activator,
         beautips_project_config=args.beautips_project_config,
         beautips_project_runner=args.beautips_project_runner,
         beautips_workspace_activator=args.beautips_workspace_activator,

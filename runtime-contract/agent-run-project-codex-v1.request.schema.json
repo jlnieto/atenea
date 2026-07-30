@@ -36,7 +36,7 @@
         "projectId": {"const": "atenea"},
         "repository": {"const": "https://github.com/jlnieto/atenea.git"},
         "branch": {"const": "feature/actualizar-conversacion-en-web"},
-        "commit": {"const": "b605c8d5b063e7321edd60fec2265ec7ddb84ea9"},
+        "commit": {"const": "d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b"},
         "manifestSha256": {"const": "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"},
         "message": {"type": "string", "minLength": 1, "maxLength": 20000},
         "threadId": {"type": ["string", "null"], "format": "uuid"}

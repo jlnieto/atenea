@@ -143,10 +143,19 @@ print(json.dumps({
             encoding="utf-8",
         )
         self.activator.chmod(0o755)
+        self.atenea_activator = root / "atenea-activator"
+        self.atenea_activator.write_text(
+            self.activator.read_text()
+            .replace('"projectId": "beautips"', '"projectId": "atenea"')
+            .replace('"slot": "slot4"', '"slot": "slot2"'),
+            encoding="utf-8",
+        )
+        self.atenea_activator.chmod(0o755)
         self.state = MODULE.WorkerState(
             root / "state",
             "ax42-01",
             privilege_command=(),
+            project_workspace_activator=self.atenea_activator,
             beautips_workspace_activator=self.activator,
         )
         self.session_id = str(uuid.uuid4())
@@ -172,6 +181,20 @@ print(json.dumps({
         self.assertEqual(first, second)
         self.assertEqual("ready", first["state"])
         self.assertEqual(2, len(self.calls.read_text().splitlines()))
+
+    def test_exact_atenea_workspace_uses_its_separate_activator(self):
+        request = self.request()
+        request.update({
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": MODULE.PROJECT_COMMIT,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+        })
+        result = self.state.ensure_workspace(request)
+        self.assertEqual("ready", result["state"])
+        self.assertEqual("atenea", result["projectId"])
+        self.assertEqual("slot2", result["slot"])
 
     def test_foreign_identity_and_arbitrary_field_fail_before_activation(self):
         foreign = self.request()

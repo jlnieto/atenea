@@ -16,7 +16,7 @@ SUDOERS_FILE="/etc/sudoers.d/atenea-project-codex-v1"
 STATE_DIR="/srv/atenea/worker/agent-runs-v1"
 PROJECT_REPOSITORY="https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH="feature/actualizar-conversacion-en-web"
-PROJECT_COMMIT="b605c8d5b063e7321edd60fec2265ec7ddb84ea9"
+PROJECT_COMMIT="d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b"
 PROJECT_MANIFEST_SHA256="3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
 
 fail() {
