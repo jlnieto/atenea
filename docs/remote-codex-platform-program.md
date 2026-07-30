@@ -6,9 +6,9 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: independent external-backup prerequisite after Phase 8;
-  Atenea and Beautips onboarding are archived at `45/45`, and
-  `establish-independent-worker-backup` is active
+- Current phase: independent external backup accepted and restore-tested after
+  Phase 8; Atenea and Beautips onboarding are archived at `45/45`, while
+  Beautips production routing remains a separate unopened gate
 - Runtime routing: default remote routing and all real-project selection remain
   disabled; Atenea production is not connected to the AX42
 - Production/control plane: current Atenea VPS
@@ -244,7 +244,7 @@ separate `onboard-beautips-on-ax42` change; Beautips routing is not enabled.
 | D-041 | Use only empty migrated PostgreSQL, disposable Redis, invented fixtures/files and disabled WhatsApp for managed acceptance. | Platform ownership can be proven without copying administrative, legacy or production-derived data and without external messaging authority. | accepted | data/security owners | before managed runtime start |
 | D-042 | Declare no localhost requirement for the disabled-WhatsApp acceptance; block on any absolute-origin failure rather than generating a tunnel implicitly. | Relative application paths can be verified through the private preview while excluded OAuth/messaging flows cannot justify broader compatibility. | accepted for Beautips pilot | runtime/product owners | private preview acceptance |
 | D-043 | Close Beautips after a 15-minute disabled/clean window with samples at minute 0, 5, 10 and 15. | The same bounded post-rollback control detects resurrection and protects the administrative pilot and production. | accepted for Beautips pilot | programme owner | before onboarding archive |
-| D-044 | Use a private Backblaze B2 bucket in an operator-owned account as AX42's independent encrypted backup target, keeping 14 daily, 8 weekly and 12 monthly exact-host restic snapshots. | A separate provider and recovery boundary protects against complete AX42/Hetzner loss; bucket-scoped credentials, bounded retention and restore evidence are required before authoritative retained state. | accepted for implementation; external provisioning pending | operations owner | before lifting the external-backup gate |
+| D-044 | Use a private Backblaze B2 bucket in an operator-owned account as AX42's independent encrypted backup target, keeping 14 daily, 8 weekly and 12 monthly exact-host restic snapshots. | A separate provider and recovery boundary protects against complete AX42/Hetzner loss; bucket-scoped credentials, bounded retention and restore evidence are required before authoritative retained state. | accepted, provisioned and restore-tested | operations owner | before lifting the external-backup gate |
 
 ## Deferred decisions and gates
 
@@ -4175,44 +4175,52 @@ selected or started.
 
 ## Independent external backup progress
 
-The dedicated `establish-independent-worker-backup` change is active. Its
-entry fingerprint confirms clean programme, Atenea and Beautips Git; AX42 boot
-ID `5cc2a4e3-020d-4d19-8a55-6ecae77f22ce`; three healthy RAID1 arrays at
-`[UU]`; active SSH, Tailscale, worker, preview and attachment services; four
-active rootless daemons; slot container counts `3/0/0/0`; and admission usage
-`0/4` normal plus `0/2` heavy. Atenea has 13 running and zero unhealthy
-rootful containers.
+The `establish-independent-worker-backup` acceptance is complete through task
+6.3. Backblaze B2 is provisioned in the independent operator account as a
+private bucket with provider-side encryption, Object Lock disabled and
+bucket-scoped read/write credentials restricted to the owned AX42 restic
+prefix. Credential values and the restic password were installed out of band
+as root-owned mode-0600 inputs and never entered Git, chat, command arguments,
+logs or evidence.
 
-The source-boundary inventory reads no content or secret value. The accepted
-roots contain 61 worker-state files, 16 attachment files and 3,205 sanitized
-artifact files, with zero symlinks or special files. Six top-level worker
-credential/environment files and the one-file manual Beautips secret boundary
-are counted only as prohibited categories and remain excluded. Atenea and
-Beautips project configs both retain `selectionEnabled=false`,
-`executionEnabled=false` and zero registered workspaces.
-
-Backblaze B2 is selected as the independent provider with client-side restic
-encryption and 14-daily, 8-weekly and 12-monthly retention. Hetzner Storage
-Box is not accepted for this gate because it shares the worker provider
-failure domain. The external account, private bucket and bucket-scoped
-application key remain an out-of-band operator provisioning gate; no
-credential may enter chat, Git, commands, logs or evidence.
-
-Versioned restic `0.16.4-2ubuntu0.24.04.3` and the backup mediator are installed
-on AX42 from programme commit
-`65e8128c98da4c3344ab229f7a0131e08b2da5c3`. Both timers remain disabled and
-both repository input files are absent. The real source policy accepts 3,234
-files totalling 10,914,251 bytes with aggregate manifest SHA-256
+The exact source policy accepts 3,234 files totalling 10,914,251 bytes. Its
+normalized aggregate manifest SHA-256 is
 `6d22bd9d8dc81594c3a6148471c07190bf1674355ce4f73adf42020de8b22f16`.
-A mediated backup attempt fails with fixed exit `65` because external inputs
-are absent; it creates no snapshot or successful-backup record.
+Snapshot `b0738177a5983e4f597f0be1ee8344a4b91876b6a641995d99b2e622ea9bbb28`
+passed repository check. A second accepted backup was restored into a new
+empty isolated projection: all 3,234 files, byte count and manifest matched
+exactly, after which only that exact projection was removed.
 
-Post-install comparison retains disabled zero-workspace Atenea and Beautips
-routing, admission `0/4` normal and `0/2` heavy, slot container counts
-`3/0/0/0`, all three RAID arrays `[UU]`, active SSH/Tailscale/worker services,
-the healthy administrative Beautips runtime and 13 running/zero-unhealthy
-Atenea control/production containers.
+A mediated scheduled boundary produced checked snapshot
+`9e9c8c2768089e0e2cbf663cc61905bbd5d434f16e7c2fdd86ad51668f1fa25b`.
+Retention removed only the superseded intermediate snapshot and leaves the
+first and scheduled accepted recovery points. The daily backup and weekly
+integrity timers are enabled and persisted. A concurrent integrity attempt
+failed closed after its 30-second lock timeout, and the isolated retry passed.
 
-The exact resume point is task 4.1 of
-`establish-independent-worker-backup`. Beautips routing and authoritative
-retained state remain disabled.
+Disable and full rollback were each repeated twice. They removed only the
+installed programme components and did not alter credentials, local persisted
+state, routing fingerprints, evidence or either retained remote snapshot. The
+accepted version was then reinstalled and only its two backup timers were
+re-enabled. A deliberately missing-input invocation returned fixed exit `65`
+without changing state or routing.
+
+Final non-impact checks retain boot ID
+`5cc2a4e3-020d-4d19-8a55-6ecae77f22ce`, all three RAID1 arrays at `[UU]`,
+active SSH, Tailscale and worker services, four rootless daemons, slot
+container counts `3/0/0/0`, admission usage `0/4` normal plus `0/2` heavy,
+13 running and zero unhealthy Atenea containers, and healthy production,
+preview and administrative Beautips. Atenea and Beautips selection/execution
+remain disabled with zero registered workspaces.
+
+Sanitized acceptance evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/establish-independent-worker-backup/runs/task-6.1-evidence-rollup`;
+the SHA-256 of its `SHA256SUMS` is
+`90c2acc6882d8f498bd70742d9dcb3b7699edbe3628e6d1fba829938ecc18b4c`.
+
+The external-backup prerequisite is lifted and all 32 tasks are complete.
+`establish-independent-worker-backup` is archived at
+`openspec/changes/archive/2026-07-30-establish-independent-worker-backup`;
+post-archive strict validation passes all 11 authoritative specs. No active
+OpenSpec change remains. Beautips routing and authoritative retained state
+remain disabled and require a separate explicit activation change.

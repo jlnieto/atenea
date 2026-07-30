@@ -26,24 +26,24 @@
 
 ## 4. Independent repository and restore
 
-- [ ] 4.1 Verify the operator-created private B2 bucket, independent account recovery and bucket-scoped application-key policy using only sanitized metadata
-- [ ] 4.2 Install repository inputs out of band as root-owned mode-0600 files and initialize the encrypted repository without exposing values
-- [ ] 4.3 Run the first exact-policy backup and repository integrity check with finite timeouts
-- [ ] 4.4 Repeat backup/check, prove snapshot ownership and exercise retention selection without deleting the only accepted recovery point
-- [ ] 4.5 Restore the accepted snapshot to a new empty isolated path and prove normalized manifest and SHA-256 equality
-- [ ] 4.6 Remove only the exact restore-test projection after equality and preserve accepted remote snapshots and sanitized evidence
+- [x] 4.1 Verify the operator-created private B2 bucket, independent account recovery and bucket-scoped application-key policy using only sanitized metadata
+- [x] 4.2 Install repository inputs out of band as root-owned mode-0600 files and initialize the encrypted repository without exposing values
+- [x] 4.3 Run the first exact-policy backup and repository integrity check with finite timeouts
+- [x] 4.4 Repeat backup/check, prove snapshot ownership and exercise retention selection without deleting the only accepted recovery point
+- [x] 4.5 Restore the accepted snapshot to a new empty isolated path and prove normalized manifest and SHA-256 equality
+- [x] 4.6 Remove only the exact restore-test projection after equality and preserve accepted remote snapshots and sanitized evidence
 
 ## 5. Scheduling, rollback and non-impact
 
-- [ ] 5.1 Enable the daily backup and weekly integrity timers and prove their persisted schedule and bounded execution
-- [ ] 5.2 Trigger one mediated scheduled run and prove serialization prevents concurrent backup, check, retention or restore
-- [ ] 5.3 Disable and repeat rollback, proving zero remote snapshot, credential, live-state or evidence deletion
-- [ ] 5.4 Re-enable only the accepted backup timers and verify failure leaves retention and routing gates closed
-- [ ] 5.5 Compare final Git, worker state, production, preview, administrative Beautips, other slots and routing fingerprints with entry
+- [x] 5.1 Enable the daily backup and weekly integrity timers and prove their persisted schedule and bounded execution
+- [x] 5.2 Trigger one mediated scheduled run and prove serialization prevents concurrent backup, check, retention or restore
+- [x] 5.3 Disable and repeat rollback, proving zero remote snapshot, credential, live-state or evidence deletion
+- [x] 5.4 Re-enable only the accepted backup timers and verify failure leaves retention and routing gates closed
+- [x] 5.5 Compare final Git, worker state, production, preview, administrative Beautips, other slots and routing fingerprints with entry
 
 ## 6. Evidence and archive
 
-- [ ] 6.1 Retain sanitized commands, exit codes, finite timeouts, durations, manifests and `SHA256SUMS` without credential or content values
-- [ ] 6.2 Observe one complete backup/check boundary and confirm repository recovery, timer health and non-impact remain stable
-- [ ] 6.3 Update the programme ledger with accepted snapshot/check/restore identities and lift only the external-backup prerequisite
-- [ ] 6.4 Confirm all tasks complete, strictly validate, archive, commit and push, then stop before Beautips routing activation
+- [x] 6.1 Retain sanitized commands, exit codes, finite timeouts, durations, manifests and `SHA256SUMS` without credential or content values
+- [x] 6.2 Observe one complete backup/check boundary and confirm repository recovery, timer health and non-impact remain stable
+- [x] 6.3 Update the programme ledger with accepted snapshot/check/restore identities and lift only the external-backup prerequisite
+- [x] 6.4 Confirm all tasks complete, strictly validate, archive, commit and push, then stop before Beautips routing activation
