@@ -20,9 +20,9 @@
 
 - [x] 3.1 Run the complete backup contract test suite twice from clean disposable roots
 - [x] 3.2 Exercise backup/check/retention/restore against a disposable local encrypted restic repository and remove it by exact temporary identity
-- [ ] 3.3 Install the reviewed scripts and disabled units on AX42 without repository credentials or automatic scheduling
-- [ ] 3.4 Prove missing external inputs fail closed without repository, routing, WorkSession, slot or project mutation
-- [ ] 3.5 Recompare production, preview, administrative Beautips, RAID, firewall, Tailscale, SSH and all four rootless slots
+- [x] 3.3 Install the reviewed scripts and disabled units on AX42 without repository credentials or automatic scheduling
+- [x] 3.4 Prove missing external inputs fail closed without repository, routing, WorkSession, slot or project mutation
+- [x] 3.5 Recompare production, preview, administrative Beautips, RAID, firewall, Tailscale, SSH and all four rootless slots
 
 ## 4. Independent repository and restore
 

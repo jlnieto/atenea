@@ -4198,6 +4198,21 @@ failure domain. The external account, private bucket and bucket-scoped
 application key remain an out-of-band operator provisioning gate; no
 credential may enter chat, Git, commands, logs or evidence.
 
-The exact resume point is task 3.3 of
+Versioned restic `0.16.4-2ubuntu0.24.04.3` and the backup mediator are installed
+on AX42 from programme commit
+`65e8128c98da4c3344ab229f7a0131e08b2da5c3`. Both timers remain disabled and
+both repository input files are absent. The real source policy accepts 3,234
+files totalling 10,914,251 bytes with aggregate manifest SHA-256
+`6d22bd9d8dc81594c3a6148471c07190bf1674355ce4f73adf42020de8b22f16`.
+A mediated backup attempt fails with fixed exit `65` because external inputs
+are absent; it creates no snapshot or successful-backup record.
+
+Post-install comparison retains disabled zero-workspace Atenea and Beautips
+routing, admission `0/4` normal and `0/2` heavy, slot container counts
+`3/0/0/0`, all three RAID arrays `[UU]`, active SSH/Tailscale/worker services,
+the healthy administrative Beautips runtime and 13 running/zero-unhealthy
+Atenea control/production containers.
+
+The exact resume point is task 4.1 of
 `establish-independent-worker-backup`. Beautips routing and authoritative
 retained state remain disabled.
