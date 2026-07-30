@@ -17,6 +17,7 @@ MODULE = SourceFileLoader(
     "agent_run_worker_v1",
     str(Path(__file__).with_name("agent-run-worker-v1.py")),
 ).load_module()
+TEST_COMMIT = "1" * 40
 
 
 class WorkerStateTest(unittest.TestCase):
@@ -135,6 +136,7 @@ print(json.dumps({
     "projectId": "beautips",
     "workspaceBranch": branch,
     "slot": "slot4",
+    "canonicalCommit": "e9e0b3c319c518363d4135f5378ebbddced96dfb",
     "selectionEnabled": True,
     "executionEnabled": True,
     "valuesExposed": False,
@@ -147,7 +149,11 @@ print(json.dumps({
         self.atenea_activator.write_text(
             self.activator.read_text()
             .replace('"projectId": "beautips"', '"projectId": "atenea"')
-            .replace('"slot": "slot4"', '"slot": "slot2"'),
+            .replace('"slot": "slot4"', '"slot": "slot2"')
+            .replace(
+                '"e9e0b3c319c518363d4135f5378ebbddced96dfb"',
+                '"' + TEST_COMMIT + '"',
+            ),
             encoding="utf-8",
         )
         self.atenea_activator.chmod(0o755)
@@ -157,6 +163,11 @@ print(json.dumps({
             privilege_command=(),
             project_workspace_activator=self.atenea_activator,
             beautips_workspace_activator=self.activator,
+        )
+        self.state._observe_project_commit = lambda route: (
+            TEST_COMMIT
+            if route["identity"]["projectId"] == MODULE.PROJECT_ID
+            else MODULE.BEAUTIPS_PROJECT_COMMIT
         )
         self.session_id = str(uuid.uuid4())
 
@@ -188,7 +199,7 @@ print(json.dumps({
             "projectId": MODULE.PROJECT_ID,
             "repository": MODULE.PROJECT_REPOSITORY,
             "branch": MODULE.PROJECT_BRANCH,
-            "commit": MODULE.PROJECT_COMMIT,
+            "commit": TEST_COMMIT,
             "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
         })
         result = self.state.ensure_workspace(request)
@@ -257,7 +268,7 @@ print(json.dumps({
                 "projectId": "atenea",
                 "repository": MODULE.PROJECT_REPOSITORY,
                 "branch": MODULE.PROJECT_BRANCH,
-                "commit": MODULE.PROJECT_COMMIT,
+                "commit": TEST_COMMIT,
                 "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
                 "runner": str(self.runner),
                 "workspaces": {
@@ -265,6 +276,7 @@ print(json.dumps({
                         "sessionId": self.session_id,
                         "worktree": "/srv/atenea/workspaces/sessions/" + self.session_id + "/atenea",
                         "allocationSha256": "a" * 64,
+                        "canonicalCommit": TEST_COMMIT,
                     }
                 },
             }),
@@ -280,6 +292,7 @@ print(json.dumps({
             project_config_uid=os.getuid(),
             privilege_command=(),
         )
+        self.state._observe_project_commit = lambda _route: TEST_COMMIT
         self.state.start()
 
     def tearDown(self):
@@ -298,7 +311,7 @@ print(json.dumps({
                 "projectId": "atenea",
                 "repository": MODULE.PROJECT_REPOSITORY,
                 "branch": MODULE.PROJECT_BRANCH,
-                "commit": MODULE.PROJECT_COMMIT,
+                "commit": TEST_COMMIT,
                 "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
                 "message": message,
                 "threadId": thread_id,
@@ -343,6 +356,12 @@ print(json.dumps({
         self.config.write_text(json.dumps(parsed), encoding="utf-8")
         self.assertIn("project-codex-v1", self.state.health()["capabilities"])
         with self.assertRaisesRegex(MODULE.ProtocolError, "disabled"):
+            self.state.create(self.request())
+
+    def test_moved_worker_mirror_is_rejected_before_dispatch(self):
+        self.state._observe_project_commit = lambda _route: "2" * 40
+
+        with self.assertRaisesRegex(MODULE.ProtocolError, "moved before admission"):
             self.state.create(self.request())
 
     def test_beautips_route_is_independent_and_accepts_only_its_exact_workspace(self):

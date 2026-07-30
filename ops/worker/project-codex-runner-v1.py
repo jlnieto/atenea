@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import pwd
+import re
 import signal
 import subprocess
 import sys
@@ -20,10 +21,11 @@ CAPABILITY = "project-codex-v1"
 PROJECT_ID = "atenea"
 REPOSITORY = "https://github.com/jlnieto/atenea.git"
 BRANCH = "feature/actualizar-conversacion-en-web"
-BASE_COMMIT = "d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b"
+BASE_COMMIT: str | None = None
 MANIFEST_SHA256 = "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
 CODEX = "/home/jose/.codex/packages/standalone/current/bin/codex"
 GIT_COMMON_DIR = Path("/srv/atenea/repositories/atenea.git")
+COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 REQUEST_KEYS = {"dispatchId", "executionId", "sessionId", "workspaceIdentity", "workload"}
 WORKLOAD_KEYS = {
     "kind", "projectId", "repository", "branch", "commit",
@@ -95,13 +97,15 @@ def validate_config(config: dict[str, Any], runner: Path) -> None:
         "projectId": PROJECT_ID,
         "repository": REPOSITORY,
         "branch": BRANCH,
-        "commit": BASE_COMMIT,
         "manifestSha256": MANIFEST_SHA256,
         "runner": str(runner),
     }
     if (
         set(config) != required
         or any(config.get(key) != value for key, value in exact.items())
+        or not isinstance(config.get("commit"), str)
+        or COMMIT_PATTERN.fullmatch(config["commit"]) is None
+        or (BASE_COMMIT is not None and config["commit"] != BASE_COMMIT)
         or not isinstance(config.get("workspaces"), dict)
     ):
         reject("project configuration rejected")
@@ -123,13 +127,13 @@ def validate_request(request: Any, config: dict[str, Any]) -> tuple[dict[str, An
         "projectId": PROJECT_ID,
         "repository": REPOSITORY,
         "branch": BRANCH,
-        "commit": BASE_COMMIT,
         "manifestSha256": MANIFEST_SHA256,
     }
     if (
         not isinstance(workload, dict)
         or set(workload) != WORKLOAD_KEYS
         or any(workload.get(key) != value for key, value in exact.items())
+        or workload.get("commit") != config["commit"]
         or not isinstance(workload.get("message"), str)
         or not (1 <= len(workload["message"]) <= 20_000)
     ):
@@ -141,12 +145,16 @@ def validate_request(request: Any, config: dict[str, Any]) -> tuple[dict[str, An
         except (ValueError, TypeError, AttributeError):
             reject("workspace ownership rejected")
     record = config["workspaces"].get(request["workspaceIdentity"])
+    record_keys = {"sessionId", "worktree", "allocationSha256"}
+    if BASE_COMMIT is None:
+        record_keys.add("canonicalCommit")
     if (
         not isinstance(record, dict)
-        or set(record) != {"sessionId", "worktree", "allocationSha256"}
+        or set(record) != record_keys
         or record["sessionId"] != request["sessionId"]
         or not isinstance(record["allocationSha256"], str)
         or len(record["allocationSha256"]) != 64
+        or (BASE_COMMIT is None and record["canonicalCommit"] != config["commit"])
     ):
         reject("workspace ownership rejected")
     expected = Path("/srv/atenea/workspaces/sessions") / request["sessionId"] / PROJECT_ID
@@ -183,7 +191,20 @@ def validate_worktree(worktree: Path, record: dict[str, Any]) -> Path:
     common_dir = Path(checked(["git", "rev-parse", "--git-common-dir"], worktree)).resolve()
     if common_dir != GIT_COMMON_DIR or common_dir.is_symlink():
         reject("worktree fingerprint rejected")
-    checked(["git", "merge-base", "--is-ancestor", BASE_COMMIT, "HEAD"], worktree)
+    if BASE_COMMIT is None:
+        canonical_ref = "refs/remotes/origin/" + BRANCH
+        canonical_commit = checked(
+            ["git", "--git-dir", str(common_dir), "rev-parse", "--verify", canonical_ref + "^{commit}"],
+            worktree,
+        )
+        if canonical_commit != record["canonicalCommit"]:
+            reject("worktree fingerprint rejected")
+        if checked(["git", "rev-parse", "--verify", "HEAD^{commit}"], worktree) != canonical_commit:
+            reject("worktree fingerprint rejected")
+        if checked(["git", "status", "--porcelain=v1", "--untracked-files=all"], worktree):
+            reject("worktree fingerprint rejected")
+    else:
+        checked(["git", "merge-base", "--is-ancestor", BASE_COMMIT, "HEAD"], worktree)
     manifest = worktree / "ops" / "atenea-runtime.json"
     try:
         digest = hashlib.sha256(manifest.read_bytes()).hexdigest()

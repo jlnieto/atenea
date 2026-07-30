@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
+import hashlib
 import json
+import tempfile
 import unittest
 import uuid
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from unittest.mock import patch
 
 try:
     from jsonschema import Draft202012Validator, FormatChecker
@@ -17,6 +20,7 @@ MODULE = SourceFileLoader(
     "project_codex_runner_v1",
     str(Path(__file__).with_name("project-codex-runner-v1.py")),
 ).load_module()
+TEST_COMMIT = "1" * 40
 
 
 class ProjectCodexContractTest(unittest.TestCase):
@@ -26,7 +30,7 @@ class ProjectCodexContractTest(unittest.TestCase):
             "projectId": "atenea",
             "repository": MODULE.REPOSITORY,
             "branch": MODULE.BRANCH,
-            "commit": MODULE.BASE_COMMIT,
+            "commit": TEST_COMMIT,
             "manifestSha256": MODULE.MANIFEST_SHA256,
             "message": "Update only the accepted documentation fixture.",
             "threadId": thread_id,
@@ -162,6 +166,81 @@ class ProjectCodexContractTest(unittest.TestCase):
             candidate = json.loads(json.dumps(request))
             candidate["workload"][field] = value
             self.assertTrue(list(validator.iter_errors(candidate)), field)
+
+    def test_dynamic_commit_must_match_root_owned_configuration(self):
+        config = {"commit": TEST_COMMIT, "workspaces": {}}
+        request = {
+            "dispatchId": str(uuid.uuid4()),
+            "executionId": str(uuid.uuid4()),
+            "sessionId": str(uuid.uuid4()),
+            "workspaceIdentity": "remote:ax42-01:work-session:" + str(uuid.uuid4()),
+            "workload": self.workload(),
+        }
+        request["workload"]["commit"] = "2" * 40
+
+        with self.assertRaises(SystemExit):
+            MODULE.validate_request(request, config)
+
+    def test_exact_head_cleanliness_and_mirror_move_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            worktree = root / "atenea"
+            common = root / "atenea.git"
+            worktree.mkdir()
+            common.mkdir()
+            manifest = worktree / "ops" / "atenea-runtime.json"
+            manifest.parent.mkdir()
+            manifest.write_bytes(b"manifest")
+            allocation = worktree.parent / "runtime-allocation-v1.json"
+            allocation.write_bytes(b"allocation")
+            old_common = MODULE.GIT_COMMON_DIR
+            old_manifest = MODULE.MANIFEST_SHA256
+            MODULE.GIT_COMMON_DIR = common
+            MODULE.MANIFEST_SHA256 = hashlib.sha256(manifest.read_bytes()).hexdigest()
+            record = {
+                "sessionId": str(uuid.uuid4()),
+                "worktree": str(worktree),
+                "allocationSha256": hashlib.sha256(allocation.read_bytes()).hexdigest(),
+                "canonicalCommit": TEST_COMMIT,
+            }
+
+            def observed(command, _cwd):
+                joined = " ".join(command)
+                if "--show-toplevel" in joined:
+                    return str(worktree)
+                if "remote get-url" in joined:
+                    return MODULE.REPOSITORY
+                if "--git-common-dir" in joined:
+                    return str(common)
+                if "refs/remotes/origin/" in joined:
+                    return TEST_COMMIT
+                if "HEAD^{commit}" in joined:
+                    return TEST_COMMIT
+                if "status --porcelain" in joined:
+                    return ""
+                raise AssertionError(joined)
+
+            try:
+                with patch.object(MODULE, "checked", side_effect=observed):
+                    self.assertEqual(common, MODULE.validate_worktree(worktree, record))
+
+                for changed_fragment, changed_value in (
+                    ("status --porcelain", "?? draft.txt"),
+                    ("HEAD^{commit}", "2" * 40),
+                    ("refs/remotes/origin/", "2" * 40),
+                ):
+                    def changed(command, cwd, fragment=changed_fragment, value=changed_value):
+                        joined = " ".join(command)
+                        if fragment in joined:
+                            return value
+                        return observed(command, cwd)
+
+                    with patch.object(MODULE, "checked", side_effect=changed):
+                        with self.assertRaises(SystemExit):
+                            MODULE.validate_worktree(worktree, record)
+            finally:
+                MODULE.GIT_COMMON_DIR = old_common
+                MODULE.MANIFEST_SHA256 = old_manifest
 
 
 if __name__ == "__main__":

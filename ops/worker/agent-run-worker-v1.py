@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import signal
 import subprocess
 import tempfile
@@ -41,8 +42,9 @@ WORKSPACE_ENSURE_KEYS = {
 PROJECT_ID = "atenea"
 PROJECT_REPOSITORY = "https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH = "feature/actualizar-conversacion-en-web"
-PROJECT_COMMIT = "d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b"
 PROJECT_MANIFEST_SHA256 = "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
+PROJECT_MIRROR = Path("/srv/atenea/repositories/atenea.git")
+COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 BEAUTIPS_PROJECT_ID = "beautips"
 BEAUTIPS_PROJECT_REPOSITORY = "https://github.com/jlnieto/beautips.git"
 BEAUTIPS_PROJECT_BRANCH = "main"
@@ -256,16 +258,19 @@ class WorkerState:
             )
         project_id = request.get("projectId")
         if project_id == PROJECT_ID:
+            route = self._project_route(PROJECT_ID)
+            canonical_commit = self._observe_project_commit(route)
             route_identity = {
                 "projectId": PROJECT_ID,
                 "repository": PROJECT_REPOSITORY,
                 "branch": PROJECT_BRANCH,
-                "commit": PROJECT_COMMIT,
+                "commit": canonical_commit,
                 "manifestSha256": PROJECT_MANIFEST_SHA256,
             }
             activator = self.project_workspace_activator
             allowed_slots = {"slot2", "slot3", "slot4"}
         elif project_id == BEAUTIPS_PROJECT_ID:
+            canonical_commit = BEAUTIPS_PROJECT_COMMIT
             route_identity = {
                 "projectId": BEAUTIPS_PROJECT_ID,
                 "repository": BEAUTIPS_PROJECT_REPOSITORY,
@@ -347,6 +352,7 @@ class WorkerState:
             or result.get("projectId") != project_id
             or result.get("workspaceBranch") != workspace_branch
             or result.get("slot") not in allowed_slots
+            or result.get("canonicalCommit") != canonical_commit
             or result.get("valuesExposed") is not False
         ):
             raise ProtocolError(
@@ -450,7 +456,14 @@ class WorkerState:
             )
         if not self._project_execution_enabled(route):
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project workload is disabled")
-        exact = route["identity"]
+        config = self._read_project_config(route, require_execution=True)
+        if config["commit"] != self._observe_project_commit(route):
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "canonical_source_moved",
+                "worker mirror canonical source moved before admission",
+            )
+        exact = {**route["identity"], "commit": config["commit"]}
         if any(workload.get(key) != value for key, value in exact.items()):
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_ownership_conflict", "project identity is not allowlisted")
         if not isinstance(workload["message"], str) or not (1 <= len(workload["message"]) <= 20_000):
@@ -461,7 +474,6 @@ class WorkerState:
                 uuid.UUID(thread_id)
             except (ValueError, TypeError, AttributeError):
                 raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_thread", "threadId must be null or a UUID")
-        config = self._read_project_config(route, require_execution=True)
         if request["workspaceIdentity"] not in config["workspaces"]:
             raise ProtocolError(
                 HTTPStatus.FORBIDDEN,
@@ -469,10 +481,17 @@ class WorkerState:
                 "workspace identity is not persistently registered",
             )
         record = config["workspaces"][request["workspaceIdentity"]]
+        record_keys = {"sessionId", "worktree", "allocationSha256"}
+        if workload["projectId"] == PROJECT_ID:
+            record_keys.add("canonicalCommit")
         if (
             not isinstance(record, dict)
-            or set(record) != {"sessionId", "worktree", "allocationSha256"}
+            or set(record) != record_keys
             or record["sessionId"] != request["sessionId"]
+            or (
+                workload["projectId"] == PROJECT_ID
+                and record["canonicalCommit"] != workload["commit"]
+            )
         ):
             raise ProtocolError(
                 HTTPStatus.FORBIDDEN,
@@ -485,11 +504,11 @@ class WorkerState:
             return {
                 "config": self.project_config,
                 "runner": self.project_runner,
+                "mirror": PROJECT_MIRROR,
                 "identity": {
                     "projectId": PROJECT_ID,
                     "repository": PROJECT_REPOSITORY,
                     "branch": PROJECT_BRANCH,
-                    "commit": PROJECT_COMMIT,
                     "manifestSha256": PROJECT_MANIFEST_SHA256,
                 },
             }
@@ -497,6 +516,7 @@ class WorkerState:
             return {
                 "config": self.beautips_project_config,
                 "runner": self.beautips_project_runner,
+                "mirror": None,
                 "identity": {
                     "projectId": BEAUTIPS_PROJECT_ID,
                     "repository": BEAUTIPS_PROJECT_REPOSITORY,
@@ -531,6 +551,8 @@ class WorkerState:
             not isinstance(parsed, dict)
             or set(parsed) != required
             or any(parsed.get(key) != value for key, value in exact.items())
+            or not isinstance(parsed.get("commit"), str)
+            or COMMIT_PATTERN.fullmatch(parsed["commit"]) is None
             or parsed.get("selectionEnabled") is not True
             or not isinstance(parsed.get("executionEnabled"), bool)
             or (require_execution and parsed.get("executionEnabled") is not True)
@@ -539,6 +561,38 @@ class WorkerState:
         ):
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_disabled", "project configuration is not exact")
         return parsed
+
+    def _observe_project_commit(self, route: dict[str, Any]) -> str:
+        if route.get("mirror") is None:
+            return self._read_project_config(route)["commit"]
+        reference = "refs/remotes/origin/" + route["identity"]["branch"]
+        try:
+            completed = subprocess.run(
+                [
+                    "git", "--git-dir", str(route["mirror"]),
+                    "rev-parse", "--verify", reference + "^{commit}",
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=15,
+                check=True,
+            )
+        except (OSError, subprocess.SubprocessError):
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "canonical_source_unavailable",
+                "worker mirror canonical source is unavailable",
+            )
+        commit = completed.stdout.strip()
+        if COMMIT_PATTERN.fullmatch(commit) is None:
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "canonical_source_ambiguous",
+                "worker mirror canonical source is ambiguous",
+            )
+        return commit
 
     def _project_selection_enabled(self) -> bool:
         for project_id in (PROJECT_ID, BEAUTIPS_PROJECT_ID):

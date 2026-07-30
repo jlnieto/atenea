@@ -4480,10 +4480,39 @@ Sanitized task-0.1 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `7cdfa7a4b8861bd4a27cd59e1742bd79db156ca508eaa6b84044e3275da38ee9`.
 
-Task 0.2 remains pending. Its initial static-pin experiment was deliberately
-discarded before commit after proving that a repository cannot embed its own
-current branch HEAD as a stable constant: the commit containing that constant
-immediately creates a different HEAD. The accepted design now requires a
-runtime control-plane observation persisted into WorkSession and AgentRun plus
-an independent AX42 mirror observation at admission. No Atenea, worker or
-production source change from that experiment was retained.
+Task 0.2 is complete and change progress is `2/57`; the exact resume point is
+task 0.3. Its initial static-pin experiment was deliberately discarded before
+commit after proving that a repository cannot embed its own current branch
+HEAD as a stable constant: the commit containing that constant immediately
+creates a different HEAD.
+
+Atenea now observes its fixed remote branch at runtime before the first
+write, requires the canonical checkout to be on that branch, clean and exactly
+equal to the remote commit, then persists the ref, commit, observation
+fingerprint and time. The immutable value is copied into AgentRun. AX42
+independently resolves the root-owned mirror ref before workspace admission
+and dispatch; configuration, workload, mirror, registered workspace and clean
+WorkSession HEAD must all match. The independently observed worker commit is
+returned and persisted before dispatch.
+
+The Atenea implementation is published cleanly at
+`5dfa8d4174b67019216a9c97746d502431e1959c`. Two complete backend passes each
+ran 420 tests with zero failures, errors or skips. Two worker passes each ran
+8 project-runner, 18 AgentRun-worker and 4 Beautips-compatibility tests plus
+shell syntax validation. External timeouts were 600 seconds for backend
+passes and 120 seconds for worker passes. Negative acceptance covers stale
+ancestor, divergence, tracked/untracked dirt, missing or ambiguous ref, moved
+control-plane ref, moved worker mirror and conflicting workload commit.
+
+The stale WorkSession remains byte-preserved at
+`d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b` with clean index, 28 tracked
+changes, 16 untracked files and zero session processes. No worker install or
+production deployment occurred. The installed mirror remains deliberately at
+`1bef4b01a0ddd71f71279721bad908867cc21c3c`; the new contract rejects that
+difference from canonical instead of fetching, resetting, reassigning or
+inventing ownership during admission.
+
+Sanitized task-0.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.2-canonical-source-admission`;
+the SHA-256 of its `SHA256SUMS` is
+`da95d1047002253d983e1b877eac1d955d598065d9a60d33f820d8cd30ca8fb9`.

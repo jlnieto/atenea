@@ -43,7 +43,12 @@ done
 PROJECT_ID=atenea
 REPOSITORY=https://github.com/jlnieto/atenea.git
 BASE_BRANCH=feature/actualizar-conversacion-en-web
-PINNED_COMMIT=d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b
+MIRROR=/srv/atenea/repositories/atenea.git
+CANONICAL_REF="refs/remotes/origin/${BASE_BRANCH}"
+PINNED_COMMIT="$(git --git-dir="${MIRROR}" rev-parse --verify "${CANONICAL_REF}^{commit}")" ||
+  fail 'canonical mirror ref is unavailable'
+[[ "${PINNED_COMMIT}" =~ ^[0-9a-f]{40}$ ]] ||
+  fail 'canonical mirror ref is ambiguous'
 MANIFEST_SHA256=3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3
 SLOT=slot2
 WORKSPACE_IDENTITY="remote:ax42-01:work-session:${SESSION_ID}"
@@ -71,10 +76,13 @@ MANIFEST="${WORKTREE}/ops/atenea-runtime.json"
 jq -e \
   --arg session "${SESSION_ID}" \
   --arg identity "${WORKSPACE_IDENTITY}" \
+  --arg commit "${PINNED_COMMIT}" \
   '(.selectionEnabled == true) and
    (.executionEnabled == true) and
+   (.commit == $commit) and
    (.workspaces | keys) == [$identity] and
-   .workspaces[$identity].sessionId == $session' \
+   .workspaces[$identity].sessionId == $session and
+   .workspaces[$identity].canonicalCommit == $commit' \
   "${CONFIG}" >/dev/null ||
   fail 'final persisted Atenea registration is not exact'
 
@@ -82,13 +90,15 @@ jq -cn \
   --arg session "${SESSION_ID}" \
   --arg identity "${WORKSPACE_IDENTITY}" \
   --arg branch "${WORKSPACE_BRANCH}" \
-  --arg slot "${SLOT}" '{
+  --arg slot "${SLOT}" \
+  --arg commit "${PINNED_COMMIT}" '{
     state: "ready",
     sessionId: $session,
     workspaceIdentity: $identity,
     projectId: "atenea",
     workspaceBranch: $branch,
     slot: $slot,
+    canonicalCommit: $commit,
     selectionEnabled: true,
     executionEnabled: true,
     valuesExposed: false

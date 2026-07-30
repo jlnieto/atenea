@@ -17,8 +17,9 @@ SUDOERS_FILE="/etc/sudoers.d/atenea-project-codex-v1"
 STATE_DIR="/srv/atenea/worker/agent-runs-v1"
 PROJECT_REPOSITORY="https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH="feature/actualizar-conversacion-en-web"
-PROJECT_COMMIT="d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b"
 PROJECT_MANIFEST_SHA256="3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
+PROJECT_MIRROR="/srv/atenea/repositories/atenea.git"
+PROJECT_REF="refs/remotes/origin/${PROJECT_BRANCH}"
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -77,6 +78,7 @@ write_project_config() {
   local selection_enabled="$1"
   local execution_enabled="$2"
   local workspaces_json="$3"
+  local canonical_commit="$4"
   local temporary
   temporary="$(mktemp /etc/atenea-worker/.project-codex-v1.XXXXXX)"
   jq -n \
@@ -86,7 +88,7 @@ write_project_config() {
     --arg project_id atenea \
     --arg repository "$PROJECT_REPOSITORY" \
     --arg branch "$PROJECT_BRANCH" \
-    --arg commit "$PROJECT_COMMIT" \
+    --arg commit "$canonical_commit" \
     --arg manifest_sha256 "$PROJECT_MANIFEST_SHA256" \
     --arg runner "$PROJECT_RUNNER" \
     --argjson workspaces "$workspaces_json" \
@@ -105,6 +107,14 @@ write_project_config() {
   chown root:root "$temporary"
   chmod 0644 "$temporary"
   mv -f "$temporary" "$PROJECT_CONFIG"
+}
+
+observe_project_commit() {
+  local commit
+  commit="$(git --git-dir="$PROJECT_MIRROR" rev-parse --verify "${PROJECT_REF}^{commit}")" \
+    || fail "canonical mirror ref is unavailable"
+  [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || fail "canonical mirror ref is ambiguous"
+  printf '%s\n' "$commit"
 }
 
 apply_install() {
@@ -136,7 +146,7 @@ apply_install() {
   } >"$ENV_FILE"
   chown root:root "$ENV_FILE"
   chmod 0644 "$ENV_FILE"
-  write_project_config false false '{}'
+  write_project_config false false '{}' "$(observe_project_commit)"
   {
     printf 'atenea-worker ALL=(root) NOPASSWD: %s --config %s\n' "$PROJECT_RUNNER" "$PROJECT_CONFIG"
   } >"$SUDOERS_FILE"
@@ -189,12 +199,14 @@ verify() {
       && "$(sha256sum "$INSTALLER" | cut -d' ' -f1)" \
         == "$(sha256sum "$SCRIPT_DIR/install-agent-run-worker-v1.sh" | cut -d' ' -f1)" ]] \
     || fail "worker installer differs from the reviewed source"
-  jq -e '
+  jq -e '. as $root |
     .schemaVersion == "project-codex-v1" and
     .projectId == "atenea" and
+    (.commit | test("^[0-9a-f]{40}$")) and
     (.selectionEnabled | type == "boolean") and
     (.executionEnabled | type == "boolean") and
-    (.workspaces | type == "object")
+    (.workspaces | type == "object") and
+    ([.workspaces[] | .canonicalCommit == $root.commit] | all)
   ' "$PROJECT_CONFIG" >/dev/null || fail "project configuration is invalid"
   visudo -cf "$SUDOERS_FILE" >/dev/null
   printf '%s\n' 'agent-run-worker-v1 verification passed'
@@ -215,8 +227,12 @@ project_register() {
     || fail "persisted workspace ownership is absent"
   [[ "$(git -c safe.directory="$worktree" -C "$worktree" remote get-url origin)" == "$PROJECT_REPOSITORY" ]] \
     || fail "workspace remote is foreign"
-  git -c safe.directory="$worktree" -C "$worktree" merge-base --is-ancestor "$PROJECT_COMMIT" HEAD \
-    || fail "workspace does not descend from the pinned commit"
+  local canonical_commit
+  canonical_commit="$(observe_project_commit)"
+  [[ "$(git -c safe.directory="$worktree" -C "$worktree" rev-parse --verify 'HEAD^{commit}')" \
+      == "$canonical_commit" ]] || fail "workspace HEAD is not the canonical commit"
+  [[ -z "$(git -c safe.directory="$worktree" -C "$worktree" status --porcelain=v1 --untracked-files=all)" ]] \
+    || fail "workspace is not clean"
   [[ "$(sha256sum "$worktree/ops/atenea-runtime.json" | cut -d' ' -f1)" == "$PROJECT_MANIFEST_SHA256" ]] \
     || fail "workspace manifest is foreign"
   local allocation_sha workspaces
@@ -226,14 +242,16 @@ project_register() {
     --arg session_id "$session_id" \
     --arg worktree "$worktree" \
     --arg allocation_sha256 "$allocation_sha" \
+    --arg canonical_commit "$canonical_commit" \
     '.workspaces + {
       ($identity): {
         sessionId: $session_id,
         worktree: $worktree,
-        allocationSha256: $allocation_sha256
+        allocationSha256: $allocation_sha256,
+        canonicalCommit: $canonical_commit
       }
     }' "$PROJECT_CONFIG")"
-  write_project_config true false "$workspaces"
+  write_project_config true false "$workspaces" "$canonical_commit"
 }
 
 project_selection_enable() {
@@ -241,7 +259,7 @@ project_selection_enable() {
   local workspaces
   workspaces="$(jq -c '.workspaces' "$PROJECT_CONFIG")"
   [[ "$(jq 'length' <<<"$workspaces")" -le 1 ]] || fail "at most one persisted workspace may be registered"
-  write_project_config true false "$workspaces"
+  write_project_config true false "$workspaces" "$(jq -r '.commit' "$PROJECT_CONFIG")"
   systemctl try-restart "$SERVICE"
 }
 
@@ -250,7 +268,7 @@ project_enable() {
   local workspaces
   workspaces="$(jq -c '.workspaces' "$PROJECT_CONFIG")"
   [[ "$(jq 'length' <<<"$workspaces")" -eq 1 ]] || fail "exactly one persisted workspace must be registered"
-  write_project_config true true "$workspaces"
+  write_project_config true true "$workspaces" "$(jq -r '.commit' "$PROJECT_CONFIG")"
   systemctl try-restart "$SERVICE"
 }
 
@@ -263,14 +281,14 @@ project_activate() {
   [[ "$(jq 'length' <<<"$workspaces")" -eq 1 ]] || fail "exactly one persisted workspace must be registered"
   # The worker reads this file for every request. Avoid restarting the service
   # from inside the workspace-ensure request that is currently serving activation.
-  write_project_config true true "$workspaces"
+  write_project_config true true "$workspaces" "$(jq -r '.commit' "$PROJECT_CONFIG")"
 }
 
 project_disable() {
   require_root
   local workspaces
   workspaces="$(jq -c '.workspaces' "$PROJECT_CONFIG")"
-  write_project_config false false "$workspaces"
+  write_project_config false false "$workspaces" "$(jq -r '.commit' "$PROJECT_CONFIG")"
   systemctl try-restart "$SERVICE"
 }
 
@@ -287,7 +305,7 @@ project_unregister() {
   [[ "$matches" == true ]] || fail "exact persisted workspace ownership does not match"
   local workspaces
   workspaces="$(jq -c --arg identity "$workspace_identity" 'del(.workspaces[$identity]) | .workspaces' "$PROJECT_CONFIG")"
-  write_project_config false false "$workspaces"
+  write_project_config false false "$workspaces" "$(jq -r '.commit' "$PROJECT_CONFIG")"
   systemctl try-restart "$SERVICE"
 }
 
