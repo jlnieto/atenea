@@ -39,10 +39,10 @@
 
 ## 6. Disable, rollback and accepted re-enable
 
-- [ ] 6.1 Disable new Beautips selection and worker execution without moving the open WorkSession or deleting retained ownership
-- [ ] 6.2 Repeat disable and provisioning reconciliation, proving idempotence and foreign-resource rejection
-- [ ] 6.3 Re-enable only the accepted exact workspace after worker, backup and non-impact checks pass
-- [ ] 6.4 Prove a final continued turn uses the same workspace and thread with no duplicate dispatch
+- [x] 6.1 Disable new Beautips selection and worker execution without moving the open WorkSession or deleting retained ownership
+- [x] 6.2 Repeat disable and provisioning reconciliation, proving idempotence and foreign-resource rejection
+- [x] 6.3 Re-enable only the accepted exact workspace after worker, backup and non-impact checks pass
+- [x] 6.4 Prove a final continued turn uses the same workspace and thread with no duplicate dispatch
 
 ## 7. Evidence and closure
 
