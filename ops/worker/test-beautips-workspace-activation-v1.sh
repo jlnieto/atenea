@@ -80,9 +80,9 @@ export FIXTURE_MANIFEST="${MANIFEST_SOURCE}"
 SESSION_ID=11111111-1111-4111-8111-111111111111
 
 first="$("${LIBEXEC}/beautips-workspace-activation-v1.sh" \
-  ensure "${SESSION_ID}" codex/work-session-91)"
+  ensure "${SESSION_ID}" "atenea/session-${SESSION_ID}")"
 second="$("${LIBEXEC}/beautips-workspace-activation-v1.sh" \
-  ensure "${SESSION_ID}" codex/work-session-91)"
+  ensure "${SESSION_ID}" "atenea/session-${SESSION_ID}")"
 [[ "${first}" == "${second}" ]] || {
   printf 'repeated activation response differs\n' >&2
   exit 1
@@ -95,13 +95,19 @@ jq -e '
 ' <<<"${first}" >/dev/null
 
 if "${LIBEXEC}/beautips-workspace-activation-v1.sh" \
-  ensure not-a-uuid codex/work-session-91 >/dev/null 2>&1; then
+  ensure not-a-uuid atenea/session-not-a-uuid >/dev/null 2>&1; then
   printf 'foreign session was accepted\n' >&2
   exit 1
 fi
 if "${LIBEXEC}/beautips-workspace-activation-v1.sh" \
   ensure "${SESSION_ID}" main >/dev/null 2>&1; then
   printf 'foreign branch was accepted\n' >&2
+  exit 1
+fi
+if "${LIBEXEC}/beautips-workspace-activation-v1.sh" \
+  ensure "${SESSION_ID}" atenea/session-22222222-2222-4222-8222-222222222222 \
+  >/dev/null 2>&1; then
+  printf 'branch owned by another session was accepted\n' >&2
   exit 1
 fi
 

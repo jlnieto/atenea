@@ -163,7 +163,7 @@ print(json.dumps({
             "branch": MODULE.BEAUTIPS_PROJECT_BRANCH,
             "commit": MODULE.BEAUTIPS_PROJECT_COMMIT,
             "manifestSha256": MODULE.BEAUTIPS_PROJECT_MANIFEST_SHA256,
-            "workspaceBranch": "codex/work-session-91",
+            "workspaceBranch": "atenea/session-" + self.session_id,
         }
 
     def test_exact_workspace_can_be_ensured_repeatedly(self):
@@ -187,6 +187,13 @@ print(json.dumps({
     def test_noncanonical_branch_fails_before_activation(self):
         request = self.request()
         request["workspaceBranch"] = "main"
+        with self.assertRaisesRegex(MODULE.ProtocolError, "persisted WorkSession"):
+            self.state.ensure_workspace(request)
+        self.assertFalse(self.calls.exists())
+
+    def test_branch_owned_by_another_session_fails_before_activation(self):
+        request = self.request()
+        request["workspaceBranch"] = "atenea/session-22222222-2222-4222-8222-222222222222"
         with self.assertRaisesRegex(MODULE.ProtocolError, "persisted WorkSession"):
             self.state.ensure_workspace(request)
         self.assertFalse(self.calls.exists())

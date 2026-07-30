@@ -269,8 +269,7 @@ class WorkerState:
         workspace_branch = request["workspaceBranch"]
         if (
             not isinstance(workspace_branch, str)
-            or not workspace_branch.startswith("codex/work-session-")
-            or not workspace_branch.removeprefix("codex/work-session-").isdigit()
+            or workspace_branch != f"atenea/session-{session_id}"
         ):
             raise ProtocolError(
                 HTTPStatus.BAD_REQUEST,

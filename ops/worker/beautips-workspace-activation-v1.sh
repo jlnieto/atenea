@@ -17,7 +17,7 @@ fail() {
   fail 'usage: ensure SESSION_UUID WORKSPACE_BRANCH'
 [[ "${SESSION_ID}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] ||
   fail 'session identity is not a canonical UUID'
-[[ "${WORKSPACE_BRANCH}" =~ ^codex/work-session-[1-9][0-9]*$ ]] ||
+[[ "${WORKSPACE_BRANCH}" == "atenea/session-${SESSION_ID}" ]] ||
   fail 'workspace branch is not a persisted WorkSession branch'
 
 if [[ "${TEST_MODE}" == 1 ]]; then
