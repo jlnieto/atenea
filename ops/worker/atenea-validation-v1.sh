@@ -61,6 +61,11 @@ case "$OPERATION" in
       ./scripts/android-build.sh :app:assembleDebug
     )
     ;;
+  PLAYWRIGHT_ACCEPTANCE)
+    DEFINITION="atenea-playwright-acceptance-v1"
+    LIMIT=600
+    COMMAND=()
+    ;;
   *) fail ;;
 esac
 
@@ -75,6 +80,15 @@ TMP="$(mktemp "$ARTIFACT_ROOT/$SESSION_ID/.validation-output.XXXXXX")"
 trap 'rm -f -- "$TMP"; [[ -n "$RUN_ROOT" ]] && rm -rf -- "$RUN_ROOT"' EXIT
 mkdir "$RUN_ROOT/repo"
 tar --exclude='./.git' -C "$WORKTREE" -cf - . | tar -C "$RUN_ROOT/repo" -xf -
+if [[ "$OPERATION" == "PLAYWRIGHT_ACCEPTANCE" ]]; then
+  COMMAND=(
+    /usr/local/libexec/atenea/atenea-playwright-validation-v1.sh
+    "$SESSION_ID"
+    "$VALIDATION_ID"
+    "$RUN_ROOT/repo"
+    "$ARTIFACT_ROOT/$SESSION_ID/$VALIDATION_ID"
+  )
+fi
 START="$(date +%s%3N)"
 set +e
 (cd "$RUN_ROOT/repo" && timeout --signal=TERM --kill-after=15s "${LIMIT}s" "${COMMAND[@]}") >"$TMP" 2>&1

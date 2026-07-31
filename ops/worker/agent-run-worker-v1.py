@@ -57,6 +57,7 @@ VALIDATION_DEFINITIONS = {
     "BACKEND_TEST": ("atenea-backend-test-v1", 900),
     "WEB_BUILD": ("atenea-web-build-v1", 600),
     "ANDROID_BUILD": ("atenea-android-build-v1", 1200),
+    "PLAYWRIGHT_ACCEPTANCE": ("atenea-playwright-acceptance-v1", 600),
 }
 PROJECT_ID = "atenea"
 PROJECT_REPOSITORY = "https://github.com/jlnieto/atenea.git"

@@ -4626,6 +4626,45 @@ Sanitized task-0.5 evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `2d81fdae178520a167e8d698faea2de184d354924d44108d38317f1ce5791877`.
 
+Task 0.6 is complete and change progress is `6/57`; the exact resume point is
+task 0.7.
+
+`PLAYWRIGHT_ACCEPTANCE` extends the same immutable validation identity and
+acceptance projection with definition
+`atenea-playwright-acceptance-v1` and a fixed 600-second outer timeout. Its
+root-owned runner derives the exact slot only from the WorkSession allocation,
+requires the locked Playwright 1.60.0 module and image, builds the web source in
+the isolated validation copy and starts one exact-labelled rootless container.
+The caller supplies no URL, route, viewport, assertion, browser, image, network,
+mount, path, slot or environment.
+
+The browser container has no network, drops all capabilities, has a read-only
+root, bounded memory/PIDs and a finite writable `/tmp`. A fixed in-container
+loopback server presents the built SPA. Playwright separately proves HTTP/data,
+non-empty visible DOM and no horizontal overflow at `1440x900` and `390x844`,
+then retains only the two PNGs and a sanitized report containing dimensions,
+counts, booleans and SHA-256 values. Pages, contexts, browser and server close
+in `finally`. `--rm` removes the exact container; timeout cleanup removes it
+only when all three immutable ownership labels match, and retains any foreign
+same-name object fail-closed.
+
+Two synthetic Playwright passes completed with HTTP 200, visible critical
+content, no horizontal overflow and deterministic two-viewport reports.
+Desktop and mobile screenshots were inspected at original resolution: content,
+state and long identifiers are readable with no clipping, overlap or
+off-screen rendering. Two worker passes each ran 24 tests without failure. Two
+backend passes each ran 435 tests with zero failures, errors or skips and
+validated all 54 Flyway migrations. Shell syntax, JavaScript syntax and strict
+OpenSpec validation passed. Temporary browser processes, backend containers and
+networks were removed; no real WorkSession, worker installation, production,
+routing, preview or Beautips resource changed.
+
+Sanitized task-0.6 evidence, including the inspected original-resolution PNGs,
+is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.6-closed-playwright-acceptance`;
+the SHA-256 of its `SHA256SUMS` is
+`db4611b2c718a19ea78737e78268da4ef9f24c1d5659b223680f8394267515be`.
+
 The Atenea implementation is published cleanly at
 `e4947afc0cc6011df14d5d8a6396ec31a977fe8d`. Two backend passes each ran 431
 tests with zero failures, errors or skips and validated all 52 Flyway
