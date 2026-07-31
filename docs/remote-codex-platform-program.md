@@ -264,6 +264,7 @@ production activation are recorded later in this ledger.
 | D-061 | Make V60 notification defaults implicit-enabled through absent preference rows, constrain event copy to the three exact `agent-run-safe-v1` templates, bind deduplication to category/run/source revision and own one FCM delivery per exact event/device without copying the device token. | Upgrade and re-registration must not reset user choices, event rows must never retain conversation content, and partial dispatch needs independently retryable delivery ownership without duplicate presentation. | accepted | backend/mobile/data/security owners | before adding a notification category, template version, channel or changing preference defaults |
 | D-062 | Keep the established three-field authenticated principal and resolve operational role from the current active account for each privileged API; require exact JSON field sets, catalog membership and persisted ownership, and expose V57–V60 APIs only behind five independent default-false gates. | Token-carried authority can become stale, permissive JSON binding silently accepts forbidden fields, and additive persistence must remain inert until each rollout dimension is separately accepted. | accepted | backend/security/platform owners | before changing API authority, closed request fields or feature-gate defaults |
 | D-063 | Give every shared web/mobile session event a stable persisted-identity key, seed and poll the bounded 200-event SSE window by that identity, and replace the legacy run-terminal timeline item only when a committed terminal progress event is published behind the enabled progress gate. | Timestamp cursors can drop same-instant events or resend them after reconnect; publishing both lifecycle and progress terminals creates duplicate operator output, while disable-first rollback must retain the established terminal feed. | accepted | backend/web/mobile owners | before changing shared-stream identity, progress publication or terminal fallback |
+| D-064 | Run shared control-plane integration suites with global synthetic authentication bootstrap disabled and require authentication-specific tests to opt in with their exact operator fixture. | An eager default operator makes database-backed authorization tests order-dependent and can conceal which persisted role or identity actually authorized an operation. | accepted | backend/security/test owners | before changing integration-test authentication bootstrap |
 
 ## Deferred decisions and gates
 
@@ -5246,3 +5247,30 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.6-shared-progress-stream`;
 the SHA-256 of its `SHA256SUMS` is
 `88d2054778bc56c9c682dc36f35d9774fd95e4f0fc8a537acb6481f5016050e1`.
+
+Task 2.7 and Phase 2 are complete. Change progress is `22/57`; the exact
+implementation resume point is task 3.1. Tasks 3.1 and later remain pending.
+
+Atenea commit `652eaa08934dd1e6a6261407596a95c5a6630aeb` adds the final
+focused migration integration check and no production functionality. It
+proves Flyway V57–V60 ordering, the expected additive tables, columns and
+ownership constraints, and all five capability gates default false. Together
+with the focused suites added throughout tasks 2.1–2.6, Phase 2 now has direct
+migration, repository, service, authorization, API, SSE, idempotency and
+sanitization coverage.
+
+The combined focused set passed 34 tests. Two complete 479-test passes against
+separate fresh PostgreSQL 16 databases at V60 passed with zero failures,
+errors or skips in 43.592 and 43.434 seconds. Global synthetic authentication
+bootstrap was disabled; authentication-specific tests opt in with their exact
+fixture. No task container, network, database volume or raw test log remains.
+
+The canonical Atenea branch and remote are clean and synchronized at that
+commit. Production and preview remain running with zero backend restarts;
+production remains V56. Phase 2 was not deployed or enabled, and AX42 worker
+protocol/capability work begins only at task 3.1.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.7-focused-control-plane-tests`;
+the SHA-256 of its `SHA256SUMS` is
+`c4402aca10b2075045bc97b3c41d2a43204abba4ef1f215e309d7085eef2088b`.
