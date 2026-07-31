@@ -30,19 +30,22 @@ public class AgentRunService {
     private final SessionTurnRepository sessionTurnRepository;
     private final AgentRunProgressService agentRunProgressService;
     private final MobilePushDispatchService mobilePushDispatchService;
+    private final WorkSessionAcceptanceService workSessionAcceptanceService;
 
     public AgentRunService(
             WorkSessionRepository workSessionRepository,
             AgentRunRepository agentRunRepository,
             SessionTurnRepository sessionTurnRepository,
             AgentRunProgressService agentRunProgressService,
-            MobilePushDispatchService mobilePushDispatchService
+            MobilePushDispatchService mobilePushDispatchService,
+            WorkSessionAcceptanceService workSessionAcceptanceService
     ) {
         this.workSessionRepository = workSessionRepository;
         this.agentRunRepository = agentRunRepository;
         this.sessionTurnRepository = sessionTurnRepository;
         this.agentRunProgressService = agentRunProgressService;
         this.mobilePushDispatchService = mobilePushDispatchService;
+        this.workSessionAcceptanceService = workSessionAcceptanceService;
     }
 
     @Transactional
@@ -67,6 +70,7 @@ public class AgentRunService {
     ) {
         Instant now = Instant.now();
         ensureNoNonTerminalRun(session.getId());
+        workSessionAcceptanceService.invalidateForNewRun(session);
         if (session.getRemoteSessionId() == null
                 || (!"synthetic-routing-v1".equals(session.getRemoteWorkloadKind())
                     && !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind()))
@@ -193,6 +197,7 @@ public class AgentRunService {
     private AgentRunEntity createRunningRun(WorkSessionEntity session, SessionTurnEntity originTurn, Instant now) {
         Long sessionId = session.getId();
         ensureNoNonTerminalRun(sessionId);
+        workSessionAcceptanceService.invalidateForNewRun(session);
 
         AgentRunEntity run = new AgentRunEntity();
         run.setSession(session);
@@ -302,7 +307,8 @@ public class AgentRunService {
                 run.getLeaseExpiresAt(),
                 run.getLastHeartbeatAt(),
                 run.getLifecycleRevision(),
-                run.getStatusReason()
+                run.getStatusReason(),
+                run.getProcessOutcome()
         );
     }
 }

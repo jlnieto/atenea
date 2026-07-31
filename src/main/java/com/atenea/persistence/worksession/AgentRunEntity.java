@@ -39,6 +39,10 @@ public class AgentRunEntity {
     @Column(nullable = false, length = 32)
     private AgentRunStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "process_outcome", length = 16)
+    private AgentRunProcessOutcome processOutcome;
+
     @Column(name = "target_repo_path", nullable = false, length = 500)
     private String targetRepoPath;
 
@@ -170,6 +174,15 @@ public class AgentRunEntity {
 
     public void setStatus(AgentRunStatus status) {
         this.status = status;
+        this.processOutcome = AgentRunProcessOutcome.fromStatus(status);
+    }
+
+    public AgentRunProcessOutcome getProcessOutcome() {
+        return processOutcome;
+    }
+
+    public void setProcessOutcome(AgentRunProcessOutcome processOutcome) {
+        this.processOutcome = processOutcome;
     }
 
     public String getTargetRepoPath() {

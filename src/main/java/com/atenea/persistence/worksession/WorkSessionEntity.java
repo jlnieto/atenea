@@ -92,6 +92,34 @@ public class WorkSessionEntity {
     @Column(name = "replacement_work_session_id")
     private Long replacementWorkSessionId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "acceptance_state", nullable = false, length = 32)
+    private WorkSessionAcceptanceState acceptanceState = WorkSessionAcceptanceState.DRAFT;
+
+    @Column(name = "source_tree_fingerprint_sha256", length = 64)
+    private String sourceTreeFingerprintSha256;
+
+    @Column(name = "source_tree_observed_at")
+    private Instant sourceTreeObservedAt;
+
+    @Column(name = "validation_projection_sha256", length = 64)
+    private String validationProjectionSha256;
+
+    @Column(name = "validation_definition_revision", length = 80)
+    private String validationDefinitionRevision;
+
+    @Column(name = "acceptance_blocked_check", length = 80)
+    private String acceptanceBlockedCheck;
+
+    @Column(name = "acceptance_next_action", length = 240)
+    private String acceptanceNextAction;
+
+    @Column(name = "validated_at")
+    private Instant validatedAt;
+
+    @Column(name = "integration_ready_at")
+    private Instant integrationReadyAt;
+
     @Column(name = "pull_request_url", length = 500)
     private String pullRequestUrl;
 
@@ -314,6 +342,78 @@ public class WorkSessionEntity {
 
     public void setReplacementWorkSessionId(Long replacementWorkSessionId) {
         this.replacementWorkSessionId = replacementWorkSessionId;
+    }
+
+    public WorkSessionAcceptanceState getAcceptanceState() {
+        return acceptanceState;
+    }
+
+    public void setAcceptanceState(WorkSessionAcceptanceState acceptanceState) {
+        this.acceptanceState = acceptanceState;
+    }
+
+    public String getSourceTreeFingerprintSha256() {
+        return sourceTreeFingerprintSha256;
+    }
+
+    public void setSourceTreeFingerprintSha256(String sourceTreeFingerprintSha256) {
+        this.sourceTreeFingerprintSha256 = sourceTreeFingerprintSha256;
+    }
+
+    public Instant getSourceTreeObservedAt() {
+        return sourceTreeObservedAt;
+    }
+
+    public void setSourceTreeObservedAt(Instant sourceTreeObservedAt) {
+        this.sourceTreeObservedAt = sourceTreeObservedAt;
+    }
+
+    public String getValidationProjectionSha256() {
+        return validationProjectionSha256;
+    }
+
+    public void setValidationProjectionSha256(String validationProjectionSha256) {
+        this.validationProjectionSha256 = validationProjectionSha256;
+    }
+
+    public String getValidationDefinitionRevision() {
+        return validationDefinitionRevision;
+    }
+
+    public void setValidationDefinitionRevision(String validationDefinitionRevision) {
+        this.validationDefinitionRevision = validationDefinitionRevision;
+    }
+
+    public String getAcceptanceBlockedCheck() {
+        return acceptanceBlockedCheck;
+    }
+
+    public void setAcceptanceBlockedCheck(String acceptanceBlockedCheck) {
+        this.acceptanceBlockedCheck = acceptanceBlockedCheck;
+    }
+
+    public String getAcceptanceNextAction() {
+        return acceptanceNextAction;
+    }
+
+    public void setAcceptanceNextAction(String acceptanceNextAction) {
+        this.acceptanceNextAction = acceptanceNextAction;
+    }
+
+    public Instant getValidatedAt() {
+        return validatedAt;
+    }
+
+    public void setValidatedAt(Instant validatedAt) {
+        this.validatedAt = validatedAt;
+    }
+
+    public Instant getIntegrationReadyAt() {
+        return integrationReadyAt;
+    }
+
+    public void setIntegrationReadyAt(Instant integrationReadyAt) {
+        this.integrationReadyAt = integrationReadyAt;
     }
 
     public String getPullRequestUrl() {

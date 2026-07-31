@@ -45,6 +45,7 @@ public interface AgentRunRepository extends JpaRepository<AgentRunEntity, Long> 
     @Query("""
             update AgentRunEntity run
             set run.status = com.atenea.persistence.worksession.AgentRunStatus.FAILED,
+                run.processOutcome = com.atenea.persistence.worksession.AgentRunProcessOutcome.FAILED,
                 run.finishedAt = :finishedAt,
                 run.outputSummary = null,
                 run.errorSummary = :errorSummary,

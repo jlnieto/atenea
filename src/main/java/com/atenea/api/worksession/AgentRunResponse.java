@@ -1,6 +1,7 @@
 package com.atenea.api.worksession;
 
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.AgentRunProcessOutcome;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkloadClass;
 import java.time.Instant;
@@ -29,7 +30,8 @@ public record AgentRunResponse(
         Instant leaseExpiresAt,
         Instant lastHeartbeatAt,
         long lifecycleRevision,
-        String statusReason
+        String statusReason,
+        AgentRunProcessOutcome processOutcome
 ) {
     public AgentRunResponse(
             Long id,
@@ -50,6 +52,7 @@ public record AgentRunResponse(
                 externalTurnId, startedAt, finishedAt, outputSummary, errorSummary,
                 createdAt, ExecutionTarget.LOCAL, null,
                 sessionId == null ? null : "local:work-session:" + sessionId,
-                null, null, WorkloadClass.NORMAL, 0, null, null, 0, null);
+                null, null, WorkloadClass.NORMAL, 0, null, null, 0, null,
+                AgentRunProcessOutcome.fromStatus(status));
     }
 }

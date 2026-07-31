@@ -68,6 +68,7 @@ class AgentRunControllerTest {
                 .andExpect(jsonPath("$[0].id").value(55))
                 .andExpect(jsonPath("$[0].sessionId").value(12))
                 .andExpect(jsonPath("$[0].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$[0].processOutcome").value("SUCCEEDED"))
                 .andExpect(jsonPath("$[0].externalTurnId").value("turn_123"))
                 .andExpect(jsonPath("$[0].targetRepoPath").value("/workspace/repos/internal/atenea"));
     }

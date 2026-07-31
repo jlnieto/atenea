@@ -15,6 +15,7 @@ import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
+import com.atenea.persistence.worksession.AgentRunProcessOutcome;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
@@ -56,6 +57,9 @@ class AgentRunServiceTest {
     @Mock
     private MobilePushDispatchService mobilePushDispatchService;
 
+    @Mock
+    private WorkSessionAcceptanceService workSessionAcceptanceService;
+
     private AgentRunService agentRunService;
     private AgentRunReconciliationService agentRunReconciliationService;
 
@@ -67,7 +71,8 @@ class AgentRunServiceTest {
                 agentRunRepository,
                 sessionTurnRepository,
                 new AgentRunProgressService(),
-                mobilePushDispatchService
+                mobilePushDispatchService,
+                workSessionAcceptanceService
         );
     }
 
@@ -92,6 +97,7 @@ class AgentRunServiceTest {
 
         assertEquals(55L, run.getId());
         assertEquals(AgentRunStatus.RUNNING, run.getStatus());
+        assertNull(run.getProcessOutcome());
         assertEquals("/workspace/repos/internal/atenea", run.getTargetRepoPath());
         assertNull(run.getExternalTurnId());
         assertNotNull(run.getStartedAt());
@@ -115,6 +121,7 @@ class AgentRunServiceTest {
         AgentRunEntity updated = agentRunService.markSucceeded(55L, " turn_123 ", "Completed successfully");
 
         assertEquals(AgentRunStatus.SUCCEEDED, updated.getStatus());
+        assertEquals(AgentRunProcessOutcome.SUCCEEDED, updated.getProcessOutcome());
         assertEquals("turn_123", updated.getExternalTurnId());
         assertEquals("Completed successfully", updated.getOutputSummary());
         assertNull(updated.getErrorSummary());
@@ -131,6 +138,7 @@ class AgentRunServiceTest {
         AgentRunEntity updated = agentRunService.markFailed(55L, "turn_456", "Codex execution failed");
 
         assertEquals(AgentRunStatus.FAILED, updated.getStatus());
+        assertEquals(AgentRunProcessOutcome.FAILED, updated.getProcessOutcome());
         assertEquals("turn_456", updated.getExternalTurnId());
         assertEquals("Codex execution failed", updated.getErrorSummary());
         assertNull(updated.getOutputSummary());

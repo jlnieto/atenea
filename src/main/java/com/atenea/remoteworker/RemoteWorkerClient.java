@@ -104,6 +104,31 @@ public class RemoteWorkerClient {
                 properties.getWorkspaceProvisionTimeout());
     }
 
+    public SourceTreeFingerprint fingerprintSourceTree(WorkSessionEntity session) {
+        if (!ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+                || session.getRemoteSessionId() == null
+                || session.getWorkspaceIdentity() == null) {
+            throw new RemoteWorkerException(
+                    "Persisted source tree ownership or canonical observation is incomplete",
+                    409);
+        }
+        Map<String, Object> body = Map.of(
+                "sessionId", session.getRemoteSessionId().toString(),
+                "workspaceIdentity", session.getWorkspaceIdentity(),
+                "projectId", ProjectCodexIdentity.PROJECT_IDENTITY,
+                "repository", ProjectCodexIdentity.REPOSITORY,
+                "branch", ProjectCodexIdentity.BRANCH,
+                "commit", session.getCanonicalSourceCommit(),
+                "manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256);
+        return exchange(
+                "POST",
+                "/v1/project-workspaces/source-tree-fingerprint",
+                body,
+                SourceTreeFingerprint.class,
+                session.getRemoteSessionId().toString(),
+                properties.getWorkspaceProvisionTimeout());
+    }
+
     private Map<String, Object> workload(AgentRunEntity run, String message) {
         if ("synthetic-routing-v1".equals(run.getWorkloadKind())) {
             return Map.of(
@@ -277,6 +302,21 @@ public class RemoteWorkerClient {
             String projectId,
             String retainedHead,
             String acceptedCommit,
+            String fingerprintSha256,
+            int stagedChangeCount,
+            int unstagedChangeCount,
+            int untrackedChangeCount,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record SourceTreeFingerprint(
+            String state,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String headCommit,
             String fingerprintSha256,
             int stagedChangeCount,
             int unstagedChangeCount,
