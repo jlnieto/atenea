@@ -55,6 +55,13 @@ class RemoteWorkerClientTest {
                     java.util.Map.entry("statusReason", "Awaiting worker admission"),
                     java.util.Map.entry("revision", 1),
                     java.util.Map.entry("progress", 0),
+                    java.util.Map.entry("progressEvents", java.util.List.of(java.util.Map.of(
+                            "dispatchId", request.get("dispatchId").asText(),
+                            "executionId", "4ee2d311-b9da-4307-89b6-dd3110ef2057",
+                            "sequence", 1,
+                            "category", "ACCEPTED",
+                            "occurredAt", Instant.parse("2026-07-29T06:00:00Z"),
+                            "message", "Execution request accepted."))),
                     java.util.Map.entry("createdAt", Instant.parse("2026-07-29T06:00:00Z")),
                     java.util.Map.entry("updatedAt", Instant.parse("2026-07-29T06:00:00Z"))));
             exchange.sendResponseHeaders(201, response.length);
@@ -176,7 +183,8 @@ class RemoteWorkerClientTest {
         UUID threadId = UUID.fromString("bcf43e2e-c9e8-42df-96b2-e9183462c2f4");
         AgentRunEntity run = projectRun(threadId.toString());
 
-        client.dispatch(run, "Update only the accepted documentation fixture.");
+        RemoteWorkerClient.Execution response = client.dispatch(
+                run, "Update only the accepted documentation fixture.");
 
         JsonNode body = requestBody.get();
         JsonNode workload = body.get("workload");
@@ -199,6 +207,9 @@ class RemoteWorkerClientTest {
                 workload.get("projectInstructionSha256").asText());
         assertEquals(threadId.toString(), workload.get("threadId").asText());
         assertEquals(13, workload.size());
+        assertEquals(1, response.progressEvents().size());
+        assertEquals(1, response.progressEvents().getFirst().sequence());
+        assertEquals("ACCEPTED", response.progressEvents().getFirst().category());
         assertNull(workload.get("command"));
         assertNull(workload.get("image"));
         assertNull(workload.get("composeFile"));

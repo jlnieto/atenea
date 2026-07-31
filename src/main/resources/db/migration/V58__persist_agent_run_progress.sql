@@ -1,5 +1,6 @@
 ALTER TABLE agent_run
     ADD COLUMN progress_next_sequence BIGINT NOT NULL DEFAULT 1,
+    ADD COLUMN worker_progress_sequence BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN progress_retained_floor BIGINT,
     ADD COLUMN progress_latest_sequence BIGINT,
     ADD COLUMN progress_latest_category VARCHAR(32),
@@ -11,6 +12,8 @@ ALTER TABLE agent_run
     ADD COLUMN progress_required_next_action VARCHAR(32),
     ADD CONSTRAINT ck_agent_run_progress_next_sequence
         CHECK (progress_next_sequence >= 1),
+    ADD CONSTRAINT ck_agent_run_worker_progress_sequence
+        CHECK (worker_progress_sequence >= 0),
     ADD CONSTRAINT ck_agent_run_progress_projection
         CHECK (
             (progress_latest_sequence IS NULL

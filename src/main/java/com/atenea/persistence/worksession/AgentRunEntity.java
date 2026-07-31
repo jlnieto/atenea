@@ -157,6 +157,9 @@ public class AgentRunEntity {
     @Column(name = "progress_next_sequence", nullable = false)
     private long progressNextSequence = 1;
 
+    @Column(name = "worker_progress_sequence", nullable = false)
+    private long workerProgressSequence;
+
     @Column(name = "progress_retained_floor")
     private Long progressRetainedFloor;
 
@@ -344,6 +347,8 @@ public class AgentRunEntity {
     public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
     public long getProgressNextSequence() { return progressNextSequence; }
     public void setProgressNextSequence(long progressNextSequence) { this.progressNextSequence = progressNextSequence; }
+    public long getWorkerProgressSequence() { return workerProgressSequence; }
+    public void setWorkerProgressSequence(long workerProgressSequence) { this.workerProgressSequence = workerProgressSequence; }
     public Long getProgressRetainedFloor() { return progressRetainedFloor; }
     public void setProgressRetainedFloor(Long progressRetainedFloor) { this.progressRetainedFloor = progressRetainedFloor; }
     public Long getProgressLatestSequence() { return progressLatestSequence; }

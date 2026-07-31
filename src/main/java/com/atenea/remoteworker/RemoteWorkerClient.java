@@ -349,7 +349,19 @@ public class RemoteWorkerClient {
             Instant updatedAt,
             Instant startedAt,
             Instant finishedAt,
-            Result result
+            Result result,
+            List<ProgressEvent> progressEvents
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record ProgressEvent(
+            String dispatchId,
+            String executionId,
+            long sequence,
+            String category,
+            Instant occurredAt,
+            String message
     ) {
     }
 

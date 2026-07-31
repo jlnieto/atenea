@@ -169,6 +169,35 @@ class AgentRunProgressPersistenceTest {
         assertEquals(0, progressEventRepository.countByAgentRunId(run.getId()));
     }
 
+    @Test
+    void workerSequenceSurvivesReplayAndAdvancesAcrossCoalescedEvents() {
+        AgentRunEntity run = createRun(AgentRunStatus.RUNNING);
+
+        AgentRunProgressAppendResult first = progressService.appendWorker(
+                run.getId(), 1, AgentRunProgressCategory.ACCEPTED);
+        AgentRunProgressAppendResult replay = progressService.appendWorker(
+                run.getId(), 1, AgentRunProgressCategory.ACCEPTED);
+        AgentRunProgressAppendResult coalesced = progressService.appendWorker(
+                run.getId(), 2, AgentRunProgressCategory.ACCEPTED);
+        AgentRunProgressAppendResult newer = progressService.appendWorker(
+                run.getId(), 3, AgentRunProgressCategory.CHECKING);
+
+        AgentRunEntity persisted = agentRunRepository.findById(run.getId()).orElseThrow();
+        assertTrue(first.inserted());
+        assertFalse(replay.inserted());
+        assertFalse(coalesced.inserted());
+        assertTrue(newer.inserted());
+        assertEquals(3, persisted.getWorkerProgressSequence());
+        assertEquals(2, progressEventRepository.countByAgentRunId(run.getId()));
+
+        AgentRunProgressAppendResult staleAfterReload = progressService.appendWorker(
+                run.getId(), 2, AgentRunProgressCategory.CHECKING);
+        assertFalse(staleAfterReload.inserted());
+        assertEquals(2, progressEventRepository.countByAgentRunId(run.getId()));
+        assertEquals(3, agentRunRepository.findById(run.getId()).orElseThrow()
+                .getWorkerProgressSequence());
+    }
+
     private AgentRunEntity createRun(AgentRunStatus status) {
         long fixture = FIXTURE_SEQUENCE.incrementAndGet();
         Instant startedAt = Instant.parse("2026-07-31T10:00:00Z");

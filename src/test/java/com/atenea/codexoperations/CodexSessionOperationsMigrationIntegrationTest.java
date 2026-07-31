@@ -38,6 +38,7 @@ class CodexSessionOperationsMigrationIntegrationTest {
         for (String column : List.of(
                 "agent_run.codex_model_id",
                 "agent_run.progress_next_sequence",
+                "agent_run.worker_progress_sequence",
                 "agent_run.retry_of_run_id",
                 "work_session.default_codex_model_id",
                 "operator_account.codex_operations_role")) {
@@ -47,6 +48,7 @@ class CodexSessionOperationsMigrationIntegrationTest {
 
         for (String constraint : List.of(
                 "ck_agent_run_codex_profile_complete",
+                "ck_agent_run_worker_progress_sequence",
                 "uk_agent_run_progress_event_sequence",
                 "uk_agent_run_recovery_idempotency",
                 "uk_notification_event_source",

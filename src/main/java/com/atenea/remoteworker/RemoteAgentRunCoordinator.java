@@ -3,6 +3,7 @@ package com.atenea.remoteworker;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.AgentRunProgressCategory;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
@@ -10,9 +11,11 @@ import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.service.worksession.AgentRunNotFoundException;
+import com.atenea.service.worksession.AgentRunProgressService;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -27,10 +30,25 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class RemoteAgentRunCoordinator {
 
     private static final Logger log = LoggerFactory.getLogger(RemoteAgentRunCoordinator.class);
+    private static final Map<AgentRunProgressCategory, String> WORKER_PROGRESS_MESSAGES = Map.ofEntries(
+            Map.entry(AgentRunProgressCategory.ACCEPTED, "Execution request accepted."),
+            Map.entry(AgentRunProgressCategory.QUEUED, "Execution is queued for admission."),
+            Map.entry(AgentRunProgressCategory.PREPARING_WORKSPACE, "Preparing the accepted workspace."),
+            Map.entry(AgentRunProgressCategory.CODEX_STARTED, "Codex started the accepted turn."),
+            Map.entry(AgentRunProgressCategory.INSPECTING_PROJECT, "Inspecting the accepted project."),
+            Map.entry(AgentRunProgressCategory.RUNNING_COMMAND, "Running a reviewed project operation."),
+            Map.entry(AgentRunProgressCategory.CHECKING, "Checking the accepted project."),
+            Map.entry(AgentRunProgressCategory.WAITING, "Waiting for a bounded operation."),
+            Map.entry(AgentRunProgressCategory.RECONCILING, "Reconciling persisted execution ownership."),
+            Map.entry(AgentRunProgressCategory.FINALIZING, "Finalizing the Codex turn."),
+            Map.entry(AgentRunProgressCategory.COMPLETED, "Execution completed."),
+            Map.entry(AgentRunProgressCategory.FAILED, "Execution failed."),
+            Map.entry(AgentRunProgressCategory.CANCELLED, "Execution cancelled."));
 
     private final AgentRunRepository agentRunRepository;
     private final WorkSessionRepository workSessionRepository;
     private final SessionTurnRepository sessionTurnRepository;
+    private final AgentRunProgressService progressService;
     private final RemoteWorkerClient client;
     private final RemoteWorkerProperties properties;
     private final TransactionTemplate transaction;
@@ -40,6 +58,7 @@ public class RemoteAgentRunCoordinator {
             AgentRunRepository agentRunRepository,
             WorkSessionRepository workSessionRepository,
             SessionTurnRepository sessionTurnRepository,
+            AgentRunProgressService progressService,
             RemoteWorkerClient client,
             RemoteWorkerProperties properties,
             PlatformTransactionManager transactionManager
@@ -47,6 +66,7 @@ public class RemoteAgentRunCoordinator {
         this.agentRunRepository = agentRunRepository;
         this.workSessionRepository = workSessionRepository;
         this.sessionTurnRepository = sessionTurnRepository;
+        this.progressService = progressService;
         this.client = client;
         this.properties = properties;
         this.transaction = new TransactionTemplate(transactionManager);
@@ -184,14 +204,16 @@ public class RemoteAgentRunCoordinator {
 
     private void apply(Long runId, RemoteWorkerClient.Execution response) {
         transaction.executeWithoutResult(status -> {
-            AgentRunEntity run = getRemoteRun(runId);
+            AgentRunEntity run = getRemoteRunForUpdate(runId);
             if (run.getStatus().isTerminal()) {
                 return;
             }
             verifyOwnership(run, response);
+            List<RemoteWorkerClient.ProgressEvent> progressEvents = validateProgress(run, response);
             if (response.revision() < run.getLifecycleRevision()) {
                 return;
             }
+            appendProgress(runId, progressEvents, false);
             run.setRemoteExecutionId(response.executionId());
             run.setLifecycleRevision(response.revision());
             run.setLastHeartbeatAt(Instant.now());
@@ -238,7 +260,65 @@ public class RemoteAgentRunCoordinator {
             }
             run.setStatus(remoteStatus);
             agentRunRepository.save(run);
+            appendProgress(runId, progressEvents, true);
         });
+    }
+
+    private List<RemoteWorkerClient.ProgressEvent> validateProgress(
+            AgentRunEntity run,
+            RemoteWorkerClient.Execution response
+    ) {
+        List<RemoteWorkerClient.ProgressEvent> events = response.progressEvents() == null
+                ? List.of()
+                : List.copyOf(response.progressEvents());
+        long previous = 0;
+        for (int index = 0; index < events.size(); index++) {
+            RemoteWorkerClient.ProgressEvent event = events.get(index);
+            AgentRunProgressCategory category;
+            try {
+                category = AgentRunProgressCategory.valueOf(event.category());
+            } catch (RuntimeException exception) {
+                throw new RemoteWorkerException("Remote worker progress category is not accepted", 409);
+            }
+            if (event.sequence() <= previous
+                    || !run.getDispatchId().toString().equals(event.dispatchId())
+                    || !response.executionId().equals(event.executionId())
+                    || event.occurredAt() == null
+                    || !WORKER_PROGRESS_MESSAGES.get(category).equals(event.message())
+                    || (category.isTerminal() && index != events.size() - 1)) {
+                throw new RemoteWorkerException("Remote worker progress ownership is invalid", 409);
+            }
+            previous = event.sequence();
+        }
+        if (!events.isEmpty()) {
+            AgentRunProgressCategory latest = AgentRunProgressCategory.valueOf(
+                    events.getLast().category());
+            AgentRunStatus responseStatus = AgentRunStatus.valueOf(response.status());
+            AgentRunProgressCategory expectedTerminal = switch (responseStatus) {
+                case SUCCEEDED -> AgentRunProgressCategory.COMPLETED;
+                case FAILED -> AgentRunProgressCategory.FAILED;
+                case CANCELLED -> AgentRunProgressCategory.CANCELLED;
+                default -> null;
+            };
+            if ((expectedTerminal == null && latest.isTerminal())
+                    || (expectedTerminal != null && latest != expectedTerminal)) {
+                throw new RemoteWorkerException("Remote worker terminal progress is inconsistent", 409);
+            }
+        }
+        return events;
+    }
+
+    private void appendProgress(
+            Long runId,
+            List<RemoteWorkerClient.ProgressEvent> events,
+            boolean terminal
+    ) {
+        for (RemoteWorkerClient.ProgressEvent event : events) {
+            AgentRunProgressCategory category = AgentRunProgressCategory.valueOf(event.category());
+            if (category.isTerminal() == terminal) {
+                progressService.appendWorker(runId, event.sequence(), category);
+            }
+        }
     }
 
     private void verifyOwnership(AgentRunEntity run, RemoteWorkerClient.Execution response) {
@@ -295,6 +375,15 @@ public class RemoteAgentRunCoordinator {
 
     private AgentRunEntity getRemoteRun(Long runId) {
         AgentRunEntity run = agentRunRepository.findWithSessionById(runId)
+                .orElseThrow(() -> new AgentRunNotFoundException(runId));
+        if (run.getExecutionTarget() != ExecutionTarget.REMOTE) {
+            throw new IllegalArgumentException("AgentRun is not owned by a remote execution target");
+        }
+        return run;
+    }
+
+    private AgentRunEntity getRemoteRunForUpdate(Long runId) {
+        AgentRunEntity run = agentRunRepository.findByIdForUpdate(runId)
                 .orElseThrow(() -> new AgentRunNotFoundException(runId));
         if (run.getExecutionTarget() != ExecutionTarget.REMOTE) {
             throw new IllegalArgumentException("AgentRun is not owned by a remote execution target");

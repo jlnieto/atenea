@@ -20,6 +20,8 @@ import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkloadClass;
+import com.atenea.persistence.worksession.AgentRunProgressCategory;
+import com.atenea.service.worksession.AgentRunProgressService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -38,6 +40,7 @@ class RemoteAgentRunCoordinatorTest {
     private AgentRunRepository agentRunRepository;
     private WorkSessionRepository workSessionRepository;
     private SessionTurnRepository sessionTurnRepository;
+    private AgentRunProgressService progressService;
     private RemoteWorkerClient client;
     private RemoteWorkerProperties properties;
     private RemoteAgentRunCoordinator coordinator;
@@ -47,6 +50,7 @@ class RemoteAgentRunCoordinatorTest {
         agentRunRepository = mock(AgentRunRepository.class);
         workSessionRepository = mock(WorkSessionRepository.class);
         sessionTurnRepository = mock(SessionTurnRepository.class);
+        progressService = mock(AgentRunProgressService.class);
         client = mock(RemoteWorkerClient.class);
         properties = new RemoteWorkerProperties();
         properties.setPollInterval(Duration.ofMillis(10));
@@ -54,6 +58,8 @@ class RemoteAgentRunCoordinatorTest {
         PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
         when(transactionManager.getTransaction(any(TransactionDefinition.class)))
                 .thenReturn(mock(TransactionStatus.class));
+        when(agentRunRepository.findByIdForUpdate(any())).thenAnswer(invocation ->
+                agentRunRepository.findWithSessionById(invocation.getArgument(0)));
         when(client.ensureWorkspace(any(AgentRunEntity.class))).thenAnswer(invocation -> {
             AgentRunEntity run = invocation.getArgument(0);
             return new RemoteWorkerClient.Workspace(
@@ -72,6 +78,7 @@ class RemoteAgentRunCoordinatorTest {
                 agentRunRepository,
                 workSessionRepository,
                 sessionTurnRepository,
+                progressService,
                 client,
                 properties,
                 transactionManager);
@@ -113,6 +120,12 @@ class RemoteAgentRunCoordinatorTest {
         Thread.sleep(50);
 
         assertEquals(1, resultTurns.get());
+        verify(progressService, times(1)).appendWorker(
+                run.getId(), 1, AgentRunProgressCategory.ACCEPTED);
+        verify(progressService, times(1)).appendWorker(
+                run.getId(), 2, AgentRunProgressCategory.CODEX_STARTED);
+        verify(progressService, times(1)).appendWorker(
+                run.getId(), 3, AgentRunProgressCategory.COMPLETED);
         verify(client, times(1)).ensureWorkspace(run);
         verify(client, times(1)).dispatch(run, "First managed turn");
     }
@@ -383,7 +396,51 @@ class RemoteAgentRunCoordinatorTest {
                 now,
                 now,
                 now,
-                result);
+                result,
+                progress(run, status));
+    }
+
+    private java.util.List<RemoteWorkerClient.ProgressEvent> progress(
+            AgentRunEntity run,
+            String status
+    ) {
+        String executionId = run.getRemoteExecutionId() == null
+                ? "4ee2d311-b9da-4307-89b6-dd3110ef2057"
+                : run.getRemoteExecutionId();
+        Instant now = Instant.parse("2026-07-29T06:00:00Z");
+        AgentRunProgressCategory terminal = switch (status) {
+            case "SUCCEEDED" -> AgentRunProgressCategory.COMPLETED;
+            case "FAILED" -> AgentRunProgressCategory.FAILED;
+            case "CANCELLED" -> AgentRunProgressCategory.CANCELLED;
+            default -> null;
+        };
+        java.util.List<RemoteWorkerClient.ProgressEvent> events = new java.util.ArrayList<>();
+        events.add(progressEvent(run, executionId, 1, AgentRunProgressCategory.ACCEPTED, now));
+        events.add(progressEvent(run, executionId, 2, AgentRunProgressCategory.CODEX_STARTED, now));
+        if (terminal != null) {
+            events.add(progressEvent(run, executionId, 3, terminal, now));
+        }
+        return java.util.List.copyOf(events);
+    }
+
+    private RemoteWorkerClient.ProgressEvent progressEvent(
+            AgentRunEntity run,
+            String executionId,
+            long sequence,
+            AgentRunProgressCategory category,
+            Instant occurredAt
+    ) {
+        String message = switch (category) {
+            case ACCEPTED -> "Execution request accepted.";
+            case CODEX_STARTED -> "Codex started the accepted turn.";
+            case COMPLETED -> "Execution completed.";
+            case FAILED -> "Execution failed.";
+            case CANCELLED -> "Execution cancelled.";
+            default -> throw new IllegalArgumentException(category.name());
+        };
+        return new RemoteWorkerClient.ProgressEvent(
+                run.getDispatchId().toString(), executionId, sequence,
+                category.name(), occurredAt, message);
     }
 
     private void waitForTerminal(AgentRunEntity run) throws InterruptedException {

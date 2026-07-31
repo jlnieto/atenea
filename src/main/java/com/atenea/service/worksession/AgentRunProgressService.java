@@ -64,6 +64,41 @@ public class AgentRunProgressService {
         Objects.requireNonNull(category, "category");
         AgentRunEntity run = agentRunRepository.findByIdForUpdate(runId)
                 .orElseThrow(() -> new AgentRunNotFoundException(runId));
+        return appendLocked(run, category);
+    }
+
+    @Transactional
+    public AgentRunProgressAppendResult appendWorker(
+            Long runId,
+            long workerSequence,
+            AgentRunProgressCategory category
+    ) {
+        Objects.requireNonNull(category, "category");
+        if (workerSequence < 1) {
+            throw new IllegalArgumentException("Worker progress sequence must be positive");
+        }
+        AgentRunEntity run = agentRunRepository.findByIdForUpdate(runId)
+                .orElseThrow(() -> new AgentRunNotFoundException(runId));
+        if (workerSequence <= run.getWorkerProgressSequence()) {
+            AgentRunProgressEventEntity latest = progressEventRepository
+                    .findFirstByAgentRunIdOrderBySequenceDesc(runId)
+                    .orElse(null);
+            return new AgentRunProgressAppendResult(
+                    latest,
+                    false,
+                    run.getProgressRetainedFloor() == null ? 1 : run.getProgressRetainedFloor());
+        }
+        AgentRunProgressAppendResult result = appendLocked(run, category);
+        run.setWorkerProgressSequence(workerSequence);
+        agentRunRepository.save(run);
+        return result;
+    }
+
+    private AgentRunProgressAppendResult appendLocked(
+            AgentRunEntity run,
+            AgentRunProgressCategory category
+    ) {
+        Long runId = run.getId();
         assertTerminalConsistency(run, category);
 
         String message = category.operatorMessage();
