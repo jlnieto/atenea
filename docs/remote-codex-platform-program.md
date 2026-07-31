@@ -265,6 +265,7 @@ production activation are recorded later in this ledger.
 | D-062 | Keep the established three-field authenticated principal and resolve operational role from the current active account for each privileged API; require exact JSON field sets, catalog membership and persisted ownership, and expose V57–V60 APIs only behind five independent default-false gates. | Token-carried authority can become stale, permissive JSON binding silently accepts forbidden fields, and additive persistence must remain inert until each rollout dimension is separately accepted. | accepted | backend/security/platform owners | before changing API authority, closed request fields or feature-gate defaults |
 | D-063 | Give every shared web/mobile session event a stable persisted-identity key, seed and poll the bounded 200-event SSE window by that identity, and replace the legacy run-terminal timeline item only when a committed terminal progress event is published behind the enabled progress gate. | Timestamp cursors can drop same-instant events or resend them after reconnect; publishing both lifecycle and progress terminals creates duplicate operator output, while disable-first rollback must retain the established terminal feed. | accepted | backend/web/mobile owners | before changing shared-stream identity, progress publication or terminal fallback |
 | D-064 | Run shared control-plane integration suites with global synthetic authentication bootstrap disabled and require authentication-specific tests to opt in with their exact operator fixture. | An eager default operator makes database-backed authorization tests order-dependent and can conceal which persisted role or identity actually authorized an operation. | accepted | backend/security/test owners | before changing integration-test authentication bootstrap |
+| D-065 | Advertise the first exact Codex catalog through a separately authenticated `codex-model-catalog-v1` endpoint/capability while retaining the strict v1 health shape and withholding `agent-run-project-codex-v2` execution until its fingerprint and runner are complete. | Adding fields to the fail-closed v1 health DTO would break the current control plane, while advertising executable v2 authority before validation and runner support would create a false capability. | accepted | worker/backend/security owners | before changing catalog transport or advertising v2 execution |
 
 ## Deferred decisions and gates
 
@@ -5274,3 +5275,32 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.7-focused-control-plane-tests`;
 the SHA-256 of its `SHA256SUMS` is
 `c4402aca10b2075045bc97b3c41d2a43204abba4ef1f215e309d7085eef2088b`.
+
+Task 3.1 is complete and change progress is `23/57`; the exact implementation
+resume point is task 3.2. Tasks 3.2 and later remain pending.
+
+Programme/worker commit `48c201034bdfdbc4fcc10fcceb8a653c3194f769`
+adds authenticated `GET /v1/codex/catalog` and the independent
+`codex-model-catalog-v1` capability. The closed catalog contains exact worker
+identity, Codex `0.145.0`, canonical revision, generation time and sorted model
+entries. Its digest excludes generation time and matches accepted revision
+`125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187`.
+
+The initial inventory exposes only canonical `gpt-5.6-sol`, availability
+`AVAILABLE`, default effort `medium` and its exact `none`, `low`, `medium`,
+`high`, `xhigh`, `max` set. It exposes no alias, Pro/Ultra mode, provider,
+endpoint, path, flag, configuration or credential. The strict v1 health shape
+is unchanged, and executable `agent-run-project-codex-v2` remains withheld
+until tasks 3.2 and 3.3 complete.
+
+Two final 33-test worker/catalog passes succeeded with zero failures, errors
+or skips under 120-second command bounds. AX42 independently reported the
+fixed runner binary as `codex-cli 0.145.0`; its installed worker remained
+active/running with zero restarts, the same program SHA-256 and the same
+tailnet-only listener. This task was not installed or enabled. Production and
+preview remained running with zero backend restarts and production stayed V56.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.1-worker-codex-catalog`;
+the SHA-256 of its `SHA256SUMS` is
+`a1109ee47e17724280e996148670790e1448bd7c3e7265ae9f16b01da5bf13dc`.
