@@ -276,6 +276,7 @@ production activation are recorded later in this ledger.
 | D-073 | Put one current-run card before secondary conversation content, render only the six newest normalized events, and locally bound the timeline on mobile. | State, elapsed time, latest progress and next action must be visible immediately while the 200-event durable replay remains an audit boundary rather than a visually unbounded conversation dashboard. | accepted | web/operator-experience owners | before changing current-run placement, visible event bound or mobile timeline overflow |
 | D-074 | Derive exactly one routine recovery action from persisted run state/next-action, keep the backend as permission authority, and disable new-turn submission while an execution is active. | Cancel, retry and reconciliation are mutually contextual; exposing them together or allowing a competing send would make the operator guess and could create conflicting work. | accepted | web/backend/operator-experience owners | before changing recovery action visibility, permission authority or active-run submission behavior |
 | D-075 | Give each Android run an in-memory monotonic replay cursor, merge only sequence-keyed durable gaps after foreground resume, reset on run identity change and keep immersive conversation content within system-bar insets. | Replaying from zero can duplicate a mobile timeline after backgrounding, while an edge-to-edge surface without safe insets can hide the very state and action the operator needs to see immediately. | accepted and emulator-verified | Android/operator-experience owners | before changing Android replay cursor lifetime, gap merge or immersive insets |
+| D-076 | Snapshot the independently resolved WorkSession/project/worker model and effort on every future remote AgentRun before durable dispatch, and project that immutable profile onto both its originating and result turns. | A mutable settings view alone cannot prove which profile produced old conversation content; one run-owned snapshot keeps legacy turns compatible while making later setting changes auditable on web and Android. | accepted and web/Android verified | backend/web/Android owners | before changing AgentRun profile snapshot or historical-turn projection semantics |
 
 ## Deferred decisions and gates
 
@@ -5589,3 +5590,42 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.4-android-session-operations`;
 the SHA-256 of its `SHA256SUMS` is
 `bb3e1acd203ffcb1bf3b000c3d16a71bac3398dea0fd21956f4b9376599f72f5`.
+
+Task 4.5 is complete and change progress is `34/57`; the exact implementation
+resume point is task 4.6. Task 4.6 and all later tasks remain pending.
+
+Atenea commit `eb90cb6ad361ff9a8a70bca208ee921192cc9ac6` resolves the
+effective model and effort immediately before each new remote AgentRun is
+saved for dispatch, using the selected worker's current catalog and independent
+WorkSession/project/worker-default precedence. The complete immutable model,
+effort, sources, catalog revision and Codex version remain on the AgentRun;
+later settings changes do not update earlier rows. Conversation history now
+projects that snapshot onto both the visible originating turn and result turn,
+while legacy turns without a profile retain the existing null-compatible API.
+
+Web and Android render the run-owned `model · effort · Codex version` alongside
+historical content. A transactional PostgreSQL test changed a synthetic
+WorkSession from `medium` to `high`, proved the earlier run remained `medium`
+with `PROJECT` provenance, and proved only the later run became `high` with
+`WORK_SESSION` provenance. Fourteen focused backend tests and six focused
+Android operations tests passed; the TypeScript/Vite production build and the
+normal debug APK also assembled successfully.
+
+Synthetic Playwright checks asserted both immutable labels and zero horizontal
+overflow at `1440x900` and `390x844`. A temporary API 35 emulator rendered the
+real Compose conversation and its UI hierarchy exposed both labels without
+clipping or system-bar overlap. The visual activity, AVD, emulator, Vite,
+Playwright and local test containers were removed. The known unrelated Android
+voice-intent baseline failure remains documented from task 4.4 and was not
+suppressed or mixed into this change.
+
+Read-only post-checks found Atenea health `UP`, production/preview/Beautips
+containers `Up`, the canonical AX42 worker unit active with `NRestarts=0`, all
+four slot proxies active, zero project runners and zero rootful containers. No
+deployment, real WorkSession mutation, routing change, recovery action, worker
+restart or production data access occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.5-future-profile-history`;
+the SHA-256 of its `SHA256SUMS` is
+`97aceea799d9dbc9ade285225c074907fdaa5834ab2ca992aceccaeb80de325b`.
