@@ -271,6 +271,7 @@ production activation are recorded later in this ledger.
 | D-068 | Normalize only recognized Codex JSONL structure into fixed progress messages, discard every source payload value and let the worker replace timestamps while assigning identity, monotonic sequence, coalescence and bounded retention. | Trusting model-provided text, command/output fields or source timestamps would let secret-bearing content cross the worker boundary even when the category itself is allowed. | accepted | worker/security owners | before changing structured-event mappings or progress message templates |
 | D-069 | Persist the highest imported worker progress sequence on the AgentRun and lock that row before atomically applying progress, terminal state and result turn; retain byte-stable terminal worker records across restart. | Lifecycle revision alone cannot deduplicate replayed detail events, and two coordinators must not both create a response turn after observing the same terminal worker revision. | accepted | backend/worker/data owners | before changing worker replay identity, coordinator locking or terminal transaction boundaries |
 | D-070 | Require dispatch-path, execution, session, workspace and lease ownership for new routine recovery routes; make reconciliation read-only and constrain doctor to a closed no-values schema while retaining the v1 cancel route. | Execution ID alone is insufficient for new recovery authority, and a free-form diagnostic could expose prompts, results, commands, paths or secrets or accidentally mutate execution state. | accepted | worker/backend/security owners | before changing recovery ownership fields, doctor output or v1 cancel compatibility |
+| D-071 | Treat the base runner digest and every derived Beautips adapter, mediator, allowlist and installer digest as one reviewed trust chain, and require the complete Phase 3 worker plus Beautips aggregate to pass twice. | A fail-closed downstream pin correctly rejected the task 3.6 runner until every dependent identity was refreshed; isolated runner tests alone do not prove the installed project chain remains internally consistent. | accepted | worker/project/security owners | whenever the base runner or any derived reviewed source changes |
 
 ## Deferred decisions and gates
 
@@ -5451,3 +5452,31 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.6-exact-recovery-operations`;
 the SHA-256 of its `SHA256SUMS` is
 `bece4b14c5f6def0aced6f1aa666682296b510c1c00b410b17155ab564359ae6`.
+
+Task 3.7 is complete and change progress is `29/57`; Phase 3 is closed. The
+exact implementation resume point is task 4.1. Task 4.1 and all later tasks
+remain pending.
+
+The first complete closure attempt correctly failed closed because task 3.6
+changed the base project runner while the derived Beautips adapter still
+pinned its predecessor. Programme/worker commit
+`0879919dfce835fe65f6f2ce0aeb5711633835a3` refreshes only the reviewed
+base-runner, adapter, mediator, allowlist and installer digest chain. No
+runtime behavior, project ownership or enablement flag changed.
+
+Two final complete passes then ran the 38-test worker protocol suite, 12-test
+project runner suite, 4-test session-operations schema suite, worker installer
+lifecycle and full Beautips aggregate. Every component passed with zero
+failures, errors, skips or timeouts: 100 seconds for pass 1 and 103 seconds for
+pass 2 under independent 180/240-second bounds. Exact synthetic fixtures and
+test processes were removed.
+
+AX42's installed worker and runner hashes, active service, private listener,
+zero restart count and zero project-runner processes remained unchanged.
+Production, preview and the existing Beautips control/database containers
+remained `Up`; nothing was installed, enabled, dispatched or restarted.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.7-phase-3-worker-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`fb82da0274bca64e55fb1bc9799a0bbae18fe076743c956cb21317f3c28e76de`.
