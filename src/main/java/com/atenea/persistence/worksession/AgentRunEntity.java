@@ -1,6 +1,7 @@
 package com.atenea.persistence.worksession;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -97,6 +98,27 @@ public class AgentRunEntity {
 
     @Column(name = "project_instruction_sha256", length = 64)
     private String projectInstructionSha256;
+
+    @Column(name = "codex_model_id", length = 80, updatable = false)
+    private String codexModelId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "codex_model_source", length = 24, updatable = false)
+    private ExecutionProfileSource codexModelSource;
+
+    @Convert(converter = CodexReasoningEffortConverter.class)
+    @Column(name = "codex_reasoning_effort", length = 16, updatable = false)
+    private CodexReasoningEffort codexReasoningEffort;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "codex_effort_source", length = 24, updatable = false)
+    private ExecutionProfileSource codexEffortSource;
+
+    @Column(name = "codex_catalog_revision", length = 64, updatable = false)
+    private String codexCatalogRevision;
+
+    @Column(name = "codex_version", length = 32, updatable = false)
+    private String codexVersion;
 
     @Column(name = "dispatch_id", unique = true)
     private UUID dispatchId;
@@ -248,6 +270,18 @@ public class AgentRunEntity {
     public void setProjectInstructionPath(String value) { this.projectInstructionPath = value; }
     public String getProjectInstructionSha256() { return projectInstructionSha256; }
     public void setProjectInstructionSha256(String value) { this.projectInstructionSha256 = value; }
+    public String getCodexModelId() { return codexModelId; }
+    public void setCodexModelId(String codexModelId) { this.codexModelId = codexModelId; }
+    public ExecutionProfileSource getCodexModelSource() { return codexModelSource; }
+    public void setCodexModelSource(ExecutionProfileSource codexModelSource) { this.codexModelSource = codexModelSource; }
+    public CodexReasoningEffort getCodexReasoningEffort() { return codexReasoningEffort; }
+    public void setCodexReasoningEffort(CodexReasoningEffort codexReasoningEffort) { this.codexReasoningEffort = codexReasoningEffort; }
+    public ExecutionProfileSource getCodexEffortSource() { return codexEffortSource; }
+    public void setCodexEffortSource(ExecutionProfileSource codexEffortSource) { this.codexEffortSource = codexEffortSource; }
+    public String getCodexCatalogRevision() { return codexCatalogRevision; }
+    public void setCodexCatalogRevision(String codexCatalogRevision) { this.codexCatalogRevision = codexCatalogRevision; }
+    public String getCodexVersion() { return codexVersion; }
+    public void setCodexVersion(String codexVersion) { this.codexVersion = codexVersion; }
     public UUID getDispatchId() { return dispatchId; }
     public void setDispatchId(UUID dispatchId) { this.dispatchId = dispatchId; }
     public String getRemoteExecutionId() { return remoteExecutionId; }

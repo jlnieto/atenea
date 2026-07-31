@@ -2,6 +2,7 @@ package com.atenea.persistence.worksession;
 
 import com.atenea.persistence.project.ProjectEntity;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -58,6 +59,13 @@ public class WorkSessionEntity {
 
     @Column(name = "remote_workload_kind", length = 80)
     private String remoteWorkloadKind;
+
+    @Column(name = "default_codex_model_id", length = 80)
+    private String defaultCodexModelId;
+
+    @Convert(converter = CodexReasoningEffortConverter.class)
+    @Column(name = "default_codex_reasoning_effort", length = 16)
+    private CodexReasoningEffort defaultCodexReasoningEffort;
 
     @Column(name = "canonical_source_ref", length = 220)
     private String canonicalSourceRef;
@@ -254,6 +262,22 @@ public class WorkSessionEntity {
 
     public void setRemoteWorkloadKind(String remoteWorkloadKind) {
         this.remoteWorkloadKind = remoteWorkloadKind;
+    }
+
+    public String getDefaultCodexModelId() {
+        return defaultCodexModelId;
+    }
+
+    public void setDefaultCodexModelId(String defaultCodexModelId) {
+        this.defaultCodexModelId = defaultCodexModelId;
+    }
+
+    public CodexReasoningEffort getDefaultCodexReasoningEffort() {
+        return defaultCodexReasoningEffort;
+    }
+
+    public void setDefaultCodexReasoningEffort(CodexReasoningEffort value) {
+        this.defaultCodexReasoningEffort = value;
     }
 
     public String getCanonicalSourceRef() {
