@@ -23,9 +23,9 @@ prerequisites, not reasons to weaken isolation.
 
 ## What Changes
 
-- Persist an immutable effective model, reasoning effort and Codex version for
-  every AgentRun, with explicit platform, project, WorkSession and next-turn
-  precedence.
+- Persist an immutable effective model, reasoning effort, field-level source,
+  catalog revision and Codex version for every AgentRun, with exact
+  next-turn, WorkSession, project, platform and worker-default precedence.
 - Expose an allowlisted worker model catalog and let an authenticated operator
   inspect or change settings only for future turns.
 - Stream, sanitize, sequence and persist useful intermediate execution events
@@ -38,8 +38,9 @@ prerequisites, not reasons to weaken isolation.
 - Generalize the existing FCM baseline into a transactional notification
   outbox with per-device delivery, preferences, deduplication, retry,
   expiration and deep links.
-- Notify Android when the latest submitted run completes, fails or requires
-  action even when the application is closed or in the background.
+- Notify Android by default when the latest submitted run completes, fails or
+  requires action even when the application is closed or in the background;
+  keep intermediate progress in-app only.
 - Add a managed Codex inventory, compatibility, staged update, canary and
   rollback workflow. Routine WorkSessions never receive update authority.
 - Gate writes on an exact canonical source revision and quarantine stale dirty

@@ -46,7 +46,8 @@ operator experience.
 - letting prompts edit Codex, worker, slot, credential or host configuration;
 - supporting arbitrary providers, model identifiers or experimental settings;
 - automatically upgrading Codex while executions are active;
-- treating Max or Ultra multi-agent operation as a reasoning-effort alias;
+- treating Pro or Ultra operation as a model identifier or reasoning-effort
+  alias;
 - replacing key-based break-glass administration.
 
 ## Decisions
@@ -139,15 +140,25 @@ Configuration precedence is:
 4. the platform default;
 5. the worker's accepted catalog default.
 
-The selected canonical model identifier and supported reasoning effort are
-resolved before durable dispatch and copied into the AgentRun with their source
-and the selected worker's Codex version. A later settings change affects only
-future AgentRuns. Existing turns, results and audit records never change.
+Model and effort resolve independently, so a next-turn effort override does
+not erase the WorkSession's model selection. The resulting AgentRun stores
+`modelId`, `modelSource`, `reasoningEffort`, `effortSource`, `catalogRevision`
+and `codexVersion`. The closed source values are `NEXT_TURN`, `WORK_SESSION`,
+`PROJECT`, `PLATFORM` and `WORKER_DEFAULT`. Resolution and compatibility checks
+finish before durable dispatch. A later settings change affects only future
+AgentRuns; existing turns, results and audit records never change.
 
-The first release accepts only catalog-advertised model identifiers and
-supported `low`, `medium`, `high` or `xhigh` effort. The UI may present friendly
-labels, but the persisted value is canonical. Max and Ultra remain out of
-scope because they are not simple effort values.
+The worker catalog has these canonical top-level fields:
+`schemaVersion`, `catalogRevision`, `workerId`, `codexVersion`, `generatedAt`
+and `models`. Every sorted model entry has `modelId`, `displayName`,
+`supportedEfforts`, `defaultEffort` and `availability`. `catalogRevision` is a
+digest of the schema version, Codex version and sorted model entries; the
+diagnostic generation timestamp is excluded from that digest. The first
+release recognizes only the canonical effort values `none`, `low`, `medium`,
+`high`, `xhigh` and `max`, and only when the selected model entry advertises
+that value and platform/project policy permits it. Friendly labels and model
+aliases never enter persistence or dispatch. Pro remains a separately governed
+mode, and Ultra multi-agent operation remains outside this profile contract.
 
 ### Extend the closed worker contract, not caller command authority
 
@@ -163,23 +174,22 @@ worker's advertised catalog/version.
 
 ### Normalize useful progress without retaining reasoning
 
-The worker maps structured Codex and lifecycle events into a closed taxonomy:
-
-- accepted and queued;
-- preparing workspace;
-- Codex started;
-- inspecting project;
-- running a command;
-- checking or testing;
-- waiting or reconciling;
-- finalizing;
-- completed, failed or cancelled.
+The worker maps structured Codex and lifecycle events into this exact closed
+taxonomy: `ACCEPTED`, `QUEUED`, `PREPARING_WORKSPACE`, `CODEX_STARTED`,
+`INSPECTING_PROJECT`, `RUNNING_COMMAND`, `CHECKING`, `WAITING`, `RECONCILING`,
+`FINALIZING`, `COMPLETED`, `FAILED` and `CANCELLED`.
 
 Each event owns a monotonic sequence, timestamp, run identity, category and
-short sanitized operator message. Repeated low-value events are coalesced and
-each run retains at most 200 normalized events. Raw model reasoning, deltas,
-command arguments, command output, environment values and secret-bearing
-payloads are neither published nor stored.
+short sanitized operator message. Consecutive events with the same category
+and sanitized message are coalesced before a sequence is allocated. Each run
+retains the 200 newest normalized events; inserting event 201 evicts the oldest
+retained detail event without renumbering or reusing a sequence. Current state,
+latest event, terminal outcome, elapsed time and required next action are
+separate projections and therefore never disappear at the retention edge. A
+replay cursor below the retained floor receives that projection followed by
+the retained gap. Raw model reasoning, deltas, command arguments, command
+output, environment values and secret-bearing payloads are neither published
+nor stored.
 
 Atenea persists a newer event before publishing it through the existing mobile
 stream and web event path. Clients reconnect with the last sequence and receive
@@ -187,6 +197,14 @@ the durable gap before live events. The current state and required next action
 remain visible even if detailed events age out with the owning AgentRun.
 
 ### Use explicit recovery semantics
+
+The authorization matrix is closed:
+
+| Role | Allowed operations |
+|---|---|
+| `ROUTINE_OPERATOR` | Read the selected worker catalog/version; set project-permitted WorkSession defaults; submit a permitted next-turn override; cancel, retry, request reconciliation or obtain a sanitized diagnostic for the operator's exact WorkSession. |
+| `PRIVILEGED_OPERATOR` | Every routine operation plus a policy-permitted mediated restart of the exact owned worker execution service or project App Server. |
+| `PLATFORM_ADMINISTRATOR` | Every privileged operation plus create an update plan, stage a verified Codex release, separately authorize activation, and separately authorize an operator-requested rollback. |
 
 Routine authenticated operators may:
 
@@ -218,27 +236,35 @@ entity identity and deep link are versioned independently of FCM so future
 Atenea events can reuse the same outbox. Full prompts, final answers, secrets
 and internal worker details never enter notification payloads.
 
-Operators can enable categories per device. Completion and failure are enabled
-by default for active Android devices. Exponential retry is finite; expired or
-permanently invalid device tokens are disabled without affecting other
-devices. Tapping a notification opens the exact WorkSession conversation. When
-the app is foregrounded it updates the in-app conversation and suppresses a
-duplicate local presentation where Android permits.
+The initial category identifiers are `RUN_COMPLETED`, `RUN_FAILED` and
+`ACTION_REQUIRED`; all three are enabled by default for a new or existing
+active Android device that has no explicit preference. Intermediate progress
+is in-app/SSE only and does not create push notifications. An explicit
+per-device preference always wins and is not reset by application upgrade or
+device re-registration. Exponential retry is finite; expired or permanently
+invalid device tokens are disabled without affecting other devices. Tapping a
+notification opens the exact WorkSession conversation. When the app is
+foregrounded it updates the in-app conversation and suppresses a duplicate
+local presentation where Android permits.
 
 ### Manage Codex versions as a staged platform operation
 
 AX42 advertises installed Codex version, accepted catalog revision and
-compatibility state. Update discovery produces a read-only plan. Activation
-requires separate administrator authorization, zero active executions, a
-verified release artifact, generated App Server/CLI schema comparison, focused
-contract tests and one canary run.
+compatibility state. Routine operators may inspect this state but cannot create
+or execute an update operation. A platform administrator may create a
+read-only plan and stage a verified candidate without changing the canonical
+`current` link. Activation requires a separate, single-use, finite
+authorization bound to the exact worker, current version, candidate version,
+release digest and plan identity, plus zero active executions, generated App
+Server/CLI schema comparison, focused contract tests and one canary run.
 
 The installer retains the current and previous verified release and switches
-one canonical `current` link atomically. A failed health, schema or canary gate
-restores the previous link and restarts only the exact Codex/worker boundary.
-Project runtimes, production, Beautips resources and unrelated slots are not
-restarted. Routine sessions can inspect version state but cannot initiate an
-update.
+one canonical `current` link atomically. The activation authorization includes
+fail-closed automatic restoration of that exact previous link when a health,
+schema or canary gate fails. An operator-requested rollback requires its own
+platform-administrator authorization and exact current/previous identities.
+Either path restarts only the exact Codex/worker boundary. Project runtimes,
+production, Beautips resources and unrelated slots are not restarted.
 
 ### Keep the operator UI state-first
 

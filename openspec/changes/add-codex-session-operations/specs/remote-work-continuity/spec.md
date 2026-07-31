@@ -10,6 +10,12 @@ invalid-device handling. Payloads SHALL use versioned safe templates and exact
 application deep links and SHALL NOT contain full prompts, final answers,
 credentials or worker-internal detail.
 
+The initial category identifiers SHALL be `RUN_COMPLETED`, `RUN_FAILED` and
+`ACTION_REQUIRED`. All three SHALL default enabled for an active Android device
+with no explicit preference; an explicit per-device preference SHALL survive
+re-registration and application upgrade. Intermediate progress SHALL remain
+in-app/SSE only and SHALL NOT create push notifications.
+
 #### Scenario: Run finishes while all clients are closed
 
 - **WHEN** the worker reports a terminal result for the latest submitted run

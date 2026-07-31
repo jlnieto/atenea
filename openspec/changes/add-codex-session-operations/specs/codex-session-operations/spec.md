@@ -119,11 +119,12 @@ scope.
 
 ### Requirement: Immutable effective Codex execution profile
 
-Every AgentRun SHALL persist the canonical model, reasoning effort, catalog
-revision, Codex version and configuration source that govern its execution.
-Resolution SHALL occur before durable dispatch using next-turn, WorkSession,
-project, platform and accepted worker-default precedence. A settings change
-MUST affect only future AgentRuns and MUST NOT rewrite execution history.
+Every AgentRun SHALL persist canonical `modelId`, `modelSource`,
+`reasoningEffort`, `effortSource`, `catalogRevision` and `codexVersion` fields.
+Model and effort SHALL resolve independently before durable dispatch using
+`NEXT_TURN`, `WORK_SESSION`, `PROJECT`, `PLATFORM`, `WORKER_DEFAULT`
+precedence. A settings change MUST affect only future AgentRuns and MUST NOT
+rewrite execution history.
 
 #### Scenario: Operator changes the WorkSession effort
 
@@ -143,14 +144,22 @@ MUST affect only future AgentRuns and MUST NOT rewrite execution history.
 ### Requirement: Closed model and effort authority
 
 Atenea SHALL expose only model identifiers and reasoning efforts advertised by
-the selected compatible worker and permitted by platform/project policy. The
-worker runner SHALL derive reviewed Codex flags from those fields and SHALL NOT
-accept an arbitrary provider, endpoint, configuration fragment, argument array,
-path, environment value or credential.
+the selected compatible worker and permitted by platform/project policy. A
+catalog SHALL contain canonical `schemaVersion`, `catalogRevision`, `workerId`,
+`codexVersion`, `generatedAt` and `models` fields; every model entry SHALL
+contain `modelId`, `displayName`, `supportedEfforts`, `defaultEffort` and
+`availability`. Its revision SHALL digest the schema version, Codex version and
+sorted model entries while excluding `generatedAt`. The only recognized effort
+values SHALL be `none`, `low`, `medium`, `high`, `xhigh` and `max`, subject to
+each model's advertised set. Friendly aliases, Pro mode and Ultra multi-agent
+operation SHALL NOT become persisted model/effort values. The worker runner
+SHALL derive reviewed Codex flags from validated canonical fields and SHALL NOT
+accept an arbitrary provider, endpoint, configuration fragment, argument
+array, path, environment value or credential.
 
 #### Scenario: Supported profile is selected
 
-- **WHEN** an operator selects a catalog-advertised model and supported low, medium, high or xhigh effort
+- **WHEN** an operator selects a catalog-advertised model and one of its supported none, low, medium, high, xhigh or max efforts
 - **THEN** Atenea displays the effective selection and the worker invokes Codex with exactly that validated profile
 
 #### Scenario: Caller injects a Codex option
@@ -161,11 +170,16 @@ path, environment value or credential.
 ### Requirement: Safe durable progress timeline
 
 Atenea SHALL persist and publish monotonically sequenced, sanitized progress
-events from a closed operational taxonomy. Each AgentRun SHALL retain at most
-200 coalesced events and SHALL always retain its current state, latest event,
-elapsed time and required next action. Raw chain-of-thought, model reasoning,
-command arguments, command output, environment values and secret-bearing
-payloads MUST NOT be stored or published.
+events only as `ACCEPTED`, `QUEUED`, `PREPARING_WORKSPACE`, `CODEX_STARTED`,
+`INSPECTING_PROJECT`, `RUNNING_COMMAND`, `CHECKING`, `WAITING`, `RECONCILING`,
+`FINALIZING`, `COMPLETED`, `FAILED` or `CANCELLED`. Consecutive events with the
+same category and sanitized message SHALL coalesce before sequence allocation.
+Each AgentRun SHALL retain its 200 newest normalized events without sequence
+reuse and SHALL always retain separate current-state, latest-event, terminal,
+elapsed-time and required-next-action projections. A replay below the retained
+floor SHALL return those projections and then the retained gap. Raw
+chain-of-thought, model reasoning, command arguments, command output,
+environment values and secret-bearing payloads MUST NOT be stored or published.
 
 #### Scenario: Codex performs a multi-step task
 
@@ -207,10 +221,16 @@ WorkSession.
 
 ### Requirement: Privileged operational boundary
 
-Routine operators, privileged operators and platform administrators SHALL have
-distinct action allowlists. Privileged actions SHALL use fixed mediated
-operations and exact persisted ownership. No Atenea endpoint SHALL accept an
-arbitrary host, service, command, slot or resource target.
+`ROUTINE_OPERATOR` SHALL be limited to reading the selected worker
+catalog/version, changing permitted future-turn settings, and exact-owned
+cancel, retry, reconciliation and sanitized diagnostics. `PRIVILEGED_OPERATOR`
+SHALL additionally be able to request only policy-permitted mediated restarts
+of an exact owned execution service or project App Server.
+`PLATFORM_ADMINISTRATOR` SHALL additionally be able to plan, stage, separately
+authorize activation and separately authorize operator-requested rollback of a
+Codex release. Privileged actions SHALL use fixed mediated operations and exact
+persisted ownership. No Atenea endpoint SHALL accept an arbitrary host,
+service, command, slot or resource target.
 
 #### Scenario: Routine operator requests host restart
 
@@ -225,10 +245,14 @@ arbitrary host, service, command, slot or resource target.
 ### Requirement: Managed Codex version lifecycle
 
 Atenea SHALL expose the selected worker's installed, current and previous Codex
-versions plus catalog/compatibility state. A real update SHALL require separate
-platform-administrator authorization, zero active executions, verified release
-input, version-matched schema checks, focused contracts, health and one canary.
-The previous verified version SHALL remain available for exact rollback.
+versions plus catalog/compatibility state. A real activation SHALL require a
+separate, single-use, finite platform-administrator authorization bound to the
+exact worker, current version, candidate version, release digest and plan,
+zero active executions, verified release input, version-matched schema checks,
+focused contracts, health and one canary. The previous verified version SHALL
+remain available for exact rollback. Automatic restoration of that exact
+previous version SHALL be part of the activation authority when a gate fails;
+an operator-requested rollback SHALL require a new exact authorization.
 
 #### Scenario: New Codex version is available
 

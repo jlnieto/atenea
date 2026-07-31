@@ -252,6 +252,10 @@ production activation are recorded later in this ledger.
 | D-049 | Activate private previews in production Atenea with a dedicated host-to-host credential, the exact `Beautips` allowlist and tailnet-only AX42 control/ingress. | Real browser acceptance must use the same control plane as normal operation without public sharing, runtime-port disclosure or credential exposure. | accepted and active | platform/security owners | preview credential rotation or public-sharing proposal |
 | D-050 | Retain the four fail-closed activation AgentRuns as immutable audit history and accept only subsequent terminal successes. | Rewriting failed attempts would destroy evidence of prerequisite enforcement; successful runs on the same workspace and thread prove the corrected path. | accepted | backend/programme owners | terminal audit-retention policy |
 | D-051 | Retire a `DRAFT_BLOCKED` WorkSession's stale active allocation marker only after exact recovery, released admission, sealed semantic equality, absent owned runtime resources and byte-preserving rename are proved. | A retained source draft must remain reviewable without permanently preventing its clean replacement from owning the fixed project slot. | accepted for the exact Atenea recovery | runtime/programme owners | general retained-draft allocation retirement support |
+| D-052 | Resolve model and effort independently through next-turn, WorkSession, project, platform and worker-default precedence; persist both field sources with the exact catalog revision and Codex version. | A one-turn effort change must not erase a longer-lived model choice, and later setting changes must never rewrite execution history. | accepted | backend/worker owners | before changing execution-profile precedence or source fields |
+| D-053 | Version the worker catalog with canonical worker/Codex/model fields and accept only each model's advertised subset of `none`, `low`, `medium`, `high`, `xhigh` and `max`; aliases, Pro and Ultra remain outside persisted profile authority. | Current Codex families do not share one implicit capability set, so exact per-model advertisement and fail-closed intersection avoid silent substitution. | accepted | platform/worker owners | each catalog schema revision or Codex family expansion |
+| D-054 | Use the thirteen fixed sanitized progress categories, coalesce identical consecutive events before sequencing and retain the newest 200 events plus independent current/latest/terminal/next-action projections. | The operator gets bounded useful progress and deterministic replay without retaining reasoning, raw commands, output or secrets. | accepted | backend/worker owners | before changing progress taxonomy or retention bound |
+| D-055 | Enable completion, failure and action-required push categories by default per active Android device, keep intermediate progress in-app only, and reserve update plan/stage/activation/rollback for platform administrators with separate exact activation and operator-rollback authorizations. | Defaults must notify unattended work without push noise, while binary lifecycle changes remain distinct from routine and mediated recovery authority. | accepted | product/platform/security owners | notification-default or Codex-update authority change |
 
 ## Deferred decisions and gates
 
@@ -4885,3 +4889,48 @@ Sanitized task-1.1 evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-1.1-entry-baseline`;
 the SHA-256 of its `SHA256SUMS` is
 `b5d6a97596b072282ddc28adc629b341b711fd480ad765c08c50d7c922b0f6fb`.
+
+Task 1.2 is complete and change progress is `12/57`; the exact resume point is
+task 1.3.
+
+Model and effort now resolve independently through exact `NEXT_TURN`,
+`WORK_SESSION`, `PROJECT`, `PLATFORM` and `WORKER_DEFAULT` precedence. Every
+future AgentRun must persist both field sources, the canonical values, catalog
+revision and exact Codex version before dispatch. Settings never rewrite an
+earlier run.
+
+The worker catalog fields, digest boundary and per-model effort advertisement
+are fixed. The only recognized effort vocabulary is `none`, `low`, `medium`,
+`high`, `xhigh` and `max`, intersected fail-closed with worker and
+platform/project policy. Friendly aliases, Pro mode and Ultra operation do not
+become persisted execution-profile values. These decisions were checked
+against the current official GPT-5.6 migration and prompting guidance rather
+than inferred from the older installed CLI baseline.
+
+The exact progress taxonomy contains thirteen sanitized categories. Identical
+consecutive category/message pairs coalesce before sequence allocation; each
+run retains its newest 200 normalized events without sequence reuse, while
+current/latest/terminal/elapsed/next-action projections remain independent.
+Raw reasoning, commands, output, environment and secret-bearing payloads remain
+forbidden.
+
+The routine, privileged and platform-administrator role matrix is now closed.
+Binary update planning and staging require platform administration; activation
+uses a finite single-use exact authorization, and an operator-requested
+rollback requires a separate authorization. The activation authority covers
+only automatic restoration of its exact previous version after a failed gate.
+
+`RUN_COMPLETED`, `RUN_FAILED` and `ACTION_REQUIRED` default enabled for active
+Android devices without an explicit preference. Explicit device preferences
+survive re-registration/application upgrade, while intermediate progress stays
+in-app/SSE and produces no push notification.
+
+Final read-only checks confirmed clean Atenea source, production and preview
+`UP` with zero backend/App Server restarts, active AX42 worker/SSH/Tailscale/UFW,
+all RAID arrays `[UU]` and rootful Docker inactive. No runtime, routing,
+database, WorkSession, AgentRun, slot, device or notification delivery changed.
+
+Sanitized task-1.2 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-1.2-contract-freeze`;
+the SHA-256 of its `SHA256SUMS` is
+`07bcd219a0316538df281f0069b5d00c73c209e42b760519721cd64c0871ba24`.
