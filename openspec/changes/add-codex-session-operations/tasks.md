@@ -15,7 +15,7 @@
 
 - [x] 1.1 Capture clean Git, production/preview health, routing, worker protocol, installed Codex versions, effective current runner behavior, FCM/device baseline and zero-secret fingerprints
 - [x] 1.2 Freeze model/effort precedence, canonical catalog fields, role matrix, progress taxonomy, 200-event bound, notification defaults and update authorization
-- [ ] 1.3 Design the additive database migration, backup, expand/contract rollout and disable-first rollback without destructive down-migration
+- [x] 1.3 Design the additive database migration, backup, expand/contract rollout and disable-first rollback without destructive down-migration
 - [ ] 1.4 Add protocol/API schemas and negative fixtures that reject arbitrary models, efforts, commands, providers, endpoints, paths, services and foreign ownership
 - [ ] 1.5 Run strict OpenSpec validation and record the exact implementation resume point
 

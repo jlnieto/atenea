@@ -266,6 +266,70 @@ platform-administrator authorization and exact current/previous identities.
 Either path restarts only the exact Codex/worker boundary. Project runtimes,
 production, Beautips resources and unrelated slots are not restarted.
 
+### Expand persistence before enabling any new behavior
+
+The production baseline is Flyway V56. This change reserves five additive
+migrations in dependency order:
+
+1. V57 adds nullable WorkSession/project defaults, immutable AgentRun
+   `modelId`/`modelSource`/`reasoningEffort`/`effortSource`/catalog/Codex fields,
+   and normalized worker catalog/inventory records;
+2. V58 adds `agent_run_progress_event`, its unique `(agent_run_id, sequence)`
+   identity and separate latest/floor/next-action projections on AgentRun;
+3. V59 adds idempotent `agent_run_recovery_operation` with exact ownership,
+   action, request identity, state, outcome and retry lineage;
+4. V60 adds generic `notification_event`, per-device
+   `notification_preference` and `notification_delivery`, including unique
+   event deduplication and `(event_id, device_id, channel)` delivery ownership;
+5. V61 adds managed worker/Codex update inventory and operation records with
+   plan, release digest, authorization digest/expiry/consumption, gate results
+   and exact current/previous version identities.
+
+The migrations only add nullable columns, tables, constraints and indexes.
+Legacy AgentRuns and push logs are not rewritten, synthesized or deleted.
+Feature-enabled new runs enforce complete profiles in the service transaction;
+legacy rows remain explicitly profile-absent. Existing
+`mobile_push_notification_log` rows remain their historical authority. Generic
+notification events begin only at cutover and use a distinct deduplication
+key, so migration cannot resend an old notification.
+
+Five independent default-false gates own profile/settings, progress
+publication, self-service recovery, generic notification dispatch and managed
+Codex update operations. Their configuration keys are respectively
+`atenea.codex-session-operations.profiles-enabled`, `progress-enabled`,
+`recovery-enabled`, `notification-outbox-enabled` and
+`managed-updates-enabled`, mapped to the same uppercase underscore environment
+names. Migration does not enable a gate. Reader-compatible backend code is
+deployed first, then a dual-compatible worker, then web and Android readers.
+Each capability is enabled synthetically and independently; notification
+cutover disables its event-specific producer before enabling the generic
+dispatcher for the same category.
+
+Immediately before the first production migration, Atenea's production backup
+authority creates a PostgreSQL 16 custom-format backup and retains only its
+sanitized version, size, digest, table counts and restore result in programme
+evidence. The dump itself remains inside the protected production backup
+boundary. It is restored into a disposable, network-isolated PostgreSQL 16
+fixture. That fixture must reproduce V56 and declared counts, accept V57–V61,
+accept a second no-op migration pass and pass candidate repository tests.
+
+The exact production image that would be used for application rollback is
+also started against the migrated disposable fixture before production
+changes. If its Flyway validation or read paths reject the expanded schema, it
+is not an accepted rollback image; a compatibility release containing V57–V61
+but all five capabilities disabled must be built and proven instead. No
+production migration begins without one verified rollback-compatible image.
+
+Rollback is disable-first. It blocks new update activation, recovery commands,
+generic notification dispatch, progress publication and profile/settings
+changes; blocks new remote dispatch while any affected run is reconciled; and
+retains every new row for audit and eventual replay. The exact
+rollback-compatible backend/worker may then be restored without changing
+routing, WorkSession affinity or existing execution ownership. There is no
+automatic `DROP`, column reversal, notification replay, profile rewrite or
+Flyway repair. A later contract migration requires zero live readers/writers,
+expired retention, a fresh restore-tested backup and separate authorization.
+
 ### Keep the operator UI state-first
 
 The conversation header shows current state, model, effort, Codex version and
@@ -316,24 +380,26 @@ is available.
    only reviewed draft changes after overlap analysis.
 5. Capture current schema, API, worker protocol, FCM, installed versions,
    routing and production fingerprints.
-6. Add expand-only persistence for profiles, progress, recovery operations,
-   notification events/preferences/deliveries and worker inventory.
-7. Deploy backend and worker readers/writers with all new controls disabled.
-8. Enable profile persistence and safe progress for one synthetic session.
-9. Enable web and Android settings/progress/recovery surfaces.
-10. Adapt existing push events to the outbox, then enable remote terminal
+6. Create and restore-test the protected V56 backup; apply V57–V61 twice in the
+   isolated fixture and prove the exact rollback-compatible application image.
+7. Add the expand-only persistence while every new control remains disabled.
+8. Deploy backend and worker readers/writers with all new controls disabled.
+9. Enable profile persistence and safe progress for one synthetic session.
+10. Enable web and Android settings/progress/recovery surfaces.
+11. Adapt existing push events to the outbox, then enable remote terminal
    notifications for one configured device.
-11. Exercise cancellation, reconciliation, failed retry, disconnect and backend
+12. Exercise cancellation, reconciliation, failed retry, disconnect and backend
    restart without duplicate execution or notification.
-12. Exercise update planning and rollback synthetically. Perform a real AX42
+13. Exercise update planning and rollback synthetically. Perform a real AX42
    Codex update only after separate explicit administrator authorization.
-13. Run complete backend, worker, Android and Playwright validation, seal
+14. Run complete backend, worker, Android and Playwright validation, seal
    sanitized evidence and archive the change.
 
-Rollback disables new settings, progress publication, recovery actions and
-notification dispatch first. Additive records remain for audit and
-reconciliation. It does not down-migrate production history, delete devices,
-remove WorkSessions or change existing routing.
+Rollback disables update operations, new dispatch/profile settings, progress
+publication, recovery actions and notification dispatch first. Additive
+records remain for audit and reconciliation. It uses only the fixture-proven
+rollback-compatible application image and does not down-migrate production
+history, delete devices, remove WorkSessions or change existing routing.
 
 ## Open Questions
 

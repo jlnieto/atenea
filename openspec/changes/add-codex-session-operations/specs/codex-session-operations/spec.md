@@ -285,3 +285,38 @@ and errors SHALL state what happened and what the operator can do next.
 
 - **WHEN** an AgentRun reaches a retryable or administrator-required failure
 - **THEN** the conversation distinguishes retry, reconcile and request-admin actions rather than showing a generic error
+
+### Requirement: Additive persistence and disable-first rollback
+
+Atenea SHALL introduce execution profiles, progress, recovery, generic
+notifications and managed Codex updates through ordered additive migrations
+after V56. Every capability SHALL remain independently disabled by default and
+legacy AgentRuns and notification logs SHALL remain unchanged. Before the first
+production migration, a current PostgreSQL 16 custom-format backup SHALL be
+restored in a network-isolated disposable fixture, V57–V61 SHALL apply there
+idempotently, and the exact application rollback image SHALL prove it can start
+and read the expanded schema.
+
+Rollback SHALL disable new update operations, dispatch/profile changes,
+progress publication, recovery actions and generic notification dispatch
+before changing application components. It SHALL retain expanded records and
+existing affinity for audit/reconciliation and SHALL NOT down-migrate, repair
+Flyway history, replay legacy notifications, rewrite profiles, delete devices
+or move a WorkSession. Schema contraction SHALL require a later separately
+authorized migration after zero readers/writers, retention expiry and a fresh
+restore-tested backup.
+
+#### Scenario: Current production image rejects future Flyway history
+
+- **WHEN** the intended rollback image cannot start against the migrated isolated fixture
+- **THEN** production migration is blocked until a schema-compatible image containing the additive migrations with every capability disabled passes the same fixture
+
+#### Scenario: New capability must be rolled back
+
+- **WHEN** an enabled profile, progress, recovery, notification or update path fails an acceptance gate
+- **THEN** its gate is disabled first, affected runs are reconciled under their persisted ownership and expanded history remains intact
+
+#### Scenario: Operator requests destructive down migration
+
+- **WHEN** any new record may still be read, reconciled, delivered or audited
+- **THEN** contraction is rejected and the disable-first expanded schema remains authoritative

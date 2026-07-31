@@ -256,6 +256,7 @@ production activation are recorded later in this ledger.
 | D-053 | Version the worker catalog with canonical worker/Codex/model fields and accept only each model's advertised subset of `none`, `low`, `medium`, `high`, `xhigh` and `max`; aliases, Pro and Ultra remain outside persisted profile authority. | Current Codex families do not share one implicit capability set, so exact per-model advertisement and fail-closed intersection avoid silent substitution. | accepted | platform/worker owners | each catalog schema revision or Codex family expansion |
 | D-054 | Use the thirteen fixed sanitized progress categories, coalesce identical consecutive events before sequencing and retain the newest 200 events plus independent current/latest/terminal/next-action projections. | The operator gets bounded useful progress and deterministic replay without retaining reasoning, raw commands, output or secrets. | accepted | backend/worker owners | before changing progress taxonomy or retention bound |
 | D-055 | Enable completion, failure and action-required push categories by default per active Android device, keep intermediate progress in-app only, and reserve update plan/stage/activation/rollback for platform administrators with separate exact activation and operator-rollback authorizations. | Defaults must notify unattended work without push noise, while binary lifecycle changes remain distinct from routine and mediated recovery authority. | accepted | product/platform/security owners | notification-default or Codex-update authority change |
+| D-056 | Add V57–V61 in dependency order for profiles/catalog, progress, recovery, generic notifications and managed updates; keep five independent gates default-off and accept production migration only after a protected V56 restore plus exact rollback-image compatibility proof. | Expanded history is required for audit/reconciliation, while a nominal old image may reject future Flyway history and therefore cannot be assumed to be a viable rollback. | accepted | data/backend/platform owners | before production V57 or any later schema contraction |
 
 ## Deferred decisions and gates
 
@@ -4934,3 +4935,42 @@ Sanitized task-1.2 evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-1.2-contract-freeze`;
 the SHA-256 of its `SHA256SUMS` is
 `07bcd219a0316538df281f0069b5d00c73c209e42b760519721cd64c0871ba24`.
+
+Task 1.3 is complete and change progress is `13/57`; the exact resume point is
+task 1.4.
+
+The production baseline remains Flyway V56. The accepted design reserves V57
+through V61, in order, for execution profile/catalog inventory, bounded
+progress, idempotent recovery, generic notification events/preferences/
+deliveries and managed Codex update inventory/operations. Every migration is
+expand-only: legacy AgentRuns and push logs are neither backfilled with
+invented values nor deleted, and migration itself enables no behavior.
+
+Five independent profile, progress, recovery, notification-outbox and
+managed-update gates are fixed default-false. Rollout applies the schema, then
+deploys reader-compatible backend, dual-compatible worker and clients before
+synthetic capability-by-capability activation. Notification cutover stops the
+old category producer before its generic dispatcher starts, preventing a
+dual-send window.
+
+Before any production V57 application, the production backup authority must
+create a PostgreSQL 16 custom-format V56 backup and restore it in a disposable
+network-isolated fixture. That fixture must reproduce the sanitized baseline,
+accept V57–V61 twice with the second pass a no-op, pass candidate tests and run
+the exact intended rollback image. If that image rejects future Flyway history
+or expanded reads, production migration remains blocked until a compatibility
+image containing V57–V61 with every new gate disabled passes.
+
+Rollback is explicitly disable-first: reject new update/recovery/profile work,
+stop generic push/progress publication, block new affected dispatch and
+reconcile persisted ownership before restoring only a fixture-proven
+compatible application. Expanded rows, devices, deliveries, WorkSessions,
+routing and affinity remain. Flyway repair, destructive down migration,
+notification replay and automatic schema contraction are forbidden.
+
+Task 1.3 was documentation-only. No backup was created, no migration was
+applied and no runtime, production, routing, database or worker state changed.
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-1.3-migration-rollback-design`;
+the SHA-256 of its `SHA256SUMS` is
+`0ac9a8a867df7078bede37d6164072728dce34192291aa2538c23b375499b98e`.

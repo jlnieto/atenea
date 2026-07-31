@@ -38,6 +38,9 @@ prerequisites, not reasons to weaken isolation.
 - Generalize the existing FCM baseline into a transactional notification
   outbox with per-device delivery, preferences, deduplication, retry,
   expiration and deep links.
+- Introduce profile, progress, recovery, notification and update persistence as
+  V57–V61 additive migrations, gated default-off and protected by a restored
+  V56 backup plus a schema-compatible rollback image.
 - Notify Android by default when the latest submitted run completes, fails or
   requires action even when the application is closed or in the background;
   keep intermediate progress in-app only.
