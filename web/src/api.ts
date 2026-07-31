@@ -2,6 +2,8 @@ import {
   ApiError,
   AuthSession,
   BillingQueueResponse,
+  CodexCatalog,
+  CodexSettings,
   CoreCommandResponse,
   CoreCommandSummary,
   CoreScope,
@@ -162,6 +164,32 @@ export class AteneaApi {
     return unwrapWorkSessionConversation(response);
   }
 
+  codexCatalog() {
+    return this.get<CodexCatalog>("/api/codex/catalog");
+  }
+
+  projectCodexSettings(projectId: number) {
+    return this.get<CodexSettings>(`/api/projects/${projectId}/codex-settings`);
+  }
+
+  sessionCodexSettings(sessionId: number) {
+    return this.get<CodexSettings>(`/api/sessions/${sessionId}/codex-settings`);
+  }
+
+  updateSessionCodexSettings(
+    sessionId: number,
+    modelId: string,
+    reasoningEffort: string,
+    catalogRevision: string
+  ) {
+    return this.put<CodexSettings>(`/api/sessions/${sessionId}/codex-settings`, {
+      modelId,
+      reasoningEffort,
+      catalogRevision,
+      idempotencyKey: crypto.randomUUID()
+    });
+  }
+
   sessionDeliverables(sessionId: number) {
     return this.get<SessionDeliverablesView>(`/api/mobile/sessions/${sessionId}/deliverables`);
   }
@@ -272,6 +300,10 @@ export class AteneaApi {
 
   post<T>(path: string, body?: unknown, authenticated = true) {
     return this.request<T>(path, { method: "POST", body, authenticated, jsonBody: true });
+  }
+
+  put<T>(path: string, body?: unknown, authenticated = true) {
+    return this.request<T>(path, { method: "PUT", body, authenticated, jsonBody: true });
   }
 
   private async request<T>(

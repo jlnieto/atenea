@@ -135,6 +135,31 @@ export interface MobileAgentRun {
   errorSummary?: string | null;
 }
 
+export interface CodexCatalogModel {
+  modelId: string;
+  displayName: string;
+  defaultEffort: string;
+  availability: "AVAILABLE" | "DEPRECATED" | "BLOCKED";
+  efforts: string[];
+}
+
+export interface CodexCatalog {
+  workerId: string;
+  catalogRevision: string;
+  schemaVersion: string;
+  codexVersion: string;
+  generatedAt: string;
+  observedAt: string;
+  models: CodexCatalogModel[];
+}
+
+export interface CodexSettings {
+  scope: "PROJECT" | "WORK_SESSION";
+  id: number;
+  modelId?: string | null;
+  reasoningEffort?: string | null;
+}
+
 export interface MobileConversationTurn {
   id: number;
   actor: string;

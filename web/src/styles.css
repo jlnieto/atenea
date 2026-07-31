@@ -1012,7 +1012,7 @@ select:focus {
 .conversation-body {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 18px 16px 120px;
+  padding: 18px 16px 210px;
 }
 
 .attachment-panel {
@@ -1137,12 +1137,68 @@ select:focus {
   left: 0;
   right: 0;
   bottom: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   padding: 12px 16px;
   background: rgba(17, 20, 22, 0.96);
   border-top: 1px solid #303638;
+}
+
+.conversation-composer__input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.execution-profile {
+  width: min(1148px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(190px, 1.2fr) minmax(130px, 0.7fr) minmax(250px, 1.4fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 5px;
+  background: #171b1d;
+  border: 1px solid #303638;
+}
+
+.execution-profile__title,
+.execution-profile__meta,
+.execution-profile label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.execution-profile label > span,
+.execution-profile__meta span {
+  color: #9aa5a8;
+  font-size: 11px;
+}
+
+.execution-profile select {
+  min-width: 0;
+  height: 38px;
+  padding: 0 9px;
+  background: #1e252b;
+  border: 1px solid #3b4448;
+  border-radius: 4px;
+  color: #e7ece9;
+}
+
+.execution-profile__error,
+.execution-profile--error {
+  color: #ffb4ab !important;
+}
+
+.execution-profile--loading,
+.execution-profile--error {
+  display: block;
+  color: #c1c9c8;
+  font-size: 13px;
 }
 
 .conversation-composer textarea {
@@ -1234,7 +1290,7 @@ select:focus {
   .facts,
   .deliverables,
   .core-composer,
-  .conversation-composer {
+  .conversation-composer__input {
     grid-template-columns: 1fr;
   }
 
@@ -1243,7 +1299,21 @@ select:focus {
   }
 
   .conversation-body {
-    padding-bottom: 180px;
+    padding-bottom: 310px;
+  }
+
+  .execution-profile {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .execution-profile__title,
+  .execution-profile__meta {
+    grid-column: 1 / -1;
+  }
+
+  .execution-profile .button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .attachment-panel__header {

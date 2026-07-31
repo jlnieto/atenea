@@ -33,6 +33,9 @@ import { api } from "./api";
 import {
   ApiError,
   AuthSession,
+  CodexCatalog,
+  CodexCatalogModel,
+  CodexSettings,
   CoreCommandResponse,
   CoreCommandSummary,
   CoreScope,
@@ -828,6 +831,34 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [attachmentError, setAttachmentError] = useState("");
+  const [profile, setProfile] = useState<ExecutionProfileView | null>(null);
+  const [draftModel, setDraftModel] = useState("");
+  const [draftEffort, setDraftEffort] = useState("");
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileUnavailable, setProfileUnavailable] = useState(false);
+  const [profileError, setProfileError] = useState("");
+
+  async function loadProfile() {
+    setProfileLoading(true);
+    setProfileError("");
+    try {
+      const next = await loadExecutionProfile(sessionId, projectId);
+      setProfile(next);
+      setDraftModel(next.model.modelId);
+      setDraftEffort(next.reasoningEffort);
+      setProfileUnavailable(false);
+    } catch (loadError) {
+      if (loadError instanceof ApiError && loadError.status === 404) {
+        setProfile(null);
+        setProfileUnavailable(true);
+      } else {
+        setProfileError(`No se pudo confirmar el perfil. ${errorMessage(loadError)}`);
+      }
+    } finally {
+      setProfileLoading(false);
+    }
+  }
 
   async function load() {
     setError("");
@@ -839,6 +870,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       ]);
       setConversation(nextConversation);
       setAttachments(nextAttachments);
+      await loadProfile();
     } catch (loadError) {
       setError(errorMessage(loadError));
     } finally {
@@ -865,6 +897,40 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       setError(errorMessage(submitError));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function applyProfile() {
+    if (!profile || !draftModel || !draftEffort) {
+      return;
+    }
+    setProfileSaving(true);
+    setProfileError("");
+    try {
+      await api.updateSessionCodexSettings(
+        sessionId,
+        draftModel,
+        draftEffort,
+        profile.catalog.catalogRevision
+      );
+      await loadProfile();
+    } catch (saveError) {
+      setProfileError(`El perfil no se aplicó. ${errorMessage(saveError)} Revisa la selección e inténtalo de nuevo.`);
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  const selectedModel = profile?.catalog.models.find((model) => model.modelId === draftModel) || null;
+  const profileDirty = Boolean(profile && (
+    draftModel !== profile.model.modelId || draftEffort !== profile.reasoningEffort
+  ));
+
+  function changeModel(modelId: string) {
+    setDraftModel(modelId);
+    const model = profile?.catalog.models.find((item) => item.modelId === modelId);
+    if (model && !model.efforts.includes(draftEffort)) {
+      setDraftEffort(model.defaultEffort);
     }
   }
 
@@ -919,10 +985,123 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       />
       <TurnList turns={conversation?.recentTurns || []} />
       <form className="conversation-composer" onSubmit={submit}>
-        <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Instrucción para Codex dentro de esta sesión..." />
-        <Button variant="primary" disabled={loading || !message.trim()}>{loading ? "Enviando" : "Enviar"}</Button>
+        {!profileUnavailable && (
+          <ExecutionProfileControl
+            profile={profile}
+            selectedModel={selectedModel}
+            draftModel={draftModel}
+            draftEffort={draftEffort}
+            dirty={profileDirty}
+            loading={profileLoading}
+            saving={profileSaving}
+            error={profileError}
+            onModelChange={changeModel}
+            onEffortChange={setDraftEffort}
+            onApply={applyProfile}
+          />
+        )}
+        <div className="conversation-composer__input">
+          <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Instrucción para Codex dentro de esta sesión..." />
+          <Button variant="primary" disabled={loading || !message.trim() || profileDirty || Boolean(profileError)}>{loading ? "Enviando" : "Enviar"}</Button>
+        </div>
       </form>
     </ConversationLayout>
+  );
+}
+
+interface ExecutionProfileView {
+  catalog: CodexCatalog;
+  model: CodexCatalogModel;
+  modelSource: string;
+  reasoningEffort: string;
+  effortSource: string;
+}
+
+async function loadExecutionProfile(sessionId: number, projectId?: number): Promise<ExecutionProfileView> {
+  const [catalog, sessionSettings, projectSettings] = await Promise.all([
+    api.codexCatalog(),
+    api.sessionCodexSettings(sessionId),
+    projectId ? api.projectCodexSettings(projectId) : Promise.resolve<CodexSettings | null>(null)
+  ]);
+  const available = catalog.models.filter((model) => model.availability === "AVAILABLE");
+  const modelId = sessionSettings.modelId || projectSettings?.modelId || available[0]?.modelId;
+  const model = available.find((item) => item.modelId === modelId);
+  if (!model) {
+    throw new Error("El modelo efectivo no está disponible en el catálogo actual.");
+  }
+  const reasoningEffort = sessionSettings.reasoningEffort
+    || projectSettings?.reasoningEffort
+    || model.defaultEffort;
+  if (!model.efforts.includes(reasoningEffort)) {
+    throw new Error("El esfuerzo efectivo no es compatible con el modelo actual.");
+  }
+  return {
+    catalog,
+    model,
+    modelSource: sessionSettings.modelId ? "Sesión" : projectSettings?.modelId ? "Proyecto" : "Worker",
+    reasoningEffort,
+    effortSource: sessionSettings.reasoningEffort ? "Sesión" : projectSettings?.reasoningEffort ? "Proyecto" : "Worker"
+  };
+}
+
+function ExecutionProfileControl({
+  profile,
+  selectedModel,
+  draftModel,
+  draftEffort,
+  dirty,
+  loading,
+  saving,
+  error,
+  onModelChange,
+  onEffortChange,
+  onApply
+}: {
+  profile: ExecutionProfileView | null;
+  selectedModel: CodexCatalogModel | null;
+  draftModel: string;
+  draftEffort: string;
+  dirty: boolean;
+  loading: boolean;
+  saving: boolean;
+  error: string;
+  onModelChange: (value: string) => void;
+  onEffortChange: (value: string) => void;
+  onApply: () => void;
+}) {
+  if (loading) {
+    return <section className="execution-profile execution-profile--loading" aria-label="Perfil de próxima ejecución">Confirmando perfil de ejecución…</section>;
+  }
+  if (!profile) {
+    return <section className="execution-profile execution-profile--error" role="alert">{error || "Perfil de ejecución no disponible."}</section>;
+  }
+  return (
+    <section className="execution-profile" aria-label="Perfil de próxima ejecución">
+      <div className="execution-profile__title">
+        <span className="eyebrow">Próxima ejecución</span>
+        <strong>{dirty ? "Cambios sin aplicar" : "Perfil listo"}</strong>
+      </div>
+      <label>
+        <span>Modelo</span>
+        <select value={draftModel} onChange={(event) => onModelChange(event.target.value)}>
+          {profile.catalog.models.filter((model) => model.availability === "AVAILABLE").map((model) => (
+            <option key={model.modelId} value={model.modelId}>{model.displayName}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Esfuerzo</span>
+        <select value={draftEffort} onChange={(event) => onEffortChange(event.target.value)}>
+          {(selectedModel?.efforts || []).map((effort) => <option key={effort} value={effort}>{effort}</option>)}
+        </select>
+      </label>
+      <div className="execution-profile__meta">
+        <strong>Codex {profile.catalog.codexVersion}</strong>
+        <span>Origen: modelo {profile.modelSource} · esfuerzo {profile.effortSource}</span>
+        {error && <span className="execution-profile__error" role="alert">{error}</span>}
+      </div>
+      {dirty && <Button disabled={saving} onClick={onApply}>{saving ? "Aplicando…" : "Aplicar perfil"}</Button>}
+    </section>
   );
 }
 
