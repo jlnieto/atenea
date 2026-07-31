@@ -354,6 +354,18 @@ denied in this state:
 sudo ./install-agent-run-worker-v1.sh project-selection-enable
 ```
 
+When an earlier exactly owned Atenea WorkSession contains a stale dirty draft,
+register that retained identity only for the sanitized recovery transaction.
+The operation requires an ancestor HEAD, a non-empty draft, the exact
+allocation and manifest, enables selection but keeps execution disabled:
+
+```bash
+sudo ./install-agent-run-worker-v1.sh project-retained-draft-register \
+  018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e \
+  remote:ax42-01:work-session:018f47a2-6b0c-7a31-9c2d-4f5a6b7c8d9e \
+  0123456789abcdef0123456789abcdef01234567
+```
+
 After the canonical workspace/allocation exists, register and enable only its
 exact immutable identity:
 

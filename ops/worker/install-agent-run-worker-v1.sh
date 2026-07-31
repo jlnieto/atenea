@@ -25,6 +25,7 @@ PROJECT_BRANCH="feature/actualizar-conversacion-en-web"
 PROJECT_MANIFEST_SHA256="3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
 PROJECT_MIRROR="/srv/atenea/repositories/atenea.git"
 PROJECT_REF="refs/remotes/origin/${PROJECT_BRANCH}"
+PROJECT_WORKSPACES_ROOT="/srv/atenea/workspaces/sessions"
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -90,7 +91,7 @@ write_project_config() {
   local workspaces_json="$3"
   local canonical_commit="$4"
   local temporary
-  temporary="$(mktemp /etc/atenea-worker/.project-codex-v1.XXXXXX)"
+  temporary="$(mktemp "$(dirname "$PROJECT_CONFIG")/.project-codex-v1.XXXXXX")"
   jq -n \
     --arg schema_version project-codex-v1 \
     --argjson selection_enabled "$selection_enabled" \
@@ -249,6 +250,64 @@ verify() {
   printf '%s\n' 'agent-run-worker-v1 verification passed'
 }
 
+project_retained_draft_register() {
+  require_root
+  [[ "$#" -eq 3 ]] ||
+    fail "project-retained-draft-register requires SESSION_ID, WORKSPACE_IDENTITY and RETAINED_COMMIT"
+  local session_id="$1"
+  local workspace_identity="$2"
+  local retained_commit="$3"
+  [[ "$session_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] \
+    || fail "session id is invalid"
+  [[ "$workspace_identity" == "remote:ax42-01:work-session:${session_id}" ]] \
+    || fail "workspace identity is not exact"
+  [[ "$retained_commit" =~ ^[0-9a-f]{40}$ ]] || fail "retained commit is invalid"
+
+  local worktree="${PROJECT_WORKSPACES_ROOT}/${session_id}/atenea"
+  local allocation="${PROJECT_WORKSPACES_ROOT}/${session_id}/runtime-allocation-v1.json"
+  [[ -d "$worktree" && ! -L "$worktree" && -f "$allocation" && ! -L "$allocation" ]] \
+    || fail "persisted retained workspace ownership is absent"
+  [[ "$(git -c safe.directory="$worktree" -C "$worktree" remote get-url origin)" == "$PROJECT_REPOSITORY" ]] \
+    || fail "retained workspace remote is foreign"
+  [[ "$(git -c safe.directory="$worktree" -C "$worktree" rev-parse --verify 'HEAD^{commit}')" \
+      == "$retained_commit" ]] || fail "retained workspace HEAD is conflicting"
+
+  local canonical_commit
+  canonical_commit="$(observe_project_commit)"
+  [[ "$retained_commit" != "$canonical_commit" ]] || fail "retained workspace is not stale"
+  git --git-dir="$PROJECT_MIRROR" merge-base --is-ancestor "$retained_commit" "$canonical_commit" \
+    || fail "retained workspace is not an ancestor of canonical source"
+  [[ -n "$(git -c safe.directory="$worktree" -C "$worktree" status --porcelain=v1 --untracked-files=all)" ]] \
+    || fail "retained workspace has no draft to preserve"
+  [[ "$(sha256sum "$worktree/ops/atenea-runtime.json" | cut -d' ' -f1)" == "$PROJECT_MANIFEST_SHA256" ]] \
+    || fail "retained workspace manifest is foreign"
+
+  local allocation_sha exact_record existing_count existing_exact workspaces
+  allocation_sha="$(sha256sum "$allocation" | cut -d' ' -f1)"
+  exact_record="$(jq -cn \
+    --arg session_id "$session_id" \
+    --arg worktree "$worktree" \
+    --arg allocation_sha256 "$allocation_sha" \
+    --arg canonical_commit "$retained_commit" \
+    '{
+      sessionId: $session_id,
+      worktree: $worktree,
+      allocationSha256: $allocation_sha256,
+      canonicalCommit: $canonical_commit
+    }')"
+  existing_count="$(jq '.workspaces | length' "$PROJECT_CONFIG")"
+  existing_exact="$(jq -c --arg identity "$workspace_identity" '.workspaces[$identity] // null' "$PROJECT_CONFIG")"
+  if [[ "$existing_count" -ne 0 &&
+        ! ("$existing_count" -eq 1 && "$existing_exact" == "$exact_record") ]]; then
+    fail "another persisted Atenea workspace is registered"
+  fi
+  workspaces="$(jq -cn \
+    --arg identity "$workspace_identity" \
+    --argjson record "$exact_record" \
+    '{($identity): $record}')"
+  write_project_config true false "$workspaces" "$canonical_commit"
+}
+
 project_register() {
   require_root
   [[ "$#" -eq 2 ]] || fail "project-register requires SESSION_ID and WORKSPACE_IDENTITY"
@@ -258,8 +317,8 @@ project_register() {
     || fail "session id is invalid"
   [[ "$workspace_identity" == "remote:ax42-01:work-session:${session_id}" ]] \
     || fail "workspace identity is not exact"
-  local worktree="/srv/atenea/workspaces/sessions/${session_id}/atenea"
-  local allocation="/srv/atenea/workspaces/sessions/${session_id}/runtime-allocation-v1.json"
+  local worktree="${PROJECT_WORKSPACES_ROOT}/${session_id}/atenea"
+  local allocation="${PROJECT_WORKSPACES_ROOT}/${session_id}/runtime-allocation-v1.json"
   [[ -d "$worktree" && ! -L "$worktree" && -f "$allocation" ]] \
     || fail "persisted workspace ownership is absent"
   [[ "$(git -c safe.directory="$worktree" -C "$worktree" remote get-url origin)" == "$PROJECT_REPOSITORY" ]] \
@@ -368,6 +427,10 @@ enable_endpoint() {
   verify
 }
 
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
 case "$ACTION" in
   plan) plan ;;
   apply) apply_install ;;
@@ -376,10 +439,11 @@ case "$ACTION" in
   rollback) rollback_endpoint ;;
   enable) enable_endpoint ;;
   project-register) shift; project_register "$@" ;;
+  project-retained-draft-register) shift; project_retained_draft_register "$@" ;;
   project-activate) shift; project_activate "$@" ;;
   project-selection-enable) project_selection_enable ;;
   project-enable) project_enable ;;
   project-disable) project_disable ;;
   project-unregister) shift; project_unregister "$@" ;;
-  *) fail "usage: $0 plan|apply|verify|disable|rollback|enable|project-register|project-activate|project-selection-enable|project-enable|project-disable|project-unregister" ;;
+  *) fail "usage: $0 plan|apply|verify|disable|rollback|enable|project-register|project-retained-draft-register|project-activate|project-selection-enable|project-enable|project-disable|project-unregister" ;;
 esac
