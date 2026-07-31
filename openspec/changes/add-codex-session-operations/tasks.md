@@ -17,7 +17,7 @@
 - [x] 1.2 Freeze model/effort precedence, canonical catalog fields, role matrix, progress taxonomy, 200-event bound, notification defaults and update authorization
 - [x] 1.3 Design the additive database migration, backup, expand/contract rollout and disable-first rollback without destructive down-migration
 - [x] 1.4 Add protocol/API schemas and negative fixtures that reject arbitrary models, efforts, commands, providers, endpoints, paths, services and foreign ownership
-- [ ] 1.5 Run strict OpenSpec validation and record the exact implementation resume point
+- [x] 1.5 Run strict OpenSpec validation and record the exact implementation resume point
 
 ## 2. Durable Atenea control plane
 

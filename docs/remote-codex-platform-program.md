@@ -5011,3 +5011,32 @@ evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-1.4-closed-schemas-negative-fixtures`;
 the SHA-256 of its `SHA256SUMS` is
 `f7ff10be7fd6c70f168432d7bbc35a949bf77d89220941cdf95a8041f2e81030`.
+
+Task 1.5 and Phase 1 are complete. Change progress is `15/57`; the exact
+implementation resume point is task 2.1. Tasks 2.2 and later remain pending.
+
+Strict OpenSpec validation passes from the programme environment, every JSON
+contract parses and the same new contract suite passes in the canonical
+repository. The Atenea host itself does not have the `openspec` executable, so
+its attempted command returned 127 without changing state; this is an explicit
+tooling fact, not a validation failure or an authority to install host-global
+software.
+
+Atenea code remains clean and synchronized at
+`ec867f75bd4bb58f582607cf0025a003400f02c8`; programme code was clean and
+synchronized at the task-1.4 commit before this closure. Production and preview
+are `UP`, backend/App Server restarts are zero, AX42 worker/SSH/Tailscale/UFW
+are active, every RAID array is `[UU]`, rootful Docker is inactive and no v2
+schema is installed on the worker.
+
+Task 2.1 must begin by implementing only V57 and its persistence model in the
+Atenea code repository: nullable WorkSession/project defaults, immutable
+AgentRun model/effort plus independent sources, catalog revision, Codex version
+and normalized worker catalog inventory. Existing V56 rows remain explicitly
+profile-absent, all five feature gates stay false and no production migration,
+v2 installation or managed Codex update is implied.
+
+Sanitized phase-closure evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-1.5-phase-1-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`d8ccbe68b5d0dc10616254de146c8fab684cdc65036f37fae373445effe22a3e`.
