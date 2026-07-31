@@ -35,7 +35,7 @@
 - [x] 3.2 Extend the closed workload fingerprint with canonical model and effort while preserving exact project/workspace ownership
 - [x] 3.3 Pass only validated model/effort flags to the fixed Codex runner and return the exact effective version/profile
 - [x] 3.4 Normalize structured Codex events into the closed progress taxonomy without retaining reasoning, raw commands, output or secret-bearing payloads
-- [ ] 3.5 Make duplicate progress/terminal delivery idempotent across worker and control-plane restart
+- [x] 3.5 Make duplicate progress/terminal delivery idempotent across worker and control-plane restart
 - [ ] 3.6 Implement exact cancellation, reconcile inspection and sanitized doctor operations without arbitrary host authority
 - [ ] 3.7 Run focused and complete worker protocol, runner, project, cancellation, restart, denial and cleanup suites twice
 

@@ -269,6 +269,7 @@ production activation are recorded later in this ledger.
 | D-066 | Validate and fingerprint the complete `project-codex-v2` envelope, profile and existing v1 ownership before persistence, but reject even a valid v2 create as `profile_execution_unavailable` until the fixed runner consumes the validated profile. | Persisting or scheduling a profiled request before model/effort flags are actually enforced could execute under a silently different profile; staged validation must remain fail-closed. | accepted | worker/security owners | task 3.3 runner enablement or profile-fingerprint change |
 | D-067 | Permit profiled execution only through the fixed runner's exact `--model` plus `model_reasoning_effort` arguments, require a pre-execution exact fixed-binary version probe, and reject any runner result whose echoed profile/version differs from the request. | A validated request can still execute incorrectly if the binary link moved, ambient configuration wins or the runner reports a substituted profile; all three boundaries must agree before success. | accepted | worker/security owners | before changing runner flags, binary path or effective-profile result fields |
 | D-068 | Normalize only recognized Codex JSONL structure into fixed progress messages, discard every source payload value and let the worker replace timestamps while assigning identity, monotonic sequence, coalescence and bounded retention. | Trusting model-provided text, command/output fields or source timestamps would let secret-bearing content cross the worker boundary even when the category itself is allowed. | accepted | worker/security owners | before changing structured-event mappings or progress message templates |
+| D-069 | Persist the highest imported worker progress sequence on the AgentRun and lock that row before atomically applying progress, terminal state and result turn; retain byte-stable terminal worker records across restart. | Lifecycle revision alone cannot deduplicate replayed detail events, and two coordinators must not both create a response turn after observing the same terminal worker revision. | accepted | backend/worker/data owners | before changing worker replay identity, coordinator locking or terminal transaction boundaries |
 
 ## Deferred decisions and gates
 
@@ -5389,3 +5390,32 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.4-safe-progress-normalization`;
 the SHA-256 of its `SHA256SUMS` is
 `9bc042d2a5980f96f527b155b598caa0f91788e6c37757a9e55faaefada3c6b2`.
+
+Task 3.5 is complete and change progress is `27/57`; the exact implementation
+resume point is task 3.6. Tasks 3.6 and later remain pending.
+
+Atenea commit `4765c93a0fb871a4e2b8e1ab1902eb3701c9dfc6`
+adds a V58 worker-source cursor and imports only strictly owned, ordered,
+fixed-message progress. The coordinator takes the owning AgentRun's
+pessimistic row lock before processing a response. Imported sequences,
+terminal status, external thread/turn identities and the single result turn
+therefore share one transaction; repeated polling, concurrent coordinators and
+startup reconciliation cannot create a second persisted event or response.
+
+Programme/worker commit `7bf5c1d7011b49c02e549b2af070e0b99d3329e4`
+adds byte-stability coverage for a terminal execution reloaded from durable
+worker state. Repeating its immutable create request returns the same execution
+identity, lifecycle revision, result and normalized sequence list.
+
+Two final 30-test Atenea passes against separate empty PostgreSQL 16 databases
+migrated to V60 succeeded with zero failures, errors or skips in 24.08 and
+22.96 seconds. Two final 51-test worker/runner/contract passes also succeeded
+in 3.85 and 3.78 seconds. Every exact synthetic database container was removed
+by recorded ID. AX42's installed service, hashes, version, private listener and
+zero restart count remained unchanged; production and preview remained
+running with zero backend restarts. Nothing was installed or enabled.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.5-idempotent-progress-terminal-replay`;
+the SHA-256 of its `SHA256SUMS` is
+`25f00ab8cf37018644bb7d8a33e5649747904036572a9251ef071a001bbfcb08`.
