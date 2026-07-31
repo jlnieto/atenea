@@ -38,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -65,6 +66,9 @@ class AgentRunServiceTest {
     @Mock
     private CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService;
 
+    @Mock
+    private JdbcTemplate jdbcTemplate;
+
     private AgentRunService agentRunService;
     private AgentRunReconciliationService agentRunReconciliationService;
 
@@ -79,7 +83,8 @@ class AgentRunServiceTest {
                 new AgentRunProgressService(),
                 mobilePushDispatchService,
                 workSessionAcceptanceService,
-                codexExecutionProfileSnapshotService
+                codexExecutionProfileSnapshotService,
+                jdbcTemplate
         );
     }
 

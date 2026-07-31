@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -34,6 +35,7 @@ public class AgentRunService {
     private final MobilePushDispatchService mobilePushDispatchService;
     private final WorkSessionAcceptanceService workSessionAcceptanceService;
     private final CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService;
+    private final JdbcTemplate jdbcTemplate;
 
     public AgentRunService(
             WorkSessionRepository workSessionRepository,
@@ -42,7 +44,8 @@ public class AgentRunService {
             AgentRunProgressService agentRunProgressService,
             MobilePushDispatchService mobilePushDispatchService,
             WorkSessionAcceptanceService workSessionAcceptanceService,
-            CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService
+            CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService,
+            JdbcTemplate jdbcTemplate
     ) {
         this.workSessionRepository = workSessionRepository;
         this.agentRunRepository = agentRunRepository;
@@ -51,6 +54,7 @@ public class AgentRunService {
         this.mobilePushDispatchService = mobilePushDispatchService;
         this.workSessionAcceptanceService = workSessionAcceptanceService;
         this.codexExecutionProfileSnapshotService = codexExecutionProfileSnapshotService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional
@@ -74,6 +78,7 @@ public class AgentRunService {
             WorkloadClass workloadClass
     ) {
         Instant now = Instant.now();
+        lockCodexActivation(session.getSelectedWorkerId());
         ensureNoNonTerminalRun(session.getId());
         workSessionAcceptanceService.invalidateForNewRun(session);
         if (session.getRemoteSessionId() == null
@@ -113,6 +118,20 @@ public class AgentRunService {
         run.setCreatedAt(now);
         codexExecutionProfileSnapshotService.applyCurrentProfile(run);
         return agentRunRepository.save(run);
+    }
+
+    private void lockCodexActivation(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            throw new IllegalStateException("Remote worker ownership is incomplete");
+        }
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_activation_barrier (worker_id)
+                VALUES (?) ON CONFLICT (worker_id) DO NOTHING
+                """, workerId);
+        jdbcTemplate.queryForObject("""
+                SELECT worker_id FROM worker_codex_activation_barrier
+                 WHERE worker_id = ? FOR UPDATE
+                """, String.class, workerId);
     }
 
     @Transactional

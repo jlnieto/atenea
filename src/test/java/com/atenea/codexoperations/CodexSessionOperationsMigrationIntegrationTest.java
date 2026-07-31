@@ -33,8 +33,11 @@ class CodexSessionOperationsMigrationIntegrationTest {
                 "notification_event",
                 "notification_delivery",
                 "worker_codex_release_inventory",
+                "worker_codex_activation_barrier",
                 "worker_codex_update_plan",
-                "worker_codex_stage_operation")) {
+                "worker_codex_stage_operation",
+                "worker_codex_activation_authorization",
+                "worker_codex_activation_operation")) {
             assertTrue(relationExists(table), table);
         }
 
@@ -63,7 +66,11 @@ class CodexSessionOperationsMigrationIntegrationTest {
                 "uk_worker_codex_stage_idempotency",
                 "uk_worker_codex_stage_candidate",
                 "ck_worker_codex_stage_gates",
-                "ck_worker_codex_stage_no_link_change")) {
+                "ck_worker_codex_stage_no_link_change",
+                "uk_worker_codex_activation_auth_idempotency",
+                "uk_worker_codex_activation_idempotency",
+                "ck_worker_codex_activation_gates",
+                "ck_worker_codex_activation_no_values")) {
             assertTrue(constraintExists(constraint), constraint);
         }
 

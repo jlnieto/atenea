@@ -272,6 +272,121 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 String.class, inventory.candidate()));
     }
 
+    @Test
+    void administratorSeparatelyAuthorizesAndActivatesOneCanaryIdempotently() throws Exception {
+        OperatorEntity routine = operator(CodexOperationsRole.ROUTINE_OPERATOR);
+        OperatorEntity administrator = operator(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        Inventory inventory = inventory(true);
+        String plan = mockMvc.perform(post("/api/admin/codex/update-plans")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(planBody(UUID.randomUUID(), false)))
+                .andReturn().getResponse().getContentAsString();
+        UUID planId = UUID.fromString(com.jayway.jsonpath.JsonPath.read(plan, "$.planId"));
+        UUID stageKey = UUID.randomUUID();
+        when(remoteWorkerClient.stageCodexUpdate(planId, inventory.candidate(), stageKey))
+                .thenReturn(stageResult(planId, inventory.candidate(), stageKey, "3".repeat(64)));
+        mockMvc.perform(post("/api/admin/codex/update-stages")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(stageBody(planId, inventory.candidate(), stageKey, false)))
+                .andExpect(status().isOk());
+
+        UUID authorizationKey = UUID.randomUUID();
+        String authorizationBody = authorizationBody(
+                planId, inventory.candidate(), authorizationKey, false);
+        mockMvc.perform(post("/api/admin/codex/update-activation-authorizations")
+                        .with(auth(routine)).contentType(MediaType.APPLICATION_JSON)
+                        .content(authorizationBody))
+                .andExpect(status().isForbidden());
+        String authorization = mockMvc.perform(
+                        post("/api/admin/codex/update-activation-authorizations")
+                                .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                                .content(authorizationBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.planId").value(planId.toString()))
+                .andExpect(jsonPath("$.currentInventoryId").value(inventory.current().toString()))
+                .andExpect(jsonPath("$.candidateInventoryId").value(inventory.candidate().toString()))
+                .andExpect(jsonPath("$.authorizationDigestSha256").isString())
+                .andExpect(jsonPath("$.automaticRestoreAuthorized").value(true))
+                .andExpect(jsonPath("$.consumedAt").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        UUID authorizationId = UUID.fromString(
+                com.jayway.jsonpath.JsonPath.read(authorization, "$.authorizationId"));
+        String authorizationRepeat = mockMvc.perform(
+                        post("/api/admin/codex/update-activation-authorizations")
+                                .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                                .content(authorizationBody))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertEquals(authorization, authorizationRepeat);
+        mockMvc.perform(post("/api/admin/codex/update-activation-authorizations")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(authorizationBody(planId, inventory.candidate(), UUID.randomUUID(), true)))
+                .andExpect(status().isBadRequest());
+
+        UUID activationKey = UUID.randomUUID();
+        Long activeProject = insertSyntheticActiveRun();
+        mockMvc.perform(post("/api/admin/codex/update-activations")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(activationBody(planId, inventory.candidate(), authorizationId,
+                                activationKey, false)))
+                .andExpect(status().isConflict());
+        verify(remoteWorkerClient, never()).activateCodexUpdate(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        jdbcTemplate.update("DELETE FROM project WHERE id = ?", activeProject);
+
+        when(remoteWorkerClient.activateCodexUpdate(
+                planId, inventory.candidate(), authorizationId, activationKey))
+                .thenReturn(activationResult(
+                        planId, inventory.candidate(), authorizationId, activationKey));
+        String activationBody = activationBody(
+                planId, inventory.candidate(), authorizationId, activationKey, false);
+        String first = mockMvc.perform(post("/api/admin/codex/update-activations")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(activationBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("ACTIVATED"))
+                .andExpect(jsonPath("$.current.inventoryId").value(inventory.candidate().toString()))
+                .andExpect(jsonPath("$.current.linkState").value("CURRENT"))
+                .andExpect(jsonPath("$.previous.inventoryId").value(inventory.current().toString()))
+                .andExpect(jsonPath("$.previous.linkState").value("PREVIOUS"))
+                .andExpect(jsonPath("$.gates.length()").value(4))
+                .andExpect(jsonPath("$.gates[0].state").value("PASS"))
+                .andExpect(jsonPath("$.gates[3].gate").value("CANARY"))
+                .andExpect(jsonPath("$.gates[3].state").value("PASS"))
+                .andExpect(jsonPath("$.automaticRestore").value("NOT_REQUIRED"))
+                .andExpect(jsonPath("$.valuesExposed").value(false))
+                .andExpect(jsonPath("$.service").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        String second = mockMvc.perform(post("/api/admin/codex/update-activations")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(activationBody))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertEquals(first, second);
+        verify(remoteWorkerClient, times(1)).activateCodexUpdate(
+                planId, inventory.candidate(), authorizationId, activationKey);
+        assertEquals("ACTIVATED", jdbcTemplate.queryForObject(
+                "SELECT state FROM worker_codex_update_plan WHERE plan_id = ?",
+                String.class, planId));
+        assertEquals(1, jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM worker_codex_activation_operation", Integer.class));
+        assertEquals(1, jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM worker_codex_activation_authorization
+                 WHERE authorization_id = ? AND consumed_at IS NOT NULL
+                   AND consumed_activation_id IS NOT NULL
+                """, Integer.class, authorizationId));
+
+        String activationId = com.jayway.jsonpath.JsonPath.read(first, "$.activationId");
+        mockMvc.perform(get("/api/admin/codex/update-activations/{activationId}", activationId)
+                        .with(auth(administrator)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.activationId").value(activationId));
+        mockMvc.perform(get("/api/admin/codex/update-activation-authorizations/{authorizationId}",
+                        authorizationId).with(auth(administrator)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.consumedAt").exists())
+                .andExpect(jsonPath("$.consumedActivationId").value(activationId));
+    }
+
     private Inventory inventory(boolean candidate) {
         jdbcTemplate.update("""
                 INSERT INTO worker_node (id, protocol_version, endpoint, enabled, healthy,
@@ -321,6 +436,38 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
         return operatorRepository.saveAndFlush(operator);
     }
 
+    private Long insertSyntheticActiveRun() {
+        String identity = UUID.randomUUID().toString();
+        Long projectId = jdbcTemplate.queryForObject("""
+                INSERT INTO project (name, repo_path, created_at, updated_at)
+                VALUES (?, '/tmp/synthetic', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id
+                """, Long.class, "activation-active-" + identity);
+        Long sessionId = jdbcTemplate.queryForObject("""
+                INSERT INTO work_session (
+                    project_id, status, title, base_branch, opened_at, last_activity_at,
+                    execution_target, selected_worker_id, workspace_identity,
+                    remote_session_id, remote_workload_kind)
+                VALUES (?, 'OPEN', 'Synthetic active gate', 'main', CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP, 'REMOTE', ?, ?, ?::uuid, 'synthetic-routing-v1')
+                RETURNING id
+                """, Long.class, projectId, WORKER_ID, "remote:" + identity, identity);
+        Long turnId = jdbcTemplate.queryForObject("""
+                INSERT INTO session_turn (session_id, actor, message_text)
+                VALUES (?, 'OPERATOR', 'Synthetic active execution') RETURNING id
+                """, Long.class, sessionId);
+        jdbcTemplate.update("""
+                INSERT INTO agent_run (
+                    session_id, origin_turn_id, status, target_repo_path, started_at,
+                    execution_target, selected_worker_id, workspace_identity, dispatch_id,
+                    remote_session_id, workload_kind)
+                VALUES (?, ?, 'QUEUED', '/tmp/synthetic', CURRENT_TIMESTAMP, 'REMOTE',
+                    ?, ?, ?::uuid, ?::uuid, 'synthetic-routing-v1')
+                """, sessionId, turnId, WORKER_ID, "remote:" + identity,
+                UUID.randomUUID().toString(), identity);
+        return projectId;
+    }
+
     private RequestPostProcessor auth(OperatorEntity operator) {
         AuthenticatedOperator principal = new AuthenticatedOperator(operator.getId(), operator.getEmail(),
                 operator.getDisplayName());
@@ -343,6 +490,24 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 extra ? ",\"releaseUrl\":\"https://foreign.invalid/release\"" : "");
     }
 
+    private String authorizationBody(
+            UUID planId, UUID candidateId, UUID idempotencyKey, boolean extra) {
+        return """
+                {"operation":"AUTHORIZE_CODEX_UPDATE_ACTIVATION","planId":"%s",
+                 "candidateId":"%s","idempotencyKey":"%s"%s}
+                """.formatted(planId, candidateId, idempotencyKey,
+                extra ? ",\"expiresAt\":\"2099-01-01T00:00:00Z\"" : "");
+    }
+
+    private String activationBody(UUID planId, UUID candidateId, UUID authorizationId,
+                                  UUID idempotencyKey, boolean extra) {
+        return """
+                {"operation":"ACTIVATE_CODEX_UPDATE","planId":"%s",
+                 "candidateId":"%s","authorizationId":"%s","idempotencyKey":"%s"%s}
+                """.formatted(planId, candidateId, authorizationId, idempotencyKey,
+                extra ? ",\"service\":\"foreign.service\"" : "");
+    }
+
     private RemoteWorkerClient.CodexUpdateStage stageResult(
             UUID planId, UUID candidateId, UUID idempotencyKey, String releaseDigest) {
         String proof = "a".repeat(64);
@@ -351,6 +516,17 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 planId, candidateId, idempotencyKey, "STAGED", "0.146.0",
                 releaseDigest, CATALOG, proof, proof,
                 "PASS", "PASS", "PASS", proof, proof, false, false);
+    }
+
+    private RemoteWorkerClient.CodexUpdateActivation activationResult(
+            UUID planId, UUID candidateId, UUID authorizationId, UUID idempotencyKey) {
+        String proof = "c".repeat(64);
+        return new RemoteWorkerClient.CodexUpdateActivation(
+                "codex-update-activate-v1", "ACTIVATE_CODEX_UPDATE", WORKER_ID,
+                planId, candidateId, authorizationId, idempotencyKey, "ACTIVATED",
+                "0.146.0", "3".repeat(64), CATALOG,
+                "PASS", "PASS", "PASS", "PASS", proof, proof, proof, proof,
+                "NOT_REQUIRED", false);
     }
 
     private record Inventory(UUID current, UUID previous, UUID candidate) {}

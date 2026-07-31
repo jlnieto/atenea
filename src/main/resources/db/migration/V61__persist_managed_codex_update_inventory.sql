@@ -41,6 +41,13 @@ CREATE INDEX idx_worker_codex_release_candidate
         worker_id, compatibility_state, installation_state, observed_at DESC
     ) WHERE link_state = 'NONE';
 
+CREATE TABLE worker_codex_activation_barrier (
+    worker_id VARCHAR(80) PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_worker_codex_activation_barrier_worker
+        FOREIGN KEY (worker_id) REFERENCES worker_node (id) ON DELETE RESTRICT
+);
+
 CREATE TABLE worker_codex_update_plan (
     plan_id UUID PRIMARY KEY,
     worker_id VARCHAR(80) NOT NULL,
@@ -76,7 +83,7 @@ CREATE TABLE worker_codex_update_plan (
     CONSTRAINT uk_worker_codex_update_plan_idempotency
         UNIQUE (requested_by, idempotency_key),
     CONSTRAINT ck_worker_codex_update_plan_state
-        CHECK (state IN ('READY', 'BLOCKED')),
+        CHECK (state IN ('READY', 'BLOCKED', 'ACTIVATED')),
     CONSTRAINT ck_worker_codex_update_plan_compatibility
         CHECK (compatibility_state IN ('COMPATIBLE', 'BLOCKED')),
     CONSTRAINT ck_worker_codex_update_plan_worker_gate
@@ -92,7 +99,7 @@ CREATE TABLE worker_codex_update_plan (
             'No installation or restart; a later activation would restart only the exact Codex/worker boundary, never project runtimes or unrelated slots.'),
     CONSTRAINT ck_worker_codex_update_plan_projection
         CHECK (
-            (state = 'READY' AND compatibility_state = 'COMPATIBLE'
+            (state IN ('READY', 'ACTIVATED') AND compatibility_state = 'COMPATIBLE'
                 AND worker_health_gate = 'PASS'
                 AND current_link_gate = 'PASS'
                 AND catalog_alignment_gate = 'PASS'
@@ -177,3 +184,105 @@ CREATE TABLE worker_codex_stage_operation (
 
 CREATE INDEX idx_worker_codex_stage_worker_created
     ON worker_codex_stage_operation (worker_id, created_at DESC);
+
+CREATE TABLE worker_codex_activation_authorization (
+    authorization_id UUID PRIMARY KEY,
+    plan_id UUID NOT NULL,
+    worker_id VARCHAR(80) NOT NULL,
+    requested_by BIGINT NOT NULL,
+    idempotency_key UUID NOT NULL,
+    current_inventory_id UUID NOT NULL,
+    candidate_inventory_id UUID NOT NULL,
+    current_version VARCHAR(64) NOT NULL,
+    candidate_version VARCHAR(64) NOT NULL,
+    release_digest_sha256 VARCHAR(64) NOT NULL,
+    authorization_digest_sha256 VARCHAR(64) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    consumed_activation_id UUID,
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT fk_worker_codex_activation_auth_plan_candidate
+        FOREIGN KEY (plan_id, worker_id, candidate_inventory_id)
+        REFERENCES worker_codex_update_plan
+            (plan_id, worker_id, candidate_inventory_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_worker_codex_activation_auth_current
+        FOREIGN KEY (worker_id, current_inventory_id)
+        REFERENCES worker_codex_release_inventory (worker_id, inventory_id)
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_worker_codex_activation_auth_operator
+        FOREIGN KEY (requested_by) REFERENCES operator_account (id)
+        ON DELETE RESTRICT,
+    CONSTRAINT uk_worker_codex_activation_auth_idempotency
+        UNIQUE (requested_by, idempotency_key),
+    CONSTRAINT uk_worker_codex_activation_auth_exact
+        UNIQUE (authorization_id, plan_id, worker_id, candidate_inventory_id),
+    CONSTRAINT ck_worker_codex_activation_auth_versions
+        CHECK (current_version ~ '^[0-9]+\.[0-9]+\.[0-9]+$'
+            AND candidate_version ~ '^[0-9]+\.[0-9]+\.[0-9]+$'
+            AND current_version <> candidate_version),
+    CONSTRAINT ck_worker_codex_activation_auth_digests
+        CHECK (release_digest_sha256 ~ '^[0-9a-f]{64}$'
+            AND authorization_digest_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_worker_codex_activation_auth_expiry
+        CHECK (expires_at > created_at),
+    CONSTRAINT ck_worker_codex_activation_auth_consumption
+        CHECK ((consumed_at IS NULL AND consumed_activation_id IS NULL)
+            OR (consumed_at IS NOT NULL AND consumed_activation_id IS NOT NULL
+                AND consumed_at >= created_at))
+);
+
+CREATE INDEX idx_worker_codex_activation_auth_worker_expiry
+    ON worker_codex_activation_authorization (worker_id, expires_at DESC);
+
+CREATE TABLE worker_codex_activation_operation (
+    activation_id UUID PRIMARY KEY,
+    authorization_id UUID NOT NULL UNIQUE,
+    plan_id UUID NOT NULL,
+    worker_id VARCHAR(80) NOT NULL,
+    requested_by BIGINT NOT NULL,
+    idempotency_key UUID NOT NULL,
+    candidate_inventory_id UUID NOT NULL,
+    state VARCHAR(16) NOT NULL,
+    schema_comparison_gate VARCHAR(16) NOT NULL,
+    focused_contracts_gate VARCHAR(16) NOT NULL,
+    worker_health_gate VARCHAR(16) NOT NULL,
+    canary_gate VARCHAR(16) NOT NULL,
+    current_before_fingerprint VARCHAR(64) NOT NULL,
+    previous_before_fingerprint VARCHAR(64) NOT NULL,
+    current_after_fingerprint VARCHAR(64) NOT NULL,
+    previous_after_fingerprint VARCHAR(64) NOT NULL,
+    automatic_restore VARCHAR(16) NOT NULL,
+    values_exposed BOOLEAN NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT fk_worker_codex_activation_auth
+        FOREIGN KEY (authorization_id, plan_id, worker_id, candidate_inventory_id)
+        REFERENCES worker_codex_activation_authorization
+            (authorization_id, plan_id, worker_id, candidate_inventory_id)
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_worker_codex_activation_operator
+        FOREIGN KEY (requested_by) REFERENCES operator_account (id)
+        ON DELETE RESTRICT,
+    CONSTRAINT uk_worker_codex_activation_idempotency
+        UNIQUE (requested_by, idempotency_key),
+    CONSTRAINT uk_worker_codex_activation_plan_candidate
+        UNIQUE (plan_id, candidate_inventory_id),
+    CONSTRAINT ck_worker_codex_activation_state CHECK (state = 'ACTIVATED'),
+    CONSTRAINT ck_worker_codex_activation_gates
+        CHECK (schema_comparison_gate = 'PASS'
+            AND focused_contracts_gate = 'PASS'
+            AND worker_health_gate = 'PASS'
+            AND canary_gate = 'PASS'),
+    CONSTRAINT ck_worker_codex_activation_fingerprints
+        CHECK (current_before_fingerprint ~ '^[0-9a-f]{64}$'
+            AND previous_before_fingerprint ~ '^[0-9a-f]{64}$'
+            AND current_after_fingerprint ~ '^[0-9a-f]{64}$'
+            AND previous_after_fingerprint ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_worker_codex_activation_restore
+        CHECK (automatic_restore IN ('NOT_REQUIRED', 'PASS')),
+    CONSTRAINT ck_worker_codex_activation_no_values CHECK (values_exposed = FALSE),
+    CONSTRAINT ck_worker_codex_activation_time CHECK (completed_at >= created_at)
+);
+
+CREATE INDEX idx_worker_codex_activation_worker_created
+    ON worker_codex_activation_operation (worker_id, created_at DESC);

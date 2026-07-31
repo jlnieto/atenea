@@ -8,7 +8,12 @@ import com.atenea.remoteworker.RemoteWorkerException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -23,6 +28,9 @@ public class ManagedCodexUpdateService {
     private static final String WORKER_ID = "ax42-01";
     private static final String UPDATE_PLAN_OPERATION = "PLAN_CODEX_UPDATE";
     private static final String UPDATE_STAGE_OPERATION = "STAGE_CODEX_UPDATE";
+    private static final String AUTHORIZE_ACTIVATION_OPERATION = "AUTHORIZE_CODEX_UPDATE_ACTIVATION";
+    private static final String ACTIVATE_UPDATE_OPERATION = "ACTIVATE_CODEX_UPDATE";
+    private static final Duration ACTIVATION_AUTHORIZATION_LIFETIME = Duration.ofMinutes(10);
     private static final String EXPECTED_UPDATE_IMPACT = "No installation or restart; a later activation would restart only the exact Codex/worker boundary, never project runtimes or unrelated slots.";
 
     private final CodexSessionOperationsProperties properties;
@@ -270,6 +278,206 @@ public class ManagedCodexUpdateService {
         return updateStageForAdministrator(stageId);
     }
 
+    @Transactional
+    public ActivationAuthorizationResponse authorizeActivation(
+            AuthenticatedOperator operator, ActivationAuthorizationRequest request) {
+        requireManagedUpdates();
+        requirePlatformAdministrator(operator);
+        if (request == null || !AUTHORIZE_ACTIVATION_OPERATION.equals(request.operation())
+                || request.planId() == null || request.candidateId() == null
+                || request.idempotencyKey() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Exact Codex activation authorization request required");
+        }
+        List<ExistingAuthorization> existing = jdbcTemplate.query("""
+                SELECT authorization_id, plan_id, candidate_inventory_id
+                  FROM worker_codex_activation_authorization
+                 WHERE requested_by = ? AND idempotency_key = ?
+                """, (rs, row) -> new ExistingAuthorization(
+                (UUID) rs.getObject("authorization_id"),
+                (UUID) rs.getObject("plan_id"),
+                (UUID) rs.getObject("candidate_inventory_id")),
+                operator.operatorId(), request.idempotencyKey());
+        if (!existing.isEmpty()) {
+            ExistingAuthorization authorization = existing.getFirst();
+            if (!authorization.planId().equals(request.planId())
+                    || !authorization.candidateId().equals(request.candidateId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Idempotency key belongs to a different activation authorization");
+            }
+            return activationAuthorizationForAdministrator(authorization.authorizationId());
+        }
+
+        ActivationContext context = activationContext(request.planId(), request.candidateId());
+        if (!"READY".equals(context.planState()) || !"STAGED".equals(context.stageState())
+                || !"CURRENT".equals(context.currentLinkState())
+                || !"INSTALLED".equals(context.currentInstallationState())
+                || !"NONE".equals(context.candidateLinkState())
+                || !"STAGED".equals(context.candidateInstallationState())
+                || !"COMPATIBLE".equals(context.candidateCompatibilityState())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Persisted plan and staged candidate are not authorizable");
+        }
+        UUID authorizationId = UUID.randomUUID();
+        Instant createdAt = Instant.now();
+        Instant expiresAt = createdAt.plus(ACTIVATION_AUTHORIZATION_LIFETIME);
+        String authorizationDigest = sha256(String.join("|",
+                authorizationId.toString(), request.planId().toString(), context.workerId(),
+                context.currentId().toString(), context.currentVersion(),
+                request.candidateId().toString(), context.candidateVersion(),
+                context.candidateDigest(), expiresAt.toString()));
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_activation_authorization (
+                    authorization_id, plan_id, worker_id, requested_by,
+                    idempotency_key, current_inventory_id, candidate_inventory_id,
+                    current_version, candidate_version, release_digest_sha256,
+                    authorization_digest_sha256, expires_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, authorizationId, request.planId(), context.workerId(),
+                operator.operatorId(), request.idempotencyKey(), context.currentId(),
+                request.candidateId(), context.currentVersion(), context.candidateVersion(),
+                context.candidateDigest(), authorizationDigest,
+                Timestamp.from(expiresAt), Timestamp.from(createdAt));
+        return activationAuthorizationForAdministrator(authorizationId);
+    }
+
+    @Transactional(readOnly = true)
+    public ActivationAuthorizationResponse activationAuthorization(
+            AuthenticatedOperator operator, UUID authorizationId) {
+        requireManagedUpdates();
+        requirePlatformAdministrator(operator);
+        return activationAuthorizationForAdministrator(authorizationId);
+    }
+
+    @Transactional
+    public UpdateActivationResponse activateUpdate(
+            AuthenticatedOperator operator, UpdateActivationRequest request) {
+        requireManagedUpdates();
+        requirePlatformAdministrator(operator);
+        if (request == null || !ACTIVATE_UPDATE_OPERATION.equals(request.operation())
+                || request.planId() == null || request.candidateId() == null
+                || request.authorizationId() == null || request.idempotencyKey() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Exact Codex update activation request required");
+        }
+        List<ExistingActivation> existing = jdbcTemplate.query("""
+                SELECT activation_id, plan_id, candidate_inventory_id, authorization_id
+                  FROM worker_codex_activation_operation
+                 WHERE requested_by = ? AND idempotency_key = ?
+                """, (rs, row) -> new ExistingActivation(
+                (UUID) rs.getObject("activation_id"), (UUID) rs.getObject("plan_id"),
+                (UUID) rs.getObject("candidate_inventory_id"),
+                (UUID) rs.getObject("authorization_id")),
+                operator.operatorId(), request.idempotencyKey());
+        if (!existing.isEmpty()) {
+            ExistingActivation activation = existing.getFirst();
+            if (!activation.planId().equals(request.planId())
+                    || !activation.candidateId().equals(request.candidateId())
+                    || !activation.authorizationId().equals(request.authorizationId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Idempotency key belongs to a different update activation");
+            }
+            return updateActivationForAdministrator(activation.activationId());
+        }
+
+        AuthorizationContext authorization = authorizationContext(request.authorizationId());
+        lockActivationBarrier(authorization.workerId());
+        authorization = authorizationContext(request.authorizationId());
+        Instant now = Instant.now();
+        if (!authorization.requestedBy().equals(operator.operatorId())
+                || !authorization.planId().equals(request.planId())
+                || !authorization.candidateId().equals(request.candidateId())
+                || authorization.consumedAt() != null || !authorization.expiresAt().isAfter(now)
+                || !"READY".equals(authorization.planState())
+                || !"CURRENT".equals(authorization.currentLinkState())
+                || !"STAGED".equals(authorization.candidateInstallationState())
+                || !"NONE".equals(authorization.candidateLinkState())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Activation authorization is expired, consumed or no longer exact");
+        }
+        Integer activeRuns = jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM agent_run
+                 WHERE selected_worker_id = ?
+                   AND status IN ('QUEUED', 'STARTING', 'RUNNING', 'CANCELLING', 'RECONCILING')
+                """, Integer.class, authorization.workerId());
+        if (activeRuns == null || activeRuns != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Codex activation requires zero active worker executions");
+        }
+
+        RemoteWorkerClient.CodexUpdateActivation activated;
+        try {
+            activated = remoteWorkerClient.activateCodexUpdate(
+                    request.planId(), request.candidateId(), request.authorizationId(),
+                    request.idempotencyKey());
+        } catch (RemoteWorkerException exception) {
+            throw new ResponseStatusException(
+                    exception.getStatusCode() == 0 || exception.getStatusCode() >= 500
+                            ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.CONFLICT,
+                    "Closed Codex update activation failed", exception);
+        }
+        validateActivationResult(request, authorization, activated);
+
+        UUID activationId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_activation_operation (
+                    activation_id, authorization_id, plan_id, worker_id, requested_by,
+                    idempotency_key, candidate_inventory_id, state,
+                    schema_comparison_gate, focused_contracts_gate, worker_health_gate,
+                    canary_gate, current_before_fingerprint, previous_before_fingerprint,
+                    current_after_fingerprint, previous_after_fingerprint,
+                    automatic_restore, values_exposed, created_at, completed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVATED', 'PASS', 'PASS', 'PASS',
+                    'PASS', ?, ?, ?, ?, ?, FALSE, ?, ?)
+                """, activationId, request.authorizationId(), request.planId(),
+                authorization.workerId(), operator.operatorId(), request.idempotencyKey(),
+                request.candidateId(), activated.currentBeforeFingerprint(),
+                activated.previousBeforeFingerprint(), activated.currentAfterFingerprint(),
+                activated.previousAfterFingerprint(), activated.automaticRestore(),
+                Timestamp.from(now), Timestamp.from(now));
+        jdbcTemplate.update("""
+                UPDATE worker_codex_release_inventory SET link_state = 'NONE', updated_at = ?
+                 WHERE worker_id = ? AND link_state = 'PREVIOUS'
+                """, Timestamp.from(now), authorization.workerId());
+        jdbcTemplate.update("""
+                UPDATE worker_codex_release_inventory SET link_state = 'PREVIOUS', updated_at = ?
+                 WHERE worker_id = ? AND inventory_id = ? AND link_state = 'CURRENT'
+                """, Timestamp.from(now), authorization.workerId(), authorization.currentId());
+        jdbcTemplate.update("""
+                UPDATE worker_codex_release_inventory
+                   SET installation_state = 'INSTALLED', link_state = 'CURRENT', updated_at = ?
+                 WHERE worker_id = ? AND inventory_id = ?
+                   AND installation_state = 'STAGED' AND link_state = 'NONE'
+                """, Timestamp.from(now), authorization.workerId(), request.candidateId());
+        jdbcTemplate.update("UPDATE worker_codex_update_plan SET state = 'ACTIVATED' WHERE plan_id = ?",
+                request.planId());
+        jdbcTemplate.update("""
+                UPDATE worker_codex_activation_authorization
+                   SET consumed_at = ?, consumed_activation_id = ?
+                 WHERE authorization_id = ? AND consumed_at IS NULL
+                """, Timestamp.from(now), activationId, request.authorizationId());
+        return updateActivationForAdministrator(activationId);
+    }
+
+    private void lockActivationBarrier(String workerId) {
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_activation_barrier (worker_id)
+                VALUES (?) ON CONFLICT (worker_id) DO NOTHING
+                """, workerId);
+        jdbcTemplate.queryForObject("""
+                SELECT worker_id FROM worker_codex_activation_barrier
+                 WHERE worker_id = ? FOR UPDATE
+                """, String.class, workerId);
+    }
+
+    @Transactional(readOnly = true)
+    public UpdateActivationResponse updateActivation(
+            AuthenticatedOperator operator, UUID activationId) {
+        requireManagedUpdates();
+        requirePlatformAdministrator(operator);
+        return updateActivationForAdministrator(activationId);
+    }
+
     private UpdatePlanResponse updatePlanForAdministrator(UUID planId) {
         return jdbcTemplate.query("""
                 SELECT plan_id, worker_id, state, compatibility_state,
@@ -389,6 +597,157 @@ public class ManagedCodexUpdateService {
                         HttpStatus.NOT_FOUND, "Update stage not found"));
     }
 
+    private ActivationContext activationContext(UUID planId, UUID candidateId) {
+        return jdbcTemplate.query("""
+                SELECT p.worker_id, p.state AS plan_state, s.state AS stage_state,
+                       c.inventory_id AS current_id, c.codex_version AS current_version,
+                       c.installation_state AS current_installation_state,
+                       c.link_state AS current_link_state,
+                       n.codex_version AS candidate_version,
+                       n.release_digest_sha256 AS candidate_digest,
+                       n.installation_state AS candidate_installation_state,
+                       n.link_state AS candidate_link_state,
+                       n.compatibility_state AS candidate_compatibility_state
+                  FROM worker_codex_update_plan p
+                  JOIN worker_codex_stage_operation s
+                    ON s.plan_id = p.plan_id AND s.worker_id = p.worker_id
+                   AND s.candidate_inventory_id = p.candidate_inventory_id
+                  JOIN worker_codex_release_inventory c
+                    ON c.worker_id = p.worker_id AND c.inventory_id = p.current_inventory_id
+                  JOIN worker_codex_release_inventory n
+                    ON n.worker_id = p.worker_id AND n.inventory_id = p.candidate_inventory_id
+                 WHERE p.plan_id = ? AND p.candidate_inventory_id = ?
+                """, (rs, row) -> new ActivationContext(
+                rs.getString("worker_id"), rs.getString("plan_state"),
+                rs.getString("stage_state"), (UUID) rs.getObject("current_id"),
+                rs.getString("current_version"),
+                rs.getString("current_installation_state"), rs.getString("current_link_state"),
+                rs.getString("candidate_version"), rs.getString("candidate_digest"),
+                rs.getString("candidate_installation_state"),
+                rs.getString("candidate_link_state"),
+                rs.getString("candidate_compatibility_state")),
+                planId, candidateId).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Authorizable staged candidate not found"));
+    }
+
+    private AuthorizationContext authorizationContext(UUID authorizationId) {
+        return jdbcTemplate.query("""
+                SELECT a.plan_id, a.worker_id, a.requested_by, a.current_inventory_id,
+                       a.candidate_inventory_id, a.current_version, a.candidate_version,
+                       a.release_digest_sha256, a.expires_at, a.consumed_at,
+                       p.state AS plan_state, c.link_state AS current_link_state,
+                       n.installation_state AS candidate_installation_state,
+                       n.link_state AS candidate_link_state
+                  FROM worker_codex_activation_authorization a
+                  JOIN worker_codex_update_plan p ON p.plan_id = a.plan_id
+                  JOIN worker_codex_release_inventory c
+                    ON c.worker_id = a.worker_id AND c.inventory_id = a.current_inventory_id
+                  JOIN worker_codex_release_inventory n
+                    ON n.worker_id = a.worker_id AND n.inventory_id = a.candidate_inventory_id
+                 WHERE a.authorization_id = ?
+                """, (rs, row) -> new AuthorizationContext(
+                (UUID) rs.getObject("plan_id"), rs.getString("worker_id"),
+                rs.getLong("requested_by"), (UUID) rs.getObject("current_inventory_id"),
+                (UUID) rs.getObject("candidate_inventory_id"),
+                rs.getString("current_version"), rs.getString("candidate_version"),
+                rs.getString("release_digest_sha256"),
+                rs.getTimestamp("expires_at").toInstant(), timestamp(rs, "consumed_at"),
+                rs.getString("plan_state"), rs.getString("current_link_state"),
+                rs.getString("candidate_installation_state"),
+                rs.getString("candidate_link_state")), authorizationId).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Activation authorization not found"));
+    }
+
+    private ActivationAuthorizationResponse activationAuthorizationForAdministrator(
+            UUID authorizationId) {
+        return jdbcTemplate.query("""
+                SELECT authorization_id, plan_id, worker_id, current_inventory_id,
+                       candidate_inventory_id, authorization_digest_sha256,
+                       expires_at, consumed_at, consumed_activation_id, created_at
+                  FROM worker_codex_activation_authorization
+                 WHERE authorization_id = ?
+                """, (rs, row) -> new ActivationAuthorizationResponse(
+                (UUID) rs.getObject("authorization_id"), (UUID) rs.getObject("plan_id"),
+                rs.getString("worker_id"), (UUID) rs.getObject("current_inventory_id"),
+                (UUID) rs.getObject("candidate_inventory_id"),
+                rs.getString("authorization_digest_sha256"),
+                rs.getTimestamp("expires_at").toInstant(), timestamp(rs, "consumed_at"),
+                (UUID) rs.getObject("consumed_activation_id"),
+                rs.getTimestamp("created_at").toInstant(), true), authorizationId)
+                .stream().findFirst().orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Activation authorization not found"));
+    }
+
+    private void validateActivationResult(
+            UpdateActivationRequest request, AuthorizationContext context,
+            RemoteWorkerClient.CodexUpdateActivation result) {
+        if (result == null || !"codex-update-activate-v1".equals(result.schemaVersion())
+                || !ACTIVATE_UPDATE_OPERATION.equals(result.operation())
+                || !context.workerId().equals(result.workerId())
+                || !request.planId().equals(result.planId())
+                || !request.candidateId().equals(result.candidateId())
+                || !request.authorizationId().equals(result.authorizationId())
+                || !request.idempotencyKey().equals(result.idempotencyKey())
+                || !"ACTIVATED".equals(result.state())
+                || !context.candidateVersion().equals(result.codexVersion())
+                || !context.releaseDigest().equals(result.releaseDigestSha256())
+                || !digest(result.catalogRevision())
+                || !"PASS".equals(result.schemaComparison())
+                || !"PASS".equals(result.focusedContracts())
+                || !"PASS".equals(result.workerHealth())
+                || !"PASS".equals(result.canary())
+                || !digest(result.currentBeforeFingerprint())
+                || !digest(result.previousBeforeFingerprint())
+                || !digest(result.currentAfterFingerprint())
+                || !digest(result.previousAfterFingerprint())
+                || !("NOT_REQUIRED".equals(result.automaticRestore())
+                    || "PASS".equals(result.automaticRestore()))
+                || result.valuesExposed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Worker activation result conflicts with exact authorization");
+        }
+    }
+
+    private UpdateActivationResponse updateActivationForAdministrator(UUID activationId) {
+        return jdbcTemplate.query("""
+                SELECT activation_id, authorization_id, plan_id, worker_id,
+                       candidate_inventory_id, state, schema_comparison_gate,
+                       focused_contracts_gate, worker_health_gate, canary_gate,
+                       automatic_restore, values_exposed, created_at, completed_at
+                  FROM worker_codex_activation_operation WHERE activation_id = ?
+                """, (rs, row) -> {
+                    WorkerInventoryResponse inventory = workerInventory(rs.getString("worker_id"));
+                    return new UpdateActivationResponse(
+                            (UUID) rs.getObject("activation_id"),
+                            (UUID) rs.getObject("authorization_id"),
+                            (UUID) rs.getObject("plan_id"), rs.getString("worker_id"),
+                            rs.getString("state"), linked(inventory.releases(), "CURRENT"),
+                            linked(inventory.releases(), "PREVIOUS"),
+                            byId(inventory.releases(),
+                                    (UUID) rs.getObject("candidate_inventory_id")),
+                            List.of(
+                                    new CompatibilityGateResponse("SCHEMA_COMPARISON", rs.getString("schema_comparison_gate")),
+                                    new CompatibilityGateResponse("FOCUSED_CONTRACTS", rs.getString("focused_contracts_gate")),
+                                    new CompatibilityGateResponse("WORKER_HEALTH", rs.getString("worker_health_gate")),
+                                    new CompatibilityGateResponse("CANARY", rs.getString("canary_gate"))),
+                            rs.getString("automatic_restore"), rs.getBoolean("values_exposed"),
+                            rs.getTimestamp("created_at").toInstant(),
+                            rs.getTimestamp("completed_at").toInstant());
+                }, activationId).stream().findFirst().orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Update activation not found"));
+    }
+
+    private static String sha256(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
     private static boolean retainedInstalled(ReleaseInventoryResponse release) {
         return release != null && "INSTALLED".equals(release.installationState());
     }
@@ -479,10 +838,26 @@ public class ManagedCodexUpdateService {
                                 boolean healthy, String catalogRevision,
                                 String catalogCodexVersion, Instant observedAt) {}
     private record ExistingStage(UUID stageId, UUID planId, UUID candidateId) {}
+    private record ExistingAuthorization(UUID authorizationId, UUID planId, UUID candidateId) {}
+    private record ExistingActivation(UUID activationId, UUID planId, UUID candidateId,
+                                      UUID authorizationId) {}
     private record StageContext(String workerId, String planState, UUID candidateId,
                                 String codexVersion, String releaseDigestSha256,
                                 String installationState, String linkState,
                                 String compatibilityState, String catalogRevision) {}
+    private record ActivationContext(String workerId, String planState, String stageState,
+                                     UUID currentId, String currentVersion,
+                                     String currentInstallationState, String currentLinkState,
+                                     String candidateVersion, String candidateDigest,
+                                     String candidateInstallationState, String candidateLinkState,
+                                     String candidateCompatibilityState) {}
+    private record AuthorizationContext(UUID planId, String workerId, Long requestedBy,
+                                        UUID currentId, UUID candidateId,
+                                        String currentVersion, String candidateVersion,
+                                        String releaseDigest, Instant expiresAt, Instant consumedAt,
+                                        String planState, String currentLinkState,
+                                        String candidateInstallationState,
+                                        String candidateLinkState) {}
     public record ReleaseInventoryResponse(UUID inventoryId, String codexVersion,
                                            String releaseDigestSha256,
                                            String installationState, String linkState,
@@ -497,6 +872,10 @@ public class ManagedCodexUpdateService {
     public record UpdatePlanRequest(String operation, String workerId, UUID idempotencyKey) {}
     public record UpdateStageRequest(String operation, UUID planId, UUID candidateId,
                                      UUID idempotencyKey) {}
+    public record ActivationAuthorizationRequest(String operation, UUID planId,
+                                                 UUID candidateId, UUID idempotencyKey) {}
+    public record UpdateActivationRequest(String operation, UUID planId, UUID candidateId,
+                                          UUID authorizationId, UUID idempotencyKey) {}
     public record CompatibilityGateResponse(String gate, String state) {}
     public record UpdatePlanResponse(UUID planId, String workerId, String state,
                                      String compatibilityState,
@@ -514,6 +893,21 @@ public class ManagedCodexUpdateService {
                                       List<CompatibilityGateResponse> gates,
                                       boolean linksChanged, boolean valuesExposed,
                                       Instant createdAt, Instant completedAt) {}
+    public record ActivationAuthorizationResponse(UUID authorizationId, UUID planId,
+                                                  String workerId, UUID currentInventoryId,
+                                                  UUID candidateInventoryId,
+                                                  String authorizationDigestSha256,
+                                                  Instant expiresAt, Instant consumedAt,
+                                                  UUID consumedActivationId, Instant createdAt,
+                                                  boolean automaticRestoreAuthorized) {}
+    public record UpdateActivationResponse(UUID activationId, UUID authorizationId,
+                                           UUID planId, String workerId, String state,
+                                           ReleaseInventoryResponse current,
+                                           ReleaseInventoryResponse previous,
+                                           ReleaseInventoryResponse candidate,
+                                           List<CompatibilityGateResponse> gates,
+                                           String automaticRestore, boolean valuesExposed,
+                                           Instant createdAt, Instant completedAt) {}
     public record AdministratorInventoryResponse(boolean profilesEnabled, boolean progressEnabled,
                                                  boolean recoveryEnabled, boolean notificationOutboxEnabled,
                                                  boolean managedUpdatesEnabled,

@@ -207,6 +207,35 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/codex/update/activate", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
+                    java.util.Map.entry("schemaVersion", "codex-update-activate-v1"),
+                    java.util.Map.entry("operation", request.get("operation").asText()),
+                    java.util.Map.entry("workerId", "ax42-01"),
+                    java.util.Map.entry("planId", request.get("planId").asText()),
+                    java.util.Map.entry("candidateId", request.get("candidateId").asText()),
+                    java.util.Map.entry("authorizationId", request.get("authorizationId").asText()),
+                    java.util.Map.entry("idempotencyKey", request.get("idempotencyKey").asText()),
+                    java.util.Map.entry("state", "ACTIVATED"),
+                    java.util.Map.entry("codexVersion", "0.146.0"),
+                    java.util.Map.entry("releaseDigestSha256", "1".repeat(64)),
+                    java.util.Map.entry("catalogRevision", "2".repeat(64)),
+                    java.util.Map.entry("schemaComparison", "PASS"),
+                    java.util.Map.entry("focusedContracts", "PASS"),
+                    java.util.Map.entry("workerHealth", "PASS"),
+                    java.util.Map.entry("canary", "PASS"),
+                    java.util.Map.entry("currentBeforeFingerprint", "3".repeat(64)),
+                    java.util.Map.entry("previousBeforeFingerprint", "4".repeat(64)),
+                    java.util.Map.entry("currentAfterFingerprint", "5".repeat(64)),
+                    java.util.Map.entry("previousAfterFingerprint", "6".repeat(64)),
+                    java.util.Map.entry("automaticRestore", "NOT_REQUIRED"),
+                    java.util.Map.entry("valuesExposed", false)));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.start();
         properties = new RemoteWorkerProperties();
         properties.setEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
@@ -288,6 +317,34 @@ class RemoteWorkerClientTest {
         assertNull(body.get("version"));
         assertNull(body.get("path"));
         assertNull(body.get("command"));
+        assertNull(body.get("service"));
+    }
+
+    @Test
+    void codexUpdateActivationSendsOnlyExactAuthorizationAndPersistedIdentities() {
+        UUID planId = UUID.randomUUID();
+        UUID candidateId = UUID.randomUUID();
+        UUID authorizationId = UUID.randomUUID();
+        UUID idempotencyKey = UUID.randomUUID();
+
+        RemoteWorkerClient.CodexUpdateActivation result = client.activateCodexUpdate(
+                planId, candidateId, authorizationId, idempotencyKey);
+
+        JsonNode body = requestBody.get();
+        assertEquals(java.util.Set.of(
+                "operation", "planId", "candidateId", "authorizationId", "idempotencyKey"),
+                objectMapper.convertValue(body, java.util.Map.class).keySet());
+        assertEquals("ACTIVATE_CODEX_UPDATE", body.get("operation").asText());
+        assertEquals(authorizationId.toString(), body.get("authorizationId").asText());
+        assertEquals("ACTIVATED", result.state());
+        assertEquals("PASS", result.focusedContracts());
+        assertEquals("PASS", result.workerHealth());
+        assertEquals("PASS", result.canary());
+        assertEquals(false, result.valuesExposed());
+        assertNull(body.get("version"));
+        assertNull(body.get("path"));
+        assertNull(body.get("command"));
+        assertNull(body.get("host"));
         assertNull(body.get("service"));
     }
 

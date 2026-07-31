@@ -11,10 +11,14 @@ import com.atenea.codexoperations.CodexSessionOperationsService.RecoveryResponse
 import com.atenea.codexoperations.CodexSessionOperationsService.RunDetailResponse;
 import com.atenea.codexoperations.CodexSessionOperationsService.SettingsResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.AdministratorInventoryResponse;
+import com.atenea.codexoperations.ManagedCodexUpdateService.ActivationAuthorizationRequest;
+import com.atenea.codexoperations.ManagedCodexUpdateService.ActivationAuthorizationResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdatePlanRequest;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdatePlanResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateStageRequest;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateStageResponse;
+import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateActivationRequest;
+import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateActivationResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.WorkerInventoryResponse;
 import java.util.List;
 import java.util.Set;
@@ -153,6 +157,39 @@ public class CodexSessionOperationsController {
             @AuthenticationPrincipal AuthenticatedOperator operator,
             @PathVariable java.util.UUID stageId) {
         return managedUpdateService.updateStage(operator, stageId);
+    }
+
+    @PostMapping("/api/admin/codex/update-activation-authorizations")
+    public ActivationAuthorizationResponse authorizeActivation(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @RequestBody JsonNode request) {
+        return managedUpdateService.authorizeActivation(operator,
+                closed(request, ActivationAuthorizationRequest.class,
+                        Set.of("operation", "planId", "candidateId", "idempotencyKey")));
+    }
+
+    @GetMapping("/api/admin/codex/update-activation-authorizations/{authorizationId}")
+    public ActivationAuthorizationResponse activationAuthorization(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable java.util.UUID authorizationId) {
+        return managedUpdateService.activationAuthorization(operator, authorizationId);
+    }
+
+    @PostMapping("/api/admin/codex/update-activations")
+    public UpdateActivationResponse activateUpdate(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @RequestBody JsonNode request) {
+        return managedUpdateService.activateUpdate(operator,
+                closed(request, UpdateActivationRequest.class,
+                        Set.of("operation", "planId", "candidateId", "authorizationId",
+                                "idempotencyKey")));
+    }
+
+    @GetMapping("/api/admin/codex/update-activations/{activationId}")
+    public UpdateActivationResponse updateActivation(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable java.util.UUID activationId) {
+        return managedUpdateService.updateActivation(operator, activationId);
     }
 
     private <T> T closed(JsonNode node, Class<T> type, Set<String> exactFields) {
