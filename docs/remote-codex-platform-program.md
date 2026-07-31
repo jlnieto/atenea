@@ -286,6 +286,7 @@ production activation are recorded later in this ledger.
 | D-083 | Use the immutable notification-event UUID as the Android FCM replacement tag while preserving the existing legacy payload when no generic event identity exists. | Database uniqueness prevents a second delivery owner but cannot prevent Android from rendering two cards after a provider-timeout retry; the stable platform tag makes repeated generic presentation replace the same user notification without inventing identity for legacy events. | accepted and repetition-tested | backend/Android/notification owners | before changing FCM Android notification fields, event identity or legacy push compatibility |
 | D-084 | Permit authenticated routine operators to inspect a closed persisted Codex release inventory, but require a current platform administrator and the independent default-false managed-updates gate to create or read an idempotent update plan whose candidate is server-derived and whose four compatibility gates and no-side-effect impact are fixed. | Planning must expose enough current/previous/candidate state to make a safe later decision without accepting caller versions, URLs, hosts, services, commands or paths, and must never install, relink or restart anything by itself. | accepted and integration-tested | backend/platform/security owners | before changing update inventory fields, planning authority, candidate selection or plan side effects |
 | D-085 | Stage a planned Codex candidate only from exact persisted plan/candidate/idempotency identities, deriving archive, version, digest, catalog and filesystem authority from a root-owned registry; accept the release only after bounded archive verification, version-matched schema generation, immutable manifests and unchanged current/previous link fingerprints. | A caller-controlled URL, path, command or version would turn administration into remote execution authority, while relinking during staging would collapse the separately authorized activation boundary. Keeping the capability absent until mediator and registry both exist makes partial installation fail closed. | accepted, repetition-tested and not deployed | backend/worker/platform/security owners | before changing release registry ownership, staging request fields, archive/schema verification or retained-link semantics |
+| D-086 | Activate a staged Codex release only with a separate ten-minute single-use platform-administrator authorization bound to the exact administrator, worker, plan, current release, candidate release and digest; serialize activation against new remote AgentRuns, require zero non-terminal runs, fixed schema/contract/health/canary gates and automatic exact two-link restoration on health or canary failure. | A pre-check without a shared transaction barrier permits a queued run to race activation, while a caller-selected gate or partial link restore could change execution semantics or lose the verified rollback identity. Re-reading authorization after the barrier and blocking worker dispatch during the bounded operation makes the accepted transition deterministic and fail closed. | accepted, synthetic repetition/restore-tested and not deployed | backend/worker/platform/security owners | before changing activation lifetime, binding, run barrier, gate set, link transition or automatic restoration |
 
 ## Deferred decisions and gates
 
@@ -5992,3 +5993,47 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-6.2-closed-codex-staging`;
 the SHA-256 of its `SHA256SUMS` is
 `82c009c426233e76808edb146d59fb73f463d96cbacac74925f182fe550847ea`.
+
+Task 6.3 is complete and change progress is `45/57`; the exact implementation
+resume point is task 6.4. Task 6.4 and all later tasks remain pending.
+
+Atenea commit `60a47757959d1d794c48ebcaf8c1c9e5d1ba3c89` adds the
+separate ten-minute single-use activation authorization, immutable activation
+record, closed administrator APIs and fixed worker call. Authorization is
+bound to the requesting administrator, worker, plan, current and candidate
+inventory/version identities and release digest. A worker-scoped database row
+lock serializes activation with creation of new remote AgentRuns; authorization
+is re-read after acquiring it and every non-terminal run state blocks worker
+I/O.
+
+Worker/contract commit `1eea10192c523ca8307e3a3a3d9ed724893c7776`
+adds the conditional activation capability, closed result schema and root
+mediator. The worker independently requires zero non-terminal executions and
+blocks new dispatch for the bounded operation. The mediator accepts no caller
+host, service, command, path, version or release authority; it requires exactly
+one accepted stage record, validates both version-matched schemas, runs only
+the fixed focused-contract, health and single-canary executables, atomically
+advances the exact links and restores both original targets when health or the
+canary fails.
+
+Two backend passes from independently empty PostgreSQL databases each passed
+45 tests with zero failures, errors or skips after validating all 61
+migrations. A final seven-test activation recheck passed after the serialization
+review, and the clean web/Java package build succeeded. The combined
+worker/contract activation suite passed twice at 52 tests per run plus the
+installer assertion. Repetition returned one immutable result without rerunning
+gates; active runs, extra authority, ambiguous stage records, conflicting
+results and failed health/canary fixtures failed closed, with exact link
+restoration proved for post-switch failures.
+
+Nothing was deployed, installed, enabled or activated on AX42, relinked,
+restarted or routed. Atenea production, preview and Beautips remained `UP`; the
+AX42 worker remained active with `NRestarts=0`; SSH, Tailscale, four rootless
+slot proxies and all three `[UU]` RAID arrays remained healthy; rootful Docker
+remained inactive. Existing Beautips and foreign WorkSession containers were
+observed and not modified.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-6.3-gated-codex-activation`;
+the SHA-256 of its `SHA256SUMS` is
+`9b7d13aebf5c392e1b2de88c3b2a885add4140db8f09af45607e2c1e20a06b6a`.
