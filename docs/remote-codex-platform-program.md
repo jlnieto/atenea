@@ -6206,3 +6206,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-6.7-synthetic-update-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `306cdfb0371389dac52aa491026970bb2be9324eaa58af9587142540a8536104`.
+
+Task 7.1 is complete and change progress is `50/57`; the exact implementation
+resume point is task 7.2. Task 7.2 and all later tasks remain pending.
+
+The first full discovery pass exposed two validation regressions before the
+accepted runs. The mobile-auth integration test assumed its annotation's
+display name even though the canonical Compose environment deliberately
+overrides that value. The Android voice interpreter also evaluated the
+generic latest-response command before the more specific Codex status intent.
+A minimal Atenea fix now asserts a non-empty persisted display name and orders
+the specific status question first. Focused tests passed before the complete
+runs; canonical Atenea commit
+`e60aa025d260e2a6bc1fbbfccde11009a7131c00` is clean and synchronized.
+
+Two backend passes from independently copied clean trees and independently
+empty PostgreSQL 16 volumes each applied all 61 migrations and passed 513
+tests with zero failures, errors or skips. The web bundle built twice at 1,583
+modules. Two clean Android copies each passed 74 tests and executed 228 Gradle
+tasks; both produced byte-identical debug APKs with SHA-256
+`e8455b2c893b22394f4b1ffdab79686d12a9e3347f3d9dad29c20a2707aaa8e9`.
+All 31 worker test entry points passed twice, including the bounded synthetic
+Playwright, ownership, runtime, admission, cleanup, backup, update and worker
+protocol contracts.
+
+All task-owned Compose containers, networks, volumes and image tags were
+removed after exact label inspection. The temporary browser wrapper was
+deleted and no task Playwright/Chromium process remained. No deployment,
+routing change, runtime start or service restart occurred.
+
+Final postchecks found production, preview and Beautips `UP`; the canonical
+AX42 worker remained active with `NRestarts=0`, the same executable SHA and
+boot ID; all four rootless Docker daemons were active and all three RAID
+arrays remained `[UU]`.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.1-complete-suites`;
+the SHA-256 of its `SHA256SUMS` is
+`03c82bf67c242ba55c3706c98cfc116350dd8a06d8a4006a129e95a59e7bbcab`.
