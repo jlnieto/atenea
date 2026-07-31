@@ -64,7 +64,7 @@
 - [x] 6.2 Implement a closed staged installer that verifies the release, generates version-matched schemas and retains current plus previous releases
 - [x] 6.3 Gate activation on zero active runs, focused contracts, health and one canary execution
 - [x] 6.4 Implement exact rollback that restores only the previous Codex link and affected worker/App Server services
-- [ ] 6.5 Add an administrator-only Atenea surface for plan, separately authorized activate, status and rollback
+- [x] 6.5 Add an administrator-only Atenea surface for plan, separately authorized activate, status and rollback
 - [ ] 6.6 Prove unsupported version, active-run, schema-drift, failed-canary, foreign-service and repeated-operation rejection
 - [ ] 6.7 Exercise a real AX42 update only after separate explicit authorization; otherwise close with the fully accepted synthetic update/rollback
 

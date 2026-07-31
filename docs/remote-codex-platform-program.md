@@ -288,6 +288,7 @@ production activation are recorded later in this ledger.
 | D-085 | Stage a planned Codex candidate only from exact persisted plan/candidate/idempotency identities, deriving archive, version, digest, catalog and filesystem authority from a root-owned registry; accept the release only after bounded archive verification, version-matched schema generation, immutable manifests and unchanged current/previous link fingerprints. | A caller-controlled URL, path, command or version would turn administration into remote execution authority, while relinking during staging would collapse the separately authorized activation boundary. Keeping the capability absent until mediator and registry both exist makes partial installation fail closed. | accepted, repetition-tested and not deployed | backend/worker/platform/security owners | before changing release registry ownership, staging request fields, archive/schema verification or retained-link semantics |
 | D-086 | Activate a staged Codex release only with a separate ten-minute single-use platform-administrator authorization bound to the exact administrator, worker, plan, current release, candidate release and digest; serialize activation against new remote AgentRuns, require zero non-terminal runs, fixed schema/contract/health/canary gates and automatic exact two-link restoration on health or canary failure. | A pre-check without a shared transaction barrier permits a queued run to race activation, while a caller-selected gate or partial link restore could change execution semantics or lose the verified rollback identity. Re-reading authorization after the barrier and blocking worker dispatch during the bounded operation makes the accepted transition deterministic and fail closed. | accepted, synthetic repetition/restore-tested and not deployed | backend/worker/platform/security owners | before changing activation lifetime, binding, run barrier, gate set, link transition or automatic restoration |
 | D-087 | Roll back an accepted Codex activation only with a new ten-minute single-use platform-administrator authorization bound to the exact administrator, worker, plan, activation and current/previous inventory; swap only those two verified links and schedule a restart only for `atenea-agent-run-worker-v1.service`, with zero project App Server restarts. | An activation authorization cannot safely authorize a later operator rollback, and caller-selected services or reconstructed release ownership could affect project runtimes. A durable intermediate link-restored state makes interruption retry only the fixed restart schedule instead of swapping links twice. | accepted, synthetic interruption/repetition-tested and not deployed | backend/worker/platform/security owners | before changing rollback lifetime, binding, persisted transition, link identity or affected service boundary |
+| D-088 | Expose managed Codex versions as a state-first platform-administrator web workflow with distinct plan, stage, authorize-activation, activate, authorize-rollback and rollback actions; derive every request from returned persisted identities and hide the navigation from known non-administrator roles while retaining backend authority on direct access. | Combining authorization and execution or accepting free-form operational input would weaken the security boundary, while a generic dashboard would obscure whether the system is ready, blocked or awaiting a separately authorized action. | accepted, role/API/browser-tested and not deployed | web/backend/platform/security owners | before changing operator role projection, managed-update navigation, action sequencing or displayed service impact |
 
 ## Deferred decisions and gates
 
@@ -6087,3 +6088,48 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-6.4-exact-codex-rollback`;
 the SHA-256 of its `SHA256SUMS` is
 `58721aeac9eb50783ad48050612b61464a03411a9a5abc9867560d4a218d8d3b`.
+
+Task 6.5 is complete and change progress is `47/57`; the exact implementation
+resume point is task 6.6. Task 6.6 and all later tasks remain pending.
+
+Atenea commit `a8b7f9256d2036cb5c7414657585b852e52d783f` adds a
+state-first “Versiones Codex” web surface. The first viewport shows the exact
+current and previous versions, whether managed updates are enabled, the
+current workflow state and one next action. Plan, stage, activation
+authorization, activation, rollback authorization and rollback remain
+separate explicit actions; request bodies are built only from immutable
+identities returned by the preceding operation.
+
+The authenticated operator profile now projects its closed Codex-operations
+role. Known routine and privileged operators do not receive the platform
+administration navigation. Backend authorization remains authoritative:
+direct routine access fails with HTTP 403 and the screen presents an
+actionable restricted-access message rather than exposing data or controls.
+Legacy stored web sessions without the new role field retain navigation until
+their next refresh/login, but the backend still denies them unless the current
+database role is `PLATFORM_ADMINISTRATOR`.
+
+The surface presents fixed impact guarantees beside the workflow: zero active
+executions are required, only the Codex worker boundary is affected, both
+sensitive transitions use separate ten-minute single-use authorizations and
+no URL, command, path or credential authority is displayed. A completed
+rollback explicitly reports zero restarted App Servers.
+
+The web bundle built repeatedly at 1,583 modules and the clean Java package
+build succeeded. Two focused runs from independently empty PostgreSQL 16
+schemas each passed 18 authentication, role, update-API and rollback tests
+with zero failures, errors or skips after all 61 migrations. A synthetic
+Playwright flow exercised every action through rollback at `1440x900` and
+`390x844`, asserted critical DOM states, verified routine-role denial and
+proved no horizontal overflow. Inspected screenshots showed clear hierarchy,
+wrapped guarantee copy and no clipping or overlap.
+
+Nothing was deployed, enabled, installed, activated, rolled back, restarted
+or routed. Atenea production, preview and Beautips remained `UP`; the AX42
+worker remained active with `NRestarts=0`, and all three RAID arrays remained
+`[UU]`.
+
+Sanitized evidence, including the four inspected screenshots, is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-6.5-administrator-codex-surface`;
+the SHA-256 of its `SHA256SUMS` is
+`3d993e2dc1fca04974bc507f2cb5d4c6343c0b756d13df3816bec4f4b4760152`.
