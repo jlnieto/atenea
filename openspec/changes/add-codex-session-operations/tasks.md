@@ -21,7 +21,7 @@
 
 ## 2. Durable Atenea control plane
 
-- [ ] 2.1 Persist WorkSession defaults and immutable AgentRun effective model, effort, source, catalog revision and Codex version
+- [x] 2.1 Persist WorkSession defaults and immutable AgentRun effective model, effort, source, catalog revision and Codex version
 - [ ] 2.2 Persist monotonic bounded AgentRun progress events with sanitization, coalescing, replay cursor and terminal consistency
 - [ ] 2.3 Persist idempotent recovery operations, `retryOfRunId` lineage and role-scoped actionable outcomes
 - [ ] 2.4 Persist generic notification events, preferences and per-device deliveries with unique deduplication ownership

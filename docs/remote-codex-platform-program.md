@@ -258,6 +258,7 @@ production activation are recorded later in this ledger.
 | D-055 | Enable completion, failure and action-required push categories by default per active Android device, keep intermediate progress in-app only, and reserve update plan/stage/activation/rollback for platform administrators with separate exact activation and operator-rollback authorizations. | Defaults must notify unattended work without push noise, while binary lifecycle changes remain distinct from routine and mediated recovery authority. | accepted | product/platform/security owners | notification-default or Codex-update authority change |
 | D-056 | Add V57–V61 in dependency order for profiles/catalog, progress, recovery, generic notifications and managed updates; keep five independent gates default-off and accept production migration only after a protected V56 restore plus exact rollback-image compatibility proof. | Expanded history is required for audit/reconciliation, while a nominal old image may reject future Flyway history and therefore cannot be assumed to be a viable rollback. | accepted | data/backend/platform owners | before production V57 or any later schema contraction |
 | D-057 | Introduce additive `project-codex-v2`, catalog, progress and closed API schemas while keeping installed v1 compatible; require semantic catalog and exact session/workspace validation after structural schema validation. | JSON syntax alone cannot reject a well-formed foreign UUID or model absent from the current worker catalog, and accepting caller operational fields would recreate arbitrary command authority. | accepted | security/backend/worker owners | protocol v2 implementation or schema revision |
+| D-058 | Persist project and WorkSession model/effort defaults independently, but require the immutable AgentRun effective profile to be either entirely absent for legacy history or complete with both values, both sources, catalog revision and Codex version. | Model and effort have independent precedence, while partial execution history would be ambiguous and unauditable. | accepted | backend/data owners | before changing V57 profile constraints or snapshot semantics |
 
 ## Deferred decisions and gates
 
@@ -5040,3 +5041,31 @@ Sanitized phase-closure evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-1.5-phase-1-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `d8ccbe68b5d0dc10616254de146c8fab684cdc65036f37fae373445effe22a3e`.
+
+Task 2.1 is complete and change progress is `16/57`; the exact implementation
+resume point is task 2.2. Tasks 2.2 and later remain pending.
+
+Atenea commit `77c813104d02290ecd7c4c263055ace7e56ad71c` adds only V57
+and its persistence model. Project and WorkSession model/effort defaults are
+independently nullable. An AgentRun execution profile is immutable and must be
+either absent for legacy V56 history or complete with effective model, effort,
+both independent sources, catalog revision and Codex version. Normalized worker
+catalog, model and effort inventory is present, and only the canonical efforts
+`none`, `low`, `medium`, `high`, `xhigh` and `max` are accepted.
+
+Five focused persistence tests and two complete 450-test passes against
+separate fresh PostgreSQL 16 databases passed with zero failures, errors or
+skips. The exact V56-to-V57 fixture retained legacy null history, accepted an
+independent WorkSession effort default and a complete AgentRun snapshot, and
+rejected `ultra` plus partial snapshots fail-closed. Test containers and
+networks were removed. Raw authentication integration logs were not retained.
+
+The canonical Atenea branch and remote are clean and synchronized at that
+commit. Production and preview remain `UP` with zero backend restarts;
+production remains on Flyway V56. No production migration, routing, runtime,
+WorkSession, AgentRun, worker, notification or device state changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.1-execution-profile-persistence`;
+the SHA-256 of its `SHA256SUMS` is
+`7d0e0ac7e09c9fe52f710bf0eadef84e64ea3aaddfeb6de48f7ca403ee45e6fc`.
