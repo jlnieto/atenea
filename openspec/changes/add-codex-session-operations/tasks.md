@@ -66,7 +66,7 @@
 - [x] 6.4 Implement exact rollback that restores only the previous Codex link and affected worker/App Server services
 - [x] 6.5 Add an administrator-only Atenea surface for plan, separately authorized activate, status and rollback
 - [x] 6.6 Prove unsupported version, active-run, schema-drift, failed-canary, foreign-service and repeated-operation rejection
-- [ ] 6.7 Exercise a real AX42 update only after separate explicit authorization; otherwise close with the fully accepted synthetic update/rollback
+- [x] 6.7 Exercise a real AX42 update only after separate explicit authorization; otherwise close with the fully accepted synthetic update/rollback
 
 ## 7. Rollout, acceptance and closure
 

@@ -289,6 +289,7 @@ production activation are recorded later in this ledger.
 | D-086 | Activate a staged Codex release only with a separate ten-minute single-use platform-administrator authorization bound to the exact administrator, worker, plan, current release, candidate release and digest; serialize activation against new remote AgentRuns, require zero non-terminal runs, fixed schema/contract/health/canary gates and automatic exact two-link restoration on health or canary failure. | A pre-check without a shared transaction barrier permits a queued run to race activation, while a caller-selected gate or partial link restore could change execution semantics or lose the verified rollback identity. Re-reading authorization after the barrier and blocking worker dispatch during the bounded operation makes the accepted transition deterministic and fail closed. | accepted, synthetic repetition/restore-tested and not deployed | backend/worker/platform/security owners | before changing activation lifetime, binding, run barrier, gate set, link transition or automatic restoration |
 | D-087 | Roll back an accepted Codex activation only with a new ten-minute single-use platform-administrator authorization bound to the exact administrator, worker, plan, activation and current/previous inventory; swap only those two verified links and schedule a restart only for `atenea-agent-run-worker-v1.service`, with zero project App Server restarts. | An activation authorization cannot safely authorize a later operator rollback, and caller-selected services or reconstructed release ownership could affect project runtimes. A durable intermediate link-restored state makes interruption retry only the fixed restart schedule instead of swapping links twice. | accepted, synthetic interruption/repetition-tested and not deployed | backend/worker/platform/security owners | before changing rollback lifetime, binding, persisted transition, link identity or affected service boundary |
 | D-088 | Expose managed Codex versions as a state-first platform-administrator web workflow with distinct plan, stage, authorize-activation, activate, authorize-rollback and rollback actions; derive every request from returned persisted identities and hide the navigation from known non-administrator roles while retaining backend authority on direct access. | Combining authorization and execution or accepting free-form operational input would weaken the security boundary, while a generic dashboard would obscure whether the system is ready, blocked or awaiting a separately authorized action. | accepted, role/API/browser-tested and not deployed | web/backend/platform/security owners | before changing operator role projection, managed-update navigation, action sequencing or displayed service impact |
+| D-089 | Close the first managed-Codex lifecycle through its fully accepted synthetic update/rollback branch and retain AX42 at Codex CLI 0.145.0 until a future instruction separately and explicitly authorizes one named real managed update. | General implementation or rollout authority does not satisfy the change's deliberately separate real-release boundary; the task explicitly permits synthetic closure, which proves the machinery without silently changing the production execution engine. | accepted and read-only baseline-verified | platform/security owners | before any real managed Codex stage, activation, rollback or worker restart |
 
 ## Deferred decisions and gates
 
@@ -6172,3 +6173,36 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-6.6-managed-update-rejections`;
 the SHA-256 of its `SHA256SUMS` is
 `c857ecb9dc26e45d102f53ca497b2df3151b736c07bef12edcbabefec5412316`.
+
+Task 6.7 is complete, Phase 6 is closed and change progress is `49/57`; the
+exact implementation resume point is task 7.1. Task 7.1 and all later tasks
+remain pending.
+
+Task 6.7 used its explicitly permitted fully accepted synthetic branch. No
+instruction separately and specifically authorized a named real AX42 Codex
+release update for this task; general implementation authority and the prior
+application rollout authorization were not treated as that distinct release
+authority.
+
+The accepted proof chain comprises the closed staged installer from 6.2, the
+separately authorized activation and exact automatic restoration from 6.3,
+the separately authorized operator rollback from 6.4, the administrator web
+surface from 6.5 and the complete negative matrix from 6.6. Together they
+prove successful, repeated, interrupted and rejected update/rollback paths
+without needing to modify the real worker.
+
+A final read-only AX42 baseline found Codex CLI `0.145.0`, the worker active
+with `NRestarts=0`, zero non-terminal Codex processes and zero managed-update
+transient units. As expected before deployment, the root-owned release
+registry, managed release root, stage/activation mediators and restart
+scheduler are absent. This absence is retained rather than reconstructed.
+
+No release was staged, activated or rolled back, no worker restarted and no
+production route changed. Atenea production, preview and Beautips remained
+`UP`; all three RAID arrays remained `[UU]`; both canonical worktrees remained
+clean.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-6.7-synthetic-update-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`306cdfb0371389dac52aa491026970bb2be9324eaa58af9587142540a8536104`.
