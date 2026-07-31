@@ -267,6 +267,7 @@ production activation are recorded later in this ledger.
 | D-064 | Run shared control-plane integration suites with global synthetic authentication bootstrap disabled and require authentication-specific tests to opt in with their exact operator fixture. | An eager default operator makes database-backed authorization tests order-dependent and can conceal which persisted role or identity actually authorized an operation. | accepted | backend/security/test owners | before changing integration-test authentication bootstrap |
 | D-065 | Advertise the first exact Codex catalog through a separately authenticated `codex-model-catalog-v1` endpoint/capability while retaining the strict v1 health shape and withholding `agent-run-project-codex-v2` execution until its fingerprint and runner are complete. | Adding fields to the fail-closed v1 health DTO would break the current control plane, while advertising executable v2 authority before validation and runner support would create a false capability. | accepted | worker/backend/security owners | before changing catalog transport or advertising v2 execution |
 | D-066 | Validate and fingerprint the complete `project-codex-v2` envelope, profile and existing v1 ownership before persistence, but reject even a valid v2 create as `profile_execution_unavailable` until the fixed runner consumes the validated profile. | Persisting or scheduling a profiled request before model/effort flags are actually enforced could execute under a silently different profile; staged validation must remain fail-closed. | accepted | worker/security owners | task 3.3 runner enablement or profile-fingerprint change |
+| D-067 | Permit profiled execution only through the fixed runner's exact `--model` plus `model_reasoning_effort` arguments, require a pre-execution exact fixed-binary version probe, and reject any runner result whose echoed profile/version differs from the request. | A validated request can still execute incorrectly if the binary link moved, ambient configuration wins or the runner reports a substituted profile; all three boundaries must agree before success. | accepted | worker/security owners | before changing runner flags, binary path or effective-profile result fields |
 
 ## Deferred decisions and gates
 
@@ -5331,3 +5332,30 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.2-profiled-workload-fingerprint`;
 the SHA-256 of its `SHA256SUMS` is
 `0f84ee5c2281a93cda6e9e5ab3475e8a519bbcff462dccd1e30a9af0a597f36d`.
+
+Task 3.3 is complete and change progress is `25/57`; the exact implementation
+resume point is task 3.4. Tasks 3.4 and later remain pending.
+
+Programme/worker commit `7c3a66ca83e76e9cbb4ac85733a0e57e26d5d4df`
+connects validated `project-codex-v2` requests to the existing fixed project
+runner. Only exact `--model` and canonical `model_reasoning_effort` arguments
+are added to the reviewed command. Prompt remains stdin-only, while provider,
+profile, endpoint, path, environment, credential and arbitrary flags remain
+outside caller authority.
+
+The runner probes only the fixed Codex binary and requires exact
+`codex-cli 0.145.0` before execution. It echoes model, effort, catalog revision
+and Codex version; the worker rejects a mismatching effective result as a
+sanitized failure. Existing v1 execution remains compatible, and v2 capability
+appears only under the existing exact project-selection gate.
+
+Two final 47-test worker/runner/contract passes succeeded with zero failures,
+errors or skips under 120-second bounds. AX42's real CLI help and version were
+observed read-only. Its installed worker and runner hashes, private listener,
+active service and zero restart count remained unchanged; nothing was
+installed, enabled or dispatched.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.3-fixed-profiled-runner`;
+the SHA-256 of its `SHA256SUMS` is
+`4bec258f08e5d24d9c2ecd94ac1cdc6208df9346f9d9ba652ed4ef2fd39a94e2`.
