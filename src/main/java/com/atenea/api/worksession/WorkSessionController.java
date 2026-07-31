@@ -4,6 +4,7 @@ import com.atenea.service.worksession.WorkSessionService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.atenea.service.worksession.RetainedDraftRecoveryService;
 import com.atenea.service.worksession.ClosedValidationOperationService;
+import com.atenea.service.worksession.RepositoryRoleSetService;
 import com.atenea.persistence.worksession.ValidationOperationKind;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -21,17 +22,20 @@ public class WorkSessionController {
     private final WorkSessionGitHubService workSessionGitHubService;
     private final RetainedDraftRecoveryService retainedDraftRecoveryService;
     private final ClosedValidationOperationService closedValidationOperationService;
+    private final RepositoryRoleSetService repositoryRoleSetService;
 
     public WorkSessionController(
             WorkSessionService workSessionService,
             WorkSessionGitHubService workSessionGitHubService,
             RetainedDraftRecoveryService retainedDraftRecoveryService,
-            ClosedValidationOperationService closedValidationOperationService
+            ClosedValidationOperationService closedValidationOperationService,
+            RepositoryRoleSetService repositoryRoleSetService
     ) {
         this.workSessionService = workSessionService;
         this.workSessionGitHubService = workSessionGitHubService;
         this.retainedDraftRecoveryService = retainedDraftRecoveryService;
         this.closedValidationOperationService = closedValidationOperationService;
+        this.repositoryRoleSetService = repositoryRoleSetService;
     }
 
     @PostMapping("/api/projects/{projectId}/sessions")
@@ -83,6 +87,11 @@ public class WorkSessionController {
             @PathVariable ValidationOperationKind operation
     ) {
         return closedValidationOperationService.run(sessionId, operation);
+    }
+
+    @PostMapping("/api/sessions/{sessionId}/repository-role-sets/atenea-platform")
+    public RepositoryRoleSetResponse ensureRepositoryRoles(@PathVariable Long sessionId) {
+        return repositoryRoleSetService.ensure(sessionId);
     }
 
     @GetMapping("/api/sessions/{sessionId}/view")

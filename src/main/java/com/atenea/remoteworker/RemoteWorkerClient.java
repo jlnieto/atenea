@@ -165,6 +165,30 @@ public class RemoteWorkerClient {
                 validationTimeout(operation));
     }
 
+    public RepositoryRoleSet ensureRepositoryRoles(
+            WorkSessionEntity session,
+            String changeIdentity
+    ) {
+        if (!ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+                || session.getRemoteSessionId() == null
+                || session.getWorkspaceIdentity() == null) {
+            throw new RemoteWorkerException(
+                    "Persisted multi-repository ownership is incomplete", 409);
+        }
+        Map<String, Object> body = Map.of(
+                "sessionId", session.getRemoteSessionId().toString(),
+                "workspaceIdentity", session.getWorkspaceIdentity(),
+                "changeIdentity", changeIdentity,
+                "codeCommit", session.getCanonicalSourceCommit());
+        return exchange(
+                "POST",
+                "/v1/project-workspaces/repository-roles/ensure",
+                body,
+                RepositoryRoleSet.class,
+                changeIdentity,
+                properties.getWorkspaceProvisionTimeout());
+    }
+
     private Duration validationTimeout(ValidationOperationKind operation) {
         return switch (operation) {
             case BACKEND_TEST -> Duration.ofMinutes(15);
@@ -384,6 +408,30 @@ public class RemoteWorkerClient {
             String artifactManifestSha256,
             String summary,
             boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record RepositoryRoleSet(
+            String sessionId,
+            String workspaceIdentity,
+            String changeIdentity,
+            List<RepositoryRole> roles,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record RepositoryRole(
+            String role,
+            String authority,
+            String repository,
+            String branch,
+            String commit,
+            String mirrorIdentitySha256,
+            String worktreeIdentitySha256,
+            String validationProfile,
+            String readiness
     ) {
     }
 

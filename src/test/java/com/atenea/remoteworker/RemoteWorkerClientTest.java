@@ -138,6 +138,27 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/project-workspaces/repository-roles/ensure", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            String repository = ProjectCodexIdentity.REPOSITORY;
+            String programBranch = "program/remote-codex-worker-platform";
+            byte[] response = objectMapper.writeValueAsBytes(java.util.Map.of(
+                    "sessionId", request.get("sessionId").asText(),
+                    "workspaceIdentity", request.get("workspaceIdentity").asText(),
+                    "changeIdentity", request.get("changeIdentity").asText(),
+                    "roles", java.util.List.of(
+                            role("ATENEA_CODE", ProjectCodexIdentity.BRANCH,
+                                    request.get("codeCommit").asText(), "atenea-code-v1"),
+                            role("PROGRAMME_OPENSPEC", programBranch,
+                                    "3".repeat(40), "openspec-strict-v1"),
+                            role("WORKER_SOURCE", programBranch,
+                                    "3".repeat(40), "worker-contract-v1")),
+                    "valuesExposed", false));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.start();
         properties = new RemoteWorkerProperties();
         properties.setEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
@@ -325,6 +346,29 @@ class RemoteWorkerClientTest {
     }
 
     @Test
+    void repositoryRolesUseOnlyPersistedSessionAndGeneratedChangeIdentity() {
+        AgentRunEntity run = projectRun(null);
+        WorkSessionEntity session = run.getSession();
+        session.setWorkspaceIdentity(run.getWorkspaceIdentity());
+        String change = "0cc7815a-f703-46ee-938a-8ef4d00e68a2";
+
+        RemoteWorkerClient.RepositoryRoleSet result =
+                client.ensureRepositoryRoles(session, change);
+
+        JsonNode body = requestBody.get();
+        assertEquals(4, body.size());
+        assertEquals(change, body.get("changeIdentity").asText());
+        assertEquals(TEST_CANONICAL_COMMIT, body.get("codeCommit").asText());
+        assertNull(body.get("repository"));
+        assertNull(body.get("branch"));
+        assertNull(body.get("path"));
+        assertNull(body.get("command"));
+        assertNull(body.get("user"));
+        assertEquals(3, result.roles().size());
+        assertEquals(false, result.valuesExposed());
+    }
+
+    @Test
     void conflictingPersistedProjectFingerprintFailsBeforeNetwork() {
         AgentRunEntity run = projectRun(null);
         run.setRepositoryCommit("0".repeat(40));
@@ -384,6 +428,22 @@ class RemoteWorkerClientTest {
         run.setRepositoryCommit(TEST_CANONICAL_COMMIT);
         run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
         return run;
+    }
+
+    private java.util.Map<String, Object> role(
+            String role, String branch, String commit, String profile
+    ) {
+        return java.util.Map.of(
+                "role", role,
+                "authority", "READ_WRITE",
+                "repository", ProjectCodexIdentity.REPOSITORY,
+                "branch", branch,
+                "commit", commit,
+                "mirrorIdentitySha256", "6".repeat(64),
+                "worktreeIdentitySha256", Integer.toHexString(role.hashCode())
+                        .replace("-", "a").repeat(64).substring(0, 64),
+                "validationProfile", profile,
+                "readiness", "DRAFT");
     }
 
     private AgentRunEntity beautipsRun(String threadId) {

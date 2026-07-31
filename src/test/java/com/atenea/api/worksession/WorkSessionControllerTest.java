@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.atenea.api.ApiExceptionHandler;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.RepositoryRoleKind;
+import com.atenea.persistence.worksession.RepositoryRoleReadiness;
 import com.atenea.persistence.worksession.ValidationOperationKind;
 import com.atenea.persistence.worksession.ValidationOperationStatus;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
@@ -16,6 +18,7 @@ import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
 import com.atenea.service.worksession.RetainedDraftRecoveryService;
 import com.atenea.service.worksession.ClosedValidationOperationService;
+import com.atenea.service.worksession.RepositoryRoleSetService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.atenea.service.worksession.WorkSessionNotOpenException;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
@@ -52,6 +55,8 @@ class WorkSessionControllerTest {
 
     @Mock
     private ClosedValidationOperationService closedValidationOperationService;
+    @Mock
+    private RepositoryRoleSetService repositoryRoleSetService;
 
     private MockMvc mockMvc;
 
@@ -61,7 +66,8 @@ class WorkSessionControllerTest {
                         workSessionService,
                         workSessionGitHubService,
                         retainedDraftRecoveryService,
-                        closedValidationOperationService))
+                        closedValidationOperationService,
+                        repositoryRoleSetService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -138,6 +144,37 @@ class WorkSessionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"command\":\"docker run --privileged\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void repositoryRoleEndpointReturnsOnlyTheClosedLinkedRoleSet() throws Exception {
+        UUID changeIdentity = UUID.fromString("f69d701d-b1f6-4bf7-b788-6ec44ebdf88a");
+        when(repositoryRoleSetService.ensure(12L)).thenReturn(new RepositoryRoleSetResponse(
+                12L,
+                changeIdentity,
+                RepositoryRoleReadiness.DRAFT,
+                List.of(new RepositoryRoleSetResponse.Role(
+                        RepositoryRoleKind.ATENEA_CODE,
+                        "READ_WRITE",
+                        "https://github.com/jlnieto/atenea.git",
+                        "feature/actualizar-conversacion-en-web",
+                        "1".repeat(40),
+                        "2".repeat(64),
+                        "3".repeat(64),
+                        "atenea-code-v1",
+                        RepositoryRoleReadiness.DRAFT)),
+                false));
+
+        mockMvc.perform(post("/api/sessions/12/repository-role-sets/atenea-platform")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"repository\":\"https://foreign.invalid/repo.git\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.changeIdentity").value(changeIdentity.toString()))
+                .andExpect(jsonPath("$.linkedReadiness").value("DRAFT"))
+                .andExpect(jsonPath("$.roles[0].role").value("ATENEA_CODE"))
+                .andExpect(jsonPath("$.roles[0].authority").value("READ_WRITE"))
+                .andExpect(jsonPath("$.valuesExposed").value(false))
+                .andExpect(jsonPath("$.path").doesNotExist());
     }
 
     @Test
