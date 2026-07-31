@@ -260,6 +260,7 @@ production activation are recorded later in this ledger.
 | D-057 | Introduce additive `project-codex-v2`, catalog, progress and closed API schemas while keeping installed v1 compatible; require semantic catalog and exact session/workspace validation after structural schema validation. | JSON syntax alone cannot reject a well-formed foreign UUID or model absent from the current worker catalog, and accepting caller operational fields would recreate arbitrary command authority. | accepted | security/backend/worker owners | protocol v2 implementation or schema revision |
 | D-058 | Persist project and WorkSession model/effort defaults independently, but require the immutable AgentRun effective profile to be either entirely absent for legacy history or complete with both values, both sources, catalog revision and Codex version. | Model and effort have independent precedence, while partial execution history would be ambiguous and unauditable. | accepted | backend/data owners | before changing V57 profile constraints or snapshot semantics |
 | D-059 | Persist only the thirteen exact category-derived operator messages in V58, serialize sequence allocation with the owning AgentRun row and evict detail below a moving 200-event floor without removing the independent projection. | Free-form progress text can retain commands, output or credentials; row ownership plus a non-reused sequence and projection-first replay gives deterministic concurrent append and reconnect behavior. | accepted | backend/data/security owners | before adding or localizing a progress template or changing replay retention |
+| D-060 | Bind each V59 recovery request to one active operator's persisted role snapshot, exact WorkSession/AgentRun composite ownership, idempotency key and canonical request fingerprint; persist routine attempts at privileged actions as closed `ROLE_REQUIRED` outcomes, and permit `RETRY_CREATED` only with immutable same-session `retryOfRunId` lineage. | Authentication alone does not grant host authority, repeated keys must not change meaning after timeout, and a replacement run without exact lineage could duplicate a still-live execution. | accepted | backend/data/security owners | before expanding recovery actions, role authority or retry lineage |
 
 ## Deferred decisions and gates
 
@@ -5104,3 +5105,39 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.2-bounded-progress`;
 the SHA-256 of its `SHA256SUMS` is
 `c2db676350664d73e2d7552cf80cf3c16ea3f5dab55c1a8e198740790ee77a30`.
+
+Task 2.3 is complete and change progress is `18/57`; the exact implementation
+resume point is task 2.4. Tasks 2.4 and later remain pending.
+
+Atenea commit `cf3dfacaa6b6b4b732b38a536fafa58ee5e13296` adds V59
+and closed recovery persistence. Operator accounts default to
+`ROUTINE_OPERATOR`; every operation snapshots that persisted role and binds an
+exact operator, WorkSession, AgentRun, action, idempotency key and canonical
+request fingerprint. Composite ownership rejects a foreign run/session pair.
+Exact repetition returns the existing operation, while conflicting key reuse
+fails closed.
+
+Routine cancel, retry, reconciliation and diagnostic requests are permitted.
+A routine restart attempt is retained as an actionable `ROLE_REQUIRED`
+rejection without invoking any service. Privileged roles may persist only the
+two fixed mediated restart actions. State/outcome, exact sanitized summary and
+next-action combinations are constrained in PostgreSQL. `RETRY_CREATED`
+requires one same-session result AgentRun with immutable `retryOfRunId`
+lineage to the failed source; the original attempt remains unchanged.
+
+Seventeen focused persistence tests passed. The final two complete 462-test
+passes against separate fresh PostgreSQL 16 databases migrated through V59
+passed with zero failures, errors or skips in 45 seconds each. Read-only source
+and dependencies, isolated workspaces and databases without published ports
+were used. No task container, network, volume or raw authentication log
+remains.
+
+The canonical Atenea branch and remote are clean and synchronized at that
+commit. Production and preview remain `UP` with zero backend restarts;
+production remains on Flyway V56. No real recovery operation, production
+migration or operational state change occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.3-idempotent-recovery`;
+the SHA-256 of its `SHA256SUMS` is
+`85086b48f96e6de5e69a3ef8bad6a42b8b21012135ec9f6b395df8ebe505e025`.
