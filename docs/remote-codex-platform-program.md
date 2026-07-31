@@ -4848,3 +4848,40 @@ Sanitized task-0.10 evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.10-foundation-current-worksession`;
 the SHA-256 of its `SHA256SUMS` is
 `76cbdf25b6f49ed78c3ba16a536edc20e52e43053adb7ed2a60153679ee4cc0b`.
+
+Task 1.1 is complete and change progress is `11/57`; the exact resume point is
+task 1.2.
+
+The entry baseline records clean synchronized Atenea source at
+`ec867f75bd4bb58f582607cf0025a003400f02c8`, clean synchronized programme
+source at `54f489d2d2b8b5359c11812f59c474b210a64741`, and AX42 mirror refs at those
+same commits. Production and preview are `UP`; the backend and both App Server
+containers are running with zero restarts; schema remains V56. The two open
+remote sessions are only Beautips row 4 and current Atenea row 7, with zero
+non-terminal AgentRuns.
+
+The installed worker is active with protocol `agent-run-worker/v1`, capacities
+4 normal and 2 heavy, plus synthetic and exact-project capabilities. Atenea and
+Beautips each have one exact enabled registration. Installed programme and
+runner fingerprints pass verification, slot inventories remain `3/0/0/3`,
+SSH, Tailscale and UFW are active, and all RAID arrays remain `[UU]`.
+
+The effective AX42 project runner currently invokes standalone Codex CLI
+`0.145.0` with SHA-256
+`a2a05dafaa1acb002a45eaec0a462de5b13694fcfcd7bc43305f14781ce7be14`.
+Production and rescue App Servers contain Codex CLI `0.130.0`. The runner has
+no explicit model or reasoning-effort option, ignores user configuration and
+ambient rules, and persists no AgentRun effective model, effort or Codex
+version. This observed difference is retained truthfully for the precedence
+and catalog decisions in task 1.2 rather than being normalized during capture.
+
+The FCM/device projection contains two active Android devices, one reporting
+app `0.5.94` and one `0.5.95`, plus three sent `RUN_SUCCEEDED` notification
+records and zero notification records for current Atenea session 7. No push
+token, device identifier, notification body, credential, environment dump,
+auth file, prompt, answer or execution result was read or retained.
+
+Sanitized task-1.1 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-1.1-entry-baseline`;
+the SHA-256 of its `SHA256SUMS` is
+`b5d6a97596b072282ddc28adc629b341b711fd480ad765c08c50d7c922b0f6fb`.
