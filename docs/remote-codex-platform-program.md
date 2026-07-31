@@ -282,6 +282,7 @@ production activation are recorded later in this ledger.
 | D-079 | Emit completion, failure and first action-required events from the same local or remote transaction that persists their owning AgentRun state; suppress repeated action-required production while retaining outbox uniqueness as the durable duplicate barrier. | A post-commit producer can lose the notification on process failure, while every reconciliation poll must not create a new user event for one unchanged actionable state. | accepted and transition-tested | backend/notification owners | before changing terminal transaction boundaries or actionable-state revision semantics |
 | D-080 | Retry only closed transient FCM/transport/authentication failures at 30, 60, 120 and 240 seconds, stop after five attempts or expiry, and deactivate only an exactly owned device on a closed invalid-token response. | Unbounded or content-derived retry can amplify provider failures; fixed diagnostics and per-device isolation preserve operability without retaining tokens or provider payloads. | accepted and persistence-tested | backend/notification owners | before changing delivery attempt limits, retry schedule or invalid-token classification |
 | D-081 | Encode generic AgentRun pushes as `atenea-notification-data-v1` with fixed `AGENT_RUN_STATE` semantics, an exact `atenea://work-sessions/{id}/conversation` deep link and only closed immutable/numeric identity fields. | Android needs one stable route to the exact conversation, while copying domain text or accepting an unrecognized template would leak content and make notification handling ambiguous. | accepted and payload-tested | backend/Android/notification owners | before changing notification payload schema, safe-copy catalog or WorkSession deep-link route |
+| D-082 | Parse notification routes fail-closed in Android, use the immutable event ID as local presentation identity, retain only the ten safe payload fields in the PendingIntent and consume a valid event in-app while MainActivity is foregrounded. | Exact route validation prevents arbitrary intent navigation, stable event ownership avoids repeated local cards, and returning before presentation prevents a second notification beside the refreshed conversation. | accepted, unit-tested and emulator-verified | Android/notification owners | before changing foreground delivery, PendingIntent fields or notification route parsing |
 
 ## Deferred decisions and gates
 
@@ -5801,3 +5802,40 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.4-safe-deep-link-payloads`;
 the SHA-256 of its `SHA256SUMS` is
 `f14ae0a9308ef750c204d4aaaf0e7ffbb7b6fd6515bd55637fa4f1ec3de93af3`.
+
+Task 5.5 is complete and change progress is `40/57`; the exact implementation
+resume point is task 5.6. Task 5.6 and all later tasks remain pending.
+
+Atenea commit `8a8229348677783287de04bb979b92079fe3ce13` gives Android a
+closed notification route parser for the versioned ten-field payload and the
+exact `atenea://work-sessions/{id}/conversation` URI. Schema, category,
+template, run, session and UUID event ownership must all agree. Unknown,
+mismatched, queried, fragmented or non-positive routes fail closed.
+
+The production notification presenter now uses the immutable event UUID as
+its stable Android notification/PendingIntent identity and copies only the ten
+allow-listed safe fields. MainActivity accepts both platform notification
+extras and direct browsable deep links, retains the route through login, and
+opens the exact conversation without requiring an invented project identity.
+A fresh event recreates that conversation projection so its committed state is
+reloaded. While MainActivity is foregrounded, the FCM service delivers the
+route in-app and returns before local notification presentation.
+
+Four focused JVM tests passed with zero failures, errors or skips. The final
+normal debug APK assembled successfully. A temporary API 35 emulator displayed
+the real production notification presenter in the background; its inspected
+notification was concise and actionable. Tapping its real PendingIntent opened
+only synthetic WorkSession `12`, confirmed by the UIAutomator hierarchy and an
+inspected Compose screenshot with no clipping, overlap or horizontal overflow.
+
+The visual-only activity, cleartext test manifest, mock API/authentication,
+emulator, AVD and downloaded system image were removed before the final normal
+build. No FCM token value was read or retained. Read-only post-checks kept
+Atenea `UP`, production/preview/Beautips containers `Up`, the AX42 AgentRun
+worker active with `NRestarts=0`, four active slot proxies, zero project runners
+and rootful Docker inactive. Nothing was deployed, enabled, routed or sent.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.5-android-notification-routing`;
+the SHA-256 of its `SHA256SUMS` is
+`1e5c8e87a63955b917df90ee570ab213ba6b879a951cdde86f94fd828865dd3d`.
