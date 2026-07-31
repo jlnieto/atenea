@@ -422,6 +422,18 @@ Run its focused link, gate, restore and repetition suite with:
 python3 ./test-codex-release-activate-v1.py
 ```
 
+The same closed mediator accepts the distinct `ROLLBACK_CODEX_UPDATE`
+operation only with exact persisted plan, candidate, activation, rollback
+authorization and idempotency UUIDs. It requires the live `current` and
+`previous` fingerprints to match the accepted activation, swaps only those two
+fixed links, persists the intermediate link-restored state and invokes the
+root-owned restart scheduler. That scheduler rejects every service except
+`atenea-agent-run-worker-v1.service` and creates an idempotent delayed systemd
+unit so the authenticated HTTP response can finish before the worker restarts.
+No project App Server, runtime, slot, host, command or service is selected by
+the caller. Exact repetition returns the completed immutable result without a
+second swap or restart schedule.
+
 Installation updates the existing private tailnet worker endpoint and leaves
 the real-project capability disabled:
 

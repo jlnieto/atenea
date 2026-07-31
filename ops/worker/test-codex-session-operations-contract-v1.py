@@ -76,6 +76,9 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
             "activateResult": read_json(
                 CONTRACT / "codex-update-activate-v1.result.schema.json"
             ),
+            "rollbackResult": read_json(
+                CONTRACT / "codex-update-rollback-v1.result.schema.json"
+            ),
         }
         cls.validators = {
             name: Draft202012Validator(schema, format_checker=FormatChecker())
@@ -224,6 +227,27 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
             "valuesExposed": False,
         }
         self.assert_schema_valid("activateResult", activation_result)
+        rollback_result = {
+            "schemaVersion": "codex-update-rollback-v1",
+            "operation": "ROLLBACK_CODEX_UPDATE",
+            "workerId": "ax42-01",
+            "planId": self.api_requests[4]["planId"],
+            "candidateId": self.api_requests[4]["candidateId"],
+            "activationId": self.api_requests[7]["activationId"],
+            "authorizationId": self.api_requests[7]["authorizationId"],
+            "idempotencyKey": self.api_requests[7]["idempotencyKey"],
+            "state": "ROLLED_BACK",
+            "linkRestore": "PASS",
+            "workerServiceRestart": "PASS",
+            "affectedServices": ["atenea-agent-run-worker-v1.service"],
+            "appServerServicesRestarted": 0,
+            "currentBeforeFingerprint": "a" * 64,
+            "previousBeforeFingerprint": "b" * 64,
+            "currentAfterFingerprint": "c" * 64,
+            "previousAfterFingerprint": "d" * 64,
+            "valuesExposed": False,
+        }
+        self.assert_schema_valid("rollbackResult", rollback_result)
 
         exact_operation = {
             "executionId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",

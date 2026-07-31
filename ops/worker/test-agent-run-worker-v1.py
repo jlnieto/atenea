@@ -1220,6 +1220,28 @@ request = json.load(sys.stdin)
 calls = pathlib.Path(sys.argv[0]).with_name("activation-calls")
 calls.write_text(calls.read_text() + "1\\n" if calls.exists() else "1\\n")
 digest = hashlib.sha256(b"synthetic-activation").hexdigest()
+if request["operation"] == "ROLLBACK_CODEX_UPDATE":
+    print(json.dumps({
+        "schemaVersion": "codex-update-rollback-v1",
+        "operation": request["operation"],
+        "workerId": "ax42-01",
+        "planId": request["planId"],
+        "candidateId": request["candidateId"],
+        "activationId": request["activationId"],
+        "authorizationId": request["authorizationId"],
+        "idempotencyKey": request["idempotencyKey"],
+        "state": "ROLLED_BACK",
+        "linkRestore": "PASS",
+        "workerServiceRestart": "PASS",
+        "affectedServices": ["atenea-agent-run-worker-v1.service"],
+        "appServerServicesRestarted": 0,
+        "currentBeforeFingerprint": digest,
+        "previousBeforeFingerprint": digest,
+        "currentAfterFingerprint": digest,
+        "previousAfterFingerprint": digest,
+        "valuesExposed": False,
+    }))
+    raise SystemExit(0)
 print(json.dumps({
     "schemaVersion": "codex-update-activate-v1",
     "operation": request["operation"],
@@ -1251,6 +1273,8 @@ print(json.dumps({
             root / "state", "ax42-01", privilege_command=(),
             codex_update_mediator=self.mediator,
             codex_activate_mediator=self.mediator,
+            codex_rollback_mediator=self.mediator,
+            codex_restart_scheduler=self.mediator,
             codex_update_registry=self.registry,
             codex_release_root=self.release_root,
         )
@@ -1258,6 +1282,14 @@ print(json.dumps({
             "operation": "ACTIVATE_CODEX_UPDATE",
             "planId": str(uuid.uuid4()),
             "candidateId": str(uuid.uuid4()),
+            "authorizationId": str(uuid.uuid4()),
+            "idempotencyKey": str(uuid.uuid4()),
+        }
+        self.rollback_request = {
+            "operation": "ROLLBACK_CODEX_UPDATE",
+            "planId": self.request["planId"],
+            "candidateId": self.request["candidateId"],
+            "activationId": str(uuid.uuid4()),
             "authorizationId": str(uuid.uuid4()),
             "idempotencyKey": str(uuid.uuid4()),
         }
@@ -1287,6 +1319,22 @@ print(json.dumps({
         self.mediator.chmod(0o755)
         with self.assertRaisesRegex(MODULE.ProtocolError, "conflicting"):
             self.state.activate_codex_update(self.request)
+
+    def test_closed_rollback_restarts_only_exact_worker_boundary(self):
+        self.assertIn(MODULE.CODEX_UPDATE_ROLLBACK_CAPABILITY,
+                      self.state.health()["capabilities"])
+        result = self.state.rollback_codex_update(self.rollback_request)
+        self.assertEqual("ROLLED_BACK", result["state"])
+        self.assertEqual(["atenea-agent-run-worker-v1.service"],
+                         result["affectedServices"])
+        self.assertEqual(0, result["appServerServicesRestarted"])
+        with self.assertRaisesRegex(MODULE.ProtocolError, "exact"):
+            self.state.rollback_codex_update(
+                {**self.rollback_request, "service": "foreign.service"})
+        self.state.executions["active"] = {"status": "RUNNING"}
+        with self.assertRaisesRegex(MODULE.ProtocolError, "zero"):
+            self.state.rollback_codex_update(
+                {**self.rollback_request, "idempotencyKey": str(uuid.uuid4())})
 
 
 class WorkerHttpTest(unittest.TestCase):
@@ -1428,6 +1476,25 @@ class WorkerHttpTest(unittest.TestCase):
         self.assertEqual(503, unavailable.exception.code)
         with self.assertRaises(urllib.error.HTTPError) as rejected:
             self.post("/v1/codex/update/activate", {**exact, "host": "foreign"}, "t" * 64)
+        self.assertEqual(400, rejected.exception.code)
+
+    def test_rollback_route_is_authenticated_closed_and_unavailable_without_mediator(self):
+        exact = {
+            "operation": "ROLLBACK_CODEX_UPDATE",
+            "planId": str(uuid.uuid4()),
+            "candidateId": str(uuid.uuid4()),
+            "activationId": str(uuid.uuid4()),
+            "authorizationId": str(uuid.uuid4()),
+            "idempotencyKey": str(uuid.uuid4()),
+        }
+        with self.assertRaises(urllib.error.HTTPError) as unauthenticated:
+            self.post("/v1/codex/update/rollback", exact)
+        self.assertEqual(401, unauthenticated.exception.code)
+        with self.assertRaises(urllib.error.HTTPError) as unavailable:
+            self.post("/v1/codex/update/rollback", exact, "t" * 64)
+        self.assertEqual(503, unavailable.exception.code)
+        with self.assertRaises(urllib.error.HTTPError) as rejected:
+            self.post("/v1/codex/update/rollback", {**exact, "service": "foreign"}, "t" * 64)
         self.assertEqual(400, rejected.exception.code)
 
 

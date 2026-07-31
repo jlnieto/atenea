@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).with_name("codex-release-activate-v1.py")
+RESTART_SCRIPT = Path(__file__).with_name("codex-release-restart-v1.sh")
 
 
 class CodexReleaseActivateTest(unittest.TestCase):
@@ -20,10 +21,13 @@ class CodexReleaseActivateTest(unittest.TestCase):
         self.releases = self.root / "releases"
         self.operations = self.root / "operations"
         self.activations = self.root / "activations"
+        self.rollbacks = self.root / "rollbacks"
         self.releases.mkdir(parents=True)
         self.operations.mkdir()
         self.activations.mkdir()
-        for directory in (self.root, self.releases, self.operations, self.activations):
+        self.rollbacks.mkdir()
+        for directory in (
+                self.root, self.releases, self.operations, self.activations, self.rollbacks):
             directory.chmod(0o750)
         self.current_release = self._release("0.144.0", "current")
         self.previous_release = self._release("0.143.0", "previous")
@@ -51,6 +55,11 @@ class CodexReleaseActivateTest(unittest.TestCase):
             }},
         }), encoding="utf-8")
         self.registry.chmod(0o600)
+        self.restart_scheduler = self.root / "restart-scheduler"
+        self.restart_scheduler.write_text(
+            "#!/bin/sh\nprintf '%s %s\\n' \"$1\" \"$2\" >> '" +
+            str(self.root / "restart-calls") + "'\nexit 0\n", encoding="utf-8")
+        self.restart_scheduler.chmod(0o700)
         self._write_stage(str(uuid.uuid4()))
         self.request = {
             "operation": "ACTIVATE_CODEX_UPDATE",
@@ -102,7 +111,8 @@ class CodexReleaseActivateTest(unittest.TestCase):
             [str(SCRIPT), "--registry", str(self.registry),
              "--release-root", str(self.root),
              "--registry-owner-uid", str(os.geteuid()),
-             "--release-owner-uid", str(os.geteuid())],
+             "--release-owner-uid", str(os.geteuid()),
+             "--restart-scheduler", str(self.restart_scheduler)],
             input=json.dumps(request or self.request), text=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10,
         )
@@ -169,6 +179,99 @@ class CodexReleaseActivateTest(unittest.TestCase):
                 self.assertEqual([], list(self.activations.iterdir()))
                 gate.write_text(original, encoding="utf-8")
                 gate.chmod(0o700)
+
+    def test_rollback_swaps_exact_links_restarts_only_worker_and_repeats(self):
+        original = self._links()
+        activated = self._run()
+        self.assertEqual(0, activated.returncode, activated.stderr)
+        activation_links = self._links()
+        rollback = {
+            "operation": "ROLLBACK_CODEX_UPDATE",
+            "planId": self.plan_id,
+            "candidateId": self.candidate_id,
+            "activationId": str(uuid.uuid4()),
+            "authorizationId": str(uuid.uuid4()),
+            "idempotencyKey": str(uuid.uuid4()),
+        }
+        first = self._run(rollback)
+        self.assertEqual(0, first.returncode, first.stderr)
+        result = json.loads(first.stdout)
+        self.assertEqual("ROLLED_BACK", result["state"])
+        self.assertEqual("PASS", result["linkRestore"])
+        self.assertEqual("PASS", result["workerServiceRestart"])
+        self.assertEqual(["atenea-agent-run-worker-v1.service"],
+                         result["affectedServices"])
+        self.assertEqual(0, result["appServerServicesRestarted"])
+        self.assertEqual((activation_links[1], activation_links[0]), self._links())
+        self.assertEqual(original[0], self._links()[0])
+        calls = (self.root / "restart-calls").read_text().splitlines()
+        self.assertEqual(
+            [rollback["idempotencyKey"] + " atenea-agent-run-worker-v1.service"], calls)
+
+        second = self._run(rollback)
+        self.assertEqual(0, second.returncode, second.stderr)
+        self.assertEqual(result, json.loads(second.stdout))
+        self.assertEqual(calls, (self.root / "restart-calls").read_text().splitlines())
+
+        conflict = self._run({**rollback, "authorizationId": str(uuid.uuid4())})
+        self.assertNotEqual(0, conflict.returncode)
+        self.assertEqual(calls, (self.root / "restart-calls").read_text().splitlines())
+
+    def test_rollback_restart_failure_retains_resumable_exact_link_state(self):
+        self.assertEqual(0, self._run().returncode)
+        rollback = {
+            "operation": "ROLLBACK_CODEX_UPDATE",
+            "planId": self.plan_id,
+            "candidateId": self.candidate_id,
+            "activationId": str(uuid.uuid4()),
+            "authorizationId": str(uuid.uuid4()),
+            "idempotencyKey": str(uuid.uuid4()),
+        }
+        self.restart_scheduler.write_text("#!/bin/sh\nexit 9\n", encoding="utf-8")
+        self.restart_scheduler.chmod(0o700)
+        failed = self._run(rollback)
+        self.assertNotEqual(0, failed.returncode)
+        links_after_swap = self._links()
+        persisted = json.loads(
+            (self.rollbacks / (rollback["idempotencyKey"] + ".json")).read_text())
+        self.assertEqual("LINKS_RESTORED", persisted["result"]["state"])
+        self.assertEqual("PENDING", persisted["result"]["workerServiceRestart"])
+
+        self.restart_scheduler.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        self.restart_scheduler.chmod(0o700)
+        retried = self._run(rollback)
+        self.assertEqual(0, retried.returncode, retried.stderr)
+        self.assertEqual("ROLLED_BACK", json.loads(retried.stdout)["state"])
+        self.assertEqual(links_after_swap, self._links())
+
+    def test_rollback_rejects_link_drift_without_further_change(self):
+        self.assertEqual(0, self._run().returncode)
+        previous = self.root / "previous"
+        previous.unlink()
+        previous.symlink_to("releases/" + self.previous_release.name)
+        drifted = self._links()
+        rollback = {
+            "operation": "ROLLBACK_CODEX_UPDATE",
+            "planId": self.plan_id,
+            "candidateId": self.candidate_id,
+            "activationId": str(uuid.uuid4()),
+            "authorizationId": str(uuid.uuid4()),
+            "idempotencyKey": str(uuid.uuid4()),
+        }
+        rejected = self._run(rollback)
+        self.assertNotEqual(0, rejected.returncode)
+        self.assertEqual(drifted, self._links())
+        self.assertEqual([], list(self.rollbacks.iterdir()))
+
+    def test_restart_scheduler_rejects_foreign_service_and_identity(self):
+        foreign = subprocess.run(
+            [str(RESTART_SCRIPT), str(uuid.uuid4()), "foreign.service"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        self.assertEqual(2, foreign.returncode)
+        malformed = subprocess.run(
+            [str(RESTART_SCRIPT), "not-a-uuid", "atenea-agent-run-worker-v1.service"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        self.assertEqual(2, malformed.returncode)
 
 
 if __name__ == "__main__":

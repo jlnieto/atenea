@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Closed Codex release activation with bounded gates and automatic link restore."""
+"""Closed Codex release activation and exact previous-release rollback."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from typing import Any
 
 REGISTRY_SCHEMA = "codex-release-stage-v1"
 RESULT_SCHEMA = "codex-update-activate-v1"
+ROLLBACK_RESULT_SCHEMA = "codex-update-rollback-v1"
 WORKER_ID = "ax42-01"
 REQUEST_FIELDS = {
     "operation", "planId", "candidateId", "authorizationId", "idempotencyKey",
@@ -31,6 +32,19 @@ RESULT_FIELDS = {
     "previousBeforeFingerprint", "currentAfterFingerprint",
     "previousAfterFingerprint", "automaticRestore", "valuesExposed",
 }
+ROLLBACK_REQUEST_FIELDS = {
+    "operation", "planId", "candidateId", "activationId", "authorizationId",
+    "idempotencyKey",
+}
+ROLLBACK_RESULT_FIELDS = {
+    "schemaVersion", "operation", "workerId", "planId", "candidateId",
+    "activationId", "authorizationId", "idempotencyKey", "state",
+    "linkRestore", "workerServiceRestart", "affectedServices",
+    "appServerServicesRestarted", "currentBeforeFingerprint",
+    "previousBeforeFingerprint", "currentAfterFingerprint",
+    "previousAfterFingerprint", "valuesExposed",
+}
+RESTART_SERVICE = "atenea-agent-run-worker-v1.service"
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
@@ -72,14 +86,20 @@ def read_request() -> dict[str, str]:
         request = json.load(sys.stdin)
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ActivationError("request must be valid JSON") from error
-    if not isinstance(request, dict) or set(request) != REQUEST_FIELDS:
-        raise ActivationError("exact activation request fields are required")
-    if request.get("operation") != "ACTIVATE_CODEX_UPDATE":
-        raise ActivationError("activation operation is required")
+    if not isinstance(request, dict):
+        raise ActivationError("request must be a JSON object")
+    if set(request) == REQUEST_FIELDS and request.get("operation") == "ACTIVATE_CODEX_UPDATE":
+        identities = ("planId", "candidateId", "authorizationId", "idempotencyKey")
+    elif (set(request) == ROLLBACK_REQUEST_FIELDS
+          and request.get("operation") == "ROLLBACK_CODEX_UPDATE"):
+        identities = (
+            "planId", "candidateId", "activationId", "authorizationId", "idempotencyKey",
+        )
+    else:
+        raise ActivationError("exact activation or rollback request fields are required")
     return {
-        "operation": "ACTIVATE_CODEX_UPDATE",
-        **{field: require_uuid(request.get(field), field)
-           for field in ("planId", "candidateId", "authorizationId", "idempotencyKey")},
+        "operation": request["operation"],
+        **{field: require_uuid(request.get(field), field) for field in identities},
     }
 
 
@@ -233,6 +253,120 @@ def persist(path: Path, value: dict[str, Any]) -> None:
             os.unlink(temporary_name)
 
 
+def accepted_activation(
+        activations: Path, request: dict[str, str], owner_uid: int) -> dict[str, Any]:
+    matches: list[dict[str, Any]] = []
+    for operation_path in activations.glob("*.json"):
+        owned_regular(operation_path, owner_uid, "activation operation record")
+        try:
+            operation = json.loads(operation_path.read_text(encoding="utf-8"))
+            result = operation["result"]
+        except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+            raise ActivationError("activation operation record is invalid") from error
+        if (isinstance(result, dict) and set(result) == RESULT_FIELDS
+                and result.get("state") == "ACTIVATED"
+                and result.get("planId") == request["planId"]
+                and result.get("candidateId") == request["candidateId"]
+                and result.get("valuesExposed") is False):
+            matches.append(result)
+    if len(matches) != 1:
+        raise ActivationError("exactly one accepted activation operation is required")
+    return matches[0]
+
+
+def schedule_restart(args: argparse.Namespace, request: dict[str, str]) -> None:
+    owned_regular(args.restart_scheduler, args.registry_owner_uid, "restart scheduler")
+    if not os.access(args.restart_scheduler, os.X_OK):
+        raise ActivationError("restart scheduler is not executable")
+    try:
+        completed = subprocess.run(
+            [str(args.restart_scheduler), request["idempotencyKey"], RESTART_SERVICE],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+            timeout=15, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ActivationError("exact worker restart scheduling failed closed") from error
+    if completed.returncode != 0:
+        raise ActivationError("exact worker restart scheduling failed closed")
+
+
+def rollback(args: argparse.Namespace, request: dict[str, str]) -> dict[str, Any]:
+    owned_directory(args.release_root, args.registry_owner_uid, "release root")
+    releases = args.release_root / "releases"
+    activations = args.release_root / "activations"
+    rollbacks = args.release_root / "rollbacks"
+    owned_directory(releases, args.release_owner_uid, "release directory")
+    owned_directory(activations, args.registry_owner_uid, "activation operation directory")
+    owned_directory(rollbacks, args.registry_owner_uid, "rollback operation directory")
+    activation = accepted_activation(activations, request, args.registry_owner_uid)
+    request_fingerprint = digest_bytes(canonical_bytes(request))
+    operation_path = rollbacks / (request["idempotencyKey"] + ".json")
+
+    if operation_path.exists():
+        owned_regular(operation_path, args.registry_owner_uid, "rollback operation record")
+        persisted = json.loads(operation_path.read_text(encoding="utf-8"))
+        if (not isinstance(persisted, dict)
+                or set(persisted) != {"requestFingerprint", "result"}
+                or persisted.get("requestFingerprint") != request_fingerprint
+                or not isinstance(persisted.get("result"), dict)
+                or set(persisted["result"]) != ROLLBACK_RESULT_FIELDS):
+            raise ActivationError("persisted rollback operation is invalid or conflicting")
+        result = persisted["result"]
+        if result.get("state") == "ROLLED_BACK" and result.get("workerServiceRestart") == "PASS":
+            return result
+        if result.get("state") != "LINKS_RESTORED" or result.get("workerServiceRestart") != "PENDING":
+            raise ActivationError("persisted rollback operation state is invalid")
+    else:
+        current = args.release_root / "current"
+        previous = args.release_root / "previous"
+        current_raw, _current_name, current_before = link_state(current, releases)
+        previous_raw, _previous_name, previous_before = link_state(previous, releases)
+        if (current_before != activation["currentAfterFingerprint"]
+                or previous_before != activation["previousAfterFingerprint"]):
+            raise ActivationError("current and previous links do not match the exact activation")
+        try:
+            replace_link(current, previous_raw)
+            replace_link(previous, current_raw)
+        except OSError as error:
+            replace_link(current, current_raw)
+            replace_link(previous, previous_raw)
+            if (link_state(current, releases)[2] != current_before
+                    or link_state(previous, releases)[2] != previous_before):
+                raise ActivationError("failed rollback link restoration failed closed") from error
+            raise ActivationError("exact rollback link swap failed closed") from error
+        current_after_raw, _current_after_name, current_after = link_state(current, releases)
+        previous_after_raw, _previous_after_name, previous_after = link_state(previous, releases)
+        if current_after_raw != previous_raw or previous_after_raw != current_raw:
+            raise ActivationError("exact rollback link swap is conflicting")
+        result = {
+            "schemaVersion": ROLLBACK_RESULT_SCHEMA,
+            "operation": request["operation"],
+            "workerId": WORKER_ID,
+            "planId": request["planId"],
+            "candidateId": request["candidateId"],
+            "activationId": request["activationId"],
+            "authorizationId": request["authorizationId"],
+            "idempotencyKey": request["idempotencyKey"],
+            "state": "LINKS_RESTORED",
+            "linkRestore": "PASS",
+            "workerServiceRestart": "PENDING",
+            "affectedServices": [RESTART_SERVICE],
+            "appServerServicesRestarted": 0,
+            "currentBeforeFingerprint": current_before,
+            "previousBeforeFingerprint": previous_before,
+            "currentAfterFingerprint": current_after,
+            "previousAfterFingerprint": previous_after,
+            "valuesExposed": False,
+        }
+        persist(operation_path, {"requestFingerprint": request_fingerprint, "result": result})
+
+    schedule_restart(args, request)
+    result = {**result, "state": "ROLLED_BACK", "workerServiceRestart": "PASS"}
+    persist(operation_path, {"requestFingerprint": request_fingerprint, "result": result})
+    return result
+
+
 def activate(args: argparse.Namespace, request: dict[str, str]) -> dict[str, Any]:
     registry = read_registry(args.registry, args.registry_owner_uid)
     candidate = candidate_for(registry, request)
@@ -318,9 +452,15 @@ def main() -> int:
     parser.add_argument("--release-root", required=True, type=Path)
     parser.add_argument("--registry-owner-uid", type=int, default=0)
     parser.add_argument("--release-owner-uid", type=int, required=True)
+    parser.add_argument(
+        "--restart-scheduler", type=Path,
+        default=Path("/usr/local/libexec/atenea/codex-release-restart-v1.sh"),
+    )
     args = parser.parse_args()
     try:
-        result = activate(args, read_request())
+        request = read_request()
+        result = (activate(args, request) if request["operation"] == "ACTIVATE_CODEX_UPDATE"
+                  else rollback(args, request))
     except (ActivationError, OSError, json.JSONDecodeError) as error:
         print(json.dumps({"error": "activation_rejected", "message": str(error)},
                          sort_keys=True, separators=(",", ":")), file=sys.stderr)

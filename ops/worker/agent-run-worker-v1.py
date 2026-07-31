@@ -30,6 +30,7 @@ PROJECT_V2_CAPABILITY = "project-codex-v2"
 CODEX_CATALOG_CAPABILITY = "codex-model-catalog-v1"
 CODEX_UPDATE_STAGE_CAPABILITY = "codex-update-stage-v1"
 CODEX_UPDATE_ACTIVATE_CAPABILITY = "codex-update-activate-v1"
+CODEX_UPDATE_ROLLBACK_CAPABILITY = "codex-update-rollback-v1"
 CODEX_CATALOG_SCHEMA = "codex-model-catalog-v1"
 CODEX_VERSION = "0.145.0"
 CODEX_MODELS = [
@@ -112,6 +113,18 @@ CODEX_UPDATE_ACTIVATE_RESULT_KEYS = {
     "previousBeforeFingerprint", "currentAfterFingerprint",
     "previousAfterFingerprint", "automaticRestore", "valuesExposed",
 }
+CODEX_UPDATE_ROLLBACK_KEYS = {
+    "operation", "planId", "candidateId", "activationId", "authorizationId",
+    "idempotencyKey",
+}
+CODEX_UPDATE_ROLLBACK_RESULT_KEYS = {
+    "schemaVersion", "operation", "workerId", "planId", "candidateId",
+    "activationId", "authorizationId", "idempotencyKey", "state",
+    "linkRestore", "workerServiceRestart", "affectedServices",
+    "appServerServicesRestarted", "currentBeforeFingerprint",
+    "previousBeforeFingerprint", "currentAfterFingerprint",
+    "previousAfterFingerprint", "valuesExposed",
+}
 EXACT_EXECUTION_OPERATION_KEYS = {
     "executionId", "sessionId", "workspaceIdentity", "leaseGeneration",
 }
@@ -187,6 +200,8 @@ class WorkerState:
         repository_role_mediator: Path | None = None,
         codex_update_mediator: Path | None = None,
         codex_activate_mediator: Path | None = None,
+        codex_rollback_mediator: Path | None = None,
+        codex_restart_scheduler: Path | None = None,
         codex_update_registry: Path | None = None,
         codex_release_root: Path | None = None,
     ):
@@ -208,6 +223,8 @@ class WorkerState:
         self.repository_role_mediator = repository_role_mediator
         self.codex_update_mediator = codex_update_mediator
         self.codex_activate_mediator = codex_activate_mediator
+        self.codex_rollback_mediator = codex_rollback_mediator
+        self.codex_restart_scheduler = codex_restart_scheduler
         self.codex_update_registry = codex_update_registry
         self.codex_release_root = codex_release_root
         self.lock = threading.RLock()
@@ -218,7 +235,7 @@ class WorkerState:
         self.threads: dict[str, threading.Thread] = {}
         self.processes: dict[str, subprocess.Popen[str]] = {}
         self.scheduler: threading.Thread | None = None
-        self.codex_activation_in_progress = False
+        self.codex_update_in_progress = False
         self._load()
 
     def _load(self) -> None:
@@ -330,6 +347,11 @@ class WorkerState:
                 capabilities.append(CODEX_UPDATE_STAGE_CAPABILITY)
                 if self.codex_activate_mediator is not None and self.codex_activate_mediator.is_file():
                     capabilities.append(CODEX_UPDATE_ACTIVATE_CAPABILITY)
+                    if (self.codex_rollback_mediator is not None
+                            and self.codex_rollback_mediator.is_file()
+                            and self.codex_restart_scheduler is not None
+                            and self.codex_restart_scheduler.is_file()):
+                        capabilities.append(CODEX_UPDATE_ROLLBACK_CAPABILITY)
             return {
                 "protocolVersion": PROTOCOL,
                 "workerId": self.worker_id,
@@ -463,13 +485,13 @@ class WorkerState:
                 HTTPStatus.SERVICE_UNAVAILABLE, "codex_update_activation_unavailable",
                 "Codex update activation mediator is unavailable")
         with self.lock:
-            if self.codex_activation_in_progress or any(
+            if self.codex_update_in_progress or any(
                 execution["status"] in NON_TERMINAL for execution in self.executions.values()
             ):
                 raise ProtocolError(
                     HTTPStatus.CONFLICT, "codex_update_active_execution",
                     "Codex update activation requires zero non-terminal executions")
-            self.codex_activation_in_progress = True
+            self.codex_update_in_progress = True
         try:
             try:
                 completed = subprocess.run(
@@ -522,7 +544,99 @@ class WorkerState:
             return result
         finally:
             with self.lock:
-                self.codex_activation_in_progress = False
+                self.codex_update_in_progress = False
+
+    def rollback_codex_update(self, request: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(request, dict) or set(request) != CODEX_UPDATE_ROLLBACK_KEYS:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST, "invalid_codex_update_rollback",
+                "exact Codex update rollback fields are required")
+        if request.get("operation") != "ROLLBACK_CODEX_UPDATE":
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST, "invalid_codex_update_rollback",
+                "Codex update rollback operation is invalid")
+        identity_fields = (
+            "planId", "candidateId", "activationId", "authorizationId", "idempotencyKey",
+        )
+        for field in identity_fields:
+            try:
+                parsed = str(uuid.UUID(request.get(field)))
+            except (ValueError, TypeError, AttributeError):
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST, "invalid_codex_update_rollback",
+                    "Codex update rollback identities must be canonical UUIDs")
+            if parsed != request[field]:
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST, "invalid_codex_update_rollback",
+                    "Codex update rollback identities must be canonical UUIDs")
+        if (self.codex_rollback_mediator is None
+                or not self.codex_rollback_mediator.is_file()
+                or self.codex_restart_scheduler is None
+                or not self.codex_restart_scheduler.is_file()
+                or self.codex_update_registry is None
+                or not self.codex_update_registry.is_file()
+                or self.codex_release_root is None):
+            raise ProtocolError(
+                HTTPStatus.SERVICE_UNAVAILABLE, "codex_update_rollback_unavailable",
+                "Codex update rollback mediator is unavailable")
+        with self.lock:
+            if self.codex_update_in_progress or any(
+                execution["status"] in NON_TERMINAL for execution in self.executions.values()
+            ):
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT, "codex_update_active_execution",
+                    "Codex update rollback requires zero non-terminal executions")
+            self.codex_update_in_progress = True
+        try:
+            try:
+                completed = subprocess.run(
+                    [*self.privilege_command, str(self.codex_rollback_mediator),
+                     "--registry", str(self.codex_update_registry),
+                     "--release-root", str(self.codex_release_root),
+                     "--release-owner-uid", str(os.geteuid()),
+                     "--restart-scheduler", str(self.codex_restart_scheduler)],
+                    input=json.dumps(request, sort_keys=True, separators=(",", ":")),
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    text=True, timeout=60, check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                raise ProtocolError(
+                    HTTPStatus.SERVICE_UNAVAILABLE, "codex_update_rollback_failed",
+                    "Codex update rollback mediator failed closed")
+            if completed.returncode != 0:
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT, "codex_update_rollback_rejected",
+                    "Codex update rollback rejected the exact activation")
+            try:
+                result = json.loads(completed.stdout)
+            except json.JSONDecodeError:
+                result = None
+            digest_fields = (
+                "currentBeforeFingerprint", "previousBeforeFingerprint",
+                "currentAfterFingerprint", "previousAfterFingerprint",
+            )
+            if (not isinstance(result, dict)
+                    or set(result) != CODEX_UPDATE_ROLLBACK_RESULT_KEYS
+                    or result.get("schemaVersion") != CODEX_UPDATE_ROLLBACK_CAPABILITY
+                    or result.get("operation") != request["operation"]
+                    or result.get("workerId") != self.worker_id
+                    or any(result.get(field) != request[field] for field in identity_fields)
+                    or result.get("state") != "ROLLED_BACK"
+                    or result.get("linkRestore") != "PASS"
+                    or result.get("workerServiceRestart") != "PASS"
+                    or result.get("affectedServices") != [
+                        "atenea-agent-run-worker-v1.service"]
+                    or result.get("appServerServicesRestarted") != 0
+                    or any(re.fullmatch(r"[0-9a-f]{64}", str(result.get(field))) is None
+                           for field in digest_fields)
+                    or result.get("valuesExposed") is not False):
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT, "codex_update_rollback_result_conflict",
+                    "Codex update rollback result is incomplete or conflicting")
+            return result
+        finally:
+            with self.lock:
+                self.codex_update_in_progress = False
 
     def _append_progress(
         self,
@@ -570,7 +684,7 @@ class WorkerState:
         dispatch_id = request["dispatchId"]
         fingerprint = canonical_hash(request)
         with self.lock:
-            if self.codex_activation_in_progress:
+            if self.codex_update_in_progress:
                 raise ProtocolError(
                     HTTPStatus.CONFLICT,
                     "codex_update_activation_in_progress",
@@ -2158,6 +2272,9 @@ class AgentRunHandler(BaseHTTPRequestHandler):
             if path == "/v1/codex/update/activate":
                 self._write(HTTPStatus.OK, self.server.state.activate_codex_update(body))
                 return
+            if path == "/v1/codex/update/rollback":
+                self._write(HTTPStatus.OK, self.server.state.rollback_codex_update(body))
+                return
             parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["v1", "executions"]:
                 if parts[3] == "lease":
@@ -2275,6 +2392,16 @@ def main() -> int:
         default=Path("/usr/local/libexec/atenea/codex-release-activate-v1.py"),
     )
     parser.add_argument(
+        "--codex-rollback-mediator",
+        type=Path,
+        default=Path("/usr/local/libexec/atenea/codex-release-activate-v1.py"),
+    )
+    parser.add_argument(
+        "--codex-restart-scheduler",
+        type=Path,
+        default=Path("/usr/local/libexec/atenea/codex-release-restart-v1.sh"),
+    )
+    parser.add_argument(
         "--codex-release-root",
         type=Path,
         default=Path("/srv/atenea/worker/codex-releases-v1"),
@@ -2304,6 +2431,8 @@ def main() -> int:
         repository_role_mediator=args.repository_role_mediator,
         codex_update_mediator=args.codex_update_mediator,
         codex_activate_mediator=args.codex_activate_mediator,
+        codex_rollback_mediator=args.codex_rollback_mediator,
+        codex_restart_scheduler=args.codex_restart_scheduler,
         codex_update_registry=args.codex_update_registry,
         codex_release_root=args.codex_release_root,
     )

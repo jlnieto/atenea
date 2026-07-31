@@ -16,6 +16,7 @@ PLAYWRIGHT_CHECK="/usr/local/libexec/atenea/atenea-playwright-validation-v1.js"
 ROLE_MEDIATOR="/usr/local/libexec/atenea/atenea-multi-repository-v1.sh"
 CODEX_UPDATE_MEDIATOR="/usr/local/libexec/atenea/codex-release-stage-v1.py"
 CODEX_ACTIVATE_MEDIATOR="/usr/local/libexec/atenea/codex-release-activate-v1.py"
+CODEX_RESTART_SCHEDULER="/usr/local/libexec/atenea/codex-release-restart-v1.sh"
 CODEX_UPDATE_REGISTRY="/etc/atenea-worker/codex-release-stage-v1.json"
 CODEX_RELEASE_ROOT="/srv/atenea/worker/codex-releases-v1"
 PLATFORM_INSTRUCTIONS="/usr/local/share/atenea/codex-platform-instructions-v1.md"
@@ -31,7 +32,7 @@ PROJECT_MANIFEST_SHA256="3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad3080
 PROJECT_MIRROR="/srv/atenea/repositories/atenea.git"
 PROJECT_REF="refs/remotes/origin/${PROJECT_BRANCH}"
 PROJECT_WORKSPACES_ROOT="/srv/atenea/workspaces/sessions"
-SERVICE_TEMPLATE_SHA256="76f45261d7a5e15b60febf3a3953aa00c9aebb7a3940aa78b25e49eb3bf77fb1"
+SERVICE_TEMPLATE_SHA256="cd29d53ac6249e19ccec9217a66017f8c377f1f6af07d88659b858c1333bd142"
 PLATFORM_INSTRUCTIONS_SHA256="44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"
 
 fail() {
@@ -60,6 +61,7 @@ validate_inputs() {
   [[ -f "$SCRIPT_DIR/atenea-multi-repository-v1.sh" ]] || fail "repository role mediator is missing"
   [[ -f "$SCRIPT_DIR/codex-release-stage-v1.py" ]] || fail "Codex update stage mediator is missing"
   [[ -f "$SCRIPT_DIR/codex-release-activate-v1.py" ]] || fail "Codex update activation mediator is missing"
+  [[ -f "$SCRIPT_DIR/codex-release-restart-v1.sh" ]] || fail "Codex update restart scheduler is missing"
   [[ -f "$SCRIPT_DIR/codex-platform-instructions-v1.md" ]] || fail "platform instructions are missing"
   [[ -f "$SCRIPT_DIR/templates/$SERVICE" ]] || fail "systemd template is missing"
 }
@@ -211,6 +213,7 @@ apply_install() {
   install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-multi-repository-v1.sh" "$ROLE_MEDIATOR"
   install -o root -g root -m 0755 "$SCRIPT_DIR/codex-release-stage-v1.py" "$CODEX_UPDATE_MEDIATOR"
   install -o root -g root -m 0755 "$SCRIPT_DIR/codex-release-activate-v1.py" "$CODEX_ACTIVATE_MEDIATOR"
+  install -o root -g root -m 0755 "$SCRIPT_DIR/codex-release-restart-v1.sh" "$CODEX_RESTART_SCHEDULER"
   install -o root -g root -m 0644 \
     "$SCRIPT_DIR/codex-platform-instructions-v1.md" "$PLATFORM_INSTRUCTIONS"
   id atenea-program-role >/dev/null 2>&1 || useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin atenea-program-role
@@ -223,6 +226,7 @@ apply_install() {
   install -d -o atenea-worker -g atenea -m 0750 \
     "$CODEX_RELEASE_ROOT/releases" "$CODEX_RELEASE_ROOT/operations"
   install -d -o root -g atenea -m 0750 "$CODEX_RELEASE_ROOT/activations"
+  install -d -o root -g atenea -m 0750 "$CODEX_RELEASE_ROOT/rollbacks"
   if [[ ! -e "$TOKEN_FILE" ]]; then
     umask 0077
     openssl rand -hex 32 >"$TOKEN_FILE"
@@ -246,6 +250,9 @@ apply_install() {
     printf 'atenea-worker ALL=(root) NOPASSWD: %s ensure *\n' "$ROLE_MEDIATOR"
     printf 'atenea-worker ALL=(root) NOPASSWD: %s --registry %s --release-root %s --release-owner-uid %s\n' \
       "$CODEX_ACTIVATE_MEDIATOR" "$CODEX_UPDATE_REGISTRY" "$CODEX_RELEASE_ROOT" "$(id -u atenea-worker)"
+    printf 'atenea-worker ALL=(root) NOPASSWD: %s --registry %s --release-root %s --release-owner-uid %s --restart-scheduler %s\n' \
+      "$CODEX_ACTIVATE_MEDIATOR" "$CODEX_UPDATE_REGISTRY" "$CODEX_RELEASE_ROOT" \
+      "$(id -u atenea-worker)" "$CODEX_RESTART_SCHEDULER"
   } >"$SUDOERS_FILE"
   chown root:root "$SUDOERS_FILE"
   chmod 0440 "$SUDOERS_FILE"
@@ -289,6 +296,8 @@ verify() {
     || fail "Codex release root ownership or mode is invalid"
   [[ "$(stat -c '%a:%U:%G' "$CODEX_RELEASE_ROOT/activations")" == "750:root:atenea" ]] \
     || fail "Codex activation operation directory ownership or mode is invalid"
+  [[ "$(stat -c '%a:%U:%G' "$CODEX_RELEASE_ROOT/rollbacks")" == "750:root:atenea" ]] \
+    || fail "Codex rollback operation directory ownership or mode is invalid"
   [[ "$(stat -c '%a:%U:%G' "$PROJECT_CONFIG")" == "644:root:root" ]] \
     || fail "project configuration ownership or mode is invalid"
   [[ -f "/etc/systemd/system/$SERVICE" \
@@ -315,6 +324,11 @@ verify() {
       && "$(sha256sum "$CODEX_ACTIVATE_MEDIATOR" | cut -d' ' -f1)" \
         == "$(sha256sum "$SCRIPT_DIR/codex-release-activate-v1.py" | cut -d' ' -f1)" ]] \
     || fail "Codex update activation mediator differs from the reviewed source"
+  [[ -f "$CODEX_RESTART_SCHEDULER" && ! -L "$CODEX_RESTART_SCHEDULER" \
+      && "$(stat -c '%a:%U:%G' "$CODEX_RESTART_SCHEDULER")" == "755:root:root" \
+      && "$(sha256sum "$CODEX_RESTART_SCHEDULER" | cut -d' ' -f1)" \
+        == "$(sha256sum "$SCRIPT_DIR/codex-release-restart-v1.sh" | cut -d' ' -f1)" ]] \
+    || fail "Codex update restart scheduler differs from the reviewed source"
   if [[ -e "$CODEX_UPDATE_REGISTRY" ]]; then
     [[ -f "$CODEX_UPDATE_REGISTRY" && ! -L "$CODEX_UPDATE_REGISTRY" \
         && "$(stat -c '%a:%U:%G' "$CODEX_UPDATE_REGISTRY")" == "600:root:root" ]] \

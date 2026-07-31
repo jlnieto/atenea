@@ -8,6 +8,8 @@
     {"$ref": "#/$defs/updatePlan"},
     {"$ref": "#/$defs/updateStage"},
     {"$ref": "#/$defs/updateActivate"},
+    {"$ref": "#/$defs/updateActivateAuthorize"},
+    {"$ref": "#/$defs/updateRollbackAuthorize"},
     {"$ref": "#/$defs/updateRollback"}
   ],
   "$defs": {
@@ -76,12 +78,32 @@
     "updateRollback": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["operation", "currentInventoryId", "previousInventoryId", "authorizationId", "idempotencyKey"],
+      "required": ["operation", "activationId", "authorizationId", "idempotencyKey"],
       "properties": {
         "operation": {"const": "ROLLBACK_CODEX_UPDATE"},
-        "currentInventoryId": {"$ref": "#/$defs/identity"},
-        "previousInventoryId": {"$ref": "#/$defs/identity"},
+        "activationId": {"$ref": "#/$defs/identity"},
         "authorizationId": {"$ref": "#/$defs/identity"},
+        "idempotencyKey": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "updateActivateAuthorize": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "planId", "candidateId", "idempotencyKey"],
+      "properties": {
+        "operation": {"const": "AUTHORIZE_CODEX_UPDATE_ACTIVATION"},
+        "planId": {"$ref": "#/$defs/identity"},
+        "candidateId": {"$ref": "#/$defs/identity"},
+        "idempotencyKey": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "updateRollbackAuthorize": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "activationId", "idempotencyKey"],
+      "properties": {
+        "operation": {"const": "AUTHORIZE_CODEX_UPDATE_ROLLBACK"},
+        "activationId": {"$ref": "#/$defs/identity"},
         "idempotencyKey": {"$ref": "#/$defs/identity"}
       }
     }

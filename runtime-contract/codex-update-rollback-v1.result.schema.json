@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.internal/contracts/codex-update-rollback-v1.result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "operation", "workerId", "planId", "candidateId",
+    "activationId", "authorizationId", "idempotencyKey", "state",
+    "linkRestore", "workerServiceRestart", "affectedServices",
+    "appServerServicesRestarted", "currentBeforeFingerprint",
+    "previousBeforeFingerprint", "currentAfterFingerprint",
+    "previousAfterFingerprint", "valuesExposed"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "codex-update-rollback-v1"},
+    "operation": {"const": "ROLLBACK_CODEX_UPDATE"},
+    "workerId": {"const": "ax42-01"},
+    "planId": {"type": "string", "format": "uuid"},
+    "candidateId": {"type": "string", "format": "uuid"},
+    "activationId": {"type": "string", "format": "uuid"},
+    "authorizationId": {"type": "string", "format": "uuid"},
+    "idempotencyKey": {"type": "string", "format": "uuid"},
+    "state": {"const": "ROLLED_BACK"},
+    "linkRestore": {"const": "PASS"},
+    "workerServiceRestart": {"const": "PASS"},
+    "affectedServices": {
+      "const": ["atenea-agent-run-worker-v1.service"]
+    },
+    "appServerServicesRestarted": {"const": 0},
+    "currentBeforeFingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "previousBeforeFingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "currentAfterFingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "previousAfterFingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "valuesExposed": {"const": false}
+  }
+}
