@@ -268,6 +268,7 @@ production activation are recorded later in this ledger.
 | D-065 | Advertise the first exact Codex catalog through a separately authenticated `codex-model-catalog-v1` endpoint/capability while retaining the strict v1 health shape and withholding `agent-run-project-codex-v2` execution until its fingerprint and runner are complete. | Adding fields to the fail-closed v1 health DTO would break the current control plane, while advertising executable v2 authority before validation and runner support would create a false capability. | accepted | worker/backend/security owners | before changing catalog transport or advertising v2 execution |
 | D-066 | Validate and fingerprint the complete `project-codex-v2` envelope, profile and existing v1 ownership before persistence, but reject even a valid v2 create as `profile_execution_unavailable` until the fixed runner consumes the validated profile. | Persisting or scheduling a profiled request before model/effort flags are actually enforced could execute under a silently different profile; staged validation must remain fail-closed. | accepted | worker/security owners | task 3.3 runner enablement or profile-fingerprint change |
 | D-067 | Permit profiled execution only through the fixed runner's exact `--model` plus `model_reasoning_effort` arguments, require a pre-execution exact fixed-binary version probe, and reject any runner result whose echoed profile/version differs from the request. | A validated request can still execute incorrectly if the binary link moved, ambient configuration wins or the runner reports a substituted profile; all three boundaries must agree before success. | accepted | worker/security owners | before changing runner flags, binary path or effective-profile result fields |
+| D-068 | Normalize only recognized Codex JSONL structure into fixed progress messages, discard every source payload value and let the worker replace timestamps while assigning identity, monotonic sequence, coalescence and bounded retention. | Trusting model-provided text, command/output fields or source timestamps would let secret-bearing content cross the worker boundary even when the category itself is allowed. | accepted | worker/security owners | before changing structured-event mappings or progress message templates |
 
 ## Deferred decisions and gates
 
@@ -5359,3 +5360,32 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.3-fixed-profiled-runner`;
 the SHA-256 of its `SHA256SUMS` is
 `4bec258f08e5d24d9c2ecd94ac1cdc6208df9346f9d9ba652ed4ef2fd39a94e2`.
+
+Task 3.4 is complete and change progress is `26/57`; the exact implementation
+resume point is task 3.5. Tasks 3.5 and later remain pending.
+
+Programme/worker commit `54e0df2e310e0e65c80578389921f87e73bdead4`
+adds a closed Codex JSONL normalization boundary. Recognized lifecycle and
+tool shapes become only fixed messages from the thirteen-category taxonomy.
+Reasoning, agent messages, command arguments, command output, searches,
+environment values, unsupported events and every other source payload field
+are discarded rather than copied or sanitized heuristically.
+
+The worker accepts only exact category/message pairs from that boundary,
+replaces the source timestamp, binds dispatch and execution identity, assigns
+monotonic sequences, coalesces identical consecutive events before sequence
+allocation and retains the newest 200 without sequence reuse. Progress remains
+separate from final answer and effective profile. Restart/delivery
+idempotence remains task 3.5.
+
+Two final 50-test worker/runner/contract passes succeeded with zero failures,
+errors or skips in 3.67 and 3.86 seconds under 120-second bounds. The Beautips
+session/worker compatibility suite also passed. AX42's installed worker,
+runner, Codex version, private listener, active service and zero restart count
+remained unchanged; nothing was installed, enabled, dispatched or restarted.
+Production and preview remained running with zero backend restarts.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.4-safe-progress-normalization`;
+the SHA-256 of its `SHA256SUMS` is
+`9bc042d2a5980f96f527b155b598caa0f91788e6c37757a9e55faaefada3c6b2`.
