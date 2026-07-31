@@ -61,7 +61,7 @@
 ## 6. Managed Codex version administration
 
 - [x] 6.1 Add read-only worker inventory and update-plan APIs showing installed/current/previous version and compatibility state
-- [ ] 6.2 Implement a closed staged installer that verifies the release, generates version-matched schemas and retains current plus previous releases
+- [x] 6.2 Implement a closed staged installer that verifies the release, generates version-matched schemas and retains current plus previous releases
 - [ ] 6.3 Gate activation on zero active runs, focused contracts, health and one canary execution
 - [ ] 6.4 Implement exact rollback that restores only the previous Codex link and affected worker/App Server services
 - [ ] 6.5 Add an administrator-only Atenea surface for plan, separately authorized activate, status and rollback
