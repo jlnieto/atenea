@@ -30,6 +30,8 @@ import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.AgentRunNotFoundException;
 import com.atenea.service.worksession.AgentRunTransitionNotAllowedException;
+import com.atenea.service.worksession.AgentRunRecoveryAuthorizationException;
+import com.atenea.service.worksession.AgentRunRecoveryConflictException;
 import com.atenea.service.worksession.AttachmentConflictException;
 import com.atenea.service.worksession.AttachmentLimitException;
 import com.atenea.service.worksession.AttachmentNotFoundException;
@@ -298,6 +300,20 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException exception) {
         return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(AgentRunRecoveryAuthorizationException.class)
+    public ResponseEntity<ApiErrorResponse> handleRecoveryAuthorization(
+            AgentRunRecoveryAuthorizationException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(AgentRunRecoveryConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleRecoveryConflict(
+            AgentRunRecoveryConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 

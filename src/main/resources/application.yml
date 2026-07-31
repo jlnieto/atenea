@@ -31,6 +31,12 @@ management:
         include: health,info
 
 atenea:
+  codex-session-operations:
+    profiles-enabled: ${ATENEA_CODEX_PROFILES_ENABLED:false}
+    progress-enabled: ${ATENEA_CODEX_PROGRESS_ENABLED:false}
+    recovery-enabled: ${ATENEA_CODEX_RECOVERY_ENABLED:false}
+    notification-outbox-enabled: ${ATENEA_NOTIFICATION_OUTBOX_ENABLED:false}
+    managed-updates-enabled: ${ATENEA_CODEX_MANAGED_UPDATES_ENABLED:false}
   workspace-root: ${ATENEA_WORKSPACE_ROOT:/repos}
   remote-worker:
     enabled: ${ATENEA_REMOTE_WORKER_ENABLED:false}
