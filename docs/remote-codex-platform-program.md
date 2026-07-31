@@ -272,6 +272,7 @@ production activation are recorded later in this ledger.
 | D-069 | Persist the highest imported worker progress sequence on the AgentRun and lock that row before atomically applying progress, terminal state and result turn; retain byte-stable terminal worker records across restart. | Lifecycle revision alone cannot deduplicate replayed detail events, and two coordinators must not both create a response turn after observing the same terminal worker revision. | accepted | backend/worker/data owners | before changing worker replay identity, coordinator locking or terminal transaction boundaries |
 | D-070 | Require dispatch-path, execution, session, workspace and lease ownership for new routine recovery routes; make reconciliation read-only and constrain doctor to a closed no-values schema while retaining the v1 cancel route. | Execution ID alone is insufficient for new recovery authority, and a free-form diagnostic could expose prompts, results, commands, paths or secrets or accidentally mutate execution state. | accepted | worker/backend/security owners | before changing recovery ownership fields, doctor output or v1 cancel compatibility |
 | D-071 | Treat the base runner digest and every derived Beautips adapter, mediator, allowlist and installer digest as one reviewed trust chain, and require the complete Phase 3 worker plus Beautips aggregate to pass twice. | A fail-closed downstream pin correctly rejected the task 3.6 runner until every dependent identity was refreshed; isolated runner tests alone do not prove the installed project chain remains internally consistent. | accepted | worker/project/security owners | whenever the base runner or any derived reviewed source changes |
+| D-072 | Present the future WorkSession execution profile as one compact state-first control beside the conversation composer; resolve model and effort independently and require pending changes to be applied before send. | The operator must know the next run's exact profile in under three seconds without adding a competing dashboard or permitting submission against an unseen/stale selection. | accepted | web/operator-experience owners | before changing profile placement, source disclosure or pending-selection behavior |
 
 ## Deferred decisions and gates
 
@@ -5480,3 +5481,27 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.7-phase-3-worker-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `fb82da0274bca64e55fb1bc9799a0bbae18fe076743c956cb21317f3c28e76de`.
+
+Task 4.1 is complete and change progress is `30/57`; the exact implementation
+resume point is task 4.2. Task 4.2 and all later tasks remain pending.
+
+Atenea commit `83d9e47dabc9cf36a03ed570f1bc3db8a839cfbd` adds one
+compact `Próxima ejecución` control to the web conversation composer. It
+shows the allowlisted effective model, reasoning effort, installed Codex
+version and independent model/effort sources before submission. Selection is
+limited to available catalog entries and the selected model's advertised
+efforts; pending changes are explicit and block send until the existing
+closed WorkSession settings API accepts them. A disabled-capability 404 leaves
+the established composer behavior available for disable-first rollout.
+
+The production TypeScript/Vite build passed. Synthetic authenticated
+Playwright checks proved data resolution, visible DOM, ready/pending behavior,
+the exact settings transition and zero horizontal overflow. Final screenshots
+at `1440x900` and `390x844` were inspected for hierarchy, clarity,
+consistency, responsiveness, clipping and overlap. Chromium and the temporary
+preview were closed. Nothing was deployed or restarted.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.1-web-execution-profile`;
+the SHA-256 of its `SHA256SUMS` is
+`b926a4d3736458556539d5013f149eadc7aa53341a0dcd61abc8e2205f19fcd5`.

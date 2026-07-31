@@ -41,7 +41,7 @@
 
 ## 4. Web and Android operator experience
 
-- [ ] 4.1 Add one concise execution-profile control showing effective model, effort, version and configuration source before submission
+- [x] 4.1 Add one concise execution-profile control showing effective model, effort, version and configuration source before submission
 - [ ] 4.2 Add the current progress card and bounded timeline with state, elapsed time, latest event and next action visible without scrolling
 - [ ] 4.3 Add context-specific cancel, retry and request-reconciliation actions with permissions and actionable errors
 - [ ] 4.4 Implement the same settings, progress replay and recovery behavior in Android, including reconnect after backgrounding
