@@ -73,6 +73,9 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
             "stageResult": read_json(
                 CONTRACT / "codex-update-stage-v1.result.schema.json"
             ),
+            "activateResult": read_json(
+                CONTRACT / "codex-update-activate-v1.result.schema.json"
+            ),
         }
         cls.validators = {
             name: Draft202012Validator(schema, format_checker=FormatChecker())
@@ -197,6 +200,30 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
             "valuesExposed": False,
         }
         self.assert_schema_valid("stageResult", stage_result)
+        activation_result = {
+            "schemaVersion": "codex-update-activate-v1",
+            "operation": "ACTIVATE_CODEX_UPDATE",
+            "workerId": "ax42-01",
+            "planId": self.api_requests[4]["planId"],
+            "candidateId": self.api_requests[4]["candidateId"],
+            "authorizationId": self.api_requests[4]["authorizationId"],
+            "idempotencyKey": self.api_requests[4]["idempotencyKey"],
+            "state": "ACTIVATED",
+            "codexVersion": self.catalog["codexVersion"],
+            "releaseDigestSha256": "a" * 64,
+            "catalogRevision": self.catalog["catalogRevision"],
+            "schemaComparison": "PASS",
+            "focusedContracts": "PASS",
+            "workerHealth": "PASS",
+            "canary": "PASS",
+            "currentBeforeFingerprint": "b" * 64,
+            "previousBeforeFingerprint": "c" * 64,
+            "currentAfterFingerprint": "d" * 64,
+            "previousAfterFingerprint": "e" * 64,
+            "automaticRestore": "NOT_REQUIRED",
+            "valuesExposed": False,
+        }
+        self.assert_schema_valid("activateResult", activation_result)
 
         exact_operation = {
             "executionId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",

@@ -1201,6 +1201,94 @@ print(json.dumps({
             self.state.stage_codex_update(self.request)
 
 
+class CodexUpdateActivationWorkerTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        self.calls = root / "activation-calls"
+        self.registry = root / "registry.json"
+        self.registry.write_text("{}", encoding="utf-8")
+        self.release_root = root / "releases"
+        self.mediator = root / "activate.py"
+        self.mediator.write_text(
+            """#!/usr/bin/env python3
+import hashlib
+import json
+import pathlib
+import sys
+request = json.load(sys.stdin)
+calls = pathlib.Path(sys.argv[0]).with_name("activation-calls")
+calls.write_text(calls.read_text() + "1\\n" if calls.exists() else "1\\n")
+digest = hashlib.sha256(b"synthetic-activation").hexdigest()
+print(json.dumps({
+    "schemaVersion": "codex-update-activate-v1",
+    "operation": request["operation"],
+    "workerId": "ax42-01",
+    "planId": request["planId"],
+    "candidateId": request["candidateId"],
+    "authorizationId": request["authorizationId"],
+    "idempotencyKey": request["idempotencyKey"],
+    "state": "ACTIVATED",
+    "codexVersion": "0.146.0",
+    "releaseDigestSha256": digest,
+    "catalogRevision": digest,
+    "schemaComparison": "PASS",
+    "focusedContracts": "PASS",
+    "workerHealth": "PASS",
+    "canary": "PASS",
+    "currentBeforeFingerprint": digest,
+    "previousBeforeFingerprint": digest,
+    "currentAfterFingerprint": digest,
+    "previousAfterFingerprint": digest,
+    "automaticRestore": "NOT_REQUIRED",
+    "valuesExposed": False,
+}))
+""",
+            encoding="utf-8",
+        )
+        self.mediator.chmod(0o755)
+        self.state = MODULE.WorkerState(
+            root / "state", "ax42-01", privilege_command=(),
+            codex_update_mediator=self.mediator,
+            codex_activate_mediator=self.mediator,
+            codex_update_registry=self.registry,
+            codex_release_root=self.release_root,
+        )
+        self.request = {
+            "operation": "ACTIVATE_CODEX_UPDATE",
+            "planId": str(uuid.uuid4()),
+            "candidateId": str(uuid.uuid4()),
+            "authorizationId": str(uuid.uuid4()),
+            "idempotencyKey": str(uuid.uuid4()),
+        }
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_closed_activation_requires_zero_runs_and_validates_all_gates(self):
+        self.assertIn(MODULE.CODEX_UPDATE_ACTIVATE_CAPABILITY,
+                      self.state.health()["capabilities"])
+        result = self.state.activate_codex_update(self.request)
+        self.assertEqual("ACTIVATED", result["state"])
+        self.assertEqual("PASS", result["canary"])
+        self.assertEqual(["1"], self.calls.read_text().splitlines())
+
+        with self.assertRaisesRegex(MODULE.ProtocolError, "exact"):
+            self.state.activate_codex_update({**self.request, "service": "foreign.service"})
+        self.state.executions["active"] = {"status": "RUNNING"}
+        with self.assertRaisesRegex(MODULE.ProtocolError, "zero"):
+            self.state.activate_codex_update({**self.request, "idempotencyKey": str(uuid.uuid4())})
+        self.assertEqual(["1"], self.calls.read_text().splitlines())
+
+    def test_conflicting_activation_result_fails_closed(self):
+        source = self.mediator.read_text(encoding="utf-8")
+        self.mediator.write_text(source.replace('"canary": "PASS"', '"canary": "FAIL"'),
+                                 encoding="utf-8")
+        self.mediator.chmod(0o755)
+        with self.assertRaisesRegex(MODULE.ProtocolError, "conflicting"):
+            self.state.activate_codex_update(self.request)
+
+
 class WorkerHttpTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -1322,6 +1410,24 @@ class WorkerHttpTest(unittest.TestCase):
         self.assertEqual(503, unavailable.exception.code)
         with self.assertRaises(urllib.error.HTTPError) as rejected:
             self.post("/v1/codex/update/stage", {**exact, "path": "/tmp/release"}, "t" * 64)
+        self.assertEqual(400, rejected.exception.code)
+
+    def test_activation_route_is_authenticated_closed_and_unavailable_without_mediator(self):
+        exact = {
+            "operation": "ACTIVATE_CODEX_UPDATE",
+            "planId": str(uuid.uuid4()),
+            "candidateId": str(uuid.uuid4()),
+            "authorizationId": str(uuid.uuid4()),
+            "idempotencyKey": str(uuid.uuid4()),
+        }
+        with self.assertRaises(urllib.error.HTTPError) as unauthenticated:
+            self.post("/v1/codex/update/activate", exact)
+        self.assertEqual(401, unauthenticated.exception.code)
+        with self.assertRaises(urllib.error.HTTPError) as unavailable:
+            self.post("/v1/codex/update/activate", exact, "t" * 64)
+        self.assertEqual(503, unavailable.exception.code)
+        with self.assertRaises(urllib.error.HTTPError) as rejected:
+            self.post("/v1/codex/update/activate", {**exact, "host": "foreign"}, "t" * 64)
         self.assertEqual(400, rejected.exception.code)
 
 

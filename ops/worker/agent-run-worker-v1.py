@@ -29,6 +29,7 @@ PROJECT_CAPABILITY = "project-codex-v1"
 PROJECT_V2_CAPABILITY = "project-codex-v2"
 CODEX_CATALOG_CAPABILITY = "codex-model-catalog-v1"
 CODEX_UPDATE_STAGE_CAPABILITY = "codex-update-stage-v1"
+CODEX_UPDATE_ACTIVATE_CAPABILITY = "codex-update-activate-v1"
 CODEX_CATALOG_SCHEMA = "codex-model-catalog-v1"
 CODEX_VERSION = "0.145.0"
 CODEX_MODELS = [
@@ -99,6 +100,17 @@ CODEX_UPDATE_STAGE_RESULT_KEYS = {
     "releaseVerification", "schemaGeneration", "retention",
     "currentLinkFingerprint", "previousLinkFingerprint", "linksChanged",
     "valuesExposed",
+}
+CODEX_UPDATE_ACTIVATE_KEYS = {
+    "operation", "planId", "candidateId", "authorizationId", "idempotencyKey",
+}
+CODEX_UPDATE_ACTIVATE_RESULT_KEYS = {
+    "schemaVersion", "operation", "workerId", "planId", "candidateId",
+    "authorizationId", "idempotencyKey", "state", "codexVersion",
+    "releaseDigestSha256", "catalogRevision", "schemaComparison",
+    "focusedContracts", "workerHealth", "canary", "currentBeforeFingerprint",
+    "previousBeforeFingerprint", "currentAfterFingerprint",
+    "previousAfterFingerprint", "automaticRestore", "valuesExposed",
 }
 EXACT_EXECUTION_OPERATION_KEYS = {
     "executionId", "sessionId", "workspaceIdentity", "leaseGeneration",
@@ -174,6 +186,7 @@ class WorkerState:
         project_validation_mediator: Path | None = None,
         repository_role_mediator: Path | None = None,
         codex_update_mediator: Path | None = None,
+        codex_activate_mediator: Path | None = None,
         codex_update_registry: Path | None = None,
         codex_release_root: Path | None = None,
     ):
@@ -194,6 +207,7 @@ class WorkerState:
         self.project_validation_mediator = project_validation_mediator
         self.repository_role_mediator = repository_role_mediator
         self.codex_update_mediator = codex_update_mediator
+        self.codex_activate_mediator = codex_activate_mediator
         self.codex_update_registry = codex_update_registry
         self.codex_release_root = codex_release_root
         self.lock = threading.RLock()
@@ -204,6 +218,7 @@ class WorkerState:
         self.threads: dict[str, threading.Thread] = {}
         self.processes: dict[str, subprocess.Popen[str]] = {}
         self.scheduler: threading.Thread | None = None
+        self.codex_activation_in_progress = False
         self._load()
 
     def _load(self) -> None:
@@ -313,6 +328,8 @@ class WorkerState:
                 and self.codex_release_root is not None
             ):
                 capabilities.append(CODEX_UPDATE_STAGE_CAPABILITY)
+                if self.codex_activate_mediator is not None and self.codex_activate_mediator.is_file():
+                    capabilities.append(CODEX_UPDATE_ACTIVATE_CAPABILITY)
             return {
                 "protocolVersion": PROTOCOL,
                 "workerId": self.worker_id,
@@ -415,6 +432,98 @@ class WorkerState:
                 "Codex update stage result is incomplete or conflicting")
         return result
 
+    def activate_codex_update(self, request: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(request, dict) or set(request) != CODEX_UPDATE_ACTIVATE_KEYS:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST, "invalid_codex_update_activation",
+                "exact Codex update activation fields are required")
+        if request.get("operation") != "ACTIVATE_CODEX_UPDATE":
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST, "invalid_codex_update_activation",
+                "Codex update activation operation is invalid")
+        for field in ("planId", "candidateId", "authorizationId", "idempotencyKey"):
+            try:
+                parsed = str(uuid.UUID(request.get(field)))
+            except (ValueError, TypeError, AttributeError):
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST, "invalid_codex_update_activation",
+                    "Codex update activation identities must be canonical UUIDs")
+            if parsed != request[field]:
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST, "invalid_codex_update_activation",
+                    "Codex update activation identities must be canonical UUIDs")
+        if (
+            self.codex_activate_mediator is None
+            or not self.codex_activate_mediator.is_file()
+            or self.codex_update_registry is None
+            or not self.codex_update_registry.is_file()
+            or self.codex_release_root is None
+        ):
+            raise ProtocolError(
+                HTTPStatus.SERVICE_UNAVAILABLE, "codex_update_activation_unavailable",
+                "Codex update activation mediator is unavailable")
+        with self.lock:
+            if self.codex_activation_in_progress or any(
+                execution["status"] in NON_TERMINAL for execution in self.executions.values()
+            ):
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT, "codex_update_active_execution",
+                    "Codex update activation requires zero non-terminal executions")
+            self.codex_activation_in_progress = True
+        try:
+            try:
+                completed = subprocess.run(
+                    [*self.privilege_command, str(self.codex_activate_mediator),
+                     "--registry", str(self.codex_update_registry),
+                     "--release-root", str(self.codex_release_root),
+                     "--release-owner-uid", str(os.geteuid())],
+                    input=json.dumps(request, sort_keys=True, separators=(",", ":")),
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    text=True, timeout=300, check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                raise ProtocolError(
+                    HTTPStatus.SERVICE_UNAVAILABLE, "codex_update_activation_failed",
+                    "Codex update activation mediator failed closed")
+            if completed.returncode != 0:
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT, "codex_update_activation_rejected",
+                    "Codex update activation gates rejected the persisted candidate")
+            try:
+                result = json.loads(completed.stdout)
+            except json.JSONDecodeError:
+                result = None
+            digest_fields = (
+                "releaseDigestSha256", "catalogRevision", "currentBeforeFingerprint",
+                "previousBeforeFingerprint", "currentAfterFingerprint",
+                "previousAfterFingerprint",
+            )
+            if (
+                not isinstance(result, dict)
+                or set(result) != CODEX_UPDATE_ACTIVATE_RESULT_KEYS
+                or result.get("schemaVersion") != CODEX_UPDATE_ACTIVATE_CAPABILITY
+                or result.get("operation") != request["operation"]
+                or result.get("workerId") != self.worker_id
+                or any(result.get(field) != request[field] for field in (
+                    "planId", "candidateId", "authorizationId", "idempotencyKey"))
+                or result.get("state") != "ACTIVATED"
+                or not isinstance(result.get("codexVersion"), str)
+                or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", result["codexVersion"]) is None
+                or any(re.fullmatch(r"[0-9a-f]{64}", str(result.get(field))) is None
+                       for field in digest_fields)
+                or any(result.get(field) != "PASS" for field in (
+                    "schemaComparison", "focusedContracts", "workerHealth", "canary"))
+                or result.get("automaticRestore") not in {"NOT_REQUIRED", "PASS"}
+                or result.get("valuesExposed") is not False
+            ):
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT, "codex_update_activation_result_conflict",
+                    "Codex update activation result is incomplete or conflicting")
+            return result
+        finally:
+            with self.lock:
+                self.codex_activation_in_progress = False
+
     def _append_progress(
         self,
         execution: dict[str, Any],
@@ -461,6 +570,12 @@ class WorkerState:
         dispatch_id = request["dispatchId"]
         fingerprint = canonical_hash(request)
         with self.lock:
+            if self.codex_activation_in_progress:
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT,
+                    "codex_update_activation_in_progress",
+                    "new execution dispatch is blocked during Codex activation",
+                )
             existing = self.executions.get(dispatch_id)
             if existing:
                 if existing["requestFingerprint"] != fingerprint:
@@ -2040,6 +2155,9 @@ class AgentRunHandler(BaseHTTPRequestHandler):
             if path == "/v1/codex/update/stage":
                 self._write(HTTPStatus.OK, self.server.state.stage_codex_update(body))
                 return
+            if path == "/v1/codex/update/activate":
+                self._write(HTTPStatus.OK, self.server.state.activate_codex_update(body))
+                return
             parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["v1", "executions"]:
                 if parts[3] == "lease":
@@ -2152,6 +2270,11 @@ def main() -> int:
         default=Path("/etc/atenea-worker/codex-release-stage-v1.json"),
     )
     parser.add_argument(
+        "--codex-activate-mediator",
+        type=Path,
+        default=Path("/usr/local/libexec/atenea/codex-release-activate-v1.py"),
+    )
+    parser.add_argument(
         "--codex-release-root",
         type=Path,
         default=Path("/srv/atenea/worker/codex-releases-v1"),
@@ -2180,6 +2303,7 @@ def main() -> int:
         project_validation_mediator=args.project_validation_mediator,
         repository_role_mediator=args.repository_role_mediator,
         codex_update_mediator=args.codex_update_mediator,
+        codex_activate_mediator=args.codex_activate_mediator,
         codex_update_registry=args.codex_update_registry,
         codex_release_root=args.codex_release_root,
     )

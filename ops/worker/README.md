@@ -404,6 +404,24 @@ suite with:
 python3 ./test-codex-release-stage-v1.py
 ```
 
+`codex-release-activate-v1.py` is a distinct root-mediated boundary. It accepts
+only the exact persisted plan, candidate, single-use authorization and
+idempotency UUIDs. The worker rejects it while any execution is non-terminal
+and blocks new dispatch for the bounded operation. The mediator requires one
+accepted stage record, compares both generated schemas, runs only the fixed
+candidate contract, health and canary executables, and atomically advances
+`previous` and `current`. A health or canary failure restores both exact link
+targets before returning failure. Repetition returns the immutable operation
+without rerunning a canary, and no service, path, command or host comes from the
+caller. The capability is absent until stage mediator, activation mediator and
+root-owned registry all exist.
+
+Run its focused link, gate, restore and repetition suite with:
+
+```bash
+python3 ./test-codex-release-activate-v1.py
+```
+
 Installation updates the existing private tailnet worker endpoint and leaves
 the real-project capability disabled:
 
