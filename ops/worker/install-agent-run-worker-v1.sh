@@ -14,6 +14,9 @@ VALIDATION_MEDIATOR="/usr/local/libexec/atenea/atenea-validation-v1.sh"
 PLAYWRIGHT_VALIDATOR="/usr/local/libexec/atenea/atenea-playwright-validation-v1.sh"
 PLAYWRIGHT_CHECK="/usr/local/libexec/atenea/atenea-playwright-validation-v1.js"
 ROLE_MEDIATOR="/usr/local/libexec/atenea/atenea-multi-repository-v1.sh"
+CODEX_UPDATE_MEDIATOR="/usr/local/libexec/atenea/codex-release-stage-v1.py"
+CODEX_UPDATE_REGISTRY="/etc/atenea-worker/codex-release-stage-v1.json"
+CODEX_RELEASE_ROOT="/srv/atenea/worker/codex-releases-v1"
 PLATFORM_INSTRUCTIONS="/usr/local/share/atenea/codex-platform-instructions-v1.md"
 INSTALLER="/usr/local/libexec/atenea/install-agent-run-worker-v1.sh"
 ENV_FILE="/etc/atenea-worker/agent-run-worker-v1.env"
@@ -27,7 +30,7 @@ PROJECT_MANIFEST_SHA256="3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad3080
 PROJECT_MIRROR="/srv/atenea/repositories/atenea.git"
 PROJECT_REF="refs/remotes/origin/${PROJECT_BRANCH}"
 PROJECT_WORKSPACES_ROOT="/srv/atenea/workspaces/sessions"
-SERVICE_TEMPLATE_SHA256="10f6583d72ef919a532b35f139e1daa57640ea688a6be12cb14452ce3ba149b3"
+SERVICE_TEMPLATE_SHA256="4820ea143d4221241a0d97734efc9ba36afbed210fb440c68d8fcc5c89eb9018"
 PLATFORM_INSTRUCTIONS_SHA256="44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"
 
 fail() {
@@ -54,6 +57,7 @@ validate_inputs() {
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.sh" ]] || fail "Playwright validator is missing"
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.js" ]] || fail "Playwright check is missing"
   [[ -f "$SCRIPT_DIR/atenea-multi-repository-v1.sh" ]] || fail "repository role mediator is missing"
+  [[ -f "$SCRIPT_DIR/codex-release-stage-v1.py" ]] || fail "Codex update stage mediator is missing"
   [[ -f "$SCRIPT_DIR/codex-platform-instructions-v1.md" ]] || fail "platform instructions are missing"
   [[ -f "$SCRIPT_DIR/templates/$SERVICE" ]] || fail "systemd template is missing"
 }
@@ -203,6 +207,7 @@ apply_install() {
   install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-playwright-validation-v1.sh" "$PLAYWRIGHT_VALIDATOR"
   install -o root -g root -m 0644 "$SCRIPT_DIR/atenea-playwright-validation-v1.js" "$PLAYWRIGHT_CHECK"
   install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-multi-repository-v1.sh" "$ROLE_MEDIATOR"
+  install -o root -g root -m 0755 "$SCRIPT_DIR/codex-release-stage-v1.py" "$CODEX_UPDATE_MEDIATOR"
   install -o root -g root -m 0644 \
     "$SCRIPT_DIR/codex-platform-instructions-v1.md" "$PLATFORM_INSTRUCTIONS"
   id atenea-program-role >/dev/null 2>&1 || useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin atenea-program-role
@@ -210,6 +215,10 @@ apply_install() {
   install -o root -g root -m 0755 "$SCRIPT_DIR/install-agent-run-worker-v1.sh" "$INSTALLER"
   install -d -o root -g atenea -m 0750 /etc/atenea-worker
   install -d -o atenea-worker -g atenea -m 0700 "$STATE_DIR"
+  install -d -o root -g atenea -m 0750 "$CODEX_RELEASE_ROOT"
+  install -d -o root -g atenea -m 0750 "$CODEX_RELEASE_ROOT/inbox"
+  install -d -o atenea-worker -g atenea -m 0750 \
+    "$CODEX_RELEASE_ROOT/releases" "$CODEX_RELEASE_ROOT/operations"
   if [[ ! -e "$TOKEN_FILE" ]]; then
     umask 0077
     openssl rand -hex 32 >"$TOKEN_FILE"
@@ -270,6 +279,8 @@ verify() {
     || fail "token file ownership or mode is invalid"
   [[ "$(stat -c '%a:%U:%G' "$STATE_DIR")" == "700:atenea-worker:atenea" ]] \
     || fail "state directory ownership or mode is invalid"
+  [[ "$(stat -c '%a:%U:%G' "$CODEX_RELEASE_ROOT")" == "750:root:atenea" ]] \
+    || fail "Codex release root ownership or mode is invalid"
   [[ "$(stat -c '%a:%U:%G' "$PROJECT_CONFIG")" == "644:root:root" ]] \
     || fail "project configuration ownership or mode is invalid"
   [[ -f "/etc/systemd/system/$SERVICE" \
@@ -286,6 +297,16 @@ verify() {
       && "$(sha256sum "$ROLE_MEDIATOR" | cut -d' ' -f1)" \
         == "$(sha256sum "$SCRIPT_DIR/atenea-multi-repository-v1.sh" | cut -d' ' -f1)" ]] \
     || fail "repository role mediator differs from the reviewed source"
+  [[ -f "$CODEX_UPDATE_MEDIATOR" && ! -L "$CODEX_UPDATE_MEDIATOR" \
+      && "$(stat -c '%a:%U:%G' "$CODEX_UPDATE_MEDIATOR")" == "755:root:root" \
+      && "$(sha256sum "$CODEX_UPDATE_MEDIATOR" | cut -d' ' -f1)" \
+        == "$(sha256sum "$SCRIPT_DIR/codex-release-stage-v1.py" | cut -d' ' -f1)" ]] \
+    || fail "Codex update stage mediator differs from the reviewed source"
+  if [[ -e "$CODEX_UPDATE_REGISTRY" ]]; then
+    [[ -f "$CODEX_UPDATE_REGISTRY" && ! -L "$CODEX_UPDATE_REGISTRY" \
+        && "$(stat -c '%a:%U:%G' "$CODEX_UPDATE_REGISTRY")" == "600:root:root" ]] \
+      || fail "Codex update registry ownership or mode is invalid"
+  fi
   [[ -f "$PLATFORM_INSTRUCTIONS" && ! -L "$PLATFORM_INSTRUCTIONS" \
       && "$(stat -c '%a:%U:%G' "$PLATFORM_INSTRUCTIONS")" == "644:root:root" \
       && "$(sha256sum "$PLATFORM_INSTRUCTIONS" | cut -d' ' -f1)" \

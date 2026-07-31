@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.internal/contracts/codex-update-stage-v1.result.schema.json",
+  "title": "Closed verified Codex release stage result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "operation", "workerId", "planId", "candidateId",
+    "idempotencyKey", "state", "codexVersion", "releaseDigestSha256",
+    "catalogRevision", "releaseManifestSha256", "schemaManifestSha256",
+    "releaseVerification", "schemaGeneration", "retention",
+    "currentLinkFingerprint", "previousLinkFingerprint", "linksChanged",
+    "valuesExposed"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "codex-update-stage-v1"},
+    "operation": {"const": "STAGE_CODEX_UPDATE"},
+    "workerId": {"const": "ax42-01"},
+    "planId": {"type": "string", "format": "uuid"},
+    "candidateId": {"type": "string", "format": "uuid"},
+    "idempotencyKey": {"type": "string", "format": "uuid"},
+    "state": {"const": "STAGED"},
+    "codexVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "releaseDigestSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "catalogRevision": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "releaseManifestSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "schemaManifestSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "releaseVerification": {"const": "PASS"},
+    "schemaGeneration": {"const": "PASS"},
+    "retention": {"const": "PASS"},
+    "currentLinkFingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "previousLinkFingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "linksChanged": {"const": false},
+    "valuesExposed": {"const": false}
+  }
+}

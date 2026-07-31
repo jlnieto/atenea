@@ -70,6 +70,9 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
             "api": read_json(
                 CONTRACT / "codex-session-operation-api-v1.request.schema.json"
             ),
+            "stageResult": read_json(
+                CONTRACT / "codex-update-stage-v1.result.schema.json"
+            ),
         }
         cls.validators = {
             name: Draft202012Validator(schema, format_checker=FormatChecker())
@@ -172,6 +175,28 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
         }
         self.assert_schema_valid("result", result)
         self.assert_schema_valid("progress", progress)
+        stage_result = {
+            "schemaVersion": "codex-update-stage-v1",
+            "operation": "STAGE_CODEX_UPDATE",
+            "workerId": "ax42-01",
+            "planId": self.api_requests[3]["planId"],
+            "candidateId": self.api_requests[3]["candidateId"],
+            "idempotencyKey": self.api_requests[3]["idempotencyKey"],
+            "state": "STAGED",
+            "codexVersion": self.catalog["codexVersion"],
+            "releaseDigestSha256": "a" * 64,
+            "catalogRevision": self.catalog["catalogRevision"],
+            "releaseManifestSha256": "b" * 64,
+            "schemaManifestSha256": "c" * 64,
+            "releaseVerification": "PASS",
+            "schemaGeneration": "PASS",
+            "retention": "PASS",
+            "currentLinkFingerprint": "d" * 64,
+            "previousLinkFingerprint": "e" * 64,
+            "linksChanged": False,
+            "valuesExposed": False,
+        }
+        self.assert_schema_valid("stageResult", stage_result)
 
         exact_operation = {
             "executionId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",

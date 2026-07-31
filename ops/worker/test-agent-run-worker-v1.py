@@ -1118,6 +1118,89 @@ print(json.dumps({
         self.assertIn("refused to duplicate", terminal["statusReason"])
 
 
+class CodexUpdateStageWorkerTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        self.calls = root / "calls"
+        self.registry = root / "registry.json"
+        self.registry.write_text("{}", encoding="utf-8")
+        self.release_root = root / "releases"
+        self.mediator = root / "mediator.py"
+        self.mediator.write_text(
+            """#!/usr/bin/env python3
+import hashlib
+import json
+import pathlib
+import sys
+request = json.load(sys.stdin)
+calls = pathlib.Path(sys.argv[0]).with_name("calls")
+calls.write_text(calls.read_text() + "1\\n" if calls.exists() else "1\\n")
+digest = hashlib.sha256(b"synthetic").hexdigest()
+print(json.dumps({
+    "schemaVersion": "codex-update-stage-v1",
+    "operation": request["operation"],
+    "workerId": "ax42-01",
+    "planId": request["planId"],
+    "candidateId": request["candidateId"],
+    "idempotencyKey": request["idempotencyKey"],
+    "state": "STAGED",
+    "codexVersion": "0.146.0",
+    "releaseDigestSha256": digest,
+    "catalogRevision": digest,
+    "releaseManifestSha256": digest,
+    "schemaManifestSha256": digest,
+    "releaseVerification": "PASS",
+    "schemaGeneration": "PASS",
+    "retention": "PASS",
+    "currentLinkFingerprint": digest,
+    "previousLinkFingerprint": digest,
+    "linksChanged": False,
+    "valuesExposed": False,
+}))
+""",
+            encoding="utf-8",
+        )
+        self.mediator.chmod(0o755)
+        self.state = MODULE.WorkerState(
+            root / "state", "ax42-01", privilege_command=(),
+            codex_update_mediator=self.mediator,
+            codex_update_registry=self.registry,
+            codex_release_root=self.release_root,
+        )
+        self.request = {
+            "operation": "STAGE_CODEX_UPDATE",
+            "planId": str(uuid.uuid4()),
+            "candidateId": str(uuid.uuid4()),
+            "idempotencyKey": str(uuid.uuid4()),
+        }
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_closed_stage_invokes_only_fixed_mediator_and_validates_result(self):
+        self.assertIn(MODULE.CODEX_UPDATE_STAGE_CAPABILITY,
+                      self.state.health()["capabilities"])
+        result = self.state.stage_codex_update(self.request)
+        self.assertEqual("STAGED", result["state"])
+        self.assertFalse(result["linksChanged"])
+        self.assertFalse(result["valuesExposed"])
+        self.assertEqual(["1"], self.calls.read_text().splitlines())
+
+        with self.assertRaisesRegex(MODULE.ProtocolError, "exact"):
+            self.state.stage_codex_update({**self.request, "releaseUrl": "https://foreign.invalid"})
+        self.assertEqual(["1"], self.calls.read_text().splitlines())
+
+    def test_conflicting_mediator_result_fails_closed(self):
+        source = self.mediator.read_text(encoding="utf-8")
+        self.mediator.write_text(source.replace('"workerId": "ax42-01"',
+                                                '"workerId": "foreign"'),
+                                 encoding="utf-8")
+        self.mediator.chmod(0o755)
+        with self.assertRaisesRegex(MODULE.ProtocolError, "conflicting"):
+            self.state.stage_codex_update(self.request)
+
+
 class WorkerHttpTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -1222,6 +1305,23 @@ class WorkerHttpTest(unittest.TestCase):
         self.assertFalse(diagnostic["valuesExposed"])
         with self.assertRaises(urllib.error.HTTPError) as rejected:
             self.post(base + "/doctor", {**exact, "host": "foreign.invalid"}, "t" * 64)
+        self.assertEqual(400, rejected.exception.code)
+
+    def test_stage_route_is_authenticated_closed_and_unavailable_without_mediator(self):
+        exact = {
+            "operation": "STAGE_CODEX_UPDATE",
+            "planId": str(uuid.uuid4()),
+            "candidateId": str(uuid.uuid4()),
+            "idempotencyKey": str(uuid.uuid4()),
+        }
+        with self.assertRaises(urllib.error.HTTPError) as unauthenticated:
+            self.post("/v1/codex/update/stage", exact)
+        self.assertEqual(401, unauthenticated.exception.code)
+        with self.assertRaises(urllib.error.HTTPError) as unavailable:
+            self.post("/v1/codex/update/stage", exact, "t" * 64)
+        self.assertEqual(503, unavailable.exception.code)
+        with self.assertRaises(urllib.error.HTTPError) as rejected:
+            self.post("/v1/codex/update/stage", {**exact, "path": "/tmp/release"}, "t" * 64)
         self.assertEqual(400, rejected.exception.code)
 
 

@@ -384,6 +384,26 @@ child cgroup denies loopback, RFC1918, Tailscale and link-local destinations
 while retaining public HTTPS/DNS egress for Codex. Orchestration never reads or
 copies the Codex authentication cache.
 
+`codex-release-stage-v1.py` implements the separately gated staging boundary.
+The authenticated worker route accepts only `operation`, persisted plan UUID,
+candidate UUID and idempotency UUID. The mediator derives the archive,
+version, digest, catalog and filesystem roots from a root-owned registry;
+caller URLs, versions, paths, commands and services are not accepted. It
+verifies the complete archive digest and safe member set, invokes only the
+verified release's fixed schema generator, validates App Server and CLI schema
+version markers, writes an immutable release/schema manifest and returns no
+path values. The canonical `current` and `previous` links are fingerprinted
+before and after staging and must remain unchanged. The capability is absent
+from worker health until the mediator and registry both exist; installing the
+source alone therefore enables no update behavior.
+
+Run its synthetic archive, traversal, digest, schema, retention and repetition
+suite with:
+
+```bash
+python3 ./test-codex-release-stage-v1.py
+```
+
 Installation updates the existing private tailnet worker endpoint and leaves
 the real-project capability disabled:
 

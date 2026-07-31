@@ -28,6 +28,7 @@ SYNTHETIC_CAPABILITY = "synthetic-routing-v1"
 PROJECT_CAPABILITY = "project-codex-v1"
 PROJECT_V2_CAPABILITY = "project-codex-v2"
 CODEX_CATALOG_CAPABILITY = "codex-model-catalog-v1"
+CODEX_UPDATE_STAGE_CAPABILITY = "codex-update-stage-v1"
 CODEX_CATALOG_SCHEMA = "codex-model-catalog-v1"
 CODEX_VERSION = "0.145.0"
 CODEX_MODELS = [
@@ -87,6 +88,17 @@ VALIDATION_KEYS = {
 }
 REPOSITORY_ROLE_KEYS = {
     "sessionId", "workspaceIdentity", "changeIdentity", "codeCommit",
+}
+CODEX_UPDATE_STAGE_KEYS = {
+    "operation", "planId", "candidateId", "idempotencyKey",
+}
+CODEX_UPDATE_STAGE_RESULT_KEYS = {
+    "schemaVersion", "operation", "workerId", "planId", "candidateId",
+    "idempotencyKey", "state", "codexVersion", "releaseDigestSha256",
+    "catalogRevision", "releaseManifestSha256", "schemaManifestSha256",
+    "releaseVerification", "schemaGeneration", "retention",
+    "currentLinkFingerprint", "previousLinkFingerprint", "linksChanged",
+    "valuesExposed",
 }
 EXACT_EXECUTION_OPERATION_KEYS = {
     "executionId", "sessionId", "workspaceIdentity", "leaseGeneration",
@@ -161,6 +173,9 @@ class WorkerState:
         beautips_workspace_activator: Path | None = None,
         project_validation_mediator: Path | None = None,
         repository_role_mediator: Path | None = None,
+        codex_update_mediator: Path | None = None,
+        codex_update_registry: Path | None = None,
+        codex_release_root: Path | None = None,
     ):
         self.state_dir = state_dir
         self.state_file = state_dir / "executions.json"
@@ -178,6 +193,9 @@ class WorkerState:
         self.beautips_workspace_activator = beautips_workspace_activator
         self.project_validation_mediator = project_validation_mediator
         self.repository_role_mediator = repository_role_mediator
+        self.codex_update_mediator = codex_update_mediator
+        self.codex_update_registry = codex_update_registry
+        self.codex_release_root = codex_release_root
         self.lock = threading.RLock()
         self.wakeup = threading.Event()
         self.stop_event = threading.Event()
@@ -287,6 +305,14 @@ class WorkerState:
             capabilities = [SYNTHETIC_CAPABILITY, CODEX_CATALOG_CAPABILITY]
             if self._project_selection_enabled():
                 capabilities.extend([PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY])
+            if (
+                self.codex_update_mediator is not None
+                and self.codex_update_mediator.is_file()
+                and self.codex_update_registry is not None
+                and self.codex_update_registry.is_file()
+                and self.codex_release_root is not None
+            ):
+                capabilities.append(CODEX_UPDATE_STAGE_CAPABILITY)
             return {
                 "protocolVersion": PROTOCOL,
                 "workerId": self.worker_id,
@@ -309,6 +335,85 @@ class WorkerState:
             "generatedAt": utc_now(),
             "models": json.loads(json.dumps(CODEX_MODELS)),
         }
+
+    def stage_codex_update(self, request: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(request, dict) or set(request) != CODEX_UPDATE_STAGE_KEYS:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST, "invalid_codex_update_stage",
+                "exact Codex update stage fields are required")
+        if request.get("operation") != "STAGE_CODEX_UPDATE":
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST, "invalid_codex_update_stage",
+                "Codex update stage operation is invalid")
+        for field in ("planId", "candidateId", "idempotencyKey"):
+            try:
+                parsed = str(uuid.UUID(request.get(field)))
+            except (ValueError, TypeError, AttributeError):
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST, "invalid_codex_update_stage",
+                    "Codex update stage identities must be canonical UUIDs")
+            if parsed != request[field]:
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST, "invalid_codex_update_stage",
+                    "Codex update stage identities must be canonical UUIDs")
+        if (
+            self.codex_update_mediator is None
+            or not self.codex_update_mediator.is_file()
+            or self.codex_update_registry is None
+            or not self.codex_update_registry.is_file()
+            or self.codex_release_root is None
+        ):
+            raise ProtocolError(
+                HTTPStatus.SERVICE_UNAVAILABLE, "codex_update_stage_unavailable",
+                "Codex update stage mediator is unavailable")
+        try:
+            completed = subprocess.run(
+                [str(self.codex_update_mediator),
+                 "--registry", str(self.codex_update_registry),
+                 "--release-root", str(self.codex_release_root)],
+                input=json.dumps(request, sort_keys=True, separators=(",", ":")),
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                text=True, timeout=300, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            raise ProtocolError(
+                HTTPStatus.SERVICE_UNAVAILABLE, "codex_update_stage_failed",
+                "Codex update stage mediator failed closed")
+        if completed.returncode != 0:
+            raise ProtocolError(
+                HTTPStatus.CONFLICT, "codex_update_stage_rejected",
+                "Codex update stage mediator rejected the persisted candidate")
+        try:
+            result = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            result = None
+        digest_fields = (
+            "releaseDigestSha256", "catalogRevision", "releaseManifestSha256",
+            "schemaManifestSha256", "currentLinkFingerprint",
+            "previousLinkFingerprint",
+        )
+        if (
+            not isinstance(result, dict)
+            or set(result) != CODEX_UPDATE_STAGE_RESULT_KEYS
+            or result.get("schemaVersion") != CODEX_UPDATE_STAGE_CAPABILITY
+            or result.get("operation") != request["operation"]
+            or result.get("workerId") != self.worker_id
+            or any(result.get(field) != request[field]
+                   for field in ("planId", "candidateId", "idempotencyKey"))
+            or result.get("state") != "STAGED"
+            or not isinstance(result.get("codexVersion"), str)
+            or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", result["codexVersion"]) is None
+            or any(re.fullmatch(r"[0-9a-f]{64}", str(result.get(field))) is None
+                   for field in digest_fields)
+            or any(result.get(field) != "PASS"
+                   for field in ("releaseVerification", "schemaGeneration", "retention"))
+            or result.get("linksChanged") is not False
+            or result.get("valuesExposed") is not False
+        ):
+            raise ProtocolError(
+                HTTPStatus.CONFLICT, "codex_update_stage_result_conflict",
+                "Codex update stage result is incomplete or conflicting")
+        return result
 
     def _append_progress(
         self,
@@ -1932,6 +2037,9 @@ class AgentRunHandler(BaseHTTPRequestHandler):
             if path == "/v1/project-workspaces/repository-roles/ensure":
                 self._write(HTTPStatus.OK, self.server.state.ensure_repository_roles(body))
                 return
+            if path == "/v1/codex/update/stage":
+                self._write(HTTPStatus.OK, self.server.state.stage_codex_update(body))
+                return
             parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["v1", "executions"]:
                 if parts[3] == "lease":
@@ -2033,6 +2141,21 @@ def main() -> int:
         type=Path,
         default=Path("/usr/local/libexec/atenea/atenea-multi-repository-v1.sh"),
     )
+    parser.add_argument(
+        "--codex-update-mediator",
+        type=Path,
+        default=Path("/usr/local/libexec/atenea/codex-release-stage-v1.py"),
+    )
+    parser.add_argument(
+        "--codex-update-registry",
+        type=Path,
+        default=Path("/etc/atenea-worker/codex-release-stage-v1.json"),
+    )
+    parser.add_argument(
+        "--codex-release-root",
+        type=Path,
+        default=Path("/srv/atenea/worker/codex-releases-v1"),
+    )
     parser.add_argument("--project-timeout", type=int, default=1800)
     args = parser.parse_args()
     if not (1 <= args.port <= 65535):
@@ -2056,6 +2179,9 @@ def main() -> int:
         beautips_workspace_activator=args.beautips_workspace_activator,
         project_validation_mediator=args.project_validation_mediator,
         repository_role_mediator=args.repository_role_mediator,
+        codex_update_mediator=args.codex_update_mediator,
+        codex_update_registry=args.codex_update_registry,
+        codex_release_root=args.codex_release_root,
     )
     server = AgentRunServer((args.bind, args.port), state, read_token(args.token_file))
     state.start()
