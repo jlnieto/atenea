@@ -130,6 +130,61 @@ observe_project_commit() {
   printf '%s\n' "$commit"
 }
 
+verify_project_config_content() {
+  jq -e '.schemaVersion == "project-codex-v1" and
+    .projectId == "atenea" and
+    (.commit | test("^[0-9a-f]{40}$")) and
+    (.selectionEnabled | type == "boolean") and
+    (.executionEnabled | type == "boolean") and
+    (.workspaces | type == "object") and
+    (.workspaces | length) <= 1 and
+    ([.workspaces[] |
+      (keys | sort) == ["allocationSha256", "canonicalCommit", "sessionId", "worktree"] and
+      (.sessionId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")) and
+      (.allocationSha256 | test("^[0-9a-f]{64}$")) and
+      (.canonicalCommit | test("^[0-9a-f]{40}$"))] | all)
+  ' "$PROJECT_CONFIG" >/dev/null || fail "project configuration is invalid"
+
+  local canonical_commit workspace_count
+  canonical_commit="$(observe_project_commit)"
+  [[ "$(jq -r '.commit' "$PROJECT_CONFIG")" == "$canonical_commit" ]] \
+    || fail "project configuration canonical commit moved"
+  workspace_count="$(jq '.workspaces | length' "$PROJECT_CONFIG")"
+  [[ "$workspace_count" -eq 0 ]] && return 0
+
+  local identity session_id worktree allocation_sha retained_commit allocation
+  IFS=$'\t' read -r identity session_id worktree allocation_sha retained_commit < <(
+    jq -r '.workspaces | to_entries[0] |
+      [.key, .value.sessionId, .value.worktree,
+       .value.allocationSha256, .value.canonicalCommit] | @tsv' "$PROJECT_CONFIG"
+  )
+  [[ "$identity" == "remote:ax42-01:work-session:${session_id}" ]] \
+    || fail "project workspace identity is invalid"
+  [[ "$worktree" == "${PROJECT_WORKSPACES_ROOT}/${session_id}/atenea" \
+      && -d "$worktree" && ! -L "$worktree" ]] \
+    || fail "project worktree ownership is invalid"
+  allocation="${PROJECT_WORKSPACES_ROOT}/${session_id}/runtime-allocation-v1.json"
+  [[ -f "$allocation" && ! -L "$allocation" \
+      && "$(sha256sum "$allocation" | cut -d' ' -f1)" == "$allocation_sha" ]] \
+    || fail "project allocation ownership is invalid"
+  [[ "$(git -c safe.directory="$worktree" -C "$worktree" remote get-url origin)" == "$PROJECT_REPOSITORY" \
+      && "$(git -c safe.directory="$worktree" -C "$worktree" rev-parse --verify 'HEAD^{commit}')" == "$retained_commit" \
+      && "$(sha256sum "$worktree/ops/atenea-runtime.json" | cut -d' ' -f1)" == "$PROJECT_MANIFEST_SHA256" ]] \
+    || fail "project worktree fingerprint is invalid"
+
+  local status
+  status="$(git -c safe.directory="$worktree" -C "$worktree" status --porcelain=v1 --untracked-files=all)"
+  if [[ "$retained_commit" == "$canonical_commit" ]]; then
+    [[ -z "$status" ]] || fail "current project worktree is not clean"
+  else
+    [[ "$(jq -r '.selectionEnabled' "$PROJECT_CONFIG")" == true \
+        && "$(jq -r '.executionEnabled' "$PROJECT_CONFIG")" == false \
+        && -n "$status" ]] || fail "retained project draft is not safely disabled"
+    git --git-dir="$PROJECT_MIRROR" merge-base --is-ancestor "$retained_commit" "$canonical_commit" \
+      || fail "retained project draft is not an ancestor of canonical source"
+  fi
+}
+
 apply_install() {
   require_root
   validate_inputs
@@ -239,15 +294,7 @@ verify() {
     || fail "programme role identity is unavailable or interactive"
   [[ "$(getent passwd atenea-worker-role | cut -d: -f7)" == /usr/sbin/nologin ]] \
     || fail "worker source role identity is unavailable or interactive"
-  jq -e '. as $root |
-    .schemaVersion == "project-codex-v1" and
-    .projectId == "atenea" and
-    (.commit | test("^[0-9a-f]{40}$")) and
-    (.selectionEnabled | type == "boolean") and
-    (.executionEnabled | type == "boolean") and
-    (.workspaces | type == "object") and
-    ([.workspaces[] | .canonicalCommit == $root.commit] | all)
-  ' "$PROJECT_CONFIG" >/dev/null || fail "project configuration is invalid"
+  verify_project_config_content
   visudo -cf "$SUDOERS_FILE" >/dev/null
   printf '%s\n' 'agent-run-worker-v1 verification passed'
 }

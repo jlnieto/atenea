@@ -69,6 +69,7 @@ write_project_config false false '{}' "${CANONICAL_COMMIT}"
 BEFORE="$(git -C "${WORKTREE}" status --porcelain=v1 --untracked-files=all)"
 project_retained_draft_register "${SESSION_ID}" "${WORKSPACE_IDENTITY}" "${RETAINED_COMMIT}"
 project_retained_draft_register "${SESSION_ID}" "${WORKSPACE_IDENTITY}" "${RETAINED_COMMIT}"
+verify_project_config_content
 AFTER="$(git -C "${WORKTREE}" status --porcelain=v1 --untracked-files=all)"
 
 [[ "${BEFORE}" == "${AFTER}" ]] || fail "retained draft changed"
