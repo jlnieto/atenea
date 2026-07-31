@@ -22,6 +22,7 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.persistence.worksession.AgentRunProgressCategory;
 import com.atenea.service.worksession.AgentRunProgressService;
+import com.atenea.mobilepush.MobilePushDispatchService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -43,6 +44,7 @@ class RemoteAgentRunCoordinatorTest {
     private AgentRunProgressService progressService;
     private RemoteWorkerClient client;
     private RemoteWorkerProperties properties;
+    private MobilePushDispatchService mobilePushDispatchService;
     private RemoteAgentRunCoordinator coordinator;
 
     @BeforeEach
@@ -53,6 +55,7 @@ class RemoteAgentRunCoordinatorTest {
         progressService = mock(AgentRunProgressService.class);
         client = mock(RemoteWorkerClient.class);
         properties = new RemoteWorkerProperties();
+        mobilePushDispatchService = mock(MobilePushDispatchService.class);
         properties.setPollInterval(Duration.ofMillis(10));
         properties.setReconciliationTimeout(Duration.ofMillis(40));
         PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
@@ -81,6 +84,7 @@ class RemoteAgentRunCoordinatorTest {
                 progressService,
                 client,
                 properties,
+                mobilePushDispatchService,
                 transactionManager);
     }
 
@@ -128,6 +132,7 @@ class RemoteAgentRunCoordinatorTest {
                 run.getId(), 3, AgentRunProgressCategory.COMPLETED);
         verify(client, times(1)).ensureWorkspace(run);
         verify(client, times(1)).dispatch(run, "First managed turn");
+        verify(mobilePushDispatchService, times(1)).notifyRunSucceeded(run);
     }
 
     @Test
@@ -276,6 +281,8 @@ class RemoteAgentRunCoordinatorTest {
         assertEquals(
                 "Explicit operator review required; execution was not reassigned",
                 run.getStatusReason());
+        verify(mobilePushDispatchService, times(1)).notifyRunActionRequired(run);
+        verify(mobilePushDispatchService, times(1)).notifyRunFailed(run);
         verify(client, never()).dispatch(any(), any());
     }
 

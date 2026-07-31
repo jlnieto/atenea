@@ -93,7 +93,8 @@ class WorkSessionServiceTest {
         lenient().when(codexAppServerProperties.getStaleTimeout()).thenReturn(Duration.ofMinutes(5));
         AgentRunReconciliationService reconciliationService = new AgentRunReconciliationService(
                 agentRunRepository,
-                codexAppServerProperties
+                codexAppServerProperties,
+                mobilePushDispatchService
         );
         SessionOperationalSnapshotService snapshotService = new SessionOperationalSnapshotService(
                 validator,

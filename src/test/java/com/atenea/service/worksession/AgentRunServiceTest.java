@@ -70,7 +70,8 @@ class AgentRunServiceTest {
 
     @BeforeEach
     void setUp() {
-        agentRunReconciliationService = new AgentRunReconciliationService(agentRunRepository, codexAppServerProperties);
+        agentRunReconciliationService = new AgentRunReconciliationService(
+                agentRunRepository, codexAppServerProperties, mobilePushDispatchService);
         agentRunService = new AgentRunService(
                 workSessionRepository,
                 agentRunRepository,
@@ -132,6 +133,7 @@ class AgentRunServiceTest {
         assertEquals("Completed successfully", updated.getOutputSummary());
         assertNull(updated.getErrorSummary());
         assertNotNull(updated.getFinishedAt());
+        verify(mobilePushDispatchService).notifyRunSucceeded(updated);
     }
 
     @Test
@@ -149,16 +151,20 @@ class AgentRunServiceTest {
         assertEquals("Codex execution failed", updated.getErrorSummary());
         assertNull(updated.getOutputSummary());
         assertNotNull(updated.getFinishedAt());
+        verify(mobilePushDispatchService).notifyRunFailed(updated);
     }
 
     @Test
     void forceMarkFailedIfRunningUsesConditionalRepositoryUpdate() {
+        AgentRunEntity run = buildRun(55L, AgentRunStatus.FAILED);
         when(agentRunRepository.forceMarkFailedIfRunning(eq(55L), eq("turn_456"), eq("Codex execution failed"), any()))
                 .thenReturn(1);
+        when(agentRunRepository.findWithSessionById(55L)).thenReturn(Optional.of(run));
 
         boolean updated = agentRunService.forceMarkFailedIfRunning(55L, " turn_456 ", " Codex execution failed ");
 
         assertTrue(updated);
+        verify(mobilePushDispatchService).notifyRunFailed(run);
     }
 
     @Test
@@ -347,6 +353,7 @@ class AgentRunServiceTest {
                 run.getErrorSummary());
         assertNotNull(run.getFinishedAt());
         assertNull(run.getOutputSummary());
+        verify(mobilePushDispatchService).notifyRunFailed(run);
     }
 
     @Test
@@ -385,6 +392,8 @@ class AgentRunServiceTest {
                 firstRun.getErrorSummary());
         assertNotNull(firstRun.getFinishedAt());
         assertNull(firstRun.getOutputSummary());
+        verify(mobilePushDispatchService).notifyRunFailed(firstRun);
+        verify(mobilePushDispatchService).notifyRunFailed(secondRun);
     }
 
     @Test

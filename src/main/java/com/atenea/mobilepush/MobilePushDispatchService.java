@@ -69,6 +69,26 @@ public class MobilePushDispatchService {
     }
 
     @Transactional
+    public void notifyRunFailed(AgentRunEntity run) {
+        if (codexOperationsProperties.isNotificationOutboxEnabled()) {
+            notificationOutboxService.record(
+                    run.getId(),
+                    NotificationCategory.RUN_FAILED,
+                    Math.max(0, run.getLifecycleRevision()));
+        }
+    }
+
+    @Transactional
+    public void notifyRunActionRequired(AgentRunEntity run) {
+        if (codexOperationsProperties.isNotificationOutboxEnabled()) {
+            notificationOutboxService.record(
+                    run.getId(),
+                    NotificationCategory.ACTION_REQUIRED,
+                    Math.max(0, run.getLifecycleRevision()));
+        }
+    }
+
+    @Transactional
     public void notifyCloseBlocked(WorkSessionEntity session, String blockedState, String reason) {
         sendOnce(
                 "CLOSE_BLOCKED:%s:%s".formatted(session.getId(), blockedState),

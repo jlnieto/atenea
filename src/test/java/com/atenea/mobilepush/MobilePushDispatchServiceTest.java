@@ -74,6 +74,32 @@ class MobilePushDispatchServiceTest {
     }
 
     @Test
+    void notifyRunFailedUsesGenericOutboxAfterCutover() {
+        AgentRunEntity run = new AgentRunEntity();
+        run.setId(55L);
+        run.setLifecycleRevision(8);
+        codexOperationsProperties.setNotificationOutboxEnabled(true);
+
+        mobilePushDispatchService.notifyRunFailed(run);
+
+        verify(notificationOutboxService).record(55L, NotificationCategory.RUN_FAILED, 8);
+        verify(fcmPushSender, never()).send(any());
+    }
+
+    @Test
+    void notifyRunActionRequiredUsesGenericOutboxAfterCutover() {
+        AgentRunEntity run = new AgentRunEntity();
+        run.setId(55L);
+        run.setLifecycleRevision(9);
+        codexOperationsProperties.setNotificationOutboxEnabled(true);
+
+        mobilePushDispatchService.notifyRunActionRequired(run);
+
+        verify(notificationOutboxService).record(55L, NotificationCategory.ACTION_REQUIRED, 9);
+        verify(fcmPushSender, never()).send(any());
+    }
+
+    @Test
     void notifyRunSucceededSendsAndLogsWhenEventWasNotPreviouslySent() {
         AgentRunEntity run = new AgentRunEntity();
         run.setId(55L);

@@ -6,6 +6,7 @@ import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.remoteworker.RemoteAgentRunCoordinator;
+import com.atenea.mobilepush.MobilePushDispatchService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -28,14 +29,17 @@ public class AgentRunReconciliationService {
 
     private final AgentRunRepository agentRunRepository;
     private final CodexAppServerProperties codexAppServerProperties;
+    private final MobilePushDispatchService mobilePushDispatchService;
     private RemoteAgentRunCoordinator remoteAgentRunCoordinator;
 
     public AgentRunReconciliationService(
             AgentRunRepository agentRunRepository,
-            CodexAppServerProperties codexAppServerProperties
+            CodexAppServerProperties codexAppServerProperties,
+            MobilePushDispatchService mobilePushDispatchService
     ) {
         this.agentRunRepository = agentRunRepository;
         this.codexAppServerProperties = codexAppServerProperties;
+        this.mobilePushDispatchService = mobilePushDispatchService;
     }
 
     @Autowired(required = false)
@@ -67,6 +71,7 @@ public class AgentRunReconciliationService {
             run.setOutputSummary(null);
             run.setErrorSummary(STALE_RUN_ERROR_SUMMARY);
             agentRunRepository.saveAndFlush(run);
+            mobilePushDispatchService.notifyRunFailed(run);
             reconciled = true;
 
             log.warn(
@@ -98,6 +103,7 @@ public class AgentRunReconciliationService {
             run.setOutputSummary(null);
             run.setErrorSummary(STARTUP_RUN_ERROR_SUMMARY);
             agentRunRepository.saveAndFlush(run);
+            mobilePushDispatchService.notifyRunFailed(run);
             reconciledCount++;
 
             log.warn(

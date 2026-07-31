@@ -151,18 +151,25 @@ public class AgentRunService {
         run.setFinishedAt(Instant.now());
         run.setOutputSummary(null);
         run.setErrorSummary(errorSummary);
-        return agentRunRepository.save(run);
+        AgentRunEntity savedRun = agentRunRepository.save(run);
+        mobilePushDispatchService.notifyRunFailed(savedRun);
+        return savedRun;
     }
 
     @Transactional
     public boolean forceMarkFailedIfRunning(Long runId, String externalTurnId, String errorSummary) {
         String normalizedTurnId = normalizeNullableText(externalTurnId);
         String normalizedErrorSummary = normalizeNullableText(errorSummary);
-        return agentRunRepository.forceMarkFailedIfRunning(
+        boolean changed = agentRunRepository.forceMarkFailedIfRunning(
                 runId,
                 normalizedTurnId,
                 normalizedErrorSummary,
                 Instant.now()) > 0;
+        if (changed) {
+            agentRunRepository.findWithSessionById(runId)
+                    .ifPresent(mobilePushDispatchService::notifyRunFailed);
+        }
+        return changed;
     }
 
     @Transactional(readOnly = true)

@@ -12,6 +12,8 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.service.worksession.AgentRunNotFoundException;
 import com.atenea.service.worksession.AgentRunProgressService;
+import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.persistence.worksession.AgentRunProgressNextAction;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.List;
@@ -51,6 +53,7 @@ public class RemoteAgentRunCoordinator {
     private final AgentRunProgressService progressService;
     private final RemoteWorkerClient client;
     private final RemoteWorkerProperties properties;
+    private final MobilePushDispatchService mobilePushDispatchService;
     private final TransactionTemplate transaction;
     private final ExecutorService executor;
 
@@ -61,6 +64,7 @@ public class RemoteAgentRunCoordinator {
             AgentRunProgressService progressService,
             RemoteWorkerClient client,
             RemoteWorkerProperties properties,
+            MobilePushDispatchService mobilePushDispatchService,
             PlatformTransactionManager transactionManager
     ) {
         this.agentRunRepository = agentRunRepository;
@@ -69,6 +73,7 @@ public class RemoteAgentRunCoordinator {
         this.progressService = progressService;
         this.client = client;
         this.properties = properties;
+        this.mobilePushDispatchService = mobilePushDispatchService;
         this.transaction = new TransactionTemplate(transactionManager);
         this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         ThreadFactory factory = runnable -> {
@@ -233,7 +238,8 @@ public class RemoteAgentRunCoordinator {
                 if (response.result() == null) {
                     run.setStatus(AgentRunStatus.FAILED);
                     run.setErrorSummary("Remote worker returned SUCCEEDED without a result");
-                    agentRunRepository.save(run);
+                    run = agentRunRepository.save(run);
+                    mobilePushDispatchService.notifyRunFailed(run);
                     return;
                 }
                 WorkSessionEntity session = workSessionRepository.findById(run.getSession().getId()).orElseThrow();
@@ -259,8 +265,13 @@ public class RemoteAgentRunCoordinator {
                 run.setErrorSummary(remoteStatus == AgentRunStatus.FAILED ? response.statusReason() : null);
             }
             run.setStatus(remoteStatus);
-            agentRunRepository.save(run);
+            run = agentRunRepository.save(run);
             appendProgress(runId, progressEvents, true);
+            if (remoteStatus == AgentRunStatus.SUCCEEDED) {
+                mobilePushDispatchService.notifyRunSucceeded(run);
+            } else if (remoteStatus == AgentRunStatus.FAILED) {
+                mobilePushDispatchService.notifyRunFailed(run);
+            }
         });
     }
 
@@ -338,11 +349,17 @@ public class RemoteAgentRunCoordinator {
             if (run == null || run.getStatus().isTerminal()) {
                 return;
             }
+            boolean firstActionRequired = run.getStatus() != AgentRunStatus.RECONCILING
+                    || run.getProgressRequiredNextAction() != AgentRunProgressNextAction.REQUEST_RECONCILIATION;
             run.setStatus(AgentRunStatus.RECONCILING);
             run.setReconciliationStartedAt(
                     run.getReconciliationStartedAt() == null ? Instant.now() : run.getReconciliationStartedAt());
             run.setStatusReason("Remote worker unavailable; no replacement dispatched: " + safeReason(reason));
-            agentRunRepository.save(run);
+            run.setProgressRequiredNextAction(AgentRunProgressNextAction.REQUEST_RECONCILIATION);
+            run = agentRunRepository.save(run);
+            if (firstActionRequired) {
+                mobilePushDispatchService.notifyRunActionRequired(run);
+            }
         });
     }
 
@@ -356,7 +373,8 @@ public class RemoteAgentRunCoordinator {
             run.setFinishedAt(Instant.now());
             run.setErrorSummary("Remote worker remained unavailable through the bounded reconciliation window");
             run.setStatusReason("Explicit operator review required; execution was not reassigned");
-            agentRunRepository.save(run);
+            run = agentRunRepository.save(run);
+            mobilePushDispatchService.notifyRunFailed(run);
         });
     }
 
