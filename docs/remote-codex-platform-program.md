@@ -4516,3 +4516,46 @@ Sanitized task-0.2 evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.2-canonical-source-admission`;
 the SHA-256 of its `SHA256SUMS` is
 `da95d1047002253d983e1b877eac1d955d598065d9a60d33f820d8cd30ca8fb9`.
+
+Task 0.3 is complete and change progress is `3/57`; the exact resume point is
+task 0.4.
+
+Atenea now has a durable `DRAFT_BLOCKED` state separate from active and closed
+sessions. The mediated recovery locks the exact stale remote Atenea
+WorkSession, refuses non-terminal AgentRuns, observes the accepted canonical
+source and requests a sanitized AX42 fingerprint. The worker accepts only its
+fixed root-owned Atenea route, current mirror commit, exact registered
+WorkSession and inactive execution ownership. The result contains hashes,
+counts and immutable identities only; fixed Git operations have finite
+timeouts plus bounded entry and byte limits.
+
+The old WorkSession is flushed as `DRAFT_BLOCKED` before the replacement
+`OPEN` row is inserted, preserving the one-active-session database invariant
+inside one transaction. The replacement receives a new remote identity,
+workspace branch and accepted canonical observation. External thread, final
+commit and draft metadata are not transferred. A completed recovery is
+idempotent and returns its persisted replacement without another worker call
+or session creation. No rebase, merge, reset, commit, checkout, clean, copy or
+draft deletion occurs.
+
+The Atenea implementation is published cleanly at
+`a94c119e561fe9a70b158fae54cd333a8507c541`. Two accepted backend passes each
+ran 425 tests with zero failures, errors or skips and validated all 51 Flyway
+migrations. Two worker passes each ran 20 tests with zero failures; shell
+syntax validation also passed. External timeouts were 600 seconds for backend
+passes and 120 seconds for worker passes.
+
+The real retained draft remains unchanged at
+`d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b`, with tree
+`7e4531a5c5538d4f30fdb63d588db1afc9e34ddc`, clean index, 28 tracked
+changes, 16 untracked files and zero session processes. Its tracked and
+untracked fingerprints still match task 0.1. No backend, migration or worker
+deployment and no real recovery occurred; task 0.10 retains ownership of
+creating the current clean Atenea WorkSession after all remaining foundation
+gates pass. The installed worker mirror therefore remains deliberately at
+`1bef4b01a0ddd71f71279721bad908867cc21c3c`.
+
+Sanitized task-0.3 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.3-retained-draft-recovery`;
+the SHA-256 of its `SHA256SUMS` is
+`246f3f7aa197a4907faf88851c32ce5b09b3022540243cf1753ba4ab469869d1`.

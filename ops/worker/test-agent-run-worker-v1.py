@@ -7,6 +7,7 @@ import time
 import unittest
 import uuid
 import os
+import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -231,6 +232,129 @@ print(json.dumps({
         with self.assertRaisesRegex(MODULE.ProtocolError, "persisted WorkSession"):
             self.state.ensure_workspace(request)
         self.assertFalse(self.calls.exists())
+
+
+class RetainedDraftFingerprintTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        self.worktree = root / "worktree"
+        self.worktree.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", MODULE.PROJECT_BRANCH], cwd=self.worktree, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=self.worktree, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=self.worktree, check=True)
+        (self.worktree / "tracked.txt").write_text("base\n", encoding="utf-8")
+        subprocess.run(["git", "add", "tracked.txt"], cwd=self.worktree, check=True)
+        subprocess.run(["git", "commit", "-qm", "stale base"], cwd=self.worktree, check=True)
+        self.retained_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.worktree,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+        ).stdout.strip()
+        (self.worktree / "tracked.txt").write_text("unstaged\n", encoding="utf-8")
+        (self.worktree / "staged.txt").write_text("staged\n", encoding="utf-8")
+        subprocess.run(["git", "add", "staged.txt"], cwd=self.worktree, check=True)
+        (self.worktree / "untracked.txt").write_text("untracked secret-shaped value\n", encoding="utf-8")
+
+        self.accepted_commit = "2" * 40
+        self.session_id = str(uuid.uuid4())
+        self.workspace_identity = "remote:ax42-01:work-session:" + self.session_id
+        self.runner = root / "runner"
+        self.runner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        self.runner.chmod(0o755)
+        self.config = root / "project.json"
+        self.config.write_text(json.dumps({
+            "schemaVersion": MODULE.PROJECT_CAPABILITY,
+            "selectionEnabled": True,
+            "executionEnabled": False,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": self.retained_head,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+            "runner": str(self.runner),
+            "workspaces": {
+                self.workspace_identity: {
+                    "sessionId": self.session_id,
+                    "worktree": str(self.worktree),
+                    "allocationSha256": "a" * 64,
+                    "canonicalCommit": self.retained_head,
+                }
+            },
+        }), encoding="utf-8")
+        self.config.chmod(0o644)
+        self.state = MODULE.WorkerState(
+            root / "state",
+            "ax42-01",
+            project_config=self.config,
+            project_runner=self.runner,
+            project_config_uid=os.getuid(),
+        )
+        self.state._observe_project_commit = lambda _route: self.accepted_commit
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def request(self):
+        return {
+            "sessionId": self.session_id,
+            "workspaceIdentity": self.workspace_identity,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "acceptedCommit": self.accepted_commit,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+        }
+
+    def test_dirty_stale_draft_fingerprint_is_sanitized_repeatable_and_read_only(self):
+        before = subprocess.run(
+            ["git", "status", "--porcelain=v1"],
+            cwd=self.worktree,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+        ).stdout
+        first = self.state.fingerprint_retained_draft(self.request())
+        second = self.state.fingerprint_retained_draft(self.request())
+        after = subprocess.run(
+            ["git", "status", "--porcelain=v1"],
+            cwd=self.worktree,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+        ).stdout
+
+        self.assertEqual(first, second)
+        self.assertEqual(before, after)
+        self.assertEqual("draft_blocked_ready", first["state"])
+        self.assertEqual(self.retained_head, first["retainedHead"])
+        self.assertEqual(1, first["stagedChangeCount"])
+        self.assertEqual(1, first["unstagedChangeCount"])
+        self.assertEqual(1, first["untrackedChangeCount"])
+        self.assertFalse(first["valuesExposed"])
+        serialized = json.dumps(first)
+        self.assertNotIn("tracked.txt", serialized)
+        self.assertNotIn("secret-shaped", serialized)
+
+    def test_foreign_ambiguous_or_active_ownership_fails_closed(self):
+        foreign = self.request()
+        foreign["workspaceIdentity"] = "remote:ax42-01:work-session:" + str(uuid.uuid4())
+        with self.assertRaisesRegex(MODULE.ProtocolError, "not exact"):
+            self.state.fingerprint_retained_draft(foreign)
+
+        ambiguous = self.request()
+        ambiguous["extra"] = "arbitrary"
+        with self.assertRaisesRegex(MODULE.ProtocolError, "fields"):
+            self.state.fingerprint_retained_draft(ambiguous)
+
+        self.state.executions["active"] = {
+            "sessionId": self.session_id,
+            "status": "RUNNING",
+        }
+        with self.assertRaisesRegex(MODULE.ProtocolError, "non-terminal"):
+            self.state.fingerprint_retained_draft(self.request())
 
 
 class ProjectWorkerStateTest(unittest.TestCase):
