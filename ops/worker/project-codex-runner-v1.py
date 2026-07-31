@@ -18,6 +18,10 @@ from pathlib import Path
 from typing import Any
 
 CAPABILITY = "project-codex-v1"
+PROFILED_CAPABILITY = "project-codex-v2"
+CODEX_VERSION = "0.145.0"
+CODEX_MODEL = "gpt-5.6-sol"
+CODEX_EFFORTS = {"none", "low", "medium", "high", "xhigh", "max"}
 PROJECT_ID = "atenea"
 REPOSITORY = "https://github.com/jlnieto/atenea.git"
 BRANCH = "feature/actualizar-conversacion-en-web"
@@ -49,6 +53,12 @@ WORKLOAD_KEYS = {
     "instructionBundleSha256", "platformInstructionSha256",
     "projectInstructionPath", "projectInstructionSha256",
 }
+PROFILED_WORKLOAD_KEYS = WORKLOAD_KEYS | {
+    "modelId", "reasoningEffort", "catalogRevision", "codexVersion",
+}
+CODEX_CATALOG_REVISION = (
+    "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187"
+)
 
 
 def reject(message: str) -> None:
@@ -75,6 +85,33 @@ def codex_failure_reason(stderr: str) -> str:
         if any(needle in lowered for needle in needles):
             return reason
     return "Codex execution failed: unclassified"
+
+
+def validate_codex_version(workload: dict[str, Any]) -> None:
+    if workload["kind"] != PROFILED_CAPABILITY:
+        return
+    try:
+        observed = subprocess.run(
+            [CODEX, "--version"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+            check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        reject("Codex execution failed: CLI contract")
+    if observed != "codex-cli " + workload["codexVersion"]:
+        reject("Codex execution failed: CLI contract")
+
+
+def effective_profile(workload: dict[str, Any]) -> dict[str, str]:
+    if workload["kind"] != PROFILED_CAPABILITY:
+        return {}
+    return {
+        key: workload[key]
+        for key in ("modelId", "reasoningEffort", "catalogRevision", "codexVersion")
+    }
 
 
 def internal_failure_reason(exception: Exception) -> str:
@@ -140,8 +177,12 @@ def validate_request(request: Any, config: dict[str, Any]) -> tuple[dict[str, An
     if not isinstance(request["workspaceIdentity"], str):
         reject("workspace ownership rejected")
     workload = request["workload"]
+    capability = workload.get("kind") if isinstance(workload, dict) else None
+    workload_keys = (
+        PROFILED_WORKLOAD_KEYS if capability == PROFILED_CAPABILITY else WORKLOAD_KEYS
+    )
     exact = {
-        "kind": CAPABILITY,
+        "kind": capability,
         "projectId": PROJECT_ID,
         "repository": REPOSITORY,
         "branch": BRANCH,
@@ -154,11 +195,19 @@ def validate_request(request: Any, config: dict[str, Any]) -> tuple[dict[str, An
     }
     if (
         not isinstance(workload, dict)
-        or set(workload) != WORKLOAD_KEYS
+        or capability not in {CAPABILITY, PROFILED_CAPABILITY}
+        or set(workload) != workload_keys
         or any(workload.get(key) != value for key, value in exact.items())
         or workload.get("commit") != config["commit"]
         or not isinstance(workload.get("message"), str)
         or not (1 <= len(workload["message"]) <= 20_000)
+    ):
+        reject("workspace ownership rejected")
+    if capability == PROFILED_CAPABILITY and (
+        workload.get("modelId") != CODEX_MODEL
+        or workload.get("reasoningEffort") not in CODEX_EFFORTS
+        or workload.get("catalogRevision") != CODEX_CATALOG_REVISION
+        or workload.get("codexVersion") != CODEX_VERSION
     ):
         reject("workspace ownership rejected")
     thread_id = workload["threadId"]
@@ -384,6 +433,11 @@ def sandbox_command(
         "-C", str(worktree),
         "--json", "--output-last-message", str(final_path),
     ]
+    if workload["kind"] == PROFILED_CAPABILITY:
+        command.extend([
+            "--model", workload["modelId"],
+            "--config", "model_reasoning_effort=" + json.dumps(workload["reasoningEffort"]),
+        ])
     if workload["threadId"] is not None:
         command.extend(["resume", workload["threadId"], "-"])
     else:
@@ -469,12 +523,18 @@ def execute(
             reject("Codex execution failed")
         if not final_answer or len(final_answer.encode()) > 262_144:
             reject("Codex execution failed")
-        return {
+        result = {
             "threadId": thread_id,
             "turnId": execution_id,
             "finalAnswer": final_answer,
             "outputSummary": f"{CAPABILITY} completed",
         }
+        if workload["kind"] == PROFILED_CAPABILITY:
+            result.update({
+                "outputSummary": f"{PROFILED_CAPABILITY} completed",
+                **effective_profile(workload),
+            })
+        return result
 
 
 def main() -> int:
@@ -492,6 +552,7 @@ def main() -> int:
     except (json.JSONDecodeError, UnicodeDecodeError):
         reject("workspace ownership rejected")
     workload, worktree = validate_request(request, config)
+    validate_codex_version(workload)
     record = config["workspaces"][request["workspaceIdentity"]]
     common_dir = validate_worktree(worktree, record)
     instruction_bundle = validate_instruction_bundle(worktree)

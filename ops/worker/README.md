@@ -329,18 +329,19 @@ The authenticated `GET /v1/codex/catalog` route advertises the closed
 `codex-model-catalog-v1` inventory independently of project execution. Its
 revision digests the schema version, exact installed Codex `0.145.0` version
 and canonical sorted model entries; the diagnostic generation time is excluded
-from that digest. Health advertises only the catalog capability at this stage:
-`agent-run-project-codex-v2` execution remains unavailable until its later
-fingerprint and runner tasks are complete and the rollout is explicitly
-enabled.
+from that digest. Health always advertises the catalog capability; profiled
+`project-codex-v2` appears only with the existing exact project-selection gate
+and remains subject to the later rollout gate.
 
 The staged `project-codex-v2` validator extends the immutable canonical request
 fingerprint with `modelId`, `reasoningEffort`, `catalogRevision` and
 `codexVersion` only after reusing the complete v1 project, repository,
 instruction and persisted session/workspace checks. Unsupported or stale
 profiles and additional caller authority fail before an execution record is
-created. Until the fixed runner consumes the validated profile in the next
-task, create requests fail closed as `profile_execution_unavailable`.
+created. The fixed runner passes only `--model` and the canonical
+`model_reasoning_effort` override, verifies the installed Codex version before
+execution and echoes the exact effective profile/version. A mismatching runner
+result is rejected rather than accepted as terminal success.
 
 The runner executes the existing authenticated `jose` Codex identity inside a
 per-process Bubblewrap filesystem namespace and a collected transient systemd

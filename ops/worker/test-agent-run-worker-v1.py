@@ -605,7 +605,10 @@ print(json.dumps({
     "threadId": request["workload"]["threadId"] or "f9d68d92-71c6-4fa5-b77b-63863f8f2dc7",
     "turnId": request["executionId"],
     "finalAnswer": "bounded fake result",
-    "outputSummary": "project-codex-v1 completed"
+    "outputSummary": request["workload"]["kind"] + " completed",
+    **({key: request["workload"][key] for key in (
+        "modelId", "reasoningEffort", "catalogRevision", "codexVersion"
+    )} if request["workload"]["kind"] == "project-codex-v2" else {})
 }))
 """,
             encoding="utf-8",
@@ -718,9 +721,14 @@ print(json.dumps({
             self.state.profiled_project_fingerprint(high),
             self.state.profiled_project_fingerprint(medium),
         )
-        with self.assertRaisesRegex(MODULE.ProtocolError, "not enabled"):
-            self.state.create(high)
-        self.assertEqual({}, self.state.executions)
+        created, was_created = self.state.create(high)
+        self.assertTrue(was_created)
+        terminal = self.wait_terminal(high["dispatchId"])
+        self.assertEqual("SUCCEEDED", terminal["status"])
+        self.assertEqual("gpt-5.6-sol", terminal["result"]["modelId"])
+        self.assertEqual("high", terminal["result"]["reasoningEffort"])
+        self.assertEqual(MODULE.CODEX_VERSION, terminal["result"]["codexVersion"])
+        self.assertEqual(created["executionId"], terminal["result"]["turnId"])
 
         for field, value in (
             ("modelId", "arbitrary-model"),
@@ -732,13 +740,13 @@ print(json.dumps({
             rejected["workload"][field] = value
             with self.assertRaisesRegex(MODULE.ProtocolError, "accepted worker catalog"):
                 self.state.profiled_project_fingerprint(rejected)
-            self.assertEqual({}, self.state.executions)
+            self.assertNotIn(rejected["dispatchId"], self.state.executions)
 
         foreign = self.profiled_request()
         foreign["workspaceIdentity"] = "remote:ax42-01:work-session:" + str(uuid.uuid4())
         with self.assertRaisesRegex(MODULE.ProtocolError, "persistently registered"):
             self.state.profiled_project_fingerprint(foreign)
-        self.assertEqual({}, self.state.executions)
+        self.assertNotIn(foreign["dispatchId"], self.state.executions)
 
     def test_profiled_fingerprint_rejects_added_operational_authority(self):
         request = self.profiled_request()
@@ -746,7 +754,36 @@ print(json.dumps({
 
         with self.assertRaisesRegex(MODULE.ProtocolError, "fields are invalid"):
             self.state.profiled_project_fingerprint(request)
-        self.assertEqual({}, self.state.executions)
+        self.assertNotIn(request["dispatchId"], self.state.executions)
+
+    def test_profiled_runner_cannot_report_a_different_effective_profile(self):
+        self.runner.write_text(
+            """#!/usr/bin/env python3
+import json
+import sys
+request = json.load(sys.stdin)
+print(json.dumps({
+    "threadId": "f9d68d92-71c6-4fa5-b77b-63863f8f2dc7",
+    "turnId": request["executionId"],
+    "finalAnswer": "bounded fake result",
+    "outputSummary": "project-codex-v2 completed",
+    "modelId": "different-model",
+    "reasoningEffort": request["workload"]["reasoningEffort"],
+    "catalogRevision": request["workload"]["catalogRevision"],
+    "codexVersion": request["workload"]["codexVersion"]
+}))
+""",
+            encoding="utf-8",
+        )
+        self.runner.chmod(0o755)
+        request = self.profiled_request()
+
+        self.state.create(request)
+        terminal = self.wait_terminal(request["dispatchId"])
+
+        self.assertEqual("FAILED", terminal["status"])
+        self.assertEqual("Project runner returned invalid output", terminal["statusReason"])
+        self.assertIsNone(terminal["result"])
 
     def test_disabled_foreign_ambiguous_and_arbitrary_requests_fail_closed(self):
         baseline = self.config.read_bytes()

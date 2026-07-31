@@ -42,6 +42,17 @@ class ProjectCodexContractTest(unittest.TestCase):
             "threadId": thread_id,
         }
 
+    def profiled_workload(self, thread_id=None, effort="high"):
+        workload = self.workload(thread_id)
+        workload.update({
+            "kind": MODULE.PROFILED_CAPABILITY,
+            "modelId": MODULE.CODEX_MODEL,
+            "reasoningEffort": effort,
+            "catalogRevision": MODULE.CODEX_CATALOG_REVISION,
+            "codexVersion": MODULE.CODEX_VERSION,
+        })
+        return workload
+
     def test_request_and_result_schemas_accept_exact_envelopes(self):
         if Draft202012Validator is None:
             self.skipTest("jsonschema is not installed on this worker")
@@ -159,6 +170,47 @@ class ProjectCodexContractTest(unittest.TestCase):
             str(uuid.uuid4()),
         )
         self.assertEqual(["resume", thread_id, "-"], command[-3:])
+
+    def test_profiled_command_uses_only_validated_model_and_effort_flags(self):
+        workload = self.profiled_workload(effort="xhigh")
+        command = MODULE.sandbox_command(
+            workload,
+            Path("/srv/atenea/workspaces/sessions/11111111-1111-4111-8111-111111111111/atenea"),
+            MODULE.GIT_COMMON_DIR,
+            Path("/tmp/atenea-codex-result-test/final.txt"),
+            Path("/tmp/atenea-codex-result-test/resolv.conf"),
+            Path("/tmp/atenea-codex-result-test/empty-instructions"),
+            "reviewed instructions",
+            str(uuid.uuid4()),
+        )
+
+        self.assertEqual(1, command.count("--model"))
+        model_index = command.index("--model")
+        self.assertEqual("gpt-5.6-sol", command[model_index + 1])
+        self.assertIn('model_reasoning_effort="xhigh"', command)
+        self.assertNotIn("--provider", command)
+        self.assertNotIn("--profile", command)
+        self.assertEqual(
+            {
+                "modelId": "gpt-5.6-sol",
+                "reasoningEffort": "xhigh",
+                "catalogRevision": MODULE.CODEX_CATALOG_REVISION,
+                "codexVersion": "0.145.0",
+            },
+            MODULE.effective_profile(workload),
+        )
+
+    def test_profiled_runner_rejects_installed_codex_version_drift(self):
+        workload = self.profiled_workload()
+        accepted = subprocess.CompletedProcess([], 0, "codex-cli 0.145.0\n", "")
+        with patch.object(MODULE.subprocess, "run", return_value=accepted) as run:
+            MODULE.validate_codex_version(workload)
+        self.assertEqual([MODULE.CODEX, "--version"], run.call_args.args[0])
+
+        moved = subprocess.CompletedProcess([], 0, "codex-cli 9.9.9\n", "")
+        with patch.object(MODULE.subprocess, "run", return_value=moved):
+            with self.assertRaises(SystemExit):
+                MODULE.validate_codex_version(workload)
 
     def test_schema_rejects_complete_caller_authority_matrix(self):
         if Draft202012Validator is None:

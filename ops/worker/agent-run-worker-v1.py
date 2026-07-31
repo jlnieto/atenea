@@ -259,7 +259,7 @@ class WorkerState:
             queued = sum(1 for item in self.executions.values() if item["status"] in {"QUEUED", "RECONCILING"})
             capabilities = [SYNTHETIC_CAPABILITY, CODEX_CATALOG_CAPABILITY]
             if self._project_selection_enabled():
-                capabilities.append(PROJECT_CAPABILITY)
+                capabilities.extend([PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY])
             return {
                 "protocolVersion": PROTOCOL,
                 "workerId": self.worker_id,
@@ -1155,11 +1155,6 @@ class WorkerState:
             self._validate_project(request, workload)
         elif workload["kind"] == PROJECT_V2_CAPABILITY:
             self._validate_profiled_project(request, workload)
-            raise ProtocolError(
-                HTTPStatus.CONFLICT,
-                "profile_execution_unavailable",
-                "profiled project execution is not enabled",
-            )
         else:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "unsupported_workload", "workload kind is unsupported")
 
@@ -1441,7 +1436,9 @@ class WorkerState:
                     if execution["cancelRequested"]:
                         self._finish_cancelled(execution)
                         continue
-                    if execution["reconcileRequired"] and execution["workload"]["kind"] == PROJECT_CAPABILITY:
+                    if execution["reconcileRequired"] and execution["workload"]["kind"] in {
+                        PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY,
+                    }:
                         execution["status"] = "FAILED"
                         execution["statusReason"] = (
                             "Restart reconciliation refused to duplicate an uncertain Codex turn"
@@ -1482,14 +1479,14 @@ class WorkerState:
                 execution["status"] = "RUNNING"
                 execution["statusReason"] = (
                     "Exact project Codex execution running"
-                    if execution["workload"]["kind"] == PROJECT_CAPABILITY
+                    if execution["workload"]["kind"] in {PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY}
                     else "Synthetic execution running"
                 )
                 execution["startedAt"] = execution["startedAt"] or utc_now()
                 execution["revision"] += 1
                 execution["updatedAt"] = utc_now()
                 self._persist()
-                if execution["workload"]["kind"] == PROJECT_CAPABILITY:
+                if execution["workload"]["kind"] in {PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY}:
                     request = {
                         "dispatchId": execution["dispatchId"],
                         "executionId": execution["executionId"],
@@ -1632,10 +1629,20 @@ class WorkerState:
         except json.JSONDecodeError:
             self._finish_project(dispatch_id, "FAILED", "Project runner returned invalid output", None)
             return
+        workload = request["workload"]
+        required_result = {"threadId", "turnId", "finalAnswer", "outputSummary"}
+        if workload["kind"] == PROJECT_V2_CAPABILITY:
+            required_result |= {"modelId", "reasoningEffort", "catalogRevision", "codexVersion"}
         if (
             not isinstance(result, dict)
-            or set(result) != {"threadId", "turnId", "finalAnswer", "outputSummary"}
+            or set(result) != required_result
             or not all(isinstance(result[key], str) and result[key] for key in result)
+            or (
+                workload["kind"] == PROJECT_V2_CAPABILITY
+                and any(result[key] != workload[key] for key in (
+                    "modelId", "reasoningEffort", "catalogRevision", "codexVersion"
+                ))
+            )
         ):
             self._finish_project(dispatch_id, "FAILED", "Project runner returned invalid output", None)
             return
