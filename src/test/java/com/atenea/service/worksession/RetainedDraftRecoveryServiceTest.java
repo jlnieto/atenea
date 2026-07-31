@@ -106,7 +106,11 @@ class RetainedDraftRecoveryServiceTest {
         when(sessionBranchService.prepareWorkspaceBranch(any(WorkSessionEntity.class), any()))
                 .thenReturn("atenea/session-22222222-2222-4222-8222-222222222222");
 
-        RecoverDraftWorkSessionResponse response = service.recover(41L);
+        RecoverDraftWorkSessionResponse response = service.recoverExact(
+                41L,
+                retained.getRemoteSessionId(),
+                RETAINED_HEAD,
+                ACCEPTED_COMMIT);
 
         assertEquals(41L, response.blockedSessionId());
         assertEquals(42L, response.replacementSessionId());
@@ -148,6 +152,32 @@ class RetainedDraftRecoveryServiceTest {
         verify(canonicalSourceAdmissionService, never()).admitBeforeWrite(any());
         verify(remoteWorkerClient, never()).fingerprintRetainedDraft(any());
         assertEquals(WorkSessionStatus.OPEN, retained.getStatus());
+    }
+
+    @Test
+    void exactRecoveryRejectsDivergentRetainedHeadBeforePersisting() {
+        WorkSessionEntity retained = retainedSession();
+        when(workSessionRepository.findLockedWithProjectById(41L)).thenReturn(Optional.of(retained));
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                41L,
+                AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        doAnswer(invocation -> {
+            retained.setCanonicalSourceCommit(ACCEPTED_COMMIT);
+            return null;
+        }).when(canonicalSourceAdmissionService).admitBeforeWrite(retained);
+        when(remoteWorkerClient.fingerprintRetainedDraft(retained)).thenReturn(fingerprint(retained));
+
+        assertThrows(
+                WorkSessionOperationBlockedException.class,
+                () -> service.recoverExact(
+                        41L,
+                        retained.getRemoteSessionId(),
+                        "f".repeat(40),
+                        ACCEPTED_COMMIT));
+
+        assertEquals(WorkSessionStatus.OPEN, retained.getStatus());
+        verify(workSessionRepository, never()).save(any());
+        verify(workSessionRepository, never()).saveAndFlush(any());
     }
 
     @Test

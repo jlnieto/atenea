@@ -13,6 +13,7 @@ import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.remoteworker.RemoteWorkerClient;
 import java.time.Instant;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,10 +45,40 @@ public class RetainedDraftRecoveryService {
 
     @Transactional
     public RecoverDraftWorkSessionResponse recover(Long sessionId) {
+        return recover(sessionId, null, null, null);
+    }
+
+    @Transactional
+    public RecoverDraftWorkSessionResponse recoverExact(
+            Long sessionId,
+            UUID expectedRemoteSessionId,
+            String expectedRetainedHead,
+            String expectedAcceptedCommit
+    ) {
+        if (expectedRemoteSessionId == null
+                || expectedRetainedHead == null
+                || expectedAcceptedCommit == null) {
+            throw blocked("Exact retained draft recovery authority is incomplete");
+        }
+        return recover(sessionId, expectedRemoteSessionId, expectedRetainedHead, expectedAcceptedCommit);
+    }
+
+    private RecoverDraftWorkSessionResponse recover(
+            Long sessionId,
+            UUID expectedRemoteSessionId,
+            String expectedRetainedHead,
+            String expectedAcceptedCommit
+    ) {
         WorkSessionEntity retained = workSessionRepository.findLockedWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        if (expectedRemoteSessionId != null
+                && !expectedRemoteSessionId.equals(retained.getRemoteSessionId())) {
+            throw blocked("The retained WorkSession remote identity diverged");
+        }
         if (retained.getStatus() == WorkSessionStatus.DRAFT_BLOCKED) {
-            return persistedResponse(retained);
+            RecoverDraftWorkSessionResponse persisted = persistedResponse(retained);
+            validateExactResult(persisted, expectedRetainedHead, expectedAcceptedCommit);
+            return persisted;
         }
         if (retained.getStatus() != WorkSessionStatus.OPEN
                 || retained.getExecutionTarget() != ExecutionTarget.REMOTE
@@ -63,6 +94,11 @@ public class RetainedDraftRecoveryService {
         RemoteWorkerClient.DraftFingerprint fingerprint =
                 remoteWorkerClient.fingerprintRetainedDraft(retained);
         validateFingerprint(retained, fingerprint);
+        if (expectedRetainedHead != null
+                && (!expectedRetainedHead.equals(fingerprint.retainedHead())
+                || !expectedAcceptedCommit.equals(fingerprint.acceptedCommit()))) {
+            throw blocked("The retained draft fingerprint diverged from exact recovery authority");
+        }
 
         Instant now = Instant.now();
         retained.setStatus(WorkSessionStatus.DRAFT_BLOCKED);
@@ -99,7 +135,22 @@ public class RetainedDraftRecoveryService {
         retained.setUpdatedAt(now);
         workSessionRepository.save(retained);
 
-        return response(retained, fingerprint.acceptedCommit());
+        RecoverDraftWorkSessionResponse result = response(retained, fingerprint.acceptedCommit());
+        validateExactResult(result, expectedRetainedHead, expectedAcceptedCommit);
+        return result;
+    }
+
+    private void validateExactResult(
+            RecoverDraftWorkSessionResponse result,
+            String expectedRetainedHead,
+            String expectedAcceptedCommit
+    ) {
+        if (expectedRetainedHead != null
+                && (!expectedRetainedHead.equals(result.retainedHead())
+                || !expectedAcceptedCommit.equals(result.acceptedCommit())
+                || result.valuesExposed())) {
+            throw blocked("The sanitized recovery result diverged from exact recovery authority");
+        }
     }
 
     private WorkSessionEntity newReplacement(WorkSessionEntity retained, Instant now) {

@@ -2,9 +2,11 @@ package com.atenea.service.worksession;
 
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!retained-draft-recovery-command")
 public class AgentRunStartupReconciliationRunner implements ApplicationRunner {
 
     private final AgentRunReconciliationService agentRunReconciliationService;
