@@ -76,6 +76,12 @@ class CodexSessionOperationsApiIntegrationTest {
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/admin/codex/inventory"))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/codex/workers/ax42-01/inventory"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/admin/codex/update-plans")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -192,6 +198,21 @@ class CodexSessionOperationsApiIntegrationTest {
                 .andExpect(jsonPath("$.managedUpdatesEnabled").value(false))
                 .andExpect(jsonPath("$.workers[0].workerId").value("ax42-01"))
                 .andExpect(jsonPath("$.workers[0].endpoint").doesNotExist());
+
+        mockMvc.perform(get("/api/codex/workers/ax42-01/inventory").with(auth(routine.operator())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workerId").value("ax42-01"))
+                .andExpect(jsonPath("$.installedVersions").isArray())
+                .andExpect(jsonPath("$.compatibilityState").value("WORKER_UNHEALTHY"))
+                .andExpect(jsonPath("$.endpoint").doesNotExist());
+
+        mockMvc.perform(post("/api/admin/codex/update-plans")
+                        .with(auth(admin.operator())).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"operation":"PLAN_CODEX_UPDATE","workerId":"ax42-01",
+                                 "idempotencyKey":"11111111-1111-4111-8111-111111111111"}
+                                """))
+                .andExpect(status().isNotFound());
     }
 
     private RequestPostProcessor auth(OperatorEntity operator) {

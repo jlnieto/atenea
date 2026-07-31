@@ -1,7 +1,6 @@
 package com.atenea.codexoperations;
 
 import com.atenea.auth.AuthenticatedOperator;
-import com.atenea.codexoperations.CodexSessionOperationsService.AdministratorInventoryResponse;
 import com.atenea.codexoperations.CodexSessionOperationsService.CatalogResponse;
 import com.atenea.codexoperations.CodexSessionOperationsService.PreferenceRequest;
 import com.atenea.codexoperations.CodexSessionOperationsService.PreferenceResponse;
@@ -11,6 +10,10 @@ import com.atenea.codexoperations.CodexSessionOperationsService.RecoveryRequest;
 import com.atenea.codexoperations.CodexSessionOperationsService.RecoveryResponse;
 import com.atenea.codexoperations.CodexSessionOperationsService.RunDetailResponse;
 import com.atenea.codexoperations.CodexSessionOperationsService.SettingsResponse;
+import com.atenea.codexoperations.ManagedCodexUpdateService.AdministratorInventoryResponse;
+import com.atenea.codexoperations.ManagedCodexUpdateService.UpdatePlanRequest;
+import com.atenea.codexoperations.ManagedCodexUpdateService.UpdatePlanResponse;
+import com.atenea.codexoperations.ManagedCodexUpdateService.WorkerInventoryResponse;
 import java.util.List;
 import java.util.Set;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -30,12 +33,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class CodexSessionOperationsController {
 
     private final CodexSessionOperationsService service;
+    private final ManagedCodexUpdateService managedUpdateService;
     private final ObjectMapper objectMapper;
 
     public CodexSessionOperationsController(
             CodexSessionOperationsService service,
+            ManagedCodexUpdateService managedUpdateService,
             ObjectMapper objectMapper) {
         this.service = service;
+        this.managedUpdateService = managedUpdateService;
         this.objectMapper = objectMapper;
     }
 
@@ -108,7 +114,27 @@ public class CodexSessionOperationsController {
     @GetMapping("/api/admin/codex/inventory")
     public AdministratorInventoryResponse administratorInventory(
             @AuthenticationPrincipal AuthenticatedOperator operator) {
-        return service.administratorInventory(operator);
+        return managedUpdateService.administratorInventory(operator);
+    }
+
+    @GetMapping("/api/codex/workers/{workerId}/inventory")
+    public WorkerInventoryResponse workerInventory(@PathVariable String workerId) {
+        return managedUpdateService.workerInventory(workerId);
+    }
+
+    @PostMapping("/api/admin/codex/update-plans")
+    public UpdatePlanResponse createUpdatePlan(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @RequestBody JsonNode request) {
+        return managedUpdateService.createUpdatePlan(operator, closed(request, UpdatePlanRequest.class,
+                Set.of("operation", "workerId", "idempotencyKey")));
+    }
+
+    @GetMapping("/api/admin/codex/update-plans/{planId}")
+    public UpdatePlanResponse updatePlan(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable java.util.UUID planId) {
+        return managedUpdateService.updatePlan(operator, planId);
     }
 
     private <T> T closed(JsonNode node, Class<T> type, Set<String> exactFields) {

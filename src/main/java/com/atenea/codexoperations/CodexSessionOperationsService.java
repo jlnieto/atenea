@@ -1,10 +1,8 @@
 package com.atenea.codexoperations;
 
 import com.atenea.auth.AuthenticatedOperator;
-import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.auth.OperatorPushDeviceEntity;
 import com.atenea.persistence.auth.OperatorPushDeviceRepository;
-import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.notification.NotificationCategory;
 import com.atenea.persistence.notification.NotificationPreferenceEntity;
 import com.atenea.persistence.notification.NotificationPreferenceRepository;
@@ -46,7 +44,6 @@ public class CodexSessionOperationsService {
     private final AgentRunProgressService progressService;
     private final AgentRunRecoveryOperationService recoveryService;
     private final OperatorPushDeviceRepository deviceRepository;
-    private final OperatorRepository operatorRepository;
     private final NotificationPreferenceRepository preferenceRepository;
 
     public CodexSessionOperationsService(
@@ -58,7 +55,6 @@ public class CodexSessionOperationsService {
             AgentRunProgressService progressService,
             AgentRunRecoveryOperationService recoveryService,
             OperatorPushDeviceRepository deviceRepository,
-            OperatorRepository operatorRepository,
             NotificationPreferenceRepository preferenceRepository) {
         this.properties = properties;
         this.jdbcTemplate = jdbcTemplate;
@@ -68,7 +64,6 @@ public class CodexSessionOperationsService {
         this.progressService = progressService;
         this.recoveryService = recoveryService;
         this.deviceRepository = deviceRepository;
-        this.operatorRepository = operatorRepository;
         this.preferenceRepository = preferenceRepository;
     }
 
@@ -242,38 +237,6 @@ public class CodexSessionOperationsService {
         return new PreferenceResponse(request.category().name(), request.enabled(), true);
     }
 
-    @Transactional(readOnly = true)
-    public AdministratorInventoryResponse administratorInventory(AuthenticatedOperator operator) {
-        CodexOperationsRole role = operatorRepository.findById(operator.operatorId())
-                .filter(account -> account.isActive())
-                .map(account -> account.getCodexOperationsRole())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "Active platform administrator required"));
-        if (role != CodexOperationsRole.PLATFORM_ADMINISTRATOR) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Platform administrator role required");
-        }
-        List<WorkerInventoryResponse> workers = jdbcTemplate.query("""
-                SELECT w.id, w.protocol_version, w.enabled, w.healthy,
-                       c.catalog_revision, c.codex_version, c.observed_at
-                  FROM worker_node w
-                  LEFT JOIN LATERAL (
-                    SELECT catalog_revision, codex_version, observed_at
-                      FROM worker_codex_catalog c
-                     WHERE c.worker_id = w.id
-                     ORDER BY generated_at DESC, catalog_revision DESC LIMIT 1
-                  ) c ON TRUE
-                 ORDER BY w.id
-                """, (rs, row) -> new WorkerInventoryResponse(rs.getString("id"),
-                rs.getString("protocol_version"), rs.getBoolean("enabled"),
-                rs.getBoolean("healthy"), rs.getString("catalog_revision"),
-                rs.getString("codex_version"), rs.getTimestamp("observed_at") == null
-                        ? null : rs.getTimestamp("observed_at").toInstant()));
-        return new AdministratorInventoryResponse(properties.isProfilesEnabled(),
-                properties.isProgressEnabled(), properties.isRecoveryEnabled(),
-                properties.isNotificationOutboxEnabled(), properties.isManagedUpdatesEnabled(),
-                List.copyOf(workers));
-    }
-
     private void validateProfile(ProfileRequest request) {
         if (request == null || request.idempotencyKey() == null
                 || request.modelId() == null || request.reasoningEffort() == null
@@ -351,11 +314,4 @@ public class CodexSessionOperationsService {
                                    String summary, String requiredNextAction, Long resultAgentRunId) {}
     public record PreferenceRequest(NotificationCategory category, boolean enabled) {}
     public record PreferenceResponse(String category, boolean enabled, boolean explicit) {}
-    public record WorkerInventoryResponse(String workerId, String protocolVersion, boolean enabled,
-                                          boolean healthy, String catalogRevision, String codexVersion,
-                                          Instant observedAt) {}
-    public record AdministratorInventoryResponse(boolean profilesEnabled, boolean progressEnabled,
-                                                 boolean recoveryEnabled, boolean notificationOutboxEnabled,
-                                                 boolean managedUpdatesEnabled,
-                                                 List<WorkerInventoryResponse> workers) {}
 }

@@ -17,12 +17,12 @@ class CodexSessionOperationsMigrationIntegrationTest {
     @Autowired private CodexSessionOperationsProperties properties;
 
     @Test
-    void appliesV57ThroughV60AdditivelyWithAllCapabilitiesDefaultOff() {
+    void appliesV57ThroughV61AdditivelyWithAllCapabilitiesDefaultOff() {
         List<String> versions = jdbcTemplate.query(
                 "SELECT version FROM flyway_schema_history "
-                        + "WHERE version IN ('57', '58', '59', '60') ORDER BY installed_rank",
+                        + "WHERE version IN ('57', '58', '59', '60', '61') ORDER BY installed_rank",
                 (resultSet, row) -> resultSet.getString(1));
-        assertEquals(List.of("57", "58", "59", "60"), versions);
+        assertEquals(List.of("57", "58", "59", "60", "61"), versions);
 
         for (String table : List.of(
                 "worker_codex_catalog",
@@ -31,7 +31,9 @@ class CodexSessionOperationsMigrationIntegrationTest {
                 "agent_run_progress_event",
                 "agent_run_recovery_operation",
                 "notification_event",
-                "notification_delivery")) {
+                "notification_delivery",
+                "worker_codex_release_inventory",
+                "worker_codex_update_plan")) {
             assertTrue(relationExists(table), table);
         }
 
@@ -52,7 +54,11 @@ class CodexSessionOperationsMigrationIntegrationTest {
                 "uk_agent_run_progress_event_sequence",
                 "uk_agent_run_recovery_idempotency",
                 "uk_notification_event_source",
-                "uk_notification_delivery_owner")) {
+                "uk_notification_delivery_owner",
+                "uk_worker_codex_release_identity",
+                "uk_worker_codex_update_plan_idempotency",
+                "ck_worker_codex_update_plan_impact",
+                "ck_worker_codex_update_plan_projection")) {
             assertTrue(constraintExists(constraint), constraint);
         }
 
