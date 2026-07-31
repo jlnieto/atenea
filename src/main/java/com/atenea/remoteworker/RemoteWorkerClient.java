@@ -170,6 +170,7 @@ public class RemoteWorkerClient {
             case BACKEND_TEST -> Duration.ofMinutes(15);
             case WEB_BUILD -> Duration.ofMinutes(10);
             case ANDROID_BUILD -> Duration.ofMinutes(20);
+            case PLAYWRIGHT_ACCEPTANCE -> Duration.ofMinutes(10);
         };
     }
 

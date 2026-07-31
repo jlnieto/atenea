@@ -130,12 +130,13 @@ class ClosedValidationOperationServiceTest {
     }
 
     @Test
-    void allThreeFixedOperationsProduceValidatedProjectionWithoutPublishing() {
+    void allFourFixedOperationsProduceValidatedProjectionWithoutPublishing() {
         service.run(41L, ValidationOperationKind.BACKEND_TEST);
         service.run(41L, ValidationOperationKind.WEB_BUILD);
         service.run(41L, ValidationOperationKind.ANDROID_BUILD);
+        service.run(41L, ValidationOperationKind.PLAYWRIGHT_ACCEPTANCE);
 
-        assertEquals(3, operations.size());
+        assertEquals(4, operations.size());
         verify(acceptanceService).markValidated(
                 org.mockito.ArgumentMatchers.eq(41L),
                 org.mockito.ArgumentMatchers.eq(TREE),
