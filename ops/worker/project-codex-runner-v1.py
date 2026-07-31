@@ -25,11 +25,29 @@ BASE_COMMIT: str | None = None
 MANIFEST_SHA256 = "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
 CODEX = "/home/jose/.codex/packages/standalone/current/bin/codex"
 GIT_COMMON_DIR = Path("/srv/atenea/repositories/atenea.git")
+INSTRUCTION_BUNDLE_REVISION = "atenea-reviewed-instruction-bundle-v1"
+PLATFORM_INSTRUCTION_PATH = Path(
+    "/usr/local/share/atenea/codex-platform-instructions-v1.md"
+)
+PLATFORM_INSTRUCTION_UID = 0
+PLATFORM_INSTRUCTION_SHA256 = (
+    "44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"
+)
+PROJECT_INSTRUCTION_PATH = "AGENTS.md"
+PROJECT_INSTRUCTION_SHA256 = (
+    "a09adc5855ff54490211a0f5c82f413cb84ee7197b2b350e0b0dc40eba7c98dc"
+)
+INSTRUCTION_BUNDLE_SHA256 = (
+    "ab9f1877c83333945497797e6b8aefd20f67debf8e3bdc6d1b824fc5a3f86c04"
+)
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 REQUEST_KEYS = {"dispatchId", "executionId", "sessionId", "workspaceIdentity", "workload"}
 WORKLOAD_KEYS = {
     "kind", "projectId", "repository", "branch", "commit",
-    "manifestSha256", "message", "threadId",
+    "manifestSha256", "message", "threadId", "instructionBundleRevision",
+    "instructionBundleSha256", "platformInstructionSha256",
+    "projectInstructionPath", "projectInstructionSha256",
 }
 
 
@@ -128,6 +146,11 @@ def validate_request(request: Any, config: dict[str, Any]) -> tuple[dict[str, An
         "repository": REPOSITORY,
         "branch": BRANCH,
         "manifestSha256": MANIFEST_SHA256,
+        "instructionBundleRevision": INSTRUCTION_BUNDLE_REVISION,
+        "instructionBundleSha256": INSTRUCTION_BUNDLE_SHA256,
+        "platformInstructionSha256": PLATFORM_INSTRUCTION_SHA256,
+        "projectInstructionPath": PROJECT_INSTRUCTION_PATH,
+        "projectInstructionSha256": PROJECT_INSTRUCTION_SHA256,
     }
     if (
         not isinstance(workload, dict)
@@ -222,12 +245,73 @@ def validate_worktree(worktree: Path, record: dict[str, Any]) -> Path:
     return common_dir
 
 
+def validate_instruction_bundle(worktree: Path) -> str:
+    project_path = worktree / PROJECT_INSTRUCTION_PATH
+    forbidden = (
+        worktree / "AGENTS.override.md",
+        worktree / ".codex",
+    )
+    try:
+        platform_stat = PLATFORM_INSTRUCTION_PATH.stat()
+        project_stat = project_path.stat()
+        platform = PLATFORM_INSTRUCTION_PATH.read_bytes()
+        project = project_path.read_bytes()
+    except OSError:
+        reject("instruction bundle rejected")
+    if (
+        not PLATFORM_INSTRUCTION_PATH.is_file()
+        or PLATFORM_INSTRUCTION_PATH.is_symlink()
+        or platform_stat.st_uid != PLATFORM_INSTRUCTION_UID
+        or platform_stat.st_mode & 0o022
+        or not project_path.is_file()
+        or project_path.is_symlink()
+        or project_stat.st_size == 0
+        or project_stat.st_size > 32_768
+        or any(path.exists() or path.is_symlink() for path in forbidden)
+        or hashlib.sha256(platform).hexdigest() != PLATFORM_INSTRUCTION_SHA256
+        or hashlib.sha256(project).hexdigest() != PROJECT_INSTRUCTION_SHA256
+    ):
+        reject("instruction bundle rejected")
+    try:
+        tracked = subprocess.run(
+            ["git", "-c", f"safe.directory={worktree}", "cat-file", "blob",
+             "HEAD:" + PROJECT_INSTRUCTION_PATH],
+            cwd=worktree,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        reject("instruction bundle rejected")
+    if tracked != project:
+        reject("instruction bundle rejected")
+    fingerprint = hashlib.sha256(
+        INSTRUCTION_BUNDLE_REVISION.encode("ascii")
+        + b"\0" + platform + b"\0" + project
+    ).hexdigest()
+    if fingerprint != INSTRUCTION_BUNDLE_SHA256:
+        reject("instruction bundle rejected")
+    try:
+        return (
+            platform.decode("utf-8")
+            + "\n\n# Reviewed repository contract: "
+            + PROJECT_INSTRUCTION_PATH
+            + "\n\n"
+            + project.decode("utf-8")
+        )
+    except UnicodeDecodeError:
+        reject("instruction bundle rejected")
+
+
 def sandbox_command(
     workload: dict[str, Any],
     worktree: Path,
     common_dir: Path,
     final_path: Path,
     resolv_path: Path,
+    instruction_mask_path: Path,
+    instruction_bundle: str,
     execution_id: str,
 ) -> list[str]:
     command = [
@@ -274,10 +358,13 @@ def sandbox_command(
         "--ro-bind", "/etc/group", "/etc/group",
         "--dir", "/home", "--dir", "/home/jose",
         "--bind", "/home/jose/.codex", "/home/jose/.codex",
+        "--ro-bind", str(instruction_mask_path), "/home/jose/.codex/AGENTS.md",
+        "--ro-bind", str(instruction_mask_path), "/home/jose/.codex/AGENTS.override.md",
         "--dir", "/srv", "--dir", "/srv/atenea", "--dir", "/srv/atenea/workspaces",
         "--dir", "/srv/atenea/workspaces/sessions",
         "--dir", str(worktree.parent),
         "--bind", str(worktree), str(worktree),
+        "--ro-bind", str(instruction_mask_path), str(worktree / PROJECT_INSTRUCTION_PATH),
         "--dir", "/srv/atenea/repositories",
         "--bind", str(common_dir), str(common_dir),
         "--setenv", "HOME", "/home/jose",
@@ -290,6 +377,7 @@ def sandbox_command(
         "--chdir", str(worktree),
         CODEX, "exec",
         "--ignore-user-config", "--ignore-rules",
+        "--config", "developer_instructions=" + json.dumps(instruction_bundle),
         # The reviewed Bubblewrap namespace is the workspace-write boundary.
         # A second Codex Bubblewrap namespace is unsupported by this kernel.
         "--sandbox", "danger-full-access",
@@ -307,6 +395,7 @@ def execute(
     workload: dict[str, Any],
     worktree: Path,
     common_dir: Path,
+    instruction_bundle: str,
     execution_id: str,
     timeout: int,
 ) -> dict[str, str]:
@@ -319,15 +408,21 @@ def execute(
         os.chown(temporary, jose.pw_uid, jose.pw_gid)
         final_path = Path(temporary) / "final.txt"
         resolv_path = Path(temporary) / "resolv.conf"
+        instruction_mask_path = Path(temporary) / "empty-instructions"
         resolv_path.write_text("nameserver 1.1.1.1\noptions timeout:2 attempts:2\n", encoding="ascii")
+        instruction_mask_path.write_bytes(b"")
         os.chmod(resolv_path, 0o600)
+        os.chmod(instruction_mask_path, 0o600)
         os.chown(resolv_path, jose.pw_uid, jose.pw_gid)
+        os.chown(instruction_mask_path, jose.pw_uid, jose.pw_gid)
         command = sandbox_command(
             workload,
             worktree,
             common_dir,
             final_path,
             resolv_path,
+            instruction_mask_path,
+            instruction_bundle,
             execution_id,
         )
         process = subprocess.Popen(
@@ -399,8 +494,16 @@ def main() -> int:
     workload, worktree = validate_request(request, config)
     record = config["workspaces"][request["workspaceIdentity"]]
     common_dir = validate_worktree(worktree, record)
+    instruction_bundle = validate_instruction_bundle(worktree)
     try:
-        result = execute(workload, worktree, common_dir, request["executionId"], args.timeout)
+        result = execute(
+            workload,
+            worktree,
+            common_dir,
+            instruction_bundle,
+            request["executionId"],
+            args.timeout,
+        )
     except SystemExit:
         raise
     except Exception as exception:

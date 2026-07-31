@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import subprocess
 import tempfile
 import unittest
 import uuid
@@ -32,6 +33,11 @@ class ProjectCodexContractTest(unittest.TestCase):
             "branch": MODULE.BRANCH,
             "commit": TEST_COMMIT,
             "manifestSha256": MODULE.MANIFEST_SHA256,
+            "instructionBundleRevision": MODULE.INSTRUCTION_BUNDLE_REVISION,
+            "instructionBundleSha256": MODULE.INSTRUCTION_BUNDLE_SHA256,
+            "platformInstructionSha256": MODULE.PLATFORM_INSTRUCTION_SHA256,
+            "projectInstructionPath": MODULE.PROJECT_INSTRUCTION_PATH,
+            "projectInstructionSha256": MODULE.PROJECT_INSTRUCTION_SHA256,
             "message": "Update only the accepted documentation fixture.",
             "threadId": thread_id,
         }
@@ -91,11 +97,13 @@ class ProjectCodexContractTest(unittest.TestCase):
         common = MODULE.GIT_COMMON_DIR
         final = Path("/tmp/atenea-codex-result-test/final.txt")
         resolv = Path("/tmp/atenea-codex-result-test/resolv.conf")
+        instruction_mask = Path("/tmp/atenea-codex-result-test/empty-instructions")
         execution_id = str(uuid.uuid4())
         workload = self.workload()
         workload["message"] = "SECRET_PROMPT_MUST_NOT_APPEAR_IN_ARGV"
         command = MODULE.sandbox_command(
-            workload, worktree, common, final, resolv, execution_id
+            workload, worktree, common, final, resolv, instruction_mask,
+            "reviewed instructions", execution_id
         )
         joined = "\n".join(command)
         self.assertNotIn(workload["message"], joined)
@@ -103,6 +111,9 @@ class ProjectCodexContractTest(unittest.TestCase):
         self.assertIn(str(common), command)
         self.assertIn("/srv/atenea/repositories", command)
         self.assertIn("/home/jose/.codex", command)
+        self.assertIn("developer_instructions=\"reviewed instructions\"", command)
+        self.assertEqual(3, command.count(str(instruction_mask)))
+        self.assertIn(str(worktree / "AGENTS.md"), command)
         self.assertIn("Group=atenea", command)
         self.assertIn("danger-full-access", command)
         self.assertNotIn("workspace-write", command)
@@ -126,7 +137,12 @@ class ProjectCodexContractTest(unittest.TestCase):
         ):
             self.assertIn(denied, command)
         self.assertNotIn("/srv/atenea/workspaces/sessions/", "\n".join(
-            value for value in command if value not in {str(worktree), str(worktree.parent)}
+            value for value in command
+            if value not in {
+                str(worktree),
+                str(worktree.parent),
+                str(worktree / "AGENTS.md"),
+            }
         ))
         self.assertEqual("-", command[-1])
 
@@ -138,6 +154,8 @@ class ProjectCodexContractTest(unittest.TestCase):
             MODULE.GIT_COMMON_DIR,
             Path("/tmp/atenea-codex-result-test/final.txt"),
             Path("/tmp/atenea-codex-result-test/resolv.conf"),
+            Path("/tmp/atenea-codex-result-test/empty-instructions"),
+            "reviewed instructions",
             str(uuid.uuid4()),
         )
         self.assertEqual(["resume", thread_id, "-"], command[-3:])
@@ -180,6 +198,69 @@ class ProjectCodexContractTest(unittest.TestCase):
 
         with self.assertRaises(SystemExit):
             MODULE.validate_request(request, config)
+
+    def test_reviewed_instruction_bundle_is_exact_and_ambient_sources_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            worktree = root / "worktree"
+            platform = root / "platform.md"
+            worktree.mkdir()
+            platform.write_text("platform contract\n", encoding="utf-8")
+            platform.chmod(0o644)
+            agents = worktree / "AGENTS.md"
+            agents.write_text("repository contract\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=worktree, check=True)
+            subprocess.run(["git", "config", "user.name", "Contract test"], cwd=worktree, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "contract@atenea.invalid"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(["git", "add", "AGENTS.md"], cwd=worktree, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "instructions"], cwd=worktree, check=True)
+            old = (
+                MODULE.PLATFORM_INSTRUCTION_PATH,
+                MODULE.PLATFORM_INSTRUCTION_UID,
+                MODULE.PLATFORM_INSTRUCTION_SHA256,
+                MODULE.PROJECT_INSTRUCTION_SHA256,
+                MODULE.INSTRUCTION_BUNDLE_SHA256,
+            )
+            platform_bytes = platform.read_bytes()
+            project_bytes = agents.read_bytes()
+            MODULE.PLATFORM_INSTRUCTION_PATH = platform
+            MODULE.PLATFORM_INSTRUCTION_UID = platform.stat().st_uid
+            MODULE.PLATFORM_INSTRUCTION_SHA256 = hashlib.sha256(platform_bytes).hexdigest()
+            MODULE.PROJECT_INSTRUCTION_SHA256 = hashlib.sha256(project_bytes).hexdigest()
+            MODULE.INSTRUCTION_BUNDLE_SHA256 = hashlib.sha256(
+                MODULE.INSTRUCTION_BUNDLE_REVISION.encode("ascii")
+                + b"\0" + platform_bytes + b"\0" + project_bytes
+            ).hexdigest()
+            try:
+                bundle = MODULE.validate_instruction_bundle(worktree)
+                self.assertIn("platform contract", bundle)
+                self.assertIn("repository contract", bundle)
+
+                (worktree / "AGENTS.override.md").write_text("ambient\n", encoding="utf-8")
+                with self.assertRaises(SystemExit):
+                    MODULE.validate_instruction_bundle(worktree)
+                (worktree / "AGENTS.override.md").unlink()
+
+                (worktree / ".codex").mkdir()
+                with self.assertRaises(SystemExit):
+                    MODULE.validate_instruction_bundle(worktree)
+                (worktree / ".codex").rmdir()
+
+                agents.write_text("changed contract\n", encoding="utf-8")
+                with self.assertRaises(SystemExit):
+                    MODULE.validate_instruction_bundle(worktree)
+            finally:
+                (
+                    MODULE.PLATFORM_INSTRUCTION_PATH,
+                    MODULE.PLATFORM_INSTRUCTION_UID,
+                    MODULE.PLATFORM_INSTRUCTION_SHA256,
+                    MODULE.PROJECT_INSTRUCTION_SHA256,
+                    MODULE.INSTRUCTION_BUNDLE_SHA256,
+                ) = old
 
     def test_exact_head_cleanliness_and_mirror_move_fail_closed(self):
         with tempfile.TemporaryDirectory() as temporary:

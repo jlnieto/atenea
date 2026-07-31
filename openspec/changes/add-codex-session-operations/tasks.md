@@ -7,7 +7,7 @@
 - [x] 0.5 Implement closed idempotent backend, web and Android validation operations with fixed definitions, finite timeouts and no caller Docker/socket/secret authority
 - [x] 0.6 Implement closed Playwright data, DOM and visual validation at `1440x900` and `390x844` with browser cleanup and sanitized screenshots
 - [x] 0.7 Add exact multi-repository WorkSession roles for Atenea code, programme OpenSpec and worker source with separate worktrees, permissions, validation and linked readiness
-- [ ] 0.8 Replace silent rule ignoring with a fingerprinted reviewed platform/project instruction bundle while continuing to reject ambient user configuration
+- [x] 0.8 Replace silent rule ignoring with a fingerprinted reviewed platform/project instruction bundle while continuing to reject ambient user configuration
 - [ ] 0.9 Prove fail-closed denial for arbitrary commands, images, compose files, environments, paths, hosts, slots, endpoints, credentials, repositories, rule sources and foreign ownership
 - [ ] 0.10 Run the foundation suites twice, seal sanitized evidence and create the new current Atenea WorkSession before permitting task 1.1
 

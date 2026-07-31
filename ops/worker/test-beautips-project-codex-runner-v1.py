@@ -64,6 +64,11 @@ class BeautipsProjectCodexRunnerTest(unittest.TestCase):
                 "manifestSha256": (
                     "365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82"
                 ),
+                "instructionBundleRevision": BASE.INSTRUCTION_BUNDLE_REVISION,
+                "instructionBundleSha256": BASE.INSTRUCTION_BUNDLE_SHA256,
+                "platformInstructionSha256": BASE.PLATFORM_INSTRUCTION_SHA256,
+                "projectInstructionPath": BASE.PROJECT_INSTRUCTION_PATH,
+                "projectInstructionSha256": BASE.PROJECT_INSTRUCTION_SHA256,
                 "message": "Add one deterministic acceptance note.",
                 "threadId": None,
             },
@@ -78,6 +83,14 @@ class BeautipsProjectCodexRunnerTest(unittest.TestCase):
         )
         self.assertEqual(
             Path("/srv/atenea/repositories/beautips.git"), BASE.GIT_COMMON_DIR
+        )
+        self.assertEqual(
+            "0e06aa861b11e324610f3a7cd7aef1bff3c2712d7b838a052bb5748542c8e1c7",
+            BASE.PROJECT_INSTRUCTION_SHA256,
+        )
+        self.assertEqual(
+            "6e5affe84ca7e300c1c3f0907056013820999699d84fd0e491add924ad685b60",
+            BASE.INSTRUCTION_BUNDLE_SHA256,
         )
         self.assertEqual(str(SCRIPT.resolve()), BASE.__file__)
 
@@ -165,6 +178,8 @@ class BeautipsProjectCodexRunnerTest(unittest.TestCase):
             common,
             result_root / "final.txt",
             result_root / "resolv.conf",
+            result_root / "empty-instructions",
+            "reviewed Beautips instructions",
             EXECUTION,
         )
         joined = "\\n".join(command)

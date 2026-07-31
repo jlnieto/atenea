@@ -4716,3 +4716,44 @@ Sanitized task-0.7 evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.7-multi-repository-roles`;
 the SHA-256 of its `SHA256SUMS` is
 `de64f78e63956ff9c466ed185700a8454b300c61e7d58b60fd7fd81d3f469022`.
+
+Task 0.8 is complete and change progress is `8/57`; the exact resume point is
+task 0.9.
+
+Every new exact remote project AgentRun now persists the reviewed instruction
+bundle revision, combined SHA-256, platform-source SHA-256, fixed
+`AGENTS.md` path and repository-source SHA-256 before dispatch. Atenea and
+Beautips have separate project and combined fingerprints while sharing one
+root-owned platform policy. Historical runs remain truthful rather than being
+backfilled with an instruction identity they did not execute.
+
+The worker accepts only the project-specific closed fingerprints. The runner
+independently verifies the root-owned, non-writable platform file and compares
+the worktree bytes of `AGENTS.md` with both the expected SHA-256 and
+`HEAD:AGENTS.md` from the exact accepted commit. A changed file,
+`AGENTS.override.md`, repository `.codex` content, missing source, unsafe
+ownership or any conflicting fingerprint blocks before Codex starts.
+
+Inside the reviewed Bubblewrap namespace, global `AGENTS.md` and
+`AGENTS.override.md` plus automatic repository instruction discovery are
+masked. The verified platform and repository contents are instead injected as
+one explicit developer-instruction bundle. `--ignore-user-config` continues to
+exclude personal configuration and `--ignore-rules` excludes ambient
+exec-policy rules. The request has no instruction content, rule-source path,
+configuration fragment or override authority.
+
+Two backend passes each ran 441 tests with zero failures, errors or skips and
+migrated empty PostgreSQL databases through all 56 Flyway migrations. Each of
+two worker rounds passed 26 AgentRun-worker tests, 9 instruction-runner tests,
+4 Beautips adapter tests, 5 Beautips mediator tests and the synthetic install
+lifecycle. Python compilation, shell syntax, JSON parsing, immutable source
+hashes, diff checks and strict OpenSpec validation passed.
+
+No worker installation, real AgentRun, deployment, production, routing,
+preview or Beautips resource changed. The installed worker and deliberately
+stale mirror remain unchanged for the later foundation rollout gate.
+
+Sanitized task-0.8 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.8-reviewed-instruction-bundle`;
+the SHA-256 of its `SHA256SUMS` is
+`de0d49bf0d2f9d7880401273d8e269c8bdd5b5948677aca6f0d28e812b497631`.

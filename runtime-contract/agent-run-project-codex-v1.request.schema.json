@@ -28,6 +28,11 @@
         "branch",
         "commit",
         "manifestSha256",
+        "instructionBundleRevision",
+        "instructionBundleSha256",
+        "platformInstructionSha256",
+        "projectInstructionPath",
+        "projectInstructionSha256",
         "message",
         "threadId"
       ],
@@ -38,6 +43,11 @@
         "branch": {"const": "feature/actualizar-conversacion-en-web"},
         "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "manifestSha256": {"const": "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"},
+        "instructionBundleRevision": {"const": "atenea-reviewed-instruction-bundle-v1"},
+        "instructionBundleSha256": {"const": "ab9f1877c83333945497797e6b8aefd20f67debf8e3bdc6d1b824fc5a3f86c04"},
+        "platformInstructionSha256": {"const": "44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"},
+        "projectInstructionPath": {"const": "AGENTS.md"},
+        "projectInstructionSha256": {"const": "a09adc5855ff54490211a0f5c82f413cb84ee7197b2b350e0b0dc40eba7c98dc"},
         "message": {"type": "string", "minLength": 1, "maxLength": 20000},
         "threadId": {"type": ["string", "null"], "format": "uuid"}
       }

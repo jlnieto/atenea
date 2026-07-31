@@ -34,7 +34,9 @@ CREATE_KEYS = {
 SYNTHETIC_WORKLOAD_KEYS = {"kind", "message", "durationMs", "steps"}
 PROJECT_WORKLOAD_KEYS = {
     "kind", "projectId", "repository", "branch", "commit",
-    "manifestSha256", "message", "threadId",
+    "manifestSha256", "message", "threadId", "instructionBundleRevision",
+    "instructionBundleSha256", "platformInstructionSha256",
+    "projectInstructionPath", "projectInstructionSha256",
 }
 WORKSPACE_ENSURE_KEYS = {
     "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
@@ -66,6 +68,11 @@ PROJECT_ID = "atenea"
 PROJECT_REPOSITORY = "https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH = "feature/actualizar-conversacion-en-web"
 PROJECT_MANIFEST_SHA256 = "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
+INSTRUCTION_BUNDLE_REVISION = "atenea-reviewed-instruction-bundle-v1"
+PLATFORM_INSTRUCTION_SHA256 = "44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"
+PROJECT_INSTRUCTION_PATH = "AGENTS.md"
+ATENEA_PROJECT_INSTRUCTION_SHA256 = "a09adc5855ff54490211a0f5c82f413cb84ee7197b2b350e0b0dc40eba7c98dc"
+ATENEA_INSTRUCTION_BUNDLE_SHA256 = "ab9f1877c83333945497797e6b8aefd20f67debf8e3bdc6d1b824fc5a3f86c04"
 PROJECT_MIRROR = Path("/srv/atenea/repositories/atenea.git")
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 BEAUTIPS_PROJECT_ID = "beautips"
@@ -75,6 +82,8 @@ BEAUTIPS_PROJECT_COMMIT = "e9e0b3c319c518363d4135f5378ebbddced96dfb"
 BEAUTIPS_PROJECT_MANIFEST_SHA256 = (
     "365f1c66c51c9018c2c6f48deddbaa619b4588cae2dd463dcd916cde884e2e82"
 )
+BEAUTIPS_PROJECT_INSTRUCTION_SHA256 = "0e06aa861b11e324610f3a7cd7aef1bff3c2712d7b838a052bb5748542c8e1c7"
+BEAUTIPS_INSTRUCTION_BUNDLE_SHA256 = "6e5affe84ca7e300c1c3f0907056013820999699d84fd0e491add924ad685b60"
 
 
 def utc_now() -> str:
@@ -1147,7 +1156,11 @@ class WorkerState:
                 "canonical_source_moved",
                 "worker mirror canonical source moved before admission",
             )
-        exact = {**route["identity"], "commit": config["commit"]}
+        exact = {
+            **route["identity"],
+            **route["instructions"],
+            "commit": config["commit"],
+        }
         if any(workload.get(key) != value for key, value in exact.items()):
             raise ProtocolError(HTTPStatus.FORBIDDEN, "project_ownership_conflict", "project identity is not allowlisted")
         if not isinstance(workload["message"], str) or not (1 <= len(workload["message"]) <= 20_000):
@@ -1195,6 +1208,13 @@ class WorkerState:
                     "branch": PROJECT_BRANCH,
                     "manifestSha256": PROJECT_MANIFEST_SHA256,
                 },
+                "instructions": {
+                    "instructionBundleRevision": INSTRUCTION_BUNDLE_REVISION,
+                    "instructionBundleSha256": ATENEA_INSTRUCTION_BUNDLE_SHA256,
+                    "platformInstructionSha256": PLATFORM_INSTRUCTION_SHA256,
+                    "projectInstructionPath": PROJECT_INSTRUCTION_PATH,
+                    "projectInstructionSha256": ATENEA_PROJECT_INSTRUCTION_SHA256,
+                },
             }
         if project_id == BEAUTIPS_PROJECT_ID:
             return {
@@ -1207,6 +1227,13 @@ class WorkerState:
                     "branch": BEAUTIPS_PROJECT_BRANCH,
                     "commit": BEAUTIPS_PROJECT_COMMIT,
                     "manifestSha256": BEAUTIPS_PROJECT_MANIFEST_SHA256,
+                },
+                "instructions": {
+                    "instructionBundleRevision": INSTRUCTION_BUNDLE_REVISION,
+                    "instructionBundleSha256": BEAUTIPS_INSTRUCTION_BUNDLE_SHA256,
+                    "platformInstructionSha256": PLATFORM_INSTRUCTION_SHA256,
+                    "projectInstructionPath": PROJECT_INSTRUCTION_PATH,
+                    "projectInstructionSha256": BEAUTIPS_PROJECT_INSTRUCTION_SHA256,
                 },
             }
         return None

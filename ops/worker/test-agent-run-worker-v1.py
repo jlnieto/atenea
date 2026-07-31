@@ -650,6 +650,11 @@ print(json.dumps({
                 "branch": MODULE.PROJECT_BRANCH,
                 "commit": TEST_COMMIT,
                 "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+                "instructionBundleRevision": MODULE.INSTRUCTION_BUNDLE_REVISION,
+                "instructionBundleSha256": MODULE.ATENEA_INSTRUCTION_BUNDLE_SHA256,
+                "platformInstructionSha256": MODULE.PLATFORM_INSTRUCTION_SHA256,
+                "projectInstructionPath": MODULE.PROJECT_INSTRUCTION_PATH,
+                "projectInstructionSha256": MODULE.ATENEA_PROJECT_INSTRUCTION_SHA256,
                 "message": message,
                 "threadId": thread_id,
             },
@@ -681,6 +686,9 @@ print(json.dumps({
         for mutate in (
             lambda request: request["workload"].__setitem__("projectId", "beautips"),
             lambda request: request["workload"].__setitem__("command", "id"),
+            lambda request: request["workload"].__setitem__(
+                "instructionBundleSha256", "f" * 64
+            ),
             lambda request: request.__setitem__("workspaceIdentity", "remote:foreign"),
         ):
             request = self.request()
@@ -761,6 +769,8 @@ print(json.dumps({
             "branch": MODULE.BEAUTIPS_PROJECT_BRANCH,
             "commit": MODULE.BEAUTIPS_PROJECT_COMMIT,
             "manifestSha256": MODULE.BEAUTIPS_PROJECT_MANIFEST_SHA256,
+            "instructionBundleSha256": MODULE.BEAUTIPS_INSTRUCTION_BUNDLE_SHA256,
+            "projectInstructionSha256": MODULE.BEAUTIPS_PROJECT_INSTRUCTION_SHA256,
         })
         accepted, created = self.state.create(exact)
         self.assertTrue(created)

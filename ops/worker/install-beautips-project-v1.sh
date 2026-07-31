@@ -49,13 +49,13 @@ BASE_RUNNER="${LIBEXEC}/project-codex-runner-v1.py"
 INSTALLED_INSTALLER="${LIBEXEC}/install-beautips-project-v1.sh"
 
 declare -A HASHES=(
-  [beautips-operation-mediator-v1.py]='a4ca6dc559ccf92868fe85d6419a674cc069d5da186365f4d269870748fe331c'
-  [beautips-project-codex-runner-v1.py]='55e8f585e19f6a19d3c51aaf7532b1cf0f74f6b087ae0d1ef67faaea3029b73b'
+  [beautips-operation-mediator-v1.py]='3aa4aa2491250568eb32291e6232a30a0b4a113a17f1a4cc3541f42734a068f0'
+  [beautips-project-codex-runner-v1.py]='08df2896f29ab0c0456a22a5aae68414f6e2cabc15e6ddc36912e107c5b4bfde'
   [beautips-secret-boundary-v1.py]='6f79b5f4cfae1924a479d541e4189c3db9cc8abcb0357a38603bdc7d7d4d21b1'
   [beautips-runtime-operations-v1.json]='a334708bb1a052b413f7b3068408d17472099a439d7afb6117d4d86dce342350'
-  [project-codex-allowlist-v1.json]='696a00eae3d35f9e54d3eebc55441252705c982dc19adb0aa9aa7aecd59a61b0'
+  [project-codex-allowlist-v1.json]='d328ca008fd43d187d8891b4ccfa4cc681da7ed0b758907d8c20bed181b91f64'
 )
-BASE_RUNNER_SHA256='de84b0c96908677e334184b9290691a2116b963dd37483022f97a0fd57ed44d1'
+BASE_RUNNER_SHA256='ea5161905a005accc88d96f3e54687f3c2759384e5a242d27400ee9b40a04e41'
 
 source_path() {
   printf '%s/%s\n' "${SCRIPT_DIR}" "$1"

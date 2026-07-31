@@ -13,6 +13,7 @@ VALIDATION_MEDIATOR="/usr/local/libexec/atenea/atenea-validation-v1.sh"
 PLAYWRIGHT_VALIDATOR="/usr/local/libexec/atenea/atenea-playwright-validation-v1.sh"
 PLAYWRIGHT_CHECK="/usr/local/libexec/atenea/atenea-playwright-validation-v1.js"
 ROLE_MEDIATOR="/usr/local/libexec/atenea/atenea-multi-repository-v1.sh"
+PLATFORM_INSTRUCTIONS="/usr/local/share/atenea/codex-platform-instructions-v1.md"
 INSTALLER="/usr/local/libexec/atenea/install-agent-run-worker-v1.sh"
 ENV_FILE="/etc/atenea-worker/agent-run-worker-v1.env"
 TOKEN_FILE="/etc/atenea-worker/agent-run-worker-v1.token"
@@ -49,6 +50,7 @@ validate_inputs() {
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.sh" ]] || fail "Playwright validator is missing"
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.js" ]] || fail "Playwright check is missing"
   [[ -f "$SCRIPT_DIR/atenea-multi-repository-v1.sh" ]] || fail "repository role mediator is missing"
+  [[ -f "$SCRIPT_DIR/codex-platform-instructions-v1.md" ]] || fail "platform instructions are missing"
   [[ -f "$SCRIPT_DIR/templates/$SERVICE" ]] || fail "systemd template is missing"
 }
 
@@ -135,12 +137,15 @@ apply_install() {
   [[ -n "$bind" ]] || fail "tailscale0 has no global IPv4 address"
 
   install -d -o root -g root -m 0755 /usr/local/libexec/atenea
+  install -d -o root -g root -m 0755 /usr/local/share/atenea
   install -o root -g root -m 0755 "$SCRIPT_DIR/agent-run-worker-v1.py" "$PROGRAM"
   install -o root -g root -m 0755 "$SCRIPT_DIR/project-codex-runner-v1.py" "$PROJECT_RUNNER"
   install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-validation-v1.sh" "$VALIDATION_MEDIATOR"
   install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-playwright-validation-v1.sh" "$PLAYWRIGHT_VALIDATOR"
   install -o root -g root -m 0644 "$SCRIPT_DIR/atenea-playwright-validation-v1.js" "$PLAYWRIGHT_CHECK"
   install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-multi-repository-v1.sh" "$ROLE_MEDIATOR"
+  install -o root -g root -m 0644 \
+    "$SCRIPT_DIR/codex-platform-instructions-v1.md" "$PLATFORM_INSTRUCTIONS"
   id atenea-program-role >/dev/null 2>&1 || useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin atenea-program-role
   id atenea-worker-role >/dev/null 2>&1 || useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin atenea-worker-role
   install -o root -g root -m 0755 "$SCRIPT_DIR/install-agent-run-worker-v1.sh" "$INSTALLER"
@@ -222,6 +227,11 @@ verify() {
       && "$(sha256sum "$ROLE_MEDIATOR" | cut -d' ' -f1)" \
         == "$(sha256sum "$SCRIPT_DIR/atenea-multi-repository-v1.sh" | cut -d' ' -f1)" ]] \
     || fail "repository role mediator differs from the reviewed source"
+  [[ -f "$PLATFORM_INSTRUCTIONS" && ! -L "$PLATFORM_INSTRUCTIONS" \
+      && "$(stat -c '%a:%U:%G' "$PLATFORM_INSTRUCTIONS")" == "644:root:root" \
+      && "$(sha256sum "$PLATFORM_INSTRUCTIONS" | cut -d' ' -f1)" \
+        == "$(sha256sum "$SCRIPT_DIR/codex-platform-instructions-v1.md" | cut -d' ' -f1)" ]] \
+    || fail "platform instructions differ from the reviewed source"
   [[ "$(getent passwd atenea-program-role | cut -d: -f7)" == /usr/sbin/nologin ]] \
     || fail "programme role identity is unavailable or interactive"
   [[ "$(getent passwd atenea-worker-role | cut -d: -f7)" == /usr/sbin/nologin ]] \
