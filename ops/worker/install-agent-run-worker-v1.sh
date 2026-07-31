@@ -26,6 +26,8 @@ PROJECT_MANIFEST_SHA256="3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad3080
 PROJECT_MIRROR="/srv/atenea/repositories/atenea.git"
 PROJECT_REF="refs/remotes/origin/${PROJECT_BRANCH}"
 PROJECT_WORKSPACES_ROOT="/srv/atenea/workspaces/sessions"
+SERVICE_TEMPLATE_SHA256="10f6583d72ef919a532b35f139e1daa57640ea688a6be12cb14452ce3ba149b3"
+PLATFORM_INSTRUCTIONS_SHA256="44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -216,7 +218,7 @@ verify() {
     || fail "project configuration ownership or mode is invalid"
   [[ -f "/etc/systemd/system/$SERVICE" \
       && "$(sha256sum "/etc/systemd/system/$SERVICE" | cut -d' ' -f1)" \
-        == "$(sha256sum "$SCRIPT_DIR/templates/$SERVICE" | cut -d' ' -f1)" ]] \
+        == "$SERVICE_TEMPLATE_SHA256" ]] \
     || fail "worker systemd unit differs from the reviewed template"
   [[ -f "$INSTALLER" && ! -L "$INSTALLER" \
       && "$(stat -c '%a:%U:%G' "$INSTALLER")" == "755:root:root" \
@@ -231,7 +233,7 @@ verify() {
   [[ -f "$PLATFORM_INSTRUCTIONS" && ! -L "$PLATFORM_INSTRUCTIONS" \
       && "$(stat -c '%a:%U:%G' "$PLATFORM_INSTRUCTIONS")" == "644:root:root" \
       && "$(sha256sum "$PLATFORM_INSTRUCTIONS" | cut -d' ' -f1)" \
-        == "$(sha256sum "$SCRIPT_DIR/codex-platform-instructions-v1.md" | cut -d' ' -f1)" ]] \
+        == "$PLATFORM_INSTRUCTIONS_SHA256" ]] \
     || fail "platform instructions differ from the reviewed source"
   [[ "$(getent passwd atenea-program-role | cut -d: -f7)" == /usr/sbin/nologin ]] \
     || fail "programme role identity is unavailable or interactive"

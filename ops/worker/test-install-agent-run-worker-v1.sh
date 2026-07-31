@@ -25,6 +25,11 @@ source "${SCRIPT_DIR}/install-agent-run-worker-v1.sh"
 require_root() { :; }
 chown() { :; }
 
+[[ "$(sha256sum "${SCRIPT_DIR}/templates/atenea-agent-run-worker-v1.service" | cut -d' ' -f1)" \
+    == "${SERVICE_TEMPLATE_SHA256}" ]] || fail "service template fingerprint is stale"
+[[ "$(sha256sum "${SCRIPT_DIR}/codex-platform-instructions-v1.md" | cut -d' ' -f1)" \
+    == "${PLATFORM_INSTRUCTIONS_SHA256}" ]] || fail "platform instruction fingerprint is stale"
+
 SESSION_ID=11111111-1111-4111-8111-111111111111
 WORKSPACE_IDENTITY="remote:ax42-01:work-session:${SESSION_ID}"
 WORKTREE="${TEST_ROOT}/srv/atenea/workspaces/sessions/${SESSION_ID}/atenea"
