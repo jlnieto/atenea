@@ -278,6 +278,7 @@ production activation are recorded later in this ledger.
 | D-075 | Give each Android run an in-memory monotonic replay cursor, merge only sequence-keyed durable gaps after foreground resume, reset on run identity change and keep immersive conversation content within system-bar insets. | Replaying from zero can duplicate a mobile timeline after backgrounding, while an edge-to-edge surface without safe insets can hide the very state and action the operator needs to see immediately. | accepted and emulator-verified | Android/operator-experience owners | before changing Android replay cursor lifetime, gap merge or immersive insets |
 | D-076 | Snapshot the independently resolved WorkSession/project/worker model and effort on every future remote AgentRun before durable dispatch, and project that immutable profile onto both its originating and result turns. | A mutable settings view alone cannot prove which profile produced old conversation content; one run-owned snapshot keeps legacy turns compatible while making later setting changes auditable on web and Android. | accepted and web/Android verified | backend/web/Android owners | before changing AgentRun profile snapshot or historical-turn projection semantics |
 | D-077 | Close the operator-experience phase only after one synthetic state matrix proves exact data-to-DOM-to-visible mappings for failed, reconciling and terminal runs with deliberately long canonical identities on web and real Compose. | Unit/build success does not prove that the operator can identify state and act within the first viewport or that long persisted identities remain usable on narrow screens. | accepted and visually verified | web/Android/operator-experience owners | before changing current-run hierarchy, responsive wrapping or visual acceptance viewports |
+| D-078 | Cut over the overlapping legacy run-completed push only when the generic outbox gate is enabled; persist and claim each exact delivery before provider I/O, while leaving non-AgentRun legacy categories untouched. | Dual sending would duplicate user notifications, provider I/O inside the terminal transaction would weaken durability, and forcing PR/billing/close events into the three-category AgentRun schema would invent unsupported ownership. | accepted and persistence-tested | backend/notification owners | before enabling the generic notification gate or extending event ownership beyond AgentRun categories |
 
 ## Deferred decisions and gates
 
@@ -5668,3 +5669,40 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.6-visual-state-matrix`;
 the SHA-256 of its `SHA256SUMS` is
 `9061e47417e1d20341382d2af7f7e5c9f343ae86b611a830e9bbb4162fcd79cc`.
+
+Task 5.1 is complete and change progress is `36/57`; the exact implementation
+resume point is task 5.2. Task 5.2 and all later tasks remain pending.
+
+Atenea commit `cec314dcee8a4b54f6e73fbb3daa6353b80a1d79` introduces the
+generic delivery boundary behind the existing FCM sender. With the outbox gate
+off, the established run-completed path and historical push log are unchanged.
+With the gate on, the same local completion producer instead records one V60
+`RUN_COMPLETED` event and its preference-aware deliveries in the owning
+transaction; it performs no legacy send and creates no legacy log row.
+
+A scheduled dispatcher remains inert unless both the independent outbox gate
+and FCM configuration are ready. It selects bounded pending IDs, locks and
+claims each exact delivery in a short transaction, then performs provider I/O
+outside that transaction and persists `DELIVERED` or a closed failure state.
+Payload construction derives only category, immutable event/template/deep-link
+kind and numeric WorkSession/AgentRun identity from the persisted event. No
+prompt, answer, worker detail or token enters event data or logs.
+
+The initial generic schema normatively owns only AgentRun completion, failure
+and action-required categories. Existing PR-merged, billing-ready and
+close-blocked sends therefore remain on their established compatibility path
+instead of receiving invented AgentRun ownership. Task 5.2 will connect every
+local and remote terminal/action-required transition to the generic producer.
+
+Twenty-eight focused unit and PostgreSQL persistence tests passed with zero
+failures, errors or skips after all 60 migrations were validated. They proved
+gate-off rollback compatibility, gate-on no-double-send cutover, idempotent
+event/device ownership, exact delivery claim/terminal transitions and absence
+of synthetic conversation content. FCM was mocked; no real device or provider
+request was used. The local test container was removed and nothing was
+deployed, enabled, routed or sent.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.1-generic-notification-outbox`;
+the SHA-256 of its `SHA256SUMS` is
+`2e821ec0f51c79d5fec0b3b369556438bf1b214d3791fab965a78aa251b7cea6`.
