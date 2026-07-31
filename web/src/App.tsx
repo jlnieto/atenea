@@ -1968,7 +1968,14 @@ function TurnList({ turns }: { turns: MobileConversationTurn[] }) {
         <li className={`turn turn--${turn.actor.toLowerCase()}`} key={turn.id}>
           <div className="turn__meta">
             <strong>{turn.actor}</strong>
-            <span>{formatRelative(turn.createdAt)}</span>
+            <span>
+              {turn.executionProfile && (
+                <em className="turn__profile">
+                  {turn.executionProfile.modelId} · {turn.executionProfile.reasoningEffort} · Codex {turn.executionProfile.codexVersion}
+                </em>
+              )}
+              {formatRelative(turn.createdAt)}
+            </span>
           </div>
           <Markdown content={turn.messageText} />
         </li>

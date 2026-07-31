@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
@@ -61,6 +62,9 @@ class AgentRunServiceTest {
     @Mock
     private WorkSessionAcceptanceService workSessionAcceptanceService;
 
+    @Mock
+    private CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService;
+
     private AgentRunService agentRunService;
     private AgentRunReconciliationService agentRunReconciliationService;
 
@@ -73,7 +77,8 @@ class AgentRunServiceTest {
                 sessionTurnRepository,
                 new AgentRunProgressService(),
                 mobilePushDispatchService,
-                workSessionAcceptanceService
+                workSessionAcceptanceService,
+                codexExecutionProfileSnapshotService
         );
     }
 
@@ -188,6 +193,8 @@ class AgentRunServiceTest {
         when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, originTurn, WorkloadClass.HEAVY);
+
+        verify(codexExecutionProfileSnapshotService).applyCurrentProfile(run);
 
         assertEquals(AgentRunStatus.QUEUED, run.getStatus());
         assertEquals(ExecutionTarget.REMOTE, run.getExecutionTarget());

@@ -1064,7 +1064,17 @@ data class MobileConversationTurn(
     val id: Long,
     val actor: String,
     val messageText: String,
-    val createdAt: String?
+    val createdAt: String?,
+    val executionProfile: CodexTurnExecutionProfile? = null
+)
+
+data class CodexTurnExecutionProfile(
+    val runId: Long,
+    val modelId: String,
+    val modelSource: String,
+    val reasoningEffort: String,
+    val effortSource: String,
+    val codexVersion: String
 )
 
 data class MobileSessionSummary(
@@ -1978,7 +1988,17 @@ private fun parseMobileConversationTurn(json: JSONObject): MobileConversationTur
         id = json.getLong("id"),
         actor = json.optString("actor", ""),
         messageText = json.optString("messageText", ""),
-        createdAt = json.optNullableString("createdAt")
+        createdAt = json.optNullableString("createdAt"),
+        executionProfile = json.optJSONObject("executionProfile")?.let { profile ->
+            CodexTurnExecutionProfile(
+                runId = profile.getLong("runId"),
+                modelId = profile.optString("modelId", ""),
+                modelSource = profile.optString("modelSource", ""),
+                reasoningEffort = profile.optString("reasoningEffort", ""),
+                effortSource = profile.optString("effortSource", ""),
+                codexVersion = profile.optString("codexVersion", "")
+            )
+        }
     )
 
 private fun parseManagedHost(json: JSONObject): ManagedHost = ManagedHost(

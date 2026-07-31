@@ -7,6 +7,10 @@ public record SessionTurnResponse(
         Long id,
         SessionTurnActor actor,
         String messageText,
-        Instant createdAt
+        Instant createdAt,
+        TurnExecutionProfileResponse executionProfile
 ) {
+    public SessionTurnResponse(Long id, SessionTurnActor actor, String messageText, Instant createdAt) {
+        this(id, actor, messageText, createdAt, null);
+    }
 }

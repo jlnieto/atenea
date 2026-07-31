@@ -12,6 +12,7 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
@@ -32,6 +33,7 @@ public class AgentRunService {
     private final AgentRunProgressService agentRunProgressService;
     private final MobilePushDispatchService mobilePushDispatchService;
     private final WorkSessionAcceptanceService workSessionAcceptanceService;
+    private final CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService;
 
     public AgentRunService(
             WorkSessionRepository workSessionRepository,
@@ -39,7 +41,8 @@ public class AgentRunService {
             SessionTurnRepository sessionTurnRepository,
             AgentRunProgressService agentRunProgressService,
             MobilePushDispatchService mobilePushDispatchService,
-            WorkSessionAcceptanceService workSessionAcceptanceService
+            WorkSessionAcceptanceService workSessionAcceptanceService,
+            CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService
     ) {
         this.workSessionRepository = workSessionRepository;
         this.agentRunRepository = agentRunRepository;
@@ -47,6 +50,7 @@ public class AgentRunService {
         this.agentRunProgressService = agentRunProgressService;
         this.mobilePushDispatchService = mobilePushDispatchService;
         this.workSessionAcceptanceService = workSessionAcceptanceService;
+        this.codexExecutionProfileSnapshotService = codexExecutionProfileSnapshotService;
     }
 
     @Transactional
@@ -107,6 +111,7 @@ public class AgentRunService {
         run.setOutputSummary(null);
         run.setErrorSummary(null);
         run.setCreatedAt(now);
+        codexExecutionProfileSnapshotService.applyCurrentProfile(run);
         return agentRunRepository.save(run);
     }
 

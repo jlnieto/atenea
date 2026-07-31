@@ -214,6 +214,16 @@ export interface MobileConversationTurn {
   actor: string;
   messageText: string;
   createdAt?: string | null;
+  executionProfile?: TurnExecutionProfile | null;
+}
+
+export interface TurnExecutionProfile {
+  runId: number;
+  modelId: string;
+  modelSource: string;
+  reasoningEffort: string;
+  effortSource: string;
+  codexVersion: string;
 }
 
 export interface WorkSessionAttachment {

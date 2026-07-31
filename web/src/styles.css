@@ -1245,6 +1245,21 @@ select:focus {
   font-size: 12px;
 }
 
+.turn__meta > span {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px 9px;
+  text-align: right;
+}
+
+.turn__profile {
+  color: #68a4c1;
+  font-style: normal;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .conversation-composer {
   position: fixed;
   left: 0;

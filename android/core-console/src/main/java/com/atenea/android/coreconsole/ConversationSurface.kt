@@ -258,6 +258,13 @@ private fun ConversationTurn(turn: MobileConversationTurn) {
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         RenderedConversationText(turn.messageText, operator)
+        turn.executionProfile?.let { profile ->
+            Text(
+                "${profile.modelId} · ${profile.reasoningEffort} · Codex ${profile.codexVersion}",
+                style = ConversationTypography.meta,
+                color = ConversationColors.action
+            )
+        }
         turn.createdAt?.let {
             Text(
                 it.formatDateTimeForDisplay(),

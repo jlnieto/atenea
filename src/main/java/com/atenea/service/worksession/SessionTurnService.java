@@ -3,6 +3,7 @@ package com.atenea.service.worksession;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.CreateSessionTurnResponse;
 import com.atenea.api.worksession.SessionTurnResponse;
+import com.atenea.api.worksession.TurnExecutionProfileResponse;
 import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionListener;
 import com.atenea.persistence.worksession.AgentRunEntity;
@@ -25,6 +26,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -97,9 +100,10 @@ public class SessionTurnService {
 
         Integer effectiveLimit = normalizeOptionalLimit(limit);
         if (effectiveLimit == null) {
+            Map<Long, TurnExecutionProfileResponse> profiles = profilesByTurnId(sessionId);
             return sessionTurnRepository.findBySessionIdAndInternalFalseOrderByCreatedAtAsc(sessionId)
                     .stream()
-                    .map(this::toResponse)
+                    .map(turn -> toResponse(turn, profiles.get(turn.getId())))
                     .toList();
         }
 
@@ -113,7 +117,8 @@ public class SessionTurnService {
                         PageRequest.of(0, effectiveLimit));
         List<SessionTurnEntity> chronological = new ArrayList<>(newestFirst);
         Collections.reverse(chronological);
-        return chronological.stream().map(this::toResponse).toList();
+        Map<Long, TurnExecutionProfileResponse> profiles = profilesByTurnId(sessionId);
+        return chronological.stream().map(turn -> toResponse(turn, profiles.get(turn.getId()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -157,7 +162,7 @@ public class SessionTurnService {
             AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, operatorTurn, WorkloadClass.NORMAL);
             registerRemoteDispatch(run.getId());
             return new CreateSessionTurnResponse(
-                    toResponse(operatorTurn),
+                    toResponse(operatorTurn, executionProfile(run)),
                     agentRunService.toResponse(run),
                     null);
         }
@@ -187,7 +192,7 @@ public class SessionTurnService {
                     executionHandle);
 
             return new CreateSessionTurnResponse(
-                    toResponse(operatorTurn),
+                    toResponse(operatorTurn, null),
                     agentRunService.toResponse(run),
                     null
             );
@@ -282,12 +287,40 @@ public class SessionTurnService {
     }
 
     private SessionTurnResponse toResponse(SessionTurnEntity turn) {
+        return toResponse(turn, null);
+    }
+
+    private SessionTurnResponse toResponse(SessionTurnEntity turn, TurnExecutionProfileResponse profile) {
         return new SessionTurnResponse(
                 turn.getId(),
                 turn.getActor(),
                 turn.getMessageText(),
-                turn.getCreatedAt()
+                turn.getCreatedAt(),
+                profile
         );
+    }
+
+    private Map<Long, TurnExecutionProfileResponse> profilesByTurnId(Long sessionId) {
+        Map<Long, TurnExecutionProfileResponse> result = new HashMap<>();
+        for (AgentRunEntity run : agentRunRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)) {
+            TurnExecutionProfileResponse profile = executionProfile(run);
+            if (profile == null) continue;
+            if (run.getOriginTurn() != null && !run.getOriginTurn().isInternal()) {
+                result.put(run.getOriginTurn().getId(), profile);
+            }
+            if (run.getResultTurn() != null && !run.getResultTurn().isInternal()) {
+                result.put(run.getResultTurn().getId(), profile);
+            }
+        }
+        return result;
+    }
+
+    private TurnExecutionProfileResponse executionProfile(AgentRunEntity run) {
+        if (run.getCodexModelId() == null) return null;
+        return new TurnExecutionProfileResponse(
+                run.getId(), run.getCodexModelId(), run.getCodexModelSource().name(),
+                run.getCodexReasoningEffort().canonicalValue(), run.getCodexEffortSource().name(),
+                run.getCodexVersion());
     }
 
     private String resolveOperationalRepoPath(WorkSessionEntity session) {
