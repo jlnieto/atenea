@@ -281,6 +281,7 @@ production activation are recorded later in this ledger.
 | D-078 | Cut over the overlapping legacy run-completed push only when the generic outbox gate is enabled; persist and claim each exact delivery before provider I/O, while leaving non-AgentRun legacy categories untouched. | Dual sending would duplicate user notifications, provider I/O inside the terminal transaction would weaken durability, and forcing PR/billing/close events into the three-category AgentRun schema would invent unsupported ownership. | accepted and persistence-tested | backend/notification owners | before enabling the generic notification gate or extending event ownership beyond AgentRun categories |
 | D-079 | Emit completion, failure and first action-required events from the same local or remote transaction that persists their owning AgentRun state; suppress repeated action-required production while retaining outbox uniqueness as the durable duplicate barrier. | A post-commit producer can lose the notification on process failure, while every reconciliation poll must not create a new user event for one unchanged actionable state. | accepted and transition-tested | backend/notification owners | before changing terminal transaction boundaries or actionable-state revision semantics |
 | D-080 | Retry only closed transient FCM/transport/authentication failures at 30, 60, 120 and 240 seconds, stop after five attempts or expiry, and deactivate only an exactly owned device on a closed invalid-token response. | Unbounded or content-derived retry can amplify provider failures; fixed diagnostics and per-device isolation preserve operability without retaining tokens or provider payloads. | accepted and persistence-tested | backend/notification owners | before changing delivery attempt limits, retry schedule or invalid-token classification |
+| D-081 | Encode generic AgentRun pushes as `atenea-notification-data-v1` with fixed `AGENT_RUN_STATE` semantics, an exact `atenea://work-sessions/{id}/conversation` deep link and only closed immutable/numeric identity fields. | Android needs one stable route to the exact conversation, while copying domain text or accepting an unrecognized template would leak content and make notification handling ambiguous. | accepted and payload-tested | backend/Android/notification owners | before changing notification payload schema, safe-copy catalog or WorkSession deep-link route |
 
 ## Deferred decisions and gates
 
@@ -5773,3 +5774,30 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.3-delivery-policy`;
 the SHA-256 of its `SHA256SUMS` is
 `38b0b2203a90fd7a5d3eaad5f784231693ecfb92c48a90bbc49003bd935df33a`.
+
+Task 5.4 is complete and change progress is `39/57`; the exact implementation
+resume point is task 5.5. Task 5.5 and all later tasks remain pending.
+
+Atenea commit `a21d4f92644a2b12c8847f43b7a9e602c1e7376d` introduces an
+explicit safe-copy catalog for `agent-run-safe-v1` and a closed payload factory
+for `atenea-notification-data-v1`. Every generic AgentRun notification now
+contains the fixed event type `AGENT_RUN_STATE`, category/template/event
+identity, numeric WorkSession/AgentRun ownership and the exact deep link
+`atenea://work-sessions/{sessionId}/conversation`.
+
+The payload key set is fixed to ten safe fields, retaining `type` only as the
+existing category compatibility alias. Unknown template versions, altered
+safe copy, altered deep-link kind and inconsistent run/session ownership fail
+closed before provider I/O. Prompt, answer, secret and worker-internal content
+are neither accepted nor derived.
+
+Twenty-seven focused unit and PostgreSQL persistence tests passed with zero
+failures, errors or skips after all 60 migrations were validated. FCM remained
+synthetic, the gate remains default-off and the temporary database container
+was removed while retaining its reusable volume. Nothing was deployed,
+enabled, routed or sent.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.4-safe-deep-link-payloads`;
+the SHA-256 of its `SHA256SUMS` is
+`f14ae0a9308ef750c204d4aaaf0e7ffbb7b6fd6515bd55637fa4f1ec3de93af3`.
