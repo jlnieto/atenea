@@ -64,7 +64,10 @@ internal fun ConversationSurface(
     onOpenCore: () -> Unit,
     onRefresh: () -> Unit,
     error: String?,
-    commandContent: @Composable (() -> Unit)? = null
+    commandContent: @Composable (() -> Unit)? = null,
+    runContent: @Composable (() -> Unit)? = null,
+    profileContent: @Composable (() -> Unit)? = null,
+    composerEnabled: Boolean = true
 ) {
     Column(
         modifier = Modifier
@@ -85,6 +88,7 @@ internal fun ConversationSurface(
                 .padding(horizontal = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            runContent?.invoke()
             error?.let {
                 Text(
                     it,
@@ -111,12 +115,14 @@ internal fun ConversationSurface(
             }
         }
 
+        profileContent?.invoke()
         ConversationComposer(
             input = input,
             pending = pending,
             placeholder = placeholder,
             recording = recording,
             audioLevels = audioLevels,
+            enabled = composerEnabled,
             onInputChange = onInputChange,
             onSend = onSend,
             onMicrophoneClick = onMicrophoneClick
@@ -363,13 +369,14 @@ private fun ConversationComposer(
     placeholder: String,
     recording: Boolean,
     audioLevels: List<Float>,
+    enabled: Boolean,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
     onMicrophoneClick: (() -> Unit)?
 ) {
     val hasInput = input.isNotBlank()
     val showSend = hasInput || recording
-    val actionEnabled = !pending && (showSend || onMicrophoneClick != null)
+    val actionEnabled = enabled && !pending && (showSend || onMicrophoneClick != null)
     val actionBackground = if (actionEnabled) ConversationColors.sendBackground else ConversationColors.disabledAction
 
     Box(
@@ -386,7 +393,7 @@ private fun ConversationComposer(
                 .heightIn(min = 56.dp, max = 156.dp)
                 .background(ConversationColors.composerField)
                 .padding(start = 10.dp, top = 12.dp, end = 60.dp, bottom = 14.dp),
-            enabled = !pending && !recording,
+            enabled = enabled && !pending && !recording,
             minLines = 1,
             maxLines = 5,
             textStyle = ConversationTypography.input.copy(color = ConversationColors.primaryText),
@@ -878,7 +885,7 @@ private fun renderInlineMarkdown(text: String) = buildAnnotatedString {
     }
 }
 
-private object ConversationTypography {
+internal object ConversationTypography {
     val body = TextStyle(
         fontSize = 14.sp,
         lineHeight = 20.sp
@@ -907,7 +914,7 @@ private object ConversationTypography {
     )
 }
 
-private object ConversationColors {
+internal object ConversationColors {
     val background = Color(0xFF3F3F3F)
     val composerBar = Color(0xFF363636)
     val composerField = Color(0xFF585858)
