@@ -9,6 +9,13 @@ public record MobileSessionEventResponse(
         String details,
         Long runId,
         Long turnId,
-        Long deliverableId
+        Long deliverableId,
+        String eventId,
+        Long progressSequence
 ) {
+    public MobileSessionEventResponse(
+            String type, Instant at, String title, String details,
+            Long runId, Long turnId, Long deliverableId) {
+        this(type, at, title, details, runId, turnId, deliverableId, null, null);
+    }
 }

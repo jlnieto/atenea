@@ -2,8 +2,11 @@ package com.atenea.service.mobile;
 
 import com.atenea.api.mobile.MobileSessionEventResponse;
 import com.atenea.api.mobile.MobileSessionEventsResponse;
+import com.atenea.codexoperations.CodexSessionOperationsProperties;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
+import com.atenea.persistence.worksession.AgentRunProgressEventEntity;
+import com.atenea.persistence.worksession.AgentRunProgressEventRepository;
 import com.atenea.persistence.worksession.SessionDeliverableEntity;
 import com.atenea.persistence.worksession.SessionDeliverableRepository;
 import com.atenea.persistence.worksession.SessionTurnEntity;
@@ -25,17 +28,23 @@ public class MobileSessionEventService {
     private final SessionTurnRepository sessionTurnRepository;
     private final AgentRunRepository agentRunRepository;
     private final SessionDeliverableRepository sessionDeliverableRepository;
+    private final AgentRunProgressEventRepository progressEventRepository;
+    private final CodexSessionOperationsProperties codexOperationsProperties;
 
     public MobileSessionEventService(
             WorkSessionRepository workSessionRepository,
             SessionTurnRepository sessionTurnRepository,
             AgentRunRepository agentRunRepository,
-            SessionDeliverableRepository sessionDeliverableRepository
+            SessionDeliverableRepository sessionDeliverableRepository,
+            AgentRunProgressEventRepository progressEventRepository,
+            CodexSessionOperationsProperties codexOperationsProperties
     ) {
         this.workSessionRepository = workSessionRepository;
         this.sessionTurnRepository = sessionTurnRepository;
         this.agentRunRepository = agentRunRepository;
         this.sessionDeliverableRepository = sessionDeliverableRepository;
+        this.progressEventRepository = progressEventRepository;
+        this.codexOperationsProperties = codexOperationsProperties;
     }
 
     @Transactional(readOnly = true)
@@ -52,6 +61,8 @@ public class MobileSessionEventService {
                 session.getTitle(),
                 null,
                 null,
+                null,
+                "session:" + sessionId + ":opened",
                 null));
 
         if (session.getPublishedAt() != null) {
@@ -62,6 +73,8 @@ public class MobileSessionEventService {
                     session.getPullRequestUrl(),
                     null,
                     null,
+                    null,
+                    "session:" + sessionId + ":published",
                     null));
         }
         if (session.getCloseBlockedState() != null) {
@@ -72,6 +85,8 @@ public class MobileSessionEventService {
                     session.getCloseBlockedReason(),
                     null,
                     null,
+                    null,
+                    "session:" + sessionId + ":close-blocked:" + session.getCloseBlockedState(),
                     null));
         }
         if (session.getClosedAt() != null) {
@@ -82,6 +97,8 @@ public class MobileSessionEventService {
                     session.getTitle(),
                     null,
                     null,
+                    null,
+                    "session:" + sessionId + ":closed",
                     null));
         }
 
@@ -96,6 +113,8 @@ public class MobileSessionEventService {
                     preview(turn.getMessageText()),
                     null,
                     turn.getId(),
+                    null,
+                    "turn:" + turn.getId(),
                     null));
         }
 
@@ -107,8 +126,12 @@ public class MobileSessionEventService {
                     preview(run.getOutputSummary() != null ? run.getOutputSummary() : run.getErrorSummary()),
                     run.getId(),
                     run.getOriginTurn() == null ? null : run.getOriginTurn().getId(),
+                    null,
+                    "run:" + run.getId() + ":started",
                     null));
-            if (run.getFinishedAt() != null) {
+            if (run.getFinishedAt() != null
+                    && (!codexOperationsProperties.isProgressEnabled()
+                    || run.getProgressTerminalCategory() == null)) {
                 events.add(new MobileSessionEventResponse(
                         "RUN_" + run.getStatus().name(),
                         run.getFinishedAt(),
@@ -116,7 +139,25 @@ public class MobileSessionEventService {
                         preview(run.getStatus().name().equals("FAILED") ? run.getErrorSummary() : run.getOutputSummary()),
                         run.getId(),
                         run.getResultTurn() == null ? null : run.getResultTurn().getId(),
+                        null,
+                        "run:" + run.getId() + ":terminal:" + run.getStatus().name(),
                         null));
+            }
+        }
+
+        if (codexOperationsProperties.isProgressEnabled()) {
+            for (AgentRunProgressEventEntity progress
+                    : progressEventRepository.findBySessionIdForSharedStream(sessionId)) {
+                events.add(new MobileSessionEventResponse(
+                        "RUN_PROGRESS_" + progress.getCategory().name(),
+                        progress.getOccurredAt(),
+                        progress.getCategory().operatorMessage(),
+                        null,
+                        progress.getAgentRun().getId(),
+                        null,
+                        null,
+                        "progress:" + progress.getAgentRun().getId() + ":" + progress.getSequence(),
+                        progress.getSequence()));
             }
         }
 
@@ -128,7 +169,9 @@ public class MobileSessionEventService {
                     deliverable.getTitle(),
                     null,
                     null,
-                    deliverable.getId()));
+                    deliverable.getId(),
+                    "deliverable:" + deliverable.getId() + ":generated",
+                    null));
             if (deliverable.getApprovedAt() != null) {
                 events.add(new MobileSessionEventResponse(
                         "DELIVERABLE_APPROVED",
@@ -137,7 +180,9 @@ public class MobileSessionEventService {
                         deliverable.getTitle(),
                         null,
                         null,
-                        deliverable.getId()));
+                        deliverable.getId(),
+                        "deliverable:" + deliverable.getId() + ":approved",
+                        null));
             }
             if (deliverable.getBilledAt() != null) {
                 events.add(new MobileSessionEventResponse(
@@ -147,7 +192,9 @@ public class MobileSessionEventService {
                         deliverable.getBillingReference(),
                         null,
                         null,
-                        deliverable.getId()));
+                        deliverable.getId(),
+                        "deliverable:" + deliverable.getId() + ":billed",
+                        null));
             }
         }
 

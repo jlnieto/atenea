@@ -270,6 +270,8 @@ export interface MobileSessionEvent {
   runId?: number | null;
   turnId?: number | null;
   deliverableId?: number | null;
+  eventId?: string | null;
+  progressSequence?: number | null;
 }
 
 export interface ResolveMobileRescueSessionResult {

@@ -1048,7 +1048,9 @@ data class MobileSessionEvent(
     val details: String?,
     val runId: Long?,
     val turnId: Long?,
-    val deliverableId: Long?
+    val deliverableId: Long?,
+    val eventId: String?,
+    val progressSequence: Long?
 )
 
 data class ResolveMobileRescueSessionResult(
@@ -1716,7 +1718,9 @@ private fun parseMobileSessionEvents(json: JSONObject): MobileSessionEvents {
                 details = item.optNullableString("details"),
                 runId = item.optNullableLong("runId"),
                 turnId = item.optNullableLong("turnId"),
-                deliverableId = item.optNullableLong("deliverableId")
+                deliverableId = item.optNullableLong("deliverableId"),
+                eventId = item.optNullableString("eventId"),
+                progressSequence = item.optNullableLong("progressSequence")
             )
         },
         generatedAt = json.optNullableString("generatedAt")

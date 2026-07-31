@@ -18,6 +18,12 @@ public interface AgentRunProgressEventRepository
 
     List<AgentRunProgressEventEntity> findByAgentRunIdOrderBySequenceAsc(Long agentRunId);
 
+    @Query("select event from AgentRunProgressEventEntity event "
+            + "where event.agentRun.session.id = :sessionId "
+            + "order by event.occurredAt asc, event.sequence asc")
+    List<AgentRunProgressEventEntity> findBySessionIdForSharedStream(
+            @Param("sessionId") Long sessionId);
+
     long countByAgentRunId(Long agentRunId);
 
     @Modifying
