@@ -2,6 +2,7 @@ package com.atenea.service.notification;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -47,6 +48,7 @@ class NotificationOutboxPersistenceTest {
     private static final AtomicLong FIXTURE_SEQUENCE = new AtomicLong();
 
     @Autowired private NotificationOutboxService service;
+    @Autowired private NotificationDeliveryClaimService claimService;
     @Autowired private NotificationEventRepository eventRepository;
     @Autowired private NotificationDeliveryRepository deliveryRepository;
     @Autowired private NotificationPreferenceRepository preferenceRepository;
@@ -87,6 +89,33 @@ class NotificationOutboxPersistenceTest {
         assertEquals(enabled.getId(), deliveries.getFirst().getDevice().getId());
         assertEquals("FCM", deliveries.getFirst().getChannel());
         assertEquals(0, deliveries.getFirst().getAttemptCount());
+    }
+
+    @Test
+    void claimsAndCompletesOnePersistedDeliveryWithoutConversationContent() {
+        Fixture fixture = fixture(AgentRunStatus.SUCCEEDED);
+        device(fixture.operator(), true);
+        NotificationOutboxResult result = service.record(
+                fixture.run().getId(), NotificationCategory.RUN_COMPLETED, 7);
+        NotificationDeliveryEntity pending = deliveryRepository
+                .findByEventIdOrderByDeviceIdAsc(result.event().getId()).getFirst();
+
+        NotificationDeliveryCommand command = claimService.claim(pending.getId());
+
+        assertEquals("RUN_COMPLETED", command.data().get("type"));
+        assertEquals(fixture.session().getId(), command.data().get("sessionId"));
+        assertEquals(fixture.run().getId(), command.data().get("runId"));
+        assertFalse(command.data().toString().contains(fixture.turn().getMessageText()));
+        NotificationDeliveryEntity sending = deliveryRepository.findById(pending.getId()).orElseThrow();
+        assertEquals(com.atenea.persistence.notification.NotificationDeliveryState.SENDING, sending.getState());
+        assertEquals(1, sending.getAttemptCount());
+
+        claimService.delivered(pending.getId());
+
+        NotificationDeliveryEntity delivered = deliveryRepository.findById(pending.getId()).orElseThrow();
+        assertEquals(com.atenea.persistence.notification.NotificationDeliveryState.DELIVERED, delivered.getState());
+        assertNull(delivered.getDiagnosticCode());
+        assertTrue(delivered.getDeliveredAt() != null);
     }
 
     @Test

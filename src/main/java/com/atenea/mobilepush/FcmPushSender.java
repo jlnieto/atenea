@@ -68,6 +68,10 @@ public class FcmPushSender {
         }
     }
 
+    public boolean isReady() {
+        return properties.isEnabled() && isConfigured();
+    }
+
     private void sendOne(String accessToken, FcmPushMessage message) throws Exception {
         URI uri = properties.getFcmApiBaseUrl()
                 .resolve("/v1/projects/" + properties.getFcmProjectId().trim() + "/messages:send");
