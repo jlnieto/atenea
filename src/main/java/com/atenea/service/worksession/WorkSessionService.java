@@ -235,7 +235,8 @@ public class WorkSessionService {
         WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
 
-        if (session.getStatus() == WorkSessionStatus.CLOSED) {
+        if (session.getStatus() != WorkSessionStatus.OPEN
+                && session.getStatus() != WorkSessionStatus.CLOSING) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
 
@@ -344,6 +345,9 @@ public class WorkSessionService {
         if (session.getStatus() == WorkSessionStatus.CLOSING) {
             return WorkSessionOperationalState.CLOSING;
         }
+        if (session.getStatus() == WorkSessionStatus.DRAFT_BLOCKED) {
+            return WorkSessionOperationalState.DRAFT_BLOCKED;
+        }
         if (snapshot.runInProgress()) {
             return WorkSessionOperationalState.RUNNING;
         }
@@ -351,7 +355,8 @@ public class WorkSessionService {
     }
 
     private boolean canCreateTurn(WorkSessionResponse session) {
-        return session.operationalState() == WorkSessionOperationalState.IDLE;
+        return session.status() == WorkSessionStatus.OPEN
+                && session.operationalState() == WorkSessionOperationalState.IDLE;
     }
 
     private void reconcileClose(WorkSessionEntity session) {

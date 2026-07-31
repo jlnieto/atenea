@@ -87,7 +87,7 @@ public class MobileInboxService {
                         session.publishedAt() != null ? session.publishedAt() : session.lastActivityAt()));
             }
             if (session.pullRequestStatus() == WorkSessionPullRequestStatus.MERGED
-                    && session.status() != WorkSessionStatus.CLOSED) {
+                    && session.status() == WorkSessionStatus.OPEN) {
                 readyToCloseCount++;
                 items.add(item(
                         "READY_TO_CLOSE",

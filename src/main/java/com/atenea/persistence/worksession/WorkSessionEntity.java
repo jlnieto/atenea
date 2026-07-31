@@ -71,6 +71,27 @@ public class WorkSessionEntity {
     @Column(name = "canonical_source_observed_at")
     private Instant canonicalSourceObservedAt;
 
+    @Column(name = "draft_fingerprint_sha256", length = 64)
+    private String draftFingerprintSha256;
+
+    @Column(name = "draft_retained_head", length = 64)
+    private String draftRetainedHead;
+
+    @Column(name = "draft_staged_change_count")
+    private Integer draftStagedChangeCount;
+
+    @Column(name = "draft_unstaged_change_count")
+    private Integer draftUnstagedChangeCount;
+
+    @Column(name = "draft_untracked_change_count")
+    private Integer draftUntrackedChangeCount;
+
+    @Column(name = "draft_blocked_at")
+    private Instant draftBlockedAt;
+
+    @Column(name = "replacement_work_session_id")
+    private Long replacementWorkSessionId;
+
     @Column(name = "pull_request_url", length = 500)
     private String pullRequestUrl;
 
@@ -237,6 +258,62 @@ public class WorkSessionEntity {
 
     public void setCanonicalSourceObservedAt(Instant canonicalSourceObservedAt) {
         this.canonicalSourceObservedAt = canonicalSourceObservedAt;
+    }
+
+    public String getDraftFingerprintSha256() {
+        return draftFingerprintSha256;
+    }
+
+    public void setDraftFingerprintSha256(String draftFingerprintSha256) {
+        this.draftFingerprintSha256 = draftFingerprintSha256;
+    }
+
+    public String getDraftRetainedHead() {
+        return draftRetainedHead;
+    }
+
+    public void setDraftRetainedHead(String draftRetainedHead) {
+        this.draftRetainedHead = draftRetainedHead;
+    }
+
+    public Integer getDraftStagedChangeCount() {
+        return draftStagedChangeCount;
+    }
+
+    public void setDraftStagedChangeCount(Integer draftStagedChangeCount) {
+        this.draftStagedChangeCount = draftStagedChangeCount;
+    }
+
+    public Integer getDraftUnstagedChangeCount() {
+        return draftUnstagedChangeCount;
+    }
+
+    public void setDraftUnstagedChangeCount(Integer draftUnstagedChangeCount) {
+        this.draftUnstagedChangeCount = draftUnstagedChangeCount;
+    }
+
+    public Integer getDraftUntrackedChangeCount() {
+        return draftUntrackedChangeCount;
+    }
+
+    public void setDraftUntrackedChangeCount(Integer draftUntrackedChangeCount) {
+        this.draftUntrackedChangeCount = draftUntrackedChangeCount;
+    }
+
+    public Instant getDraftBlockedAt() {
+        return draftBlockedAt;
+    }
+
+    public void setDraftBlockedAt(Instant draftBlockedAt) {
+        this.draftBlockedAt = draftBlockedAt;
+    }
+
+    public Long getReplacementWorkSessionId() {
+        return replacementWorkSessionId;
+    }
+
+    public void setReplacementWorkSessionId(Long replacementWorkSessionId) {
+        this.replacementWorkSessionId = replacementWorkSessionId;
     }
 
     public String getPullRequestUrl() {

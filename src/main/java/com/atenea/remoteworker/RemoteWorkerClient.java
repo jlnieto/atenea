@@ -1,6 +1,7 @@
 package com.atenea.remoteworker;
 
 import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -75,6 +76,31 @@ public class RemoteWorkerClient {
                 body,
                 Workspace.class,
                 run.getDispatchId().toString(),
+                properties.getWorkspaceProvisionTimeout());
+    }
+
+    public DraftFingerprint fingerprintRetainedDraft(WorkSessionEntity session) {
+        if (!ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+                || session.getRemoteSessionId() == null
+                || session.getWorkspaceIdentity() == null) {
+            throw new RemoteWorkerException(
+                    "Persisted draft ownership or canonical source observation is incomplete",
+                    409);
+        }
+        Map<String, Object> body = Map.of(
+                "sessionId", session.getRemoteSessionId().toString(),
+                "workspaceIdentity", session.getWorkspaceIdentity(),
+                "projectId", ProjectCodexIdentity.PROJECT_IDENTITY,
+                "repository", ProjectCodexIdentity.REPOSITORY,
+                "branch", ProjectCodexIdentity.BRANCH,
+                "acceptedCommit", session.getCanonicalSourceCommit(),
+                "manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256);
+        return exchange(
+                "POST",
+                "/v1/project-workspaces/draft-fingerprint",
+                body,
+                DraftFingerprint.class,
+                session.getRemoteSessionId().toString(),
                 properties.getWorkspaceProvisionTimeout());
     }
 
@@ -239,6 +265,22 @@ public class RemoteWorkerClient {
             String canonicalCommit,
             boolean selectionEnabled,
             boolean executionEnabled,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record DraftFingerprint(
+            String state,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String retainedHead,
+            String acceptedCommit,
+            String fingerprintSha256,
+            int stagedChangeCount,
+            int unstagedChangeCount,
+            int untrackedChangeCount,
             boolean valuesExposed
     ) {
     }

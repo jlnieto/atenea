@@ -62,6 +62,7 @@ public class MobileSessionService {
         var session = conversation.view().session();
         boolean isClosed = session.status() == WorkSessionStatus.CLOSED;
         boolean isOpen = session.status() == WorkSessionStatus.OPEN;
+        boolean isActionable = isOpen || session.status() == WorkSessionStatus.CLOSING;
         boolean runInProgress = session.repoState().runInProgress();
         boolean hasPullRequest = session.pullRequestUrl() != null && !session.pullRequestUrl().isBlank();
         boolean canClose = isOpen
@@ -70,12 +71,12 @@ public class MobileSessionService {
 
         return new MobileSessionActionsResponse(
                 conversation.view().canCreateTurn(),
-                !isClosed && !runInProgress && session.pullRequestStatus() == WorkSessionPullRequestStatus.NOT_CREATED,
+                isOpen && !runInProgress && session.pullRequestStatus() == WorkSessionPullRequestStatus.NOT_CREATED,
                 hasPullRequest,
                 canClose,
-                !isClosed,
-                !isClosed,
-                approvedPriceEstimate != null
+                isActionable,
+                isActionable,
+                isActionable && approvedPriceEstimate != null
                         && approvedPriceEstimate.billingStatus() == SessionDeliverableBillingStatus.READY
         );
     }

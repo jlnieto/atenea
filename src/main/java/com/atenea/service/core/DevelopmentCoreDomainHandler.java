@@ -206,6 +206,7 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
         return switch (status) {
             case OPEN -> "abierta";
             case CLOSING -> "en cierre";
+            case DRAFT_BLOCKED -> "bloqueada con borrador retenido";
             case CLOSED -> "cerrada";
         };
     }

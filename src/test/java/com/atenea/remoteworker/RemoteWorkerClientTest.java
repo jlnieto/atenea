@@ -79,6 +79,25 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/project-workspaces/draft-fingerprint", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
+                    java.util.Map.entry("state", "draft_blocked_ready"),
+                    java.util.Map.entry("sessionId", request.get("sessionId").asText()),
+                    java.util.Map.entry("workspaceIdentity", request.get("workspaceIdentity").asText()),
+                    java.util.Map.entry("projectId", request.get("projectId").asText()),
+                    java.util.Map.entry("retainedHead", "0".repeat(40)),
+                    java.util.Map.entry("acceptedCommit", request.get("acceptedCommit").asText()),
+                    java.util.Map.entry("fingerprintSha256", "3".repeat(64)),
+                    java.util.Map.entry("stagedChangeCount", 2),
+                    java.util.Map.entry("unstagedChangeCount", 3),
+                    java.util.Map.entry("untrackedChangeCount", 4),
+                    java.util.Map.entry("valuesExposed", false)));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.start();
         properties = new RemoteWorkerProperties();
         properties.setEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
@@ -190,6 +209,28 @@ class RemoteWorkerClientTest {
         client.dispatch(projectRun(null), "First turn.");
 
         assertEquals(true, requestBody.get().get("workload").get("threadId").isNull());
+    }
+
+    @Test
+    void retainedDraftFingerprintUsesOnlyPersistedOwnershipAndAcceptedObservation() {
+        AgentRunEntity run = projectRun(null);
+        WorkSessionEntity session = run.getSession();
+        session.setWorkspaceIdentity(run.getWorkspaceIdentity());
+
+        RemoteWorkerClient.DraftFingerprint fingerprint = client.fingerprintRetainedDraft(session);
+
+        JsonNode body = requestBody.get();
+        assertEquals(run.getRemoteSessionId().toString(), body.get("sessionId").asText());
+        assertEquals(run.getWorkspaceIdentity(), body.get("workspaceIdentity").asText());
+        assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, body.get("projectId").asText());
+        assertEquals(ProjectCodexIdentity.REPOSITORY, body.get("repository").asText());
+        assertEquals(ProjectCodexIdentity.BRANCH, body.get("branch").asText());
+        assertEquals(TEST_CANONICAL_COMMIT, body.get("acceptedCommit").asText());
+        assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, body.get("manifestSha256").asText());
+        assertNull(body.get("path"));
+        assertNull(body.get("command"));
+        assertEquals("3".repeat(64), fingerprint.fingerprintSha256());
+        assertEquals(false, fingerprint.valuesExposed());
     }
 
     @Test

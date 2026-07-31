@@ -12,6 +12,7 @@ import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
+import com.atenea.service.worksession.RetainedDraftRecoveryService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.atenea.service.worksession.WorkSessionNotOpenException;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
@@ -42,11 +43,17 @@ class WorkSessionControllerTest {
     @Mock
     private WorkSessionGitHubService workSessionGitHubService;
 
+    @Mock
+    private RetainedDraftRecoveryService retainedDraftRecoveryService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new WorkSessionController(workSessionService, workSessionGitHubService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new WorkSessionController(
+                        workSessionService,
+                        workSessionGitHubService,
+                        retainedDraftRecoveryService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -70,6 +77,30 @@ class WorkSessionControllerTest {
                 .andExpect(jsonPath("$.id").value(12))
                 .andExpect(jsonPath("$.status").value("OPEN"))
                 .andExpect(jsonPath("$.pullRequestStatus").value("NOT_CREATED"));
+    }
+
+    @Test
+    void recoverRetainedDraftReturnsOnlySanitizedRecoveryIdentity() throws Exception {
+        when(retainedDraftRecoveryService.recover(41L)).thenReturn(
+                new RecoverDraftWorkSessionResponse(
+                        41L,
+                        42L,
+                        "0".repeat(40),
+                        "1".repeat(40),
+                        "2".repeat(64),
+                        2,
+                        3,
+                        4,
+                        false));
+
+        mockMvc.perform(post("/api/sessions/41/recover-retained-draft"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.blockedSessionId").value(41))
+                .andExpect(jsonPath("$.replacementSessionId").value(42))
+                .andExpect(jsonPath("$.draftFingerprintSha256").value("2".repeat(64)))
+                .andExpect(jsonPath("$.valuesExposed").value(false))
+                .andExpect(jsonPath("$.path").doesNotExist())
+                .andExpect(jsonPath("$.files").doesNotExist());
     }
 
     @Test
