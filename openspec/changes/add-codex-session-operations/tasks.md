@@ -24,7 +24,7 @@
 - [x] 2.1 Persist WorkSession defaults and immutable AgentRun effective model, effort, source, catalog revision and Codex version
 - [x] 2.2 Persist monotonic bounded AgentRun progress events with sanitization, coalescing, replay cursor and terminal consistency
 - [x] 2.3 Persist idempotent recovery operations, `retryOfRunId` lineage and role-scoped actionable outcomes
-- [ ] 2.4 Persist generic notification events, preferences and per-device deliveries with unique deduplication ownership
+- [x] 2.4 Persist generic notification events, preferences and per-device deliveries with unique deduplication ownership
 - [ ] 2.5 Expose authenticated catalog, settings, run detail, progress replay, recovery, notification preference and administrator inventory APIs
 - [ ] 2.6 Publish committed progress and terminal events through the shared web/mobile stream without duplicate conversation output
 - [ ] 2.7 Add focused migration, repository, service, authorization, API, SSE, idempotency and sanitization tests

@@ -261,6 +261,7 @@ production activation are recorded later in this ledger.
 | D-058 | Persist project and WorkSession model/effort defaults independently, but require the immutable AgentRun effective profile to be either entirely absent for legacy history or complete with both values, both sources, catalog revision and Codex version. | Model and effort have independent precedence, while partial execution history would be ambiguous and unauditable. | accepted | backend/data owners | before changing V57 profile constraints or snapshot semantics |
 | D-059 | Persist only the thirteen exact category-derived operator messages in V58, serialize sequence allocation with the owning AgentRun row and evict detail below a moving 200-event floor without removing the independent projection. | Free-form progress text can retain commands, output or credentials; row ownership plus a non-reused sequence and projection-first replay gives deterministic concurrent append and reconnect behavior. | accepted | backend/data/security owners | before adding or localizing a progress template or changing replay retention |
 | D-060 | Bind each V59 recovery request to one active operator's persisted role snapshot, exact WorkSession/AgentRun composite ownership, idempotency key and canonical request fingerprint; persist routine attempts at privileged actions as closed `ROLE_REQUIRED` outcomes, and permit `RETRY_CREATED` only with immutable same-session `retryOfRunId` lineage. | Authentication alone does not grant host authority, repeated keys must not change meaning after timeout, and a replacement run without exact lineage could duplicate a still-live execution. | accepted | backend/data/security owners | before expanding recovery actions, role authority or retry lineage |
+| D-061 | Make V60 notification defaults implicit-enabled through absent preference rows, constrain event copy to the three exact `agent-run-safe-v1` templates, bind deduplication to category/run/source revision and own one FCM delivery per exact event/device without copying the device token. | Upgrade and re-registration must not reset user choices, event rows must never retain conversation content, and partial dispatch needs independently retryable delivery ownership without duplicate presentation. | accepted | backend/mobile/data/security owners | before adding a notification category, template version, channel or changing preference defaults |
 
 ## Deferred decisions and gates
 
@@ -5141,3 +5142,36 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.3-idempotent-recovery`;
 the SHA-256 of its `SHA256SUMS` is
 `85086b48f96e6de5e69a3ef8bad6a42b8b21012135ec9f6b395df8ebe505e025`.
+
+Task 2.4 is complete and change progress is `19/57`; the exact implementation
+resume point is task 2.5. Tasks 2.5 and later remain pending.
+
+Atenea commit `a15719e8c2c54502c4b66a586481e62b061c2f20` adds V60
+and the generic notification outbox persistence service. Events are limited to
+`RUN_COMPLETED`, `RUN_FAILED` and `ACTION_REQUIRED`; their title/body and link
+kind are exact `agent-run-safe-v1` database-enforced templates. Event identity
+binds category, AgentRun and source revision to a SHA-256 deduplication key and
+composite WorkSession/AgentRun ownership. Prompt, answer, internal worker detail
+and device token are absent from event and delivery rows.
+
+An absent per-device/category preference means enabled, while an explicit row
+wins and survives re-registration. Each active enabled device receives at most
+one `(event, device, FCM)` delivery with bounded attempt/expiry state ready for
+the later dispatcher task. This task persisted no real event and did not
+activate or invoke FCM.
+
+Twenty-three focused persistence tests passed. Two complete 468-test passes
+against separate fresh PostgreSQL 16 databases migrated through V60 passed
+with zero failures, errors or skips in 47 and 44 seconds. Read-only source and
+dependencies, isolated workspaces and unexposed databases were used. No task
+container, network, volume or raw authentication log remains.
+
+The canonical Atenea branch and remote are clean and synchronized at that
+commit. Production and preview remain `UP` with zero backend restarts;
+production remains on Flyway V56. No device, notification, production database
+or operational state changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.4-generic-notification-outbox`;
+the SHA-256 of its `SHA256SUMS` is
+`413a2e015ecce66a12bbdb90c47c0b27c5001bf4883dfaa9718e63c96ba80bbc`.
