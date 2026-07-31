@@ -245,6 +245,47 @@ public class RemoteWorkerClient {
         return exchange("POST", "/v1/executions/" + run.getDispatchId() + "/cancel", body, Execution.class);
     }
 
+    public Execution cancelExact(AgentRunEntity run) {
+        return exchange(
+                "POST",
+                "/v1/executions/" + run.getDispatchId() + "/cancel-exact",
+                exactExecutionOperation(run),
+                Execution.class,
+                run.getDispatchId() + ":cancel");
+    }
+
+    public Execution inspectReconciliation(AgentRunEntity run) {
+        return exchange(
+                "POST",
+                "/v1/executions/" + run.getDispatchId() + "/reconcile",
+                exactExecutionOperation(run),
+                Execution.class,
+                run.getDispatchId() + ":reconcile");
+    }
+
+    public ExecutionDoctor doctor(AgentRunEntity run) {
+        return exchange(
+                "POST",
+                "/v1/executions/" + run.getDispatchId() + "/doctor",
+                exactExecutionOperation(run),
+                ExecutionDoctor.class,
+                run.getDispatchId() + ":doctor");
+    }
+
+    private Map<String, Object> exactExecutionOperation(AgentRunEntity run) {
+        if (run.getRemoteExecutionId() == null
+                || run.getRemoteSessionId() == null
+                || run.getWorkspaceIdentity() == null) {
+            throw new RemoteWorkerException(
+                    "Persisted exact execution ownership is incomplete", 409);
+        }
+        return Map.of(
+                "executionId", run.getRemoteExecutionId(),
+                "sessionId", run.getRemoteSessionId().toString(),
+                "workspaceIdentity", run.getWorkspaceIdentity(),
+                "leaseGeneration", run.getLeaseGeneration());
+    }
+
     private <T> T exchange(String method, String path, Object body, Class<T> responseType) {
         return exchange(method, path, body, responseType, null);
     }
@@ -362,6 +403,26 @@ public class RemoteWorkerClient {
             String category,
             Instant occurredAt,
             String message
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record ExecutionDoctor(
+            String schemaVersion,
+            String workerId,
+            String dispatchId,
+            String executionId,
+            String sessionId,
+            String workspaceIdentity,
+            long leaseGeneration,
+            String status,
+            long revision,
+            String observation,
+            boolean cancelRequested,
+            boolean reconcileRequired,
+            Long latestProgressSequence,
+            int retainedProgressCount,
+            boolean valuesExposed
     ) {
     }
 

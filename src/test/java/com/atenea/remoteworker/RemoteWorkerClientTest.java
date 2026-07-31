@@ -44,6 +44,20 @@ class RemoteWorkerClientTest {
         server.createContext("/v1/executions", exchange -> {
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
             JsonNode request = requestBody.get();
+            String path = exchange.getRequestURI().getPath();
+            if (!"/v1/executions".equals(path)) {
+                String dispatchId = path.split("/")[3];
+                byte[] response;
+                if (path.endsWith("/doctor")) {
+                    response = objectMapper.writeValueAsBytes(doctorResponse(dispatchId, request));
+                } else {
+                    response = objectMapper.writeValueAsBytes(operationResponse(dispatchId, request));
+                }
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.close();
+                return;
+            }
             byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
                     java.util.Map.entry("dispatchId", request.get("dispatchId").asText()),
                     java.util.Map.entry("executionId", "4ee2d311-b9da-4307-89b6-dd3110ef2057"),
@@ -441,6 +455,99 @@ class RemoteWorkerClientTest {
         JsonNode workload = requestBody.get().get("workload");
         assertEquals("synthetic-routing-v1", workload.get("kind").asText());
         assertEquals(4, workload.size());
+    }
+
+    @Test
+    void exactCancelReconcileAndDoctorDeriveOnlyPersistedOwnership() {
+        AgentRunEntity run = projectRun(null);
+        run.setRemoteExecutionId("4ee2d311-b9da-4307-89b6-dd3110ef2057");
+
+        RemoteWorkerClient.Execution cancelled = client.cancelExact(run);
+        assertExactOperationBody(run);
+        RemoteWorkerClient.Execution reconciled = client.inspectReconciliation(run);
+        assertExactOperationBody(run);
+        RemoteWorkerClient.ExecutionDoctor diagnostic = client.doctor(run);
+        assertExactOperationBody(run);
+
+        assertEquals(run.getDispatchId().toString(), cancelled.dispatchId());
+        assertEquals(run.getDispatchId().toString(), reconciled.dispatchId());
+        assertEquals("agent-run-doctor-v1", diagnostic.schemaVersion());
+        assertEquals("PERSISTED_NO_PROCESS", diagnostic.observation());
+        assertEquals(false, diagnostic.valuesExposed());
+    }
+
+    @Test
+    void exactOperationsFailBeforeNetworkWhenPersistedOwnershipIsIncomplete() {
+        AgentRunEntity run = projectRun(null);
+
+        java.util.List<java.util.function.Consumer<AgentRunEntity>> operations = java.util.List.of(
+                value -> client.cancelExact(value),
+                value -> client.inspectReconciliation(value),
+                value -> client.doctor(value));
+        for (java.util.function.Consumer<AgentRunEntity> operation : operations) {
+            RemoteWorkerException exception = assertThrows(
+                    RemoteWorkerException.class,
+                    () -> operation.accept(run));
+            assertEquals(409, exception.getStatusCode());
+            assertNull(requestBody.get());
+        }
+    }
+
+    private void assertExactOperationBody(AgentRunEntity run) {
+        JsonNode body = requestBody.get();
+        assertEquals(4, body.size());
+        assertEquals(run.getRemoteExecutionId(), body.get("executionId").asText());
+        assertEquals(run.getRemoteSessionId().toString(), body.get("sessionId").asText());
+        assertEquals(run.getWorkspaceIdentity(), body.get("workspaceIdentity").asText());
+        assertEquals(run.getLeaseGeneration(), body.get("leaseGeneration").asLong());
+        for (String forbidden : java.util.List.of(
+                "command", "host", "service", "path", "slot", "endpoint",
+                "environment", "credential")) {
+            assertNull(body.get(forbidden));
+        }
+    }
+
+    private java.util.Map<String, Object> operationResponse(
+            String dispatchId,
+            JsonNode request
+    ) {
+        Instant now = Instant.parse("2026-07-29T06:00:00Z");
+        return java.util.Map.ofEntries(
+                java.util.Map.entry("dispatchId", dispatchId),
+                java.util.Map.entry("executionId", request.get("executionId").asText()),
+                java.util.Map.entry("sessionId", request.get("sessionId").asText()),
+                java.util.Map.entry("workspaceIdentity", request.get("workspaceIdentity").asText()),
+                java.util.Map.entry("workloadClass", "NORMAL"),
+                java.util.Map.entry("leaseGeneration", request.get("leaseGeneration").asLong()),
+                java.util.Map.entry("status", "RUNNING"),
+                java.util.Map.entry("statusReason", "Exact project Codex execution running"),
+                java.util.Map.entry("revision", 4),
+                java.util.Map.entry("progress", 10),
+                java.util.Map.entry("createdAt", now),
+                java.util.Map.entry("updatedAt", now),
+                java.util.Map.entry("startedAt", now),
+                java.util.Map.entry("progressEvents", java.util.List.of()));
+    }
+
+    private java.util.Map<String, Object> doctorResponse(
+            String dispatchId,
+            JsonNode request
+    ) {
+        return java.util.Map.ofEntries(
+                java.util.Map.entry("schemaVersion", "agent-run-doctor-v1"),
+                java.util.Map.entry("workerId", "ax42-01"),
+                java.util.Map.entry("dispatchId", dispatchId),
+                java.util.Map.entry("executionId", request.get("executionId").asText()),
+                java.util.Map.entry("sessionId", request.get("sessionId").asText()),
+                java.util.Map.entry("workspaceIdentity", request.get("workspaceIdentity").asText()),
+                java.util.Map.entry("leaseGeneration", request.get("leaseGeneration").asLong()),
+                java.util.Map.entry("status", "RUNNING"),
+                java.util.Map.entry("revision", 4),
+                java.util.Map.entry("observation", "PERSISTED_NO_PROCESS"),
+                java.util.Map.entry("cancelRequested", false),
+                java.util.Map.entry("reconcileRequired", false),
+                java.util.Map.entry("retainedProgressCount", 2),
+                java.util.Map.entry("valuesExposed", false));
     }
 
     private AgentRunEntity projectRun(String threadId) {

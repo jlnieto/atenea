@@ -230,13 +230,13 @@ class RemoteAgentRunCoordinatorTest {
         when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
         when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         RemoteWorkerClient.Execution cancelled = execution(run, "CANCELLED", null);
-        when(client.cancel(run)).thenReturn(cancelled);
+        when(client.cancelExact(run)).thenReturn(cancelled);
 
         coordinator.requestCancellation(run.getId());
         waitForTerminal(run);
 
         assertEquals(AgentRunStatus.CANCELLED, run.getStatus());
-        verify(client).cancel(run);
+        verify(client).cancelExact(run);
         verify(client, never()).dispatch(any(), any());
     }
 
@@ -249,13 +249,13 @@ class RemoteAgentRunCoordinatorTest {
         when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
         when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         RemoteWorkerClient.Execution cancelled = execution(run, "CANCELLED", null);
-        when(client.cancel(run)).thenReturn(cancelled);
+        when(client.cancelExact(run)).thenReturn(cancelled);
 
         coordinator.requestCancellation(run.getId());
         waitForTerminal(run);
 
         assertEquals(AgentRunStatus.CANCELLED, run.getStatus());
-        verify(client).cancel(run);
+        verify(client).cancelExact(run);
         verify(client, never()).dispatch(any(), any());
     }
 

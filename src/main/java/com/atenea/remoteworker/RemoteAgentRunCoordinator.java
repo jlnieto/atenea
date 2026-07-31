@@ -125,7 +125,7 @@ public class RemoteAgentRunCoordinator {
                         apply(runId, client.get(cancellable));
                         cancellable = transaction.execute(status -> getRemoteRun(runId));
                     }
-                    apply(runId, client.cancel(cancellable));
+                    apply(runId, client.cancelExact(cancellable));
                     observe(runId);
                 } catch (RemoteWorkerException exception) {
                     if (run.getRemoteExecutionId() == null && exception.getStatusCode() == 404) {
