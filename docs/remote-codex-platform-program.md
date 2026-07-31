@@ -259,6 +259,7 @@ production activation are recorded later in this ledger.
 | D-056 | Add V57–V61 in dependency order for profiles/catalog, progress, recovery, generic notifications and managed updates; keep five independent gates default-off and accept production migration only after a protected V56 restore plus exact rollback-image compatibility proof. | Expanded history is required for audit/reconciliation, while a nominal old image may reject future Flyway history and therefore cannot be assumed to be a viable rollback. | accepted | data/backend/platform owners | before production V57 or any later schema contraction |
 | D-057 | Introduce additive `project-codex-v2`, catalog, progress and closed API schemas while keeping installed v1 compatible; require semantic catalog and exact session/workspace validation after structural schema validation. | JSON syntax alone cannot reject a well-formed foreign UUID or model absent from the current worker catalog, and accepting caller operational fields would recreate arbitrary command authority. | accepted | security/backend/worker owners | protocol v2 implementation or schema revision |
 | D-058 | Persist project and WorkSession model/effort defaults independently, but require the immutable AgentRun effective profile to be either entirely absent for legacy history or complete with both values, both sources, catalog revision and Codex version. | Model and effort have independent precedence, while partial execution history would be ambiguous and unauditable. | accepted | backend/data owners | before changing V57 profile constraints or snapshot semantics |
+| D-059 | Persist only the thirteen exact category-derived operator messages in V58, serialize sequence allocation with the owning AgentRun row and evict detail below a moving 200-event floor without removing the independent projection. | Free-form progress text can retain commands, output or credentials; row ownership plus a non-reused sequence and projection-first replay gives deterministic concurrent append and reconnect behavior. | accepted | backend/data/security owners | before adding or localizing a progress template or changing replay retention |
 
 ## Deferred decisions and gates
 
@@ -5069,3 +5070,37 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.1-execution-profile-persistence`;
 the SHA-256 of its `SHA256SUMS` is
 `7d0e0ac7e09c9fe52f710bf0eadef84e64ea3aaddfeb6de48f7ca403ee45e6fc`.
+
+Task 2.2 is complete and change progress is `17/57`; the exact implementation
+resume point is task 2.3. Tasks 2.3 and later remain pending.
+
+Atenea commit `63bd7c1eac15cbd1865f6718f8c17aec28c230af` adds V58,
+the durable event entity/repository and transactional append/replay service.
+An exact AgentRun row lock serializes allocation. Identical consecutive
+category/template pairs coalesce before allocation, sequences are never reused
+and insertion beyond 200 events advances the retained floor and removes only
+older detail rows. Current/latest state, terminal outcome, elapsed time and
+required next action remain separate AgentRun projections.
+
+The thirteen category messages are closed templates enforced in both Java and
+PostgreSQL; free-form or credential-shaped message insertion is rejected. A
+terminal category must match the persisted AgentRun outcome. A client below
+the retained floor receives the projection and retained gap, while a legacy
+run with no progress remains explicitly projection-absent.
+
+Eleven focused persistence tests passed. Two complete 456-test passes against
+separate fresh PostgreSQL 16 databases migrated through V58 passed with zero
+failures, errors or skips in 43 and 44 seconds. Source and Maven dependencies
+were read-only, database ports were not published, and the exact fixed test
+workspace was separately writable. No test container, network, volume or raw
+authentication log remains.
+
+The canonical Atenea branch and remote are clean and synchronized at that
+commit. Production and preview remain `UP` with zero backend restarts;
+production remains on Flyway V56. No production migration or operational
+state changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.2-bounded-progress`;
+the SHA-256 of its `SHA256SUMS` is
+`c2db676350664d73e2d7552cf80cf3c16ea3f5dab55c1a8e198740790ee77a30`.
