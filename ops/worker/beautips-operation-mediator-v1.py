@@ -21,7 +21,7 @@ from typing import Any
 
 PROJECT = "beautips"
 ENGINE = "atenea-runtime-engine-v1"
-BASE_RUNNER_SHA256 = "ea5161905a005accc88d96f3e54687f3c2759384e5a242d27400ee9b40a04e41"
+BASE_RUNNER_SHA256 = "d15c78b09fcf048f7968168861ed976dd054b038168548b7216781568d1126f0"
 NODE_IMAGE = (
     "node:22.16.0-bookworm-slim@"
     "sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34"
@@ -146,7 +146,7 @@ def validate_registry(source: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         or project["runnerPath"]
         != "/usr/local/libexec/atenea/beautips-project-codex-runner-v1.py"
         or project["runnerSha256"]
-        != "08df2896f29ab0c0456a22a5aae68414f6e2cabc15e6ddc36912e107c5b4bfde"
+        != "f399857541f03bd993449b8789b3f4b841726052df5d319306c5670d1b809405"
         or project["baseRunnerSha256"] != BASE_RUNNER_SHA256
         or project["secretBoundaryPath"]
         != "/usr/local/libexec/atenea/beautips-secret-boundary-v1.py"

@@ -16,8 +16,8 @@
       "workerId": "ax42-01",
       "workloadClass": "normal",
       "runnerPath": "/usr/local/libexec/atenea/beautips-project-codex-runner-v1.py",
-      "runnerSha256": "08df2896f29ab0c0456a22a5aae68414f6e2cabc15e6ddc36912e107c5b4bfde",
-      "baseRunnerSha256": "ea5161905a005accc88d96f3e54687f3c2759384e5a242d27400ee9b40a04e41",
+      "runnerSha256": "f399857541f03bd993449b8789b3f4b841726052df5d319306c5670d1b809405",
+      "baseRunnerSha256": "d15c78b09fcf048f7968168861ed976dd054b038168548b7216781568d1126f0",
       "secretBoundaryPath": "/usr/local/libexec/atenea/beautips-secret-boundary-v1.py",
       "secretBoundarySha256": "acbbb58f5ead82f47288fa499009c46797655bd277071d57e21b5c6ccfd504f6",
       "allowedSlots": [
