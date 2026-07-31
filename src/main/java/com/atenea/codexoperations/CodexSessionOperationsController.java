@@ -13,6 +13,8 @@ import com.atenea.codexoperations.CodexSessionOperationsService.SettingsResponse
 import com.atenea.codexoperations.ManagedCodexUpdateService.AdministratorInventoryResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdatePlanRequest;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdatePlanResponse;
+import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateStageRequest;
+import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateStageResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.WorkerInventoryResponse;
 import java.util.List;
 import java.util.Set;
@@ -135,6 +137,22 @@ public class CodexSessionOperationsController {
             @AuthenticationPrincipal AuthenticatedOperator operator,
             @PathVariable java.util.UUID planId) {
         return managedUpdateService.updatePlan(operator, planId);
+    }
+
+    @PostMapping("/api/admin/codex/update-stages")
+    public UpdateStageResponse stageUpdate(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @RequestBody JsonNode request) {
+        return managedUpdateService.stageUpdate(operator,
+                closed(request, UpdateStageRequest.class,
+                        Set.of("operation", "planId", "candidateId", "idempotencyKey")));
+    }
+
+    @GetMapping("/api/admin/codex/update-stages/{stageId}")
+    public UpdateStageResponse updateStage(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable java.util.UUID stageId) {
+        return managedUpdateService.updateStage(operator, stageId);
     }
 
     private <T> T closed(JsonNode node, Class<T> type, Set<String> exactFields) {

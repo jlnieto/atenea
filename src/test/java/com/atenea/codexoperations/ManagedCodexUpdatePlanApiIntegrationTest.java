@@ -1,6 +1,10 @@
 package com.atenea.codexoperations;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -11,6 +15,7 @@ import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.auth.OperatorEntity;
 import com.atenea.persistence.auth.OperatorRepository;
+import com.atenea.remoteworker.RemoteWorkerClient;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -18,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -40,6 +46,7 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private OperatorRepository operatorRepository;
+    @MockBean private RemoteWorkerClient remoteWorkerClient;
 
     @Test
     void routineOperatorInspectsClosedInstalledCurrentPreviousInventory() throws Exception {
@@ -155,6 +162,116 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 .andExpect(jsonPath("$.gates[3].state").value("BLOCKED"));
     }
 
+    @Test
+    void administratorStagesVerifiedCandidateIdempotentlyWithoutChangingLinks() throws Exception {
+        OperatorEntity routine = operator(CodexOperationsRole.ROUTINE_OPERATOR);
+        OperatorEntity administrator = operator(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        Inventory inventory = inventory(true);
+        String plan = mockMvc.perform(post("/api/admin/codex/update-plans")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(planBody(UUID.randomUUID(), false)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        UUID planId = UUID.fromString(com.jayway.jsonpath.JsonPath.read(plan, "$.planId"));
+        UUID idempotencyKey = UUID.randomUUID();
+        when(remoteWorkerClient.stageCodexUpdate(planId, inventory.candidate(), idempotencyKey))
+                .thenReturn(stageResult(planId, inventory.candidate(), idempotencyKey,
+                        "3".repeat(64)));
+        String body = stageBody(planId, inventory.candidate(), idempotencyKey, false);
+
+        mockMvc.perform(post("/api/admin/codex/update-stages")
+                        .with(auth(routine)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+
+        String first = mockMvc.perform(post("/api/admin/codex/update-stages")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("STAGED"))
+                .andExpect(jsonPath("$.planId").value(planId.toString()))
+                .andExpect(jsonPath("$.current.inventoryId").value(inventory.current().toString()))
+                .andExpect(jsonPath("$.current.linkState").value("CURRENT"))
+                .andExpect(jsonPath("$.previous.inventoryId").value(inventory.previous().toString()))
+                .andExpect(jsonPath("$.previous.linkState").value("PREVIOUS"))
+                .andExpect(jsonPath("$.candidate.inventoryId").value(inventory.candidate().toString()))
+                .andExpect(jsonPath("$.candidate.installationState").value("STAGED"))
+                .andExpect(jsonPath("$.gates.length()").value(3))
+                .andExpect(jsonPath("$.gates[0].state").value("PASS"))
+                .andExpect(jsonPath("$.linksChanged").value(false))
+                .andExpect(jsonPath("$.valuesExposed").value(false))
+                .andExpect(jsonPath("$.host").doesNotExist())
+                .andExpect(jsonPath("$.path").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+
+        String second = mockMvc.perform(post("/api/admin/codex/update-stages")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertEquals(first, second);
+        verify(remoteWorkerClient, times(1))
+                .stageCodexUpdate(planId, inventory.candidate(), idempotencyKey);
+        assertEquals(1, jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM worker_codex_stage_operation", Integer.class));
+        assertEquals("STAGED", jdbcTemplate.queryForObject(
+                "SELECT installation_state FROM worker_codex_release_inventory WHERE inventory_id = ?",
+                String.class, inventory.candidate()));
+        assertEquals("CURRENT", jdbcTemplate.queryForObject(
+                "SELECT link_state FROM worker_codex_release_inventory WHERE inventory_id = ?",
+                String.class, inventory.current()));
+        assertEquals("PREVIOUS", jdbcTemplate.queryForObject(
+                "SELECT link_state FROM worker_codex_release_inventory WHERE inventory_id = ?",
+                String.class, inventory.previous()));
+
+        String stageId = com.jayway.jsonpath.JsonPath.read(first, "$.stageId");
+        mockMvc.perform(get("/api/admin/codex/update-stages/{stageId}", stageId)
+                        .with(auth(administrator)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stageId").value(stageId));
+        mockMvc.perform(post("/api/admin/codex/update-stages")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(stageBody(planId, inventory.candidate(), UUID.randomUUID(), true)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void stageRejectsBlockedPlanAndConflictingWorkerProofWithoutMutation() throws Exception {
+        OperatorEntity administrator = operator(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        Inventory inventory = inventory(true);
+        jdbcTemplate.update("UPDATE worker_codex_release_inventory SET compatibility_state = 'INCOMPATIBLE' WHERE inventory_id = ?",
+                inventory.candidate());
+        String blocked = mockMvc.perform(post("/api/admin/codex/update-plans")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(planBody(UUID.randomUUID(), false)))
+                .andReturn().getResponse().getContentAsString();
+        UUID blockedPlan = UUID.fromString(com.jayway.jsonpath.JsonPath.read(blocked, "$.planId"));
+        mockMvc.perform(post("/api/admin/codex/update-stages")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(stageBody(blockedPlan, inventory.candidate(), UUID.randomUUID(), false)))
+                .andExpect(status().isConflict());
+        verify(remoteWorkerClient, never()).stageCodexUpdate(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+
+        jdbcTemplate.update("DELETE FROM worker_codex_update_plan");
+        jdbcTemplate.update("UPDATE worker_codex_release_inventory SET compatibility_state = 'COMPATIBLE' WHERE inventory_id = ?",
+                inventory.candidate());
+        String ready = mockMvc.perform(post("/api/admin/codex/update-plans")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(planBody(UUID.randomUUID(), false)))
+                .andReturn().getResponse().getContentAsString();
+        UUID readyPlan = UUID.fromString(com.jayway.jsonpath.JsonPath.read(ready, "$.planId"));
+        UUID key = UUID.randomUUID();
+        when(remoteWorkerClient.stageCodexUpdate(readyPlan, inventory.candidate(), key))
+                .thenReturn(stageResult(readyPlan, inventory.candidate(), key, "f".repeat(64)));
+
+        mockMvc.perform(post("/api/admin/codex/update-stages")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(stageBody(readyPlan, inventory.candidate(), key, false)))
+                .andExpect(status().isConflict());
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM worker_codex_stage_operation", Integer.class));
+        assertEquals("DISCOVERED", jdbcTemplate.queryForObject(
+                "SELECT installation_state FROM worker_codex_release_inventory WHERE inventory_id = ?",
+                String.class, inventory.candidate()));
+    }
+
     private Inventory inventory(boolean candidate) {
         jdbcTemplate.update("""
                 INSERT INTO worker_node (id, protocol_version, endpoint, enabled, healthy,
@@ -216,6 +333,24 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 {"operation":"PLAN_CODEX_UPDATE","workerId":"ax42-01",
                  "idempotencyKey":"%s"%s}
                 """.formatted(idempotencyKey, extra ? ",\"host\":\"ax42\"" : "");
+    }
+
+    private String stageBody(UUID planId, UUID candidateId, UUID idempotencyKey, boolean extra) {
+        return """
+                {"operation":"STAGE_CODEX_UPDATE","planId":"%s",
+                 "candidateId":"%s","idempotencyKey":"%s"%s}
+                """.formatted(planId, candidateId, idempotencyKey,
+                extra ? ",\"releaseUrl\":\"https://foreign.invalid/release\"" : "");
+    }
+
+    private RemoteWorkerClient.CodexUpdateStage stageResult(
+            UUID planId, UUID candidateId, UUID idempotencyKey, String releaseDigest) {
+        String proof = "a".repeat(64);
+        return new RemoteWorkerClient.CodexUpdateStage(
+                "codex-update-stage-v1", "STAGE_CODEX_UPDATE", WORKER_ID,
+                planId, candidateId, idempotencyKey, "STAGED", "0.146.0",
+                releaseDigest, CATALOG, proof, proof,
+                "PASS", "PASS", "PASS", proof, proof, false, false);
     }
 
     private record Inventory(UUID current, UUID previous, UUID candidate) {}

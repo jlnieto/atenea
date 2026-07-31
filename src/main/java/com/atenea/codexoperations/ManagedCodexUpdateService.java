@@ -3,6 +3,8 @@ package com.atenea.codexoperations;
 import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.auth.OperatorRepository;
+import com.atenea.remoteworker.RemoteWorkerClient;
+import com.atenea.remoteworker.RemoteWorkerException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -20,19 +22,23 @@ public class ManagedCodexUpdateService {
 
     private static final String WORKER_ID = "ax42-01";
     private static final String UPDATE_PLAN_OPERATION = "PLAN_CODEX_UPDATE";
+    private static final String UPDATE_STAGE_OPERATION = "STAGE_CODEX_UPDATE";
     private static final String EXPECTED_UPDATE_IMPACT = "No installation or restart; a later activation would restart only the exact Codex/worker boundary, never project runtimes or unrelated slots.";
 
     private final CodexSessionOperationsProperties properties;
     private final JdbcTemplate jdbcTemplate;
     private final OperatorRepository operatorRepository;
+    private final RemoteWorkerClient remoteWorkerClient;
 
     public ManagedCodexUpdateService(
             CodexSessionOperationsProperties properties,
             JdbcTemplate jdbcTemplate,
-            OperatorRepository operatorRepository) {
+            OperatorRepository operatorRepository,
+            RemoteWorkerClient remoteWorkerClient) {
         this.properties = properties;
         this.jdbcTemplate = jdbcTemplate;
         this.operatorRepository = operatorRepository;
+        this.remoteWorkerClient = remoteWorkerClient;
     }
 
     @Transactional(readOnly = true)
@@ -153,6 +159,117 @@ public class ManagedCodexUpdateService {
         return updatePlanForAdministrator(planId);
     }
 
+    @Transactional
+    public UpdateStageResponse stageUpdate(
+            AuthenticatedOperator operator, UpdateStageRequest request) {
+        requireManagedUpdates();
+        requirePlatformAdministrator(operator);
+        if (request == null || !UPDATE_STAGE_OPERATION.equals(request.operation())
+                || request.planId() == null || request.candidateId() == null
+                || request.idempotencyKey() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Exact managed update stage request required");
+        }
+        List<ExistingStage> idempotent = jdbcTemplate.query("""
+                SELECT stage_id, plan_id, candidate_inventory_id
+                  FROM worker_codex_stage_operation
+                 WHERE requested_by = ? AND idempotency_key = ?
+                """, (rs, row) -> new ExistingStage(
+                (UUID) rs.getObject("stage_id"), (UUID) rs.getObject("plan_id"),
+                (UUID) rs.getObject("candidate_inventory_id")),
+                operator.operatorId(), request.idempotencyKey());
+        if (!idempotent.isEmpty()) {
+            ExistingStage existing = idempotent.getFirst();
+            if (!existing.planId().equals(request.planId())
+                    || !existing.candidateId().equals(request.candidateId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Idempotency key belongs to a different update stage");
+            }
+            return updateStageForAdministrator(existing.stageId());
+        }
+        List<UUID> alreadyStaged = jdbcTemplate.queryForList("""
+                SELECT stage_id FROM worker_codex_stage_operation
+                 WHERE plan_id = ? AND candidate_inventory_id = ?
+                """, UUID.class, request.planId(), request.candidateId());
+        if (!alreadyStaged.isEmpty()) {
+            return updateStageForAdministrator(alreadyStaged.getFirst());
+        }
+
+        StageContext context = stageContext(request.planId());
+        if (!"READY".equals(context.planState())
+                || !request.candidateId().equals(context.candidateId())
+                || !"COMPATIBLE".equals(context.compatibilityState())
+                || !("DISCOVERED".equals(context.installationState())
+                    || "STAGED".equals(context.installationState()))
+                || !"NONE".equals(context.linkState())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Persisted update plan candidate is not stageable");
+        }
+        WorkerInventoryResponse before = workerInventory(context.workerId());
+        ReleaseInventoryResponse currentBefore = linked(before.releases(), "CURRENT");
+        ReleaseInventoryResponse previousBefore = linked(before.releases(), "PREVIOUS");
+        if (!retainedInstalled(currentBefore) || !retainedInstalled(previousBefore)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Current and previous verified releases must be retained before staging");
+        }
+
+        RemoteWorkerClient.CodexUpdateStage staged;
+        try {
+            staged = remoteWorkerClient.stageCodexUpdate(
+                    request.planId(), request.candidateId(), request.idempotencyKey());
+        } catch (RemoteWorkerException exception) {
+            throw new ResponseStatusException(
+                    exception.getStatusCode() == 0 || exception.getStatusCode() >= 500
+                            ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.CONFLICT,
+                    "Closed Codex release staging failed", exception);
+        }
+        validateStageResult(request, context, staged);
+
+        UUID stageId = UUID.randomUUID();
+        Instant now = Instant.now();
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_stage_operation (
+                    stage_id, plan_id, worker_id, requested_by, idempotency_key,
+                    candidate_inventory_id, state, release_digest_sha256,
+                    catalog_revision, release_manifest_sha256, schema_manifest_sha256,
+                    release_verification_gate, schema_generation_gate, retention_gate,
+                    current_link_fingerprint, previous_link_fingerprint,
+                    links_changed, values_exposed, created_at, completed_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'STAGED', ?, ?, ?, ?, 'PASS', 'PASS',
+                    'PASS', ?, ?, FALSE, FALSE, ?, ?)
+                """, stageId, request.planId(), context.workerId(), operator.operatorId(),
+                request.idempotencyKey(), request.candidateId(),
+                staged.releaseDigestSha256(), staged.catalogRevision(),
+                staged.releaseManifestSha256(), staged.schemaManifestSha256(),
+                staged.currentLinkFingerprint(), staged.previousLinkFingerprint(),
+                Timestamp.from(now), Timestamp.from(now));
+        jdbcTemplate.update("""
+                UPDATE worker_codex_release_inventory
+                   SET installation_state = 'STAGED', updated_at = ?
+                 WHERE inventory_id = ? AND worker_id = ?
+                   AND installation_state IN ('DISCOVERED', 'STAGED')
+                   AND link_state = 'NONE'
+                """, Timestamp.from(now), request.candidateId(), context.workerId());
+
+        WorkerInventoryResponse after = workerInventory(context.workerId());
+        ReleaseInventoryResponse currentAfter = linked(after.releases(), "CURRENT");
+        ReleaseInventoryResponse previousAfter = linked(after.releases(), "PREVIOUS");
+        if (!sameRelease(currentBefore, currentAfter)
+                || !sameRelease(previousBefore, previousAfter)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Staging changed retained current or previous inventory");
+        }
+        return updateStageForAdministrator(stageId);
+    }
+
+    @Transactional(readOnly = true)
+    public UpdateStageResponse updateStage(
+            AuthenticatedOperator operator, UUID stageId) {
+        requireManagedUpdates();
+        requirePlatformAdministrator(operator);
+        return updateStageForAdministrator(stageId);
+    }
+
     private UpdatePlanResponse updatePlanForAdministrator(UUID planId) {
         return jdbcTemplate.query("""
                 SELECT plan_id, worker_id, state, compatibility_state,
@@ -178,6 +295,116 @@ public class ManagedCodexUpdateService {
                             rs.getTimestamp("created_at").toInstant());
                 }, planId).stream().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Update plan not found"));
+    }
+
+    private StageContext stageContext(UUID planId) {
+        return jdbcTemplate.query("""
+                SELECT p.worker_id, p.state AS plan_state, p.candidate_inventory_id,
+                       r.codex_version, r.release_digest_sha256,
+                       r.installation_state, r.link_state, r.compatibility_state,
+                       r.catalog_revision
+                  FROM worker_codex_update_plan p
+                  JOIN worker_codex_release_inventory r
+                    ON r.worker_id = p.worker_id
+                   AND r.inventory_id = p.candidate_inventory_id
+                 WHERE p.plan_id = ?
+                """, (rs, row) -> new StageContext(
+                rs.getString("worker_id"), rs.getString("plan_state"),
+                (UUID) rs.getObject("candidate_inventory_id"),
+                rs.getString("codex_version"), rs.getString("release_digest_sha256"),
+                rs.getString("installation_state"), rs.getString("link_state"),
+                rs.getString("compatibility_state"), rs.getString("catalog_revision")),
+                planId).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Stageable update plan not found"));
+    }
+
+    private void validateStageResult(
+            UpdateStageRequest request,
+            StageContext context,
+            RemoteWorkerClient.CodexUpdateStage result) {
+        if (result == null
+                || !"codex-update-stage-v1".equals(result.schemaVersion())
+                || !UPDATE_STAGE_OPERATION.equals(result.operation())
+                || !context.workerId().equals(result.workerId())
+                || !request.planId().equals(result.planId())
+                || !request.candidateId().equals(result.candidateId())
+                || !request.idempotencyKey().equals(result.idempotencyKey())
+                || !"STAGED".equals(result.state())
+                || !context.codexVersion().equals(result.codexVersion())
+                || !context.releaseDigestSha256().equals(result.releaseDigestSha256())
+                || !context.catalogRevision().equals(result.catalogRevision())
+                || !digest(result.releaseManifestSha256())
+                || !digest(result.schemaManifestSha256())
+                || !digest(result.currentLinkFingerprint())
+                || !digest(result.previousLinkFingerprint())
+                || !"PASS".equals(result.releaseVerification())
+                || !"PASS".equals(result.schemaGeneration())
+                || !"PASS".equals(result.retention())
+                || result.linksChanged()
+                || result.valuesExposed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Worker stage result conflicts with the persisted update plan");
+        }
+    }
+
+    private UpdateStageResponse updateStageForAdministrator(UUID stageId) {
+        return jdbcTemplate.query("""
+                SELECT stage_id, plan_id, worker_id, candidate_inventory_id,
+                       state, release_manifest_sha256, schema_manifest_sha256,
+                       release_verification_gate, schema_generation_gate,
+                       retention_gate, links_changed, values_exposed,
+                       created_at, completed_at
+                  FROM worker_codex_stage_operation
+                 WHERE stage_id = ?
+                """, (rs, row) -> {
+                    String workerId = rs.getString("worker_id");
+                    WorkerInventoryResponse inventory = workerInventory(workerId);
+                    return new UpdateStageResponse(
+                            (UUID) rs.getObject("stage_id"),
+                            (UUID) rs.getObject("plan_id"), workerId,
+                            rs.getString("state"),
+                            linked(inventory.releases(), "CURRENT"),
+                            linked(inventory.releases(), "PREVIOUS"),
+                            byId(inventory.releases(),
+                                    (UUID) rs.getObject("candidate_inventory_id")),
+                            rs.getString("release_manifest_sha256"),
+                            rs.getString("schema_manifest_sha256"),
+                            List.of(
+                                    new CompatibilityGateResponse(
+                                            "RELEASE_VERIFICATION",
+                                            rs.getString("release_verification_gate")),
+                                    new CompatibilityGateResponse(
+                                            "SCHEMA_GENERATION",
+                                            rs.getString("schema_generation_gate")),
+                                    new CompatibilityGateResponse(
+                                            "CURRENT_PREVIOUS_RETENTION",
+                                            rs.getString("retention_gate"))),
+                            rs.getBoolean("links_changed"),
+                            rs.getBoolean("values_exposed"),
+                            rs.getTimestamp("created_at").toInstant(),
+                            rs.getTimestamp("completed_at").toInstant());
+                }, stageId).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Update stage not found"));
+    }
+
+    private static boolean retainedInstalled(ReleaseInventoryResponse release) {
+        return release != null && "INSTALLED".equals(release.installationState());
+    }
+
+    private static boolean sameRelease(
+            ReleaseInventoryResponse before, ReleaseInventoryResponse after) {
+        return before != null && after != null
+                && before.inventoryId().equals(after.inventoryId())
+                && before.codexVersion().equals(after.codexVersion())
+                && before.releaseDigestSha256().equals(after.releaseDigestSha256())
+                && before.linkState().equals(after.linkState())
+                && before.installationState().equals(after.installationState());
+    }
+
+    private static boolean digest(String value) {
+        return value != null && value.matches("^[0-9a-f]{64}$");
     }
 
     private void requirePlatformAdministrator(AuthenticatedOperator operator) {
@@ -251,6 +478,11 @@ public class ManagedCodexUpdateService {
     private record WorkerHeader(String workerId, String protocolVersion, boolean enabled,
                                 boolean healthy, String catalogRevision,
                                 String catalogCodexVersion, Instant observedAt) {}
+    private record ExistingStage(UUID stageId, UUID planId, UUID candidateId) {}
+    private record StageContext(String workerId, String planState, UUID candidateId,
+                                String codexVersion, String releaseDigestSha256,
+                                String installationState, String linkState,
+                                String compatibilityState, String catalogRevision) {}
     public record ReleaseInventoryResponse(UUID inventoryId, String codexVersion,
                                            String releaseDigestSha256,
                                            String installationState, String linkState,
@@ -263,6 +495,8 @@ public class ManagedCodexUpdateService {
                                           String previousVersion, String compatibilityState,
                                           List<ReleaseInventoryResponse> releases) {}
     public record UpdatePlanRequest(String operation, String workerId, UUID idempotencyKey) {}
+    public record UpdateStageRequest(String operation, UUID planId, UUID candidateId,
+                                     UUID idempotencyKey) {}
     public record CompatibilityGateResponse(String gate, String state) {}
     public record UpdatePlanResponse(UUID planId, String workerId, String state,
                                      String compatibilityState,
@@ -271,6 +505,15 @@ public class ManagedCodexUpdateService {
                                      ReleaseInventoryResponse candidate,
                                      List<CompatibilityGateResponse> gates,
                                      String expectedServiceImpact, Instant createdAt) {}
+    public record UpdateStageResponse(UUID stageId, UUID planId, String workerId,
+                                      String state, ReleaseInventoryResponse current,
+                                      ReleaseInventoryResponse previous,
+                                      ReleaseInventoryResponse candidate,
+                                      String releaseManifestSha256,
+                                      String schemaManifestSha256,
+                                      List<CompatibilityGateResponse> gates,
+                                      boolean linksChanged, boolean valuesExposed,
+                                      Instant createdAt, Instant completedAt) {}
     public record AdministratorInventoryResponse(boolean profilesEnabled, boolean progressEnabled,
                                                  boolean recoveryEnabled, boolean notificationOutboxEnabled,
                                                  boolean managedUpdatesEnabled,

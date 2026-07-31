@@ -112,3 +112,68 @@ CREATE TABLE worker_codex_update_plan (
 
 CREATE INDEX idx_worker_codex_update_plan_worker_created
     ON worker_codex_update_plan (worker_id, created_at DESC);
+
+ALTER TABLE worker_codex_update_plan
+    ADD CONSTRAINT uk_worker_codex_update_plan_candidate
+    UNIQUE (plan_id, worker_id, candidate_inventory_id);
+
+CREATE TABLE worker_codex_stage_operation (
+    stage_id UUID PRIMARY KEY,
+    plan_id UUID NOT NULL,
+    worker_id VARCHAR(80) NOT NULL,
+    requested_by BIGINT NOT NULL,
+    idempotency_key UUID NOT NULL,
+    candidate_inventory_id UUID NOT NULL,
+    state VARCHAR(16) NOT NULL,
+    release_digest_sha256 VARCHAR(64) NOT NULL,
+    catalog_revision VARCHAR(64) NOT NULL,
+    release_manifest_sha256 VARCHAR(64) NOT NULL,
+    schema_manifest_sha256 VARCHAR(64) NOT NULL,
+    release_verification_gate VARCHAR(16) NOT NULL,
+    schema_generation_gate VARCHAR(16) NOT NULL,
+    retention_gate VARCHAR(16) NOT NULL,
+    current_link_fingerprint VARCHAR(64) NOT NULL,
+    previous_link_fingerprint VARCHAR(64) NOT NULL,
+    links_changed BOOLEAN NOT NULL,
+    values_exposed BOOLEAN NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT fk_worker_codex_stage_plan_candidate
+        FOREIGN KEY (plan_id, worker_id, candidate_inventory_id)
+        REFERENCES worker_codex_update_plan
+            (plan_id, worker_id, candidate_inventory_id)
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_worker_codex_stage_operator
+        FOREIGN KEY (requested_by) REFERENCES operator_account (id)
+        ON DELETE RESTRICT,
+    CONSTRAINT uk_worker_codex_stage_idempotency
+        UNIQUE (requested_by, idempotency_key),
+    CONSTRAINT uk_worker_codex_stage_candidate
+        UNIQUE (plan_id, candidate_inventory_id),
+    CONSTRAINT ck_worker_codex_stage_state
+        CHECK (state = 'STAGED'),
+    CONSTRAINT ck_worker_codex_stage_release_digest
+        CHECK (release_digest_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_worker_codex_stage_catalog_revision
+        CHECK (catalog_revision ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_worker_codex_stage_release_manifest
+        CHECK (release_manifest_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_worker_codex_stage_schema_manifest
+        CHECK (schema_manifest_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_worker_codex_stage_link_fingerprints
+        CHECK (current_link_fingerprint ~ '^[0-9a-f]{64}$'
+            AND previous_link_fingerprint ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_worker_codex_stage_gates
+        CHECK (release_verification_gate = 'PASS'
+            AND schema_generation_gate = 'PASS'
+            AND retention_gate = 'PASS'),
+    CONSTRAINT ck_worker_codex_stage_no_link_change
+        CHECK (links_changed = FALSE),
+    CONSTRAINT ck_worker_codex_stage_no_values
+        CHECK (values_exposed = FALSE),
+    CONSTRAINT ck_worker_codex_stage_time
+        CHECK (completed_at >= created_at)
+);
+
+CREATE INDEX idx_worker_codex_stage_worker_created
+    ON worker_codex_stage_operation (worker_id, created_at DESC);

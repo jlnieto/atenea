@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -36,6 +37,19 @@ public class RemoteWorkerClient {
 
     public Health health() {
         return exchange("GET", "/v1/health", null, Health.class);
+    }
+
+    public CodexUpdateStage stageCodexUpdate(
+            UUID planId, UUID candidateId, UUID idempotencyKey) {
+        Map<String, Object> body = Map.of(
+                "operation", "STAGE_CODEX_UPDATE",
+                "planId", planId.toString(),
+                "candidateId", candidateId.toString(),
+                "idempotencyKey", idempotencyKey.toString());
+        return exchange(
+                "POST", "/v1/codex/update/stage", body,
+                CodexUpdateStage.class, idempotencyKey.toString(),
+                Duration.ofMinutes(5));
     }
 
     public Execution dispatch(AgentRunEntity run, String message) {
@@ -510,6 +524,30 @@ public class RemoteWorkerClient {
             String worktreeIdentitySha256,
             String validationProfile,
             String readiness
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record CodexUpdateStage(
+            String schemaVersion,
+            String operation,
+            String workerId,
+            UUID planId,
+            UUID candidateId,
+            UUID idempotencyKey,
+            String state,
+            String codexVersion,
+            String releaseDigestSha256,
+            String catalogRevision,
+            String releaseManifestSha256,
+            String schemaManifestSha256,
+            String releaseVerification,
+            String schemaGeneration,
+            String retention,
+            String currentLinkFingerprint,
+            String previousLinkFingerprint,
+            boolean linksChanged,
+            boolean valuesExposed
     ) {
     }
 

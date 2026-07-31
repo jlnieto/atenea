@@ -180,6 +180,33 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/codex/update/stage", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
+                    java.util.Map.entry("schemaVersion", "codex-update-stage-v1"),
+                    java.util.Map.entry("operation", request.get("operation").asText()),
+                    java.util.Map.entry("workerId", "ax42-01"),
+                    java.util.Map.entry("planId", request.get("planId").asText()),
+                    java.util.Map.entry("candidateId", request.get("candidateId").asText()),
+                    java.util.Map.entry("idempotencyKey", request.get("idempotencyKey").asText()),
+                    java.util.Map.entry("state", "STAGED"),
+                    java.util.Map.entry("codexVersion", "0.146.0"),
+                    java.util.Map.entry("releaseDigestSha256", "1".repeat(64)),
+                    java.util.Map.entry("catalogRevision", "2".repeat(64)),
+                    java.util.Map.entry("releaseManifestSha256", "3".repeat(64)),
+                    java.util.Map.entry("schemaManifestSha256", "4".repeat(64)),
+                    java.util.Map.entry("releaseVerification", "PASS"),
+                    java.util.Map.entry("schemaGeneration", "PASS"),
+                    java.util.Map.entry("retention", "PASS"),
+                    java.util.Map.entry("currentLinkFingerprint", "5".repeat(64)),
+                    java.util.Map.entry("previousLinkFingerprint", "6".repeat(64)),
+                    java.util.Map.entry("linksChanged", false),
+                    java.util.Map.entry("valuesExposed", false)));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.start();
         properties = new RemoteWorkerProperties();
         properties.setEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
@@ -234,6 +261,34 @@ class RemoteWorkerClientTest {
         assertNull(workload.get("environment"));
         assertNull(workload.get("credential"));
         assertNull(workload.get("ruleSource"));
+    }
+
+    @Test
+    void codexUpdateStageSendsOnlyPersistedClosedIdentities() {
+        UUID planId = UUID.randomUUID();
+        UUID candidateId = UUID.randomUUID();
+        UUID idempotencyKey = UUID.randomUUID();
+
+        RemoteWorkerClient.CodexUpdateStage result = client.stageCodexUpdate(
+                planId, candidateId, idempotencyKey);
+
+        JsonNode body = requestBody.get();
+        assertEquals(java.util.Set.of(
+                "operation", "planId", "candidateId", "idempotencyKey"),
+                objectMapper.convertValue(body, java.util.Map.class).keySet());
+        assertEquals("STAGE_CODEX_UPDATE", body.get("operation").asText());
+        assertEquals(planId.toString(), body.get("planId").asText());
+        assertEquals(candidateId.toString(), body.get("candidateId").asText());
+        assertEquals(idempotencyKey.toString(), body.get("idempotencyKey").asText());
+        assertEquals("STAGED", result.state());
+        assertEquals("PASS", result.schemaGeneration());
+        assertEquals(false, result.linksChanged());
+        assertEquals(false, result.valuesExposed());
+        assertNull(body.get("releaseUrl"));
+        assertNull(body.get("version"));
+        assertNull(body.get("path"));
+        assertNull(body.get("command"));
+        assertNull(body.get("service"));
     }
 
     @Test
