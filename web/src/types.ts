@@ -4,6 +4,7 @@ export interface OperatorProfile {
   id: number;
   email: string;
   displayName: string;
+  codexOperationsRole?: "ROUTINE_OPERATOR" | "PRIVILEGED_OPERATOR" | "PLATFORM_ADMINISTRATOR";
 }
 
 export interface AuthSession {
@@ -158,6 +159,134 @@ export interface CodexSettings {
   id: number;
   modelId?: string | null;
   reasoningEffort?: string | null;
+}
+
+export interface CodexReleaseInventory {
+  inventoryId: string;
+  codexVersion: string;
+  releaseDigestSha256: string;
+  installationState: string;
+  linkState: "CURRENT" | "PREVIOUS" | "NONE";
+  compatibilityState: string;
+  catalogRevision: string;
+  observedAt: string;
+}
+
+export interface CodexWorkerInventory {
+  workerId: string;
+  protocolVersion: string;
+  enabled: boolean;
+  healthy: boolean;
+  catalogRevision?: string | null;
+  catalogCodexVersion?: string | null;
+  observedAt?: string | null;
+  installedVersions: string[];
+  currentVersion?: string | null;
+  previousVersion?: string | null;
+  compatibilityState: string;
+  releases: CodexReleaseInventory[];
+}
+
+export interface CodexAdministratorInventory {
+  profilesEnabled: boolean;
+  progressEnabled: boolean;
+  recoveryEnabled: boolean;
+  notificationOutboxEnabled: boolean;
+  managedUpdatesEnabled: boolean;
+  workers: CodexWorkerInventory[];
+}
+
+export interface CodexCompatibilityGate {
+  gate: string;
+  state: string;
+}
+
+export interface CodexUpdatePlan {
+  planId: string;
+  workerId: string;
+  state: string;
+  compatibilityState: string;
+  current: CodexReleaseInventory;
+  previous?: CodexReleaseInventory | null;
+  candidate: CodexReleaseInventory;
+  gates: CodexCompatibilityGate[];
+  expectedServiceImpact: string;
+  createdAt: string;
+}
+
+export interface CodexUpdateStage {
+  stageId: string;
+  planId: string;
+  workerId: string;
+  state: string;
+  current: CodexReleaseInventory;
+  previous?: CodexReleaseInventory | null;
+  candidate: CodexReleaseInventory;
+  gates: CodexCompatibilityGate[];
+  linksChanged: boolean;
+  valuesExposed: boolean;
+  createdAt: string;
+  completedAt: string;
+}
+
+export interface CodexActivationAuthorization {
+  authorizationId: string;
+  planId: string;
+  workerId: string;
+  currentInventoryId: string;
+  candidateInventoryId: string;
+  expiresAt: string;
+  consumedAt?: string | null;
+  consumedActivationId?: string | null;
+  createdAt: string;
+  automaticRestoreAuthorized: boolean;
+}
+
+export interface CodexUpdateActivation {
+  activationId: string;
+  authorizationId: string;
+  planId: string;
+  workerId: string;
+  state: string;
+  current: CodexReleaseInventory;
+  previous: CodexReleaseInventory;
+  candidate: CodexReleaseInventory;
+  gates: CodexCompatibilityGate[];
+  automaticRestore: string;
+  valuesExposed: boolean;
+  createdAt: string;
+  completedAt: string;
+}
+
+export interface CodexRollbackAuthorization {
+  authorizationId: string;
+  activationId: string;
+  planId: string;
+  workerId: string;
+  currentInventoryId: string;
+  previousInventoryId: string;
+  expiresAt: string;
+  consumedAt?: string | null;
+  consumedRollbackId?: string | null;
+  createdAt: string;
+}
+
+export interface CodexUpdateRollback {
+  rollbackId: string;
+  authorizationId: string;
+  activationId: string;
+  planId: string;
+  workerId: string;
+  state: string;
+  current: CodexReleaseInventory;
+  previous: CodexReleaseInventory;
+  linkRestore: string;
+  workerServiceRestart: string;
+  affectedServices: string[];
+  appServerServicesRestarted: number;
+  valuesExposed: boolean;
+  createdAt: string;
+  completedAt: string;
 }
 
 export interface CodexRunDetail {

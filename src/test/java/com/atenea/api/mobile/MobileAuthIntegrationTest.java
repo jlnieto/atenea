@@ -54,7 +54,8 @@ class MobileAuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
                 .andExpect(jsonPath("$.refreshToken").isString())
-                .andExpect(jsonPath("$.operator.email").value("operator@atenea.local"));
+                .andExpect(jsonPath("$.operator.email").value("operator@atenea.local"))
+                .andExpect(jsonPath("$.operator.codexOperationsRole").value("ROUTINE_OPERATOR"));
     }
 
     @Test
@@ -78,7 +79,8 @@ class MobileAuthIntegrationTest {
         mockMvc.perform(get("/api/mobile/auth/me")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.displayName").value("Integration Operator"));
+                .andExpect(jsonPath("$.displayName").value("Integration Operator"))
+                .andExpect(jsonPath("$.codexOperationsRole").value("ROUTINE_OPERATOR"));
 
         JsonNode refreshJson = objectMapper.readTree(mockMvc.perform(post("/api/mobile/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)

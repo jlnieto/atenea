@@ -35,10 +35,17 @@ import {
   AuthSession,
   CodexCatalog,
   CodexCatalogModel,
+  CodexActivationAuthorization,
+  CodexAdministratorInventory,
   CodexProgressReplay,
   CodexRecoveryAction,
+  CodexRollbackAuthorization,
   CodexRunDetail,
   CodexSettings,
+  CodexUpdateActivation,
+  CodexUpdatePlan,
+  CodexUpdateRollback,
+  CodexUpdateStage,
   CoreCommandResponse,
   CoreCommandSummary,
   CoreScope,
@@ -69,6 +76,7 @@ type RouteName =
   | "files"
   | "costs"
   | "diagnostics"
+  | "codex-admin"
   | "settings"
   | "session"
   | "conversation"
@@ -83,7 +91,7 @@ interface Route {
 
 type Level = "ok" | "warning" | "critical" | "unknown" | "running" | "neutral";
 
-const navGroups: { title: string; items: { route: RouteName; label: string; icon: ReactNode }[] }[] = [
+const navGroups: { title: string; items: { route: RouteName; label: string; icon: ReactNode; adminOnly?: boolean }[] }[] = [
   {
     title: "Trabajo",
     items: [
@@ -105,6 +113,7 @@ const navGroups: { title: string; items: { route: RouteName; label: string; icon
     items: [
       { route: "costs", label: "Costes API", icon: <BarChart3 /> },
       { route: "diagnostics", label: "Diagnóstico", icon: <TerminalSquare /> },
+      { route: "codex-admin", label: "Versiones Codex", icon: <ShieldCheck />, adminOnly: true },
       { route: "settings", label: "Ajustes", icon: <Settings /> }
     ]
   }
@@ -181,7 +190,9 @@ function Shell({ session, route }: { session: AuthSession; route: Route }) {
             {navGroups.map((group) => (
               <div className="nav__group" key={group.title}>
                 <span className="nav__group-label">{group.title}</span>
-                {group.items.map((item) => (
+                {group.items.filter((item) => !item.adminOnly
+                  || session.operator.codexOperationsRole === "PLATFORM_ADMINISTRATOR"
+                  || !session.operator.codexOperationsRole).map((item) => (
                   <button
                     className={`nav__item ${route.name === item.route ? "is-active" : ""}`}
                     key={item.route}
@@ -248,6 +259,8 @@ function RouteContent({ route, refreshHealth }: { route: Route; refreshHealth: (
       return <CostsScreen />;
     case "diagnostics":
       return <DiagnosticsScreen />;
+    case "codex-admin":
+      return <CodexAdministrationScreen />;
     case "settings":
       return <SettingsScreen />;
     case "session":
@@ -1737,6 +1750,230 @@ function DiagnosticsScreen() {
   );
 }
 
+type CodexAdminAction = "load" | "plan" | "stage" | "authorize-activation" | "activate" | "authorize-rollback" | "rollback";
+
+function CodexAdministrationScreen() {
+  const [inventory, setInventory] = useState<CodexAdministratorInventory | null>(null);
+  const [plan, setPlan] = useState<CodexUpdatePlan | null>(null);
+  const [stage, setStage] = useState<CodexUpdateStage | null>(null);
+  const [activationAuthorization, setActivationAuthorization] = useState<CodexActivationAuthorization | null>(null);
+  const [activation, setActivation] = useState<CodexUpdateActivation | null>(null);
+  const [rollbackAuthorization, setRollbackAuthorization] = useState<CodexRollbackAuthorization | null>(null);
+  const [rollback, setRollback] = useState<CodexUpdateRollback | null>(null);
+  const [busy, setBusy] = useState<CodexAdminAction | null>("load");
+  const [error, setError] = useState("");
+
+  async function load() {
+    setBusy("load");
+    setError("");
+    try {
+      setInventory(await api.codexAdministratorInventory());
+    } catch (loadError) {
+      const message = loadError instanceof ApiError && loadError.status === 403
+        ? "Acceso restringido. Esta superficie requiere administración de plataforma."
+        : errorMessage(loadError);
+      setError(message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const worker = inventory?.workers[0] || null;
+
+  async function perform(action: CodexAdminAction, operation: () => Promise<void>) {
+    setBusy(action);
+    setError("");
+    try {
+      await operation();
+    } catch (operationError) {
+      setError(errorMessage(operationError));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!inventory) {
+    return <LoadingState error={error} onRetry={load} />;
+  }
+
+  const updatesReady = inventory.managedUpdatesEnabled && worker?.healthy && worker?.enabled;
+  const next = codexAdminNextStep(inventory, plan, stage, activationAuthorization, activation, rollbackAuthorization, rollback);
+
+  return (
+    <Page>
+      <Banner title={next.title} level={next.level}>{next.detail}</Banner>
+      {error && <InlineError>{error}</InlineError>}
+
+      <div className="grid grid--3 grid--compact">
+        <MetricCard
+          label="Versión actual"
+          value={worker?.currentVersion || "—"}
+          detail={worker ? `${worker.workerId} · ${worker.compatibilityState}` : "Sin worker registrado"}
+          level={worker?.healthy ? "ok" : "critical"}
+        />
+        <MetricCard
+          label="Versión anterior"
+          value={worker?.previousVersion || "—"}
+          detail="Retenida para rollback exacto"
+        />
+        <MetricCard
+          label="Actualizaciones"
+          value={inventory.managedUpdatesEnabled ? "Habilitadas" : "Desactivadas"}
+          detail={inventory.managedUpdatesEnabled ? "Operación administrativa disponible" : "Sin cambios permitidos"}
+          level={inventory.managedUpdatesEnabled ? "warning" : "neutral"}
+        />
+      </div>
+
+      <div className="grid grid--wide-left">
+        <Panel className="codex-admin-flow">
+          <PanelHeader
+            title="Flujo controlado"
+            eyebrow="Una acción cada vez"
+            action={<Button variant="ghost" icon={<RefreshCw />} onClick={load} disabled={busy !== null}>Actualizar estado</Button>}
+          />
+          <div className="codex-admin-steps">
+            <CodexAdminStep
+              number="1"
+              title="Planificar"
+              state={plan?.state || "PENDIENTE"}
+              detail={plan ? `Candidato ${plan.candidate.codexVersion}` : "Calcula candidato, compatibilidad e impacto sin instalar."}
+              action={<Button variant="primary" onClick={() => perform("plan", async () => {
+                if (!worker) return;
+                setPlan(await api.createCodexUpdatePlan(worker.workerId));
+              })} disabled={!updatesReady || busy !== null || !!plan}>Crear plan</Button>}
+            />
+            <CodexAdminStep
+              number="2"
+              title="Verificar candidato"
+              state={stage?.state || "PENDIENTE"}
+              detail={stage ? "Release y esquemas verificados; enlaces sin cambios." : "Instala en staging y valida la release sin activarla."}
+              action={<Button onClick={() => perform("stage", async () => {
+                if (plan) setStage(await api.stageCodexUpdate(plan));
+              })} disabled={!plan || plan.state !== "READY" || busy !== null || !!stage}>Verificar</Button>}
+            />
+            <CodexAdminStep
+              number="3"
+              title="Autorizar activación"
+              state={activationAuthorization ? (activationAuthorization.consumedAt ? "CONSUMIDA" : "AUTORIZADA") : "PENDIENTE"}
+              detail={activationAuthorization
+                ? `Expira ${formatAbsoluteDate(activationAuthorization.expiresAt)}`
+                : "Crea una autorización separada, exacta y de diez minutos."}
+              action={<Button onClick={() => perform("authorize-activation", async () => {
+                if (plan) setActivationAuthorization(await api.authorizeCodexActivation(plan));
+              })} disabled={!stage || stage.state !== "STAGED" || busy !== null || !!activationAuthorization}>Autorizar</Button>}
+            />
+            <CodexAdminStep
+              number="4"
+              title="Activar"
+              state={activation?.state || "PENDIENTE"}
+              detail={activation ? `Codex ${activation.current.codexVersion} activo.` : "Exige cero ejecuciones activas y supera contratos, health y canary."}
+              action={<Button variant="primary" onClick={() => perform("activate", async () => {
+                if (!plan || !activationAuthorization) return;
+                const result = await api.activateCodexUpdate(plan, activationAuthorization.authorizationId);
+                setActivation(result);
+                setInventory(await api.codexAdministratorInventory());
+              })} disabled={!activationAuthorization || !!activationAuthorization.consumedAt || busy !== null || !!activation}>Activar versión</Button>}
+            />
+            <CodexAdminStep
+              number="5"
+              title="Rollback"
+              state={rollback?.state || (rollbackAuthorization ? "AUTORIZADO" : "DISPONIBLE TRAS ACTIVAR")}
+              detail={rollback
+                ? `Restaurado Codex ${rollback.current.codexVersion}; ${rollback.appServerServicesRestarted} App Servers reiniciados.`
+                : rollbackAuthorization
+                  ? `Autorización válida hasta ${formatAbsoluteDate(rollbackAuthorization.expiresAt)}.`
+                  : "Requiere una autorización nueva y restaura sólo la versión anterior exacta."}
+              action={rollback ? (
+                <StatusPill level="ok">Finalizado</StatusPill>
+              ) : rollbackAuthorization ? (
+                <Button variant="danger" onClick={() => perform("rollback", async () => {
+                  if (!activation) return;
+                  const result = await api.rollbackCodexUpdate(activation.activationId, rollbackAuthorization.authorizationId);
+                  setRollback(result);
+                  setInventory(await api.codexAdministratorInventory());
+                })} disabled={busy !== null || !!rollback}>Ejecutar rollback</Button>
+              ) : (
+                <Button onClick={() => perform("authorize-rollback", async () => {
+                  if (activation) setRollbackAuthorization(await api.authorizeCodexRollback(activation.activationId));
+                })} disabled={!activation || busy !== null}>Autorizar rollback</Button>
+              )}
+            />
+          </div>
+        </Panel>
+
+        <Panel className="codex-admin-assurance">
+          <PanelHeader title="Impacto y garantías" eyebrow="Antes de actuar" />
+          <List>
+            <Row title="Ejecuciones activas" detail="Deben ser cero para activar o revertir." level="ok" />
+            <Row title="Servicio afectado" detail="Sólo el worker Codex; nunca runtimes de proyecto." level="ok" />
+            <Row title="Autorizaciones" detail="Separadas, de un uso y con caducidad de diez minutos." level="ok" />
+            <Row title="Valores sensibles" detail="No se muestran URLs, comandos, rutas ni credenciales." level="ok" />
+          </List>
+          {plan && (
+            <div className="codex-admin-gates">
+              <span className="eyebrow">Compatibilidad</span>
+              {plan.gates.map((gate) => (
+                <div key={gate.gate}>
+                  <span>{gate.gate.replaceAll("_", " ")}</span>
+                  <StatusPill level={gate.state === "PASS" ? "ok" : "critical"}>{gate.state}</StatusPill>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </Page>
+  );
+}
+
+function CodexAdminStep({ number, title, state, detail, action }: {
+  number: string;
+  title: string;
+  state: string;
+  detail: string;
+  action: ReactNode;
+}) {
+  const level: Level = ["READY", "STAGED", "AUTHORIZED", "AUTORIZADA", "ACTIVATED", "ROLLED_BACK"].includes(state)
+    ? "ok"
+    : state === "BLOCKED" ? "critical" : "neutral";
+  return (
+    <section className="codex-admin-step">
+      <span className="codex-admin-step__number">{number}</span>
+      <div>
+        <div className="codex-admin-step__title">
+          <strong>{title}</strong>
+          <StatusPill level={level}>{state.replaceAll("_", " ")}</StatusPill>
+        </div>
+        <p>{detail}</p>
+      </div>
+      {action}
+    </section>
+  );
+}
+
+function codexAdminNextStep(
+  inventory: CodexAdministratorInventory,
+  plan: CodexUpdatePlan | null,
+  stage: CodexUpdateStage | null,
+  activationAuthorization: CodexActivationAuthorization | null,
+  activation: CodexUpdateActivation | null,
+  rollbackAuthorization: CodexRollbackAuthorization | null,
+  rollback: CodexUpdateRollback | null
+): { title: string; detail: string; level: Level } {
+  if (!inventory.managedUpdatesEnabled) return { title: "Actualizaciones desactivadas", detail: "No se puede modificar Codex hasta habilitar el control administrativo.", level: "neutral" };
+  if (rollback) return { title: "Rollback completado", detail: "La versión anterior exacta vuelve a estar activa. Revisa el inventario antes de otra operación.", level: "ok" };
+  if (rollbackAuthorization) return { title: "Rollback autorizado", detail: "Siguiente acción: ejecutar el rollback antes de que caduque la autorización.", level: "warning" };
+  if (activation) return { title: "Versión activada", detail: "La activación pasó sus gates. El rollback exacto permanece disponible con una autorización nueva.", level: "ok" };
+  if (activationAuthorization) return { title: "Activación autorizada", detail: "Siguiente acción: activar antes de que caduque la autorización.", level: "warning" };
+  if (stage) return { title: "Candidato verificado", detail: "Siguiente acción: autorizar la activación. Autorizar todavía no activa nada.", level: "ok" };
+  if (plan) return { title: "Plan preparado", detail: "Siguiente acción: verificar el candidato sin cambiar los enlaces activos.", level: plan.state === "READY" ? "ok" : "critical" };
+  return { title: "Listo para planificar", detail: "Crea un plan de sólo lectura para conocer candidato, compatibilidad e impacto.", level: "ok" };
+}
+
 function SettingsScreen() {
   return (
     <Page>
@@ -2204,7 +2441,7 @@ function readRoute(): Route {
   if (name === "rescue") {
     return { name, projectId: toNumber(parts[0]), rescueSessionId: toNumber(parts[1]) };
   }
-  const known: RouteName[] = ["home", "projects", "health", "core", "operations", "files", "costs", "diagnostics", "settings"];
+  const known: RouteName[] = ["home", "projects", "health", "core", "operations", "files", "costs", "diagnostics", "codex-admin", "settings"];
   return { name: known.includes(name as RouteName) ? name as RouteName : "home" };
 }
 
@@ -2232,6 +2469,7 @@ function routeTitle(route: Route) {
     files: "Archivos",
     costs: "Costes API",
     diagnostics: "Diagnóstico",
+    "codex-admin": "Versiones Codex",
     settings: "Ajustes",
     session: "WorkSession",
     conversation: "Conversación",

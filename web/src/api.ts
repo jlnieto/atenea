@@ -2,12 +2,19 @@ import {
   ApiError,
   AuthSession,
   BillingQueueResponse,
+  CodexActivationAuthorization,
+  CodexAdministratorInventory,
   CodexCatalog,
   CodexProgressReplay,
   CodexRecoveryAction,
   CodexRecoveryResponse,
   CodexRunDetail,
   CodexSettings,
+  CodexRollbackAuthorization,
+  CodexUpdateActivation,
+  CodexUpdatePlan,
+  CodexUpdateRollback,
+  CodexUpdateStage,
   CoreCommandResponse,
   CoreCommandSummary,
   CoreScope,
@@ -206,6 +213,69 @@ export class AteneaApi {
     return this.post<CodexRecoveryResponse>(`/api/runs/${runId}/recovery`, {
       workSessionId,
       action,
+      idempotencyKey: crypto.randomUUID()
+    });
+  }
+
+  codexAdministratorInventory() {
+    return this.get<CodexAdministratorInventory>("/api/admin/codex/inventory");
+  }
+
+  createCodexUpdatePlan(workerId: string) {
+    return this.post<CodexUpdatePlan>("/api/admin/codex/update-plans", {
+      operation: "PLAN_CODEX_UPDATE",
+      workerId,
+      idempotencyKey: crypto.randomUUID()
+    });
+  }
+
+  stageCodexUpdate(plan: CodexUpdatePlan) {
+    return this.post<CodexUpdateStage>("/api/admin/codex/update-stages", {
+      operation: "STAGE_CODEX_UPDATE",
+      planId: plan.planId,
+      candidateId: plan.candidate.inventoryId,
+      idempotencyKey: crypto.randomUUID()
+    });
+  }
+
+  authorizeCodexActivation(plan: CodexUpdatePlan) {
+    return this.post<CodexActivationAuthorization>(
+      "/api/admin/codex/update-activation-authorizations",
+      {
+        operation: "AUTHORIZE_CODEX_UPDATE_ACTIVATION",
+        planId: plan.planId,
+        candidateId: plan.candidate.inventoryId,
+        idempotencyKey: crypto.randomUUID()
+      }
+    );
+  }
+
+  activateCodexUpdate(plan: CodexUpdatePlan, authorizationId: string) {
+    return this.post<CodexUpdateActivation>("/api/admin/codex/update-activations", {
+      operation: "ACTIVATE_CODEX_UPDATE",
+      planId: plan.planId,
+      candidateId: plan.candidate.inventoryId,
+      authorizationId,
+      idempotencyKey: crypto.randomUUID()
+    });
+  }
+
+  authorizeCodexRollback(activationId: string) {
+    return this.post<CodexRollbackAuthorization>(
+      "/api/admin/codex/update-rollback-authorizations",
+      {
+        operation: "AUTHORIZE_CODEX_UPDATE_ROLLBACK",
+        activationId,
+        idempotencyKey: crypto.randomUUID()
+      }
+    );
+  }
+
+  rollbackCodexUpdate(activationId: string, authorizationId: string) {
+    return this.post<CodexUpdateRollback>("/api/admin/codex/update-rollbacks", {
+      operation: "ROLLBACK_CODEX_UPDATE",
+      activationId,
+      authorizationId,
       idempotencyKey: crypto.randomUUID()
     });
   }

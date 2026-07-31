@@ -1352,6 +1352,79 @@ select:focus {
   display: none;
 }
 
+.codex-admin-flow {
+  min-width: 0;
+}
+
+.codex-admin-steps {
+  display: flex;
+  flex-direction: column;
+}
+
+.codex-admin-step {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+
+.codex-admin-step:first-child {
+  border-top: 0;
+}
+
+.codex-admin-step__number {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.codex-admin-step__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.codex-admin-step p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.codex-admin-gates {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.codex-admin-gates > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.codex-admin-assurance .row span {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 18px;
+}
+
 @media (max-width: 1120px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -1398,6 +1471,10 @@ select:focus {
 
   .topbar {
     padding: 9px 12px;
+  }
+
+  .page > .banner {
+    flex-direction: column;
   }
 
   .toolbar,
@@ -1451,6 +1528,16 @@ select:focus {
 
   .run-progress__summary {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .codex-admin-step {
+    grid-template-columns: 32px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .codex-admin-step .button {
+    grid-column: 2;
+    width: 100%;
   }
 
   .run-progress__fact,
