@@ -88,6 +88,9 @@ VALIDATION_KEYS = {
 REPOSITORY_ROLE_KEYS = {
     "sessionId", "workspaceIdentity", "changeIdentity", "codeCommit",
 }
+EXACT_EXECUTION_OPERATION_KEYS = {
+    "executionId", "sessionId", "workspaceIdentity", "leaseGeneration",
+}
 VALIDATION_DEFINITIONS = {
     "BACKEND_TEST": ("atenea-backend-test-v1", 900),
     "WEB_BUILD": ("atenea-web-build-v1", 600),
@@ -1208,6 +1211,90 @@ class WorkerState:
             self.wakeup.set()
             return self._public(execution)
 
+    def cancel_exact(self, dispatch_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        with self.lock:
+            execution = self._exact_operation_owned(
+                dispatch_id, request, "invalid_exact_cancel"
+            )
+            execution_id = execution["executionId"]
+        return self.cancel(dispatch_id, {"executionId": execution_id})
+
+    def inspect_reconciliation(
+        self,
+        dispatch_id: str,
+        request: dict[str, Any],
+    ) -> dict[str, Any]:
+        with self.lock:
+            execution = self._exact_operation_owned(
+                dispatch_id, request, "invalid_reconcile_inspection"
+            )
+            return self._public(execution)
+
+    def doctor(self, dispatch_id: str, request: dict[str, Any]) -> dict[str, Any]:
+        with self.lock:
+            execution = self._exact_operation_owned(
+                dispatch_id, request, "invalid_execution_doctor"
+            )
+            process = self.processes.get(dispatch_id)
+            thread = self.threads.get(dispatch_id)
+            progress_events = execution.get("progressEvents", [])
+            if execution["status"] in TERMINAL:
+                observation = "TERMINAL"
+            elif execution.get("reconcileRequired"):
+                observation = "RECONCILIATION_REQUIRED"
+            elif process is not None and process.poll() is None:
+                observation = "OWNED_PROCESS_ACTIVE"
+            elif thread is not None and thread.is_alive():
+                observation = "OWNED_EXECUTION_ACTIVE"
+            else:
+                observation = "PERSISTED_NO_PROCESS"
+            return {
+                "schemaVersion": "agent-run-doctor-v1",
+                "workerId": self.worker_id,
+                "dispatchId": execution["dispatchId"],
+                "executionId": execution["executionId"],
+                "sessionId": execution["sessionId"],
+                "workspaceIdentity": execution["workspaceIdentity"],
+                "leaseGeneration": execution["leaseGeneration"],
+                "status": execution["status"],
+                "revision": execution["revision"],
+                "observation": observation,
+                "cancelRequested": execution["cancelRequested"],
+                "reconcileRequired": execution["reconcileRequired"],
+                "latestProgressSequence": (
+                    progress_events[-1]["sequence"] if progress_events else None
+                ),
+                "retainedProgressCount": len(progress_events),
+                "valuesExposed": False,
+            }
+
+    def _exact_operation_owned(
+        self,
+        dispatch_id: str,
+        request: Any,
+        error_code: str,
+    ) -> dict[str, Any]:
+        if not isinstance(request, dict) or set(request) != EXACT_EXECUTION_OPERATION_KEYS:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                error_code,
+                "exact execution operation fields are invalid",
+            )
+        execution = self._owned(dispatch_id, request.get("executionId"))
+        if (
+            request.get("sessionId") != execution["sessionId"]
+            or request.get("workspaceIdentity") != execution["workspaceIdentity"]
+            or not isinstance(request.get("leaseGeneration"), int)
+            or isinstance(request.get("leaseGeneration"), bool)
+            or request["leaseGeneration"] != execution["leaseGeneration"]
+        ):
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "execution_ownership_conflict",
+                "exact execution operation ownership does not match",
+            )
+        return execution
+
     def _owned(self, dispatch_id: str, execution_id: Any) -> dict[str, Any]:
         execution = self.executions.get(dispatch_id)
         if not execution:
@@ -1852,6 +1939,18 @@ class AgentRunHandler(BaseHTTPRequestHandler):
                     return
                 if parts[3] == "cancel":
                     self._write(HTTPStatus.OK, self.server.state.cancel(parts[2], body))
+                    return
+                if parts[3] == "cancel-exact":
+                    self._write(HTTPStatus.OK, self.server.state.cancel_exact(parts[2], body))
+                    return
+                if parts[3] == "reconcile":
+                    self._write(
+                        HTTPStatus.OK,
+                        self.server.state.inspect_reconciliation(parts[2], body),
+                    )
+                    return
+                if parts[3] == "doctor":
+                    self._write(HTTPStatus.OK, self.server.state.doctor(parts[2], body))
                     return
             raise ProtocolError(HTTPStatus.NOT_FOUND, "not_found", "route does not exist")
         except ProtocolError as error:

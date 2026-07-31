@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.internal/contracts/agent-run-doctor-v1.schema.json",
+  "title": "Atenea sanitized exact AgentRun diagnostic",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "workerId", "dispatchId", "executionId", "sessionId",
+    "workspaceIdentity", "leaseGeneration", "status", "revision",
+    "observation", "cancelRequested", "reconcileRequired",
+    "latestProgressSequence", "retainedProgressCount", "valuesExposed"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "agent-run-doctor-v1"},
+    "workerId": {"const": "ax42-01"},
+    "dispatchId": {"type": "string", "format": "uuid"},
+    "executionId": {"type": "string", "format": "uuid"},
+    "sessionId": {"type": "string", "format": "uuid"},
+    "workspaceIdentity": {
+      "type": "string",
+      "pattern": "^remote:ax42-01:work-session:[0-9a-f-]{36}$"
+    },
+    "leaseGeneration": {"type": "integer", "minimum": 1},
+    "status": {
+      "enum": [
+        "QUEUED", "STARTING", "RUNNING", "CANCELLING", "RECONCILING",
+        "SUCCEEDED", "FAILED", "CANCELLED"
+      ]
+    },
+    "revision": {"type": "integer", "minimum": 1},
+    "observation": {
+      "enum": [
+        "TERMINAL", "RECONCILIATION_REQUIRED", "OWNED_PROCESS_ACTIVE",
+        "OWNED_EXECUTION_ACTIVE", "PERSISTED_NO_PROCESS"
+      ]
+    },
+    "cancelRequested": {"type": "boolean"},
+    "reconcileRequired": {"type": "boolean"},
+    "latestProgressSequence": {
+      "oneOf": [
+        {"type": "integer", "minimum": 1},
+        {"type": "null"}
+      ]
+    },
+    "retainedProgressCount": {"type": "integer", "minimum": 0, "maximum": 200},
+    "valuesExposed": {"const": false}
+  }
+}

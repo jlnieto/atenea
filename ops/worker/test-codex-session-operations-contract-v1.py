@@ -63,6 +63,10 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
                 CONTRACT / "agent-run-project-codex-v2.result.schema.json"
             ),
             "progress": read_json(CONTRACT / "agent-run-progress-v1.schema.json"),
+            "exactOperation": read_json(
+                CONTRACT / "agent-run-exact-operation-v1.request.schema.json"
+            ),
+            "doctor": read_json(CONTRACT / "agent-run-doctor-v1.schema.json"),
             "api": read_json(
                 CONTRACT / "codex-session-operation-api-v1.request.schema.json"
             ),
@@ -168,6 +172,40 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
         }
         self.assert_schema_valid("result", result)
         self.assert_schema_valid("progress", progress)
+
+        exact_operation = {
+            "executionId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            "sessionId": self.dispatch["sessionId"],
+            "workspaceIdentity": self.dispatch["workspaceIdentity"],
+            "leaseGeneration": self.dispatch["leaseGeneration"],
+        }
+        doctor = {
+            "schemaVersion": "agent-run-doctor-v1",
+            "workerId": "ax42-01",
+            "dispatchId": self.dispatch["dispatchId"],
+            **exact_operation,
+            "status": "RUNNING",
+            "revision": 4,
+            "observation": "OWNED_PROCESS_ACTIVE",
+            "cancelRequested": False,
+            "reconcileRequired": False,
+            "latestProgressSequence": 3,
+            "retainedProgressCount": 3,
+            "valuesExposed": False,
+        }
+        self.assert_schema_valid("exactOperation", exact_operation)
+        self.assert_schema_valid("doctor", doctor)
+        for field, value in (
+            ("command", "id"),
+            ("host", "foreign.invalid"),
+            ("service", "docker"),
+            ("path", "/srv/foreign"),
+            ("slot", "slot4"),
+            ("environment", {"TOKEN": "synthetic"}),
+            ("credential", "synthetic-reference"),
+        ):
+            candidate = {**exact_operation, field: value}
+            self.assertTrue(list(self.validators["exactOperation"].iter_errors(candidate)))
 
     def test_negative_corpus_is_rejected_at_its_declared_boundary(self):
         bases = {

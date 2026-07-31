@@ -56,6 +56,14 @@ class WorkerStateTest(unittest.TestCase):
             time.sleep(0.02)
         self.fail("execution did not become terminal")
 
+    def exact_operation(self, execution):
+        return {
+            "executionId": execution["executionId"],
+            "sessionId": execution["sessionId"],
+            "workspaceIdentity": execution["workspaceIdentity"],
+            "leaseGeneration": execution["leaseGeneration"],
+        }
+
     def test_duplicate_dispatch_returns_same_execution_and_conflict_is_closed(self):
         request = self.request()
         first, created = self.state.create(request)
@@ -119,6 +127,60 @@ class WorkerStateTest(unittest.TestCase):
         completed = self.wait_terminal(second["dispatchId"])
         self.assertEqual("CANCELLED", cancelled["status"])
         self.assertEqual("SUCCEEDED", completed["status"])
+
+    def test_closed_exact_cancel_rejects_foreign_ambiguous_and_added_authority(self):
+        first = self.request(duration=700)
+        second = self.request(duration=250)
+        first_execution, _ = self.state.create(first)
+        self.state.create(second)
+        exact = self.exact_operation(first_execution)
+
+        for field, value in (
+            ("executionId", str(uuid.uuid4())),
+            ("sessionId", str(uuid.uuid4())),
+            ("workspaceIdentity", "remote:foreign"),
+            ("leaseGeneration", 2),
+        ):
+            rejected = {**exact, field: value}
+            with self.assertRaises(MODULE.ProtocolError):
+                self.state.cancel_exact(first["dispatchId"], rejected)
+        with self.assertRaisesRegex(MODULE.ProtocolError, "fields are invalid"):
+            self.state.cancel_exact(first["dispatchId"], {**exact, "command": "id"})
+
+        self.state.cancel_exact(first["dispatchId"], exact)
+        self.assertEqual("CANCELLED", self.wait_terminal(first["dispatchId"])["status"])
+        self.assertEqual("SUCCEEDED", self.wait_terminal(second["dispatchId"])["status"])
+
+    def test_reconcile_inspection_is_read_only_and_doctor_is_sanitized(self):
+        marker = "SECRET_PROMPT_AND_RESULT_MARKER"
+        request = self.request(duration=100, message=marker)
+        execution, _ = self.state.create(request)
+        terminal = self.wait_terminal(request["dispatchId"])
+        exact = self.exact_operation(terminal)
+        state_before = self.state.state_file.read_bytes()
+
+        first = self.state.inspect_reconciliation(request["dispatchId"], exact)
+        second = self.state.inspect_reconciliation(request["dispatchId"], exact)
+        diagnostic = self.state.doctor(request["dispatchId"], exact)
+
+        self.assertEqual(first, second)
+        self.assertEqual(state_before, self.state.state_file.read_bytes())
+        self.assertEqual("agent-run-doctor-v1", diagnostic["schemaVersion"])
+        self.assertEqual("TERMINAL", diagnostic["observation"])
+        self.assertFalse(diagnostic["valuesExposed"])
+        self.assertNotIn(marker, json.dumps(diagnostic))
+        for forbidden in (
+            "workload", "result", "message", "command", "output", "path",
+            "host", "slot", "environment", "credential",
+        ):
+            self.assertNotIn(forbidden, diagnostic)
+
+        for operation in (self.state.inspect_reconciliation, self.state.doctor):
+            with self.assertRaises(MODULE.ProtocolError):
+                operation(request["dispatchId"], {**exact, "host": "foreign.invalid"})
+            with self.assertRaises(MODULE.ProtocolError):
+                operation(request["dispatchId"], {**exact, "sessionId": str(uuid.uuid4())})
+        self.assertEqual(state_before, self.state.state_file.read_bytes())
 
     def test_restart_recovers_same_execution_identity(self):
         request = self.request(duration=700)
@@ -1082,6 +1144,20 @@ class WorkerHttpTest(unittest.TestCase):
             timeout=2,
         )
 
+    def post(self, path, body, token=None):
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["Authorization"] = "Bearer " + token
+        return urllib.request.urlopen(
+            urllib.request.Request(
+                self.url + path,
+                data=json.dumps(body).encode(),
+                headers=headers,
+                method="POST",
+            ),
+            timeout=2,
+        )
+
     def test_health_requires_authentication_and_exposes_capacity(self):
         with self.assertRaises(urllib.error.HTTPError) as denied:
             self.request("/v1/health")
@@ -1112,6 +1188,41 @@ class WorkerHttpTest(unittest.TestCase):
         )
         self.assertEqual("http-worker", catalog["workerId"])
         self.assertEqual("gpt-5.6-sol", catalog["models"][0]["modelId"])
+
+    def test_exact_reconcile_and_doctor_routes_require_closed_ownership(self):
+        request = {
+            "dispatchId": str(uuid.uuid4()),
+            "sessionId": str(uuid.uuid4()),
+            "workspaceIdentity": "remote:test:" + str(uuid.uuid4()),
+            "workloadClass": "NORMAL",
+            "leaseGeneration": 1,
+            "workload": {
+                "kind": "synthetic-routing-v1",
+                "message": "synthetic marker",
+                "durationMs": 500,
+                "steps": 5,
+            },
+        }
+        execution, _ = self.state.create(request)
+        exact = {
+            "executionId": execution["executionId"],
+            "sessionId": execution["sessionId"],
+            "workspaceIdentity": execution["workspaceIdentity"],
+            "leaseGeneration": execution["leaseGeneration"],
+        }
+        base = "/v1/executions/" + request["dispatchId"]
+
+        with self.post(base + "/reconcile", exact, "t" * 64) as response:
+            inspected = json.load(response)
+        with self.post(base + "/doctor", exact, "t" * 64) as response:
+            diagnostic = json.load(response)
+
+        self.assertEqual(execution["executionId"], inspected["executionId"])
+        self.assertEqual("agent-run-doctor-v1", diagnostic["schemaVersion"])
+        self.assertFalse(diagnostic["valuesExposed"])
+        with self.assertRaises(urllib.error.HTTPError) as rejected:
+            self.post(base + "/doctor", {**exact, "host": "foreign.invalid"}, "t" * 64)
+        self.assertEqual(400, rejected.exception.code)
 
 
 if __name__ == "__main__":

@@ -243,6 +243,17 @@ AgentRun and imports the terminal event in the same transaction as the result
 turn, so polling or startup reconciliation may safely replay the whole worker
 projection.
 
+Routine recovery uses three closed authenticated routes on that same durable
+record. `cancel-exact`, `reconcile` and `doctor` accept only the persisted
+execution, session, workspace and lease identities. Reconciliation is a
+read-only inspection and never creates or resumes a turn. Doctor returns only
+the fixed `agent-run-doctor-v1` observation, status/revision, boolean recovery
+flags and bounded progress counters; it excludes workload, prompt, result,
+command, output, path, host, service, slot, environment and credential data.
+The legacy exact dispatch/execution cancel route remains available for v1
+compatibility, while new control-plane recovery uses the complete ownership
+envelope.
+
 ## Session runtime allocation
 
 `session-runtime-allocation-v1.sh` implements task 3.2 without starting a
