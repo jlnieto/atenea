@@ -266,6 +266,7 @@ production activation are recorded later in this ledger.
 | D-063 | Give every shared web/mobile session event a stable persisted-identity key, seed and poll the bounded 200-event SSE window by that identity, and replace the legacy run-terminal timeline item only when a committed terminal progress event is published behind the enabled progress gate. | Timestamp cursors can drop same-instant events or resend them after reconnect; publishing both lifecycle and progress terminals creates duplicate operator output, while disable-first rollback must retain the established terminal feed. | accepted | backend/web/mobile owners | before changing shared-stream identity, progress publication or terminal fallback |
 | D-064 | Run shared control-plane integration suites with global synthetic authentication bootstrap disabled and require authentication-specific tests to opt in with their exact operator fixture. | An eager default operator makes database-backed authorization tests order-dependent and can conceal which persisted role or identity actually authorized an operation. | accepted | backend/security/test owners | before changing integration-test authentication bootstrap |
 | D-065 | Advertise the first exact Codex catalog through a separately authenticated `codex-model-catalog-v1` endpoint/capability while retaining the strict v1 health shape and withholding `agent-run-project-codex-v2` execution until its fingerprint and runner are complete. | Adding fields to the fail-closed v1 health DTO would break the current control plane, while advertising executable v2 authority before validation and runner support would create a false capability. | accepted | worker/backend/security owners | before changing catalog transport or advertising v2 execution |
+| D-066 | Validate and fingerprint the complete `project-codex-v2` envelope, profile and existing v1 ownership before persistence, but reject even a valid v2 create as `profile_execution_unavailable` until the fixed runner consumes the validated profile. | Persisting or scheduling a profiled request before model/effort flags are actually enforced could execute under a silently different profile; staged validation must remain fail-closed. | accepted | worker/security owners | task 3.3 runner enablement or profile-fingerprint change |
 
 ## Deferred decisions and gates
 
@@ -5304,3 +5305,29 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.1-worker-codex-catalog`;
 the SHA-256 of its `SHA256SUMS` is
 `a1109ee47e17724280e996148670790e1448bd7c3e7265ae9f16b01da5bf13dc`.
+
+Task 3.2 is complete and change progress is `24/57`; the exact implementation
+resume point is task 3.3. Tasks 3.3 and later remain pending.
+
+Programme/worker commit `b42534bac10840c701b206032e344b78a490b291`
+adds staged `project-codex-v2` validation and its canonical immutable request
+fingerprint. Exact model, effort, catalog revision and Codex version extend the
+existing complete project, source, manifest, instruction and persisted
+session/workspace ownership identity rather than replacing it.
+
+Unsupported model/effort, stale revision/version, foreign workspace and added
+provider or other caller authority all fail before an execution row or process
+exists. A valid v2 create also remains fail-closed as
+`profile_execution_unavailable`; task 3.3 must make the fixed runner enforce
+the profile before v2 execution can be persisted or scheduled.
+
+Two final 35-test worker/protocol passes succeeded with zero failures, errors
+or skips under 120-second bounds. They prove an effort change changes the
+fingerprint and every rejection retains empty execution state. AX42's installed
+worker remained active with zero restarts, identical program SHA-256 and the
+same private listener; nothing was installed, enabled or dispatched.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.2-profiled-workload-fingerprint`;
+the SHA-256 of its `SHA256SUMS` is
+`0f84ee5c2281a93cda6e9e5ab3475e8a519bbcff462dccd1e30a9af0a597f36d`.

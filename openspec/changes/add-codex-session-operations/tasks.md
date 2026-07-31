@@ -32,7 +32,7 @@
 ## 3. AX42 profile, progress and recovery
 
 - [x] 3.1 Version the worker capability to advertise exact Codex version, catalog revision, supported models and per-model effort values
-- [ ] 3.2 Extend the closed workload fingerprint with canonical model and effort while preserving exact project/workspace ownership
+- [x] 3.2 Extend the closed workload fingerprint with canonical model and effort while preserving exact project/workspace ownership
 - [ ] 3.3 Pass only validated model/effort flags to the fixed Codex runner and return the exact effective version/profile
 - [ ] 3.4 Normalize structured Codex events into the closed progress taxonomy without retaining reasoning, raw commands, output or secret-bearing payloads
 - [ ] 3.5 Make duplicate progress/terminal delivery idempotent across worker and control-plane restart
