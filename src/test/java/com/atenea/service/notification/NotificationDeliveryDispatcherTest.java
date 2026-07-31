@@ -2,6 +2,7 @@ package com.atenea.service.notification;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -76,5 +77,33 @@ class NotificationDeliveryDispatcherTest {
 
         verify(claimService).failed(org.mockito.ArgumentMatchers.eq(42L), any(FcmDeliveryException.class));
         verify(claimService, never()).delivered(42L);
+    }
+
+    @Test
+    void partialProviderFailureDoesNotBlockTheOtherOwnedDelivery() {
+        properties.setNotificationOutboxEnabled(true);
+        when(fcmPushSender.isReady()).thenReturn(true);
+        when(deliveryRepository.findDispatchableIds(any(), any(Pageable.class)))
+                .thenReturn(List.of(42L, 43L))
+                .thenReturn(List.of());
+        when(claimService.claim(42L)).thenReturn(new NotificationDeliveryCommand(
+                42L, "synthetic-token-one", "Tarea completada", "Abre Atenea",
+                Map.of("notificationEventId", "adad1f5a-18b8-43d2-8e9c-c5f92037f693")));
+        when(claimService.claim(43L)).thenReturn(new NotificationDeliveryCommand(
+                43L, "synthetic-token-two", "Tarea completada", "Abre Atenea",
+                Map.of("notificationEventId", "97391fe6-7705-46fe-9319-55f88aab327b")));
+        org.mockito.Mockito.doThrow(new FcmDeliveryException(
+                        FcmDeliveryException.FailureKind.RETRYABLE,
+                        "FCM_PROVIDER_RETRYABLE",
+                        null))
+                .doNothing()
+                .when(fcmPushSender).send(any());
+
+        dispatcher.dispatchPending();
+        dispatcher.dispatchPending();
+
+        verify(claimService).failed(org.mockito.ArgumentMatchers.eq(42L), any(FcmDeliveryException.class));
+        verify(claimService).delivered(43L);
+        verify(fcmPushSender, times(2)).send(any());
     }
 }

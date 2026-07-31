@@ -83,22 +83,7 @@ public class FcmPushSender {
     private void sendOne(String accessToken, FcmPushMessage message) throws Exception {
         URI uri = properties.getFcmApiBaseUrl()
                 .resolve("/v1/projects/" + properties.getFcmProjectId().trim() + "/messages:send");
-        Map<String, Object> payload = Map.of(
-                "message", Map.of(
-                        "token", message.to(),
-                        "notification", Map.of(
-                                "title", message.title(),
-                                "body", message.body() == null ? "" : message.body()
-                        ),
-                        "data", stringData(message.data()),
-                        "android", Map.of(
-                                "notification", Map.of(
-                                        "channel_id", "default",
-                                        "sound", "default"
-                                )
-                        )
-                )
-        );
+        Map<String, Object> payload = payload(message);
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .header("Authorization", "Bearer " + accessToken)
                 .header("Content-Type", "application/json")
@@ -111,6 +96,29 @@ public class FcmPushSender {
         if (response.statusCode() / 100 != 2) {
             throw deliveryFailure(response.statusCode(), response.body());
         }
+    }
+
+    Map<String, Object> payload(FcmPushMessage message) {
+        Map<String, Object> androidNotification = new HashMap<>();
+        androidNotification.put("channel_id", "default");
+        androidNotification.put("sound", "default");
+        Object notificationEventId = message.data().get("notificationEventId");
+        if (notificationEventId instanceof String value && !value.isBlank()) {
+            androidNotification.put("tag", value);
+        }
+        return Map.of(
+                "message", Map.of(
+                        "token", message.to(),
+                        "notification", Map.of(
+                                "title", message.title(),
+                                "body", message.body() == null ? "" : message.body()
+                        ),
+                        "data", stringData(message.data()),
+                        "android", Map.of(
+                                "notification", Map.copyOf(androidNotification)
+                        )
+                )
+        );
     }
 
     private synchronized String accessToken() throws Exception {

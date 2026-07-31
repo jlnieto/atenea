@@ -41,6 +41,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 class NotificationOutboxPersistenceTest {
@@ -69,6 +72,7 @@ class NotificationOutboxPersistenceTest {
     @Autowired private ProjectRepository projectRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private MobilePushNotificationService mobilePushNotificationService;
+    @Autowired private PlatformTransactionManager transactionManager;
 
     @BeforeEach
     void cleanBefore() { clean(); }
@@ -322,6 +326,69 @@ class NotificationOutboxPersistenceTest {
                 """, first.event().getId()));
     }
 
+    @Test
+    void repetitionRestartAndPartialFailureReuseOneEventDeviceChannelOwnership() {
+        Fixture fixture = fixture(AgentRunStatus.SUCCEEDED);
+        device(fixture.operator(), true);
+        device(fixture.operator(), true);
+        NotificationOutboxResult first = service.record(
+                fixture.run().getId(), NotificationCategory.RUN_COMPLETED, 19);
+        UUID eventId = first.event().getId();
+        List<Long> deliveryIds = deliveryRepository.findByEventIdOrderByDeviceIdAsc(eventId)
+                .stream().map(NotificationDeliveryEntity::getId).toList();
+        assertEquals(2, deliveryIds.size());
+
+        Instant firstAttempt = Instant.parse("2026-07-31T10:01:00Z");
+        inTransaction(() -> {
+            NotificationDeliveryClaimService restartedClaims = claimServiceAt(firstAttempt);
+            assertEquals(deliveryIds.get(0), restartedClaims.claim(deliveryIds.get(0)).deliveryId());
+            restartedClaims.failed(deliveryIds.get(0), new FcmDeliveryException(
+                    FcmDeliveryException.FailureKind.RETRYABLE,
+                    "FCM_PROVIDER_RETRYABLE",
+                    null));
+            assertEquals(deliveryIds.get(1), restartedClaims.claim(deliveryIds.get(1)).deliveryId());
+            restartedClaims.delivered(deliveryIds.get(1));
+            return null;
+        });
+
+        NotificationOutboxResult repeatedAfterRestart = inTransaction(() ->
+                new NotificationOutboxService(
+                        agentRunRepository,
+                        eventRepository,
+                        deliveryRepository,
+                        preferenceRepository,
+                        deviceRepository,
+                        Clock.fixed(firstAttempt.plusSeconds(1), ZoneOffset.UTC))
+                        .record(fixture.run().getId(), NotificationCategory.RUN_COMPLETED, 19));
+        assertFalse(repeatedAfterRestart.created());
+        assertEquals(eventId, repeatedAfterRestart.event().getId());
+        assertEquals(2, repeatedAfterRestart.deliveryCount());
+        assertEquals(2, deliveryRepository.countByEventId(eventId));
+
+        NotificationDeliveryEntity retry = deliveryRepository.findById(deliveryIds.get(0)).orElseThrow();
+        NotificationDeliveryEntity delivered = deliveryRepository.findById(deliveryIds.get(1)).orElseThrow();
+        assertEquals(NotificationDeliveryState.RETRY_WAIT, retry.getState());
+        assertEquals(NotificationDeliveryState.DELIVERED, delivered.getState());
+        Instant retryAt = retry.getNextAttemptAt();
+
+        inTransaction(() -> {
+            NotificationDeliveryClaimService secondRestartClaims = claimServiceAt(retryAt);
+            NotificationDeliveryCommand retryCommand = secondRestartClaims.claim(deliveryIds.get(0));
+            assertEquals(deliveryIds.get(0), retryCommand.deliveryId());
+            assertEquals(eventId.toString(), retryCommand.data().get("notificationEventId"));
+            assertNull(secondRestartClaims.claim(deliveryIds.get(1)));
+            secondRestartClaims.delivered(deliveryIds.get(0));
+            return null;
+        });
+
+        List<NotificationDeliveryEntity> finalDeliveries =
+                deliveryRepository.findByEventIdOrderByDeviceIdAsc(eventId);
+        assertEquals(2, finalDeliveries.size());
+        assertTrue(finalDeliveries.stream().allMatch(item -> item.getState() == NotificationDeliveryState.DELIVERED));
+        assertTrue(deliveryRepository.findDispatchableIds(
+                retryAt.plusSeconds(1), PageRequest.of(0, 10)).isEmpty());
+    }
+
     private Fixture fixture(AgentRunStatus status) {
         long value = FIXTURE_SEQUENCE.incrementAndGet();
         Instant now = Instant.parse("2026-07-31T10:00:00Z");
@@ -407,6 +474,10 @@ class NotificationOutboxPersistenceTest {
         return new NotificationDeliveryClaimService(
                 deliveryRepository,
                 Clock.fixed(instant, ZoneOffset.UTC));
+    }
+
+    private <T> T inTransaction(Supplier<T> work) {
+        return new TransactionTemplate(transactionManager).execute(status -> work.get());
     }
 
     private record Fixture(
