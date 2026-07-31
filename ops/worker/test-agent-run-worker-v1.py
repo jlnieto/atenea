@@ -356,6 +356,34 @@ class RetainedDraftFingerprintTest(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.ProtocolError, "non-terminal"):
             self.state.fingerprint_retained_draft(self.request())
 
+    def test_current_source_tree_fingerprint_is_sanitized_and_changes_with_content(self):
+        self.state._observe_project_commit = lambda _route: self.retained_head
+        request = {
+            "sessionId": self.session_id,
+            "workspaceIdentity": self.workspace_identity,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": self.retained_head,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+        }
+
+        before = self.state.fingerprint_source_tree(request)
+        (self.worktree / "untracked.txt").write_text("changed value\n", encoding="utf-8")
+        after = self.state.fingerprint_source_tree(request)
+
+        self.assertNotEqual(before["fingerprintSha256"], after["fingerprintSha256"])
+        self.assertEqual(self.retained_head, after["headCommit"])
+        self.assertFalse(after["valuesExposed"])
+        serialized = json.dumps(after)
+        self.assertNotIn("untracked.txt", serialized)
+        self.assertNotIn("changed value", serialized)
+
+        foreign = dict(request)
+        foreign["repository"] = "https://github.com/foreign/atenea.git"
+        with self.assertRaisesRegex(MODULE.ProtocolError, "not exact"):
+            self.state.fingerprint_source_tree(foreign)
+
 
 class ProjectWorkerStateTest(unittest.TestCase):
     def setUp(self):

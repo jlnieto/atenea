@@ -44,6 +44,10 @@ DRAFT_FINGERPRINT_KEYS = {
     "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
     "acceptedCommit", "manifestSha256",
 }
+SOURCE_TREE_FINGERPRINT_KEYS = {
+    "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
+    "commit", "manifestSha256",
+}
 PROJECT_ID = "atenea"
 PROJECT_REPOSITORY = "https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH = "feature/actualizar-conversacion-en-web"
@@ -459,6 +463,122 @@ class WorkerState:
                 "retained draft is not an exactly identified stale workspace",
             )
 
+        source = self._source_tree_fingerprint(worktree, head)
+        if (
+            source["stagedChangeCount"]
+            + source["unstagedChangeCount"]
+            + source["untrackedChangeCount"]
+        ) == 0:
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "draft_not_dirty",
+                "retained draft has no changes to preserve",
+            )
+        fingerprint = canonical_hash({
+            "acceptedCommit": accepted_commit,
+            "sourceTreeFingerprintSha256": source["fingerprintSha256"],
+        })
+        return {
+            "state": "draft_blocked_ready",
+            "sessionId": session_id,
+            "workspaceIdentity": request["workspaceIdentity"],
+            "projectId": PROJECT_ID,
+            "retainedHead": head,
+            "acceptedCommit": accepted_commit,
+            "fingerprintSha256": fingerprint,
+            "stagedChangeCount": source["stagedChangeCount"],
+            "unstagedChangeCount": source["unstagedChangeCount"],
+            "untrackedChangeCount": source["untrackedChangeCount"],
+            "valuesExposed": False,
+        }
+
+    def fingerprint_source_tree(self, request: dict[str, Any]) -> dict[str, Any]:
+        if set(request) != SOURCE_TREE_FINGERPRINT_KEYS:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_source_tree_request",
+                "source tree fingerprint request fields are invalid",
+            )
+        try:
+            session_id = str(uuid.UUID(request.get("sessionId")))
+        except (ValueError, TypeError, AttributeError):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_session",
+                "sessionId must be a canonical UUID",
+            )
+        route = self._project_route(request.get("projectId"))
+        exact = {
+            "sessionId": session_id,
+            "workspaceIdentity": f"remote:{self.worker_id}:work-session:{session_id}",
+            "projectId": PROJECT_ID,
+            "repository": PROJECT_REPOSITORY,
+            "branch": PROJECT_BRANCH,
+            "manifestSha256": PROJECT_MANIFEST_SHA256,
+        }
+        if (
+            request.get("sessionId") != session_id
+            or route is None
+            or request.get("projectId") != PROJECT_ID
+            or any(request.get(key) != value for key, value in exact.items())
+        ):
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "source_tree_ownership_conflict",
+                "source tree identity is not exact",
+            )
+        commit = request.get("commit")
+        config = self._read_project_config(route)
+        if (
+            not isinstance(commit, str)
+            or COMMIT_PATTERN.fullmatch(commit) is None
+            or commit != self._observe_project_commit(route)
+            or config["commit"] != commit
+        ):
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "canonical_source_moved",
+                "source tree canonical ownership is not current",
+            )
+        record = config["workspaces"].get(request["workspaceIdentity"])
+        if (
+            not isinstance(record, dict)
+            or set(record) != {"sessionId", "worktree", "allocationSha256", "canonicalCommit"}
+            or record.get("sessionId") != session_id
+            or record.get("canonicalCommit") != commit
+            or not isinstance(record.get("worktree"), str)
+        ):
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "source_tree_ownership_conflict",
+                "persisted source tree ownership is incomplete or conflicting",
+            )
+        worktree = Path(record["worktree"])
+        if not worktree.is_dir() or worktree.is_symlink():
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "source_tree_unavailable",
+                "source tree workspace is unavailable or unsafe",
+            )
+        head = self._draft_git(worktree, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+        if head != commit:
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "source_tree_head_moved",
+                "source tree HEAD no longer equals its accepted base commit",
+            )
+        source = self._source_tree_fingerprint(worktree, head)
+        return {
+            "state": "observed",
+            "sessionId": session_id,
+            "workspaceIdentity": request["workspaceIdentity"],
+            "projectId": PROJECT_ID,
+            "headCommit": head,
+            **source,
+            "valuesExposed": False,
+        }
+
+    def _source_tree_fingerprint(self, worktree: Path, head: str) -> dict[str, Any]:
         staged = self._z_entries(self._draft_git(worktree, "diff", "--cached", "--name-only", "-z"))
         unstaged = self._z_entries(self._draft_git(worktree, "diff", "--name-only", "-z"))
         untracked = self._z_entries(
@@ -467,22 +587,16 @@ class WorkerState:
         if len(staged) + len(unstaged) + len(untracked) > 10_000:
             raise ProtocolError(
                 HTTPStatus.CONFLICT,
-                "draft_fingerprint_limit",
-                "retained draft exceeds the bounded fingerprint entry limit",
-            )
-        if not staged and not unstaged and not untracked:
-            raise ProtocolError(
-                HTTPStatus.CONFLICT,
-                "draft_not_dirty",
-                "retained draft has no changes to preserve",
+                "source_tree_fingerprint_limit",
+                "source tree exceeds the bounded fingerprint entry limit",
             )
 
         tracked_diff = self._draft_git(worktree, "diff", "--binary", "HEAD")
         if len(tracked_diff) > 256 * 1024 * 1024:
             raise ProtocolError(
                 HTTPStatus.CONFLICT,
-                "draft_fingerprint_limit",
-                "retained tracked draft exceeds the bounded fingerprint size limit",
+                "source_tree_fingerprint_limit",
+                "tracked source tree exceeds the bounded fingerprint size limit",
             )
         untracked_digest = hashlib.sha256()
         untracked_size = 0
@@ -496,15 +610,15 @@ class WorkerState:
             if metadata is None or not stat.S_ISREG(metadata.st_mode):
                 raise ProtocolError(
                     HTTPStatus.CONFLICT,
-                    "draft_workspace_unsafe",
-                    "retained draft contains an unsafe untracked entry",
+                    "source_tree_unsafe",
+                    "source tree contains an unsafe untracked entry",
                 )
             untracked_size += metadata.st_size
             if untracked_size > 256 * 1024 * 1024:
                 raise ProtocolError(
                     HTTPStatus.CONFLICT,
-                    "draft_fingerprint_limit",
-                    "retained untracked draft exceeds the bounded fingerprint size limit",
+                    "source_tree_fingerprint_limit",
+                    "untracked source tree exceeds the bounded fingerprint size limit",
                 )
             untracked_digest.update(relative_bytes)
             untracked_digest.update(b"\0")
@@ -516,13 +630,12 @@ class WorkerState:
             except OSError:
                 raise ProtocolError(
                     HTTPStatus.CONFLICT,
-                    "draft_workspace_unavailable",
-                    "retained draft changed during fingerprinting",
+                    "source_tree_unavailable",
+                    "source tree changed during fingerprinting",
                 )
             untracked_digest.update(file_digest.digest())
         fingerprint = canonical_hash({
-            "retainedHead": head,
-            "acceptedCommit": accepted_commit,
+            "headCommit": head,
             "trackedDiffSha256": hashlib.sha256(tracked_diff).hexdigest(),
             "untrackedManifestSha256": untracked_digest.hexdigest(),
             "stagedChangeCount": len(staged),
@@ -530,17 +643,10 @@ class WorkerState:
             "untrackedChangeCount": len(untracked),
         })
         return {
-            "state": "draft_blocked_ready",
-            "sessionId": session_id,
-            "workspaceIdentity": request["workspaceIdentity"],
-            "projectId": PROJECT_ID,
-            "retainedHead": head,
-            "acceptedCommit": accepted_commit,
             "fingerprintSha256": fingerprint,
             "stagedChangeCount": len(staged),
             "unstagedChangeCount": len(unstaged),
             "untrackedChangeCount": len(untracked),
-            "valuesExposed": False,
         }
 
     def _draft_git(self, worktree: Path, *arguments: str) -> bytes:
@@ -1119,6 +1225,9 @@ class AgentRunHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/project-workspaces/draft-fingerprint":
                 self._write(HTTPStatus.OK, self.server.state.fingerprint_retained_draft(body))
+                return
+            if path == "/v1/project-workspaces/source-tree-fingerprint":
+                self._write(HTTPStatus.OK, self.server.state.fingerprint_source_tree(body))
                 return
             parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["v1", "executions"]:

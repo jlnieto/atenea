@@ -4559,3 +4559,45 @@ Sanitized task-0.3 evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.3-retained-draft-recovery`;
 the SHA-256 of its `SHA256SUMS` is
 `246f3f7aa197a4907faf88851c32ce5b09b3022540243cf1753ba4ab469869d1`.
+
+Task 0.4 is complete and change progress is `4/57`; the exact resume point is
+task 0.5.
+
+AgentRun now persists a separate terminal process outcome constrained to agree
+with lifecycle status. A successful Codex process therefore means only
+`processOutcome=SUCCEEDED`; it does not imply build, test, review, publication
+or task acceptance.
+
+WorkSession independently persists `DRAFT`, `VALIDATING`, `BLOCKED`,
+`VALIDATED` and `INTEGRATION_READY` acceptance states. The projection binds an
+exact source-tree SHA-256, observation time, validation-projection SHA-256 and
+validator-definition revision. Blocked state names one bounded missing or
+failed check and the next permitted action. Integration readiness is accepted
+only from `VALIDATED` with the identical tree, projection and definition
+revision and performs no implicit commit, publication or deployment.
+
+Starting another AgentRun conservatively removes earlier validation and
+readiness. Observing any different tracked or untracked source-tree
+fingerprint clears the complete validation projection and both validated and
+integration-ready times atomically. Re-observing the identical tree preserves
+the accepted projection.
+
+AX42 source now includes a closed source-tree fingerprint operation. It accepts
+only the fixed current Atenea route, current mirror commit and exact registered
+WorkSession, runs fixed bounded Git operations and returns only the HEAD,
+fingerprint and counts. File names, contents, caller commands, paths and
+environment values are not returned or accepted.
+
+The Atenea implementation is published cleanly at
+`e4947afc0cc6011df14d5d8a6396ec31a977fe8d`. Two backend passes each ran 431
+tests with zero failures, errors or skips and validated all 52 Flyway
+migrations. Two worker passes each ran 21 tests with zero failures; Python and
+shell syntax validation also passed. No backend, database migration or worker
+deployment occurred, and no real production acceptance projection was
+written. The retained stale draft and installed worker mirror remain
+unchanged.
+
+Sanitized task-0.4 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.4-truthful-acceptance`;
+the SHA-256 of its `SHA256SUMS` is
+`88a9e53f34bc1026003d187b6709a8c0f86dd04176373c513208d09e3c0b1006`.
