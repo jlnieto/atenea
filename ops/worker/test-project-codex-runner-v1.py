@@ -160,7 +160,7 @@ class ProjectCodexContractTest(unittest.TestCase):
         )
         self.assertEqual(["resume", thread_id, "-"], command[-3:])
 
-    def test_schemas_reject_commands_paths_endpoints_and_environment(self):
+    def test_schema_rejects_complete_caller_authority_matrix(self):
         if Draft202012Validator is None:
             self.skipTest("jsonschema is not installed on this worker")
         schema = json.loads(
@@ -176,14 +176,30 @@ class ProjectCodexContractTest(unittest.TestCase):
             "workload": self.workload(),
         }
         for field, value in (
-            ("command", "id"),
+            ("command", ["sh", "-lc", "id"]),
+            ("image", "foreign.invalid/runtime:latest"),
+            ("composeFile", "docker-compose.foreign.yml"),
             ("path", "/tmp/foreign"),
+            ("host", "foreign.invalid"),
+            ("slot", "slot4"),
             ("endpoint", "http://127.0.0.1:1"),
-            ("environment", {"TOKEN": "forbidden"}),
+            ("environment", {"FORBIDDEN_REFERENCE": "synthetic"}),
+            ("credential", "synthetic-reference"),
+            ("ruleSource", "/tmp/foreign.rules"),
         ):
             candidate = json.loads(json.dumps(request))
             candidate["workload"][field] = value
             self.assertTrue(list(validator.iter_errors(candidate)), field)
+        foreign_repository = json.loads(json.dumps(request))
+        foreign_repository["workload"]["repository"] = (
+            "https://github.com/foreign/repository.git"
+        )
+        self.assertTrue(list(validator.iter_errors(foreign_repository)))
+        foreign_workspace = json.loads(json.dumps(request))
+        foreign_workspace["workspaceIdentity"] = (
+            "remote:foreign:work-session:" + str(uuid.uuid4())
+        )
+        self.assertTrue(list(validator.iter_errors(foreign_workspace)))
 
     def test_dynamic_commit_must_match_root_owned_configuration(self):
         config = {"commit": TEST_COMMIT, "workspaces": {}}

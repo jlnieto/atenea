@@ -703,6 +703,47 @@ print(json.dumps({
         with self.assertRaisesRegex(MODULE.ProtocolError, "disabled"):
             self.state.create(self.request())
 
+    def test_complete_caller_authority_matrix_is_denied_without_state_or_process(self):
+        baseline_config = self.config.read_bytes()
+        baseline_executions = MODULE.canonical_hash(self.state.executions)
+        cases = (
+            ("command", lambda request: request["workload"].__setitem__(
+                "command", ["sh", "-lc", "id"])),
+            ("image", lambda request: request["workload"].__setitem__(
+                "image", "foreign.invalid/runtime:latest")),
+            ("compose", lambda request: request["workload"].__setitem__(
+                "composeFile", "docker-compose.foreign.yml")),
+            ("environment", lambda request: request["workload"].__setitem__(
+                "environment", {"FORBIDDEN_REFERENCE": "synthetic"})),
+            ("path", lambda request: request["workload"].__setitem__(
+                "path", "/srv/foreign")),
+            ("host", lambda request: request["workload"].__setitem__(
+                "host", "foreign.invalid")),
+            ("slot", lambda request: request["workload"].__setitem__(
+                "slot", "slot4")),
+            ("endpoint", lambda request: request["workload"].__setitem__(
+                "endpoint", "http://127.0.0.1:1")),
+            ("credential", lambda request: request["workload"].__setitem__(
+                "credential", "synthetic-reference")),
+            ("repository", lambda request: request["workload"].__setitem__(
+                "repository", "https://github.com/foreign/repository.git")),
+            ("rule_source", lambda request: request["workload"].__setitem__(
+                "ruleSource", "/tmp/foreign.rules")),
+            ("foreign_owner", lambda request: request.__setitem__(
+                "workspaceIdentity",
+                "remote:ax42-01:work-session:" + str(uuid.uuid4()))),
+        )
+        for name, mutate in cases:
+            request = self.request()
+            mutate(request)
+            with self.subTest(authority=name), self.assertRaises(MODULE.ProtocolError):
+                self.state.create(request)
+            self.assertEqual(baseline_config, self.config.read_bytes())
+            self.assertEqual(
+                baseline_executions,
+                MODULE.canonical_hash(self.state.executions),
+            )
+
     def test_moved_worker_mirror_is_rejected_before_dispatch(self):
         self.state._observe_project_commit = lambda _route: "2" * 40
 

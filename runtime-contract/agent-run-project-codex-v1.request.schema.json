@@ -15,7 +15,10 @@
   "properties": {
     "dispatchId": {"type": "string", "format": "uuid"},
     "sessionId": {"type": "string", "format": "uuid"},
-    "workspaceIdentity": {"type": "string", "pattern": "^remote:"},
+    "workspaceIdentity": {
+      "type": "string",
+      "pattern": "^remote:ax42-01:work-session:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
     "workloadClass": {"enum": ["NORMAL", "HEAVY"]},
     "leaseGeneration": {"type": "integer", "minimum": 1},
     "workload": {

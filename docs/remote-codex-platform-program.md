@@ -4757,3 +4757,37 @@ Sanitized task-0.8 evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.8-reviewed-instruction-bundle`;
 the SHA-256 of its `SHA256SUMS` is
 `de0d49bf0d2f9d7880401273d8e269c8bdd5b5948677aca6f0d28e812b497631`.
+
+Task 0.9 is complete and change progress is `9/57`; the exact resume point is
+task 0.10.
+
+The project dispatch schema and worker now carry a permanent negative
+authority matrix. Caller-supplied commands, images, Compose files,
+environments, paths, hosts, slots, endpoints, credential references and rule
+sources are rejected as unknown fields. Foreign repositories fail the fixed
+project identity, while foreign WorkSession ownership fails the exact
+registered workspace identity. The schema additionally binds the workspace to
+`remote:ax42-01:work-session:<canonical UUID>` before the worker verifies its
+persisted session relationship.
+
+Every matrix case is asserted to stop before execution state is created or a
+runner process can start. The durable worker execution map remains identical
+and the root-owned project configuration remains byte-equivalent after each
+denial. Atenea's client test independently proves that the control plane emits
+only the thirteen reviewed workload fields and none of the prohibited
+authorities.
+
+Two backend passes each ran 441 tests with zero failures, errors or skips from
+empty PostgreSQL databases through all 56 Flyway migrations. Two worker rounds
+each passed 27 AgentRun-worker tests, 9 runner/schema tests and 4 shared
+Beautips adapter tests. JSON parsing, diff checks and strict OpenSpec
+validation passed.
+
+No installation, real WorkSession or AgentRun, deployment, production,
+routing, preview or Beautips resource changed. All rejected inputs were
+synthetic non-secret references and no rejected credential value was read.
+
+Sanitized task-0.9 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.9-closed-authority-denial`;
+the SHA-256 of its `SHA256SUMS` is
+`05e616c10027e88191efe897004142bfb4ef5c93b9afc7d0651fe517e22cea9c`.
