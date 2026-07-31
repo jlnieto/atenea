@@ -113,6 +113,11 @@ class NotificationOutboxPersistenceTest {
         NotificationDeliveryCommand command = claimService.claim(pending.getId());
 
         assertEquals("RUN_COMPLETED", command.data().get("type"));
+        assertEquals("RUN_COMPLETED", command.data().get("category"));
+        assertEquals("AGENT_RUN_STATE", command.data().get("eventType"));
+        assertEquals("atenea-notification-data-v1", command.data().get("schemaVersion"));
+        assertEquals("atenea://work-sessions/" + fixture.session().getId() + "/conversation",
+                command.data().get("deepLink"));
         assertEquals(fixture.session().getId(), command.data().get("sessionId"));
         assertEquals(fixture.run().getId(), command.data().get("runId"));
         assertFalse(command.data().toString().contains(fixture.turn().getMessageText()));

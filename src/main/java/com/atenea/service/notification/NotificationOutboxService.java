@@ -29,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class NotificationOutboxService {
 
-    static final String TEMPLATE_VERSION = "agent-run-safe-v1";
+    static final String TEMPLATE_VERSION = NotificationTemplateCatalog.TEMPLATE_VERSION;
     static final String DEEP_LINK_KIND = "WORK_SESSION_CONVERSATION";
     static final String CHANNEL = "FCM";
     static final Duration DELIVERY_TTL = Duration.ofHours(24);
@@ -91,6 +91,8 @@ public class NotificationOutboxService {
 
         Instant now = clock.instant();
         NotificationEventEntity event = new NotificationEventEntity();
+        NotificationTemplateCatalog.SafeTemplate template =
+                NotificationTemplateCatalog.resolve(TEMPLATE_VERSION, category);
         event.setId(UUID.randomUUID());
         event.setDeduplicationSha256(digest);
         event.setCategory(category);
@@ -99,8 +101,8 @@ public class NotificationOutboxService {
         event.setSession(run.getSession());
         event.setAgentRun(run);
         event.setSourceRevision(sourceRevision);
-        event.setSafeTitle(category.safeTitle());
-        event.setSafeBody(category.safeBody());
+        event.setSafeTitle(template.title());
+        event.setSafeBody(template.body());
         event.setCreatedAt(now);
         event = eventRepository.save(event);
 

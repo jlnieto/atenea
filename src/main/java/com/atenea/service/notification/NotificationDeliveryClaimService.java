@@ -7,7 +7,6 @@ import com.atenea.persistence.notification.NotificationDeliveryState;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.Duration;
-import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,20 +56,14 @@ public class NotificationDeliveryClaimService {
         delivery.setUpdatedAt(now);
         deliveryRepository.save(delivery);
 
-        var event = delivery.getEvent();
+        NotificationPayloadFactory.NotificationPayload payload =
+                NotificationPayloadFactory.create(delivery.getEvent());
         return new NotificationDeliveryCommand(
                 delivery.getId(),
                 delivery.getDevice().getPushToken(),
-                event.getSafeTitle(),
-                event.getSafeBody(),
-                Map.of(
-                        "type", event.getCategory().name(),
-                        "notificationEventId", event.getId().toString(),
-                        "templateVersion", event.getTemplateVersion(),
-                        "deepLinkKind", event.getDeepLinkKind(),
-                        "sessionId", event.getSession().getId(),
-                        "runId", event.getAgentRun().getId()
-                ));
+                payload.title(),
+                payload.body(),
+                payload.data());
     }
 
     @Transactional
