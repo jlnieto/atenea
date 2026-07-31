@@ -198,10 +198,17 @@ class RemoteWorkerClientTest {
         assertEquals(ReviewedInstructionBundleIdentity.ATENEA_PROJECT_SHA256,
                 workload.get("projectInstructionSha256").asText());
         assertEquals(threadId.toString(), workload.get("threadId").asText());
+        assertEquals(13, workload.size());
         assertNull(workload.get("command"));
+        assertNull(workload.get("image"));
+        assertNull(workload.get("composeFile"));
         assertNull(workload.get("path"));
+        assertNull(workload.get("host"));
+        assertNull(workload.get("slot"));
         assertNull(workload.get("endpoint"));
         assertNull(workload.get("environment"));
+        assertNull(workload.get("credential"));
+        assertNull(workload.get("ruleSource"));
     }
 
     @Test
