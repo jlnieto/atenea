@@ -197,6 +197,18 @@ export interface CodexProgressReplay {
   events: CodexProgressEvent[];
 }
 
+export type CodexRecoveryAction = "CANCEL" | "RETRY" | "RECONCILE";
+
+export interface CodexRecoveryResponse {
+  operationId: string;
+  state: string;
+  action: CodexRecoveryAction;
+  outcome?: string | null;
+  summary?: string | null;
+  requiredNextAction?: string | null;
+  resultAgentRunId?: number | null;
+}
+
 export interface MobileConversationTurn {
   id: number;
   actor: string;

@@ -1067,6 +1067,11 @@ select:focus {
   font-size: 13px;
 }
 
+.run-progress__next .button {
+  align-self: flex-start;
+  margin-top: 5px;
+}
+
 .run-progress__latest {
   padding-top: 11px;
   color: #cbd3d1;
@@ -1124,6 +1129,13 @@ select:focus {
 .run-progress__error,
 .run-progress--error {
   color: #ffb4ab;
+  font-size: 12px;
+}
+
+.run-progress__notice {
+  display: block;
+  margin-top: 10px;
+  color: #8ed5ae;
   font-size: 12px;
 }
 
@@ -1429,6 +1441,10 @@ select:focus {
   .run-progress__fact,
   .run-progress__next {
     grid-column: 1 / -1;
+  }
+
+  .run-progress__next .button {
+    width: 100%;
   }
 
   .run-progress__timeline {

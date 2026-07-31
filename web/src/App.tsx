@@ -36,6 +36,7 @@ import {
   CodexCatalog,
   CodexCatalogModel,
   CodexProgressReplay,
+  CodexRecoveryAction,
   CodexRunDetail,
   CodexSettings,
   CoreCommandResponse,
@@ -843,6 +844,9 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   const [runDetail, setRunDetail] = useState<CodexRunDetail | null>(null);
   const [runProgress, setRunProgress] = useState<CodexProgressReplay | null>(null);
   const [runProgressError, setRunProgressError] = useState("");
+  const [recoveryPending, setRecoveryPending] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState("");
+  const [recoveryError, setRecoveryError] = useState("");
 
   async function loadProfile() {
     setProfileLoading(true);
@@ -961,6 +965,27 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     }
   }
 
+  async function requestRecovery(action: CodexRecoveryAction) {
+    if (!runDetail) {
+      return;
+    }
+    setRecoveryPending(true);
+    setRecoveryNotice("");
+    setRecoveryError("");
+    try {
+      const response = await api.requestCodexRecovery(runDetail.runId, sessionId, action);
+      if (response.state === "REJECTED") {
+        setRecoveryError(`${response.summary || "La operación fue rechazada."} ${nextActionLabel(response.requiredNextAction || "NONE")}.`);
+      } else {
+        setRecoveryNotice(response.summary || recoveryRequestedLabel(action));
+      }
+    } catch (requestError) {
+      setRecoveryError(recoveryErrorMessage(requestError));
+    } finally {
+      setRecoveryPending(false);
+    }
+  }
+
   const selectedModel = profile?.catalog.models.find((model) => model.modelId === draftModel) || null;
   const profileDirty = Boolean(profile && (
     draftModel !== profile.model.modelId || draftEffort !== profile.reasoningEffort
@@ -1016,7 +1041,14 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     >
       {error && <InlineError>{error}</InlineError>}
       {(runDetail || runProgressError) && (
-        <RunProgressPanel detail={runDetail} progress={runProgress} error={runProgressError} />
+        <RunProgressPanel
+          detail={runDetail}
+          progress={runProgress}
+          error={runProgressError || recoveryError}
+          notice={recoveryNotice}
+          pending={recoveryPending}
+          onRecovery={requestRecovery}
+        />
       )}
       <AttachmentPanel
         attachments={attachments}
@@ -1044,8 +1076,8 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
           />
         )}
         <div className="conversation-composer__input">
-          <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Instrucción para Codex dentro de esta sesión..." />
-          <Button variant="primary" disabled={loading || !message.trim() || profileDirty || Boolean(profileError)}>{loading ? "Enviando" : "Enviar"}</Button>
+          <textarea disabled={!conversation?.canCreateTurn} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={conversation?.canCreateTurn ? "Instrucción para Codex dentro de esta sesión..." : "Espera a que termine la ejecución actual..."} />
+          <Button variant="primary" disabled={loading || !message.trim() || !conversation?.canCreateTurn || profileDirty || Boolean(profileError)}>{loading ? "Enviando" : "Enviar"}</Button>
         </div>
       </form>
     </ConversationLayout>
@@ -1055,11 +1087,17 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
 function RunProgressPanel({
   detail,
   progress,
-  error
+  error,
+  notice,
+  pending,
+  onRecovery
 }: {
   detail: CodexRunDetail | null;
   progress: CodexProgressReplay | null;
   error: string;
+  notice: string;
+  pending: boolean;
+  onRecovery: (action: CodexRecoveryAction) => void;
 }) {
   if (!detail) {
     return <section className="run-progress run-progress--error" role="alert">{error}</section>;
@@ -1068,6 +1106,7 @@ function RunProgressPanel({
   const elapsed = progress?.elapsedMillis ?? detail.elapsedMillis;
   const nextAction = progress?.requiredNextAction || detail.requiredNextAction || "NONE";
   const events = (progress?.events || []).slice(-6);
+  const action = recoveryAction(detail, nextAction, state);
   return (
     <section className="run-progress" aria-label="Ejecución actual">
       <div className="run-progress__summary">
@@ -1088,6 +1127,11 @@ function RunProgressPanel({
         <div className="run-progress__next">
           <span>Siguiente acción</span>
           <strong>{nextActionLabel(nextAction)}</strong>
+          {action && (
+            <Button variant="primary" disabled={pending} onClick={() => onRecovery(action)}>
+              {pending ? "Solicitando…" : recoveryActionLabel(action)}
+            </Button>
+          )}
         </div>
       </div>
       {progress?.latestEvent && (
@@ -1110,8 +1154,39 @@ function RunProgressPanel({
         </ol>
       )}
       {error && <span className="run-progress__error" role="alert">{error}</span>}
+      {notice && <span className="run-progress__notice" role="status">{notice}</span>}
     </section>
   );
+}
+
+function recoveryAction(detail: CodexRunDetail, nextAction: string, state: string): CodexRecoveryAction | null {
+  if (nextAction === "REQUEST_RECONCILIATION") return "RECONCILE";
+  if (nextAction === "RETRY") return "RETRY";
+  if (!["COMPLETED", "SUCCEEDED", "FAILED", "CANCELLED", "RECONCILING"].includes(state)
+      && !["SUCCEEDED", "FAILED", "CANCELLED"].includes(detail.status)) return "CANCEL";
+  return null;
+}
+
+function recoveryActionLabel(action: CodexRecoveryAction) {
+  return ({ CANCEL: "Cancelar ejecución", RETRY: "Reintentar", RECONCILE: "Solicitar reconciliación" })[action];
+}
+
+function recoveryRequestedLabel(action: CodexRecoveryAction) {
+  return ({
+    CANCEL: "Cancelación solicitada. El estado se actualizará al confirmarse.",
+    RETRY: "Reintento solicitado. Espera a que aparezca la nueva ejecución.",
+    RECONCILE: "Reconciliación solicitada. Espera la actualización del estado."
+  })[action];
+}
+
+function recoveryErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 403) return "No tienes permiso para esta acción. Solicítala a un operador autorizado.";
+    if (error.status === 404) return "La ejecución ya no está disponible. Actualiza la conversación antes de continuar.";
+    if (error.status === 409) return "El estado de la ejecución ha cambiado. Actualiza y vuelve a elegir la acción aplicable.";
+    return `La acción no se pudo solicitar. ${error.message} Revisa el estado e inténtalo de nuevo.`;
+  }
+  return "La acción no se pudo solicitar. Actualiza el estado e inténtalo de nuevo.";
 }
 
 function progressStateLabel(state: string) {

@@ -4,6 +4,8 @@ import {
   BillingQueueResponse,
   CodexCatalog,
   CodexProgressReplay,
+  CodexRecoveryAction,
+  CodexRecoveryResponse,
   CodexRunDetail,
   CodexSettings,
   CoreCommandResponse,
@@ -198,6 +200,14 @@ export class AteneaApi {
 
   codexRunProgress(runId: number, afterSequence = 0) {
     return this.get<CodexProgressReplay>(`/api/runs/${runId}/progress?afterSequence=${afterSequence}`);
+  }
+
+  requestCodexRecovery(runId: number, workSessionId: number, action: CodexRecoveryAction) {
+    return this.post<CodexRecoveryResponse>(`/api/runs/${runId}/recovery`, {
+      workSessionId,
+      action,
+      idempotencyKey: crypto.randomUUID()
+    });
   }
 
   sessionDeliverables(sessionId: number) {
