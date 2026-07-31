@@ -62,7 +62,7 @@ public class AgentRunProgressService {
     @Transactional
     public AgentRunProgressAppendResult append(Long runId, AgentRunProgressCategory category) {
         Objects.requireNonNull(category, "category");
-        AgentRunEntity run = agentRunRepository.findByIdForProgressUpdate(runId)
+        AgentRunEntity run = agentRunRepository.findByIdForUpdate(runId)
                 .orElseThrow(() -> new AgentRunNotFoundException(runId));
         assertTerminalConsistency(run, category);
 

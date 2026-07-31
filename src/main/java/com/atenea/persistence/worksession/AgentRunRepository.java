@@ -15,7 +15,7 @@ public interface AgentRunRepository extends JpaRepository<AgentRunEntity, Long> 
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select run from AgentRunEntity run where run.id = :runId")
-    Optional<AgentRunEntity> findByIdForProgressUpdate(@Param("runId") Long runId);
+    Optional<AgentRunEntity> findByIdForUpdate(@Param("runId") Long runId);
 
     boolean existsBySessionIdAndStatus(Long sessionId, AgentRunStatus status);
 
