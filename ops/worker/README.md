@@ -234,6 +234,15 @@ identical consecutive category/message before allocation and retains only the
 newest 200 events without reusing a sequence. The final answer remains in the
 separate result contract; normalized progress never copies it.
 
+The complete normalized event list is part of the durable execution record.
+Repeated create/get calls return the same immutable execution identity,
+lifecycle revision, result and event sequences. Reloading a terminal execution
+after worker restart does not allocate another event or terminal result. The
+control plane persists its highest imported worker sequence under the locked
+AgentRun and imports the terminal event in the same transaction as the result
+turn, so polling or startup reconciliation may safely replay the whole worker
+projection.
+
 ## Session runtime allocation
 
 `session-runtime-allocation-v1.sh` implements task 3.2 without starting a

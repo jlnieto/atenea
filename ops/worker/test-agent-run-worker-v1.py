@@ -132,6 +132,25 @@ class WorkerStateTest(unittest.TestCase):
         self.assertEqual(created["executionId"], terminal["executionId"])
         self.assertEqual("SUCCEEDED", terminal["status"])
 
+    def test_terminal_progress_and_result_are_byte_stable_across_worker_restart(self):
+        request = self.request(duration=100)
+        created, _ = self.state.create(request)
+        terminal = self.wait_terminal(request["dispatchId"])
+        before = json.dumps(terminal, sort_keys=True, separators=(",", ":"))
+
+        self.state.stop()
+        recovered = MODULE.WorkerState(Path(self.temporary.name), "test-worker", 4, 2)
+        duplicate, was_created = recovered.create(json.loads(json.dumps(request)))
+        self.state = recovered
+
+        self.assertFalse(was_created)
+        self.assertEqual(created["executionId"], duplicate["executionId"])
+        self.assertEqual(before, json.dumps(duplicate, sort_keys=True, separators=(",", ":")))
+        self.assertEqual(
+            list(range(1, len(duplicate["progressEvents"]) + 1)),
+            [event["sequence"] for event in duplicate["progressEvents"]],
+        )
+
     def test_unknown_or_arbitrary_fields_are_rejected(self):
         request = self.request()
         request["command"] = "id"
