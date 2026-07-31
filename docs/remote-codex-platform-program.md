@@ -275,6 +275,7 @@ production activation are recorded later in this ledger.
 | D-072 | Present the future WorkSession execution profile as one compact state-first control beside the conversation composer; resolve model and effort independently and require pending changes to be applied before send. | The operator must know the next run's exact profile in under three seconds without adding a competing dashboard or permitting submission against an unseen/stale selection. | accepted | web/operator-experience owners | before changing profile placement, source disclosure or pending-selection behavior |
 | D-073 | Put one current-run card before secondary conversation content, render only the six newest normalized events, and locally bound the timeline on mobile. | State, elapsed time, latest progress and next action must be visible immediately while the 200-event durable replay remains an audit boundary rather than a visually unbounded conversation dashboard. | accepted | web/operator-experience owners | before changing current-run placement, visible event bound or mobile timeline overflow |
 | D-074 | Derive exactly one routine recovery action from persisted run state/next-action, keep the backend as permission authority, and disable new-turn submission while an execution is active. | Cancel, retry and reconciliation are mutually contextual; exposing them together or allowing a competing send would make the operator guess and could create conflicting work. | accepted | web/backend/operator-experience owners | before changing recovery action visibility, permission authority or active-run submission behavior |
+| D-075 | Give each Android run an in-memory monotonic replay cursor, merge only sequence-keyed durable gaps after foreground resume, reset on run identity change and keep immersive conversation content within system-bar insets. | Replaying from zero can duplicate a mobile timeline after backgrounding, while an edge-to-edge surface without safe insets can hide the very state and action the operator needs to see immediately. | accepted and emulator-verified | Android/operator-experience owners | before changing Android replay cursor lifetime, gap merge or immersive insets |
 
 ## Deferred decisions and gates
 
@@ -5554,3 +5555,37 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.3-web-recovery-actions`;
 the SHA-256 of its `SHA256SUMS` is
 `c5f48b42ce75ed9ce979747f7480a78b31aa8ebf6f05db4854a8ae7300148acc`.
+
+Task 4.4 is complete and change progress is `33/57`; the exact implementation
+resume point is task 4.5. Task 4.5 and all later tasks remain pending.
+
+Atenea commits `41bd2e8e746642e73ba51c458a2e1013b48a6f5b` and
+`7420762b7f1eca4eac2502ebd6a5661b5a321b3c` give Android the same closed
+catalog, independent effective settings, run detail, progress replay and
+contextual recovery behavior as web. Active runs poll every three seconds.
+Each run retains its last observed sequence while the conversation remains
+alive; foreground resume reloads the conversation/profile projections and
+requests only the durable gap. Sequence-keyed merge rejects duplicates,
+honours the retained floor, keeps at most 200 events and resets on a new run.
+
+Six focused tests passed with zero failures, errors or skips, and the normal
+debug APK assembled successfully. A temporary API 35 emulator rendered the
+real Compose controls at `390x844`: current state, elapsed time, immutable
+profile/version, latest event, next action and future-run profile were visible
+in the first viewport, the composer was disabled and the sole reconciliation
+action produced visible feedback. The first inspection exposed inherited
+system-bar overlap; safe insets were added and the repeated DOM/visual check
+proved no overlap, clipping or horizontal overflow.
+
+The visual-only activity, AVD and downloaded system image were removed, and
+the final normal APK excludes that activity. The complete Android unit/lint
+commands still expose one voice-intent failure and two lint errors outside the
+task paths; all reproduce unchanged at parent commit
+`91a3b09aa2fa7e54c0a330dfa601b25332117da0`, so they remain explicit baseline
+debt rather than being suppressed or mixed into 4.4. No deployment, real
+recovery request, worker mutation or restart occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.4-android-session-operations`;
+the SHA-256 of its `SHA256SUMS` is
+`bb3e1acd203ffcb1bf3b000c3d16a71bac3398dea0fd21956f4b9376599f72f5`.
