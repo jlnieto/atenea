@@ -225,6 +225,15 @@ state:
 ./test-session-workspace-v1.sh
 ```
 
+The profiled runner consumes Codex JSONL only through a closed normalization
+boundary. Recognized lifecycle and tool shapes become fixed operator messages
+in the thirteen-category progress taxonomy. Reasoning, agent messages, command
+arguments, command output, queries, environment values and unknown payloads are
+discarded. The worker assigns run identity and monotonic sequence, coalesces an
+identical consecutive category/message before allocation and retains only the
+newest 200 events without reusing a sequence. The final answer remains in the
+separate result contract; normalized progress never copies it.
+
 ## Session runtime allocation
 
 `session-runtime-allocation-v1.sh` implements task 3.2 without starting a

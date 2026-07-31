@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,14 @@ PROFILED_WORKLOAD_KEYS = WORKLOAD_KEYS | {
 CODEX_CATALOG_REVISION = (
     "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187"
 )
+SAFE_PROGRESS_MESSAGES = {
+    "CODEX_STARTED": "Codex started the accepted turn.",
+    "INSPECTING_PROJECT": "Inspecting the accepted project.",
+    "RUNNING_COMMAND": "Running a reviewed project operation.",
+    "CHECKING": "Checking the accepted project.",
+    "WAITING": "Waiting for a bounded operation.",
+    "FINALIZING": "Finalizing the Codex turn.",
+}
 
 
 def reject(message: str) -> None:
@@ -112,6 +121,62 @@ def effective_profile(workload: dict[str, Any]) -> dict[str, str]:
         key: workload[key]
         for key in ("modelId", "reasoningEffort", "catalogRevision", "codexVersion")
     }
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def normalize_codex_events(stream: str) -> list[dict[str, str]]:
+    """Map only recognized structure to fixed text; discard every payload value."""
+    normalized: list[dict[str, str]] = []
+
+    def append(category: str) -> None:
+        message = SAFE_PROGRESS_MESSAGES[category]
+        if normalized and normalized[-1]["category"] == category and normalized[-1]["message"] == message:
+            return
+        normalized.append({
+            "category": category,
+            "occurredAt": utc_now(),
+            "message": message,
+        })
+        if len(normalized) > 200:
+            del normalized[:-200]
+
+    for line in stream.splitlines():
+        try:
+            event = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        event_type = event.get("type")
+        if event_type in {"thread.started", "turn.started"}:
+            append("CODEX_STARTED")
+            continue
+        if event_type == "turn.completed":
+            append("FINALIZING")
+            continue
+        if event_type in {"turn.failed", "error"}:
+            continue
+        if event_type not in {"item.started", "item.completed"}:
+            continue
+        item = event.get("item")
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type in {"reasoning", "agent_message"}:
+            continue
+        category = {
+            "web_search": "INSPECTING_PROJECT",
+            "command_execution": "RUNNING_COMMAND",
+            "mcp_tool_call": "CHECKING",
+            "file_change": "CHECKING",
+            "todo_list": "CHECKING",
+        }.get(item_type)
+        if category is not None:
+            append(category)
+    return normalized
 
 
 def internal_failure_reason(exception: Exception) -> str:
@@ -532,6 +597,7 @@ def execute(
         if workload["kind"] == PROFILED_CAPABILITY:
             result.update({
                 "outputSummary": f"{PROFILED_CAPABILITY} completed",
+                "progressEvents": normalize_codex_events(stream),
                 **effective_profile(workload),
             })
         return result

@@ -102,6 +102,39 @@ class ProjectCodexContractTest(unittest.TestCase):
             MODULE.internal_failure_reason(RuntimeError("token-value")),
         )
 
+    def test_structured_events_map_only_to_fixed_sanitized_progress(self):
+        stream = "\n".join(json.dumps(event) for event in (
+            {"type": "thread.started", "thread_id": str(uuid.uuid4())},
+            {"type": "turn.started"},
+            {"type": "item.completed", "item": {
+                "type": "reasoning", "text": "SECRET_REASONING_TOKEN"}},
+            {"type": "item.started", "item": {
+                "type": "command_execution", "command": "curl SECRET_COMMAND_TOKEN"}},
+            {"type": "item.completed", "item": {
+                "type": "command_execution", "aggregated_output": "SECRET_OUTPUT_TOKEN"}},
+            {"type": "item.started", "item": {
+                "type": "web_search", "query": "SECRET_QUERY_TOKEN"}},
+            {"type": "item.completed", "item": {
+                "type": "agent_message", "text": "SECRET_ANSWER_TOKEN"}},
+            {"type": "unsupported", "payload": "SECRET_UNKNOWN_TOKEN"},
+            {"type": "turn.completed", "usage": {"hidden": "SECRET_USAGE_TOKEN"}},
+        ))
+
+        events = MODULE.normalize_codex_events(stream)
+
+        self.assertEqual(
+            ["CODEX_STARTED", "RUNNING_COMMAND", "INSPECTING_PROJECT", "FINALIZING"],
+            [event["category"] for event in events],
+        )
+        serialized = json.dumps(events)
+        for marker in (
+            "SECRET_REASONING_TOKEN", "SECRET_COMMAND_TOKEN", "SECRET_OUTPUT_TOKEN",
+            "SECRET_QUERY_TOKEN", "SECRET_ANSWER_TOKEN", "SECRET_UNKNOWN_TOKEN",
+            "SECRET_USAGE_TOKEN",
+        ):
+            self.assertNotIn(marker, serialized)
+        self.assertTrue(all(set(event) == {"category", "occurredAt", "message"} for event in events))
+
     def test_sandbox_command_has_only_derived_mounts_and_prompt_stays_on_stdin(self):
         session_id = str(uuid.uuid4())
         worktree = Path("/srv/atenea/workspaces/sessions") / session_id / "atenea"

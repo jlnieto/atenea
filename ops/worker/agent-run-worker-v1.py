@@ -39,6 +39,20 @@ CODEX_MODELS = [
         "availability": "AVAILABLE",
     }
 ]
+PROGRESS_LIMIT = 200
+PROGRESS_CATEGORIES = {
+    "ACCEPTED", "QUEUED", "PREPARING_WORKSPACE", "CODEX_STARTED",
+    "INSPECTING_PROJECT", "RUNNING_COMMAND", "CHECKING", "WAITING",
+    "RECONCILING", "FINALIZING", "COMPLETED", "FAILED", "CANCELLED",
+}
+RUNNER_PROGRESS_MESSAGES = {
+    "CODEX_STARTED": "Codex started the accepted turn.",
+    "INSPECTING_PROJECT": "Inspecting the accepted project.",
+    "RUNNING_COMMAND": "Running a reviewed project operation.",
+    "CHECKING": "Checking the accepted project.",
+    "WAITING": "Waiting for a bounded operation.",
+    "FINALIZING": "Finalizing the Codex turn.",
+}
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED"}
 NON_TERMINAL = {"QUEUED", "STARTING", "RUNNING", "CANCELLING", "RECONCILING"}
 CREATE_KEYS = {
@@ -196,12 +210,22 @@ class WorkerState:
                 )
                 validation["finishedAt"] = utc_now()
         for execution in self.executions.values():
+            execution.setdefault("progressEvents", [])
+            execution.setdefault(
+                "nextProgressSequence",
+                max((event.get("sequence", 0) for event in execution["progressEvents"]), default=0) + 1,
+            )
             if execution["status"] in {"STARTING", "RUNNING", "CANCELLING"}:
                 execution["status"] = "RECONCILING"
                 execution["statusReason"] = "Worker service restarted; persisted ownership requires reconciliation"
                 execution["reconcileRequired"] = True
                 execution["revision"] += 1
                 execution["updatedAt"] = utc_now()
+                self._append_progress(
+                    execution,
+                    "RECONCILING",
+                    "Reconciling persisted execution ownership.",
+                )
             else:
                 execution.setdefault("reconcileRequired", False)
         self._persist()
@@ -283,6 +307,47 @@ class WorkerState:
             "models": json.loads(json.dumps(CODEX_MODELS)),
         }
 
+    def _append_progress(
+        self,
+        execution: dict[str, Any],
+        category: str,
+        message: str,
+    ) -> bool:
+        if category not in PROGRESS_CATEGORIES or not (1 <= len(message) <= 160):
+            return False
+        events = execution.setdefault("progressEvents", [])
+        if events and events[-1]["category"] == category and events[-1]["message"] == message:
+            return False
+        sequence = execution.setdefault("nextProgressSequence", 1)
+        events.append({
+            "dispatchId": execution["dispatchId"],
+            "executionId": execution["executionId"],
+            "sequence": sequence,
+            "category": category,
+            "occurredAt": utc_now(),
+            "message": message,
+        })
+        execution["nextProgressSequence"] = sequence + 1
+        if len(events) > PROGRESS_LIMIT:
+            del events[:-PROGRESS_LIMIT]
+        return True
+
+    def _append_runner_progress(
+        self,
+        execution: dict[str, Any],
+        events: Any,
+    ) -> None:
+        if not isinstance(events, list):
+            return
+        for event in events[:PROGRESS_LIMIT]:
+            if not isinstance(event, dict) or set(event) != {"category", "occurredAt", "message"}:
+                continue
+            category = event.get("category")
+            message = event.get("message")
+            if RUNNER_PROGRESS_MESSAGES.get(category) != message:
+                continue
+            self._append_progress(execution, category, message)
+
     def create(self, request: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         self._validate_create(request)
         dispatch_id = request["dispatchId"]
@@ -319,7 +384,11 @@ class WorkerState:
                 "cancelRequested": False,
                 "reconcileRequired": False,
                 "result": None,
+                "progressEvents": [],
+                "nextProgressSequence": 1,
             }
+            self._append_progress(execution, "ACCEPTED", "Execution request accepted.")
+            self._append_progress(execution, "QUEUED", "Execution is queued for admission.")
             self.executions[dispatch_id] = execution
             self._persist()
             self.wakeup.set()
@@ -1446,6 +1515,11 @@ class WorkerState:
                         execution["finishedAt"] = utc_now()
                         execution["revision"] += 1
                         execution["updatedAt"] = execution["finishedAt"]
+                        self._append_progress(
+                            execution,
+                            "FAILED",
+                            "Execution failed closed during reconciliation.",
+                        )
                         self._persist()
                         continue
                     if active_normal >= self.normal_capacity:
@@ -1456,6 +1530,11 @@ class WorkerState:
                     execution["statusReason"] = "Worker permit admitted"
                     execution["revision"] += 1
                     execution["updatedAt"] = utc_now()
+                    self._append_progress(
+                        execution,
+                        "PREPARING_WORKSPACE",
+                        "Preparing the accepted workspace.",
+                    )
                     self._persist()
                     thread = threading.Thread(
                         target=self._execute,
@@ -1485,6 +1564,11 @@ class WorkerState:
                 execution["startedAt"] = execution["startedAt"] or utc_now()
                 execution["revision"] += 1
                 execution["updatedAt"] = utc_now()
+                self._append_progress(
+                    execution,
+                    "CODEX_STARTED",
+                    "Codex started the accepted turn.",
+                )
                 self._persist()
                 if execution["workload"]["kind"] in {PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY}:
                     request = {
@@ -1531,6 +1615,7 @@ class WorkerState:
                 execution["finishedAt"] = utc_now()
                 execution["revision"] += 1
                 execution["updatedAt"] = execution["finishedAt"]
+                self._append_progress(execution, "COMPLETED", "Execution completed.")
                 self._persist()
         finally:
             with self.lock:
@@ -1632,11 +1717,19 @@ class WorkerState:
         workload = request["workload"]
         required_result = {"threadId", "turnId", "finalAnswer", "outputSummary"}
         if workload["kind"] == PROJECT_V2_CAPABILITY:
-            required_result |= {"modelId", "reasoningEffort", "catalogRevision", "codexVersion"}
+            required_result |= {
+                "modelId", "reasoningEffort", "catalogRevision", "codexVersion",
+                "progressEvents",
+            }
+        progress_events = result.get("progressEvents", []) if isinstance(result, dict) else []
+        string_result = {
+            key: value for key, value in result.items() if key != "progressEvents"
+        } if isinstance(result, dict) else {}
         if (
             not isinstance(result, dict)
             or set(result) != required_result
-            or not all(isinstance(result[key], str) and result[key] for key in result)
+            or not all(isinstance(value, str) and value for value in string_result.values())
+            or (workload["kind"] == PROJECT_V2_CAPABILITY and not isinstance(progress_events, list))
             or (
                 workload["kind"] == PROJECT_V2_CAPABILITY
                 and any(result[key] != workload[key] for key in (
@@ -1646,6 +1739,12 @@ class WorkerState:
         ):
             self._finish_project(dispatch_id, "FAILED", "Project runner returned invalid output", None)
             return
+        result.pop("progressEvents", None)
+        with self.lock:
+            execution = self.executions[dispatch_id]
+            self._append_runner_progress(execution, progress_events)
+            self._append_progress(execution, "FINALIZING", "Finalizing the Codex turn.")
+            self._persist()
         self._finish_project(dispatch_id, "SUCCEEDED", "Exact project Codex execution completed", result)
 
     def _finish_project(
@@ -1660,6 +1759,11 @@ class WorkerState:
             execution["finishedAt"] = utc_now()
             execution["revision"] += 1
             execution["updatedAt"] = execution["finishedAt"]
+            self._append_progress(
+                execution,
+                "COMPLETED" if status == "SUCCEEDED" else "FAILED",
+                "Execution completed." if status == "SUCCEEDED" else "Execution failed.",
+            )
             self._persist()
 
     def _finish_cancelled(self, execution: dict[str, Any]) -> None:
@@ -1668,6 +1772,7 @@ class WorkerState:
         execution["finishedAt"] = utc_now()
         execution["revision"] += 1
         execution["updatedAt"] = execution["finishedAt"]
+        self._append_progress(execution, "CANCELLED", "Execution cancelled.")
         self._persist()
 
     def _public(self, execution: dict[str, Any]) -> dict[str, Any]:
@@ -1678,6 +1783,7 @@ class WorkerState:
                 "workloadClass", "leaseGeneration", "status", "statusReason",
                 "revision", "progress", "createdAt", "updatedAt", "startedAt",
                 "finishedAt", "result",
+                "progressEvents",
             )
         }
 

@@ -68,6 +68,29 @@ class WorkerStateTest(unittest.TestCase):
             self.state.create(request)
         self.assertEqual(first["executionId"], self.state.get(first["dispatchId"])["executionId"])
 
+    def test_progress_coalesces_before_sequence_and_retains_newest_200(self):
+        request = self.request(duration=1000)
+        with self.state.lock:
+            execution, _ = self.state.create(request)
+            stored = self.state.executions[request["dispatchId"]]
+            next_sequence = stored["nextProgressSequence"]
+
+            self.assertFalse(self.state._append_progress(
+                stored, "QUEUED", "Execution is queued for admission."
+            ))
+            self.assertEqual(next_sequence, stored["nextProgressSequence"])
+
+            for index in range(205):
+                category = "CHECKING" if index % 2 == 0 else "WAITING"
+                message = "Checking the accepted project." if index % 2 == 0 else "Waiting for a bounded operation."
+                self.assertTrue(self.state._append_progress(stored, category, message))
+
+            events = stored["progressEvents"]
+            self.assertEqual(MODULE.PROGRESS_LIMIT, len(events))
+            self.assertGreater(events[0]["sequence"], 1)
+            self.assertEqual(sorted(event["sequence"] for event in events), [event["sequence"] for event in events])
+            self.assertEqual(execution["executionId"], events[-1]["executionId"])
+
     def test_four_normal_slots_queue_fifth(self):
         requests = [self.request(duration=800) for _ in range(5)]
         for request in requests:
@@ -608,7 +631,12 @@ print(json.dumps({
     "outputSummary": request["workload"]["kind"] + " completed",
     **({key: request["workload"][key] for key in (
         "modelId", "reasoningEffort", "catalogRevision", "codexVersion"
-    )} if request["workload"]["kind"] == "project-codex-v2" else {})
+    )} | {"progressEvents": [
+        {"category": "INSPECTING_PROJECT", "occurredAt": "unsafe-ignored",
+         "message": "Inspecting the accepted project."},
+        {"category": "CHECKING", "occurredAt": "unsafe-ignored",
+         "message": "Checking the accepted project."}
+    ]} if request["workload"]["kind"] == "project-codex-v2" else {})
 }))
 """,
             encoding="utf-8",
@@ -770,7 +798,8 @@ print(json.dumps({
     "modelId": "different-model",
     "reasoningEffort": request["workload"]["reasoningEffort"],
     "catalogRevision": request["workload"]["catalogRevision"],
-    "codexVersion": request["workload"]["codexVersion"]
+    "codexVersion": request["workload"]["codexVersion"],
+    "progressEvents": []
 }))
 """,
             encoding="utf-8",
@@ -784,6 +813,32 @@ print(json.dumps({
         self.assertEqual("FAILED", terminal["status"])
         self.assertEqual("Project runner returned invalid output", terminal["statusReason"])
         self.assertIsNone(terminal["result"])
+
+    def test_profiled_progress_is_sequenced_sanitized_and_payload_free(self):
+        request = self.profiled_request()
+        self.state.create(request)
+        terminal = self.wait_terminal(request["dispatchId"])
+
+        events = terminal["progressEvents"]
+        self.assertEqual(list(range(1, len(events) + 1)), [event["sequence"] for event in events])
+        self.assertEqual("ACCEPTED", events[0]["category"])
+        self.assertEqual("COMPLETED", events[-1]["category"])
+        self.assertIn("INSPECTING_PROJECT", [event["category"] for event in events])
+        self.assertIn("CHECKING", [event["category"] for event in events])
+        serialized = json.dumps(events)
+        self.assertNotIn("unsafe-ignored", serialized)
+        self.assertNotIn("progressEvents", terminal["result"])
+
+        execution = self.state.executions[request["dispatchId"]]
+        before = len(execution["progressEvents"])
+        self.state._append_runner_progress(execution, [
+            {"category": "RUNNING_COMMAND", "occurredAt": "secret",
+             "message": "raw command token-value"},
+            {"category": "UNKNOWN", "occurredAt": "secret",
+             "message": "token-value"},
+        ])
+        self.assertEqual(before, len(execution["progressEvents"]))
+        self.assertNotIn("token-value", json.dumps(execution))
 
     def test_disabled_foreign_ambiguous_and_arbitrary_requests_fail_closed(self):
         baseline = self.config.read_bytes()
