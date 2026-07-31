@@ -26,7 +26,7 @@
 - [x] 2.3 Persist idempotent recovery operations, `retryOfRunId` lineage and role-scoped actionable outcomes
 - [x] 2.4 Persist generic notification events, preferences and per-device deliveries with unique deduplication ownership
 - [x] 2.5 Expose authenticated catalog, settings, run detail, progress replay, recovery, notification preference and administrator inventory APIs
-- [ ] 2.6 Publish committed progress and terminal events through the shared web/mobile stream without duplicate conversation output
+- [x] 2.6 Publish committed progress and terminal events through the shared web/mobile stream without duplicate conversation output
 - [ ] 2.7 Add focused migration, repository, service, authorization, API, SSE, idempotency and sanitization tests
 
 ## 3. AX42 profile, progress and recovery

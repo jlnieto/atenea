@@ -263,6 +263,7 @@ production activation are recorded later in this ledger.
 | D-060 | Bind each V59 recovery request to one active operator's persisted role snapshot, exact WorkSession/AgentRun composite ownership, idempotency key and canonical request fingerprint; persist routine attempts at privileged actions as closed `ROLE_REQUIRED` outcomes, and permit `RETRY_CREATED` only with immutable same-session `retryOfRunId` lineage. | Authentication alone does not grant host authority, repeated keys must not change meaning after timeout, and a replacement run without exact lineage could duplicate a still-live execution. | accepted | backend/data/security owners | before expanding recovery actions, role authority or retry lineage |
 | D-061 | Make V60 notification defaults implicit-enabled through absent preference rows, constrain event copy to the three exact `agent-run-safe-v1` templates, bind deduplication to category/run/source revision and own one FCM delivery per exact event/device without copying the device token. | Upgrade and re-registration must not reset user choices, event rows must never retain conversation content, and partial dispatch needs independently retryable delivery ownership without duplicate presentation. | accepted | backend/mobile/data/security owners | before adding a notification category, template version, channel or changing preference defaults |
 | D-062 | Keep the established three-field authenticated principal and resolve operational role from the current active account for each privileged API; require exact JSON field sets, catalog membership and persisted ownership, and expose V57–V60 APIs only behind five independent default-false gates. | Token-carried authority can become stale, permissive JSON binding silently accepts forbidden fields, and additive persistence must remain inert until each rollout dimension is separately accepted. | accepted | backend/security/platform owners | before changing API authority, closed request fields or feature-gate defaults |
+| D-063 | Give every shared web/mobile session event a stable persisted-identity key, seed and poll the bounded 200-event SSE window by that identity, and replace the legacy run-terminal timeline item only when a committed terminal progress event is published behind the enabled progress gate. | Timestamp cursors can drop same-instant events or resend them after reconnect; publishing both lifecycle and progress terminals creates duplicate operator output, while disable-first rollback must retain the established terminal feed. | accepted | backend/web/mobile owners | before changing shared-stream identity, progress publication or terminal fallback |
 
 ## Deferred decisions and gates
 
@@ -5209,3 +5210,39 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.5-authenticated-operations-apis`;
 the SHA-256 of its `SHA256SUMS` is
 `45dc30a1433681cfed5087039fb2b394953a3dcc0cf418662498fd65ece31b96`.
+
+Task 2.6 is complete and change progress is `21/57`; the exact implementation
+resume point is task 2.7. Tasks 2.7 and later remain pending.
+
+Atenea commit `5938c5d87db64d0f5b4f947bc0d81ce332109661` publishes
+committed V58 progress through the existing shared web/mobile event feed while
+the independently default-disabled progress gate is enabled. Each safe closed
+category carries its persisted sequence and stable
+`progress:{runId}:{sequence}` identity. Existing session, turn, run and
+deliverable items also have stable identities, and the SSE connection seeds
+and polls the bounded 200-item window by identity instead of timestamp.
+
+When a run has committed terminal progress, the enabled feed publishes one
+progress terminal and suppresses the parallel legacy lifecycle terminal. Its
+single persisted `TURN_CODEX` remains the only conversation response. With the
+gate disabled, no progress is published and the legacy terminal feed remains
+available without rewriting history. Web and Android accept the same additive
+identity and sequence fields.
+
+Eleven focused backend/API/SSE tests passed. Two complete 478-test passes
+against separate fresh PostgreSQL 16 databases at V60 passed with zero
+failures, errors or skips in 43.274 and 48.058 seconds. Web production builds
+and Android API Kotlin compilation each passed twice. The final suites used a
+globally disabled synthetic bootstrap so only authentication tests created
+their own operator. No task container, network, database volume or raw test
+log remains.
+
+The canonical Atenea branch and remote are clean and synchronized at that
+commit. Production and preview remain running with zero backend restarts;
+production remains V56 and no new code, migration or gate was deployed or
+enabled.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-2.6-shared-progress-stream`;
+the SHA-256 of its `SHA256SUMS` is
+`88d2054778bc56c9c682dc36f35d9774fd95e4f0fc8a537acb6481f5016050e1`.
