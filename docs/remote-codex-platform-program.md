@@ -6133,3 +6133,42 @@ Sanitized evidence, including the four inspected screenshots, is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-6.5-administrator-codex-surface`;
 the SHA-256 of its `SHA256SUMS` is
 `3d993e2dc1fca04974bc507f2cb5d4c6343c0b756d13df3816bec4f4b4760152`.
+
+Task 6.6 is complete and change progress is `48/57`; the exact implementation
+resume point is task 6.7. Task 6.7 and all later tasks remain pending.
+
+No source change was necessary. The closed contracts accepted in tasks
+6.1–6.5 were exercised as one negative matrix against backend commit
+`a8b7f9256d2036cb5c7414657585b852e52d783f` and worker source commit
+`453e01db2f71077282dcab2e382ebde88957daf5`.
+
+An incompatible persisted candidate remained visible but produced a blocked
+plan without worker I/O. A candidate that generated schemas for a foreign
+Codex version was rejected and its temporary release removed. Non-terminal
+AgentRuns blocked both activation and rollback before worker I/O. Failed fixed
+health and canary gates restored both exact links and created no accepted
+activation. Caller-supplied service fields and direct foreign-service restart
+requests were rejected without a restart.
+
+Exact repetition returned the same immutable stage, activation or rollback
+result without rerunning gates, swapping links or scheduling another restart.
+Reusing the same idempotency identity with a different authorization or
+request fingerprint failed closed with no additional action. Ambiguous stage
+records and rollback link drift were also rejected without changing the
+observed state.
+
+Two backend passes from independently empty PostgreSQL 16 schemas each passed
+the seven-test managed-update integration class after all 61 migrations. The
+combined worker staging, activation/rollback and boundary set passed twice at
+58 tests per pass. All releases, registries and active-run fixtures were
+synthetic; temporary stacks were stopped afterward.
+
+No real AX42 link, service, release or operation changed. Atenea production,
+preview and Beautips remained `UP`; the AX42 worker remained active with
+`NRestarts=0`, all three RAID arrays remained `[UU]`, and both canonical
+worktrees remained clean.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-6.6-managed-update-rejections`;
+the SHA-256 of its `SHA256SUMS` is
+`c857ecb9dc26e45d102f53ca497b2df3151b736c07bef12edcbabefec5412316`.
