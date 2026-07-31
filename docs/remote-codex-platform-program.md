@@ -280,6 +280,7 @@ production activation are recorded later in this ledger.
 | D-077 | Close the operator-experience phase only after one synthetic state matrix proves exact data-to-DOM-to-visible mappings for failed, reconciling and terminal runs with deliberately long canonical identities on web and real Compose. | Unit/build success does not prove that the operator can identify state and act within the first viewport or that long persisted identities remain usable on narrow screens. | accepted and visually verified | web/Android/operator-experience owners | before changing current-run hierarchy, responsive wrapping or visual acceptance viewports |
 | D-078 | Cut over the overlapping legacy run-completed push only when the generic outbox gate is enabled; persist and claim each exact delivery before provider I/O, while leaving non-AgentRun legacy categories untouched. | Dual sending would duplicate user notifications, provider I/O inside the terminal transaction would weaken durability, and forcing PR/billing/close events into the three-category AgentRun schema would invent unsupported ownership. | accepted and persistence-tested | backend/notification owners | before enabling the generic notification gate or extending event ownership beyond AgentRun categories |
 | D-079 | Emit completion, failure and first action-required events from the same local or remote transaction that persists their owning AgentRun state; suppress repeated action-required production while retaining outbox uniqueness as the durable duplicate barrier. | A post-commit producer can lose the notification on process failure, while every reconciliation poll must not create a new user event for one unchanged actionable state. | accepted and transition-tested | backend/notification owners | before changing terminal transaction boundaries or actionable-state revision semantics |
+| D-080 | Retry only closed transient FCM/transport/authentication failures at 30, 60, 120 and 240 seconds, stop after five attempts or expiry, and deactivate only an exactly owned device on a closed invalid-token response. | Unbounded or content-derived retry can amplify provider failures; fixed diagnostics and per-device isolation preserve operability without retaining tokens or provider payloads. | accepted and persistence-tested | backend/notification owners | before changing delivery attempt limits, retry schedule or invalid-token classification |
 
 ## Deferred decisions and gates
 
@@ -5738,3 +5739,37 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.2-terminal-notification-transitions`;
 the SHA-256 of its `SHA256SUMS` is
 `3e184038abb66229278092c45ffde357d64a8b49483ccc6264b8328e4e888509`.
+
+Task 5.3 is complete and change progress is `38/57`; the exact implementation
+resume point is task 5.4. Task 5.4 and all later tasks remain pending.
+
+Atenea commit `1d30e8d239156aa3bb1664b3e8f50b42c604b463` completes the
+V60 delivery lifecycle. Pending and due retry rows are selected in bounded
+batches, claimed under their exact row lock and retried after fixed exponential
+delays of 30, 60, 120 and 240 seconds. A fifth transient failure closes as
+`FAILED`; a row whose next attempt reaches its 24-hour lifetime closes as
+`EXPIRED` without provider I/O.
+
+FCM response handling now maps only closed provider/authentication/transport
+classes into fixed diagnostic codes. Provider bodies are discarded. An exact
+invalid-token result closes only that delivery as `INVALID_TOKEN` and
+deactivates only its owning device, leaving other devices and their deliveries
+unchanged. Transient provider and authentication failures remain retryable;
+credential or other closed client rejections fail permanently.
+
+The authenticated per-device/category preference API retains all-three-on
+defaults and foreign-device rejection. Persistence validation additionally
+proved that an explicit override remains attached to the same device identity
+through re-registration and application-version update.
+
+Thirty-two focused unit, API and PostgreSQL persistence tests passed with zero
+failures, errors or skips after all 60 migrations were validated. No provider
+response content or token entered a diagnostic or log, FCM remained synthetic,
+and the notification gate remains default-off. The temporary database
+container was removed and its reusable volume retained. Nothing was deployed,
+enabled, routed or sent.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.3-delivery-policy`;
+the SHA-256 of its `SHA256SUMS` is
+`38b0b2203a90fd7a5d3eaad5f784231693ecfb92c48a90bbc49003bd935df33a`.

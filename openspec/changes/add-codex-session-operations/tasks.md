@@ -52,7 +52,7 @@
 
 - [x] 5.1 Refactor existing event-specific FCM dispatch behind the generic transactional notification outbox
 - [x] 5.2 Emit remote and local run success, failure and action-required events from the same committed terminal transition
-- [ ] 5.3 Add per-device/category preferences, finite retry, expiration, invalid-token disable and delivery diagnostics
+- [x] 5.3 Add per-device/category preferences, finite retry, expiration, invalid-token disable and delivery diagnostics
 - [ ] 5.4 Add versioned safe payload templates and exact WorkSession deep links without prompt, answer, secret or worker-internal content
 - [ ] 5.5 Make Android display background/closed notifications, open the exact conversation and avoid duplicate foreground presentation
 - [ ] 5.6 Prove one event/device/channel delivery on repetition, backend restart and partial FCM failure
