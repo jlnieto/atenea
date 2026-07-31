@@ -1026,6 +1026,107 @@ select:focus {
   background: #171b1d;
 }
 
+.run-progress {
+  margin-bottom: 16px;
+  padding: 14px;
+  border-radius: 5px;
+  background: #171b1d;
+  border: 1px solid #31556a;
+}
+
+.run-progress__summary {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto minmax(90px, 0.5fr) minmax(190px, 1.2fr) minmax(220px, 1.2fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.run-progress__title h2,
+.run-progress__latest {
+  margin: 2px 0 0;
+}
+
+.run-progress__fact,
+.run-progress__next {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.run-progress__fact span,
+.run-progress__next span,
+.run-progress__fact small {
+  color: #9aa5a8;
+  font-size: 11px;
+}
+
+.run-progress__fact strong,
+.run-progress__next strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.run-progress__latest {
+  padding-top: 11px;
+  color: #cbd3d1;
+  font-size: 13px;
+}
+
+.run-progress__timeline {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid #303638;
+  list-style: none;
+}
+
+.run-progress__timeline li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.run-progress__timeline li > span {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #68a4c1;
+}
+
+.run-progress__timeline div,
+.run-progress__timeline strong,
+.run-progress__timeline small,
+.run-progress__timeline time {
+  display: block;
+  min-width: 0;
+}
+
+.run-progress__timeline strong {
+  font-size: 11px;
+}
+
+.run-progress__timeline small,
+.run-progress__timeline time {
+  color: #9aa5a8;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.run-progress__timeline time {
+  grid-column: 2;
+}
+
+.run-progress__error,
+.run-progress--error {
+  color: #ffb4ab;
+  font-size: 12px;
+}
+
 .attachment-panel__header {
   display: flex;
   align-items: center;
@@ -1319,6 +1420,21 @@ select:focus {
   .attachment-panel__header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .run-progress__summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .run-progress__fact,
+  .run-progress__next {
+    grid-column: 1 / -1;
+  }
+
+  .run-progress__timeline {
+    grid-template-columns: 1fr;
+    max-height: 132px;
+    overflow-y: auto;
   }
 
   .attachment-panel label.button {

@@ -160,6 +160,43 @@ export interface CodexSettings {
   reasoningEffort?: string | null;
 }
 
+export interface CodexRunDetail {
+  runId: number;
+  workSessionId: number;
+  status: string;
+  modelId?: string | null;
+  modelSource?: string | null;
+  reasoningEffort?: string | null;
+  effortSource?: string | null;
+  catalogRevision?: string | null;
+  codexVersion?: string | null;
+  currentState?: string | null;
+  latestSequence: number;
+  retainedFloor: number;
+  elapsedMillis: number;
+  requiredNextAction?: string | null;
+  retryOfRunId?: number | null;
+}
+
+export interface CodexProgressEvent {
+  sequence: number;
+  category: string;
+  message: string;
+  occurredAt: string;
+}
+
+export interface CodexProgressReplay {
+  requestedAfterSequence: number;
+  retainedFloor: number;
+  cursorWasBelowRetainedFloor: boolean;
+  currentState?: string | null;
+  latestEvent?: CodexProgressEvent | null;
+  terminalOutcome?: string | null;
+  elapsedMillis: number;
+  requiredNextAction?: string | null;
+  events: CodexProgressEvent[];
+}
+
 export interface MobileConversationTurn {
   id: number;
   actor: string;

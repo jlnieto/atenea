@@ -3,6 +3,8 @@ import {
   AuthSession,
   BillingQueueResponse,
   CodexCatalog,
+  CodexProgressReplay,
+  CodexRunDetail,
   CodexSettings,
   CoreCommandResponse,
   CoreCommandSummary,
@@ -188,6 +190,14 @@ export class AteneaApi {
       catalogRevision,
       idempotencyKey: crypto.randomUUID()
     });
+  }
+
+  codexRunDetail(runId: number) {
+    return this.get<CodexRunDetail>(`/api/runs/${runId}/codex-detail`);
+  }
+
+  codexRunProgress(runId: number, afterSequence = 0) {
+    return this.get<CodexProgressReplay>(`/api/runs/${runId}/progress?afterSequence=${afterSequence}`);
   }
 
   sessionDeliverables(sessionId: number) {

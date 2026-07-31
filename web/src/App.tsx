@@ -35,6 +35,8 @@ import {
   AuthSession,
   CodexCatalog,
   CodexCatalogModel,
+  CodexProgressReplay,
+  CodexRunDetail,
   CodexSettings,
   CoreCommandResponse,
   CoreCommandSummary,
@@ -838,6 +840,9 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileUnavailable, setProfileUnavailable] = useState(false);
   const [profileError, setProfileError] = useState("");
+  const [runDetail, setRunDetail] = useState<CodexRunDetail | null>(null);
+  const [runProgress, setRunProgress] = useState<CodexProgressReplay | null>(null);
+  const [runProgressError, setRunProgressError] = useState("");
 
   async function loadProfile() {
     setProfileLoading(true);
@@ -881,6 +886,41 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   useEffect(() => {
     load();
   }, [sessionId]);
+
+  useEffect(() => {
+    const runId = conversation?.latestRun?.id;
+    if (!runId) {
+      setRunDetail(null);
+      setRunProgress(null);
+      setRunProgressError("");
+      return;
+    }
+    const currentRunId = runId;
+    let active = true;
+    async function refreshRun() {
+      try {
+        const [detail, progress] = await Promise.all([
+          api.codexRunDetail(currentRunId),
+          api.codexRunProgress(currentRunId)
+        ]);
+        if (active) {
+          setRunDetail(detail);
+          setRunProgress(progress);
+          setRunProgressError("");
+        }
+      } catch (refreshError) {
+        if (active && (!(refreshError instanceof ApiError) || refreshError.status !== 404)) {
+          setRunProgressError(`No se pudo actualizar la ejecución. ${errorMessage(refreshError)}`);
+        }
+      }
+    }
+    refreshRun();
+    const timer = conversation?.runInProgress ? window.setInterval(refreshRun, 3_000) : undefined;
+    return () => {
+      active = false;
+      if (timer) window.clearInterval(timer);
+    };
+  }, [conversation?.latestRun?.id, conversation?.runInProgress]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -975,6 +1015,9 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       refresh={load}
     >
       {error && <InlineError>{error}</InlineError>}
+      {(runDetail || runProgressError) && (
+        <RunProgressPanel detail={runDetail} progress={runProgress} error={runProgressError} />
+      )}
       <AttachmentPanel
         attachments={attachments}
         loading={attachmentsLoading}
@@ -1007,6 +1050,113 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       </form>
     </ConversationLayout>
   );
+}
+
+function RunProgressPanel({
+  detail,
+  progress,
+  error
+}: {
+  detail: CodexRunDetail | null;
+  progress: CodexProgressReplay | null;
+  error: string;
+}) {
+  if (!detail) {
+    return <section className="run-progress run-progress--error" role="alert">{error}</section>;
+  }
+  const state = progress?.currentState || detail.currentState || detail.status;
+  const elapsed = progress?.elapsedMillis ?? detail.elapsedMillis;
+  const nextAction = progress?.requiredNextAction || detail.requiredNextAction || "NONE";
+  const events = (progress?.events || []).slice(-6);
+  return (
+    <section className="run-progress" aria-label="Ejecución actual">
+      <div className="run-progress__summary">
+        <div className="run-progress__title">
+          <span className="eyebrow">Ejecución actual</span>
+          <h2>{progressStateLabel(state)}</h2>
+        </div>
+        <StatusPill level={runStateLevel(state)}>{state}</StatusPill>
+        <div className="run-progress__fact">
+          <span>Tiempo</span>
+          <strong>{formatElapsed(elapsed)}</strong>
+        </div>
+        <div className="run-progress__fact">
+          <span>Perfil efectivo</span>
+          <strong>{detail.modelId || "Sin confirmar"} · {detail.reasoningEffort || "-"}</strong>
+          <small>Codex {detail.codexVersion || "-"}</small>
+        </div>
+        <div className="run-progress__next">
+          <span>Siguiente acción</span>
+          <strong>{nextActionLabel(nextAction)}</strong>
+        </div>
+      </div>
+      {progress?.latestEvent && (
+        <p className="run-progress__latest">
+          <strong>Último evento:</strong> {progress.latestEvent.message}
+        </p>
+      )}
+      {events.length > 0 && (
+        <ol className="run-progress__timeline" aria-label="Progreso reciente">
+          {events.map((event) => (
+            <li key={event.sequence}>
+              <span aria-hidden="true" />
+              <div>
+                <strong>{progressStateLabel(event.category)}</strong>
+                <small>{event.message}</small>
+              </div>
+              <time dateTime={event.occurredAt}>{formatRelative(event.occurredAt)}</time>
+            </li>
+          ))}
+        </ol>
+      )}
+      {error && <span className="run-progress__error" role="alert">{error}</span>}
+    </section>
+  );
+}
+
+function progressStateLabel(state: string) {
+  return ({
+    ACCEPTED: "Aceptada",
+    QUEUED: "En cola",
+    PREPARING_WORKSPACE: "Preparando workspace",
+    CODEX_STARTED: "Codex iniciado",
+    INSPECTING_PROJECT: "Revisando proyecto",
+    RUNNING_COMMAND: "Ejecutando comprobación",
+    CHECKING: "Comprobando cambios",
+    WAITING: "Esperando",
+    RECONCILING: "Reconciliando",
+    FINALIZING: "Finalizando",
+    COMPLETED: "Completada",
+    SUCCEEDED: "Completada",
+    FAILED: "Fallida",
+    CANCELLED: "Cancelada"
+  } as Record<string, string>)[state] || state;
+}
+
+function runStateLevel(state: string): Level {
+  if (["FAILED"].includes(state)) return "critical";
+  if (["WAITING", "RECONCILING"].includes(state)) return "warning";
+  if (["COMPLETED", "SUCCEEDED"].includes(state)) return "ok";
+  if (["CANCELLED"].includes(state)) return "neutral";
+  return "running";
+}
+
+function nextActionLabel(action: string) {
+  return ({
+    NONE: "Ninguna; puedes continuar",
+    WAIT: "Esperar la siguiente actualización",
+    CANCEL: "Cancelar si ya no necesitas el resultado",
+    RETRY: "Reintentar de forma segura",
+    REQUEST_RECONCILIATION: "Solicitar reconciliación",
+    CONTACT_PLATFORM_ADMINISTRATOR: "Contactar con administración"
+  } as Record<string, string>)[action] || action;
+}
+
+function formatElapsed(milliseconds: number) {
+  const seconds = Math.max(0, Math.floor((milliseconds || 0) / 1_000));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return minutes ? `${minutes} min ${String(remainder).padStart(2, "0")} s` : `${remainder} s`;
 }
 
 interface ExecutionProfileView {
