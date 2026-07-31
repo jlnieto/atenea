@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -37,7 +38,8 @@ internal fun AteneaShell(
     updateManifestUrl: String,
     currentVersionCode: Int,
     currentVersionName: String,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    requestedConversation: AteneaNotificationRoute? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -57,6 +59,7 @@ internal fun AteneaShell(
     var selectedDestination by rememberSaveable { mutableStateOf(restoredRoute.destination) }
     var selectedProjectId by rememberSaveable { mutableStateOf(restoredRoute.projectId) }
     var selectedSessionId by rememberSaveable { mutableStateOf(restoredRoute.sessionId) }
+    var conversationRequestKey by rememberSaveable { mutableStateOf<String?>(null) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var updateState by remember { mutableStateOf<UpdateCheckResult?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
@@ -92,6 +95,13 @@ internal fun AteneaShell(
     }
     LaunchedEffect(selectedDestination, selectedProjectId, selectedSessionId) {
         navigationStore.saveRoute(selectedDestination, selectedProjectId, selectedSessionId)
+    }
+    LaunchedEffect(requestedConversation?.requestKey) {
+        requestedConversation ?: return@LaunchedEffect
+        selectedProjectId = null
+        selectedSessionId = requestedConversation.sessionId
+        conversationRequestKey = requestedConversation.requestKey
+        selectedDestination = AteneaDestination.CONVERSATION
     }
 
     ModalNavigationDrawer(
@@ -218,13 +228,21 @@ internal fun AteneaShell(
                         onOpenCore = { selectedDestination = AteneaDestination.CORE },
                         onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS }
                     )
-                    AteneaDestination.CONVERSATION -> WorkSessionConversationScreen(
-                        apiClient = apiClient,
-                        projectId = selectedProjectId,
-                        sessionId = selectedSessionId,
-                        onOpenCore = { selectedDestination = AteneaDestination.CORE },
-                        onBackToSession = { selectedDestination = AteneaDestination.SESSION }
-                    )
+                    AteneaDestination.CONVERSATION -> key(conversationRequestKey, selectedSessionId) {
+                        WorkSessionConversationScreen(
+                            apiClient = apiClient,
+                            projectId = selectedProjectId,
+                            sessionId = selectedSessionId,
+                            onOpenCore = { selectedDestination = AteneaDestination.CORE },
+                            onBackToSession = {
+                                selectedDestination = if (selectedProjectId == null) {
+                                    AteneaDestination.PROJECTS
+                                } else {
+                                    AteneaDestination.SESSION
+                                }
+                            }
+                        )
+                    }
                     AteneaDestination.RESCUE -> RescueScreen(
                         apiClient = apiClient,
                         projectId = selectedProjectId,
@@ -356,8 +374,8 @@ private class AteneaNavigationStore(context: Context) {
     }
 
     private fun AteneaDestination.validFor(projectId: Long?, sessionId: Long?): AteneaDestination = when (this) {
-        AteneaDestination.SESSION,
-        AteneaDestination.CONVERSATION -> if (projectId != null && sessionId != null) this else AteneaDestination.PROJECTS
+        AteneaDestination.SESSION -> if (projectId != null && sessionId != null) this else AteneaDestination.PROJECTS
+        AteneaDestination.CONVERSATION -> if (sessionId != null) this else AteneaDestination.PROJECTS
         AteneaDestination.RESCUE -> if (projectId != null) this else AteneaDestination.PROJECTS
         else -> this
     }
