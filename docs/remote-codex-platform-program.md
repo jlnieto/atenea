@@ -283,6 +283,7 @@ production activation are recorded later in this ledger.
 | D-080 | Retry only closed transient FCM/transport/authentication failures at 30, 60, 120 and 240 seconds, stop after five attempts or expiry, and deactivate only an exactly owned device on a closed invalid-token response. | Unbounded or content-derived retry can amplify provider failures; fixed diagnostics and per-device isolation preserve operability without retaining tokens or provider payloads. | accepted and persistence-tested | backend/notification owners | before changing delivery attempt limits, retry schedule or invalid-token classification |
 | D-081 | Encode generic AgentRun pushes as `atenea-notification-data-v1` with fixed `AGENT_RUN_STATE` semantics, an exact `atenea://work-sessions/{id}/conversation` deep link and only closed immutable/numeric identity fields. | Android needs one stable route to the exact conversation, while copying domain text or accepting an unrecognized template would leak content and make notification handling ambiguous. | accepted and payload-tested | backend/Android/notification owners | before changing notification payload schema, safe-copy catalog or WorkSession deep-link route |
 | D-082 | Parse notification routes fail-closed in Android, use the immutable event ID as local presentation identity, retain only the ten safe payload fields in the PendingIntent and consume a valid event in-app while MainActivity is foregrounded. | Exact route validation prevents arbitrary intent navigation, stable event ownership avoids repeated local cards, and returning before presentation prevents a second notification beside the refreshed conversation. | accepted, unit-tested and emulator-verified | Android/notification owners | before changing foreground delivery, PendingIntent fields or notification route parsing |
+| D-083 | Use the immutable notification-event UUID as the Android FCM replacement tag while preserving the existing legacy payload when no generic event identity exists. | Database uniqueness prevents a second delivery owner but cannot prevent Android from rendering two cards after a provider-timeout retry; the stable platform tag makes repeated generic presentation replace the same user notification without inventing identity for legacy events. | accepted and repetition-tested | backend/Android/notification owners | before changing FCM Android notification fields, event identity or legacy push compatibility |
 
 ## Deferred decisions and gates
 
@@ -5839,3 +5840,37 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.5-android-notification-routing`;
 the SHA-256 of its `SHA256SUMS` is
 `1e5c8e87a63955b917df90ee570ab213ba6b879a951cdde86f94fd828865dd3d`.
+
+Task 5.6 is complete and change progress is `41/57`; the exact implementation
+resume point is task 5.7. Task 5.7 and all later tasks remain pending.
+
+Atenea commit `4c32f4ab38bbd9337c5304c88d57e4914b2c6a15` closes the
+provider-presentation half of durable ownership. Generic FCM Android payloads
+now use the immutable notification-event UUID as their platform replacement
+tag. A repeated provider delivery therefore targets the same visible Android
+notification. Legacy events without a generic event identity retain their
+existing untagged payload instead of receiving invented ownership.
+
+One PostgreSQL test creates two device/channel owners for one event, makes one
+provider attempt retryable while the other succeeds, reconstructs both outbox
+and claim services, repeats event production, and then completes only the due
+failed row. The event UUID and both delivery IDs remain unchanged, the already
+delivered row cannot be reclaimed, the final event still owns exactly two rows
+and no row remains dispatchable. A dispatcher test independently proves that
+one device failure does not block the second device in the same batch.
+
+The focused FCM sender, dispatcher and persistence set ran twice in disposable
+test processes: each run passed 21 tests with zero failures, errors or skips
+after validating all 60 migrations. FCM and device values remained synthetic;
+no provider request or real token was used. Exact test containers were removed
+and the reusable database/Maven volumes retained.
+
+Read-only post-checks kept Atenea `UP`, production/preview/Beautips containers
+`Up`, the AX42 AgentRun worker active with `NRestarts=0`, four active slot
+proxies and zero project runners. Nothing was deployed, enabled, routed,
+restarted in production or sent.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.6-durable-notification-ownership`;
+the SHA-256 of its `SHA256SUMS` is
+`d295390a8e6dacc716b35fd96ac9f89c47ff0e71b9e7eb6472275b35c708a6ef`.
