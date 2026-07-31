@@ -251,6 +251,7 @@ production activation are recorded later in this ledger.
 | D-048 | Retire the closed onboarding session's stale active allocation marker only after its released admission, absent runtime resources and archived byte-identical allocation are proved. | The retained active marker contradicted reusable slot ownership even though the closed fixture had completed the D-033 release gate. | accepted for the exact onboarding record | runtime owner | general allocation-retirement support |
 | D-049 | Activate private previews in production Atenea with a dedicated host-to-host credential, the exact `Beautips` allowlist and tailnet-only AX42 control/ingress. | Real browser acceptance must use the same control plane as normal operation without public sharing, runtime-port disclosure or credential exposure. | accepted and active | platform/security owners | preview credential rotation or public-sharing proposal |
 | D-050 | Retain the four fail-closed activation AgentRuns as immutable audit history and accept only subsequent terminal successes. | Rewriting failed attempts would destroy evidence of prerequisite enforcement; successful runs on the same workspace and thread prove the corrected path. | accepted | backend/programme owners | terminal audit-retention policy |
+| D-051 | Retire a `DRAFT_BLOCKED` WorkSession's stale active allocation marker only after exact recovery, released admission, sealed semantic equality, absent owned runtime resources and byte-preserving rename are proved. | A retained source draft must remain reviewable without permanently preventing its clean replacement from owning the fixed project slot. | accepted for the exact Atenea recovery | runtime/programme owners | general retained-draft allocation retirement support |
 
 ## Deferred decisions and gates
 
@@ -4791,3 +4792,59 @@ Sanitized task-0.9 evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.9-closed-authority-denial`;
 the SHA-256 of its `SHA256SUMS` is
 `05e616c10027e88191efe897004142bfb4ef5c93b9afc7d0651fe517e22cea9c`.
+
+Task 0.10 is complete and change progress is `10/57`; the exact resume point
+is task 1.1.
+
+The final Atenea source is clean and synchronized at
+`ec867f75bd4bb58f582607cf0025a003400f02c8`. Two clean-container backend
+passes against separate empty PostgreSQL databases each ran 445 tests with
+zero failures, errors or skips and applied all 56 Flyway migrations. Two final
+worker passes each accepted the AgentRun worker, Atenea runner, Beautips
+adapter, Beautips operation mediator, multi-repository, Playwright, retained
+installer and shared installer suites; shell syntax also passed. The accepted
+backend passes took 40 and 43 seconds, and the worker passes took 58 and 57
+seconds, under external timeouts of 600 and 180 seconds respectively.
+
+Production runs backend image
+`sha256:7b62d5459831ede557e6277e6252a891e79230e2b52ce57d4ac9277c0928e36d`
+with zero restarts and schema V56. A root-only, profile-gated command invoked
+the same transactional recovery service without reading an operator token or
+modifying the database directly. Its exact authority bound database row 6,
+remote UUID `c750641d-3226-44c3-81dc-d9149aac0de1`, retained HEAD
+`d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b` and accepted commit
+`ec867f75bd4bb58f582607cf0025a003400f02c8`. The sanitized result exposed no
+values, marked row 6 `DRAFT_BLOCKED` and created row 7 `OPEN` with remote UUID
+`83356a20-421c-4d5f-8de6-05c98cce1c32`.
+
+The stale draft remains byte-equivalent to task 0.1: clean index, 28 tracked
+changes, 16 untracked files, tracked diff SHA-256
+`fe004b66dc9d76da024c6c514ccd7992b6846b2556fab8694bbfd3feb6257fa8`
+and untracked manifest SHA-256
+`b7b2d520213300600bdbb3bd005ede283fd505f24be31d4e018e90a144fc4fa8`.
+Its released allocation conflicted with safe reuse of fixed slot 2. Following
+D-048 and new decision D-051, the marker was renamed to
+`runtime-allocation-v1.retired.json` only after semantic equality with sealed
+task-0.1 evidence and zero owned containers, networks, images, listeners and
+runtime unit were proved. SHA-256 remained
+`f143453718f4c8758665a02986ce44c607feff3f44cc0971100fb63ab4ac1cac`
+before and after the rename.
+
+The replacement worktree is clean on branch
+`atenea/session-83356a20-421c-4d5f-8de6-05c98cce1c32` at the exact accepted
+commit. It owns slot 2 and heavy 1, one allocation and the only enabled Atenea
+worker registration, but no runtime container, network, listener or process
+was started. The installed registration path disables optional Git locks so a
+root-owned read cannot replace the worker-owned index; an idempotent activation
+repeat preserved index ownership `atenea-worker:atenea:0644`.
+
+Non-terminal AgentRuns and previews for the retained/replacement sessions are
+zero. Slot inventories remain `3/0/0/3`; production, preview, administrative
+Beautips and WorkSession Beautips are `UP`; rootful Docker remains
+inactive/masked; SSH, Tailscale, UFW and the worker are active; all RAID arrays
+remain `[UU]`. Temporary installer fixtures were removed by exact identity.
+
+Sanitized task-0.10 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.10-foundation-current-worksession`;
+the SHA-256 of its `SHA256SUMS` is
+`76cbdf25b6f49ed78c3ba16a536edc20e52e43053adb7ed2a60153679ee4cc0b`.

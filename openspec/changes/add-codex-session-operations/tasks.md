@@ -9,7 +9,7 @@
 - [x] 0.7 Add exact multi-repository WorkSession roles for Atenea code, programme OpenSpec and worker source with separate worktrees, permissions, validation and linked readiness
 - [x] 0.8 Replace silent rule ignoring with a fingerprinted reviewed platform/project instruction bundle while continuing to reject ambient user configuration
 - [x] 0.9 Prove fail-closed denial for arbitrary commands, images, compose files, environments, paths, hosts, slots, endpoints, credentials, repositories, rule sources and foreign ownership
-- [ ] 0.10 Run the foundation suites twice, seal sanitized evidence and create the new current Atenea WorkSession before permitting task 1.1
+- [x] 0.10 Run the foundation suites twice, seal sanitized evidence and create the new current Atenea WorkSession before permitting task 1.1
 
 ## 1. Entry, contracts and rollback
 
