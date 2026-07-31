@@ -26,6 +26,7 @@ from urllib.parse import urlparse
 PROTOCOL = "agent-run-worker/v1"
 SYNTHETIC_CAPABILITY = "synthetic-routing-v1"
 PROJECT_CAPABILITY = "project-codex-v1"
+PROJECT_V2_CAPABILITY = "project-codex-v2"
 CODEX_CATALOG_CAPABILITY = "codex-model-catalog-v1"
 CODEX_CATALOG_SCHEMA = "codex-model-catalog-v1"
 CODEX_VERSION = "0.145.0"
@@ -49,6 +50,9 @@ PROJECT_WORKLOAD_KEYS = {
     "manifestSha256", "message", "threadId", "instructionBundleRevision",
     "instructionBundleSha256", "platformInstructionSha256",
     "projectInstructionPath", "projectInstructionSha256",
+}
+PROJECT_V2_WORKLOAD_KEYS = PROJECT_WORKLOAD_KEYS | {
+    "modelId", "reasoningEffort", "catalogRevision", "codexVersion",
 }
 WORKSPACE_ENSURE_KEYS = {
     "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
@@ -320,6 +324,17 @@ class WorkerState:
             self._persist()
             self.wakeup.set()
             return self._public(execution), True
+
+    def profiled_project_fingerprint(self, request: dict[str, Any]) -> str:
+        workload = self._validate_dispatch_envelope(request)
+        if workload.get("kind") != PROJECT_V2_CAPABILITY:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_workload",
+                "profiled project workload is required",
+            )
+        self._validate_profiled_project(request, workload)
+        return canonical_hash(request)
 
     def ensure_workspace(self, request: dict[str, Any]) -> dict[str, Any]:
         if set(request) != WORKSPACE_ENSURE_KEYS:
@@ -1133,6 +1148,22 @@ class WorkerState:
         return execution
 
     def _validate_create(self, request: Any) -> None:
+        workload = self._validate_dispatch_envelope(request)
+        if workload["kind"] == SYNTHETIC_CAPABILITY:
+            self._validate_synthetic(workload)
+        elif workload["kind"] == PROJECT_CAPABILITY:
+            self._validate_project(request, workload)
+        elif workload["kind"] == PROJECT_V2_CAPABILITY:
+            self._validate_profiled_project(request, workload)
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "profile_execution_unavailable",
+                "profiled project execution is not enabled",
+            )
+        else:
+            raise ProtocolError(HTTPStatus.BAD_REQUEST, "unsupported_workload", "workload kind is unsupported")
+
+    def _validate_dispatch_envelope(self, request: Any) -> dict[str, Any]:
         if not isinstance(request, dict) or set(request) != CREATE_KEYS:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_dispatch", "dispatch fields are invalid")
         try:
@@ -1150,12 +1181,7 @@ class WorkerState:
         workload = request["workload"]
         if not isinstance(workload, dict) or "kind" not in workload:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_workload", "workload fields are invalid")
-        if workload["kind"] == SYNTHETIC_CAPABILITY:
-            self._validate_synthetic(workload)
-        elif workload["kind"] == PROJECT_CAPABILITY:
-            self._validate_project(request, workload)
-        else:
-            raise ProtocolError(HTTPStatus.BAD_REQUEST, "unsupported_workload", "workload kind is unsupported")
+        return workload
 
     def _validate_synthetic(self, workload: dict[str, Any]) -> None:
         if set(workload) != SYNTHETIC_WORKLOAD_KEYS:
@@ -1225,6 +1251,41 @@ class WorkerState:
                 "workspace_ownership_conflict",
                 "persisted workspace ownership is incomplete or conflicting",
             )
+
+    def _validate_profiled_project(
+        self,
+        request: dict[str, Any],
+        workload: dict[str, Any],
+    ) -> None:
+        if set(workload) != PROJECT_V2_WORKLOAD_KEYS:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_workload",
+                "profiled project workload fields are invalid",
+            )
+        model = next(
+            (item for item in CODEX_MODELS if item["modelId"] == workload.get("modelId")),
+            None,
+        )
+        if (
+            model is None
+            or model["availability"] != "AVAILABLE"
+            or workload.get("reasoningEffort") not in model["supportedEfforts"]
+            or workload.get("catalogRevision") != codex_catalog_revision()
+            or workload.get("codexVersion") != CODEX_VERSION
+        ):
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "profile_ownership_conflict",
+                "Codex profile is not in the accepted worker catalog",
+            )
+        legacy = {
+            key: value
+            for key, value in workload.items()
+            if key not in {"modelId", "reasoningEffort", "catalogRevision", "codexVersion"}
+        }
+        legacy["kind"] = PROJECT_CAPABILITY
+        self._validate_project(request, legacy)
 
     def _project_route(self, project_id: Any) -> dict[str, Any] | None:
         if project_id == PROJECT_ID:

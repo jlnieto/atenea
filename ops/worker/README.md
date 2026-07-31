@@ -334,6 +334,14 @@ from that digest. Health advertises only the catalog capability at this stage:
 fingerprint and runner tasks are complete and the rollout is explicitly
 enabled.
 
+The staged `project-codex-v2` validator extends the immutable canonical request
+fingerprint with `modelId`, `reasoningEffort`, `catalogRevision` and
+`codexVersion` only after reusing the complete v1 project, repository,
+instruction and persisted session/workspace checks. Unsupported or stale
+profiles and additional caller authority fail before an execution record is
+created. Until the fixed runner consumes the validated profile in the next
+task, create requests fail closed as `profile_execution_unavailable`.
+
 The runner executes the existing authenticated `jose` Codex identity inside a
 per-process Bubblewrap filesystem namespace and a collected transient systemd
 cgroup. That reviewed outer namespace is the effective workspace-write

@@ -677,6 +677,17 @@ print(json.dumps({
             },
         }
 
+    def profiled_request(self, effort="high"):
+        request = self.request()
+        request["workload"].update({
+            "kind": MODULE.PROJECT_V2_CAPABILITY,
+            "modelId": "gpt-5.6-sol",
+            "reasoningEffort": effort,
+            "catalogRevision": MODULE.codex_catalog_revision(),
+            "codexVersion": MODULE.CODEX_VERSION,
+        })
+        return request
+
     def wait_terminal(self, dispatch_id, timeout=5):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -697,6 +708,45 @@ print(json.dumps({
         terminal = self.wait_terminal(request["dispatchId"])
         self.assertEqual("SUCCEEDED", terminal["status"])
         self.assertEqual(thread_id, terminal["result"]["threadId"])
+
+    def test_profiled_fingerprint_binds_model_effort_and_exact_workspace(self):
+        high = self.profiled_request(effort="high")
+        medium = json.loads(json.dumps(high))
+        medium["workload"]["reasoningEffort"] = "medium"
+
+        self.assertNotEqual(
+            self.state.profiled_project_fingerprint(high),
+            self.state.profiled_project_fingerprint(medium),
+        )
+        with self.assertRaisesRegex(MODULE.ProtocolError, "not enabled"):
+            self.state.create(high)
+        self.assertEqual({}, self.state.executions)
+
+        for field, value in (
+            ("modelId", "arbitrary-model"),
+            ("reasoningEffort", "ultra"),
+            ("catalogRevision", "f" * 64),
+            ("codexVersion", "9.9.9"),
+        ):
+            rejected = self.profiled_request()
+            rejected["workload"][field] = value
+            with self.assertRaisesRegex(MODULE.ProtocolError, "accepted worker catalog"):
+                self.state.profiled_project_fingerprint(rejected)
+            self.assertEqual({}, self.state.executions)
+
+        foreign = self.profiled_request()
+        foreign["workspaceIdentity"] = "remote:ax42-01:work-session:" + str(uuid.uuid4())
+        with self.assertRaisesRegex(MODULE.ProtocolError, "persistently registered"):
+            self.state.profiled_project_fingerprint(foreign)
+        self.assertEqual({}, self.state.executions)
+
+    def test_profiled_fingerprint_rejects_added_operational_authority(self):
+        request = self.profiled_request()
+        request["workload"]["provider"] = "arbitrary"
+
+        with self.assertRaisesRegex(MODULE.ProtocolError, "fields are invalid"):
+            self.state.profiled_project_fingerprint(request)
+        self.assertEqual({}, self.state.executions)
 
     def test_disabled_foreign_ambiguous_and_arbitrary_requests_fail_closed(self):
         baseline = self.config.read_bytes()
