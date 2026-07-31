@@ -325,6 +325,15 @@ common directory from persisted ownership, checks the pinned repository,
 ancestor commit, manifest and allocation fingerprints, and feeds the prompt
 only through stdin.
 
+The authenticated `GET /v1/codex/catalog` route advertises the closed
+`codex-model-catalog-v1` inventory independently of project execution. Its
+revision digests the schema version, exact installed Codex `0.145.0` version
+and canonical sorted model entries; the diagnostic generation time is excluded
+from that digest. Health advertises only the catalog capability at this stage:
+`agent-run-project-codex-v2` execution remains unavailable until its later
+fingerprint and runner tasks are complete and the rollout is explicitly
+enabled.
+
 The runner executes the existing authenticated `jose` Codex identity inside a
 per-process Bubblewrap filesystem namespace and a collected transient systemd
 cgroup. That reviewed outer namespace is the effective workspace-write

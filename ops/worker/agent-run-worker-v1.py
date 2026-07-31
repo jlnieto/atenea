@@ -26,6 +26,18 @@ from urllib.parse import urlparse
 PROTOCOL = "agent-run-worker/v1"
 SYNTHETIC_CAPABILITY = "synthetic-routing-v1"
 PROJECT_CAPABILITY = "project-codex-v1"
+CODEX_CATALOG_CAPABILITY = "codex-model-catalog-v1"
+CODEX_CATALOG_SCHEMA = "codex-model-catalog-v1"
+CODEX_VERSION = "0.145.0"
+CODEX_MODELS = [
+    {
+        "modelId": "gpt-5.6-sol",
+        "displayName": "GPT-5.6 Sol",
+        "supportedEfforts": ["none", "low", "medium", "high", "xhigh", "max"],
+        "defaultEffort": "medium",
+        "availability": "AVAILABLE",
+    }
+]
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED"}
 NON_TERMINAL = {"QUEUED", "STARTING", "RUNNING", "CANCELLING", "RECONCILING"}
 CREATE_KEYS = {
@@ -93,6 +105,14 @@ def utc_now() -> str:
 def canonical_hash(value: Any) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def codex_catalog_revision() -> str:
+    return canonical_hash({
+        "schemaVersion": CODEX_CATALOG_SCHEMA,
+        "codexVersion": CODEX_VERSION,
+        "models": sorted(CODEX_MODELS, key=lambda item: item["modelId"]),
+    })
 
 
 class ProtocolError(Exception):
@@ -233,7 +253,7 @@ class WorkerState:
                 if item["status"] in {"STARTING", "RUNNING"} and item["workloadClass"] == "HEAVY"
             )
             queued = sum(1 for item in self.executions.values() if item["status"] in {"QUEUED", "RECONCILING"})
-            capabilities = [SYNTHETIC_CAPABILITY]
+            capabilities = [SYNTHETIC_CAPABILITY, CODEX_CATALOG_CAPABILITY]
             if self._project_selection_enabled():
                 capabilities.append(PROJECT_CAPABILITY)
             return {
@@ -248,6 +268,16 @@ class WorkerState:
                 "queued": queued,
                 "serverTime": utc_now(),
             }
+
+    def codex_catalog(self) -> dict[str, Any]:
+        return {
+            "schemaVersion": CODEX_CATALOG_SCHEMA,
+            "catalogRevision": codex_catalog_revision(),
+            "workerId": self.worker_id,
+            "codexVersion": CODEX_VERSION,
+            "generatedAt": utc_now(),
+            "models": json.loads(json.dumps(CODEX_MODELS)),
+        }
 
     def create(self, request: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         self._validate_create(request)
@@ -1605,6 +1635,9 @@ class AgentRunHandler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if path == "/v1/health":
                 self._write(HTTPStatus.OK, self.server.state.health())
+                return
+            if path == "/v1/codex/catalog":
+                self._write(HTTPStatus.OK, self.server.state.codex_catalog())
                 return
             parts = path.strip("/").split("/")
             if len(parts) == 3 and parts[:2] == ["v1", "executions"]:

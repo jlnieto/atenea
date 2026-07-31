@@ -115,6 +115,23 @@ class WorkerStateTest(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.ProtocolError, "dispatch fields"):
             self.state.create(request)
 
+    def test_catalog_revision_is_stable_and_advertises_exact_profile(self):
+        first = self.state.codex_catalog()
+        second = self.state.codex_catalog()
+
+        self.assertIn(MODULE.CODEX_CATALOG_CAPABILITY, self.state.health()["capabilities"])
+        self.assertEqual("codex-model-catalog-v1", first["schemaVersion"])
+        self.assertEqual("0.145.0", first["codexVersion"])
+        self.assertEqual(
+            "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187",
+            first["catalogRevision"],
+        )
+        self.assertEqual(first["catalogRevision"], second["catalogRevision"])
+        self.assertEqual(
+            ["none", "low", "medium", "high", "xhigh", "max"],
+            first["models"][0]["supportedEfforts"],
+        )
+
 
 class WorkspaceActivationTest(unittest.TestCase):
     def setUp(self):
@@ -913,6 +930,27 @@ class WorkerHttpTest(unittest.TestCase):
         self.assertEqual("agent-run-worker/v1", health["protocolVersion"])
         self.assertEqual(4, health["normalCapacity"])
         self.assertEqual(2, health["heavyCapacity"])
+
+    def test_catalog_requires_authentication_and_exposes_closed_inventory(self):
+        with self.assertRaises(urllib.error.HTTPError) as denied:
+            self.request("/v1/codex/catalog")
+        self.assertEqual(401, denied.exception.code)
+
+        with self.request("/v1/codex/catalog", "t" * 64) as accepted:
+            catalog = json.load(accepted)
+        self.assertEqual(
+            {
+                "schemaVersion",
+                "catalogRevision",
+                "workerId",
+                "codexVersion",
+                "generatedAt",
+                "models",
+            },
+            set(catalog),
+        )
+        self.assertEqual("http-worker", catalog["workerId"])
+        self.assertEqual("gpt-5.6-sol", catalog["models"][0]["modelId"])
 
 
 if __name__ == "__main__":
