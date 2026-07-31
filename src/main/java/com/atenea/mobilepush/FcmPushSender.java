@@ -63,8 +63,16 @@ public class FcmPushSender {
             for (FcmPushMessage message : messages) {
                 sendOne(accessToken, message);
             }
+        } catch (FcmDeliveryException exception) {
+            throw exception;
         } catch (Exception exception) {
-            throw new IllegalStateException("Could not send FCM push notification: " + exception.getMessage(), exception);
+            if (exception instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            throw new FcmDeliveryException(
+                    FcmDeliveryException.FailureKind.RETRYABLE,
+                    "FCM_TRANSPORT_ERROR",
+                    exception);
         }
     }
 
@@ -101,7 +109,7 @@ public class FcmPushSender {
                 .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         if (response.statusCode() / 100 != 2) {
-            throw new IllegalStateException("FCM API returned HTTP " + response.statusCode() + ": " + response.body());
+            throw deliveryFailure(response.statusCode(), response.body());
         }
     }
 
@@ -125,14 +133,17 @@ public class FcmPushSender {
                 .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         if (response.statusCode() / 100 != 2) {
-            throw new IllegalStateException("Google OAuth token endpoint returned HTTP " + response.statusCode() + ": " + response.body());
+            throw authenticationFailure(response.statusCode());
         }
         JsonNode json = objectMapper.readTree(response.body());
         cachedAccessToken = json.path("access_token").asText(null);
         long expiresIn = Math.max(60L, json.path("expires_in").asLong(3600L));
         cachedAccessTokenExpiresAt = now.plusSeconds(expiresIn);
         if (cachedAccessToken == null || cachedAccessToken.isBlank()) {
-            throw new IllegalStateException("Google OAuth token endpoint did not return access_token");
+            throw new FcmDeliveryException(
+                    FcmDeliveryException.FailureKind.PERMANENT,
+                    "FCM_AUTH_INVALID",
+                    null);
         }
         return cachedAccessToken;
     }
@@ -189,6 +200,46 @@ public class FcmPushSender {
         Map<String, String> result = new HashMap<>();
         data.forEach((key, value) -> result.put(key, value == null ? "" : String.valueOf(value)));
         return result;
+    }
+
+    FcmDeliveryException deliveryFailure(int status, String responseBody) {
+        String providerCode = null;
+        try {
+            JsonNode parsed = objectMapper.readTree(responseBody == null ? "{}" : responseBody);
+            JsonNode codeNode = parsed.findValue("errorCode");
+            providerCode = codeNode == null ? parsed.path("error").path("status").asText(null) : codeNode.asText(null);
+        } catch (Exception ignored) {
+            // Provider content is intentionally discarded; only closed diagnostic codes survive.
+        }
+        if ("UNREGISTERED".equals(providerCode) || "INVALID_ARGUMENT".equals(providerCode)) {
+            return new FcmDeliveryException(
+                    FcmDeliveryException.FailureKind.INVALID_TOKEN,
+                    "FCM_TOKEN_INVALID",
+                    null);
+        }
+        if (status == 408 || status == 429 || status >= 500) {
+            return new FcmDeliveryException(
+                    FcmDeliveryException.FailureKind.RETRYABLE,
+                    "FCM_PROVIDER_RETRYABLE",
+                    null);
+        }
+        return new FcmDeliveryException(
+                FcmDeliveryException.FailureKind.PERMANENT,
+                "FCM_PROVIDER_REJECTED",
+                null);
+    }
+
+    FcmDeliveryException authenticationFailure(int status) {
+        if (status == 408 || status == 429 || status >= 500) {
+            return new FcmDeliveryException(
+                    FcmDeliveryException.FailureKind.RETRYABLE,
+                    "FCM_AUTH_RETRYABLE",
+                    null);
+        }
+        return new FcmDeliveryException(
+                FcmDeliveryException.FailureKind.PERMANENT,
+                "FCM_AUTH_REJECTED",
+                null);
     }
 
     public record FcmPushMessage(

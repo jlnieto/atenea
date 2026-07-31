@@ -16,6 +16,8 @@ import com.atenea.persistence.notification.NotificationDeliveryRepository;
 import com.atenea.persistence.notification.NotificationEventRepository;
 import com.atenea.persistence.notification.NotificationPreferenceEntity;
 import com.atenea.persistence.notification.NotificationPreferenceRepository;
+import com.atenea.persistence.notification.NotificationDeliveryState;
+import com.atenea.mobilepush.FcmDeliveryException;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.AgentRunEntity;
@@ -30,7 +32,12 @@ import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
+import com.atenea.service.mobile.MobilePushNotificationService;
+import com.atenea.api.mobile.RegisterPushTokenRequest;
+import com.atenea.auth.AuthenticatedOperator;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
@@ -41,6 +48,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
 class NotificationOutboxPersistenceTest {
@@ -59,6 +68,7 @@ class NotificationOutboxPersistenceTest {
     @Autowired private WorkSessionRepository sessionRepository;
     @Autowired private ProjectRepository projectRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private MobilePushNotificationService mobilePushNotificationService;
 
     @BeforeEach
     void cleanBefore() { clean(); }
@@ -119,6 +129,92 @@ class NotificationOutboxPersistenceTest {
     }
 
     @Test
+    @Transactional
+    void retriesTransientFailureExponentiallyAndStopsAfterFiveAttempts() {
+        Fixture fixture = fixture(AgentRunStatus.SUCCEEDED);
+        device(fixture.operator(), true);
+        NotificationOutboxResult result = service.record(
+                fixture.run().getId(), NotificationCategory.RUN_COMPLETED, 7);
+        NotificationDeliveryEntity delivery = deliveryRepository
+                .findByEventIdOrderByDeviceIdAsc(result.event().getId()).getFirst();
+        FcmDeliveryException transientFailure = new FcmDeliveryException(
+                FcmDeliveryException.FailureKind.RETRYABLE,
+                "FCM_PROVIDER_RETRYABLE",
+                null);
+
+        Instant attemptAt = delivery.getCreatedAt().plusSeconds(1);
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            NotificationDeliveryClaimService bounded = claimServiceAt(attemptAt);
+            assertTrue(bounded.claim(delivery.getId()) != null);
+            bounded.failed(delivery.getId(), transientFailure);
+            delivery = deliveryRepository.findById(delivery.getId()).orElseThrow();
+            assertEquals(attempt, delivery.getAttemptCount());
+            if (attempt < 5) {
+                assertEquals(NotificationDeliveryState.RETRY_WAIT, delivery.getState());
+                assertEquals("FCM_PROVIDER_RETRYABLE", delivery.getDiagnosticCode());
+                assertFalse(deliveryRepository.findDispatchableIds(
+                        delivery.getNextAttemptAt().minusMillis(1), PageRequest.of(0, 10))
+                        .contains(delivery.getId()));
+                assertTrue(deliveryRepository.findDispatchableIds(
+                        delivery.getNextAttemptAt(), PageRequest.of(0, 10))
+                        .contains(delivery.getId()));
+                attemptAt = delivery.getNextAttemptAt();
+            }
+        }
+
+        assertEquals(NotificationDeliveryState.FAILED, delivery.getState());
+        assertEquals("FCM_RETRY_EXHAUSTED", delivery.getDiagnosticCode());
+        assertNull(delivery.getNextAttemptAt());
+    }
+
+    @Test
+    @Transactional
+    void expiresBeforeClaimWithoutSending() {
+        Fixture fixture = fixture(AgentRunStatus.SUCCEEDED);
+        device(fixture.operator(), true);
+        NotificationOutboxResult result = service.record(
+                fixture.run().getId(), NotificationCategory.RUN_COMPLETED, 7);
+        NotificationDeliveryEntity delivery = deliveryRepository
+                .findByEventIdOrderByDeviceIdAsc(result.event().getId()).getFirst();
+        delivery.setExpiresAt(delivery.getCreatedAt().plusSeconds(5));
+        deliveryRepository.saveAndFlush(delivery);
+
+        assertNull(claimServiceAt(delivery.getExpiresAt()).claim(delivery.getId()));
+
+        delivery = deliveryRepository.findById(delivery.getId()).orElseThrow();
+        assertEquals(NotificationDeliveryState.EXPIRED, delivery.getState());
+        assertEquals("DELIVERY_EXPIRED", delivery.getDiagnosticCode());
+        assertEquals(0, delivery.getAttemptCount());
+    }
+
+    @Test
+    @Transactional
+    void invalidTokenDisablesOnlyItsOwningDevice() {
+        Fixture fixture = fixture(AgentRunStatus.SUCCEEDED);
+        OperatorPushDeviceEntity invalid = device(fixture.operator(), true);
+        OperatorPushDeviceEntity healthy = device(fixture.operator(), true);
+        NotificationOutboxResult result = service.record(
+                fixture.run().getId(), NotificationCategory.RUN_COMPLETED, 7);
+        NotificationDeliveryEntity delivery = deliveryRepository
+                .findByEventIdOrderByDeviceIdAsc(result.event().getId()).stream()
+                .filter(candidate -> candidate.getDevice().getId().equals(invalid.getId()))
+                .findFirst().orElseThrow();
+        NotificationDeliveryClaimService bounded = claimServiceAt(delivery.getCreatedAt().plusSeconds(1));
+        assertTrue(bounded.claim(delivery.getId()) != null);
+
+        bounded.failed(delivery.getId(), new FcmDeliveryException(
+                FcmDeliveryException.FailureKind.INVALID_TOKEN,
+                "FCM_TOKEN_INVALID",
+                null));
+
+        delivery = deliveryRepository.findById(delivery.getId()).orElseThrow();
+        assertEquals(NotificationDeliveryState.INVALID_TOKEN, delivery.getState());
+        assertEquals("FCM_TOKEN_INVALID", delivery.getDiagnosticCode());
+        assertFalse(deviceRepository.findById(invalid.getId()).orElseThrow().isActive());
+        assertTrue(deviceRepository.findById(healthy.getId()).orElseThrow().isActive());
+    }
+
+    @Test
     void missingPreferenceDefaultsAllThreeCategoriesToEnabled() {
         Fixture failed = fixture(AgentRunStatus.FAILED);
         device(failed.operator(), true);
@@ -131,6 +227,30 @@ class NotificationOutboxPersistenceTest {
         assertEquals("agent-run-safe-v1", result.event().getTemplateVersion());
         assertEquals("WORK_SESSION_CONVERSATION", result.event().getDeepLinkKind());
         assertEquals(64, result.event().getDeduplicationSha256().length());
+    }
+
+    @Test
+    void explicitPreferenceSurvivesDeviceReregistrationAndAppUpgrade() {
+        Fixture fixture = fixture(AgentRunStatus.SUCCEEDED);
+        OperatorPushDeviceEntity device = device(fixture.operator(), true);
+        preference(device, NotificationCategory.RUN_COMPLETED, false);
+
+        var registered = mobilePushNotificationService.registerPushToken(
+                new AuthenticatedOperator(
+                        fixture.operator().getId(),
+                        fixture.operator().getEmail(),
+                        fixture.operator().getDisplayName()),
+                new RegisterPushTokenRequest(
+                        device.getPushToken(),
+                        device.getDeviceId(),
+                        "Updated test device",
+                        "ANDROID",
+                        "future-version"));
+
+        assertEquals(device.getId(), registered.id());
+        assertFalse(preferenceRepository.findByDeviceIdAndCategory(
+                device.getId(), NotificationCategory.RUN_COMPLETED).orElseThrow().isEnabled());
+        assertEquals(1, preferenceRepository.count());
     }
 
     @Test
@@ -276,6 +396,12 @@ class NotificationOutboxPersistenceTest {
         jdbcTemplate.update("UPDATE agent_run SET retry_of_run_id = NULL WHERE retry_of_run_id IS NOT NULL");
         agentRunRepository.deleteAll(); turnRepository.deleteAll(); sessionRepository.deleteAll();
         projectRepository.deleteAll(); operatorRepository.deleteAll();
+    }
+
+    private NotificationDeliveryClaimService claimServiceAt(Instant instant) {
+        return new NotificationDeliveryClaimService(
+                deliveryRepository,
+                Clock.fixed(instant, ZoneOffset.UTC));
     }
 
     private record Fixture(

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.atenea.codexoperations.CodexSessionOperationsProperties;
 import com.atenea.mobilepush.FcmPushSender;
+import com.atenea.mobilepush.FcmDeliveryException;
 import com.atenea.persistence.notification.NotificationDeliveryRepository;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,7 @@ class NotificationDeliveryDispatcherTest {
     void gateOffDoesNotReadOrSendDeliveries() {
         dispatcher.dispatchPending();
 
-        verify(deliveryRepository, never()).findPendingIds(any(Pageable.class));
+        verify(deliveryRepository, never()).findDispatchableIds(any(), any(Pageable.class));
         verify(fcmPushSender, never()).send(any());
     }
 
@@ -46,7 +47,7 @@ class NotificationDeliveryDispatcherTest {
     void configuredDispatcherSendsOnlyClaimedPersistentDelivery() {
         properties.setNotificationOutboxEnabled(true);
         when(fcmPushSender.isReady()).thenReturn(true);
-        when(deliveryRepository.findPendingIds(any(Pageable.class))).thenReturn(List.of(41L));
+        when(deliveryRepository.findDispatchableIds(any(), any(Pageable.class))).thenReturn(List.of(41L));
         NotificationDeliveryCommand command = new NotificationDeliveryCommand(
                 41L, "synthetic-token", "Tarea completada", "Abre Atenea",
                 Map.of("type", "RUN_COMPLETED", "sessionId", 12L, "runId", 55L));
@@ -56,14 +57,14 @@ class NotificationDeliveryDispatcherTest {
 
         verify(fcmPushSender).send(any());
         verify(claimService).delivered(41L);
-        verify(claimService, never()).failed(41L);
+        verify(claimService, never()).failed(any(), any());
     }
 
     @Test
     void providerFailureIsPersistedWithoutLoggingTokenOrThrowing() {
         properties.setNotificationOutboxEnabled(true);
         when(fcmPushSender.isReady()).thenReturn(true);
-        when(deliveryRepository.findPendingIds(any(Pageable.class))).thenReturn(List.of(42L));
+        when(deliveryRepository.findDispatchableIds(any(), any(Pageable.class))).thenReturn(List.of(42L));
         NotificationDeliveryCommand command = new NotificationDeliveryCommand(
                 42L, "synthetic-token", "Tarea completada", "Abre Atenea",
                 Map.of("type", "RUN_COMPLETED"));
@@ -73,7 +74,7 @@ class NotificationDeliveryDispatcherTest {
 
         dispatcher.dispatchPending();
 
-        verify(claimService).failed(42L);
+        verify(claimService).failed(org.mockito.ArgumentMatchers.eq(42L), any(FcmDeliveryException.class));
         verify(claimService, never()).delivered(42L);
     }
 }
