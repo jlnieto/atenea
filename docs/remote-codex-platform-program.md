@@ -274,6 +274,7 @@ production activation are recorded later in this ledger.
 | D-071 | Treat the base runner digest and every derived Beautips adapter, mediator, allowlist and installer digest as one reviewed trust chain, and require the complete Phase 3 worker plus Beautips aggregate to pass twice. | A fail-closed downstream pin correctly rejected the task 3.6 runner until every dependent identity was refreshed; isolated runner tests alone do not prove the installed project chain remains internally consistent. | accepted | worker/project/security owners | whenever the base runner or any derived reviewed source changes |
 | D-072 | Present the future WorkSession execution profile as one compact state-first control beside the conversation composer; resolve model and effort independently and require pending changes to be applied before send. | The operator must know the next run's exact profile in under three seconds without adding a competing dashboard or permitting submission against an unseen/stale selection. | accepted | web/operator-experience owners | before changing profile placement, source disclosure or pending-selection behavior |
 | D-073 | Put one current-run card before secondary conversation content, render only the six newest normalized events, and locally bound the timeline on mobile. | State, elapsed time, latest progress and next action must be visible immediately while the 200-event durable replay remains an audit boundary rather than a visually unbounded conversation dashboard. | accepted | web/operator-experience owners | before changing current-run placement, visible event bound or mobile timeline overflow |
+| D-074 | Derive exactly one routine recovery action from persisted run state/next-action, keep the backend as permission authority, and disable new-turn submission while an execution is active. | Cancel, retry and reconciliation are mutually contextual; exposing them together or allowing a competing send would make the operator guess and could create conflicting work. | accepted | web/backend/operator-experience owners | before changing recovery action visibility, permission authority or active-run submission behavior |
 
 ## Deferred decisions and gates
 
@@ -5530,3 +5531,26 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.2-web-progress-card`;
 the SHA-256 of its `SHA256SUMS` is
 `2cf3faa8e40d4e4344f94058b3a608e005b36bfc9d44c9f03733c564aa2a387f`.
+
+Task 4.3 is complete and change progress is `32/57`; the exact implementation
+resume point is task 4.4. Task 4.4 and all later tasks remain pending.
+
+Atenea commit `91a3b09aa2fa7e54c0a330dfa601b25332117da0` adds exactly
+one applicable routine recovery action to the owning run card: cancel while
+active, retry after a retryable failure, or request reconciliation for an
+uncertain state. Requests contain only the run path identity, WorkSession ID,
+closed action enum and fresh idempotency key; backend authorization remains
+authoritative. Active execution disables conversation submission. Accepted,
+role-denied, missing-run, changed-state and generic failures all provide an
+actionable next step in the same card.
+
+The production build passed. Synthetic Playwright interaction proved all
+three mappings, exact request shape, active-send denial, accepted feedback and
+the authorized-operator message for a 403. Desktop cancel/permission states
+and mobile reconciliation were inspected with no overflow or overlap. No real
+recovery operation was requested and nothing was deployed or restarted.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.3-web-recovery-actions`;
+the SHA-256 of its `SHA256SUMS` is
+`c5f48b42ce75ed9ce979747f7480a78b31aa8ebf6f05db4854a8ae7300148acc`.
