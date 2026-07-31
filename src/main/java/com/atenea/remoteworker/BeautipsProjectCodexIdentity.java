@@ -52,7 +52,8 @@ public final class BeautipsProjectCodexIdentity {
                 && REPOSITORY.equals(run.getRepositoryUrl())
                 && BRANCH.equals(run.getRepositoryBranch())
                 && COMMIT.equals(run.getRepositoryCommit())
-                && MANIFEST_SHA256.equals(run.getManifestSha256());
+                && MANIFEST_SHA256.equals(run.getManifestSha256())
+                && ReviewedInstructionBundleIdentity.matches(run);
     }
 
     private static String expectedWorkspaceIdentity(UUID remoteSessionId) {

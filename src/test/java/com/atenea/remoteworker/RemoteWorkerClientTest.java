@@ -187,6 +187,16 @@ class RemoteWorkerClientTest {
         assertEquals(ProjectCodexIdentity.BRANCH, workload.get("branch").asText());
         assertEquals(TEST_CANONICAL_COMMIT, workload.get("commit").asText());
         assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, workload.get("manifestSha256").asText());
+        assertEquals(ReviewedInstructionBundleIdentity.REVISION,
+                workload.get("instructionBundleRevision").asText());
+        assertEquals(ReviewedInstructionBundleIdentity.ATENEA_BUNDLE_SHA256,
+                workload.get("instructionBundleSha256").asText());
+        assertEquals(ReviewedInstructionBundleIdentity.PLATFORM_SHA256,
+                workload.get("platformInstructionSha256").asText());
+        assertEquals(ReviewedInstructionBundleIdentity.PROJECT_PATH,
+                workload.get("projectInstructionPath").asText());
+        assertEquals(ReviewedInstructionBundleIdentity.ATENEA_PROJECT_SHA256,
+                workload.get("projectInstructionSha256").asText());
         assertEquals(threadId.toString(), workload.get("threadId").asText());
         assertNull(workload.get("command"));
         assertNull(workload.get("path"));
@@ -211,6 +221,10 @@ class RemoteWorkerClientTest {
         assertEquals(BeautipsProjectCodexIdentity.BRANCH, workload.get("branch").asText());
         assertEquals(BeautipsProjectCodexIdentity.COMMIT, workload.get("commit").asText());
         assertEquals(BeautipsProjectCodexIdentity.MANIFEST_SHA256, workload.get("manifestSha256").asText());
+        assertEquals(ReviewedInstructionBundleIdentity.BEAUTIPS_BUNDLE_SHA256,
+                workload.get("instructionBundleSha256").asText());
+        assertEquals(ReviewedInstructionBundleIdentity.BEAUTIPS_PROJECT_SHA256,
+                workload.get("projectInstructionSha256").asText());
         assertEquals(threadId.toString(), workload.get("threadId").asText());
         assertNull(workload.get("command"));
         assertNull(workload.get("path"));
@@ -382,6 +396,19 @@ class RemoteWorkerClientTest {
     }
 
     @Test
+    void changedInstructionBundleFailsBeforeNetwork() {
+        AgentRunEntity run = projectRun(null);
+        run.setInstructionBundleSha256("f".repeat(64));
+
+        RemoteWorkerException exception = assertThrows(
+                RemoteWorkerException.class,
+                () -> client.dispatch(run, "Must fail."));
+
+        assertEquals(409, exception.getStatusCode());
+        assertNull(requestBody.get());
+    }
+
+    @Test
     void syntheticDispatchRemainsCompatible() {
         AgentRunEntity run = projectRun(null);
         run.setWorkloadKind("synthetic-routing-v1");
@@ -427,6 +454,8 @@ class RemoteWorkerClientTest {
         run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
         run.setRepositoryCommit(TEST_CANONICAL_COMMIT);
         run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
+        ReviewedInstructionBundleIdentity.apply(
+                run, ProjectCodexIdentity.PROJECT_IDENTITY);
         return run;
     }
 
@@ -459,6 +488,8 @@ class RemoteWorkerClientTest {
         run.setRepositoryBranch(BeautipsProjectCodexIdentity.BRANCH);
         run.setRepositoryCommit(BeautipsProjectCodexIdentity.COMMIT);
         run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
+        ReviewedInstructionBundleIdentity.apply(
+                run, BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
         return run;
     }
 }

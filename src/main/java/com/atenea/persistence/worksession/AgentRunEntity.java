@@ -83,6 +83,21 @@ public class AgentRunEntity {
     @Column(name = "manifest_sha256", length = 64)
     private String manifestSha256;
 
+    @Column(name = "instruction_bundle_revision", length = 80)
+    private String instructionBundleRevision;
+
+    @Column(name = "instruction_bundle_sha256", length = 64)
+    private String instructionBundleSha256;
+
+    @Column(name = "platform_instruction_sha256", length = 64)
+    private String platformInstructionSha256;
+
+    @Column(name = "project_instruction_path", length = 80)
+    private String projectInstructionPath;
+
+    @Column(name = "project_instruction_sha256", length = 64)
+    private String projectInstructionSha256;
+
     @Column(name = "dispatch_id", unique = true)
     private UUID dispatchId;
 
@@ -223,6 +238,16 @@ public class AgentRunEntity {
     public void setWorkerMirrorCommit(String workerMirrorCommit) { this.workerMirrorCommit = workerMirrorCommit; }
     public String getManifestSha256() { return manifestSha256; }
     public void setManifestSha256(String manifestSha256) { this.manifestSha256 = manifestSha256; }
+    public String getInstructionBundleRevision() { return instructionBundleRevision; }
+    public void setInstructionBundleRevision(String value) { this.instructionBundleRevision = value; }
+    public String getInstructionBundleSha256() { return instructionBundleSha256; }
+    public void setInstructionBundleSha256(String value) { this.instructionBundleSha256 = value; }
+    public String getPlatformInstructionSha256() { return platformInstructionSha256; }
+    public void setPlatformInstructionSha256(String value) { this.platformInstructionSha256 = value; }
+    public String getProjectInstructionPath() { return projectInstructionPath; }
+    public void setProjectInstructionPath(String value) { this.projectInstructionPath = value; }
+    public String getProjectInstructionSha256() { return projectInstructionSha256; }
+    public void setProjectInstructionSha256(String value) { this.projectInstructionSha256 = value; }
     public UUID getDispatchId() { return dispatchId; }
     public void setDispatchId(UUID dispatchId) { this.dispatchId = dispatchId; }
     public String getRemoteExecutionId() { return remoteExecutionId; }

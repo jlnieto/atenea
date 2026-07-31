@@ -27,6 +27,7 @@ import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -234,6 +235,16 @@ class AgentRunServiceTest {
         assertEquals(ProjectCodexIdentity.BRANCH, run.getRepositoryBranch());
         assertEquals(TEST_CANONICAL_COMMIT, run.getRepositoryCommit());
         assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, run.getManifestSha256());
+        assertEquals(ReviewedInstructionBundleIdentity.REVISION,
+                run.getInstructionBundleRevision());
+        assertEquals(ReviewedInstructionBundleIdentity.ATENEA_BUNDLE_SHA256,
+                run.getInstructionBundleSha256());
+        assertEquals(ReviewedInstructionBundleIdentity.PLATFORM_SHA256,
+                run.getPlatformInstructionSha256());
+        assertEquals(ReviewedInstructionBundleIdentity.PROJECT_PATH,
+                run.getProjectInstructionPath());
+        assertEquals(ReviewedInstructionBundleIdentity.ATENEA_PROJECT_SHA256,
+                run.getProjectInstructionSha256());
     }
 
     @Test
@@ -276,6 +287,10 @@ class AgentRunServiceTest {
         assertEquals(BeautipsProjectCodexIdentity.BRANCH, run.getRepositoryBranch());
         assertEquals(BeautipsProjectCodexIdentity.COMMIT, run.getRepositoryCommit());
         assertEquals(BeautipsProjectCodexIdentity.MANIFEST_SHA256, run.getManifestSha256());
+        assertEquals(ReviewedInstructionBundleIdentity.BEAUTIPS_BUNDLE_SHA256,
+                run.getInstructionBundleSha256());
+        assertEquals(ReviewedInstructionBundleIdentity.BEAUTIPS_PROJECT_SHA256,
+                run.getProjectInstructionSha256());
         assertNotNull(run.getDispatchId());
         assertNull(run.getRemoteExecutionId());
         assertTrue(BeautipsProjectCodexIdentity.matches(run));

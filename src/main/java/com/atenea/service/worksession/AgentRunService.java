@@ -14,6 +14,7 @@ import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -234,6 +235,8 @@ public class AgentRunService {
             run.setRepositoryBranch(BeautipsProjectCodexIdentity.BRANCH);
             run.setRepositoryCommit(BeautipsProjectCodexIdentity.COMMIT);
             run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
+            ReviewedInstructionBundleIdentity.apply(
+                    run, BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
         } else if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
                 && ProjectCodexIdentity.hasCanonicalSourceObservation(run.getSession())) {
             run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
@@ -241,6 +244,8 @@ public class AgentRunService {
             run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
             run.setRepositoryCommit(run.getSession().getCanonicalSourceCommit());
             run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
+            ReviewedInstructionBundleIdentity.apply(
+                    run, ProjectCodexIdentity.PROJECT_IDENTITY);
         } else {
             clearProjectIdentity(run);
         }
@@ -257,6 +262,11 @@ public class AgentRunService {
         run.setRepositoryBranch(null);
         run.setRepositoryCommit(null);
         run.setManifestSha256(null);
+        run.setInstructionBundleRevision(null);
+        run.setInstructionBundleSha256(null);
+        run.setPlatformInstructionSha256(null);
+        run.setProjectInstructionPath(null);
+        run.setProjectInstructionSha256(null);
         run.setWorkerMirrorCommit(null);
     }
 

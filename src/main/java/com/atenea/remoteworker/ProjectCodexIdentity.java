@@ -35,7 +35,8 @@ public final class ProjectCodexIdentity {
                 && run.getRepositoryCommit() != null
                 && run.getRepositoryCommit().matches("^[0-9a-f]{40}$")
                 && run.getRepositoryCommit().equals(run.getSession().getCanonicalSourceCommit())
-                && MANIFEST_SHA256.equals(run.getManifestSha256());
+                && MANIFEST_SHA256.equals(run.getManifestSha256())
+                && ReviewedInstructionBundleIdentity.matches(run);
     }
 
     public static boolean hasCanonicalSourceObservation(WorkSessionEntity session) {

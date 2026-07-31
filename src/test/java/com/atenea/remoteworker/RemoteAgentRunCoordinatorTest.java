@@ -325,6 +325,8 @@ class RemoteAgentRunCoordinatorTest {
         run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
         run.setRepositoryCommit(TEST_CANONICAL_COMMIT);
         run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
+        ReviewedInstructionBundleIdentity.apply(
+                run, ProjectCodexIdentity.PROJECT_IDENTITY);
         return run;
     }
 
@@ -340,6 +342,8 @@ class RemoteAgentRunCoordinatorTest {
         run.setRepositoryBranch(BeautipsProjectCodexIdentity.BRANCH);
         run.setRepositoryCommit(BeautipsProjectCodexIdentity.COMMIT);
         run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
+        ReviewedInstructionBundleIdentity.apply(
+                run, BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
         return run;
     }
 
