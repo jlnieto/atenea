@@ -172,6 +172,24 @@ The worker reports the exact installed Codex version used by the execution.
 Atenea rejects dispatch when its selected profile is incompatible with the
 worker's advertised catalog/version.
 
+The executable contract is additive. Existing `project-codex-v1` remains the
+installed compatibility surface until the worker rollout tasks complete.
+`agent-run-project-codex-v2` adds exactly `modelId`, `reasoningEffort`,
+`catalogRevision` and `codexVersion` to the closed workload and echoes the
+effective values in its result. Separate closed schemas define catalog,
+sanitized progress and authenticated API operations. API callers identify only
+persisted WorkSession/AgentRun/plan/candidate/authorization records; workspace,
+service, host, command, provider, endpoint and path authority are always
+derived server-side and cannot be submitted.
+
+Catalog revision uses UTF-8 JSON with recursively sorted keys and no
+insignificant whitespace over exactly `schemaVersion`, `codexVersion` and
+model entries sorted by `modelId`. Schema validation is followed by semantic
+validation of catalog digest, per-model effort membership, availability,
+Codex version and exact registered `(sessionId, workspaceIdentity)` ownership.
+A syntactically valid arbitrary model or foreign UUID therefore still fails
+closed before execution state or a process is created.
+
 ### Normalize useful progress without retaining reasoning
 
 The worker maps structured Codex and lifecycle events into this exact closed

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.internal/contracts/codex-session-operation-api-v1.request.schema.json",
+  "title": "Atenea closed Codex session operation request",
+  "oneOf": [
+    {"$ref": "#/$defs/profile"},
+    {"$ref": "#/$defs/recovery"},
+    {"$ref": "#/$defs/updatePlan"},
+    {"$ref": "#/$defs/updateStage"},
+    {"$ref": "#/$defs/updateActivate"},
+    {"$ref": "#/$defs/updateRollback"}
+  ],
+  "$defs": {
+    "identity": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "workSessionId", "modelId", "reasoningEffort", "catalogRevision", "idempotencyKey"],
+      "properties": {
+        "operation": {"enum": ["SET_WORK_SESSION_PROFILE", "SET_NEXT_TURN_PROFILE"]},
+        "workSessionId": {"type": "integer", "minimum": 1},
+        "modelId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,79}$"},
+        "reasoningEffort": {"enum": ["none", "low", "medium", "high", "xhigh", "max"]},
+        "catalogRevision": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "idempotencyKey": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "workSessionId", "agentRunId", "action", "idempotencyKey"],
+      "properties": {
+        "operation": {"const": "RECOVER_AGENT_RUN"},
+        "workSessionId": {"type": "integer", "minimum": 1},
+        "agentRunId": {"type": "integer", "minimum": 1},
+        "action": {"enum": ["CANCEL", "RETRY", "RECONCILE", "DIAGNOSTIC"]},
+        "idempotencyKey": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "updatePlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "workerId", "idempotencyKey"],
+      "properties": {
+        "operation": {"const": "PLAN_CODEX_UPDATE"},
+        "workerId": {"const": "ax42-01"},
+        "idempotencyKey": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "updateStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "planId", "candidateId", "idempotencyKey"],
+      "properties": {
+        "operation": {"const": "STAGE_CODEX_UPDATE"},
+        "planId": {"$ref": "#/$defs/identity"},
+        "candidateId": {"$ref": "#/$defs/identity"},
+        "idempotencyKey": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "updateActivate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "planId", "candidateId", "authorizationId", "idempotencyKey"],
+      "properties": {
+        "operation": {"const": "ACTIVATE_CODEX_UPDATE"},
+        "planId": {"$ref": "#/$defs/identity"},
+        "candidateId": {"$ref": "#/$defs/identity"},
+        "authorizationId": {"$ref": "#/$defs/identity"},
+        "idempotencyKey": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "updateRollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "currentInventoryId", "previousInventoryId", "authorizationId", "idempotencyKey"],
+      "properties": {
+        "operation": {"const": "ROLLBACK_CODEX_UPDATE"},
+        "currentInventoryId": {"$ref": "#/$defs/identity"},
+        "previousInventoryId": {"$ref": "#/$defs/identity"},
+        "authorizationId": {"$ref": "#/$defs/identity"},
+        "idempotencyKey": {"$ref": "#/$defs/identity"}
+      }
+    }
+  }
+}

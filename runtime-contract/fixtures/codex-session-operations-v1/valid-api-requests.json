@@ -1,0 +1,29 @@
+[
+  {
+    "operation": "SET_WORK_SESSION_PROFILE",
+    "workSessionId": 7,
+    "modelId": "gpt-5.6-sol",
+    "reasoningEffort": "high",
+    "catalogRevision": "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187",
+    "idempotencyKey": "33333333-3333-4333-8333-333333333333"
+  },
+  {
+    "operation": "RECOVER_AGENT_RUN",
+    "workSessionId": 7,
+    "agentRunId": 21,
+    "action": "RECONCILE",
+    "idempotencyKey": "44444444-4444-4444-8444-444444444444"
+  },
+  {
+    "operation": "PLAN_CODEX_UPDATE",
+    "workerId": "ax42-01",
+    "idempotencyKey": "55555555-5555-4555-8555-555555555555"
+  },
+  {
+    "operation": "ACTIVATE_CODEX_UPDATE",
+    "planId": "66666666-6666-4666-8666-666666666666",
+    "candidateId": "77777777-7777-4777-8777-777777777777",
+    "authorizationId": "88888888-8888-4888-8888-888888888888",
+    "idempotencyKey": "99999999-9999-4999-8999-999999999999"
+  }
+]

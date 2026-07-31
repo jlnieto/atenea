@@ -1,0 +1,74 @@
+[
+  {
+    "name": "arbitrary-model",
+    "documentType": "dispatch",
+    "expectedLayer": "catalog",
+    "patch": {"path": "workload.modelId", "value": "foreign-model"}
+  },
+  {
+    "name": "unsupported-effort",
+    "documentType": "dispatch",
+    "expectedLayer": "schema",
+    "patch": {"path": "workload.reasoningEffort", "value": "ultra"}
+  },
+  {
+    "name": "stale-catalog",
+    "documentType": "dispatch",
+    "expectedLayer": "catalog",
+    "patch": {"path": "workload.catalogRevision", "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}
+  },
+  {
+    "name": "arbitrary-command",
+    "documentType": "dispatch",
+    "expectedLayer": "schema",
+    "patch": {"path": "workload.command", "value": ["sh", "-lc", "id"]}
+  },
+  {
+    "name": "arbitrary-provider",
+    "documentType": "dispatch",
+    "expectedLayer": "schema",
+    "patch": {"path": "workload.provider", "value": "foreign-provider"}
+  },
+  {
+    "name": "arbitrary-endpoint",
+    "documentType": "dispatch",
+    "expectedLayer": "schema",
+    "patch": {"path": "workload.endpoint", "value": "https://foreign.invalid"}
+  },
+  {
+    "name": "arbitrary-path",
+    "documentType": "dispatch",
+    "expectedLayer": "schema",
+    "patch": {"path": "workload.path", "value": "/srv/foreign"}
+  },
+  {
+    "name": "foreign-session-owner",
+    "documentType": "dispatch",
+    "expectedLayer": "ownership",
+    "patch": {"path": "sessionId", "value": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+  },
+  {
+    "name": "ambiguous-workspace-owner",
+    "documentType": "dispatch",
+    "expectedLayer": "ownership",
+    "patch": {"path": "workspaceIdentity", "value": "remote:ax42-01:work-session:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}
+  },
+  {
+    "name": "arbitrary-service",
+    "documentType": "recoveryApi",
+    "expectedLayer": "schema",
+    "patch": {"path": "service", "value": "docker.service"}
+  },
+  {
+    "name": "api-foreign-workspace",
+    "documentType": "profileApi",
+    "expectedLayer": "schema",
+    "patch": {"path": "workspaceIdentity", "value": "remote:foreign"}
+  },
+  {
+    "name": "update-arbitrary-release-url",
+    "documentType": "updateApi",
+    "expectedLayer": "schema",
+    "patch": {"path": "releaseUrl", "value": "https://foreign.invalid/codex"}
+  }
+]

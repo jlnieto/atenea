@@ -20,6 +20,16 @@ endpoints, providers, configuration fragments or environment.
 - **WHEN** a request reuses a dispatch identity with a different session, workspace, project, prompt, model, effort, catalog revision or workload fingerprint
 - **THEN** the worker rejects it fail-closed and preserves the original execution unchanged
 
+#### Scenario: Profile syntax is valid but authority is not
+
+- **WHEN** a request names a model absent from the accepted catalog, an effort absent from that model, a stale catalog/Codex version or a session/workspace pair outside the exact registry
+- **THEN** semantic validation rejects it before execution state or a process is created
+
+#### Scenario: Caller adds operational authority
+
+- **WHEN** a protocol or API request supplies a command, provider, endpoint, path, service, host, slot, environment, credential, release URL or workspace authority
+- **THEN** closed schema validation rejects the request and all persisted worker and control-plane ownership remains unchanged
+
 ### Requirement: Observable execution lifecycle
 
 The control plane SHALL expose queued, starting, running, cancelling,

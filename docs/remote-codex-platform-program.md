@@ -257,6 +257,7 @@ production activation are recorded later in this ledger.
 | D-054 | Use the thirteen fixed sanitized progress categories, coalesce identical consecutive events before sequencing and retain the newest 200 events plus independent current/latest/terminal/next-action projections. | The operator gets bounded useful progress and deterministic replay without retaining reasoning, raw commands, output or secrets. | accepted | backend/worker owners | before changing progress taxonomy or retention bound |
 | D-055 | Enable completion, failure and action-required push categories by default per active Android device, keep intermediate progress in-app only, and reserve update plan/stage/activation/rollback for platform administrators with separate exact activation and operator-rollback authorizations. | Defaults must notify unattended work without push noise, while binary lifecycle changes remain distinct from routine and mediated recovery authority. | accepted | product/platform/security owners | notification-default or Codex-update authority change |
 | D-056 | Add V57–V61 in dependency order for profiles/catalog, progress, recovery, generic notifications and managed updates; keep five independent gates default-off and accept production migration only after a protected V56 restore plus exact rollback-image compatibility proof. | Expanded history is required for audit/reconciliation, while a nominal old image may reject future Flyway history and therefore cannot be assumed to be a viable rollback. | accepted | data/backend/platform owners | before production V57 or any later schema contraction |
+| D-057 | Introduce additive `project-codex-v2`, catalog, progress and closed API schemas while keeping installed v1 compatible; require semantic catalog and exact session/workspace validation after structural schema validation. | JSON syntax alone cannot reject a well-formed foreign UUID or model absent from the current worker catalog, and accepting caller operational fields would recreate arbitrary command authority. | accepted | security/backend/worker owners | protocol v2 implementation or schema revision |
 
 ## Deferred decisions and gates
 
@@ -4974,3 +4975,39 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-1.3-migration-rollback-design`;
 the SHA-256 of its `SHA256SUMS` is
 `0ac9a8a867df7078bede37d6164072728dce34192291aa2538c23b375499b98e`.
+
+Task 1.4 is complete and change progress is `14/57`; the exact resume point is
+task 1.5.
+
+The programme now contains additive executable schemas for the canonical
+worker model catalog, `project-codex-v2` dispatch/result, sanitized progress
+and the closed authenticated settings/recovery/update API request union. The
+currently installed `project-codex-v1` remains unchanged; v2 is a contract for
+the later worker implementation tasks, not an implicit activation.
+
+The v2 workload adds only canonical model, effort, catalog revision and Codex
+version. API callers may name persisted WorkSession, AgentRun, plan, candidate
+and authorization identities, but cannot submit a workspace, command,
+provider, endpoint, path, service, host, slot, environment, credential or
+release URL. Those authorities remain fixed and server-derived.
+
+Schema validation is followed by exact semantic validation. The catalog digest
+is canonical, its model identities are unique, each default effort belongs to
+the advertised model set, and dispatch must match the accepted catalog/Codex
+version plus the exact registered `(sessionId, workspaceIdentity)` pair. Thus a
+well-formed arbitrary model or foreign UUID still fails before execution state
+or process creation.
+
+The synthetic corpus covers twelve negative model, effort, catalog, command,
+provider, endpoint, path, service, update and foreign/ambiguous ownership cases.
+Progress separately rejects reasoning, raw command/output and environment
+fields. The new contract tests and existing v1 project runner/worker suites ran
+40 tests with zero failures, errors or skips in under four seconds. Every JSON
+document parses, `git diff --check` and strict OpenSpec validation pass.
+
+No contract was installed and no runtime, production, routing, database,
+WorkSession, AgentRun, worker service or Codex process changed. Sanitized
+evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-1.4-closed-schemas-negative-fixtures`;
+the SHA-256 of its `SHA256SUMS` is
+`f7ff10be7fd6c70f168432d7bbc35a949bf77d89220941cdf95a8041f2e81030`.
