@@ -19,6 +19,10 @@ import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateStageRequest;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateStageResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateActivationRequest;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateActivationResponse;
+import com.atenea.codexoperations.ManagedCodexUpdateService.RollbackAuthorizationRequest;
+import com.atenea.codexoperations.ManagedCodexUpdateService.RollbackAuthorizationResponse;
+import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateRollbackRequest;
+import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateRollbackResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.WorkerInventoryResponse;
 import java.util.List;
 import java.util.Set;
@@ -190,6 +194,39 @@ public class CodexSessionOperationsController {
             @AuthenticationPrincipal AuthenticatedOperator operator,
             @PathVariable java.util.UUID activationId) {
         return managedUpdateService.updateActivation(operator, activationId);
+    }
+
+    @PostMapping("/api/admin/codex/update-rollback-authorizations")
+    public RollbackAuthorizationResponse authorizeRollback(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @RequestBody JsonNode request) {
+        return managedUpdateService.authorizeRollback(operator,
+                closed(request, RollbackAuthorizationRequest.class,
+                        Set.of("operation", "activationId", "idempotencyKey")));
+    }
+
+    @GetMapping("/api/admin/codex/update-rollback-authorizations/{authorizationId}")
+    public RollbackAuthorizationResponse rollbackAuthorization(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable java.util.UUID authorizationId) {
+        return managedUpdateService.rollbackAuthorization(operator, authorizationId);
+    }
+
+    @PostMapping("/api/admin/codex/update-rollbacks")
+    public UpdateRollbackResponse rollbackUpdate(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @RequestBody JsonNode request) {
+        return managedUpdateService.rollbackUpdate(operator,
+                closed(request, UpdateRollbackRequest.class,
+                        Set.of("operation", "activationId", "authorizationId",
+                                "idempotencyKey")));
+    }
+
+    @GetMapping("/api/admin/codex/update-rollbacks/{rollbackId}")
+    public UpdateRollbackResponse updateRollback(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable java.util.UUID rollbackId) {
+        return managedUpdateService.updateRollback(operator, rollbackId);
     }
 
     private <T> T closed(JsonNode node, Class<T> type, Set<String> exactFields) {

@@ -236,6 +236,33 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/codex/update/rollback", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
+                    java.util.Map.entry("schemaVersion", "codex-update-rollback-v1"),
+                    java.util.Map.entry("operation", request.get("operation").asText()),
+                    java.util.Map.entry("workerId", "ax42-01"),
+                    java.util.Map.entry("planId", request.get("planId").asText()),
+                    java.util.Map.entry("candidateId", request.get("candidateId").asText()),
+                    java.util.Map.entry("activationId", request.get("activationId").asText()),
+                    java.util.Map.entry("authorizationId", request.get("authorizationId").asText()),
+                    java.util.Map.entry("idempotencyKey", request.get("idempotencyKey").asText()),
+                    java.util.Map.entry("state", "ROLLED_BACK"),
+                    java.util.Map.entry("linkRestore", "PASS"),
+                    java.util.Map.entry("workerServiceRestart", "PASS"),
+                    java.util.Map.entry("affectedServices",
+                            java.util.List.of("atenea-agent-run-worker-v1.service")),
+                    java.util.Map.entry("appServerServicesRestarted", 0),
+                    java.util.Map.entry("currentBeforeFingerprint", "1".repeat(64)),
+                    java.util.Map.entry("previousBeforeFingerprint", "2".repeat(64)),
+                    java.util.Map.entry("currentAfterFingerprint", "3".repeat(64)),
+                    java.util.Map.entry("previousAfterFingerprint", "4".repeat(64)),
+                    java.util.Map.entry("valuesExposed", false)));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.start();
         properties = new RemoteWorkerProperties();
         properties.setEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
@@ -346,6 +373,33 @@ class RemoteWorkerClientTest {
         assertNull(body.get("command"));
         assertNull(body.get("host"));
         assertNull(body.get("service"));
+    }
+
+    @Test
+    void codexUpdateRollbackSendsOnlyPersistedIdentitiesAndNoServiceAuthority() {
+        UUID planId = UUID.randomUUID();
+        UUID candidateId = UUID.randomUUID();
+        UUID activationId = UUID.randomUUID();
+        UUID authorizationId = UUID.randomUUID();
+        UUID idempotencyKey = UUID.randomUUID();
+
+        RemoteWorkerClient.CodexUpdateRollback result = client.rollbackCodexUpdate(
+                planId, candidateId, activationId, authorizationId, idempotencyKey);
+
+        JsonNode body = requestBody.get();
+        assertEquals(java.util.Set.of("operation", "planId", "candidateId", "activationId",
+                        "authorizationId", "idempotencyKey"),
+                objectMapper.convertValue(body, java.util.Map.class).keySet());
+        assertEquals("ROLLBACK_CODEX_UPDATE", body.get("operation").asText());
+        assertEquals(activationId.toString(), body.get("activationId").asText());
+        assertEquals("ROLLED_BACK", result.state());
+        assertEquals(java.util.List.of("atenea-agent-run-worker-v1.service"),
+                result.affectedServices());
+        assertEquals(0, result.appServerServicesRestarted());
+        assertNull(body.get("service"));
+        assertNull(body.get("host"));
+        assertNull(body.get("command"));
+        assertNull(body.get("path"));
     }
 
     @Test

@@ -66,6 +66,22 @@ public class RemoteWorkerClient {
                 Duration.ofMinutes(5));
     }
 
+    public CodexUpdateRollback rollbackCodexUpdate(
+            UUID planId, UUID candidateId, UUID activationId,
+            UUID authorizationId, UUID idempotencyKey) {
+        Map<String, Object> body = Map.of(
+                "operation", "ROLLBACK_CODEX_UPDATE",
+                "planId", planId.toString(),
+                "candidateId", candidateId.toString(),
+                "activationId", activationId.toString(),
+                "authorizationId", authorizationId.toString(),
+                "idempotencyKey", idempotencyKey.toString());
+        return exchange(
+                "POST", "/v1/codex/update/rollback", body,
+                CodexUpdateRollback.class, idempotencyKey.toString(),
+                Duration.ofMinutes(1));
+    }
+
     public Execution dispatch(AgentRunEntity run, String message) {
         Map<String, Object> workload = workload(run, message);
         Map<String, Object> body = Map.of(
@@ -587,6 +603,29 @@ public class RemoteWorkerClient {
             String currentAfterFingerprint,
             String previousAfterFingerprint,
             String automaticRestore,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record CodexUpdateRollback(
+            String schemaVersion,
+            String operation,
+            String workerId,
+            UUID planId,
+            UUID candidateId,
+            UUID activationId,
+            UUID authorizationId,
+            UUID idempotencyKey,
+            String state,
+            String linkRestore,
+            String workerServiceRestart,
+            java.util.List<String> affectedServices,
+            int appServerServicesRestarted,
+            String currentBeforeFingerprint,
+            String previousBeforeFingerprint,
+            String currentAfterFingerprint,
+            String previousAfterFingerprint,
             boolean valuesExposed
     ) {
     }

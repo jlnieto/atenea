@@ -385,6 +385,102 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.consumedAt").exists())
                 .andExpect(jsonPath("$.consumedActivationId").value(activationId));
+
+        UUID activationUuid = UUID.fromString(activationId);
+        UUID rollbackAuthorizationKey = UUID.randomUUID();
+        String rollbackAuthorizationBody = rollbackAuthorizationBody(
+                activationUuid, rollbackAuthorizationKey, false);
+        mockMvc.perform(post("/api/admin/codex/update-rollback-authorizations")
+                        .with(auth(routine)).contentType(MediaType.APPLICATION_JSON)
+                        .content(rollbackAuthorizationBody))
+                .andExpect(status().isForbidden());
+        String rollbackAuthorization = mockMvc.perform(
+                        post("/api/admin/codex/update-rollback-authorizations")
+                                .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                                .content(rollbackAuthorizationBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.activationId").value(activationId))
+                .andExpect(jsonPath("$.currentInventoryId").value(inventory.candidate().toString()))
+                .andExpect(jsonPath("$.previousInventoryId").value(inventory.current().toString()))
+                .andExpect(jsonPath("$.authorizationDigestSha256").isString())
+                .andExpect(jsonPath("$.consumedAt").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        UUID rollbackAuthorizationId = UUID.fromString(
+                com.jayway.jsonpath.JsonPath.read(
+                        rollbackAuthorization, "$.authorizationId"));
+        String rollbackAuthorizationRepeat = mockMvc.perform(
+                        post("/api/admin/codex/update-rollback-authorizations")
+                                .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                                .content(rollbackAuthorizationBody))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertEquals(rollbackAuthorization, rollbackAuthorizationRepeat);
+        mockMvc.perform(post("/api/admin/codex/update-rollback-authorizations")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(rollbackAuthorizationBody(
+                                activationUuid, UUID.randomUUID(), true)))
+                .andExpect(status().isBadRequest());
+
+        UUID rollbackKey = UUID.randomUUID();
+        Long rollbackActiveProject = insertSyntheticActiveRun();
+        mockMvc.perform(post("/api/admin/codex/update-rollbacks")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(rollbackBody(activationUuid, rollbackAuthorizationId,
+                                rollbackKey, false)))
+                .andExpect(status().isConflict());
+        verify(remoteWorkerClient, never()).rollbackCodexUpdate(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        jdbcTemplate.update("DELETE FROM project WHERE id = ?", rollbackActiveProject);
+
+        when(remoteWorkerClient.rollbackCodexUpdate(
+                planId, inventory.candidate(), activationUuid,
+                rollbackAuthorizationId, rollbackKey))
+                .thenReturn(rollbackResult(planId, inventory.candidate(), activationUuid,
+                        rollbackAuthorizationId, rollbackKey));
+        String rollbackBody = rollbackBody(
+                activationUuid, rollbackAuthorizationId, rollbackKey, false);
+        String rollbackFirst = mockMvc.perform(post("/api/admin/codex/update-rollbacks")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(rollbackBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("ROLLED_BACK"))
+                .andExpect(jsonPath("$.current.inventoryId").value(inventory.current().toString()))
+                .andExpect(jsonPath("$.current.linkState").value("CURRENT"))
+                .andExpect(jsonPath("$.previous.inventoryId").value(inventory.candidate().toString()))
+                .andExpect(jsonPath("$.previous.linkState").value("PREVIOUS"))
+                .andExpect(jsonPath("$.linkRestore").value("PASS"))
+                .andExpect(jsonPath("$.workerServiceRestart").value("PASS"))
+                .andExpect(jsonPath("$.affectedServices[0]")
+                        .value("atenea-agent-run-worker-v1.service"))
+                .andExpect(jsonPath("$.appServerServicesRestarted").value(0))
+                .andExpect(jsonPath("$.valuesExposed").value(false))
+                .andExpect(jsonPath("$.service").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        String rollbackSecond = mockMvc.perform(post("/api/admin/codex/update-rollbacks")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(rollbackBody))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertEquals(rollbackFirst, rollbackSecond);
+        verify(remoteWorkerClient, times(1)).rollbackCodexUpdate(
+                planId, inventory.candidate(), activationUuid,
+                rollbackAuthorizationId, rollbackKey);
+        assertEquals("ROLLED_BACK", jdbcTemplate.queryForObject(
+                "SELECT state FROM worker_codex_update_plan WHERE plan_id = ?",
+                String.class, planId));
+        assertEquals(1, jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM worker_codex_rollback_operation", Integer.class));
+        String rollbackId = com.jayway.jsonpath.JsonPath.read(rollbackFirst, "$.rollbackId");
+        mockMvc.perform(get("/api/admin/codex/update-rollbacks/{rollbackId}", rollbackId)
+                        .with(auth(administrator)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rollbackId").value(rollbackId));
+        mockMvc.perform(get(
+                        "/api/admin/codex/update-rollback-authorizations/{authorizationId}",
+                        rollbackAuthorizationId).with(auth(administrator)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.consumedAt").exists())
+                .andExpect(jsonPath("$.consumedRollbackId").value(rollbackId));
     }
 
     private Inventory inventory(boolean candidate) {
@@ -508,6 +604,24 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 extra ? ",\"service\":\"foreign.service\"" : "");
     }
 
+    private String rollbackAuthorizationBody(
+            UUID activationId, UUID idempotencyKey, boolean extra) {
+        return """
+                {"operation":"AUTHORIZE_CODEX_UPDATE_ROLLBACK","activationId":"%s",
+                 "idempotencyKey":"%s"%s}
+                """.formatted(activationId, idempotencyKey,
+                extra ? ",\"service\":\"foreign.service\"" : "");
+    }
+
+    private String rollbackBody(
+            UUID activationId, UUID authorizationId, UUID idempotencyKey, boolean extra) {
+        return """
+                {"operation":"ROLLBACK_CODEX_UPDATE","activationId":"%s",
+                 "authorizationId":"%s","idempotencyKey":"%s"%s}
+                """.formatted(activationId, authorizationId, idempotencyKey,
+                extra ? ",\"service\":\"foreign.service\"" : "");
+    }
+
     private RemoteWorkerClient.CodexUpdateStage stageResult(
             UUID planId, UUID candidateId, UUID idempotencyKey, String releaseDigest) {
         String proof = "a".repeat(64);
@@ -527,6 +641,18 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 "0.146.0", "3".repeat(64), CATALOG,
                 "PASS", "PASS", "PASS", "PASS", proof, proof, proof, proof,
                 "NOT_REQUIRED", false);
+    }
+
+    private RemoteWorkerClient.CodexUpdateRollback rollbackResult(
+            UUID planId, UUID candidateId, UUID activationId,
+            UUID authorizationId, UUID idempotencyKey) {
+        String proof = "d".repeat(64);
+        return new RemoteWorkerClient.CodexUpdateRollback(
+                "codex-update-rollback-v1", "ROLLBACK_CODEX_UPDATE", WORKER_ID,
+                planId, candidateId, activationId, authorizationId, idempotencyKey,
+                "ROLLED_BACK", "PASS", "PASS",
+                List.of("atenea-agent-run-worker-v1.service"), 0,
+                proof, proof, proof, proof, false);
     }
 
     private record Inventory(UUID current, UUID previous, UUID candidate) {}
