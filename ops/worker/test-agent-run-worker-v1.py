@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 import uuid
 import os
 import subprocess
@@ -264,6 +265,39 @@ class RetainedDraftFingerprintTest(unittest.TestCase):
         self.runner = root / "runner"
         self.runner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         self.runner.chmod(0o755)
+        self.validation_calls = root / "validation-calls"
+        self.validation_mediator = root / "validation-mediator"
+        self.validation_mediator.write_text(
+            """#!/usr/bin/env python3
+import hashlib
+import json
+import pathlib
+import sys
+operation, session_id, source_sha, validation_id = sys.argv[1:]
+calls = pathlib.Path(__file__).with_name("validation-calls")
+calls.write_text(calls.read_text() + "call\\n" if calls.exists() else "call\\n")
+definitions = {
+    "BACKEND_TEST": "atenea-backend-test-v1",
+    "WEB_BUILD": "atenea-web-build-v1",
+    "ANDROID_BUILD": "atenea-android-build-v1",
+}
+print(json.dumps({
+    "validationId": validation_id,
+    "sessionId": session_id,
+    "operation": operation,
+    "definitionRevision": definitions[operation],
+    "sourceTreeFingerprintSha256": source_sha,
+    "status": "SUCCEEDED",
+    "exitCode": 0,
+    "durationMillis": 7,
+    "artifactManifestSha256": hashlib.sha256(validation_id.encode()).hexdigest(),
+    "summary": "Closed validation passed",
+    "valuesExposed": False,
+}))
+""",
+            encoding="utf-8",
+        )
+        self.validation_mediator.chmod(0o755)
         self.config = root / "project.json"
         self.config.write_text(json.dumps({
             "schemaVersion": MODULE.PROJECT_CAPABILITY,
@@ -291,6 +325,8 @@ class RetainedDraftFingerprintTest(unittest.TestCase):
             project_config=self.config,
             project_runner=self.runner,
             project_config_uid=os.getuid(),
+            privilege_command=(),
+            project_validation_mediator=self.validation_mediator,
         )
         self.state._observe_project_commit = lambda _route: self.accepted_commit
 
@@ -383,6 +419,90 @@ class RetainedDraftFingerprintTest(unittest.TestCase):
         foreign["repository"] = "https://github.com/foreign/atenea.git"
         with self.assertRaisesRegex(MODULE.ProtocolError, "not exact"):
             self.state.fingerprint_source_tree(foreign)
+
+    def validation_request(self, validation_id=None):
+        self.state._observe_project_commit = lambda _route: self.retained_head
+        source_request = {
+            "sessionId": self.session_id,
+            "workspaceIdentity": self.workspace_identity,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": self.retained_head,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+        }
+        source = self.state.fingerprint_source_tree(source_request)
+        return {
+            **source_request,
+            "validationId": validation_id or str(uuid.uuid4()),
+            "operation": "BACKEND_TEST",
+            "definitionRevision": "atenea-backend-test-v1",
+            "sourceTreeFingerprintSha256": source["fingerprintSha256"],
+        }
+
+    def test_closed_validation_is_sanitized_idempotent_and_durable(self):
+        request = self.validation_request()
+        first = self.state.run_validation(request)
+        second = self.state.run_validation(request)
+        recovered = MODULE.WorkerState(
+            Path(self.temporary.name) / "state",
+            "ax42-01",
+            project_config=self.config,
+            project_runner=self.runner,
+            project_config_uid=os.getuid(),
+            privilege_command=(),
+            project_validation_mediator=self.validation_mediator,
+        )
+        recovered._observe_project_commit = lambda _route: self.retained_head
+        third = recovered.run_validation(request)
+
+        self.assertEqual(first, second)
+        self.assertEqual(first, third)
+        self.assertEqual("SUCCEEDED", first["status"])
+        self.assertFalse(first["valuesExposed"])
+        self.assertEqual(1, self.validation_calls.read_text().count("call"))
+        serialized = json.dumps(first)
+        self.assertNotIn("command", serialized)
+        self.assertNotIn("environment", serialized)
+        self.assertNotIn("secret-shaped", serialized)
+
+    def test_closed_validation_rejects_altered_authority_before_process(self):
+        for key, value in (
+            ("operation", "ARBITRARY_COMMAND"),
+            ("definitionRevision", "caller-v1"),
+            ("command", "docker run --privileged"),
+        ):
+            request = self.validation_request()
+            request[key] = value
+            with self.assertRaises(MODULE.ProtocolError):
+                self.state.run_validation(request)
+        foreign = self.validation_request()
+        foreign["workspaceIdentity"] = "remote:ax42-01:work-session:" + str(uuid.uuid4())
+        with self.assertRaises(MODULE.ProtocolError):
+            self.state.run_validation(foreign)
+        self.assertFalse(self.validation_calls.exists())
+
+    def test_closed_validation_timeout_is_finite_sanitized_and_retained(self):
+        request = self.validation_request()
+        original_run = subprocess.run
+
+        def bounded_timeout(command, *args, **kwargs):
+            if str(self.validation_mediator) in command:
+                raise subprocess.TimeoutExpired(command, timeout=900)
+            return original_run(command, *args, **kwargs)
+
+        with mock.patch.object(
+                MODULE.subprocess,
+                "run",
+                side_effect=bounded_timeout,
+        ):
+            result = self.state.run_validation(request)
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertIsNone(result["exitCode"])
+        self.assertRegex(result["artifactManifestSha256"], r"^[0-9a-f]{64}$")
+        self.assertFalse(result["valuesExposed"])
+        self.assertEqual(result, self.state.run_validation(request))
 
 
 class ProjectWorkerStateTest(unittest.TestCase):

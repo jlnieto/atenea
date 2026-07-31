@@ -48,6 +48,16 @@ SOURCE_TREE_FINGERPRINT_KEYS = {
     "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
     "commit", "manifestSha256",
 }
+VALIDATION_KEYS = {
+    "validationId", "sessionId", "workspaceIdentity", "projectId",
+    "repository", "branch", "commit", "manifestSha256", "operation",
+    "definitionRevision", "sourceTreeFingerprintSha256",
+}
+VALIDATION_DEFINITIONS = {
+    "BACKEND_TEST": ("atenea-backend-test-v1", 900),
+    "WEB_BUILD": ("atenea-web-build-v1", 600),
+    "ANDROID_BUILD": ("atenea-android-build-v1", 1200),
+}
 PROJECT_ID = "atenea"
 PROJECT_REPOSITORY = "https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH = "feature/actualizar-conversacion-en-web"
@@ -95,6 +105,7 @@ class WorkerState:
         beautips_project_config: Path | None = None,
         beautips_project_runner: Path | None = None,
         beautips_workspace_activator: Path | None = None,
+        project_validation_mediator: Path | None = None,
     ):
         self.state_dir = state_dir
         self.state_file = state_dir / "executions.json"
@@ -110,10 +121,12 @@ class WorkerState:
         self.beautips_project_config = beautips_project_config
         self.beautips_project_runner = beautips_project_runner
         self.beautips_workspace_activator = beautips_workspace_activator
+        self.project_validation_mediator = project_validation_mediator
         self.lock = threading.RLock()
         self.wakeup = threading.Event()
         self.stop_event = threading.Event()
         self.executions: dict[str, dict[str, Any]] = {}
+        self.validations: dict[str, dict[str, Any]] = {}
         self.threads: dict[str, threading.Thread] = {}
         self.processes: dict[str, subprocess.Popen[str]] = {}
         self.scheduler: threading.Thread | None = None
@@ -128,6 +141,21 @@ class WorkerState:
         if parsed.get("protocol") != PROTOCOL or not isinstance(parsed.get("executions"), dict):
             raise RuntimeError("durable worker state has an unsupported schema")
         self.executions = parsed["executions"]
+        if not isinstance(parsed.get("validations", {}), dict):
+            raise RuntimeError("durable worker validation state has an unsupported schema")
+        self.validations = parsed.get("validations", {})
+        for validation in self.validations.values():
+            if validation.get("status") == "RUNNING":
+                validation["status"] = "BLOCKED"
+                validation["exitCode"] = None
+                validation["durationMillis"] = max(0, int(validation.get("durationMillis") or 0))
+                validation["artifactManifestSha256"] = hashlib.sha256(
+                    f"{validation.get('validationId')}:worker-restart".encode()
+                ).hexdigest()
+                validation["summary"] = (
+                    "Worker restarted; the persisted validation requires an exact retry"
+                )
+                validation["finishedAt"] = utc_now()
         for execution in self.executions.values():
             if execution["status"] in {"STARTING", "RUNNING", "CANCELLING"}:
                 execution["status"] = "RECONCILING"
@@ -140,7 +168,12 @@ class WorkerState:
         self._persist()
 
     def _persist(self) -> None:
-        payload = {"protocol": PROTOCOL, "workerId": self.worker_id, "executions": self.executions}
+        payload = {
+            "protocol": PROTOCOL,
+            "workerId": self.worker_id,
+            "executions": self.executions,
+            "validations": self.validations,
+        }
         fd, temporary = tempfile.mkstemp(prefix=".executions-", dir=self.state_dir)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -576,6 +609,227 @@ class WorkerState:
             "headCommit": head,
             **source,
             "valuesExposed": False,
+        }
+
+    def run_validation(self, request: dict[str, Any]) -> dict[str, Any]:
+        if set(request) != VALIDATION_KEYS:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_validation_request",
+                "validation request fields are invalid",
+            )
+        try:
+            validation_id = str(uuid.UUID(request.get("validationId")))
+        except (ValueError, TypeError, AttributeError):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_validation",
+                "validationId must be a canonical UUID",
+            )
+        operation = request.get("operation")
+        definition = VALIDATION_DEFINITIONS.get(operation)
+        if (
+            validation_id != request.get("validationId")
+            or definition is None
+            or request.get("definitionRevision") != definition[0]
+            or not isinstance(request.get("sourceTreeFingerprintSha256"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", request["sourceTreeFingerprintSha256"]) is None
+        ):
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "validation_authority_conflict",
+                "validation definition is not exact",
+            )
+        source_request = {
+            key: request[key]
+            for key in SOURCE_TREE_FINGERPRINT_KEYS
+        }
+        source = self.fingerprint_source_tree(source_request)
+        if source["fingerprintSha256"] != request["sourceTreeFingerprintSha256"]:
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "source_tree_changed",
+                "source tree changed before validation admission",
+            )
+
+        request_fingerprint = canonical_hash(request)
+        with self.lock:
+            existing = self.validations.get(validation_id)
+            if existing is not None:
+                if existing["requestFingerprint"] != request_fingerprint:
+                    raise ProtocolError(
+                        HTTPStatus.CONFLICT,
+                        "validation_identity_conflict",
+                        "validationId already owns a different immutable request",
+                    )
+                return self._public_validation(existing)
+            now = utc_now()
+            validation = {
+                "validationId": validation_id,
+                "sessionId": request["sessionId"],
+                "workspaceIdentity": request["workspaceIdentity"],
+                "operation": operation,
+                "definitionRevision": definition[0],
+                "sourceTreeFingerprintSha256": request["sourceTreeFingerprintSha256"],
+                "requestFingerprint": request_fingerprint,
+                "status": "RUNNING",
+                "exitCode": None,
+                "durationMillis": 0,
+                "artifactManifestSha256": None,
+                "summary": "Bounded validation is running",
+                "valuesExposed": False,
+                "createdAt": now,
+                "finishedAt": None,
+            }
+            self.validations[validation_id] = validation
+            self._persist()
+
+        started = time.monotonic()
+        mediator = self.project_validation_mediator
+        if mediator is None or not mediator.is_file():
+            return self._finish_validation(
+                validation_id,
+                "BLOCKED",
+                None,
+                started,
+                hashlib.sha256(b"validation mediator unavailable").hexdigest(),
+                "Validation mediator is unavailable",
+            )
+        try:
+            completed = subprocess.run(
+                [
+                    *self.privilege_command,
+                    str(mediator),
+                    operation,
+                    request["sessionId"],
+                    request["sourceTreeFingerprintSha256"],
+                    validation_id,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=definition[1],
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return self._finish_validation(
+                validation_id,
+                "BLOCKED",
+                None,
+                started,
+                hashlib.sha256(f"{operation}:timeout".encode()).hexdigest(),
+                "Validation exceeded its finite timeout",
+            )
+        except OSError:
+            return self._finish_validation(
+                validation_id,
+                "BLOCKED",
+                None,
+                started,
+                hashlib.sha256(f"{operation}:unavailable".encode()).hexdigest(),
+                "Validation mediator could not be started",
+            )
+        if completed.returncode != 0:
+            return self._finish_validation(
+                validation_id,
+                "BLOCKED",
+                None,
+                started,
+                hashlib.sha256(f"{operation}:mediator-failed".encode()).hexdigest(),
+                "Validation mediator failed closed",
+            )
+        try:
+            result = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            result = None
+        required = {
+            "validationId", "sessionId", "operation", "definitionRevision",
+            "sourceTreeFingerprintSha256", "status", "exitCode",
+            "durationMillis", "artifactManifestSha256", "summary",
+            "valuesExposed",
+        }
+        if (
+            not isinstance(result, dict)
+            or set(result) != required
+            or result.get("validationId") != validation_id
+            or result.get("sessionId") != request["sessionId"]
+            or result.get("operation") != operation
+            or result.get("definitionRevision") != definition[0]
+            or result.get("sourceTreeFingerprintSha256")
+                != request["sourceTreeFingerprintSha256"]
+            or result.get("status") not in {"SUCCEEDED", "FAILED", "BLOCKED"}
+            or not isinstance(result.get("durationMillis"), int)
+            or result["durationMillis"] < 0
+            or not isinstance(result.get("artifactManifestSha256"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", result["artifactManifestSha256"]) is None
+            or not isinstance(result.get("summary"), str)
+            or not (1 <= len(result["summary"]) <= 500)
+            or result.get("valuesExposed") is not False
+            or (
+                result["status"] == "SUCCEEDED"
+                and result.get("exitCode") != 0
+            )
+            or (
+                result["status"] == "FAILED"
+                and (
+                    not isinstance(result.get("exitCode"), int)
+                    or result["exitCode"] == 0
+                )
+            )
+        ):
+            return self._finish_validation(
+                validation_id,
+                "BLOCKED",
+                None,
+                started,
+                hashlib.sha256(f"{operation}:invalid-result".encode()).hexdigest(),
+                "Validation mediator returned an invalid closed result",
+            )
+        return self._finish_validation(
+            validation_id,
+            result["status"],
+            result["exitCode"],
+            started,
+            result["artifactManifestSha256"],
+            result["summary"],
+            duration_millis=result["durationMillis"],
+        )
+
+    def _finish_validation(
+        self,
+        validation_id: str,
+        status: str,
+        exit_code: int | None,
+        started: float,
+        artifact_manifest_sha256: str,
+        summary: str,
+        duration_millis: int | None = None,
+    ) -> dict[str, Any]:
+        with self.lock:
+            validation = self.validations[validation_id]
+            validation["status"] = status
+            validation["exitCode"] = exit_code
+            validation["durationMillis"] = (
+                duration_millis
+                if duration_millis is not None
+                else int((time.monotonic() - started) * 1000)
+            )
+            validation["artifactManifestSha256"] = artifact_manifest_sha256
+            validation["summary"] = summary
+            validation["finishedAt"] = utc_now()
+            self._persist()
+            return self._public_validation(validation)
+
+    def _public_validation(self, validation: dict[str, Any]) -> dict[str, Any]:
+        return {
+            key: validation.get(key)
+            for key in (
+                "validationId", "sessionId", "workspaceIdentity", "operation",
+                "definitionRevision", "sourceTreeFingerprintSha256", "status",
+                "exitCode", "durationMillis", "artifactManifestSha256",
+                "summary", "valuesExposed",
+            )
         }
 
     def _source_tree_fingerprint(self, worktree: Path, head: str) -> dict[str, Any]:
@@ -1229,6 +1483,9 @@ class AgentRunHandler(BaseHTTPRequestHandler):
             if path == "/v1/project-workspaces/source-tree-fingerprint":
                 self._write(HTTPStatus.OK, self.server.state.fingerprint_source_tree(body))
                 return
+            if path == "/v1/project-workspaces/validations":
+                self._write(HTTPStatus.OK, self.server.state.run_validation(body))
+                return
             parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["v1", "executions"]:
                 if parts[3] == "lease":
@@ -1308,6 +1565,11 @@ def main() -> int:
         type=Path,
         default=Path("/usr/local/libexec/atenea/beautips-workspace-activation-v1.sh"),
     )
+    parser.add_argument(
+        "--project-validation-mediator",
+        type=Path,
+        default=Path("/usr/local/libexec/atenea/atenea-validation-v1.sh"),
+    )
     parser.add_argument("--project-timeout", type=int, default=1800)
     args = parser.parse_args()
     if not (1 <= args.port <= 65535):
@@ -1329,6 +1591,7 @@ def main() -> int:
         beautips_project_config=args.beautips_project_config,
         beautips_project_runner=args.beautips_project_runner,
         beautips_workspace_activator=args.beautips_workspace_activator,
+        project_validation_mediator=args.project_validation_mediator,
     )
     server = AgentRunServer((args.bind, args.port), state, read_token(args.token_file))
     state.start()

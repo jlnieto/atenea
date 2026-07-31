@@ -4588,6 +4588,44 @@ WorkSession, runs fixed bounded Git operations and returns only the HEAD,
 fingerprint and counts. File names, contents, caller commands, paths and
 environment values are not returned or accepted.
 
+Task 0.5 is complete and change progress is `5/57`; the exact resume point is
+task 0.6.
+
+Atenea now exposes only the symbolic `BACKEND_TEST`, `WEB_BUILD` and
+`ANDROID_BUILD` validation operations. Each operation derives its immutable
+identity from the exact remote WorkSession, current sanitized source-tree
+fingerprint and versioned validator definition. Repeating that identity returns
+the durable operation instead of starting a duplicate. The persisted result
+contains only lifecycle state, exit code, bounded duration, sanitized summary
+and artifact-manifest SHA-256. The acceptance projection remains separate and
+becomes `VALIDATED` only after all three exact operations succeed; no commit,
+publication, routing or deployment is implied.
+
+The AX42 worker accepts an exact fixed-field request and independently
+re-observes the registered Atenea workspace before admission. Unknown or extra
+fields, foreign ownership, altered operation or definition, and changed source
+fail closed before the mediator starts. The root-owned mediator accepts exactly
+four validated positional identities, resolves the worktree only from the
+root-owned registry, uses fixed commands in an isolated copy, applies
+900/600/1200-second timeouts and deletes raw command output after hashing it.
+The Android definition uses an empty environment and explicitly unavailable
+secret files, so validation has no APK or Firebase credential authority.
+Interrupted durable `RUNNING` validations reconcile to a sanitized `BLOCKED`
+terminal state after worker restart.
+
+Two accepted backend passes each ran 435 tests with zero failures, errors or
+skips and validated all 53 Flyway migrations. Two worker passes each ran 24
+tests with zero failures. Python compilation, shell syntax checks and strict
+OpenSpec validation passed. The isolated database container and network were
+removed after the suites; the named test database volume remains retained.
+No worker installation, service restart, real validation, production change or
+WorkSession mutation occurred in task 0.5.
+
+Sanitized task-0.5 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.5-closed-validation-operations`;
+the SHA-256 of its `SHA256SUMS` is
+`2d81fdae178520a167e8d698faea2de184d354924d44108d38317f1ce5791877`.
+
 The Atenea implementation is published cleanly at
 `e4947afc0cc6011df14d5d8a6396ec31a977fe8d`. Two backend passes each ran 431
 tests with zero failures, errors or skips and validated all 52 Flyway

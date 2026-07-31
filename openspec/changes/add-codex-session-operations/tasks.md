@@ -4,7 +4,7 @@
 - [x] 0.2 Add canonical branch observation and exact clean-HEAD admission, including stale, diverged, dirty, ambiguous and moved-head rejection tests
 - [x] 0.3 Add retained `DRAFT_BLOCKED` state and mediated creation of a new clean WorkSession from the accepted canonical commit without automatic draft transfer
 - [x] 0.4 Persist separate AgentRun process outcome, validation projection, source-tree fingerprint and integration-readiness state with invalidation on any tree change
-- [ ] 0.5 Implement closed idempotent backend, web and Android validation operations with fixed definitions, finite timeouts and no caller Docker/socket/secret authority
+- [x] 0.5 Implement closed idempotent backend, web and Android validation operations with fixed definitions, finite timeouts and no caller Docker/socket/secret authority
 - [ ] 0.6 Implement closed Playwright data, DOM and visual validation at `1440x900` and `390x844` with browser cleanup and sanitized screenshots
 - [ ] 0.7 Add exact multi-repository WorkSession roles for Atenea code, programme OpenSpec and worker source with separate worktrees, permissions, validation and linked readiness
 - [ ] 0.8 Replace silent rule ignoring with a fingerprinted reviewed platform/project instruction bundle while continuing to reject ambient user configuration

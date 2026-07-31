@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE="atenea-agent-run-worker-v1.service"
 PROGRAM="/usr/local/libexec/atenea/agent-run-worker-v1.py"
 PROJECT_RUNNER="/usr/local/libexec/atenea/project-codex-runner-v1.py"
+VALIDATION_MEDIATOR="/usr/local/libexec/atenea/atenea-validation-v1.sh"
 INSTALLER="/usr/local/libexec/atenea/install-agent-run-worker-v1.sh"
 ENV_FILE="/etc/atenea-worker/agent-run-worker-v1.env"
 TOKEN_FILE="/etc/atenea-worker/agent-run-worker-v1.token"
@@ -41,6 +42,7 @@ validate_inputs() {
   [[ "$WORKER_ID" =~ ^[a-zA-Z0-9._-]{1,80}$ ]] || fail "worker id is invalid"
   [[ -f "$SCRIPT_DIR/agent-run-worker-v1.py" ]] || fail "worker program is missing"
   [[ -f "$SCRIPT_DIR/project-codex-runner-v1.py" ]] || fail "project runner is missing"
+  [[ -f "$SCRIPT_DIR/atenea-validation-v1.sh" ]] || fail "validation mediator is missing"
   [[ -f "$SCRIPT_DIR/templates/$SERVICE" ]] || fail "systemd template is missing"
 }
 
@@ -129,6 +131,7 @@ apply_install() {
   install -d -o root -g root -m 0755 /usr/local/libexec/atenea
   install -o root -g root -m 0755 "$SCRIPT_DIR/agent-run-worker-v1.py" "$PROGRAM"
   install -o root -g root -m 0755 "$SCRIPT_DIR/project-codex-runner-v1.py" "$PROJECT_RUNNER"
+  install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-validation-v1.sh" "$VALIDATION_MEDIATOR"
   install -o root -g root -m 0755 "$SCRIPT_DIR/install-agent-run-worker-v1.sh" "$INSTALLER"
   install -d -o root -g atenea -m 0750 /etc/atenea-worker
   install -d -o atenea-worker -g atenea -m 0700 "$STATE_DIR"
@@ -149,6 +152,9 @@ apply_install() {
   write_project_config false false '{}' "$(observe_project_commit)"
   {
     printf 'atenea-worker ALL=(root) NOPASSWD: %s --config %s\n' "$PROJECT_RUNNER" "$PROJECT_CONFIG"
+    printf 'atenea-worker ALL=(root) NOPASSWD: %s BACKEND_TEST *\n' "$VALIDATION_MEDIATOR"
+    printf 'atenea-worker ALL=(root) NOPASSWD: %s WEB_BUILD *\n' "$VALIDATION_MEDIATOR"
+    printf 'atenea-worker ALL=(root) NOPASSWD: %s ANDROID_BUILD *\n' "$VALIDATION_MEDIATOR"
   } >"$SUDOERS_FILE"
   chown root:root "$SUDOERS_FILE"
   chmod 0440 "$SUDOERS_FILE"
