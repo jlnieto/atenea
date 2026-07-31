@@ -56,7 +56,7 @@
 - [x] 5.4 Add versioned safe payload templates and exact WorkSession deep links without prompt, answer, secret or worker-internal content
 - [x] 5.5 Make Android display background/closed notifications, open the exact conversation and avoid duplicate foreground presentation
 - [x] 5.6 Prove one event/device/channel delivery on repetition, backend restart and partial FCM failure
-- [ ] 5.7 Validate a real configured Android device with the app foregrounded, backgrounded and closed, retaining no push token value
+- [x] 5.7 Validate a real configured Android device with the app foregrounded, backgrounded and closed, retaining no push token value
 
 ## 6. Managed Codex version administration
 

@@ -5874,3 +5874,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.6-durable-notification-ownership`;
 the SHA-256 of its `SHA256SUMS` is
 `d295390a8e6dacc716b35fd96ac9f89c47ff0e71b9e7eb6472275b35c708a6ef`.
+
+Task 5.7 is complete, Phase 5 is closed and change progress is `42/57`; the
+exact implementation resume point is task 6.1. Task 6.1 and all later tasks
+remain pending.
+
+One active real Android device running Atenea `0.5.96` (`versionCode 129`) was
+validated separately with the exact WorkSession 7 conversation foregrounded,
+with Atenea backgrounded, and with Atenea removed from recents without Android
+force-stop. Three versioned `agent-run-safe-v1` presentation messages used
+fresh immutable event UUIDs and the exact
+`atenea://work-sessions/7/conversation` route.
+
+FCM accepted each message once with HTTP 200. In foreground the valid event
+was consumed inside the visible conversation and no Android system
+notification appeared. In background and closed states Android displayed one
+concise notification; tapping it respectively resumed or launched Atenea in
+the exact current conversation. The operator confirmed each observed result
+before the next state was exercised.
+
+The sole matching token was selected inside a bounded remote shell and piped
+directly to a short-lived sender through standard input. It was never printed,
+written to evidence or retained. OAuth, provider and signing operations had
+finite timeouts, provider bodies were discarded, and the sender exposed only
+safe event/session/run receipt metadata. Temporary host and container copies
+were removed after the exercise.
+
+The presentation-only run numbers were not persisted. Production remains at
+Flyway V56 and therefore has no V60 generic notification tables; no AgentRun,
+WorkSession, device preference, routing or notification gate changed. Atenea
+health remained `UP`, production, preview and Beautips containers remained
+`Up`, the AX42 AgentRun worker remained active with `NRestarts=0`, all four
+slot proxies remained active and project runners remained zero. No backend was
+deployed or restarted.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.7-real-android-device`;
+the SHA-256 of its `SHA256SUMS` is
+`a3ba8662e4b93d5b9891cf2b9199c897d5a576d044a063ed4c7171fb716a1b29`.
