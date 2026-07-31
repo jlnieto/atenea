@@ -284,6 +284,7 @@ production activation are recorded later in this ledger.
 | D-081 | Encode generic AgentRun pushes as `atenea-notification-data-v1` with fixed `AGENT_RUN_STATE` semantics, an exact `atenea://work-sessions/{id}/conversation` deep link and only closed immutable/numeric identity fields. | Android needs one stable route to the exact conversation, while copying domain text or accepting an unrecognized template would leak content and make notification handling ambiguous. | accepted and payload-tested | backend/Android/notification owners | before changing notification payload schema, safe-copy catalog or WorkSession deep-link route |
 | D-082 | Parse notification routes fail-closed in Android, use the immutable event ID as local presentation identity, retain only the ten safe payload fields in the PendingIntent and consume a valid event in-app while MainActivity is foregrounded. | Exact route validation prevents arbitrary intent navigation, stable event ownership avoids repeated local cards, and returning before presentation prevents a second notification beside the refreshed conversation. | accepted, unit-tested and emulator-verified | Android/notification owners | before changing foreground delivery, PendingIntent fields or notification route parsing |
 | D-083 | Use the immutable notification-event UUID as the Android FCM replacement tag while preserving the existing legacy payload when no generic event identity exists. | Database uniqueness prevents a second delivery owner but cannot prevent Android from rendering two cards after a provider-timeout retry; the stable platform tag makes repeated generic presentation replace the same user notification without inventing identity for legacy events. | accepted and repetition-tested | backend/Android/notification owners | before changing FCM Android notification fields, event identity or legacy push compatibility |
+| D-084 | Permit authenticated routine operators to inspect a closed persisted Codex release inventory, but require a current platform administrator and the independent default-false managed-updates gate to create or read an idempotent update plan whose candidate is server-derived and whose four compatibility gates and no-side-effect impact are fixed. | Planning must expose enough current/previous/candidate state to make a safe later decision without accepting caller versions, URLs, hosts, services, commands or paths, and must never install, relink or restart anything by itself. | accepted and integration-tested | backend/platform/security owners | before changing update inventory fields, planning authority, candidate selection or plan side effects |
 
 ## Deferred decisions and gates
 
@@ -5912,3 +5913,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.7-real-android-device`;
 the SHA-256 of its `SHA256SUMS` is
 `a3ba8662e4b93d5b9891cf2b9199c897d5a576d044a063ed4c7171fb716a1b29`.
+
+Task 6.1 is complete and change progress is `43/57`; the exact implementation
+resume point is task 6.2. Task 6.2 and all later tasks remain pending.
+
+Atenea commit `c17af98eef607df80909206226480df37ea6e011` adds the
+additive V61 managed Codex inventory and update-plan persistence plus three
+closed APIs. An authenticated routine operator can inspect installed, current
+and previous releases and their compatibility state. Only a current platform
+administrator, behind the independent default-false `managed-updates` gate,
+can create or read an update plan.
+
+The plan request accepts only the fixed operation, exact worker identity and
+idempotency key. Candidate selection is derived from persisted inventory. The
+immutable projection records exact release identities and digests, the fixed
+`WORKER_HEALTH`, `CURRENT_LINK`, `CATALOG_ALIGNMENT` and
+`CANDIDATE_COMPATIBILITY` gates, and a fixed no-side-effect impact statement.
+Repetition returns the same plan; a missing candidate fails closed and an
+incompatible candidate remains visible while blocking the plan. No caller
+version, URL, host, endpoint, service, command or path authority is accepted.
+
+The focused migration, API, authorization, idempotency, compatibility and
+historical-profile set passed 13 tests with zero failures, errors or skips
+after all 61 migrations were validated. V61 was also applied from an empty
+test schema, repeated against the migrated schema, and the backend package
+build completed successfully. Disposable test containers and their network
+were removed while reusable volumes were retained.
+
+Nothing was deployed, enabled, installed, relinked, routed or restarted.
+Atenea remained `UP`; production, preview and Beautips containers remained
+`Up`; the AX42 AgentRun worker remained active with `NRestarts=0`, all four
+rootless daemons and socket proxies remained active, project runners remained
+zero, rootful Docker remained inactive, SSH and Tailscale remained active and
+all three RAID arrays remained `[UU]`.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-6.1-managed-update-inventory`;
+the SHA-256 of its `SHA256SUMS` is
+`0dfbd1ee14759a29b8c89985745cec33ec6be21b57cf89b2e5bd857706e3cb1b`.
