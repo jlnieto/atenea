@@ -277,6 +277,7 @@ production activation are recorded later in this ledger.
 | D-074 | Derive exactly one routine recovery action from persisted run state/next-action, keep the backend as permission authority, and disable new-turn submission while an execution is active. | Cancel, retry and reconciliation are mutually contextual; exposing them together or allowing a competing send would make the operator guess and could create conflicting work. | accepted | web/backend/operator-experience owners | before changing recovery action visibility, permission authority or active-run submission behavior |
 | D-075 | Give each Android run an in-memory monotonic replay cursor, merge only sequence-keyed durable gaps after foreground resume, reset on run identity change and keep immersive conversation content within system-bar insets. | Replaying from zero can duplicate a mobile timeline after backgrounding, while an edge-to-edge surface without safe insets can hide the very state and action the operator needs to see immediately. | accepted and emulator-verified | Android/operator-experience owners | before changing Android replay cursor lifetime, gap merge or immersive insets |
 | D-076 | Snapshot the independently resolved WorkSession/project/worker model and effort on every future remote AgentRun before durable dispatch, and project that immutable profile onto both its originating and result turns. | A mutable settings view alone cannot prove which profile produced old conversation content; one run-owned snapshot keeps legacy turns compatible while making later setting changes auditable on web and Android. | accepted and web/Android verified | backend/web/Android owners | before changing AgentRun profile snapshot or historical-turn projection semantics |
+| D-077 | Close the operator-experience phase only after one synthetic state matrix proves exact data-to-DOM-to-visible mappings for failed, reconciling and terminal runs with deliberately long canonical identities on web and real Compose. | Unit/build success does not prove that the operator can identify state and act within the first viewport or that long persisted identities remain usable on narrow screens. | accepted and visually verified | web/Android/operator-experience owners | before changing current-run hierarchy, responsive wrapping or visual acceptance viewports |
 
 ## Deferred decisions and gates
 
@@ -5629,3 +5630,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.5-future-profile-history`;
 the SHA-256 of its `SHA256SUMS` is
 `97aceea799d9dbc9ade285225c074907fdaa5834ab2ca992aceccaeb80de325b`.
+
+Task 4.6 is complete, Phase 4 is closed and change progress is `35/57`; the
+exact implementation resume point is task 5.1. Task 5.1 and all later tasks
+remain pending.
+
+One secret-free synthetic matrix drove the existing Atenea commit
+`eb90cb6ad361ff9a8a70bca208ee921192cc9ac6` through `FAILED` with `RETRY`,
+`RECONCILING` with `REQUEST_RECONCILIATION`, and terminal `COMPLETED` with no
+next action. It used deliberately long immutable WorkSession and canonical
+model identifiers, fixed safe progress messages and the exact effective
+profile/version projection.
+
+Six isolated Playwright contexts proved the data-to-DOM mapping and inspected
+screen at both required web viewports. Every state, sole next action, latest
+event and long profile identity was visible, and both document and body widths
+remained within their viewport. The current state and action remained above
+the fixed composer at `390x844`; no horizontal overflow, overlap or unreadable
+identifier was observed.
+
+Three API 35 emulator launches then rendered the same matrix through the real
+Compose `CodexRunProgressCard`, conversation and future-profile strip. The
+UIAutomator hierarchy contained each exact state/profile/action mapping and
+the inspected screenshots kept the operational decision in the first viewport
+without clipping or system-bar intrusion. Failure exposed only retry,
+reconciliation exposed only request-reconciliation with submission disabled,
+and terminal success exposed continuation without a competing recovery action.
+
+The temporary route mocks, Vite, Playwright, visual activity, emulator, AVD,
+system image and Android home were removed. A final normal APK build passed and
+the Atenea tree remained clean at the same commit, so no task 4.6 code commit
+was necessary. Read-only post-checks kept Atenea `UP`, production, preview and
+Beautips `Up`, the canonical worker active with `NRestarts=0`, four active slot
+proxies and zero project runners. Nothing was deployed, restarted or routed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.6-visual-state-matrix`;
+the SHA-256 of its `SHA256SUMS` is
+`9061e47417e1d20341382d2af7f7e5c9f343ae86b611a830e9bbb4162fcd79cc`.

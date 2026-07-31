@@ -46,7 +46,7 @@
 - [x] 4.3 Add context-specific cancel, retry and request-reconciliation actions with permissions and actionable errors
 - [x] 4.4 Implement the same settings, progress replay and recovery behavior in Android, including reconnect after backgrounding
 - [x] 4.5 Ensure settings affect only future AgentRuns and that a changed model/effort remains visible on historical turns
-- [ ] 4.6 Prove data, DOM and inspected visual behavior at `1440x900` and `390x844`, including long identifiers, failure, reconciling and terminal states
+- [x] 4.6 Prove data, DOM and inspected visual behavior at `1440x900` and `390x844`, including long identifiers, failure, reconciling and terminal states
 
 ## 5. Reusable notification platform
 
