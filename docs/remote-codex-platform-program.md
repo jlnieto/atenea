@@ -270,6 +270,7 @@ production activation are recorded later in this ledger.
 | D-067 | Permit profiled execution only through the fixed runner's exact `--model` plus `model_reasoning_effort` arguments, require a pre-execution exact fixed-binary version probe, and reject any runner result whose echoed profile/version differs from the request. | A validated request can still execute incorrectly if the binary link moved, ambient configuration wins or the runner reports a substituted profile; all three boundaries must agree before success. | accepted | worker/security owners | before changing runner flags, binary path or effective-profile result fields |
 | D-068 | Normalize only recognized Codex JSONL structure into fixed progress messages, discard every source payload value and let the worker replace timestamps while assigning identity, monotonic sequence, coalescence and bounded retention. | Trusting model-provided text, command/output fields or source timestamps would let secret-bearing content cross the worker boundary even when the category itself is allowed. | accepted | worker/security owners | before changing structured-event mappings or progress message templates |
 | D-069 | Persist the highest imported worker progress sequence on the AgentRun and lock that row before atomically applying progress, terminal state and result turn; retain byte-stable terminal worker records across restart. | Lifecycle revision alone cannot deduplicate replayed detail events, and two coordinators must not both create a response turn after observing the same terminal worker revision. | accepted | backend/worker/data owners | before changing worker replay identity, coordinator locking or terminal transaction boundaries |
+| D-070 | Require dispatch-path, execution, session, workspace and lease ownership for new routine recovery routes; make reconciliation read-only and constrain doctor to a closed no-values schema while retaining the v1 cancel route. | Execution ID alone is insufficient for new recovery authority, and a free-form diagnostic could expose prompts, results, commands, paths or secrets or accidentally mutate execution state. | accepted | worker/backend/security owners | before changing recovery ownership fields, doctor output or v1 cancel compatibility |
 
 ## Deferred decisions and gates
 
@@ -5419,3 +5420,34 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.5-idempotent-progress-terminal-replay`;
 the SHA-256 of its `SHA256SUMS` is
 `25f00ab8cf37018644bb7d8a33e5649747904036572a9251ef071a001bbfcb08`.
+
+Task 3.6 is complete and change progress is `28/57`; the exact implementation
+resume point is task 3.7. Task 3.7 and all later tasks remain pending.
+
+Programme/worker commit `3c9af70133f7a865646b24974ceddd99ebc2079d`
+adds authenticated exact-cancel, read-only reconciliation inspection and
+sanitized doctor routes. The new operations require complete dispatch-path,
+execution, session, workspace and lease ownership. Added command, host,
+service, path, slot, endpoint, environment or credential fields and all
+foreign, stale or partial identities fail before mutation. The established v1
+cancel surface remains compatible.
+
+Doctor is constrained by `agent-run-doctor-v1` to fixed ownership/status fields,
+one closed process observation, recovery booleans and bounded progress counts.
+It excludes workload, prompt, result, command, output and operational host
+detail. Reconciliation returns the existing execution and never creates,
+resumes or replaces a turn. Atenea commit
+`b5a5c814448324860dec587ada12873902c936d8` derives all three request envelopes
+from the persisted AgentRun; coordinator cancellation now uses exact ownership.
+
+Two final 22-test Atenea client/coordinator passes succeeded with zero failures,
+errors or skips in 10.37 and 10.26 seconds. Two final 54-test
+worker/runner/contract passes succeeded in 4.84 and 4.75 seconds. AX42's
+installed service, hashes, Codex version, private listener, zero project
+runners and zero restart count remained unchanged; production and preview
+remained running with zero backend restarts. Nothing was installed or enabled.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-3.6-exact-recovery-operations`;
+the SHA-256 of its `SHA256SUMS` is
+`bece4b14c5f6def0aced6f1aa666682296b510c1c00b410b17155ab564359ae6`.

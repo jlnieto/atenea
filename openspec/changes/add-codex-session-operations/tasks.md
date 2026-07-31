@@ -36,7 +36,7 @@
 - [x] 3.3 Pass only validated model/effort flags to the fixed Codex runner and return the exact effective version/profile
 - [x] 3.4 Normalize structured Codex events into the closed progress taxonomy without retaining reasoning, raw commands, output or secret-bearing payloads
 - [x] 3.5 Make duplicate progress/terminal delivery idempotent across worker and control-plane restart
-- [ ] 3.6 Implement exact cancellation, reconcile inspection and sanitized doctor operations without arbitrary host authority
+- [x] 3.6 Implement exact cancellation, reconcile inspection and sanitized doctor operations without arbitrary host authority
 - [ ] 3.7 Run focused and complete worker protocol, runner, project, cancellation, restart, denial and cleanup suites twice
 
 ## 4. Web and Android operator experience
