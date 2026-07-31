@@ -273,6 +273,7 @@ production activation are recorded later in this ledger.
 | D-070 | Require dispatch-path, execution, session, workspace and lease ownership for new routine recovery routes; make reconciliation read-only and constrain doctor to a closed no-values schema while retaining the v1 cancel route. | Execution ID alone is insufficient for new recovery authority, and a free-form diagnostic could expose prompts, results, commands, paths or secrets or accidentally mutate execution state. | accepted | worker/backend/security owners | before changing recovery ownership fields, doctor output or v1 cancel compatibility |
 | D-071 | Treat the base runner digest and every derived Beautips adapter, mediator, allowlist and installer digest as one reviewed trust chain, and require the complete Phase 3 worker plus Beautips aggregate to pass twice. | A fail-closed downstream pin correctly rejected the task 3.6 runner until every dependent identity was refreshed; isolated runner tests alone do not prove the installed project chain remains internally consistent. | accepted | worker/project/security owners | whenever the base runner or any derived reviewed source changes |
 | D-072 | Present the future WorkSession execution profile as one compact state-first control beside the conversation composer; resolve model and effort independently and require pending changes to be applied before send. | The operator must know the next run's exact profile in under three seconds without adding a competing dashboard or permitting submission against an unseen/stale selection. | accepted | web/operator-experience owners | before changing profile placement, source disclosure or pending-selection behavior |
+| D-073 | Put one current-run card before secondary conversation content, render only the six newest normalized events, and locally bound the timeline on mobile. | State, elapsed time, latest progress and next action must be visible immediately while the 200-event durable replay remains an audit boundary rather than a visually unbounded conversation dashboard. | accepted | web/operator-experience owners | before changing current-run placement, visible event bound or mobile timeline overflow |
 
 ## Deferred decisions and gates
 
@@ -5505,3 +5506,27 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.1-web-execution-profile`;
 the SHA-256 of its `SHA256SUMS` is
 `b926a4d3736458556539d5013f149eadc7aa53341a0dcd61abc8e2205f19fcd5`.
+
+Task 4.2 is complete and change progress is `31/57`; the exact implementation
+resume point is task 4.3. Task 4.3 and all later tasks remain pending.
+
+Atenea commit `19d730d5f0262d1aa6e4b0dc7fa30d9f390087ef` adds one
+current-run card before secondary conversation content. It reads the closed
+run-detail and progress replay APIs and shows current state, elapsed time,
+immutable effective profile/version, latest fixed progress message and fixed
+next-action guidance. Active reads refresh every three seconds without
+creating or mutating an execution. The visual timeline retains only the six
+newest normalized events and is locally bounded on mobile.
+
+The production TypeScript/Vite build passed. Synthetic authenticated
+Playwright checks proved `CHECKING`, `1 min 24 s`, effective profile, latest
+event, `WAIT` guidance and the supplied five-event timeline in the visible
+DOM. Final `1440x900` and `390x844` screenshots were inspected; critical state
+remains visible without page scrolling and there is no horizontal overflow,
+overlap or unreadable wrapping. All temporary browser/preview processes were
+closed; nothing was deployed or restarted.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-4.2-web-progress-card`;
+the SHA-256 of its `SHA256SUMS` is
+`2cf3faa8e40d4e4344f94058b3a608e005b36bfc9d44c9f03733c564aa2a387f`.
