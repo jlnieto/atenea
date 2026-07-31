@@ -1,9 +1,9 @@
 package com.atenea.auth;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -15,7 +15,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableConfigurationProperties(OperatorAuthProperties.class)
-@Profile("!retained-draft-recovery-command")
 public class OperatorAuthConfiguration {
 
     @Bean
@@ -31,6 +30,7 @@ public class OperatorAuthConfiguration {
     }
 
     @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             OperatorAuthenticationFilter operatorAuthenticationFilter,
