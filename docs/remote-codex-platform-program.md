@@ -279,6 +279,7 @@ production activation are recorded later in this ledger.
 | D-076 | Snapshot the independently resolved WorkSession/project/worker model and effort on every future remote AgentRun before durable dispatch, and project that immutable profile onto both its originating and result turns. | A mutable settings view alone cannot prove which profile produced old conversation content; one run-owned snapshot keeps legacy turns compatible while making later setting changes auditable on web and Android. | accepted and web/Android verified | backend/web/Android owners | before changing AgentRun profile snapshot or historical-turn projection semantics |
 | D-077 | Close the operator-experience phase only after one synthetic state matrix proves exact data-to-DOM-to-visible mappings for failed, reconciling and terminal runs with deliberately long canonical identities on web and real Compose. | Unit/build success does not prove that the operator can identify state and act within the first viewport or that long persisted identities remain usable on narrow screens. | accepted and visually verified | web/Android/operator-experience owners | before changing current-run hierarchy, responsive wrapping or visual acceptance viewports |
 | D-078 | Cut over the overlapping legacy run-completed push only when the generic outbox gate is enabled; persist and claim each exact delivery before provider I/O, while leaving non-AgentRun legacy categories untouched. | Dual sending would duplicate user notifications, provider I/O inside the terminal transaction would weaken durability, and forcing PR/billing/close events into the three-category AgentRun schema would invent unsupported ownership. | accepted and persistence-tested | backend/notification owners | before enabling the generic notification gate or extending event ownership beyond AgentRun categories |
+| D-079 | Emit completion, failure and first action-required events from the same local or remote transaction that persists their owning AgentRun state; suppress repeated action-required production while retaining outbox uniqueness as the durable duplicate barrier. | A post-commit producer can lose the notification on process failure, while every reconciliation poll must not create a new user event for one unchanged actionable state. | accepted and transition-tested | backend/notification owners | before changing terminal transaction boundaries or actionable-state revision semantics |
 
 ## Deferred decisions and gates
 
@@ -5706,3 +5707,34 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.1-generic-notification-outbox`;
 the SHA-256 of its `SHA256SUMS` is
 `2e821ec0f51c79d5fec0b3b369556438bf1b214d3791fab965a78aa251b7cea6`.
+
+Task 5.2 is complete and change progress is `37/57`; the exact implementation
+resume point is task 5.3. Task 5.3 and all later tasks remain pending.
+
+Atenea commit `9aa85cb39578d1a71abee336fa32434db5777cff` connects the
+three generic AgentRun categories to their owning state transitions. Local
+success and failure, conditional failure and local startup/stale
+reconciliation now write their event within the service transaction. Remote
+success, failure, malformed-success failure and bounded reconciliation-timeout
+failure write the matching event within the coordinator's `REQUIRES_NEW`
+terminal transaction.
+
+The first persisted remote unavailable state also records
+`REQUEST_RECONCILIATION` and `ACTION_REQUIRED` together. Repeated polling of
+that unchanged actionable state does not call the producer again. Existing
+terminal guards and immutable outbox category/run/revision ownership retain
+one terminal outcome, result turn and applicable event on replay. Cancellation
+and intermediate progress remain outside the initial push categories.
+
+Seventy-six focused unit and PostgreSQL persistence tests passed with zero
+failures, errors or skips after all 60 migrations were validated. They cover
+local and remote success/failure, local reconciliation, first actionable
+remote reconciliation, terminal replay, outbox persistence and dispatcher
+regressions. FCM remained mocked and the gate remains default-off. The
+temporary database and App Server containers were removed; the reusable test
+volume was retained. Nothing was deployed, enabled, routed or sent.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-5.2-terminal-notification-transitions`;
+the SHA-256 of its `SHA256SUMS` is
+`3e184038abb66229278092c45ffde357d64a8b49483ccc6264b8328e4e888509`.
