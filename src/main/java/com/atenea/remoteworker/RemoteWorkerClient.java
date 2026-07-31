@@ -2,6 +2,7 @@ package com.atenea.remoteworker;
 
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.worksession.ValidationOperationKind;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -127,6 +128,49 @@ public class RemoteWorkerClient {
                 SourceTreeFingerprint.class,
                 session.getRemoteSessionId().toString(),
                 properties.getWorkspaceProvisionTimeout());
+    }
+
+    public ValidationResult runValidation(
+            WorkSessionEntity session,
+            ValidationOperationKind operation,
+            String sourceTreeFingerprintSha256,
+            String validationId
+    ) {
+        if (!ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+                || session.getRemoteSessionId() == null
+                || sourceTreeFingerprintSha256 == null
+                || !sourceTreeFingerprintSha256.matches("^[0-9a-f]{64}$")) {
+            throw new RemoteWorkerException(
+                    "Persisted validation ownership or source tree fingerprint is incomplete",
+                    409);
+        }
+        Map<String, Object> body = Map.ofEntries(
+                Map.entry("validationId", validationId),
+                Map.entry("sessionId", session.getRemoteSessionId().toString()),
+                Map.entry("workspaceIdentity", session.getWorkspaceIdentity()),
+                Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
+                Map.entry("repository", ProjectCodexIdentity.REPOSITORY),
+                Map.entry("branch", ProjectCodexIdentity.BRANCH),
+                Map.entry("commit", session.getCanonicalSourceCommit()),
+                Map.entry("manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256),
+                Map.entry("operation", operation.name()),
+                Map.entry("definitionRevision", operation.definitionRevision()),
+                Map.entry("sourceTreeFingerprintSha256", sourceTreeFingerprintSha256));
+        return exchange(
+                "POST",
+                "/v1/project-workspaces/validations",
+                body,
+                ValidationResult.class,
+                validationId,
+                validationTimeout(operation));
+    }
+
+    private Duration validationTimeout(ValidationOperationKind operation) {
+        return switch (operation) {
+            case BACKEND_TEST -> Duration.ofMinutes(15);
+            case WEB_BUILD -> Duration.ofMinutes(10);
+            case ANDROID_BUILD -> Duration.ofMinutes(20);
+        };
     }
 
     private Map<String, Object> workload(AgentRunEntity run, String message) {
@@ -321,6 +365,23 @@ public class RemoteWorkerClient {
             int stagedChangeCount,
             int unstagedChangeCount,
             int untrackedChangeCount,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record ValidationResult(
+            String validationId,
+            String sessionId,
+            String workspaceIdentity,
+            String operation,
+            String definitionRevision,
+            String sourceTreeFingerprintSha256,
+            String status,
+            Integer exitCode,
+            long durationMillis,
+            String artifactManifestSha256,
+            String summary,
             boolean valuesExposed
     ) {
     }

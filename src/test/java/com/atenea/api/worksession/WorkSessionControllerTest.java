@@ -8,11 +8,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.atenea.api.ApiExceptionHandler;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.ValidationOperationKind;
+import com.atenea.persistence.worksession.ValidationOperationStatus;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
 import com.atenea.service.worksession.RetainedDraftRecoveryService;
+import com.atenea.service.worksession.ClosedValidationOperationService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.atenea.service.worksession.WorkSessionNotOpenException;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
@@ -23,6 +26,7 @@ import com.atenea.service.worksession.WorkSessionPublishConflictException;
 import com.atenea.service.worksession.WorkSessionService;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +50,9 @@ class WorkSessionControllerTest {
     @Mock
     private RetainedDraftRecoveryService retainedDraftRecoveryService;
 
+    @Mock
+    private ClosedValidationOperationService closedValidationOperationService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -53,7 +60,8 @@ class WorkSessionControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new WorkSessionController(
                         workSessionService,
                         workSessionGitHubService,
-                        retainedDraftRecoveryService))
+                        retainedDraftRecoveryService,
+                        closedValidationOperationService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -101,6 +109,35 @@ class WorkSessionControllerTest {
                 .andExpect(jsonPath("$.valuesExposed").value(false))
                 .andExpect(jsonPath("$.path").doesNotExist())
                 .andExpect(jsonPath("$.files").doesNotExist());
+    }
+
+    @Test
+    void validationEndpointAcceptsOnlySymbolicClosedOperation() throws Exception {
+        UUID id = UUID.fromString("0cc7815a-f703-46ee-938a-8ef4d00e68a2");
+        when(closedValidationOperationService.run(12L, ValidationOperationKind.WEB_BUILD))
+                .thenReturn(new ValidationOperationResponse(
+                        id,
+                        12L,
+                        ValidationOperationKind.WEB_BUILD,
+                        ValidationOperationStatus.SUCCEEDED,
+                        "4".repeat(64),
+                        "atenea-web-build-v1",
+                        0,
+                        7L,
+                        "5".repeat(64),
+                        "Closed validation passed",
+                        Instant.parse("2026-07-30T12:00:00Z"),
+                        Instant.parse("2026-07-30T12:00:00.007Z")));
+
+        mockMvc.perform(post("/api/sessions/12/validations/WEB_BUILD"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.operation").value("WEB_BUILD"))
+                .andExpect(jsonPath("$.status").value("SUCCEEDED"));
+        mockMvc.perform(post("/api/sessions/12/validations/ARBITRARY_COMMAND")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"command\":\"docker run --privileged\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

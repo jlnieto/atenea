@@ -116,6 +116,28 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/project-workspaces/validations", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
+                    java.util.Map.entry("validationId", request.get("validationId").asText()),
+                    java.util.Map.entry("sessionId", request.get("sessionId").asText()),
+                    java.util.Map.entry("workspaceIdentity", request.get("workspaceIdentity").asText()),
+                    java.util.Map.entry("operation", request.get("operation").asText()),
+                    java.util.Map.entry("definitionRevision", request.get("definitionRevision").asText()),
+                    java.util.Map.entry(
+                            "sourceTreeFingerprintSha256",
+                            request.get("sourceTreeFingerprintSha256").asText()),
+                    java.util.Map.entry("status", "SUCCEEDED"),
+                    java.util.Map.entry("exitCode", 0),
+                    java.util.Map.entry("durationMillis", 7),
+                    java.util.Map.entry("artifactManifestSha256", "5".repeat(64)),
+                    java.util.Map.entry("summary", "Closed validation passed"),
+                    java.util.Map.entry("valuesExposed", false)));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.start();
         properties = new RemoteWorkerProperties();
         properties.setEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
@@ -268,6 +290,38 @@ class RemoteWorkerClientTest {
         assertNull(body.get("environment"));
         assertEquals("4".repeat(64), fingerprint.fingerprintSha256());
         assertEquals(false, fingerprint.valuesExposed());
+    }
+
+    @Test
+    void closedValidationUsesOnlyFixedPersistedAuthority() {
+        AgentRunEntity run = projectRun(null);
+        WorkSessionEntity session = run.getSession();
+        session.setWorkspaceIdentity(run.getWorkspaceIdentity());
+        String validationId = "0cc7815a-f703-46ee-938a-8ef4d00e68a2";
+
+        RemoteWorkerClient.ValidationResult result = client.runValidation(
+                session,
+                com.atenea.persistence.worksession.ValidationOperationKind.WEB_BUILD,
+                "4".repeat(64),
+                validationId);
+
+        JsonNode body = requestBody.get();
+        assertEquals(11, body.size());
+        assertEquals(validationId, body.get("validationId").asText());
+        assertEquals("WEB_BUILD", body.get("operation").asText());
+        assertEquals("atenea-web-build-v1", body.get("definitionRevision").asText());
+        assertEquals(session.getWorkspaceIdentity(), body.get("workspaceIdentity").asText());
+        assertNull(body.get("command"));
+        assertNull(body.get("image"));
+        assertNull(body.get("compose"));
+        assertNull(body.get("environment"));
+        assertNull(body.get("path"));
+        assertNull(body.get("host"));
+        assertNull(body.get("slot"));
+        assertNull(body.get("endpoint"));
+        assertNull(body.get("credential"));
+        assertEquals("SUCCEEDED", result.status());
+        assertEquals(false, result.valuesExposed());
     }
 
     @Test

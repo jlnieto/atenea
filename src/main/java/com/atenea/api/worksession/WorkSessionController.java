@@ -3,6 +3,8 @@ package com.atenea.api.worksession;
 import com.atenea.service.worksession.WorkSessionService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.atenea.service.worksession.RetainedDraftRecoveryService;
+import com.atenea.service.worksession.ClosedValidationOperationService;
+import com.atenea.persistence.worksession.ValidationOperationKind;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,15 +20,18 @@ public class WorkSessionController {
     private final WorkSessionService workSessionService;
     private final WorkSessionGitHubService workSessionGitHubService;
     private final RetainedDraftRecoveryService retainedDraftRecoveryService;
+    private final ClosedValidationOperationService closedValidationOperationService;
 
     public WorkSessionController(
             WorkSessionService workSessionService,
             WorkSessionGitHubService workSessionGitHubService,
-            RetainedDraftRecoveryService retainedDraftRecoveryService
+            RetainedDraftRecoveryService retainedDraftRecoveryService,
+            ClosedValidationOperationService closedValidationOperationService
     ) {
         this.workSessionService = workSessionService;
         this.workSessionGitHubService = workSessionGitHubService;
         this.retainedDraftRecoveryService = retainedDraftRecoveryService;
+        this.closedValidationOperationService = closedValidationOperationService;
     }
 
     @PostMapping("/api/projects/{projectId}/sessions")
@@ -70,6 +75,14 @@ public class WorkSessionController {
     @PostMapping("/api/sessions/{sessionId}/recover-retained-draft")
     public RecoverDraftWorkSessionResponse recoverRetainedDraft(@PathVariable Long sessionId) {
         return retainedDraftRecoveryService.recover(sessionId);
+    }
+
+    @PostMapping("/api/sessions/{sessionId}/validations/{operation}")
+    public ValidationOperationResponse runValidation(
+            @PathVariable Long sessionId,
+            @PathVariable ValidationOperationKind operation
+    ) {
+        return closedValidationOperationService.run(sessionId, operation);
     }
 
     @GetMapping("/api/sessions/{sessionId}/view")
