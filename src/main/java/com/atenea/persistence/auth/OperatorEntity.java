@@ -2,6 +2,8 @@ package com.atenea.persistence.auth;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -27,6 +29,10 @@ public class OperatorEntity {
 
     @Column(nullable = false)
     private boolean active;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "codex_operations_role", nullable = false, length = 32)
+    private CodexOperationsRole codexOperationsRole = CodexOperationsRole.ROUTINE_OPERATOR;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -73,6 +79,9 @@ public class OperatorEntity {
     public void setActive(boolean active) {
         this.active = active;
     }
+
+    public CodexOperationsRole getCodexOperationsRole() { return codexOperationsRole; }
+    public void setCodexOperationsRole(CodexOperationsRole value) { codexOperationsRole = value; }
 
     public Instant getCreatedAt() {
         return createdAt;

@@ -188,6 +188,10 @@ public class AgentRunEntity {
     @Column(name = "progress_required_next_action", length = 32)
     private AgentRunProgressNextAction progressRequiredNextAction;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "retry_of_run_id", updatable = false)
+    private AgentRunEntity retryOfRun;
+
     @Version
     @Column(name = "lock_version", nullable = false)
     private long lockVersion;
@@ -358,6 +362,8 @@ public class AgentRunEntity {
     public void setProgressElapsedMillis(Long progressElapsedMillis) { this.progressElapsedMillis = progressElapsedMillis; }
     public AgentRunProgressNextAction getProgressRequiredNextAction() { return progressRequiredNextAction; }
     public void setProgressRequiredNextAction(AgentRunProgressNextAction progressRequiredNextAction) { this.progressRequiredNextAction = progressRequiredNextAction; }
+    public AgentRunEntity getRetryOfRun() { return retryOfRun; }
+    public void setRetryOfRun(AgentRunEntity retryOfRun) { this.retryOfRun = retryOfRun; }
     public long getLockVersion() { return lockVersion; }
     public void setLockVersion(long lockVersion) { this.lockVersion = lockVersion; }
 
