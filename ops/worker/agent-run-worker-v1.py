@@ -53,6 +53,9 @@ VALIDATION_KEYS = {
     "repository", "branch", "commit", "manifestSha256", "operation",
     "definitionRevision", "sourceTreeFingerprintSha256",
 }
+REPOSITORY_ROLE_KEYS = {
+    "sessionId", "workspaceIdentity", "changeIdentity", "codeCommit",
+}
 VALIDATION_DEFINITIONS = {
     "BACKEND_TEST": ("atenea-backend-test-v1", 900),
     "WEB_BUILD": ("atenea-web-build-v1", 600),
@@ -107,6 +110,7 @@ class WorkerState:
         beautips_project_runner: Path | None = None,
         beautips_workspace_activator: Path | None = None,
         project_validation_mediator: Path | None = None,
+        repository_role_mediator: Path | None = None,
     ):
         self.state_dir = state_dir
         self.state_file = state_dir / "executions.json"
@@ -123,6 +127,7 @@ class WorkerState:
         self.beautips_project_runner = beautips_project_runner
         self.beautips_workspace_activator = beautips_workspace_activator
         self.project_validation_mediator = project_validation_mediator
+        self.repository_role_mediator = repository_role_mediator
         self.lock = threading.RLock()
         self.wakeup = threading.Event()
         self.stop_event = threading.Event()
@@ -796,6 +801,122 @@ class WorkerState:
             result["summary"],
             duration_millis=result["durationMillis"],
         )
+
+    def ensure_repository_roles(self, request: dict[str, Any]) -> dict[str, Any]:
+        if set(request) != REPOSITORY_ROLE_KEYS:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST, "invalid_repository_roles",
+                "repository role request fields are invalid")
+        try:
+            session_id = str(uuid.UUID(request.get("sessionId")))
+            change_id = str(uuid.UUID(request.get("changeIdentity")))
+        except (ValueError, TypeError, AttributeError):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST, "invalid_repository_roles",
+                "repository role identities must be canonical UUIDs")
+        exact_identity = f"remote:{self.worker_id}:work-session:{session_id}"
+        if (
+            session_id != request.get("sessionId")
+            or change_id != request.get("changeIdentity")
+            or request.get("workspaceIdentity") != exact_identity
+            or not isinstance(request.get("codeCommit"), str)
+            or re.fullmatch(r"[0-9a-f]{40}", request["codeCommit"]) is None
+        ):
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN, "repository_role_authority_conflict",
+                "repository role ownership is not exact")
+        route = self._project_route(PROJECT_ID)
+        config = self._read_project_config(route)
+        record = config["workspaces"].get(exact_identity)
+        if (
+            record is None
+            or record.get("sessionId") != session_id
+            or record.get("canonicalCommit") != request["codeCommit"]
+            or config.get("commit") != request["codeCommit"]
+        ):
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN, "repository_role_ownership_conflict",
+                "persisted code role ownership is conflicting")
+        mediator = self.repository_role_mediator
+        if mediator is None or not mediator.is_file():
+            raise ProtocolError(
+                HTTPStatus.SERVICE_UNAVAILABLE, "repository_role_mediator_unavailable",
+                "repository role mediator is unavailable")
+        try:
+            completed = subprocess.run(
+                [*self.privilege_command, str(mediator), "ensure",
+                 session_id, change_id, request["codeCommit"]],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True, timeout=300, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            raise ProtocolError(
+                HTTPStatus.SERVICE_UNAVAILABLE, "repository_role_mediator_failed",
+                "repository role mediator failed closed")
+        if completed.returncode != 0:
+            raise ProtocolError(
+                HTTPStatus.CONFLICT, "repository_role_rejected",
+                "repository role mediator rejected ownership")
+        try:
+            result = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            result = None
+        if (
+            not isinstance(result, dict)
+            or set(result) != {
+                "sessionId", "workspaceIdentity", "changeIdentity", "roles",
+                "valuesExposed"}
+            or result.get("sessionId") != session_id
+            or result.get("workspaceIdentity") != exact_identity
+            or result.get("changeIdentity") != change_id
+            or result.get("valuesExposed") is not False
+            or not isinstance(result.get("roles"), list)
+            or len(result["roles"]) != 3
+        ):
+            raise ProtocolError(
+                HTTPStatus.CONFLICT, "repository_role_result_conflict",
+                "repository role result is incomplete or conflicting")
+        role_fields = {
+            "role", "authority", "repository", "branch", "commit",
+            "mirrorIdentitySha256", "worktreeIdentitySha256",
+            "validationProfile", "readiness",
+        }
+        expected_roles = {
+            "ATENEA_CODE": (PROJECT_BRANCH, request["codeCommit"], "atenea-code-v1"),
+            "PROGRAMME_OPENSPEC": (
+                "program/remote-codex-worker-platform", None, "openspec-strict-v1"),
+            "WORKER_SOURCE": (
+                "program/remote-codex-worker-platform", None, "worker-contract-v1"),
+        }
+        seen: set[str] = set()
+        program_commits: set[str] = set()
+        for role in result["roles"]:
+            expected = expected_roles.get(role.get("role")) if isinstance(role, dict) else None
+            if (
+                not isinstance(role, dict)
+                or set(role) != role_fields
+                or expected is None
+                or role["role"] in seen
+                or role.get("authority") != "READ_WRITE"
+                or role.get("repository") != PROJECT_REPOSITORY
+                or role.get("branch") != expected[0]
+                or role.get("validationProfile") != expected[2]
+                or role.get("readiness") != "DRAFT"
+                or COMMIT_PATTERN.fullmatch(str(role.get("commit"))) is None
+                or re.fullmatch(r"[0-9a-f]{64}", str(role.get("mirrorIdentitySha256"))) is None
+                or re.fullmatch(r"[0-9a-f]{64}", str(role.get("worktreeIdentitySha256"))) is None
+                or (expected[1] is not None and role.get("commit") != expected[1])
+            ):
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT, "repository_role_result_conflict",
+                    "repository role result is incomplete or conflicting")
+            seen.add(role["role"])
+            if role["role"] != "ATENEA_CODE":
+                program_commits.add(role["commit"])
+        if seen != set(expected_roles) or len(program_commits) != 1:
+            raise ProtocolError(
+                HTTPStatus.CONFLICT, "repository_role_result_conflict",
+                "repository role result is incomplete or conflicting")
+        return result
 
     def _finish_validation(
         self,
@@ -1487,6 +1608,9 @@ class AgentRunHandler(BaseHTTPRequestHandler):
             if path == "/v1/project-workspaces/validations":
                 self._write(HTTPStatus.OK, self.server.state.run_validation(body))
                 return
+            if path == "/v1/project-workspaces/repository-roles/ensure":
+                self._write(HTTPStatus.OK, self.server.state.ensure_repository_roles(body))
+                return
             parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["v1", "executions"]:
                 if parts[3] == "lease":
@@ -1571,6 +1695,11 @@ def main() -> int:
         type=Path,
         default=Path("/usr/local/libexec/atenea/atenea-validation-v1.sh"),
     )
+    parser.add_argument(
+        "--repository-role-mediator",
+        type=Path,
+        default=Path("/usr/local/libexec/atenea/atenea-multi-repository-v1.sh"),
+    )
     parser.add_argument("--project-timeout", type=int, default=1800)
     args = parser.parse_args()
     if not (1 <= args.port <= 65535):
@@ -1593,6 +1722,7 @@ def main() -> int:
         beautips_project_runner=args.beautips_project_runner,
         beautips_workspace_activator=args.beautips_workspace_activator,
         project_validation_mediator=args.project_validation_mediator,
+        repository_role_mediator=args.repository_role_mediator,
     )
     server = AgentRunServer((args.bind, args.port), state, read_token(args.token_file))
     state.start()

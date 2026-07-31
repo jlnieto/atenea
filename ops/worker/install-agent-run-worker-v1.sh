@@ -12,6 +12,7 @@ PROJECT_RUNNER="/usr/local/libexec/atenea/project-codex-runner-v1.py"
 VALIDATION_MEDIATOR="/usr/local/libexec/atenea/atenea-validation-v1.sh"
 PLAYWRIGHT_VALIDATOR="/usr/local/libexec/atenea/atenea-playwright-validation-v1.sh"
 PLAYWRIGHT_CHECK="/usr/local/libexec/atenea/atenea-playwright-validation-v1.js"
+ROLE_MEDIATOR="/usr/local/libexec/atenea/atenea-multi-repository-v1.sh"
 INSTALLER="/usr/local/libexec/atenea/install-agent-run-worker-v1.sh"
 ENV_FILE="/etc/atenea-worker/agent-run-worker-v1.env"
 TOKEN_FILE="/etc/atenea-worker/agent-run-worker-v1.token"
@@ -47,6 +48,7 @@ validate_inputs() {
   [[ -f "$SCRIPT_DIR/atenea-validation-v1.sh" ]] || fail "validation mediator is missing"
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.sh" ]] || fail "Playwright validator is missing"
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.js" ]] || fail "Playwright check is missing"
+  [[ -f "$SCRIPT_DIR/atenea-multi-repository-v1.sh" ]] || fail "repository role mediator is missing"
   [[ -f "$SCRIPT_DIR/templates/$SERVICE" ]] || fail "systemd template is missing"
 }
 
@@ -138,6 +140,9 @@ apply_install() {
   install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-validation-v1.sh" "$VALIDATION_MEDIATOR"
   install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-playwright-validation-v1.sh" "$PLAYWRIGHT_VALIDATOR"
   install -o root -g root -m 0644 "$SCRIPT_DIR/atenea-playwright-validation-v1.js" "$PLAYWRIGHT_CHECK"
+  install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-multi-repository-v1.sh" "$ROLE_MEDIATOR"
+  id atenea-program-role >/dev/null 2>&1 || useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin atenea-program-role
+  id atenea-worker-role >/dev/null 2>&1 || useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin atenea-worker-role
   install -o root -g root -m 0755 "$SCRIPT_DIR/install-agent-run-worker-v1.sh" "$INSTALLER"
   install -d -o root -g atenea -m 0750 /etc/atenea-worker
   install -d -o atenea-worker -g atenea -m 0700 "$STATE_DIR"
@@ -161,6 +166,7 @@ apply_install() {
     printf 'atenea-worker ALL=(root) NOPASSWD: %s BACKEND_TEST *\n' "$VALIDATION_MEDIATOR"
     printf 'atenea-worker ALL=(root) NOPASSWD: %s WEB_BUILD *\n' "$VALIDATION_MEDIATOR"
     printf 'atenea-worker ALL=(root) NOPASSWD: %s ANDROID_BUILD *\n' "$VALIDATION_MEDIATOR"
+    printf 'atenea-worker ALL=(root) NOPASSWD: %s ensure *\n' "$ROLE_MEDIATOR"
   } >"$SUDOERS_FILE"
   chown root:root "$SUDOERS_FILE"
   chmod 0440 "$SUDOERS_FILE"
@@ -211,6 +217,15 @@ verify() {
       && "$(sha256sum "$INSTALLER" | cut -d' ' -f1)" \
         == "$(sha256sum "$SCRIPT_DIR/install-agent-run-worker-v1.sh" | cut -d' ' -f1)" ]] \
     || fail "worker installer differs from the reviewed source"
+  [[ -f "$ROLE_MEDIATOR" && ! -L "$ROLE_MEDIATOR" \
+      && "$(stat -c '%a:%U:%G' "$ROLE_MEDIATOR")" == "755:root:root" \
+      && "$(sha256sum "$ROLE_MEDIATOR" | cut -d' ' -f1)" \
+        == "$(sha256sum "$SCRIPT_DIR/atenea-multi-repository-v1.sh" | cut -d' ' -f1)" ]] \
+    || fail "repository role mediator differs from the reviewed source"
+  [[ "$(getent passwd atenea-program-role | cut -d: -f7)" == /usr/sbin/nologin ]] \
+    || fail "programme role identity is unavailable or interactive"
+  [[ "$(getent passwd atenea-worker-role | cut -d: -f7)" == /usr/sbin/nologin ]] \
+    || fail "worker source role identity is unavailable or interactive"
   jq -e '. as $root |
     .schemaVersion == "project-codex-v1" and
     .projectId == "atenea" and

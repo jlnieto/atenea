@@ -299,6 +299,34 @@ print(json.dumps({
             encoding="utf-8",
         )
         self.validation_mediator.chmod(0o755)
+        self.role_calls = root / "role-calls"
+        self.role_mediator = root / "role-mediator"
+        self.role_mediator.write_text(
+            """#!/usr/bin/env python3
+import hashlib, json, pathlib, sys
+_, session, change, code = sys.argv[1:]
+calls = pathlib.Path(__file__).with_name("role-calls")
+calls.write_text(calls.read_text() + "call\\n" if calls.exists() else "call\\n")
+repository = "https://github.com/jlnieto/atenea.git"
+program = "3" * 40
+roles = []
+for role, branch, commit, profile in (
+    ("ATENEA_CODE", "feature/actualizar-conversacion-en-web", code, "atenea-code-v1"),
+    ("PROGRAMME_OPENSPEC", "program/remote-codex-worker-platform", program, "openspec-strict-v1"),
+    ("WORKER_SOURCE", "program/remote-codex-worker-platform", program, "worker-contract-v1"),
+):
+    roles.append({"role": role, "authority": "READ_WRITE", "repository": repository,
+        "branch": branch, "commit": commit,
+        "mirrorIdentitySha256": hashlib.sha256(b"mirror").hexdigest(),
+        "worktreeIdentitySha256": hashlib.sha256(role.encode()).hexdigest(),
+        "validationProfile": profile, "readiness": "DRAFT"})
+print(json.dumps({"sessionId": session,
+    "workspaceIdentity": "remote:ax42-01:work-session:" + session,
+    "changeIdentity": change, "roles": roles, "valuesExposed": False}))
+""",
+            encoding="utf-8",
+        )
+        self.role_mediator.chmod(0o755)
         self.config = root / "project.json"
         self.config.write_text(json.dumps({
             "schemaVersion": MODULE.PROJECT_CAPABILITY,
@@ -328,6 +356,7 @@ print(json.dumps({
             project_config_uid=os.getuid(),
             privilege_command=(),
             project_validation_mediator=self.validation_mediator,
+            repository_role_mediator=self.role_mediator,
         )
         self.state._observe_project_commit = lambda _route: self.accepted_commit
 
@@ -504,6 +533,41 @@ print(json.dumps({
         self.assertRegex(result["artifactManifestSha256"], r"^[0-9a-f]{64}$")
         self.assertFalse(result["valuesExposed"])
         self.assertEqual(result, self.state.run_validation(request))
+
+    def test_multi_repository_roles_are_fixed_separate_and_sanitized(self):
+        request = {
+            "sessionId": self.session_id,
+            "workspaceIdentity": self.workspace_identity,
+            "changeIdentity": str(uuid.uuid4()),
+            "codeCommit": self.retained_head,
+        }
+        result = self.state.ensure_repository_roles(request)
+
+        self.assertEqual(3, len(result["roles"]))
+        self.assertEqual(
+            {"ATENEA_CODE", "PROGRAMME_OPENSPEC", "WORKER_SOURCE"},
+            {role["role"] for role in result["roles"]},
+        )
+        self.assertFalse(result["valuesExposed"])
+        self.assertEqual(1, self.role_calls.read_text().count("call"))
+        self.assertNotIn("path", json.dumps(result))
+
+    def test_multi_repository_roles_reject_extra_and_foreign_authority(self):
+        base = {
+            "sessionId": self.session_id,
+            "workspaceIdentity": self.workspace_identity,
+            "changeIdentity": str(uuid.uuid4()),
+            "codeCommit": self.retained_head,
+        }
+        for mutation in (
+            {"repository": "https://github.com/foreign/repo.git"},
+            {"workspaceIdentity": "remote:ax42-01:work-session:" + str(uuid.uuid4())},
+            {"codeCommit": "f" * 40},
+        ):
+            request = {**base, **mutation}
+            with self.assertRaises(MODULE.ProtocolError):
+                self.state.ensure_repository_roles(request)
+        self.assertFalse(self.role_calls.exists())
 
 
 class ProjectWorkerStateTest(unittest.TestCase):

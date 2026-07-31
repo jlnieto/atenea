@@ -4678,3 +4678,41 @@ Sanitized task-0.4 evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.4-truthful-acceptance`;
 the SHA-256 of its `SHA256SUMS` is
 `88a9e53f34bc1026003d187b6709a8c0f86dd04176373c513208d09e3c0b1006`.
+
+Task 0.7 is complete and change progress is `7/57`; the exact resume point is
+task 0.8.
+
+Atenea now persists one closed three-role repository set per remote
+WorkSession. `ATENEA_CODE`, `PROGRAMME_OPENSPEC` and `WORKER_SOURCE` share one
+immutable change identity while retaining their own exact repository, branch,
+commit, mirror/worktree SHA-256 identity, validation profile and readiness.
+The database requires both source and validation-projection fingerprints
+before a role can become `VALIDATED` or `INTEGRATION_READY`. Linked readiness
+cannot advance while any component remains `DRAFT`.
+
+The AX42 worker contract accepts no caller repository, path, branch, mirror,
+authority, validation profile or command. Its fixed root-owned mediator derives
+the registered Atenea workspace, creates distinct programme and worker-source
+worktrees from the reviewed programme commit and assigns them to separate
+non-login operating-system identities with no group/other permissions. The
+installed root-owned worker remains outside both writable roles. Repeating the
+same identity is idempotent; alternate change identities, foreign commits,
+extra fields, missing ownership and ambiguous pre-existing paths fail closed.
+
+Two backend passes each ran 440 tests with zero failures, errors or skips and
+migrated an empty PostgreSQL database through all 55 Flyway migrations. Two
+worker passes each ran 26 tests with zero failures and each also passed the
+synthetic multi-worktree ownership scenario. Focused API/service, Python
+compile, shell syntax, diff and strict OpenSpec validation passed. Test
+containers and networks were removed while the named test database volume was
+retained.
+
+No worker installation, deployment, real repository-role creation,
+production, routing, preview or Beautips change occurred. The installed worker
+and its deliberately stale mirror refs remain unchanged pending later
+foundation rollout tasks.
+
+Sanitized task-0.7 evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-0.7-multi-repository-roles`;
+the SHA-256 of its `SHA256SUMS` is
+`de64f78e63956ff9c466ed185700a8454b300c61e7d58b60fd7fd81d3f469022`.
