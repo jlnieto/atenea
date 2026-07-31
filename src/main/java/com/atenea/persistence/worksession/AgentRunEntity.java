@@ -154,6 +154,40 @@ public class AgentRunEntity {
     @Column(name = "status_reason", length = 500)
     private String statusReason;
 
+    @Column(name = "progress_next_sequence", nullable = false)
+    private long progressNextSequence = 1;
+
+    @Column(name = "progress_retained_floor")
+    private Long progressRetainedFloor;
+
+    @Column(name = "progress_latest_sequence")
+    private Long progressLatestSequence;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "progress_latest_category", length = 32)
+    private AgentRunProgressCategory progressLatestCategory;
+
+    @Column(name = "progress_latest_message", length = 160)
+    private String progressLatestMessage;
+
+    @Column(name = "progress_latest_at")
+    private Instant progressLatestAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "progress_current_state", length = 32)
+    private AgentRunProgressCategory progressCurrentState;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "progress_terminal_category", length = 32)
+    private AgentRunProgressCategory progressTerminalCategory;
+
+    @Column(name = "progress_elapsed_millis")
+    private Long progressElapsedMillis;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "progress_required_next_action", length = 32)
+    private AgentRunProgressNextAction progressRequiredNextAction;
+
     @Version
     @Column(name = "lock_version", nullable = false)
     private long lockVersion;
@@ -304,6 +338,26 @@ public class AgentRunEntity {
     public void setReconciliationStartedAt(Instant reconciliationStartedAt) { this.reconciliationStartedAt = reconciliationStartedAt; }
     public String getStatusReason() { return statusReason; }
     public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
+    public long getProgressNextSequence() { return progressNextSequence; }
+    public void setProgressNextSequence(long progressNextSequence) { this.progressNextSequence = progressNextSequence; }
+    public Long getProgressRetainedFloor() { return progressRetainedFloor; }
+    public void setProgressRetainedFloor(Long progressRetainedFloor) { this.progressRetainedFloor = progressRetainedFloor; }
+    public Long getProgressLatestSequence() { return progressLatestSequence; }
+    public void setProgressLatestSequence(Long progressLatestSequence) { this.progressLatestSequence = progressLatestSequence; }
+    public AgentRunProgressCategory getProgressLatestCategory() { return progressLatestCategory; }
+    public void setProgressLatestCategory(AgentRunProgressCategory progressLatestCategory) { this.progressLatestCategory = progressLatestCategory; }
+    public String getProgressLatestMessage() { return progressLatestMessage; }
+    public void setProgressLatestMessage(String progressLatestMessage) { this.progressLatestMessage = progressLatestMessage; }
+    public Instant getProgressLatestAt() { return progressLatestAt; }
+    public void setProgressLatestAt(Instant progressLatestAt) { this.progressLatestAt = progressLatestAt; }
+    public AgentRunProgressCategory getProgressCurrentState() { return progressCurrentState; }
+    public void setProgressCurrentState(AgentRunProgressCategory progressCurrentState) { this.progressCurrentState = progressCurrentState; }
+    public AgentRunProgressCategory getProgressTerminalCategory() { return progressTerminalCategory; }
+    public void setProgressTerminalCategory(AgentRunProgressCategory progressTerminalCategory) { this.progressTerminalCategory = progressTerminalCategory; }
+    public Long getProgressElapsedMillis() { return progressElapsedMillis; }
+    public void setProgressElapsedMillis(Long progressElapsedMillis) { this.progressElapsedMillis = progressElapsedMillis; }
+    public AgentRunProgressNextAction getProgressRequiredNextAction() { return progressRequiredNextAction; }
+    public void setProgressRequiredNextAction(AgentRunProgressNextAction progressRequiredNextAction) { this.progressRequiredNextAction = progressRequiredNextAction; }
     public long getLockVersion() { return lockVersion; }
     public void setLockVersion(long lockVersion) { this.lockVersion = lockVersion; }
 

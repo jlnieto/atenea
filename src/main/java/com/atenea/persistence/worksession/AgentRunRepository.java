@@ -8,8 +8,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 
 public interface AgentRunRepository extends JpaRepository<AgentRunEntity, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select run from AgentRunEntity run where run.id = :runId")
+    Optional<AgentRunEntity> findByIdForProgressUpdate(@Param("runId") Long runId);
 
     boolean existsBySessionIdAndStatus(Long sessionId, AgentRunStatus status);
 
