@@ -290,6 +290,8 @@ production activation are recorded later in this ledger.
 | D-087 | Roll back an accepted Codex activation only with a new ten-minute single-use platform-administrator authorization bound to the exact administrator, worker, plan, activation and current/previous inventory; swap only those two verified links and schedule a restart only for `atenea-agent-run-worker-v1.service`, with zero project App Server restarts. | An activation authorization cannot safely authorize a later operator rollback, and caller-selected services or reconstructed release ownership could affect project runtimes. A durable intermediate link-restored state makes interruption retry only the fixed restart schedule instead of swapping links twice. | accepted, synthetic interruption/repetition-tested and not deployed | backend/worker/platform/security owners | before changing rollback lifetime, binding, persisted transition, link identity or affected service boundary |
 | D-088 | Expose managed Codex versions as a state-first platform-administrator web workflow with distinct plan, stage, authorize-activation, activate, authorize-rollback and rollback actions; derive every request from returned persisted identities and hide the navigation from known non-administrator roles while retaining backend authority on direct access. | Combining authorization and execution or accepting free-form operational input would weaken the security boundary, while a generic dashboard would obscure whether the system is ready, blocked or awaiting a separately authorized action. | accepted, role/API/browser-tested and not deployed | web/backend/platform/security owners | before changing operator role projection, managed-update navigation, action sequencing or displayed service impact |
 | D-089 | Close the first managed-Codex lifecycle through its fully accepted synthetic update/rollback branch and retain AX42 at Codex CLI 0.145.0 until a future instruction separately and explicitly authorizes one named real managed update. | General implementation or rollout authority does not satisfy the change's deliberately separate real-release boundary; the task explicitly permits synthetic closure, which proves the machinery without silently changing the production execution engine. | accepted and read-only baseline-verified | platform/security owners | before any real managed Codex stage, activation, rollback or worker restart |
+| D-090 | Refresh only the fixed, non-symlink Atenea canonical mirror immediately before first-workspace commit admission, after validating static WorkSession/project ownership and only when the origin URL, remote-only fetch mapping and absence of a push URL are exact. | A newly published canonical commit can otherwise leave AX42 safely but permanently rejecting a current WorkSession against a stale mirror; refreshing before static ownership checks or through caller authority would weaken the fail-closed boundary. | accepted, worker-tested and live-verified | worker/platform/security owners | before changing first-workspace canonical refresh, mirror provenance or admission ordering |
+| D-091 | Persist a failed-run retry's immutable lineage and inherited Codex profile in the same first AgentRun insert, and retire a pre-dispatch orphan only after exact session/run/status/null-remote/null-lineage predicates plus zero worker execution are proven. | Attaching an immutable lineage after insertion can leave an unowned queued row when completion validation fails; atomic insertion prevents that race while the exact remediation rule preserves the failed audit record without adopting or dispatching it. | accepted, full-suite-tested and live-verified | backend/recovery/platform owners | before changing retry creation, lineage mutability or pre-dispatch orphan remediation |
 
 ## Deferred decisions and gates
 
@@ -6351,3 +6353,69 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.3-atenea-profile-progress-continuation`;
 the SHA-256 of its `SHA256SUMS` is
 `270597dfaf55571e7cdc2bf766c3a0f99499b7172dfd5b17cbbe38375b7aef79`.
+
+Task 7.4 is complete and change progress is `53/57`; the exact implementation
+resume point is task 7.5. Task 7.5 and all later tasks remain pending.
+
+The accepted exercise used only Atenea WorkSession
+`2d98d762-7d9b-4cc1-948f-5e6353dc8b76`, profile `gpt-5.6-sol` / `high` and
+canonical commit `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Canonical Atenea,
+its upstream, the AX42 mirror and the clean WorkSession worktree were equal;
+the control-plane tree was
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`.
+
+One exact remote execution accepted one cancellation request and reached
+`CANCELLED` after 191.710 seconds. The recovery operation reached `SUCCEEDED`
+with closed outcome `CANCELLED`; AX42 retained one cancelled execution and
+zero session processes. A second turn was persisted and the Android client
+was then closed while the worker service was deliberately unavailable. The
+run remained `RECONCILING` for the bounded policy and reached `FAILED` after
+120.426 seconds with no remote execution identity and no replacement
+dispatch.
+
+The worker then returned active with its project configuration and allocation
+hashes plus mirror and worktree commits unchanged. An exact recovery retry of
+the pre-dispatch failure persisted one immutable `retryOfRunId` link, inherited
+the same profile, completed its recovery operation as `RETRY_CREATED`, and
+created one dispatch plus one remote execution. The backend was restarted
+while that execution remained live; Spring returned in 14.140 seconds and
+startup reconciliation retained the same execution. The retry reached
+`SUCCEEDED` after 192.387 seconds without a second linked run, dispatch or
+remote execution.
+
+The aggregate is three control-plane runs, three distinct dispatches, two
+remote executions and zero non-terminal runs: one cancelled, one deliberately
+absent pre-dispatch failure and one successful linked retry. Worker state
+contains exactly the cancelled and successful executions. No session,
+Playwright or Chromium process remains. No remote execution, Codex thread,
+turn, prompt, answer, token or credential identity was retained in programme
+evidence.
+
+The live exercise exposed two implementation defects before acceptance. The
+first validation WorkSession observed the current control-plane commit while
+AX42 still held the preceding mirror tip, so exact admission returned HTTP 403
+before creating any workspace or remote execution. Worker commit `b30b14f`
+implements D-090 and passed 49 tests. The second defect inserted a retry before
+attaching its immutable lineage, causing Hibernate to reject the later update.
+The exact queued orphan had no remote execution, was absent from worker state
+and was terminalized only through D-091's complete predicates. Atenea commit
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` now inserts lineage and inherited
+profile atomically. Focused tests and the complete clean-database backend
+suite passed with 526 tests and zero failures, errors or skips.
+
+The initial backend-restart harness reported its own timeout because it
+searched for JSON quotes with literal backslashes. No second restart or
+rebuild followed. Read-only container/log/worker inspection showed the
+application had started normally; a corrected finite curl returned HTTP 200
+and `UP`. The backend image remained unchanged across the restart and Docker
+restart count remained zero.
+
+Final checks found production `UP`, preview and Beautips containers `UP`, the
+worker active with `NRestarts=0`, exact slot2/heavy1 admission retained and
+zero session/browser processes. Production routing, Beautips routing,
+unrelated WorkSessions and unrelated worker resources were unchanged.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.4-recovery-disconnect-restart`;
+the SHA-256 of its `SHA256SUMS` is
+`378021b3bb1bca888937502ef8b9b2573e00982ad07a87eb12efdf80eba69c4a`.
