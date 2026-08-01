@@ -10,6 +10,7 @@ import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.remoteworker.RemoteAgentRunCoordinator;
 import com.atenea.remoteworker.RemoteWorkerException;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.service.worksession.AgentRunRecoveryConflictException;
 import com.atenea.service.worksession.AgentRunRecoveryOperationService;
 import com.atenea.service.worksession.AgentRunService;
@@ -37,6 +38,7 @@ public class AgentRunRecoveryCoordinator {
     private final AgentRunRepository runRepository;
     private final AgentRunService runService;
     private final RemoteAgentRunCoordinator remoteCoordinator;
+    private final CanonicalSourceAdmissionService canonicalSourceAdmissionService;
     private final ExecutorService executor;
 
     public AgentRunRecoveryCoordinator(
@@ -44,12 +46,14 @@ public class AgentRunRecoveryCoordinator {
             AgentRunRecoveryOperationRepository operationRepository,
             AgentRunRepository runRepository,
             AgentRunService runService,
-            RemoteAgentRunCoordinator remoteCoordinator) {
+            RemoteAgentRunCoordinator remoteCoordinator,
+            CanonicalSourceAdmissionService canonicalSourceAdmissionService) {
         this.operationService = operationService;
         this.operationRepository = operationRepository;
         this.runRepository = runRepository;
         this.runService = runService;
         this.remoteCoordinator = remoteCoordinator;
+        this.canonicalSourceAdmissionService = canonicalSourceAdmissionService;
         ThreadFactory factory = runnable -> {
             Thread thread = new Thread(runnable, "agent-run-recovery-coordinator");
             thread.setDaemon(true);
@@ -145,6 +149,7 @@ public class AgentRunRecoveryCoordinator {
                     operationId, AgentRunRecoveryOutcome.NON_TERMINAL_RUN_EXISTS, null);
             return;
         }
+        canonicalSourceAdmissionService.admitBeforeWrite(source.getSession());
         RemoteAgentRunCoordinator.RetryProof proof = remoteCoordinator.proveTerminalOrAbsent(runId);
         if (proof == RemoteAgentRunCoordinator.RetryProof.STILL_LIVE) {
             operationService.complete(

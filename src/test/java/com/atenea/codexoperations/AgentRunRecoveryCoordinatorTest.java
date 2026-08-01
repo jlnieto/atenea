@@ -14,6 +14,7 @@ import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.remoteworker.RemoteAgentRunCoordinator;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.service.worksession.AgentRunRecoveryOperationService;
 import com.atenea.service.worksession.AgentRunService;
 import java.util.Optional;
@@ -29,6 +30,7 @@ class AgentRunRecoveryCoordinatorTest {
     private AgentRunRepository runRepository;
     private AgentRunService runService;
     private RemoteAgentRunCoordinator remoteCoordinator;
+    private CanonicalSourceAdmissionService canonicalSourceAdmissionService;
     private AgentRunRecoveryCoordinator coordinator;
 
     @BeforeEach
@@ -38,9 +40,10 @@ class AgentRunRecoveryCoordinatorTest {
         runRepository = mock(AgentRunRepository.class);
         runService = mock(AgentRunService.class);
         remoteCoordinator = mock(RemoteAgentRunCoordinator.class);
+        canonicalSourceAdmissionService = mock(CanonicalSourceAdmissionService.class);
         coordinator = new AgentRunRecoveryCoordinator(
                 operationService, operationRepository, runRepository,
-                runService, remoteCoordinator);
+                runService, remoteCoordinator, canonicalSourceAdmissionService);
     }
 
     @AfterEach
@@ -76,6 +79,7 @@ class AgentRunRecoveryCoordinatorTest {
 
         verify(operationService).complete(
                 operationId, AgentRunRecoveryOutcome.RETRY_CREATED, retry.getId());
+        verify(canonicalSourceAdmissionService).admitBeforeWrite(session);
         verify(remoteCoordinator).dispatchAfterCommit(retry.getId());
     }
 
@@ -102,6 +106,7 @@ class AgentRunRecoveryCoordinatorTest {
 
         verify(operationService).complete(
                 operationId, AgentRunRecoveryOutcome.EXECUTION_STILL_LIVE, null);
+        verify(canonicalSourceAdmissionService).admitBeforeWrite(session);
         verify(runService, never()).createRemoteRetryRun(source.getId());
         verify(remoteCoordinator, never()).dispatchAfterCommit(org.mockito.ArgumentMatchers.any());
     }
