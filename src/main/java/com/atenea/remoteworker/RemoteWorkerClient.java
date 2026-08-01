@@ -39,6 +39,10 @@ public class RemoteWorkerClient {
         return exchange("GET", "/v1/health", null, Health.class);
     }
 
+    public CodexCatalog codexCatalog() {
+        return exchange("GET", "/v1/codex/catalog", null, CodexCatalog.class);
+    }
+
     public CodexUpdateStage stageCodexUpdate(
             UUID planId, UUID candidateId, UUID idempotencyKey) {
         Map<String, Object> body = Map.of(
@@ -257,7 +261,17 @@ public class RemoteWorkerClient {
                     409);
         }
         Map<String, Object> workload = new LinkedHashMap<>();
-        workload.put("kind", ProjectCodexIdentity.WORKLOAD_KIND);
+        boolean hasProfile = run.getCodexModelId() != null
+                || run.getCodexReasoningEffort() != null
+                || run.getCodexCatalogRevision() != null
+                || run.getCodexVersion() != null;
+        if (hasProfile && (run.getCodexModelId() == null
+                || run.getCodexReasoningEffort() == null
+                || run.getCodexCatalogRevision() == null
+                || run.getCodexVersion() == null)) {
+            throw new RemoteWorkerException("Persisted Codex profile is incomplete", 409);
+        }
+        workload.put("kind", hasProfile ? "project-codex-v2" : ProjectCodexIdentity.WORKLOAD_KIND);
         workload.put("projectId", run.getProjectIdentity());
         workload.put("repository", run.getRepositoryUrl());
         workload.put("branch", run.getRepositoryBranch());
@@ -270,6 +284,12 @@ public class RemoteWorkerClient {
         workload.put("projectInstructionSha256", run.getProjectInstructionSha256());
         workload.put("message", message);
         workload.put("threadId", run.getSession().getExternalThreadId());
+        if (hasProfile) {
+            workload.put("modelId", run.getCodexModelId());
+            workload.put("reasoningEffort", run.getCodexReasoningEffort().canonicalValue());
+            workload.put("catalogRevision", run.getCodexCatalogRevision());
+            workload.put("codexVersion", run.getCodexVersion());
+        }
         return workload;
     }
 
@@ -415,6 +435,27 @@ public class RemoteWorkerClient {
             int heavyInUse,
             int queued,
             Instant serverTime
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record CodexCatalog(
+            String schemaVersion,
+            String catalogRevision,
+            String workerId,
+            String codexVersion,
+            Instant generatedAt,
+            List<CodexModel> models
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record CodexModel(
+            String modelId,
+            String displayName,
+            List<String> supportedEfforts,
+            String defaultEffort,
+            String availability
     ) {
     }
 

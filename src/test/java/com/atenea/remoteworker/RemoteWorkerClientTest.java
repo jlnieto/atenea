@@ -180,6 +180,24 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/codex/catalog", exchange -> {
+            byte[] response = objectMapper.writeValueAsBytes(java.util.Map.of(
+                    "schemaVersion", "codex-model-catalog-v1",
+                    "catalogRevision", "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187",
+                    "workerId", "ax42-01",
+                    "codexVersion", "0.145.0",
+                    "generatedAt", Instant.parse("2026-07-31T23:00:00Z"),
+                    "models", java.util.List.of(java.util.Map.of(
+                            "modelId", "gpt-5.6-sol",
+                            "displayName", "GPT-5.6 Sol",
+                            "supportedEfforts", java.util.List.of(
+                                    "none", "low", "medium", "high", "xhigh", "max"),
+                            "defaultEffort", "medium",
+                            "availability", "AVAILABLE"))));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.createContext("/v1/codex/update/stage", exchange -> {
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
             JsonNode request = requestBody.get();
@@ -317,6 +335,43 @@ class RemoteWorkerClientTest {
         assertNull(workload.get("environment"));
         assertNull(workload.get("credential"));
         assertNull(workload.get("ruleSource"));
+    }
+
+    @Test
+    void fetchesStrictWorkerCodexCatalog() {
+        RemoteWorkerClient.CodexCatalog catalog = client.codexCatalog();
+
+        assertEquals("codex-model-catalog-v1", catalog.schemaVersion());
+        assertEquals("125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187",
+                catalog.catalogRevision());
+        assertEquals("0.145.0", catalog.codexVersion());
+        assertEquals("gpt-5.6-sol", catalog.models().getFirst().modelId());
+        assertEquals(java.util.List.of("none", "low", "medium", "high", "xhigh", "max"),
+                catalog.models().getFirst().supportedEfforts());
+    }
+
+    @Test
+    void profiledProjectDispatchUsesOnlyClosedV2Fields() {
+        AgentRunEntity run = projectRun("bcf43e2e-c9e8-42df-96b2-e9183462c2f4");
+        run.setCodexModelId("gpt-5.6-sol");
+        run.setCodexReasoningEffort(
+                com.atenea.persistence.worksession.CodexReasoningEffort.HIGH);
+        run.setCodexCatalogRevision(
+                "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187");
+        run.setCodexVersion("0.145.0");
+
+        client.dispatch(run, "Inspect the accepted project.");
+
+        JsonNode workload = requestBody.get().get("workload");
+        assertEquals("project-codex-v2", workload.get("kind").asText());
+        assertEquals("gpt-5.6-sol", workload.get("modelId").asText());
+        assertEquals("high", workload.get("reasoningEffort").asText());
+        assertEquals(run.getCodexCatalogRevision(), workload.get("catalogRevision").asText());
+        assertEquals("0.145.0", workload.get("codexVersion").asText());
+        assertEquals(17, workload.size());
+        assertNull(workload.get("command"));
+        assertNull(workload.get("provider"));
+        assertNull(workload.get("endpoint"));
     }
 
     @Test
