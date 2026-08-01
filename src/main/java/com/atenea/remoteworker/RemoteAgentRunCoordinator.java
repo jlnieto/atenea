@@ -103,6 +103,7 @@ public class RemoteAgentRunCoordinator {
                     persisted.setReconciliationStartedAt(Instant.now());
                     persisted.setStatusReason("Reconciling persisted remote execution after Atenea startup");
                     agentRunRepository.save(persisted);
+                    progressService.append(persisted.getId(), AgentRunProgressCategory.RECONCILING);
                 }
             });
             dispatchAfterCommit(run.getId());

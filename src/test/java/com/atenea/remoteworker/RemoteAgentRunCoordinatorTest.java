@@ -194,6 +194,7 @@ class RemoteAgentRunCoordinatorTest {
         waitForTerminal(run);
 
         assertEquals(AgentRunStatus.SUCCEEDED, run.getStatus());
+        verify(progressService).append(run.getId(), AgentRunProgressCategory.RECONCILING);
         verify(client, never()).dispatch(any(), any());
         verify(client).get(run);
     }
@@ -222,6 +223,7 @@ class RemoteAgentRunCoordinatorTest {
         waitForTerminal(run);
 
         assertEquals(AgentRunStatus.SUCCEEDED, run.getStatus());
+        verify(progressService).append(run.getId(), AgentRunProgressCategory.RECONCILING);
         verify(client, never()).dispatch(any(), any());
         verify(client).get(run);
     }
