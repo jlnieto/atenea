@@ -72,7 +72,7 @@
 
 - [x] 7.1 Run complete Atenea backend, web, Android and worker suites twice from clean source and empty migrated test databases
 - [x] 7.2 Deploy backend, worker and Android changes disabled, then verify production, preview, Beautips, backup, RAID and unrelated slots unchanged
-- [ ] 7.3 Enable one Atenea WorkSession and prove selected profile, safe intermediate progress, terminal response and same-thread continuation
+- [x] 7.3 Enable one Atenea WorkSession and prove selected profile, safe intermediate progress, terminal response and same-thread continuation
 - [ ] 7.4 Prove cancel, unreachable reconcile, safe failed retry, client disconnect and backend/worker restart without duplicate execution
 - [ ] 7.5 Prove completion, failure and action-required notification deduplication plus exact deep link on the configured Android device
 - [ ] 7.6 Repeat disable/rollback and re-enable while preserving WorkSession, profile history, progress, devices, deliveries and Git

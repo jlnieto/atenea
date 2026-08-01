@@ -6296,3 +6296,58 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.2-disabled-deployment`;
 the SHA-256 of its `SHA256SUMS` is
 `8b92d30315869ae8b4653d9aa35e72143d66c4ef397fc5c3fe3230e9b67cfed0`.
+
+Task 7.3 is complete and change progress is `52/57`; the exact implementation
+resume point is task 7.4. Task 7.4 and all later tasks remain pending.
+
+One real Atenea WorkSession, remote UUID
+`f8b7bd8d-5708-4c76-b206-e76d61fd8a89`, remained `OPEN` on AX42 with the
+persisted default profile `gpt-5.6-sol` / `high`. Both accepted runs used
+Codex `0.145.0`, catalog revision
+`125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187`
+and exact canonical, mirror and clean worktree commit
+`3615d29b8ddf20830289051bb7539c223296fbf7`.
+
+The initial accepted turn completed in 25.785 seconds with seven monotonic
+safe events from `ACCEPTED` through `COMPLETED`. The user-submitted
+continuation completed in 7.711 seconds with six safe events and the same
+terminal projection. The control plane retained two dispatched runs with two
+distinct execution identities and zero non-terminal runs. A worker-side
+aggregate proved both results carried a thread identity, both used one
+distinct thread and two distinct turns; no thread, turn, prompt, answer or
+remote execution identifier was retained in programme evidence.
+
+Two preceding attempts remain immutable fail-closed history and have no
+remote execution identity. Investigation found that a previously closed
+Atenea WorkSession still owned its released admission registration and active
+allocation marker while owning zero containers. Its exact registration and
+admission were released, and its byte-preserved allocation marker was retired
+under D-048 after the sealed SHA-256
+`c4425a8ca00247e97c33ca1718606c5c0d7310ee82cb57ee56b0c6ddac3da3f1`
+and zero-resource state were verified. No foreign WorkSession or unrelated
+slot was changed. D-050 permits retaining these pre-dispatch failures beside
+the later successful terminal runs.
+
+The exercise also exposed missing durable progress on closed reconciliation
+paths. Atenea commits `4f81c0855d0966293faaa8e5e5660831b58dde8f` and
+`3615d29b8ddf20830289051bb7539c223296fbf7` now append the applicable
+`RECONCILING`, `FAILED` or `CANCELLED` events for command, timeout,
+cancellation and startup reconciliation. Focused tests and the complete
+backend suite passed, with 518 tests and zero failures, errors or skips, before
+the final production deployment. The intentionally disabled recovery gate
+continued to reject retry API calls; the accepted validation used a new turn
+and did not enable task-7.4 recovery behavior early.
+
+Final checks found production, preview and Beautips `UP`; canonical Atenea,
+its upstream, the AX42 mirror and the WorkSession worktree are synchronized
+and clean. The worker is active/running with `NRestarts=0`, all four rootless
+slot proxies are active with container counts `3/0/0/3`, all RAID arrays are
+`[UU]`, and SSH, Tailscale and the firewall are active. The accepted
+WorkSession retains exact `slot2` and `heavy1` admission, while session-owned
+processes, Playwright/Chromium processes and active worker executions are
+zero. Production routing and unrelated resources did not change.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.3-atenea-profile-progress-continuation`;
+the SHA-256 of its `SHA256SUMS` is
+`270597dfaf55571e7cdc2bf766c3a0f99499b7172dfd5b17cbbe38375b7aef79`.
