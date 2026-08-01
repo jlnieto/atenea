@@ -19,6 +19,7 @@ public class AttachmentProperties {
     private String endpoint = "http://127.0.0.1:8788";
     private String tokenFile = "";
     private Set<String> syntheticProjectAllowlist = new LinkedHashSet<>();
+    private Set<String> realProjectAllowlist = new LinkedHashSet<>();
     private Duration connectTimeout = Duration.ofSeconds(3);
     private Duration requestTimeout = Duration.ofSeconds(15);
     private long maxFileBytes = DEFAULT_MAX_FILE_BYTES;
@@ -64,6 +65,16 @@ public class AttachmentProperties {
         this.syntheticProjectAllowlist = syntheticProjectAllowlist == null
                 ? new LinkedHashSet<>()
                 : new LinkedHashSet<>(syntheticProjectAllowlist);
+    }
+
+    public Set<String> getRealProjectAllowlist() {
+        return realProjectAllowlist;
+    }
+
+    public void setRealProjectAllowlist(Set<String> realProjectAllowlist) {
+        this.realProjectAllowlist = realProjectAllowlist == null
+                ? new LinkedHashSet<>()
+                : new LinkedHashSet<>(realProjectAllowlist);
     }
 
     public Duration getConnectTimeout() {

@@ -59,6 +59,7 @@ atenea:
     endpoint: ${ATENEA_ATTACHMENTS_ENDPOINT:http://127.0.0.1:8788}
     token-file: ${ATENEA_ATTACHMENTS_TOKEN_FILE:}
     synthetic-project-allowlist: ${ATENEA_ATTACHMENTS_SYNTHETIC_PROJECT_ALLOWLIST:}
+    real-project-allowlist: ${ATENEA_ATTACHMENTS_REAL_PROJECT_ALLOWLIST:}
     connect-timeout: ${ATENEA_ATTACHMENTS_CONNECT_TIMEOUT:3s}
     request-timeout: ${ATENEA_ATTACHMENTS_REQUEST_TIMEOUT:15s}
     max-file-bytes: ${ATENEA_ATTACHMENTS_MAX_FILE_BYTES:16777216}
