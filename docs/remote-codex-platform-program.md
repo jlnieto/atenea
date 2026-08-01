@@ -6781,3 +6781,25 @@ task 0.4. Accepted sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.3-entry-fingerprint-accepted`;
 the SHA-256 of its `SHA256SUMS` is
 `388181570cbe2eff43f117a6a6ded0e822afb72915341c7f8597652b3bcd4ec2`.
+
+Task 0.4 is complete and change progress is `4/83`; the exact resume point is
+task 0.5. Production exposes zero attachment environment override names, zero
+attachment-related mount destinations and no attachment token file. Its
+default-disabled backend therefore has no usable real attachment endpoint or
+credential boundary.
+
+AX42's attachment program and systemd unit are byte-exact with reviewed source.
+The service is active on the worker's private Tailscale address only, owns one
+exact listener, has one exact Atenea-to-AX42 UFW admission rule and returns HTTP
+401 without authentication. The installed external-backup program is also
+byte-exact with reviewed source and its closed source policy includes the
+attachment boundary. Both backup timers are active, both latest service results
+are `success/0`, and the accepted backup/check/retention/isolated-restore rollup
+still verifies at SHA-256
+`90c2acc6882d8f498bd70742d9dcb3b7699edbe3628e6d1fba829938ecc18b4c`.
+
+No backup, restore, upload, download, service restart or configuration mutation
+occurred. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.4-prerequisite-boundary`;
+the SHA-256 of its `SHA256SUMS` is
+`32a6bc99470b6f36a5b37d35fff29b5166a32be8d923f128dd3952673e89f9c0`.

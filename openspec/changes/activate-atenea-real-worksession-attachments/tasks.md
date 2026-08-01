@@ -18,7 +18,7 @@ adopt, delete or reconstruct ambiguous state automatically.
   all attachments remain intact. Accepted evidence is sealed under
   `runs/task-0.3-entry-fingerprint-accepted`.
 
-- [ ] 0.4 Confirm read-only that the backend has no attachment token mount/real endpoint, AX42 attachment v1 is private and active, the backup source policy includes the attachment root, and backup/check timers plus accepted restore evidence remain healthy
+- [x] 0.4 Confirm read-only that the backend has no attachment token mount/real endpoint, AX42 attachment v1 is private and active, the backup source policy includes the attachment root, and backup/check timers plus accepted restore evidence remain healthy
 - [ ] 0.5 Record the six audited implementation gaps: synthetic-name admission, hard-coded synthetic upload, caller classification, absent turn binding, absent v3/`--image` delivery and misleading enabled-looking web affordance
 - [ ] 0.6 Create sanitized entry evidence with commands, exit codes, finite timeouts, durations and `SHA256SUMS`, update the programme ledger and pass strict OpenSpec validation
 
