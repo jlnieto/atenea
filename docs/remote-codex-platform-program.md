@@ -6718,3 +6718,38 @@ blocker evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.3-blocked-codex-release-mode`;
 the SHA-256 of its `SHA256SUMS` is
 `917263d315f6829dc52a47af4c875e8badadb9a869fa21b4415ce7c8d25bd26e`.
+
+The release-root mode blocker is now resolved. Programme commit
+`a1c487b33efca6e03b7ca392f779ab64dc27d5ba` adds an installer regression for
+setgid inheritance beneath a `2770` parent and explicitly clears inherited
+special bits so the existing exact `0750` contract is enforced. All 13 focused
+installer, staging and activation tests pass. The exact installer was deployed
+to AX42 and only the six platform-owned release, inbox, operation, activation
+and rollback directory modes were normalized. The AgentRun service was not
+restarted; release links, project configuration and entry count did not
+change; the complete canonical verifier now passes.
+
+The first sealed task-0.3 bundle's zero attachment-file/byte result is invalid.
+Its unprivileged traversal returned `Permission denied`, and the pipeline lacked
+`pipefail`, allowing the following count to mask that failure. The original
+bundle remains unchanged for audit transparency, but those two fields are
+superseded by a corrected mediated read-only fingerprint.
+
+That fingerprint found 16 regular files totalling 261,276 bytes in the retained
+attachment boundary while production remains at V61 with zero attachment rows
+and zero indexed attachment bytes. None is incoming, a symlink or a special
+file; all are mode `0600` and owned by `atenea-worker:atenea`. No filename,
+attachment or WorkSession identity, sidecar value, digest, content, prompt or
+answer was read or retained, and no file was modified, moved, adopted,
+downloaded or deleted. Without authoritative control-plane ownership, this is
+ambiguous retained state and task 0.3 remains blocked under the change's
+fail-closed contract.
+
+Production, preview and Beautips remain `UP`; RAID remains healthy; the
+AgentRun worker, attachment service and both backup timers remain active; and
+zero Codex or browser process remains. Corrective sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.3-blocked-unindexed-attachment-content`;
+the SHA-256 of its `SHA256SUMS` is
+`ff33b6e9e081e55f714a830383e7844393424b58d5162cdcab5151b1ab85c1ed`.
+Change progress remains `2/83`, task 0.3 is the first pending task and no task
+0.4 or later has started.
