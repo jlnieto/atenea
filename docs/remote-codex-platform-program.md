@@ -6936,3 +6936,30 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.4-v62-schema`;
 the SHA-256 of its `SHA256SUMS` is
 `1412f5f59985f96df6aa3415de78a1dd040465ac53b189499cf27df99d7af386`.
+
+Task 1.5 is complete and change progress is `11/83`; the exact resume point is
+task 1.6. Atenea commit
+`0a9b0ef90d9d1358e5e01d32ddc765fb9523e972` adds permanent isolated-
+PostgreSQL migration regressions for an empty V1-through-V62 database, a
+representative V61 database and the V62 ownership constraints. Every test uses
+a unique schema and drops only that exact schema in `finally`.
+
+Three tests pass. They prove a repeated Flyway migration applies zero changes;
+legacy policy, request identity and storage ownership remain null; legacy
+AgentRuns retain the compatible zero/zero/null attachment shape; and partial,
+foreign or ambiguous policy, request, storage, binding and manifest writes fail
+with integrity SQLSTATEs while accepted synthetic rows remain unchanged. A
+final-run attempt stopped before compilation when Maven Central was temporarily
+unreachable; the process had exited, connectivity returned HTTP 200 and one
+bounded retry passed all three tests without a source change.
+
+All temporary schemas and exact Compose resources were removed with zero
+residue. Production, preview and Beautips remain `UP`; AX42's versioned AgentRun
+and attachment services plus both backup timers remain active; RAID remains
+`3/3`. No production migration, schema, data, WorkSession, attachment, routing,
+service, credential or foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.5-v62-migration-tests`;
+the SHA-256 of its `SHA256SUMS` is
+`331a5385553d71ec63bcd91ae3757b0dc53f88d4759a7dfffe8b48d53c9e3979`.
