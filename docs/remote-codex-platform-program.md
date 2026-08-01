@@ -6244,3 +6244,55 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.1-complete-suites`;
 the SHA-256 of its `SHA256SUMS` is
 `03c82bf67c242ba55c3706c98cfc116350dd8a06d8a4006a129e95a59e7bbcab`.
+
+Task 7.2 is complete and change progress is `51/57`; the exact implementation
+resume point is task 7.3. Task 7.3 and all later tasks remain pending.
+
+Immediately before the first production migration, the production authority
+created PostgreSQL 16 custom-format backup
+`atenea_prod_before_codex_operations_v56_20260731T235659Z.dump`. It is mode
+`0600`, 1,636,785 bytes and has SHA-256
+`0ba0549abcc91ba562a13468a84387e22976a0b8c7a6f7d865d98f4a9e82b48e`.
+An internal-only disposable PostgreSQL 16 restore reproduced V56, all 34
+tables and the source table-count digest. The candidate applied V57–V61 once,
+then reported a no-op second pass with 61 Flyway rows.
+
+The exact former production image
+`sha256:7b62d5459831ede557e6277e6252a891e79230e2b52ce57d4ac9277c0928e36d`
+started `UP` against the migrated fixture and left V61 unchanged. It remains
+retained as `atenea-rollback-codex-operations-v56:7b62d545`. The production
+backend then deployed successfully from commit
+`e60aa025d260e2a6bc1fbbfccde11009a7131c00`; health is `UP`, restart count is
+zero and production is at V61. All five new gates remain absent/default-false
+and every new profile, progress, recovery, notification and managed-update
+table remains empty.
+
+The dual-compatible worker was installed from accepted worker source
+`453e01db2f71077282dcab2e382ebde88957daf5`. Its existing project
+configuration SHA-256
+`02338c48c6414ded537059bd590ee1319f9e6338d7ad5616223a6b06c86d265a`
+and token identity were retained exactly. The single intentional worker
+restart returned active with `NRestarts=0`; no release registry or release
+file was created. The retained WorkSession, registration, clean worktree HEAD
+and execution ownership did not change.
+
+Because code 129 was already published, Android received the new immutable
+identity `0.5.97 (130)` in packaging commit
+`51051495a023fb9ab8b755077f11e04a6409a7cc`. Two clean secret-free builds
+each passed 74 tests and 228 Gradle tasks with identical APKs. The configured
+production build published SHA-256
+`d9f2a3958d9d9ec137b08e78d4ba4139313edd903b51e1fdeb01fb62314e9ae9`
+and retained code 129 as the previous release.
+
+Production, preview and Beautips remained `UP`. All four rootless Docker
+daemons remained active with accepted container counts `3/0/0/3`; rootful
+Docker remained inactive/masked. External-backup timers remained
+active/enabled with successful last results, SSH/Tailscale/firewall remained
+healthy and all three RAID arrays remained `[UU]`. Exact labelled fixtures
+and temporary worker source were removed; the protected backup, rollback
+image and versioned APKs are intentionally retained.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.2-disabled-deployment`;
+the SHA-256 of its `SHA256SUMS` is
+`8b92d30315869ae8b4653d9aa35e72143d66c4ef397fc5c3fe3230e9b67cfed0`.
