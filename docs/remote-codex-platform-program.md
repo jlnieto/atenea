@@ -6753,3 +6753,31 @@ the SHA-256 of its `SHA256SUMS` is
 `ff33b6e9e081e55f714a830383e7844393424b58d5162cdcab5151b1ab85c1ed`.
 Change progress remains `2/83`, task 0.3 is the first pending task and no task
 0.4 or later has started.
+
+The separately authorized ownership investigation resolved the apparent
+attachment ambiguity without cleanup or adoption. A mediated read-only
+comparison matched all eight retained attachment identities and their exact
+session/path/sidecar ownership against three accepted historical evidence
+bundles: private-preview acceptance, Atenea onboarding and Beautips onboarding.
+All three source bundles verify against their published `SHA256SUMS`; zero
+unexpected retained identities exist and zero accepted identities are missing.
+
+The retained set is six PNG and two JSON synthetic `EVIDENCE` records in three
+sessions: eight content files totalling 256,755 bytes and eight sidecars
+totalling 4,521 bytes. All path, protocol, worker, storage-identity, file-type,
+mode, classification and size comparisons pass. No attachment content was
+opened, downloaded or hashed; no UUID, filename, storage identity, sidecar
+value, digest, prompt or answer is retained in the new evidence. No retained
+resource changed.
+
+The earlier premise that the retained root was empty is therefore corrected,
+not enforced destructively. Production's zero V61 attachment rows/bytes remain
+accurate because the retained records belong to accepted non-production
+synthetic evidence boundaries. The active design and task wording now require
+preservation of that exact baseline.
+
+Task 0.3 is complete and change progress is `3/83`; the exact resume point is
+task 0.4. Accepted sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.3-entry-fingerprint-accepted`;
+the SHA-256 of its `SHA256SUMS` is
+`388181570cbe2eff43f117a6a6ded0e822afb72915341c7f8597652b3bcd4ec2`.

@@ -4,8 +4,11 @@ The archived attachment phase delivered V47 metadata, authenticated
 WorkSession list/upload/download APIs, a bounded AX42 content service and a web
 panel, but explicitly excluded real-project activation. The 2026-08-01 audit
 found production at zero attachment rows with `ATENEA_ATTACHMENTS_ENABLED`
-defaulting false, no attachment credential mounted into the backend and the
-AX42 service active against an empty `/srv/atenea/attachments-v1` root.
+defaulting false and no attachment credential mounted into the backend. The
+AX42 service is active against a retained set of eight accepted synthetic
+`EVIDENCE` attachments from prior preview, Atenea-onboarding and
+Beautips-onboarding acceptance; these are outside production PostgreSQL and
+must be preserved.
 
 The current backend admits only project display names in
 `syntheticProjectAllowlist` and always sends
@@ -267,7 +270,8 @@ IDs or provider payloads. UI screenshots use generated non-secret fixtures.
 ## Migration Plan
 
 1. Capture clean synchronized Git and complete production/AX42/backup/non-impact
-   fingerprints with attachment creation disabled and zero retained rows/bytes.
+   fingerprints with attachment creation disabled, zero production indexed
+   rows/bytes and the exact accepted synthetic evidence set preserved.
 2. Implement V62, canonical eligibility, strict operator classification,
    idempotent turn binding and v3 dispatch behind default-off gates.
 3. Implement and test the compatible attachment extension, exact runner

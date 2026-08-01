@@ -7,17 +7,16 @@ adopt, delete or reconstruct ambiguous state automatically.
 
 - [x] 0.1 Read `/home/jose/AGENTS.md`, Atenea `AGENTS.md`, the programme document, this complete change, canonical attachment/worker/continuity/onboarding specs, attachment rollback contracts and accepted attachment plus external-backup evidence
 - [x] 0.2 Verify programme and Atenea repositories are clean, synchronized and on their expected branches/commits before creating any implementation worktree or commit
-- [ ] 0.3 Capture sanitized production and AX42 fingerprints for V61, attachment gates/configuration, zero attachment rows/bytes, service protocol, empty retained root, worker/slots, routing, production, preview, Beautips, RAID, firewall, SSH and Tailscale
+- [x] 0.3 Capture sanitized production and AX42 fingerprints for V61, attachment gates/configuration, zero production attachment rows/bytes, service protocol, exact retained synthetic evidence set, worker/slots, routing, production, preview, Beautips, RAID, firewall, SSH and Tailscale
 
-  **BLOCKED 2026-08-01:** the initial Codex release-root mode divergence is
+  **RESOLVED 2026-08-01:** the initial Codex release-root mode divergence is
   resolved by published commit `a1c487b33efca6e03b7ca392f779ab64dc27d5ba`;
-  the complete canonical verifier now passes without a service restart. A
-  corrected mediated fingerprint then found 16 retained regular files
-  totalling 261,276 bytes while production has zero attachment rows/bytes.
-  Their identities and content were not read and they remain intact. Evidence
-  is sealed under `runs/task-0.3-blocked-unindexed-attachment-content`; this
-  ambiguous ownership condition keeps 0.3 pending and forbids automatic
-  adoption, cleanup or reconstruction.
+  the complete canonical verifier passes without a service restart. A mediated
+  read-only comparison proves the 16 retained regular files are eight exact
+  content/sidecar pairs from three previously accepted synthetic `EVIDENCE`
+  bundles, with zero unexpected or missing identity. Content was not read and
+  all attachments remain intact. Accepted evidence is sealed under
+  `runs/task-0.3-entry-fingerprint-accepted`.
 
 - [ ] 0.4 Confirm read-only that the backend has no attachment token mount/real endpoint, AX42 attachment v1 is private and active, the backup source policy includes the attachment root, and backup/check timers plus accepted restore evidence remain healthy
 - [ ] 0.5 Record the six audited implementation gaps: synthetic-name admission, hard-coded synthetic upload, caller classification, absent turn binding, absent v3/`--image` delivery and misleading enabled-looking web affordance
