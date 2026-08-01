@@ -6469,3 +6469,53 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.5-notification-dedup-deep-link`;
 the SHA-256 of its `SHA256SUMS` is
 `ee2f1f8b5b0409ba3184a897f9fc129520b2506c1c1c03e6eb1c0cca47a770aa`.
+
+Task 7.6 is complete and change progress is `55/57`; the exact implementation
+resume point is task 7.7. Tasks 7.7 and 7.8 remain pending.
+
+The disable-first entry gate found production at V61 with zero non-terminal
+AgentRuns. Exact fingerprints were fixed for the open WorkSession, five
+profile-bearing AgentRuns, 24 safe progress events, two recovery operations,
+two active Android devices, three generic notification events, six delivered
+rows, legacy logs, Git and routing. The accepted current backend image was
+`sha256:bb983725de00ca3cba29f45ffce34c071943d3a6dc25923cdcc4730b300a3a7f`;
+the fixture-proven rollback image remained
+`sha256:7b62d5459831ede557e6277e6252a891e79230e2b52ce57d4ac9277c0928e36d`.
+
+Profiles, progress, recovery, generic notification dispatch and managed
+updates were all disabled before changing an application image. The current
+backend returned `UP` in 16.205 seconds with all five gates false. Every
+persisted fingerprint remained unchanged and no delivery became dispatchable.
+
+The exact rollback image then returned `UP` against production V61 in 13.998
+seconds without a Flyway or schema error. An exact repeated rollback completed
+as a 125 ms no-op: both container identity and start time remained unchanged.
+The WorkSession, affinity, profile history, progress, recovery, devices,
+preferences, notification ownership and Git fingerprints remained identical.
+No schema repair, down migration, notification replay, profile rewrite,
+device deletion or WorkSession movement occurred.
+
+The byte-exact entry Compose and current backend image were restored. The
+backend returned `UP` in 16.131 seconds with profiles, progress, recovery and
+notifications enabled and managed updates disabled. A repeated re-enable was
+a 96 ms container no-op. After multiple dispatcher intervals the three events
+and six single-attempt delivered rows remained byte-stable, zero row was
+dispatchable, legacy logs did not increase and no managed update operation
+appeared.
+
+The AX42 worker was neither restarted nor replaced and remained active with
+`NRestarts=0`. Its program, project configuration, exact admission record,
+mirror, clean WorkSession worktree and commit remained stable. Production,
+preview and Beautips remained available; Caddy routing was byte/container
+stable; all four rootless daemons retained container counts `3/0/0/3`;
+external backup timers, firewall, SSH and Tailscale remained active; rootful
+Docker remained inactive/masked; all RAID arrays remained `[UU]`; and no
+session Codex, Playwright or Chromium process remained. Task-owned temporary
+files were removed by exact path.
+
+No device identifier, push token, credential, prompt, answer, provider body,
+Codex thread/turn identity or remote execution identity was retained.
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.6-disable-rollback-reenable`;
+the SHA-256 of its `SHA256SUMS` is
+`60d2808c00a021312640d1a0359041556de6bf96da484cbcae66222c6a85eba3`.
