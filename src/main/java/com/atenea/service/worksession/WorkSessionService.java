@@ -230,6 +230,35 @@ public class WorkSessionService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public boolean canCloseUnpublishedSession(Long sessionId) {
+        WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
+                .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        if (session.getStatus() != WorkSessionStatus.OPEN
+                || session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED
+                || agentRunRepository.existsBySessionIdAndStatusIn(
+                        sessionId, AgentRunStatus.nonTerminalStatuses())) {
+            return false;
+        }
+        try {
+            String repoPath = workspaceRepositoryPathValidator
+                    .normalizeConfiguredRepoPath(session.getProject().getRepoPath());
+            String currentBranch = gitRepositoryService.getCurrentBranch(repoPath);
+            String workspaceBranch = normalizeNullableText(session.getWorkspaceBranch());
+            if (!gitRepositoryService.isWorkingTreeClean(repoPath)
+                    || (!currentBranch.equals(session.getBaseBranch())
+                        && !currentBranch.equals(workspaceBranch))) {
+                return false;
+            }
+            return workspaceBranch == null
+                    || !gitRepositoryService.branchExists(repoPath, workspaceBranch)
+                    || !gitRepositoryService.branchContainsCommitsBeyond(
+                            repoPath, session.getBaseBranch(), workspaceBranch);
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
     @Transactional(noRollbackFor = WorkSessionCloseBlockedException.class)
     public WorkSessionResponse closeSession(Long sessionId) {
         WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)

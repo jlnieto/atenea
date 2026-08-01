@@ -828,6 +828,44 @@ class WorkSessionServiceTest {
     }
 
     @Test
+    void cleanConversationalSessionWithoutCommitsCanCloseWithoutPullRequest() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
+        WorkSessionEntity session = buildSession(12L, 7L, repoPath, "main");
+        session.setWorkspaceBranch("atenea/session-12");
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L, AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString()))
+                .thenReturn("atenea/session-12");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-12"))
+                .thenReturn(false);
+
+        assertTrue(workSessionService.canCloseUnpublishedSession(12L));
+    }
+
+    @Test
+    void unpublishedSessionCommitKeepsPublishAsRequiredAction() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
+        WorkSessionEntity session = buildSession(12L, 7L, repoPath, "main");
+        session.setWorkspaceBranch("atenea/session-12");
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L, AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString()))
+                .thenReturn("atenea/session-12");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), "atenea/session-12"))
+                .thenReturn(true);
+        when(gitRepositoryService.branchContainsCommitsBeyond(
+                repoPath.toString(), "main", "atenea/session-12")).thenReturn(true);
+
+        assertFalse(workSessionService.canCloseUnpublishedSession(12L));
+    }
+
+    @Test
     void closeSessionAllowsUnpublishedSessionWithoutOriginRemote() throws IOException {
         Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
         WorkSessionEntity session = buildSession(12L, 7L, repoPath, "main");
