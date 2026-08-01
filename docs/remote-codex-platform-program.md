@@ -6694,3 +6694,27 @@ the task-0.1 documentation commit. The canonical Atenea source worktree is
 clean on `feature/actualizar-conversacion-en-web` and equals its upstream at
 `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. No implementation worktree,
 branch, migration or source commit was created.
+
+Task 0.3 is blocked and remains the first pending task. The read-only
+fingerprint confirmed production V61, zero attachment rows/bytes, zero
+non-terminal AgentRuns, zero active remote leases/previews, production and
+preview `UP`, default-off attachment creation, no backend attachment override
+or token mount, healthy RAID `[UU]`, active SSH/Tailscale/firewall, four active
+rootless daemons, inactive rootful Docker, active attachment/AgentRun services,
+zero attachment files/bytes, active backup/check timers and slot container
+counts `3/0/0/3`.
+
+The installed canonical AgentRun worker verifier then exited `1`. Its installed
+SHA-256 `49bc6e32ba920e1bf8cbc3247b8dcb2bcc57b45bb3a899f5dac05e21b79da4a3`
+equals the reviewed source, which requires exact `0750` for the Codex release
+root plus root-owned activation and rollback children. AX42 reports all three
+as `2750`. No accepted decision or prior evidence authorizes that mode, so the
+change's ownership rule blocks implementation rather than allowing automatic
+chmod, adoption or verifier relaxation.
+
+No source, schema, mode, directory, service, runtime, route, database row,
+credential, WorkSession, slot or foreign resource was changed. Sanitized
+blocker evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.3-blocked-codex-release-mode`;
+the SHA-256 of its `SHA256SUMS` is
+`917263d315f6829dc52a47af4c875e8badadb9a869fa21b4415ce7c8d25bd26e`.
