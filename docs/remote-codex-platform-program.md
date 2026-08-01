@@ -292,6 +292,11 @@ production activation are recorded later in this ledger.
 | D-089 | Close the first managed-Codex lifecycle through its fully accepted synthetic update/rollback branch and retain AX42 at Codex CLI 0.145.0 until a future instruction separately and explicitly authorizes one named real managed update. | General implementation or rollout authority does not satisfy the change's deliberately separate real-release boundary; the task explicitly permits synthetic closure, which proves the machinery without silently changing the production execution engine. | accepted and read-only baseline-verified | platform/security owners | before any real managed Codex stage, activation, rollback or worker restart |
 | D-090 | Refresh only the fixed, non-symlink Atenea canonical mirror immediately before first-workspace commit admission, after validating static WorkSession/project ownership and only when the origin URL, remote-only fetch mapping and absence of a push URL are exact. | A newly published canonical commit can otherwise leave AX42 safely but permanently rejecting a current WorkSession against a stale mirror; refreshing before static ownership checks or through caller authority would weaken the fail-closed boundary. | accepted, worker-tested and live-verified | worker/platform/security owners | before changing first-workspace canonical refresh, mirror provenance or admission ordering |
 | D-091 | Persist a failed-run retry's immutable lineage and inherited Codex profile in the same first AgentRun insert, and retire a pre-dispatch orphan only after exact session/run/status/null-remote/null-lineage predicates plus zero worker execution are proven. | Attaching an immutable lineage after insertion can leave an unowned queued row when completion validation fails; atomic insertion prevents that race while the exact remediation rule preserves the failed audit record without adopting or dispatching it. | accepted, full-suite-tested and live-verified | backend/recovery/platform owners | before changing retry creation, lineage mutability or pre-dispatch orphan remediation |
+| D-092 | Gate real attachments with one global create/bind switch, one closed canonical-project registry and an immutable policy revision recorded only on newly eligible WorkSessions; activate only canonical `atenea` in the first change. | Mutable display names and retroactive enablement cannot prove project/session authority, while a new-session snapshot gives rollback and audit one exact eligibility boundary. | proposed in `activate-atenea-real-worksession-attachments` | backend/platform/security owners | before implementing attachment admission or enabling any real project |
+| D-093 | Bind an ordered image manifest immutably to one idempotent operator turn and AgentRun, and dispatch it only through additive `project-codex-v3` references containing UUID, media type, size and SHA-256. | Upload alone does not tell Codex which screenshot belongs to a prompt; exact binding plus a stable client request identity prevents implicit latest-file selection, duplicate turns and caller path authority. | proposed in `activate-atenea-real-worksession-attachments` | backend/worker owners | before implementing image-bearing turns or retries |
+| D-094 | Extend attachment v1 compatibly for real ownership, then have the fixed runner verify and materialize only the selected images into an execution-owned temporary boundary exposed read-only to Codex. | Rollback must keep retained downloads readable, and neither Codex nor a caller may gain visibility of the attachment store or choose filesystem paths. | proposed in `activate-atenea-real-worksession-attachments` | worker/security owners | before installing real storage or runner support |
+| D-095 | Treat `retainUntil` as the minimum keep and new-binding boundary, with no general automatic deletion in the first real activation. | First use needs reversible retention and verified external backup; adding destructive cleanup simultaneously would introduce an unproven ownership/tombstone policy. | proposed in `activate-atenea-real-worksession-attachments` | data/operations owners | before any attachment expiry/deletion implementation |
+| D-096 | Deploy V62, backend and worker support disabled, then require separate production-rollout authorization and one operator-assisted non-secret Atenea web canary followed by backup/check/isolated restore before accepting the project gate. | A synthetic pass does not prove real browser-to-Codex delivery or non-empty external recovery, while disabled-first deployment and exact canary evidence bound the production risk. | proposed in `activate-atenea-real-worksession-attachments` | platform/operations/product owners | before production rollout or authoritative Atenea attachment acceptance |
 
 ## Deferred decisions and gates
 
@@ -6610,3 +6615,58 @@ the SHA-256 of its `SHA256SUMS` is
 There is no remaining task or resume point in this archived change. Normal
 Atenea and Beautips operation is confirmed; subsequent programme work requires
 a separately selected OpenSpec change.
+
+## Selected next change: real Atenea WorkSession attachments
+
+`activate-atenea-real-worksession-attachments` is the selected apply-ready
+change. Its proposal, design, five capability deltas and 83 ordered tasks are
+complete; strict OpenSpec validation passes. Progress is `0/83` and the exact
+implementation resume point is task 0.1. High MUST finish, verify, mark,
+commit and push each task before starting the next one, and MUST stop on an
+ownership, Git, backup, runtime, production or foreign-resource divergence
+rather than repair or adopt it automatically.
+
+The 2026-08-01 read-only audit found production at V61 with zero
+`work_session_attachment` rows. Real creation is disabled by the default-false
+global gate, the production backend has neither an attachment endpoint/token
+override nor a token mount, and AX42's private
+`atenea-worksession-attachment-v1.service` is active against an empty retained
+root. The accepted independent B2/restic source policy includes that root and
+its backup, check and isolated-restore boundary is healthy, so the prior
+external-backup prerequisite is satisfied but has not yet been proven with
+non-empty real attachment content.
+
+The audit also confirmed that the current implementation is synthetic rather
+than production-ready: admission depends on mutable project display names;
+the backend hard-codes `X-Atenea-Synthetic-Fixture: true`; routine upload lets
+the caller request privileged source/kind/retention classifications; turn
+creation accepts only text; AgentRun v1/v2 and the fixed runner carry no
+attachment references; and the web presents an enabled-looking standalone
+upload affordance even when the gate will reject creation. Codex CLI 0.145.0
+does support fixed `--image` inputs, but no current Atenea path invokes them.
+Android has no scoped attachment composer and remains explicitly outside this
+change.
+
+The accepted implementation boundary is global default-off plus exact
+canonical `atenea` enablement for newly created eligible WorkSessions only;
+server-derived operator classification; additive V62 immutable ordered turn
+bindings and request idempotency; closed `project-codex-v3` image references;
+compatible v1 retained-content reads; exact worker-side verification and
+per-execution materialization; and a state-first web composer with picker,
+clipboard paste, selection, retry and historical attachment metadata. One turn
+is bounded to four PNG/JPEG/WebP images and 32 MiB combined, inside the
+existing 16 MiB per-file and 256 MiB per-WorkSession limits. General deletion,
+Beautips activation, native Android selection and non-image Codex inputs remain
+out of scope.
+
+Tasks 0.1 through 5.9 cover audit, policy/migration, backend contracts, AX42
+storage/runner, web UX and complete synthetic acceptance without production
+activation. Task 6.4 is an explicit stop gate: production schema/image/service,
+credential or feature configuration MUST NOT change without separate rollout
+authorization. Task 7.4 is the operator-assisted web canary gate. Closure then
+proves non-empty external backup/restore and disable-first rollback twice,
+re-enables only canonical Atenea, seals sanitized evidence and stops before
+Beautips, Android attachments or retention deletion.
+
+No implementation, migration, service, credential, route, WorkSession,
+production data or project gate was changed while preparing this specification.
