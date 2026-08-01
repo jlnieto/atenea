@@ -6519,3 +6519,34 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.6-disable-rollback-reenable`;
 the SHA-256 of its `SHA256SUMS` is
 `60d2808c00a021312640d1a0359041556de6bf96da484cbcae66222c6a85eba3`.
+
+Task 7.7 is blocked and remains pending. Task 7.8 has not started.
+
+At 2026-08-01 18:09:39 UTC, after the accepted task-7.6 fingerprints, one
+persisted recovery operation requested `RETRY` for failed AgentRun 90. It
+completed once as `RETRY_CREATED`, owns exactly one linked AgentRun 91 and
+retained the accepted WorkSession, model and effort. The linked run received
+one remote execution, reached `SUCCEEDED` after 5.398 seconds, persisted six
+monotonic safe progress events and produced one `RUN_COMPLETED` notification
+event with one single-attempt delivered row per active Android device.
+
+The operator explicitly confirmed that they did not request or press this
+retry. There is no duplicate recovery, linked run, notification event,
+non-terminal AgentRun or dispatchable delivery, but the initiating client or
+mechanism is unexplained. The immutable recovery, execution, progress and
+delivery records were retained. No cancellation, deletion, profile rewrite,
+WorkSession replacement, notification replay, cleanup or ownership
+reconstruction was performed.
+
+The partially assembled final ledger was retained without acceptance beneath
+`task-7.7-draft-evidence-ledger-blocked-20260801`. Sanitized blocker evidence
+is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.7-blocked-unexpected-retry`;
+the SHA-256 of its `SHA256SUMS` is
+`49fd72f2158a1f11f05adb673027095bd7bf0930a038e55fbdd4c630fac17e38`.
+
+The exact resume point remains task 7.7. Closure requires read-only provenance
+of the recovery request and proof that no unowned client, delayed command or
+automatic UI behavior can repeat it. No prompt, answer, remote execution
+identity, device identity, push token, credential or provider body was read or
+retained.
