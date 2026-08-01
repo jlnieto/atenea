@@ -6854,3 +6854,20 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.1-canonical-registry`;
 the SHA-256 of its `SHA256SUMS` is
 `7743a093cc741fe68b2ca58a3a763f66c2ce78c62a44581ba3d4953f09d1a7f8`.
+
+Task 1.2 is complete and change progress is `8/83`; the exact resume point is
+task 1.3. Atenea commit
+`3255953b20c9c7fa2648f5560ae0ea3267851b58` centralizes the default-false
+global create/bind kill switch while retaining independent synthetic and
+canonical real-project allowlists. Exact real `atenea` configuration cannot
+enable the legacy synthetic `Atenea` display-name path; foreign real identities
+fail closed.
+
+Fifteen focused registry, admission-policy and attachment-service tests pass.
+They also prove that disabling creation leaves retained list and authenticated
+download unchanged. The isolated Compose test resources were removed with zero
+residue; production and remote services were not changed. Sanitized evidence
+is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.2-admission-separation`;
+the SHA-256 of its `SHA256SUMS` is
+`3b82523a3da52b9d18393b2c4734b8427dd9fabc9e35246d250a18629fa82178`.
