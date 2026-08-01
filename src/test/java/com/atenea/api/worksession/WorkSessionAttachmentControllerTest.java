@@ -100,16 +100,15 @@ class WorkSessionAttachmentControllerTest {
                 org.mockito.ArgumentMatchers.eq(12L),
                 org.mockito.ArgumentMatchers.eq(key),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(AttachmentSource.OPERATOR_UPLOAD),
-                org.mockito.ArgumentMatchers.eq(AttachmentKind.IMAGE),
-                org.mockito.ArgumentMatchers.eq(AttachmentRetentionClass.SESSION),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new AttachmentFeatureDisabledException("Adjuntos nuevos desactivados."));
 
         mockMvc.perform(multipart("/api/mobile/sessions/12/attachments")
                         .file(file)
-                        .header("Idempotency-Key", key)
-                        .param("kind", "IMAGE"))
+                        .header("Idempotency-Key", key))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("Adjuntos nuevos desactivados."));
     }
@@ -132,9 +131,9 @@ class WorkSessionAttachmentControllerTest {
                 org.mockito.ArgumentMatchers.eq(12L),
                 org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(AttachmentSource.OPERATOR_UPLOAD),
+                org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.eq(AttachmentKind.IMAGE),
-                org.mockito.ArgumentMatchers.eq(AttachmentRetentionClass.SESSION),
+                org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new AttachmentLimitException("El adjunto supera el límite de 16 MiB."))
                 .thenThrow(new AttachmentWorkerException(

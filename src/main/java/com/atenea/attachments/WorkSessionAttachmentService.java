@@ -20,12 +20,18 @@ import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class WorkSessionAttachmentService {
+
+    private static final Set<String> IMAGE_CONTENT_TYPES = Set.of(
+            "image/png",
+            "image/jpeg",
+            "image/webp");
 
     private final AttachmentProperties properties;
     private final AttachmentAdmissionPolicy admissionPolicy;
@@ -51,9 +57,9 @@ public class WorkSessionAttachmentService {
             Long workSessionId,
             UUID idempotencyKey,
             Long agentRunId,
-            AttachmentSource source,
-            AttachmentKind kind,
-            AttachmentRetentionClass retentionClass,
+            AttachmentSource claimedSource,
+            AttachmentKind claimedKind,
+            AttachmentRetentionClass claimedRetentionClass,
             MultipartFile file
     ) {
         WorkSessionEntity session = requireCreateAllowed(workSessionId);
@@ -70,6 +76,18 @@ public class WorkSessionAttachmentService {
             throw new AttachmentWorkerException("No se pudo leer el adjunto seleccionado.", exception);
         }
         String contentType = normalizedContentType(file.getContentType());
+        AttachmentSource source = AttachmentSource.OPERATOR_UPLOAD;
+        AttachmentKind kind = IMAGE_CONTENT_TYPES.contains(contentType)
+                ? AttachmentKind.IMAGE
+                : AttachmentKind.FILE;
+        AttachmentRetentionClass retentionClass = AttachmentRetentionClass.SESSION;
+        requireDerivedClassification(
+                claimedSource,
+                claimedKind,
+                claimedRetentionClass,
+                source,
+                kind,
+                retentionClass);
         String sha256 = sha256(content);
         // PostgreSQL stores TIMESTAMPTZ at microsecond precision. Normalize
         // before worker retention so an idempotent read-back remains identical.
@@ -224,6 +242,24 @@ public class WorkSessionAttachmentService {
                     "AX42 devolvió una clasificación de adjunto distinta de la solicitada.",
                     409,
                     "attachment_response_classification_conflict");
+        }
+    }
+
+    private void requireDerivedClassification(
+            AttachmentSource claimedSource,
+            AttachmentKind claimedKind,
+            AttachmentRetentionClass claimedRetentionClass,
+            AttachmentSource derivedSource,
+            AttachmentKind derivedKind,
+            AttachmentRetentionClass derivedRetentionClass
+    ) {
+        boolean sourceConflict = claimedSource != null && claimedSource != derivedSource;
+        boolean kindConflict = claimedKind != null && claimedKind != derivedKind;
+        boolean retentionConflict = claimedRetentionClass != null
+                && claimedRetentionClass != derivedRetentionClass;
+        if (sourceConflict || kindConflict || retentionConflict) {
+            throw new IllegalArgumentException(
+                    "La clasificación del adjunto la determina Atenea y no puede solicitar autoridad privilegiada.");
         }
     }
 

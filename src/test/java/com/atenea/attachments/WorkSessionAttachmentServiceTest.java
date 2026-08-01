@@ -16,6 +16,7 @@ import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionAttachmentEntity;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.service.worksession.AttachmentIndexRequest;
 import com.atenea.service.worksession.AttachmentOwnershipException;
 import com.atenea.service.worksession.WorkSessionAttachmentMetadataService;
 import java.time.Instant;
@@ -26,6 +27,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
@@ -62,7 +64,7 @@ class WorkSessionAttachmentServiceTest {
     }
 
     @Test
-    void uploadsOnlyThroughPersistedSessionAffinityAndIndexesOpaqueIdentity() {
+    void derivesRoutineImageClassificationAndIndexesOpaqueIdentity() {
         WorkSessionEntity session = remoteSession(12L, 7L, "synthetic-attachments");
         WorkSessionAttachmentEntity indexed = attachment(session);
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
@@ -91,14 +93,104 @@ class WorkSessionAttachmentServiceTest {
                 12L,
                 ATTACHMENT_ID,
                 null,
-                AttachmentSource.OPERATOR_UPLOAD,
-                AttachmentKind.IMAGE,
-                AttachmentRetentionClass.SESSION,
+                null,
+                null,
+                null,
                 new MockMultipartFile("file", "screen.png", "image/png", PNG));
 
         assertEquals(ATTACHMENT_ID, result.getId());
-        verify(metadataService).index(org.mockito.ArgumentMatchers.eq(12L), any());
+        ArgumentCaptor<AttachmentIndexRequest> request =
+                ArgumentCaptor.forClass(AttachmentIndexRequest.class);
+        verify(metadataService).index(org.mockito.ArgumentMatchers.eq(12L), request.capture());
+        assertEquals(AttachmentSource.OPERATOR_UPLOAD, request.getValue().source());
+        assertEquals(AttachmentKind.IMAGE, request.getValue().kind());
+        assertEquals(AttachmentRetentionClass.SESSION, request.getValue().retentionClass());
         verify(workerClient, never()).deleteSynthetic(any(), any());
+    }
+
+    @Test
+    void derivesRoutineFileClassificationAndAcceptsMatchingCompatibilityClaims() {
+        byte[] pdf = "%PDF-1.7 synthetic".getBytes();
+        WorkSessionEntity session = remoteSession(12L, 7L, "synthetic-attachments");
+        WorkSessionAttachmentEntity indexed = attachment(session);
+        indexed.setKind(AttachmentKind.FILE);
+        indexed.setContentType("application/pdf");
+        indexed.setSizeBytes(pdf.length);
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(workerClient.health()).thenReturn(health());
+        when(workerClient.put(
+                org.mockito.ArgumentMatchers.eq(12L),
+                org.mockito.ArgumentMatchers.eq(ATTACHMENT_ID),
+                org.mockito.ArgumentMatchers.eq(AttachmentSource.OPERATOR_UPLOAD),
+                org.mockito.ArgumentMatchers.eq(AttachmentKind.FILE),
+                org.mockito.ArgumentMatchers.eq(AttachmentRetentionClass.SESSION),
+                org.mockito.ArgumentMatchers.eq("application/pdf"),
+                any(),
+                any(),
+                org.mockito.ArgumentMatchers.eq(pdf)))
+                .thenAnswer(invocation -> new AttachmentWorkerClient.PutResult(
+                        true,
+                        stored(
+                                invocation.getArgument(5),
+                                invocation.getArgument(6),
+                                AttachmentKind.FILE,
+                                pdf.length)));
+        when(metadataService.index(org.mockito.ArgumentMatchers.eq(12L), any()))
+                .thenReturn(indexed);
+
+        WorkSessionAttachmentEntity result = service.upload(
+                12L,
+                ATTACHMENT_ID,
+                null,
+                AttachmentSource.OPERATOR_UPLOAD,
+                AttachmentKind.FILE,
+                AttachmentRetentionClass.SESSION,
+                new MockMultipartFile("file", "document.pdf", "application/pdf", pdf));
+
+        assertEquals(AttachmentKind.FILE, result.getKind());
+        ArgumentCaptor<AttachmentIndexRequest> request =
+                ArgumentCaptor.forClass(AttachmentIndexRequest.class);
+        verify(metadataService).index(org.mockito.ArgumentMatchers.eq(12L), request.capture());
+        assertEquals(AttachmentSource.OPERATOR_UPLOAD, request.getValue().source());
+        assertEquals(AttachmentKind.FILE, request.getValue().kind());
+        assertEquals(AttachmentRetentionClass.SESSION, request.getValue().retentionClass());
+    }
+
+    @Test
+    void rejectsEveryNonDerivedClassificationBeforeCallingWorker() {
+        WorkSessionEntity session = remoteSession(12L, 7L, "synthetic-attachments");
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        MockMultipartFile image = new MockMultipartFile(
+                "file", "screen.png", "image/png", PNG);
+
+        assertThrows(IllegalArgumentException.class, () -> service.upload(
+                12L, ATTACHMENT_ID, null,
+                AttachmentSource.BROWSER_SCREENSHOT, null, null, image));
+        assertThrows(IllegalArgumentException.class, () -> service.upload(
+                12L, ATTACHMENT_ID, null,
+                AttachmentSource.BROWSER_TRACE, null, null, image));
+        assertThrows(IllegalArgumentException.class, () -> service.upload(
+                12L, ATTACHMENT_ID, null,
+                AttachmentSource.REPORT, null, null, image));
+        assertThrows(IllegalArgumentException.class, () -> service.upload(
+                12L, ATTACHMENT_ID, null,
+                null, AttachmentKind.TRACE, null, image));
+        assertThrows(IllegalArgumentException.class, () -> service.upload(
+                12L, ATTACHMENT_ID, null,
+                null, AttachmentKind.REPORT, null, image));
+        assertThrows(IllegalArgumentException.class, () -> service.upload(
+                12L, ATTACHMENT_ID, null,
+                null, AttachmentKind.FILE, null, image));
+        assertThrows(IllegalArgumentException.class, () -> service.upload(
+                12L, ATTACHMENT_ID, null,
+                null, null, AttachmentRetentionClass.EVIDENCE, image));
+        assertThrows(IllegalArgumentException.class, () -> service.upload(
+                12L, ATTACHMENT_ID, null,
+                null, null, AttachmentRetentionClass.TRANSIENT, image));
+
+        verify(workerClient, never()).health();
+        verify(workerClient, never()).put(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(metadataService, never()).index(any(), any());
     }
 
     @Test
@@ -179,6 +271,15 @@ class WorkSessionAttachmentServiceTest {
     }
 
     private AttachmentWorkerClient.StoredAttachment stored(String contentType, String sha256) {
+        return stored(contentType, sha256, AttachmentKind.IMAGE, PNG.length);
+    }
+
+    private AttachmentWorkerClient.StoredAttachment stored(
+            String contentType,
+            String sha256,
+            AttachmentKind kind,
+            int size
+    ) {
         return new AttachmentWorkerClient.StoredAttachment(
                 AttachmentProperties.PROTOCOL,
                 "ax42-01",
@@ -186,9 +287,9 @@ class WorkSessionAttachmentServiceTest {
                 ATTACHMENT_ID,
                 "work-sessions/12/" + ATTACHMENT_ID + "/content",
                 AttachmentSource.OPERATOR_UPLOAD,
-                AttachmentKind.IMAGE,
+                kind,
                 contentType,
-                PNG.length,
+                size,
                 AttachmentRetentionClass.SESSION,
                 sha256,
                 true,

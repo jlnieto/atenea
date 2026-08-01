@@ -38,9 +38,9 @@ public class WorkSessionAttachmentController {
             @PathVariable Long sessionId,
             @RequestHeader(name = "Idempotency-Key", required = false) UUID idempotencyKey,
             @RequestParam(name = "agentRunId", required = false) Long agentRunId,
-            @RequestParam(defaultValue = "OPERATOR_UPLOAD") AttachmentSource source,
-            @RequestParam(defaultValue = "FILE") AttachmentKind kind,
-            @RequestParam(defaultValue = "SESSION") AttachmentRetentionClass retentionClass,
+            @RequestParam(required = false) AttachmentSource source,
+            @RequestParam(required = false) AttachmentKind kind,
+            @RequestParam(required = false) AttachmentRetentionClass retentionClass,
             @RequestParam MultipartFile file
     ) {
         return WorkSessionAttachmentResponse.from(attachmentService.upload(
