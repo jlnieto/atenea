@@ -6,11 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.lenient;
 
+import com.atenea.attachments.NewWorkSessionAttachmentPolicySnapshotter;
 import com.atenea.api.worksession.CreateWorkSessionRequest;
 import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.ResolveWorkSessionRequest;
@@ -35,6 +37,7 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
@@ -81,6 +84,12 @@ class WorkSessionServiceTest {
     @Mock
     private MobilePushDispatchService mobilePushDispatchService;
 
+    @Mock
+    private NewWorkSessionAttachmentPolicySnapshotter attachmentPolicySnapshotter;
+
+    @Mock
+    private RemoteRoutingSelector remoteRoutingSelector;
+
     @TempDir
     Path tempDir;
 
@@ -113,7 +122,8 @@ class WorkSessionServiceTest {
                 sessionTurnService,
                 reconciliationService,
                 new SessionBranchService(gitRepositoryService),
-                gitHubClient
+                gitHubClient,
+                attachmentPolicySnapshotter
         );
     }
 
@@ -278,6 +288,7 @@ class WorkSessionServiceTest {
         assertEquals("main", response.session().baseBranch());
         assertEquals("atenea/session-12", response.session().workspaceBranch());
         assertEquals(WorkSessionOperationalState.IDLE, response.session().operationalState());
+        verify(attachmentPolicySnapshotter, never()).snapshotNewSession(any());
         verify(gitRepositoryService).createAndCheckoutBranch(repoPath.toString(), "main", "atenea/session-12");
     }
 
@@ -374,6 +385,7 @@ class WorkSessionServiceTest {
             }
             return entity;
         });
+        workSessionService.setRemoteRoutingSelector(remoteRoutingSelector);
 
         ResolveWorkSessionResponse response = workSessionService.resolveSession(
                 7L,
@@ -385,6 +397,9 @@ class WorkSessionServiceTest {
         assertEquals("release/2026", response.session().baseBranch());
         assertEquals("atenea/session-15", response.session().workspaceBranch());
         assertEquals(WorkSessionOperationalState.IDLE, response.session().operationalState());
+        var snapshotOrder = inOrder(remoteRoutingSelector, attachmentPolicySnapshotter);
+        snapshotOrder.verify(remoteRoutingSelector).pinNewSession(any(WorkSessionEntity.class));
+        snapshotOrder.verify(attachmentPolicySnapshotter).snapshotNewSession(any(WorkSessionEntity.class));
     }
 
     @Test

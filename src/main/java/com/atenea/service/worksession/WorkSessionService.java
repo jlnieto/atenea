@@ -1,5 +1,6 @@
 package com.atenea.service.worksession;
 
+import com.atenea.attachments.NewWorkSessionAttachmentPolicySnapshotter;
 import com.atenea.api.worksession.CreateWorkSessionRequest;
 import com.atenea.api.worksession.CloseWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
@@ -54,6 +55,7 @@ public class WorkSessionService {
     private final AgentRunReconciliationService agentRunReconciliationService;
     private final SessionBranchService sessionBranchService;
     private final GitHubClient gitHubClient;
+    private final NewWorkSessionAttachmentPolicySnapshotter attachmentPolicySnapshotter;
     private RemoteRoutingSelector remoteRoutingSelector;
 
     public WorkSessionService(
@@ -67,7 +69,8 @@ public class WorkSessionService {
             SessionTurnService sessionTurnService,
             AgentRunReconciliationService agentRunReconciliationService,
             SessionBranchService sessionBranchService,
-            GitHubClient gitHubClient
+            GitHubClient gitHubClient,
+            NewWorkSessionAttachmentPolicySnapshotter attachmentPolicySnapshotter
     ) {
         this.projectRepository = projectRepository;
         this.workSessionRepository = workSessionRepository;
@@ -80,6 +83,7 @@ public class WorkSessionService {
         this.agentRunReconciliationService = agentRunReconciliationService;
         this.sessionBranchService = sessionBranchService;
         this.gitHubClient = gitHubClient;
+        this.attachmentPolicySnapshotter = attachmentPolicySnapshotter;
     }
 
     @Autowired(required = false)
@@ -119,6 +123,7 @@ public class WorkSessionService {
         session.setWorkspaceIdentity("local:pending");
         session.setRemoteSessionId(null);
         session.setRemoteWorkloadKind(null);
+        session.setAttachmentPolicyRevision(null);
         session.setPullRequestUrl(null);
         session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
         session.setFinalCommitSha(null);
@@ -139,6 +144,7 @@ public class WorkSessionService {
         } else {
             remoteRoutingSelector.pinNewSession(persistedSession);
         }
+        attachmentPolicySnapshotter.snapshotNewSession(persistedSession);
         persistedSession.setWorkspaceBranch(sessionBranchService.prepareWorkspaceBranch(persistedSession, normalizedRepoPath));
         persistedSession.setUpdatedAt(Instant.now());
 
