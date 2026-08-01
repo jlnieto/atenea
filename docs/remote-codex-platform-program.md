@@ -6685,3 +6685,12 @@ The complete accepted external-backup rollup verifies against SHA-256
 `90c2acc6882d8f498bd70742d9dcb3b7699edbe3628e6d1fba829938ecc18b4c`.
 No credential value, prompt, answer, attachment content or Codex internal state
 was read or retained.
+
+Task 0.2 is complete and change progress is `2/83`; the exact resume point is
+task 0.3. The active programme worktree is clean on
+`codex/task-7.4-worker-canonical-refresh-20260801`; its local and internal
+remote ref are equal at `d42617f0a0dbca6781f73c9ca50ee69984c7427c` after
+the task-0.1 documentation commit. The canonical Atenea source worktree is
+clean on `feature/actualizar-conversacion-en-web` and equals its upstream at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. No implementation worktree,
+branch, migration or source commit was created.
