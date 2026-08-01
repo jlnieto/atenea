@@ -77,4 +77,4 @@
 - [x] 7.5 Prove completion, failure and action-required notification deduplication plus exact deep link on the configured Android device
 - [x] 7.6 Repeat disable/rollback and re-enable while preserving WorkSession, profile history, progress, devices, deliveries and Git
 - [x] 7.7 Seal sanitized evidence, durations, screenshots, notification receipts, fingerprints and `SHA256SUMS`
-- [ ] 7.8 Run strict validation, synchronize specifications, archive, commit and push both repositories, then confirm normal Atenea/Beautips operation
+- [x] 7.8 Run strict validation, synchronize specifications, archive, commit and push both repositories, then confirm normal Atenea/Beautips operation

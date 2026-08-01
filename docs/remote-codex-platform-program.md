@@ -6583,3 +6583,30 @@ Task 7.7 is complete and change progress is `56/57`. The exact resume point is
 task 7.8. No prompt, answer, remote execution identity, device identity, push
 token, credential, provider body, token hash or token value was read or
 retained.
+
+Task 7.8 is complete and `add-codex-session-operations` is closed at `57/57`.
+OpenSpec synchronized the canonical specifications, created
+`codex-session-operations`, updated `remote-work-continuity` and
+`remote-worker-control`, and archived the full proposal, design, deltas and
+tasks as `2026-08-01-add-codex-session-operations`. The archive tool's two
+non-semantic trailing blank lines were removed; `git diff --check` passes and
+strict validation reports `12/12` canonical specifications valid.
+
+The Atenea implementation repository remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Direct read-only health probes
+report production Atenea, preview and Beautips `UP`. The AX42 worker remains
+active with `NRestarts=0`, both independent backup timers active, zero
+non-terminal AgentRuns and no recovery newer than
+`2026-08-01T18:09:39.936109Z`. The five prior renewable operator sessions
+remain revoked, so the next interactive Atenea use requires a fresh login.
+
+No application image, schema/data record, route, WorkSession, project runtime,
+worker service, device, notification or unrelated resource changed during
+archive closure. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.8-strict-sync-archive-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`f57a1c5bb9a9943a345b7cc05a3765893edd79397e37742f9c862b339f114305`.
+
+There is no remaining task or resume point in this archived change. Normal
+Atenea and Beautips operation is confirmed; subsequent programme work requires
+a separately selected OpenSpec change.
