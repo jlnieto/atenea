@@ -7096,3 +7096,43 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.1-server-derived-classification`;
 the SHA-256 of its `SHA256SUMS` is
 `0571e817b6742845ffbfd67ccbecb3042b489868a545975111da2202249c3d36`.
+
+Task 2.2 is complete and change progress is `16/83`; the exact resume point is
+task 2.3. Atenea commit
+`23199875e32e2716f10eafa4a5b669a294f6c849` replaces upload whole-file
+buffering with a bounded private spool: the same-owner real directory is mode
+`0700`, unpredictable regular files are mode `0600`, input is copied in 64 KiB
+blocks and the 16 MiB limit is enforced against bytes actually read.
+
+The streaming pass calculates SHA-256 and retains only a 16-byte signature
+window. PNG, JPEG, WebP, PDF and ZIP use the closed AX42 signatures; text must
+be strict UTF-8 without NUL; JSON is parsed as exactly one root value without
+building an in-memory tree. The worker client sends the file publisher with a
+known content length rather than a second byte array, and Atenea verifies the
+returned size, digest, type and classification.
+
+The spool closes before metadata indexing. Success, non-derived authority,
+actual-stream overflow, read failure, type mismatch, worker failure,
+worker-response identity mismatch and indexing failure tests all leave zero
+temporary files. Newly created synthetic worker content is removed through its
+exact existing identity when a post-PUT validation or index step fails.
+
+The final focused suite passes `21/21` tests in 11.90 seconds under a 240-second
+timeout, with no network and an ephemeral build target. Two earlier passing
+20-test runs preceded review improvements for single-root JSON and invalid
+worker-response cleanup. Static inspection finds zero `MultipartFile.getBytes`
+calls in the upload path and the default spool path is absent after testing.
+
+The implementation branch is clean and published with tree
+`1e4192ec45a7c28bb4e27fe1835f4908fa0f6c5a`. The canonical Atenea checkout
+remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production, preview and
+Beautips remain `UP`; AX42's versioned services and both backup timers remain
+active; RAID remains `3/3`; slot container counts remain `3/0/0/3`. No
+deployment, schema/data record, route, service, retained content, credential or
+foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.2-private-upload-spool`;
+the SHA-256 of its `SHA256SUMS` is
+`d2198e7f66250d9828b8b5e94815fded7317e758a280bd461eb1ec46a346d634`.

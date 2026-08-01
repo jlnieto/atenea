@@ -36,7 +36,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 ## 2. Atenea upload, turn and dispatch contracts
 
 - [x] 2.1 Make routine upload derive `OPERATOR_UPLOAD`, `SESSION` and image/file kind server-side while rejecting caller attempts to claim browser/trace/report/evidence authority
-- [ ] 2.2 Replace control-plane whole-file buffering with a bounded private temporary spool or equivalent finite-memory stream, verify SHA-256/type and remove temporary content in every outcome
+- [x] 2.2 Replace control-plane whole-file buffering with a bounded private temporary spool or equivalent finite-memory stream, verify SHA-256/type and remove temporary content in every outcome
 - [ ] 2.3 Use the remote WorkSession UUID and exact project/workspace/storage scope for real worker storage while preserving legacy synthetic identities and v1 retrieval
 - [ ] 2.4 Add an authenticated attachment capability read model with ready/blocked reason, policy revision, worker compatibility, accepted types, current quota and per-turn limits
 - [ ] 2.5 Extend turn submission additively with `clientRequestId` and ordered `attachmentIds`; require the request identity for image-bearing turns while preserving legacy text-only callers
