@@ -6832,3 +6832,25 @@ Sanitized rollup evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.6-entry-gate-rollup`;
 the SHA-256 of its `SHA256SUMS` is
 `cb7ce62b054030b5ae4a0e619d2eaa11864b1c5d6ea8514e9b4b18fd94ad6563`.
+
+Task 1.1 is complete and change progress is `7/83`; the exact resume point is
+task 1.2. Atenea commit
+`e50862e46a067f38d7d3a1fa689fa623e8c3d5b5` on published branch
+`codex/activate-atenea-real-worksession-attachments` adds a closed real-
+attachment registry whose only canonical identity is `atenea`, fixed to worker
+`ax42-01` and policy revision `atenea-real-attachments-v1`. The runtime
+allowlist defaults empty.
+
+Six focused tests prove exact Atenea acceptance plus startup rejection of
+Beautips, the mutable `Atenea` display name, arbitrary unknown values and mixed
+known/unknown configuration; the enabled set is immutable. The canonical test
+script could not allocate two fixed names already owned by an unrelated local
+environment and stopped before tests. The equivalent canonical Maven command
+passed in a uniquely labelled isolated Compose project, after which its exact
+container, network, volumes and image were removed with zero residue. No
+foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.1-canonical-registry`;
+the SHA-256 of its `SHA256SUMS` is
+`7743a093cc741fe68b2ca58a3a763f66c2ce78c62a44581ba3d4953f09d1a7f8`.
