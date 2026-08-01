@@ -6419,3 +6419,53 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.4-recovery-disconnect-restart`;
 the SHA-256 of its `SHA256SUMS` is
 `378021b3bb1bca888937502ef8b9b2573e00982ad07a87eb12efdf80eba69c4a`.
+
+Task 7.5 is complete and change progress is `54/57`; the exact implementation
+resume point is task 7.6. Task 7.6 and all later tasks remain pending.
+
+The generic notification outbox was enabled from an empty V60 baseline by
+changing only its production gate and recreating only the production backend.
+The backend returned `UP` in 16.162 seconds. No historical event or delivery
+was replayed, both active Android registrations remained on Atenea `0.5.97`
+and their absent preference rows continued to mean that all three initial
+categories were enabled.
+
+AgentRun 89 completed in 5.960 seconds and transactionally persisted one
+`RUN_COMPLETED` event. Each active Android device owned one delivery, accepted
+once. The configured device displayed exactly one safe completion
+notification; tapping it opened only WorkSession
+`2d98d762-7d9b-4cc1-948f-5e6353dc8b76` and its exact conversation. A separate
+backend restart returned `UP` in 16.001 seconds and left the event/delivery
+fingerprint, counts and single-attempt ownership unchanged. No second visible
+notification appeared.
+
+With zero non-terminal runs, only the canonical AX42 AgentRun worker was then
+stopped. AgentRun 90 entered `RECONCILING` without a remote execution and
+persisted one `ACTION_REQUIRED` event. After the bounded window it reached
+`FAILED` in 120.412 seconds and persisted one `RUN_FAILED` event. Each
+category again owned exactly one delivered row per active device with one
+attempt. The configured device displayed exactly one action-required and one
+failure notification. Tapping the failure notification opened the same exact
+conversation and exposed the failed execution.
+
+The worker was restored active with `NRestarts=0`, and its program, project
+configuration, admission record, mirror, clean worktree and Git commit were
+retained. A second backend restart returned `UP` in 13.891 seconds and left
+the combined action-required/failure fingerprint byte-stable, with zero
+dispatchable rows and no duplicate visible notification. Neither new run
+created a legacy push log.
+
+Final checks found three immutable events, six delivered device rows, one
+attempt per row, zero non-terminal AgentRuns and zero session, Playwright or
+Chromium processes. Production, preview and Beautips remained available; all
+four rootless Docker services remained active with container counts
+`3/0/0/3`; SSH and Tailscale remained active and all RAID arrays remained
+`[UU]`. Production routing, unrelated WorkSessions, slots and worker resources
+did not change. No device identity, push token, provider body, credential,
+prompt, answer, Codex thread/turn identity or remote execution identity was
+retained.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.5-notification-dedup-deep-link`;
+the SHA-256 of its `SHA256SUMS` is
+`ee2f1f8b5b0409ba3184a897f9fc129520b2506c1c1c03e6eb1c0cca47a770aa`.

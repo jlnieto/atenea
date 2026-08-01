@@ -74,7 +74,7 @@
 - [x] 7.2 Deploy backend, worker and Android changes disabled, then verify production, preview, Beautips, backup, RAID and unrelated slots unchanged
 - [x] 7.3 Enable one Atenea WorkSession and prove selected profile, safe intermediate progress, terminal response and same-thread continuation
 - [x] 7.4 Prove cancel, unreachable reconcile, safe failed retry, client disconnect and backend/worker restart without duplicate execution
-- [ ] 7.5 Prove completion, failure and action-required notification deduplication plus exact deep link on the configured Android device
+- [x] 7.5 Prove completion, failure and action-required notification deduplication plus exact deep link on the configured Android device
 - [ ] 7.6 Repeat disable/rollback and re-enable while preserving WorkSession, profile history, progress, devices, deliveries and Git
 - [ ] 7.7 Seal sanitized evidence, durations, screenshots, notification receipts, fingerprints and `SHA256SUMS`
 - [ ] 7.8 Run strict validation, synchronize specifications, archive, commit and push both repositories, then confirm normal Atenea/Beautips operation
