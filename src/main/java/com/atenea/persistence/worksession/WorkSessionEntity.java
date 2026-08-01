@@ -13,7 +13,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -61,7 +60,7 @@ public class WorkSessionEntity {
     @Column(name = "remote_workload_kind", length = 80)
     private String remoteWorkloadKind;
 
-    @Transient
+    @Column(name = "attachment_policy_revision", length = 80)
     private String attachmentPolicyRevision;
 
     @Column(name = "default_codex_model_id", length = 80)

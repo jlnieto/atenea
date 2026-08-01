@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "session_turn")
@@ -34,6 +35,12 @@ public class SessionTurnEntity {
 
     @Column(nullable = false)
     private boolean internal;
+
+    @Column(name = "client_request_id", updatable = false)
+    private UUID clientRequestId;
+
+    @Column(name = "request_fingerprint_sha256", length = 64, updatable = false)
+    private String requestFingerprintSha256;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -76,6 +83,22 @@ public class SessionTurnEntity {
 
     public void setInternal(boolean internal) {
         this.internal = internal;
+    }
+
+    public UUID getClientRequestId() {
+        return clientRequestId;
+    }
+
+    public void setClientRequestId(UUID clientRequestId) {
+        this.clientRequestId = clientRequestId;
+    }
+
+    public String getRequestFingerprintSha256() {
+        return requestFingerprintSha256;
+    }
+
+    public void setRequestFingerprintSha256(String requestFingerprintSha256) {
+        this.requestFingerprintSha256 = requestFingerprintSha256;
     }
 
     public Instant getCreatedAt() {

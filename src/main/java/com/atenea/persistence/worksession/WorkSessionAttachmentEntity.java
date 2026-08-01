@@ -65,6 +65,16 @@ public class WorkSessionAttachmentEntity {
     @Column(name = "storage_identity", nullable = false, length = 300)
     private String storageIdentity;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "storage_scope", length = 24, updatable = false)
+    private AttachmentStorageScope storageScope;
+
+    @Column(name = "remote_session_id", updatable = false)
+    private UUID remoteSessionId;
+
+    @Column(name = "workspace_identity", length = 200, updatable = false)
+    private String workspaceIdentity;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -181,6 +191,30 @@ public class WorkSessionAttachmentEntity {
 
     public void setStorageIdentity(String storageIdentity) {
         this.storageIdentity = storageIdentity;
+    }
+
+    public AttachmentStorageScope getStorageScope() {
+        return storageScope;
+    }
+
+    public void setStorageScope(AttachmentStorageScope storageScope) {
+        this.storageScope = storageScope;
+    }
+
+    public UUID getRemoteSessionId() {
+        return remoteSessionId;
+    }
+
+    public void setRemoteSessionId(UUID remoteSessionId) {
+        this.remoteSessionId = remoteSessionId;
+    }
+
+    public String getWorkspaceIdentity() {
+        return workspaceIdentity;
+    }
+
+    public void setWorkspaceIdentity(String workspaceIdentity) {
+        this.workspaceIdentity = workspaceIdentity;
     }
 
     public Instant getCreatedAt() {

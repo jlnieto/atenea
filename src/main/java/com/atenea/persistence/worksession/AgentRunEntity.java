@@ -84,6 +84,15 @@ public class AgentRunEntity {
     @Column(name = "manifest_sha256", length = 64)
     private String manifestSha256;
 
+    @Column(name = "attachment_count", nullable = false, updatable = false)
+    private int attachmentCount;
+
+    @Column(name = "attachment_bytes", nullable = false, updatable = false)
+    private long attachmentBytes;
+
+    @Column(name = "attachment_manifest_sha256", length = 64, updatable = false)
+    private String attachmentManifestSha256;
+
     @Column(name = "instruction_bundle_revision", length = 80)
     private String instructionBundleRevision;
 
@@ -301,6 +310,12 @@ public class AgentRunEntity {
     public void setWorkerMirrorCommit(String workerMirrorCommit) { this.workerMirrorCommit = workerMirrorCommit; }
     public String getManifestSha256() { return manifestSha256; }
     public void setManifestSha256(String manifestSha256) { this.manifestSha256 = manifestSha256; }
+    public int getAttachmentCount() { return attachmentCount; }
+    public void setAttachmentCount(int attachmentCount) { this.attachmentCount = attachmentCount; }
+    public long getAttachmentBytes() { return attachmentBytes; }
+    public void setAttachmentBytes(long attachmentBytes) { this.attachmentBytes = attachmentBytes; }
+    public String getAttachmentManifestSha256() { return attachmentManifestSha256; }
+    public void setAttachmentManifestSha256(String attachmentManifestSha256) { this.attachmentManifestSha256 = attachmentManifestSha256; }
     public String getInstructionBundleRevision() { return instructionBundleRevision; }
     public void setInstructionBundleRevision(String value) { this.instructionBundleRevision = value; }
     public String getInstructionBundleSha256() { return instructionBundleSha256; }
