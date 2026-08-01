@@ -42,6 +42,10 @@ class MobileAuthIntegrationTest {
     void mobileEndpointsRequireAuthAndLoginWorks() throws Exception {
         mockMvc.perform(get("/api/mobile/inbox"))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/sessions/12/attachments/capability"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/mobile/sessions/12/attachments/capability"))
+                .andExpect(status().isUnauthorized());
 
         mockMvc.perform(post("/api/mobile/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

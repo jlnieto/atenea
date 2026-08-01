@@ -1,6 +1,7 @@
 package com.atenea.attachments;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -13,6 +14,12 @@ public class AttachmentProperties {
     public static final String PROTOCOL = "worksession-attachment/v1";
     public static final long DEFAULT_MAX_FILE_BYTES = 16L * 1024L * 1024L;
     public static final long DEFAULT_MAX_SESSION_BYTES = 256L * 1024L * 1024L;
+    public static final int DEFAULT_MAX_ATTACHMENTS_PER_TURN = 4;
+    public static final long DEFAULT_MAX_ATTACHMENT_BYTES_PER_TURN = 32L * 1024L * 1024L;
+    public static final List<String> TURN_IMAGE_CONTENT_TYPES = List.of(
+            "image/png",
+            "image/jpeg",
+            "image/webp");
 
     private boolean enabled;
     private String workerId = "ax42-01";

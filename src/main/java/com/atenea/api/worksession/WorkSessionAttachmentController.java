@@ -1,6 +1,8 @@
 package com.atenea.api.worksession;
 
 import com.atenea.attachments.WorkSessionAttachmentService;
+import com.atenea.attachments.AttachmentCapability;
+import com.atenea.attachments.AttachmentCapabilityService;
 import com.atenea.persistence.worksession.AttachmentKind;
 import com.atenea.persistence.worksession.AttachmentRetentionClass;
 import com.atenea.persistence.worksession.AttachmentSource;
@@ -27,9 +29,19 @@ import org.springframework.web.multipart.MultipartFile;
 public class WorkSessionAttachmentController {
 
     private final WorkSessionAttachmentService attachmentService;
+    private final AttachmentCapabilityService capabilityService;
 
-    public WorkSessionAttachmentController(WorkSessionAttachmentService attachmentService) {
+    public WorkSessionAttachmentController(
+            WorkSessionAttachmentService attachmentService,
+            AttachmentCapabilityService capabilityService
+    ) {
         this.attachmentService = attachmentService;
+        this.capabilityService = capabilityService;
+    }
+
+    @GetMapping("/capability")
+    public AttachmentCapability capability(@PathVariable Long sessionId) {
+        return capabilityService.get(sessionId);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
