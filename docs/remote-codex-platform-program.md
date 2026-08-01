@@ -6520,7 +6520,8 @@ Sanitized evidence is beneath
 the SHA-256 of its `SHA256SUMS` is
 `60d2808c00a021312640d1a0359041556de6bf96da484cbcae66222c6a85eba3`.
 
-Task 7.7 is blocked and remains pending. Task 7.8 has not started.
+Task 7.7 was initially blocked by an unexpected authenticated recovery. Task
+7.8 has not started.
 
 At 2026-08-01 18:09:39 UTC, after the accepted task-7.6 fingerprints, one
 persisted recovery operation requested `RETRY` for failed AgentRun 90. It
@@ -6545,8 +6546,40 @@ is beneath
 the SHA-256 of its `SHA256SUMS` is
 `49fd72f2158a1f11f05adb673027095bd7bf0930a038e55fbdd4c630fac17e38`.
 
-The exact resume point remains task 7.7. Closure requires read-only provenance
-of the recovery request and proof that no unowned client, delayed command or
-automatic UI behavior can repeat it. No prompt, answer, remote execution
-identity, device identity, push token, credential or provider body was read or
+Read-only source inspection found no automatic recovery caller: web and
+Android invoke the endpoint only from an explicit button handler. Web has no
+POST retry queue; Android bounds connection/read to 15/60 seconds and permits
+only one immediate authentication-refresh replay. Backend creation has one
+POST entry point. The 37-minute delayed-command hypothesis is therefore
+outside the clients' finite lifetimes.
+
+Exact historical client attribution is unavailable. V59 retains operator,
+role, WorkSession, AgentRun, action, idempotency and request fingerprint, but
+not authentication-session identity, client surface, request identity, remote
+address or user agent; backend and Caddy retained no access record for the
+request. This limitation is disclosed rather than replaced by an inference.
+
+Containment resolved the operation's exact operator and revoked only its five
+still-open refresh-session metadata rows, IDs 283, 292, 318, 320 and 321, in
+one transaction. No token hash or value was selected or retained. All issued
+access tokens had already exceeded the production 15-minute lifetime.
+Repeated post-containment observations retained five global recovery
+operations, three for this WorkSession, zero non-terminal AgentRuns and zero
+renewable sessions. Atenea requires a fresh login; no project, conversation,
+AgentRun, notification, device, routing or worker record was deleted,
+rewritten, replayed or reconstructed.
+
+The final ledger verifies `55/55` completed-task evidence directories across
+Atenea and AX42, inventories 32 sealed screenshots, re-inspects seven
+representative desktop/mobile/Android states, and consolidates 57 normalized
+duration/timeout records plus the real-device notification receipts. The
+superseded draft and original blocker evidence remain retained transparently.
+The accepted ledger is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/add-codex-session-operations/runs/task-7.7-final-evidence-ledger`;
+the SHA-256 of its `SHA256SUMS` is
+`35bcdf85b3610668f85fa991107071e4ca04f0ecb6d86343248ceda7ea4aab57`.
+
+Task 7.7 is complete and change progress is `56/57`. The exact resume point is
+task 7.8. No prompt, answer, remote execution identity, device identity, push
+token, credential, provider body, token hash or token value was read or
 retained.
