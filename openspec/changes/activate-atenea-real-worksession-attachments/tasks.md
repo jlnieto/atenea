@@ -5,7 +5,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 
 ## 0. Entry gate and exact current-state audit
 
-- [ ] 0.1 Read `/home/jose/AGENTS.md`, Atenea `AGENTS.md`, the programme document, this complete change, canonical attachment/worker/continuity/onboarding specs, attachment rollback contracts and accepted attachment plus external-backup evidence
+- [x] 0.1 Read `/home/jose/AGENTS.md`, Atenea `AGENTS.md`, the programme document, this complete change, canonical attachment/worker/continuity/onboarding specs, attachment rollback contracts and accepted attachment plus external-backup evidence
 - [ ] 0.2 Verify programme and Atenea repositories are clean, synchronized and on their expected branches/commits before creating any implementation worktree or commit
 - [ ] 0.3 Capture sanitized production and AX42 fingerprints for V61, attachment gates/configuration, zero attachment rows/bytes, service protocol, empty retained root, worker/slots, routing, production, preview, Beautips, RAID, firewall, SSH and Tailscale
 - [ ] 0.4 Confirm read-only that the backend has no attachment token mount/real endpoint, AX42 attachment v1 is private and active, the backup source policy includes the attachment root, and backup/check timers plus accepted restore evidence remain healthy

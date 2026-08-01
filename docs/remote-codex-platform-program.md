@@ -6670,3 +6670,18 @@ Beautips, Android attachments or retention deletion.
 
 No implementation, migration, service, credential, route, WorkSession,
 production data or project gate was changed while preparing this specification.
+
+### Real attachment implementation entry progress
+
+Task 0.1 is complete and change progress is `1/83`; the exact resume point is
+task 0.2. The applicable agent instructions, complete programme, active
+proposal/design/five deltas/tasks, canonical attachment/worker/continuity/
+onboarding specifications and archived attachment plus external-backup
+contracts were read before implementation mutation.
+
+The complete accepted attachment rollback bundle verifies against SHA-256
+`2edf4d395c0f893a723cdead42072ec70ec465a41fdff295bf53e88c66972c74`.
+The complete accepted external-backup rollup verifies against SHA-256
+`90c2acc6882d8f498bd70742d9dcb3b7699edbe3628e6d1fba829938ecc18b4c`.
+No credential value, prompt, answer, attachment content or Codex internal state
+was read or retained.
