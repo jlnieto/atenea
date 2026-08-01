@@ -6803,3 +6803,17 @@ occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.4-prerequisite-boundary`;
 the SHA-256 of its `SHA256SUMS` is
 `32a6bc99470b6f36a5b37d35fff29b5166a32be8d923f128dd3952673e89f9c0`.
+
+Task 0.5 is complete and change progress is `5/83`; the exact resume point is
+task 0.6. Source at canonical Atenea commit
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and the reviewed programme worker
+confirms all six planned gaps: mutable display-name synthetic admission,
+hard-coded synthetic upload, caller-selected source/kind/retention, message-only
+turn creation, absent `project-codex-v3`/`--image` delivery, and a standalone
+enabled-looking primary upload panel that does not bind files to a turn.
+
+The audit was read-only and records exact Git blob identities for the inspected
+source boundary. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.5-gap-audit`;
+the SHA-256 of its `SHA256SUMS` is
+`be760d23025b1cb586171fee8df2471a5e014befe3229571f03daca789f4262b`.
