@@ -292,6 +292,10 @@ print(json.dumps({
             if route["identity"]["projectId"] == MODULE.PROJECT_ID
             else MODULE.BEAUTIPS_PROJECT_COMMIT
         )
+        self.refreshes = []
+        self.state._refresh_project_mirror = lambda route: self.refreshes.append(
+            route["identity"]["projectId"]
+        )
         self.session_id = str(uuid.uuid4())
 
     def tearDown(self):
@@ -329,12 +333,36 @@ print(json.dumps({
         self.assertEqual("ready", result["state"])
         self.assertEqual("atenea", result["projectId"])
         self.assertEqual("slot2", result["slot"])
+        self.assertEqual(["atenea"], self.refreshes)
+
+    def test_atenea_refresh_failure_blocks_activation(self):
+        request = self.request()
+        request.update({
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": TEST_COMMIT,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+        })
+
+        def reject_refresh(_route):
+            raise MODULE.ProtocolError(
+                MODULE.HTTPStatus.CONFLICT,
+                "canonical_source_unavailable",
+                "worker mirror canonical refresh failed closed",
+            )
+
+        self.state._refresh_project_mirror = reject_refresh
+        with self.assertRaisesRegex(MODULE.ProtocolError, "refresh failed closed"):
+            self.state.ensure_workspace(request)
+        self.assertFalse(self.calls.exists())
 
     def test_foreign_identity_and_arbitrary_field_fail_before_activation(self):
         foreign = self.request()
         foreign["repository"] = "https://github.com/foreign/beautips.git"
         with self.assertRaisesRegex(MODULE.ProtocolError, "not exact"):
             self.state.ensure_workspace(foreign)
+        self.assertEqual([], self.refreshes)
         arbitrary = self.request()
         arbitrary["command"] = "id"
         with self.assertRaisesRegex(MODULE.ProtocolError, "fields"):
@@ -354,6 +382,49 @@ print(json.dumps({
         with self.assertRaisesRegex(MODULE.ProtocolError, "persisted WorkSession"):
             self.state.ensure_workspace(request)
         self.assertFalse(self.calls.exists())
+
+
+class ProjectMirrorRefreshTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        self.origin = root / "origin.git"
+        self.mirror = root / "mirror.git"
+        subprocess.run(["git", "init", "-q", "--bare", self.origin], check=True)
+        subprocess.run(["git", "init", "-q", "--bare", self.mirror], check=True)
+        subprocess.run(
+            ["git", "--git-dir", self.mirror, "remote", "add", "origin", self.origin],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git", "--git-dir", self.mirror, "config", "remote.origin.fetch",
+                "+refs/heads/*:refs/remotes/origin/*",
+            ],
+            check=True,
+        )
+        self.state = MODULE.WorkerState(root / "state", "ax42-01")
+        self.route = {
+            "mirror": self.mirror,
+            "identity": {"repository": str(self.origin)},
+        }
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_exact_canonical_mirror_refreshes(self):
+        self.state._refresh_project_mirror(self.route)
+
+    def test_foreign_push_url_fails_closed(self):
+        subprocess.run(
+            [
+                "git", "--git-dir", self.mirror, "config", "remote.origin.pushurl",
+                "https://example.invalid/foreign.git",
+            ],
+            check=True,
+        )
+        with self.assertRaisesRegex(MODULE.ProtocolError, "failed closed"):
+            self.state._refresh_project_mirror(self.route)
 
 
 class RetainedDraftFingerprintTest(unittest.TestCase):

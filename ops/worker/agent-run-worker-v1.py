@@ -764,9 +764,33 @@ class WorkerState:
                 "invalid_session",
                 "sessionId must be a canonical UUID",
             )
+        workspace_branch = request["workspaceBranch"]
+        if (
+            not isinstance(workspace_branch, str)
+            or workspace_branch != f"atenea/session-{session_id}"
+        ):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_workspace_branch",
+                "workspace branch is not a persisted WorkSession branch",
+            )
         project_id = request.get("projectId")
         if project_id == PROJECT_ID:
             route = self._project_route(PROJECT_ID)
+            static_identity = {
+                "workspaceIdentity": f"remote:ax42-01:work-session:{session_id}",
+                "projectId": PROJECT_ID,
+                "repository": PROJECT_REPOSITORY,
+                "branch": PROJECT_BRANCH,
+                "manifestSha256": PROJECT_MANIFEST_SHA256,
+            }
+            if any(request.get(key) != value for key, value in static_identity.items()):
+                raise ProtocolError(
+                    HTTPStatus.FORBIDDEN,
+                    "workspace_ownership_conflict",
+                    "workspace activation identity is not exact",
+                )
+            self._refresh_project_mirror(route)
             canonical_commit = self._observe_project_commit(route)
             route_identity = {
                 "projectId": PROJECT_ID,
@@ -803,16 +827,6 @@ class WorkerState:
                 HTTPStatus.FORBIDDEN,
                 "workspace_ownership_conflict",
                 "workspace activation identity is not exact",
-            )
-        workspace_branch = request["workspaceBranch"]
-        if (
-            not isinstance(workspace_branch, str)
-            or workspace_branch != f"atenea/session-{session_id}"
-        ):
-            raise ProtocolError(
-                HTTPStatus.BAD_REQUEST,
-                "invalid_workspace_branch",
-                "workspace branch is not a persisted WorkSession branch",
             )
         if activator is None or not activator.is_file():
             raise ProtocolError(
@@ -1880,6 +1894,51 @@ class WorkerState:
                 "worker mirror canonical source is ambiguous",
             )
         return commit
+
+    def _refresh_project_mirror(self, route: dict[str, Any]) -> None:
+        mirror = route.get("mirror")
+        if mirror is None:
+            return
+        if not mirror.is_dir() or mirror.is_symlink():
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "canonical_source_unavailable",
+                "worker mirror canonical refresh failed closed",
+            )
+        try:
+            configuration = subprocess.run(
+                [
+                    "git", "--git-dir", str(mirror), "config", "--get-regexp",
+                    r"^remote\.origin\.(url|fetch|pushurl)$",
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=15,
+                check=True,
+            )
+            expected_configuration = {
+                f"remote.origin.url {route['identity']['repository']}",
+                "remote.origin.fetch +refs/heads/*:refs/remotes/origin/*",
+            }
+            if set(configuration.stdout.splitlines()) != expected_configuration:
+                raise subprocess.SubprocessError("canonical mirror remote is not exact")
+            subprocess.run(
+                ["git", "--git-dir", str(mirror), "fetch", "--prune", "origin"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+                timeout=120,
+                check=True,
+            )
+        except (OSError, subprocess.SubprocessError):
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "canonical_source_unavailable",
+                "worker mirror canonical refresh failed closed",
+            )
 
     def _project_selection_enabled(self) -> bool:
         for project_id in (PROJECT_ID, BEAUTIPS_PROJECT_ID):
