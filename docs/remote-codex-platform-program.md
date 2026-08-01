@@ -6817,3 +6817,18 @@ source boundary. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.5-gap-audit`;
 the SHA-256 of its `SHA256SUMS` is
 `be760d23025b1cb586171fee8df2471a5e014befe3229571f03daca789f4262b`.
+
+Task 0.6 is complete and the entry gate is closed at change progress `6/83`;
+the exact resume point is task 1.1. All five supporting entry bundles and every
+file they declare pass checksum verification. The rollup preserves command
+summaries, exit codes, finite timeouts and relevant durations without retaining
+credentials, environment values, attachment identities/content, prompts,
+answers or Codex internal state.
+
+Strict validation passes for the active change and for all 13 authoritative
+OpenSpec items. No production schema, data, credential, deployment, routing,
+WorkSession, runtime or retained attachment changed during entry-gate closure.
+Sanitized rollup evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-0.6-entry-gate-rollup`;
+the SHA-256 of its `SHA256SUMS` is
+`cb7ce62b054030b5ae4a0e619d2eaa11864b1c5d6ea8514e9b4b18fd94ad6563`.
