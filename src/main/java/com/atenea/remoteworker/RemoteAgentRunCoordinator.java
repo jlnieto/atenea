@@ -30,6 +30,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class RemoteAgentRunCoordinator {
 
+    public enum RetryProof { ABSENT, TERMINAL, STILL_LIVE }
+
     private static final Logger log = LoggerFactory.getLogger(RemoteAgentRunCoordinator.class);
     private static final Map<AgentRunProgressCategory, String> WORKER_PROGRESS_MESSAGES = Map.ofEntries(
             Map.entry(AgentRunProgressCategory.ACCEPTED, "Execution request accepted."),
@@ -141,6 +143,61 @@ public class RemoteAgentRunCoordinator {
                 }
             });
         }
+    }
+
+    public AgentRunStatus requestReconciliation(Long runId) {
+        AgentRunEntity run = transaction.execute(status -> getRemoteRun(runId));
+        if (run == null || run.getStatus().isTerminal()) {
+            return run == null ? null : run.getStatus();
+        }
+        transaction.executeWithoutResult(status -> {
+            AgentRunEntity persisted = getRemoteRunForUpdate(runId);
+            if (!persisted.getStatus().isTerminal()) {
+                persisted.setStatus(AgentRunStatus.RECONCILING);
+                persisted.setReconciliationStartedAt(
+                        persisted.getReconciliationStartedAt() == null
+                                ? Instant.now() : persisted.getReconciliationStartedAt());
+                persisted.setStatusReason("Reconciling exact persisted execution by operator request");
+                agentRunRepository.save(persisted);
+                progressService.append(persisted.getId(), AgentRunProgressCategory.RECONCILING);
+            }
+        });
+        AgentRunEntity persisted = transaction.execute(status -> getRemoteRun(runId));
+        RemoteWorkerClient.Execution response = persisted.getRemoteExecutionId() == null
+                ? client.get(persisted)
+                : client.inspectReconciliation(persisted);
+        apply(runId, response);
+        AgentRunStatus result = transaction.execute(status -> getRemoteRun(runId).getStatus());
+        if (result != null && result.isNonTerminal()) {
+            dispatchAfterCommit(runId);
+        }
+        return result;
+    }
+
+    public RetryProof proveTerminalOrAbsent(Long runId) {
+        AgentRunEntity run = transaction.execute(status -> getRemoteRun(runId));
+        if (run == null || run.getStatus() != AgentRunStatus.FAILED) {
+            return RetryProof.STILL_LIVE;
+        }
+        try {
+            RemoteWorkerClient.Execution response = run.getRemoteExecutionId() == null
+                    ? client.get(run)
+                    : client.inspectReconciliation(run);
+            verifyOwnership(run, response);
+            AgentRunStatus remoteStatus = AgentRunStatus.valueOf(response.status());
+            return remoteStatus == AgentRunStatus.FAILED || remoteStatus == AgentRunStatus.CANCELLED
+                    ? RetryProof.TERMINAL : RetryProof.STILL_LIVE;
+        } catch (RemoteWorkerException exception) {
+            if (run.getRemoteExecutionId() == null && exception.getStatusCode() == 404) {
+                return RetryProof.ABSENT;
+            }
+            throw exception;
+        }
+    }
+
+    public void requestDiagnostic(Long runId) {
+        AgentRunEntity run = transaction.execute(status -> getRemoteRun(runId));
+        client.doctor(run);
     }
 
     private void observe(Long runId) {

@@ -29,6 +29,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -43,6 +45,7 @@ public class CodexSessionOperationsService {
     private final AgentRunRepository runRepository;
     private final AgentRunProgressService progressService;
     private final AgentRunRecoveryOperationService recoveryService;
+    private final AgentRunRecoveryCoordinator recoveryCoordinator;
     private final OperatorPushDeviceRepository deviceRepository;
     private final NotificationPreferenceRepository preferenceRepository;
 
@@ -54,6 +57,7 @@ public class CodexSessionOperationsService {
             AgentRunRepository runRepository,
             AgentRunProgressService progressService,
             AgentRunRecoveryOperationService recoveryService,
+            AgentRunRecoveryCoordinator recoveryCoordinator,
             OperatorPushDeviceRepository deviceRepository,
             NotificationPreferenceRepository preferenceRepository) {
         this.properties = properties;
@@ -63,6 +67,7 @@ public class CodexSessionOperationsService {
         this.runRepository = runRepository;
         this.progressService = progressService;
         this.recoveryService = recoveryService;
+        this.recoveryCoordinator = recoveryCoordinator;
         this.deviceRepository = deviceRepository;
         this.preferenceRepository = preferenceRepository;
     }
@@ -194,13 +199,30 @@ public class CodexSessionOperationsService {
                 || request.action() == null || request.idempotencyKey() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Complete recovery request required");
         }
-        AgentRunRecoveryOperationEntity operation = recoveryService.request(
+        var requested = recoveryService.request(
                 operator.operatorId(), request.workSessionId(), runId,
-                request.action(), request.idempotencyKey()).operation();
+                request.action(), request.idempotencyKey());
+        AgentRunRecoveryOperationEntity operation = requested.operation();
+        if (!operation.getState().isTerminal()) {
+            scheduleRecoveryAfterCommit(operation.getOperationId());
+        }
         return new RecoveryResponse(operation.getOperationId(), operation.getState().name(),
                 operation.getAction().name(), enumName(operation.getOutcomeCode()),
                 operation.getOutcomeSummary(), enumName(operation.getRequiredNextAction()),
                 operation.getResultAgentRun() == null ? null : operation.getResultAgentRun().getId());
+    }
+
+    private void scheduleRecoveryAfterCommit(UUID operationId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            recoveryCoordinator.schedule(operationId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                recoveryCoordinator.schedule(operationId);
+            }
+        });
     }
 
     @Transactional(readOnly = true)

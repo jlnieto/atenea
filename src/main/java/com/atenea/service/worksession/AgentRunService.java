@@ -120,6 +120,34 @@ public class AgentRunService {
         return agentRunRepository.save(run);
     }
 
+    @Transactional
+    public AgentRunEntity createRemoteRetryRun(Long sourceRunId) {
+        AgentRunEntity source = agentRunRepository.findByIdForUpdate(sourceRunId)
+                .orElseThrow(() -> new AgentRunNotFoundException(sourceRunId));
+        if (source.getStatus() != AgentRunStatus.FAILED
+                || source.getExecutionTarget() != ExecutionTarget.REMOTE) {
+            throw new AgentRunRecoveryConflictException(
+                    "Only an exact failed remote AgentRun may be retried");
+        }
+        AgentRunEntity existing = agentRunRepository
+                .findFirstByRetryOfRunIdOrderByCreatedAtAsc(sourceRunId)
+                .orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+
+        AgentRunEntity retry = createRemoteQueuedRun(
+                source.getSession(), source.getOriginTurn(), source.getWorkloadClass());
+        retry.setRetryOfRun(source);
+        retry.setCodexModelId(source.getCodexModelId());
+        retry.setCodexModelSource(source.getCodexModelSource());
+        retry.setCodexReasoningEffort(source.getCodexReasoningEffort());
+        retry.setCodexEffortSource(source.getCodexEffortSource());
+        retry.setCodexCatalogRevision(source.getCodexCatalogRevision());
+        retry.setCodexVersion(source.getCodexVersion());
+        return agentRunRepository.save(retry);
+    }
+
     private void lockCodexActivation(String workerId) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalStateException("Remote worker ownership is incomplete");

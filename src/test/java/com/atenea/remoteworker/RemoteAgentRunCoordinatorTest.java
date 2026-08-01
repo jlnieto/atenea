@@ -312,6 +312,46 @@ class RemoteAgentRunCoordinatorTest {
         verify(client, never()).dispatch(any(), any());
     }
 
+    @Test
+    void failedPreAdmissionRetryIsProvenAbsentWithoutDispatch() {
+        AgentRunEntity run = projectRun();
+        run.setStatus(AgentRunStatus.FAILED);
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(client.get(run)).thenThrow(new RemoteWorkerException("absent", 404));
+
+        assertEquals(RemoteAgentRunCoordinator.RetryProof.ABSENT,
+                coordinator.proveTerminalOrAbsent(run.getId()));
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void successfulRemoteResultCannotBeRetriedAsFailedWork() {
+        AgentRunEntity run = projectRun();
+        run.setStatus(AgentRunStatus.FAILED);
+        run.setRemoteExecutionId("4ee2d311-b9da-4307-89b6-dd3110ef2057");
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(client.inspectReconciliation(run)).thenReturn(succeeded(run));
+
+        assertEquals(RemoteAgentRunCoordinator.RetryProof.STILL_LIVE,
+                coordinator.proveTerminalOrAbsent(run.getId()));
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void exactReconciliationAppliesTerminalStateWithoutReplacementDispatch() {
+        AgentRunEntity run = projectRun();
+        run.setStatus(AgentRunStatus.RECONCILING);
+        run.setRemoteExecutionId("4ee2d311-b9da-4307-89b6-dd3110ef2057");
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.inspectReconciliation(run)).thenReturn(execution(run, "CANCELLED", null));
+
+        assertEquals(AgentRunStatus.CANCELLED, coordinator.requestReconciliation(run.getId()));
+        verify(client).inspectReconciliation(run);
+        verify(client, never()).dispatch(any(), any());
+    }
+
     private AgentRunEntity projectRun() {
         UUID remoteSessionId = UUID.fromString("4bb26a65-0a0a-4ae0-b8e0-b41e03a695bf");
         ProjectEntity project = new ProjectEntity();

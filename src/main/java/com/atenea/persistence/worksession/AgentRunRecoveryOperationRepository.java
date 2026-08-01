@@ -2,6 +2,7 @@ package com.atenea.persistence.worksession;
 
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -20,4 +21,7 @@ public interface AgentRunRecoveryOperationRepository
             + "where operation.operationId = :operationId")
     Optional<AgentRunRecoveryOperationEntity> findByOperationIdForUpdate(
             @Param("operationId") UUID operationId);
+
+    List<AgentRunRecoveryOperationEntity> findByStateInOrderByCreatedAtAsc(
+            List<AgentRunRecoveryState> states);
 }
