@@ -1,14 +1,18 @@
 package com.atenea.service.worksession;
 
+import com.atenea.attachments.RealAttachmentProjectRegistry;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AttachmentKind;
+import com.atenea.persistence.worksession.AttachmentRetentionClass;
 import com.atenea.persistence.worksession.AttachmentSource;
+import com.atenea.persistence.worksession.AttachmentStorageScope;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionAttachmentEntity;
 import com.atenea.persistence.worksession.WorkSessionAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.remoteworker.ProjectCodexIdentity;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -52,6 +56,7 @@ public class WorkSessionAttachmentMetadataService {
         WorkSessionEntity session = workSessionRepository.findLockedWithProjectById(workSessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(workSessionId));
         requireRemoteWorker(session, request.workerId());
+        requireStorageOwnership(session, request);
 
         AgentRunEntity agentRun = null;
         if (request.agentRunId() != null) {
@@ -87,6 +92,9 @@ public class WorkSessionAttachmentMetadataService {
         attachment.setSha256(request.sha256());
         attachment.setWorkerId(request.workerId());
         attachment.setStorageIdentity(request.storageIdentity());
+        attachment.setStorageScope(request.storageScope());
+        attachment.setRemoteSessionId(request.remoteSessionId());
+        attachment.setWorkspaceIdentity(request.workspaceIdentity());
         attachment.setIndexedAt(indexedAt);
         return attachmentRepository.save(attachment);
     }
@@ -172,6 +180,19 @@ public class WorkSessionAttachmentMetadataService {
                 || request.storageIdentity() == null || request.storageIdentity().isBlank()) {
             throw new IllegalArgumentException("Falta la identidad opaca de almacenamiento.");
         }
+        boolean legacySyntheticScope = request.storageScope() == null
+                && request.remoteSessionId() == null
+                && request.workspaceIdentity() == null;
+        boolean completeRealScope = request.storageScope() == AttachmentStorageScope.REAL_SESSION
+                && request.remoteSessionId() != null
+                && request.workspaceIdentity() != null
+                && !request.workspaceIdentity().isBlank()
+                && request.source() == AttachmentSource.OPERATOR_UPLOAD
+                && request.retentionClass() == AttachmentRetentionClass.SESSION;
+        if (!legacySyntheticScope && !completeRealScope) {
+            throw new AttachmentOwnershipException(
+                    "El scope de almacenamiento del adjunto está incompleto o es ambiguo.");
+        }
         if (request.createdAt() == null || request.createdAt().isAfter(Instant.now().plusSeconds(60))) {
             throw new IllegalArgumentException("La fecha de creación del adjunto no es válida.");
         }
@@ -198,6 +219,9 @@ public class WorkSessionAttachmentMetadataService {
                 && Objects.equals(existing.getSha256(), request.sha256())
                 && Objects.equals(existing.getWorkerId(), request.workerId())
                 && Objects.equals(existing.getStorageIdentity(), request.storageIdentity())
+                && existing.getStorageScope() == request.storageScope()
+                && Objects.equals(existing.getRemoteSessionId(), request.remoteSessionId())
+                && Objects.equals(existing.getWorkspaceIdentity(), request.workspaceIdentity())
                 && Objects.equals(existing.getCreatedAt(), request.createdAt());
         if (!identical) {
             throw new AttachmentConflictException(
@@ -211,6 +235,28 @@ public class WorkSessionAttachmentMetadataService {
                 || !Objects.equals(session.getSelectedWorkerId(), workerId)) {
             throw new AttachmentOwnershipException(
                     "La WorkSession no está vinculada al worker indicado.");
+        }
+    }
+
+    private void requireStorageOwnership(
+            WorkSessionEntity session,
+            AttachmentIndexRequest request
+    ) {
+        if (request.storageScope() == null) {
+            return;
+        }
+        String expectedWorkspace = "remote:" + request.workerId()
+                + ":work-session:" + request.remoteSessionId();
+        if (request.storageScope() != AttachmentStorageScope.REAL_SESSION
+                || !RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION.equals(
+                    session.getAttachmentPolicyRevision())
+                || !ProjectCodexIdentity.matches(session)
+                || !RealAttachmentProjectRegistry.ATENEA_WORKER_ID.equals(request.workerId())
+                || !Objects.equals(session.getRemoteSessionId(), request.remoteSessionId())
+                || !Objects.equals(session.getWorkspaceIdentity(), request.workspaceIdentity())
+                || !Objects.equals(expectedWorkspace, request.workspaceIdentity())) {
+            throw new AttachmentOwnershipException(
+                    "El almacenamiento real no coincide con el ownership persistido de la WorkSession.");
         }
     }
 

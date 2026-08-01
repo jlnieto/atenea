@@ -8,17 +8,20 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.atenea.attachments.RealAttachmentProjectRegistry;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AttachmentKind;
 import com.atenea.persistence.worksession.AttachmentRetentionClass;
 import com.atenea.persistence.worksession.AttachmentSource;
+import com.atenea.persistence.worksession.AttachmentStorageScope;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionAttachmentEntity;
 import com.atenea.persistence.worksession.WorkSessionAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.remoteworker.ProjectCodexIdentity;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -108,6 +111,9 @@ class WorkSessionAttachmentMetadataServiceTest {
                 "a".repeat(64),
                 "foreign-worker",
                 "foreign",
+                null,
+                null,
+                null,
                 CREATED_AT);
 
         assertThrows(AttachmentOwnershipException.class, () -> service.index(12L, request));
@@ -125,6 +131,43 @@ class WorkSessionAttachmentMetadataServiceTest {
 
         assertThrows(AttachmentLimitException.class, () -> service.index(12L, request(null, 4096L)));
 
+        verify(attachmentRepository, never()).save(any());
+    }
+
+    @Test
+    void indexesCompleteRealStorageScopeFromPersistedSessionOwnership() {
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        WorkSessionEntity session = realSession(12L, 7L, remoteSessionId);
+        when(attachmentRepository.findById(ATTACHMENT_ID)).thenReturn(Optional.empty());
+        when(workSessionRepository.findLockedWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(attachmentRepository.sumSizeBytesByWorkSessionId(12L)).thenReturn(0L);
+        when(attachmentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        WorkSessionAttachmentEntity indexed = service.index(
+                12L,
+                realRequest(remoteSessionId, session.getWorkspaceIdentity()));
+
+        assertEquals(AttachmentStorageScope.REAL_SESSION, indexed.getStorageScope());
+        assertEquals(remoteSessionId, indexed.getRemoteSessionId());
+        assertEquals(session.getWorkspaceIdentity(), indexed.getWorkspaceIdentity());
+    }
+
+    @Test
+    void rejectsPartialOrForeignRealStorageScopeWithoutSaving() {
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        WorkSessionEntity session = realSession(12L, 7L, remoteSessionId);
+        AttachmentIndexRequest partial = realRequest(
+                remoteSessionId,
+                null);
+        AttachmentIndexRequest foreign = realRequest(
+                UUID.fromString("77b05a08-e675-46bb-b1c8-a93019f86f91"),
+                "remote:ax42-01:work-session:77b05a08-e675-46bb-b1c8-a93019f86f91");
+
+        assertThrows(AttachmentOwnershipException.class, () -> service.index(12L, partial));
+
+        when(attachmentRepository.findById(ATTACHMENT_ID)).thenReturn(Optional.empty());
+        when(workSessionRepository.findLockedWithProjectById(12L)).thenReturn(Optional.of(session));
+        assertThrows(AttachmentOwnershipException.class, () -> service.index(12L, foreign));
         verify(attachmentRepository, never()).save(any());
     }
 
@@ -182,6 +225,31 @@ class WorkSessionAttachmentMetadataServiceTest {
                 "a".repeat(64),
                 "ax42-01",
                 "work-sessions/12/d9e42006-8aac-42ca-84e6-c2cad4a82548/content",
+                null,
+                null,
+                null,
+                CREATED_AT);
+    }
+
+    private static AttachmentIndexRequest realRequest(
+            UUID remoteSessionId,
+            String workspaceIdentity
+    ) {
+        return new AttachmentIndexRequest(
+                ATTACHMENT_ID,
+                null,
+                AttachmentSource.OPERATOR_UPLOAD,
+                AttachmentKind.IMAGE,
+                "screen.png",
+                "image/png",
+                4096L,
+                AttachmentRetentionClass.SESSION,
+                "a".repeat(64),
+                "ax42-01",
+                "work-sessions/" + remoteSessionId + "/" + ATTACHMENT_ID + "/content",
+                AttachmentStorageScope.REAL_SESSION,
+                remoteSessionId,
+                workspaceIdentity,
                 CREATED_AT);
     }
 
@@ -216,6 +284,22 @@ class WorkSessionAttachmentMetadataServiceTest {
         session.setExecutionTarget(ExecutionTarget.REMOTE);
         session.setSelectedWorkerId("ax42-01");
         session.setWorkspaceIdentity("remote:ax42-01:work-session:" + sessionId);
+        return session;
+    }
+
+    private static WorkSessionEntity realSession(
+            Long sessionId,
+            Long projectId,
+            UUID remoteSessionId
+    ) {
+        WorkSessionEntity session = remoteSession(sessionId, projectId);
+        session.getProject().setName(ProjectCodexIdentity.PROJECT_NAME);
+        session.getProject().setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        session.setAttachmentPolicyRevision(RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION);
         return session;
     }
 

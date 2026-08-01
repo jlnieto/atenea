@@ -3,10 +3,12 @@ package com.atenea.attachments;
 import com.atenea.persistence.worksession.AttachmentKind;
 import com.atenea.persistence.worksession.AttachmentRetentionClass;
 import com.atenea.persistence.worksession.AttachmentSource;
+import com.atenea.persistence.worksession.AttachmentStorageScope;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionAttachmentEntity;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.service.worksession.AttachmentIndexRequest;
 import com.atenea.service.worksession.AttachmentLimitException;
 import com.atenea.service.worksession.AttachmentOwnershipException;
@@ -58,7 +60,8 @@ public class WorkSessionAttachmentService {
             AttachmentRetentionClass claimedRetentionClass,
             MultipartFile file
     ) {
-        WorkSessionEntity session = requireCreateAllowed(workSessionId);
+        UploadOwnership ownership = requireCreateAllowed(workSessionId);
+        WorkSessionEntity session = ownership.session();
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Selecciona un fichero no vacío.");
         }
@@ -85,18 +88,39 @@ public class WorkSessionAttachmentService {
 
             AttachmentWorkerClient.Health health = workerClient.health();
             requireCompatibleWorker(session, health);
-            stored = workerClient.put(
-                    workSessionId,
-                    attachmentId,
-                    source,
-                    upload.kind(),
-                    retentionClass,
-                    upload.contentType(),
-                    upload.sha256(),
-                    createdAt,
-                    upload.path());
+            if (ownership.real()) {
+                requireCompatibleRealCapability(
+                        session,
+                        workerClient.realProjectCapability());
+                stored = workerClient.putReal(
+                        ownership.remoteSessionId(),
+                        ownership.projectIdentity(),
+                        ownership.workspaceIdentity(),
+                        ownership.storageScope(),
+                        attachmentId,
+                        source,
+                        upload.kind(),
+                        retentionClass,
+                        upload.contentType(),
+                        upload.sha256(),
+                        createdAt,
+                        upload.path());
+            } else {
+                stored = workerClient.putSynthetic(
+                        workSessionId,
+                        attachmentId,
+                        source,
+                        upload.kind(),
+                        retentionClass,
+                        upload.contentType(),
+                        upload.sha256(),
+                        createdAt,
+                        upload.path());
+            }
             validateStored(
                     session,
+                    ownership.storageSessionIdentity(),
+                    ownership.real(),
                     attachmentId,
                     upload.sha256(),
                     upload.sizeBytes(),
@@ -108,7 +132,12 @@ public class WorkSessionAttachmentService {
                     upload.contentType(),
                     stored.attachment());
         } catch (RuntimeException transferFailure) {
-            cleanupNewSynthetic(stored, workSessionId, attachmentId, transferFailure);
+            cleanupNewSynthetic(
+                    ownership,
+                    stored,
+                    workSessionId,
+                    attachmentId,
+                    transferFailure);
             throw transferFailure;
         }
 
@@ -130,20 +159,29 @@ public class WorkSessionAttachmentService {
                             upload.sha256(),
                             acceptedStored.attachment().workerId(),
                             acceptedStored.attachment().storageIdentity(),
+                            ownership.storageScope(),
+                            ownership.remoteSessionId(),
+                            ownership.workspaceIdentity(),
                             acceptedStored.attachment().createdAt()));
         } catch (RuntimeException indexingFailure) {
-            cleanupNewSynthetic(acceptedStored, workSessionId, attachmentId, indexingFailure);
+            cleanupNewSynthetic(
+                    ownership,
+                    acceptedStored,
+                    workSessionId,
+                    attachmentId,
+                    indexingFailure);
             throw indexingFailure;
         }
     }
 
     private void cleanupNewSynthetic(
+            UploadOwnership ownership,
             AttachmentWorkerClient.PutResult stored,
             Long workSessionId,
             UUID attachmentId,
             RuntimeException failure
     ) {
-        if (stored != null && stored.created()) {
+        if (!ownership.real() && stored != null && stored.created()) {
             try {
                 workerClient.deleteSynthetic(workSessionId, attachmentId);
             } catch (RuntimeException cleanupFailure) {
@@ -171,7 +209,7 @@ public class WorkSessionAttachmentService {
 
     public Download download(Long workSessionId, UUID attachmentId) {
         WorkSessionAttachmentEntity metadata = metadataService.get(workSessionId, attachmentId);
-        AttachmentWorkerClient.Content content = workerClient.content(workSessionId, attachmentId);
+        AttachmentWorkerClient.Content content = content(metadata, workSessionId, attachmentId);
         String actualSha256 = sha256(content.bytes());
         if (content.bytes().length != metadata.getSizeBytes()
                 || !Objects.equals(actualSha256, metadata.getSha256())
@@ -184,16 +222,58 @@ public class WorkSessionAttachmentService {
         return new Download(metadata, content.bytes());
     }
 
-    private WorkSessionEntity requireCreateAllowed(Long workSessionId) {
+    private AttachmentWorkerClient.Content content(
+            WorkSessionAttachmentEntity metadata,
+            Long workSessionId,
+            UUID attachmentId
+    ) {
+        if (metadata.getStorageScope() == null
+                && metadata.getRemoteSessionId() == null
+                && metadata.getWorkspaceIdentity() == null) {
+            return workerClient.content(workSessionId, attachmentId);
+        }
+        String expectedWorkspace = "remote:" + metadata.getWorkerId()
+                + ":work-session:" + metadata.getRemoteSessionId();
+        if (metadata.getStorageScope() != AttachmentStorageScope.REAL_SESSION
+                || metadata.getRemoteSessionId() == null
+                || !Objects.equals(expectedWorkspace, metadata.getWorkspaceIdentity())) {
+            throw new AttachmentOwnershipException(
+                    "El scope retenido del adjunto está incompleto o es ambiguo.");
+        }
+        return workerClient.content(metadata.getRemoteSessionId(), attachmentId);
+    }
+
+    private UploadOwnership requireCreateAllowed(Long workSessionId) {
         WorkSessionEntity session = workSessionRepository.findWithProjectById(workSessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(workSessionId));
-        admissionPolicy.requireSyntheticCreationAllowed(session.getProject().getName());
         if (session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !Objects.equals(session.getSelectedWorkerId(), properties.getWorkerId())) {
             throw new AttachmentOwnershipException(
                     "La WorkSession no tiene afinidad persistida con el worker de adjuntos.");
         }
-        return session;
+        if (session.getAttachmentPolicyRevision() == null) {
+            admissionPolicy.requireSyntheticCreationAllowed(session.getProject().getName());
+            return UploadOwnership.synthetic(session);
+        }
+        requireExactRealOwnership(session);
+        admissionPolicy.requireRealCreateBindAllowed(ProjectCodexIdentity.PROJECT_IDENTITY);
+        return UploadOwnership.real(session);
+    }
+
+    private void requireExactRealOwnership(WorkSessionEntity session) {
+        String expectedWorkspace = "remote:" + RealAttachmentProjectRegistry.ATENEA_WORKER_ID
+                + ":work-session:" + session.getRemoteSessionId();
+        if (!RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION.equals(
+                    session.getAttachmentPolicyRevision())
+                || !ProjectCodexIdentity.matches(session)
+                || !RealAttachmentProjectRegistry.ATENEA_WORKER_ID.equals(
+                    session.getSelectedWorkerId())
+                || session.getRemoteSessionId() == null
+                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
+                || !Objects.equals(expectedWorkspace, session.getWorkspaceIdentity())) {
+            throw new AttachmentOwnershipException(
+                    "La WorkSession no tiene ownership real completo para adjuntos.");
+        }
     }
 
     private void requireCompatibleWorker(
@@ -212,8 +292,30 @@ public class WorkSessionAttachmentService {
         }
     }
 
+    private void requireCompatibleRealCapability(
+            WorkSessionEntity session,
+            AttachmentWorkerClient.RealProjectCapability capability
+    ) {
+        if (capability == null
+                || !capability.healthy()
+                || !AttachmentWorkerClient.REAL_PROJECT_PROTOCOL.equals(
+                    capability.protocolVersion())
+                || !Objects.equals(session.getSelectedWorkerId(), capability.workerId())
+                || !List.of(ProjectCodexIdentity.PROJECT_IDENTITY)
+                    .equals(capability.projectIdentities())
+                || !List.of(AttachmentStorageScope.REAL_SESSION)
+                    .equals(capability.storageScopes())) {
+            throw new AttachmentWorkerException(
+                    "AX42 no anuncia un contrato de adjuntos reales compatible.",
+                    503,
+                    "incompatible_real_attachment_worker");
+        }
+    }
+
     private void validateStored(
             WorkSessionEntity session,
+            String storageSessionIdentity,
+            boolean real,
             UUID attachmentId,
             String sha256,
             long size,
@@ -221,11 +323,11 @@ public class WorkSessionAttachmentService {
     ) {
         if (!AttachmentProperties.PROTOCOL.equals(stored.protocolVersion())
                 || !Objects.equals(session.getSelectedWorkerId(), stored.workerId())
-                || !Objects.equals(session.getId().toString(), stored.sessionId())
+                || !Objects.equals(storageSessionIdentity, stored.sessionId())
                 || !Objects.equals(attachmentId, stored.attachmentId())
                 || !Objects.equals(sha256, stored.sha256())
                 || stored.sizeBytes() != size
-                || !stored.syntheticFixture()) {
+                || stored.syntheticFixture() != !real) {
             throw new AttachmentWorkerException(
                     "AX42 devolvió una identidad de adjunto distinta de la solicitada.",
                     409,
@@ -290,5 +392,38 @@ public class WorkSessionAttachmentService {
     }
 
     public record Download(WorkSessionAttachmentEntity metadata, byte[] content) {
+    }
+
+    private record UploadOwnership(
+            WorkSessionEntity session,
+            boolean real,
+            String projectIdentity,
+            AttachmentStorageScope storageScope,
+            UUID remoteSessionId,
+            String workspaceIdentity,
+            String storageSessionIdentity
+    ) {
+
+        private static UploadOwnership synthetic(WorkSessionEntity session) {
+            return new UploadOwnership(
+                    session,
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    session.getId().toString());
+        }
+
+        private static UploadOwnership real(WorkSessionEntity session) {
+            return new UploadOwnership(
+                    session,
+                    true,
+                    ProjectCodexIdentity.PROJECT_IDENTITY,
+                    AttachmentStorageScope.REAL_SESSION,
+                    session.getRemoteSessionId(),
+                    session.getWorkspaceIdentity(),
+                    session.getRemoteSessionId().toString());
+        }
     }
 }

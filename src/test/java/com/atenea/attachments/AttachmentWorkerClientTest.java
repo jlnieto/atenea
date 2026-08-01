@@ -2,12 +2,15 @@ package com.atenea.attachments;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.atenea.persistence.worksession.AttachmentKind;
 import com.atenea.persistence.worksession.AttachmentRetentionClass;
 import com.atenea.persistence.worksession.AttachmentSource;
+import com.atenea.persistence.worksession.AttachmentStorageScope;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpExchange;
@@ -117,6 +120,14 @@ class AttachmentWorkerClientTest {
                             exchange.getRequestHeaders().getFirst("Content-Type"));
                     assertEquals(sha256,
                             exchange.getRequestHeaders().getFirst("X-Atenea-Sha256"));
+                    assertEquals("true",
+                            exchange.getRequestHeaders().getFirst("X-Atenea-Synthetic-Fixture"));
+                    assertNull(
+                            exchange.getRequestHeaders().getFirst("X-Atenea-Project-Identity"));
+                    assertNull(
+                            exchange.getRequestHeaders().getFirst("X-Atenea-Workspace-Identity"));
+                    assertNull(
+                            exchange.getRequestHeaders().getFirst("X-Atenea-Storage-Scope"));
                     assertArrayEquals(body, exchange.getRequestBody().readAllBytes());
                     respond(exchange, 201, """
                             {
@@ -139,7 +150,7 @@ class AttachmentWorkerClientTest {
                 });
         server.start();
 
-        AttachmentWorkerClient.PutResult result = client.put(
+        AttachmentWorkerClient.PutResult result = client.putSynthetic(
                 12L,
                 attachmentId,
                 AttachmentSource.OPERATOR_UPLOAD,
@@ -153,6 +164,144 @@ class AttachmentWorkerClientTest {
         assertTrue(result.created());
         assertEquals(sha256, result.attachment().sha256());
         assertTrue(Files.exists(spool));
+    }
+
+    @Test
+    void requiresSeparateCapabilityAndSendsExactRealOwnership() throws Exception {
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        UUID attachmentId = UUID.fromString("d9e42006-8aac-42ca-84e6-c2cad4a82548");
+        String workspaceIdentity = "remote:ax42-01:work-session:" + remoteSessionId;
+        byte[] body = "%PDF-1.7 real".getBytes(StandardCharsets.US_ASCII);
+        Path spool = temporaryDirectory.resolve("real.spool");
+        Files.write(spool, body);
+        String sha256 = java.util.HexFormat.of().formatHex(
+                java.security.MessageDigest.getInstance("SHA-256").digest(body));
+        server.createContext(
+                "/v1/capabilities/real-project-attachment",
+                exchange -> respond(exchange, 200, """
+                        {
+                          "protocolVersion":"real-project-attachment/v1",
+                          "workerId":"ax42-01",
+                          "healthy":true,
+                          "projectIdentities":["atenea"],
+                          "storageScopes":["REAL_SESSION"],
+                          "serverTime":"2026-08-01T23:00:00Z"
+                        }
+                        """));
+        server.createContext(
+                "/v1/work-sessions/" + remoteSessionId + "/attachments/" + attachmentId + "/content",
+                exchange -> {
+                    assertEquals("false",
+                            exchange.getRequestHeaders().getFirst("X-Atenea-Synthetic-Fixture"));
+                    assertEquals("atenea",
+                            exchange.getRequestHeaders().getFirst("X-Atenea-Project-Identity"));
+                    assertEquals(workspaceIdentity,
+                            exchange.getRequestHeaders().getFirst("X-Atenea-Workspace-Identity"));
+                    assertEquals("REAL_SESSION",
+                            exchange.getRequestHeaders().getFirst("X-Atenea-Storage-Scope"));
+                    assertArrayEquals(body, exchange.getRequestBody().readAllBytes());
+                    respond(exchange, 201, """
+                            {
+                              "protocolVersion":"worksession-attachment/v1",
+                              "workerId":"ax42-01",
+                              "sessionId":"%s",
+                              "attachmentId":"%s",
+                              "storageIdentity":"work-sessions/%s/%s/content",
+                              "source":"OPERATOR_UPLOAD",
+                              "kind":"FILE",
+                              "contentType":"application/pdf",
+                              "sizeBytes":%d,
+                              "retentionClass":"SESSION",
+                              "sha256":"%s",
+                              "syntheticFixture":false,
+                              "createdAt":"2026-08-01T23:00:00Z",
+                              "storedAt":"2026-08-01T23:00:01Z"
+                            }
+                            """.formatted(
+                                    remoteSessionId,
+                                    attachmentId,
+                                    remoteSessionId,
+                                    attachmentId,
+                                    body.length,
+                                    sha256));
+                });
+        server.start();
+
+        AttachmentWorkerClient.RealProjectCapability capability =
+                client.realProjectCapability();
+        AttachmentWorkerClient.PutResult result = client.putReal(
+                remoteSessionId,
+                "atenea",
+                workspaceIdentity,
+                AttachmentStorageScope.REAL_SESSION,
+                attachmentId,
+                AttachmentSource.OPERATOR_UPLOAD,
+                AttachmentKind.FILE,
+                AttachmentRetentionClass.SESSION,
+                "application/pdf",
+                sha256,
+                Instant.parse("2026-08-01T23:00:00Z"),
+                spool);
+
+        assertEquals(AttachmentWorkerClient.REAL_PROJECT_PROTOCOL,
+                capability.protocolVersion());
+        assertTrue(result.created());
+        assertFalse(result.attachment().syntheticFixture());
+        assertEquals(remoteSessionId.toString(), result.attachment().sessionId());
+    }
+
+    @Test
+    void readsRealMetadataAndContentThroughUnchangedV1PublicShape() throws Exception {
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        UUID attachmentId = UUID.fromString("d9e42006-8aac-42ca-84e6-c2cad4a82548");
+        byte[] body = "%PDF-1.7 retained".getBytes(StandardCharsets.US_ASCII);
+        String sha256 = java.util.HexFormat.of().formatHex(
+                java.security.MessageDigest.getInstance("SHA-256").digest(body));
+        String metadata = """
+                {
+                  "protocolVersion":"worksession-attachment/v1",
+                  "workerId":"ax42-01",
+                  "sessionId":"%s",
+                  "attachmentId":"%s",
+                  "storageIdentity":"work-sessions/%s/%s/content",
+                  "source":"OPERATOR_UPLOAD",
+                  "kind":"FILE",
+                  "contentType":"application/pdf",
+                  "sizeBytes":%d,
+                  "retentionClass":"SESSION",
+                  "sha256":"%s",
+                  "syntheticFixture":false,
+                  "createdAt":"2026-08-01T23:00:00Z",
+                  "storedAt":"2026-08-01T23:00:01Z"
+                }
+                """.formatted(
+                        remoteSessionId,
+                        attachmentId,
+                        remoteSessionId,
+                        attachmentId,
+                        body.length,
+                        sha256);
+        server.createContext(
+                "/v1/work-sessions/" + remoteSessionId + "/attachments/" + attachmentId + "/metadata",
+                exchange -> respond(exchange, 200, metadata));
+        server.createContext(
+                "/v1/work-sessions/" + remoteSessionId + "/attachments/" + attachmentId + "/content",
+                exchange -> {
+                    exchange.getResponseHeaders().set("Content-Type", "application/pdf");
+                    exchange.sendResponseHeaders(200, body.length);
+                    exchange.getResponseBody().write(body);
+                    exchange.close();
+                });
+        server.start();
+
+        AttachmentWorkerClient.StoredAttachment stored =
+                client.metadata(remoteSessionId, attachmentId);
+        AttachmentWorkerClient.Content content = client.content(remoteSessionId, attachmentId);
+
+        assertEquals(AttachmentProperties.PROTOCOL, stored.protocolVersion());
+        assertEquals(remoteSessionId.toString(), stored.sessionId());
+        assertFalse(stored.syntheticFixture());
+        assertArrayEquals(body, content.bytes());
     }
 
     @Test

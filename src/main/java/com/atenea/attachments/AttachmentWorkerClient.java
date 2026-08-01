@@ -3,6 +3,7 @@ package com.atenea.attachments;
 import com.atenea.persistence.worksession.AttachmentKind;
 import com.atenea.persistence.worksession.AttachmentRetentionClass;
 import com.atenea.persistence.worksession.AttachmentSource;
+import com.atenea.persistence.worksession.AttachmentStorageScope;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +22,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class AttachmentWorkerClient {
 
+    public static final String REAL_PROJECT_PROTOCOL = "real-project-attachment/v1";
+
     private final AttachmentProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -38,7 +41,15 @@ public class AttachmentWorkerClient {
         return json("GET", "/v1/health", null, Health.class);
     }
 
-    public PutResult put(
+    public RealProjectCapability realProjectCapability() {
+        return json(
+                "GET",
+                "/v1/capabilities/real-project-attachment",
+                null,
+                RealProjectCapability.class);
+    }
+
+    public PutResult putSynthetic(
             Long workSessionId,
             UUID attachmentId,
             AttachmentSource source,
@@ -49,18 +60,83 @@ public class AttachmentWorkerClient {
             Instant createdAt,
             Path content
     ) {
+        return put(
+                workSessionId.toString(),
+                attachmentId,
+                source,
+                kind,
+                retentionClass,
+                contentType,
+                sha256,
+                createdAt,
+                content,
+                true,
+                null,
+                null,
+                null);
+    }
+
+    public PutResult putReal(
+            UUID remoteSessionId,
+            String projectIdentity,
+            String workspaceIdentity,
+            AttachmentStorageScope storageScope,
+            UUID attachmentId,
+            AttachmentSource source,
+            AttachmentKind kind,
+            AttachmentRetentionClass retentionClass,
+            String contentType,
+            String sha256,
+            Instant createdAt,
+            Path content
+    ) {
+        return put(
+                remoteSessionId.toString(),
+                attachmentId,
+                source,
+                kind,
+                retentionClass,
+                contentType,
+                sha256,
+                createdAt,
+                content,
+                false,
+                projectIdentity,
+                workspaceIdentity,
+                storageScope);
+    }
+
+    private PutResult put(
+            String sessionIdentity,
+            UUID attachmentId,
+            AttachmentSource source,
+            AttachmentKind kind,
+            AttachmentRetentionClass retentionClass,
+            String contentType,
+            String sha256,
+            Instant createdAt,
+            Path content,
+            boolean syntheticFixture,
+            String projectIdentity,
+            String workspaceIdentity,
+            AttachmentStorageScope storageScope
+    ) {
         HttpRequest request;
         try {
-            request = request(path(workSessionId, attachmentId, "content"))
+            HttpRequest.Builder builder = request(path(sessionIdentity, attachmentId, "content"))
                     .header("Content-Type", contentType)
                     .header("X-Atenea-Source", source.name())
                     .header("X-Atenea-Kind", kind.name())
                     .header("X-Atenea-Retention-Class", retentionClass.name())
                     .header("X-Atenea-Sha256", sha256)
-                    .header("X-Atenea-Synthetic-Fixture", "true")
-                    .header("X-Atenea-Created-At", createdAt.toString())
-                    .PUT(HttpRequest.BodyPublishers.ofFile(content))
-                    .build();
+                    .header("X-Atenea-Synthetic-Fixture", Boolean.toString(syntheticFixture))
+                    .header("X-Atenea-Created-At", createdAt.toString());
+            if (!syntheticFixture) {
+                builder.header("X-Atenea-Project-Identity", projectIdentity)
+                        .header("X-Atenea-Workspace-Identity", workspaceIdentity)
+                        .header("X-Atenea-Storage-Scope", storageScope.name());
+            }
+            request = builder.PUT(HttpRequest.BodyPublishers.ofFile(content)).build();
         } catch (IOException exception) {
             throw new AttachmentWorkerException(
                     "No se pudo abrir el spool privado del adjunto.",
@@ -74,15 +150,31 @@ public class AttachmentWorkerClient {
     }
 
     public StoredAttachment metadata(Long workSessionId, UUID attachmentId) {
+        return metadata(workSessionId.toString(), attachmentId);
+    }
+
+    public StoredAttachment metadata(UUID remoteSessionId, UUID attachmentId) {
+        return metadata(remoteSessionId.toString(), attachmentId);
+    }
+
+    private StoredAttachment metadata(String sessionIdentity, UUID attachmentId) {
         return json(
                 "GET",
-                path(workSessionId, attachmentId, "metadata"),
+                path(sessionIdentity, attachmentId, "metadata"),
                 null,
                 StoredAttachment.class);
     }
 
     public Content content(Long workSessionId, UUID attachmentId) {
-        HttpResponse<byte[]> response = send(request(path(workSessionId, attachmentId, "content"))
+        return content(workSessionId.toString(), attachmentId);
+    }
+
+    public Content content(UUID remoteSessionId, UUID attachmentId) {
+        return content(remoteSessionId.toString(), attachmentId);
+    }
+
+    private Content content(String sessionIdentity, UUID attachmentId) {
+        HttpResponse<byte[]> response = send(request(path(sessionIdentity, attachmentId, "content"))
                 .GET()
                 .build());
         requireSuccess(response);
@@ -92,7 +184,7 @@ public class AttachmentWorkerClient {
     }
 
     public DeleteResult deleteSynthetic(Long workSessionId, UUID attachmentId) {
-        HttpRequest request = request(path(workSessionId, attachmentId, "content"))
+        HttpRequest request = request(path(workSessionId.toString(), attachmentId, "content"))
                 .header("X-Atenea-Synthetic-Fixture", "true")
                 .DELETE()
                 .build();
@@ -198,8 +290,8 @@ public class AttachmentWorkerClient {
         }
     }
 
-    private String path(Long workSessionId, UUID attachmentId, String operation) {
-        return "/v1/work-sessions/" + workSessionId
+    private String path(String sessionIdentity, UUID attachmentId, String operation) {
+        return "/v1/work-sessions/" + sessionIdentity
                 + "/attachments/" + attachmentId + "/" + operation;
     }
 
@@ -215,6 +307,17 @@ public class AttachmentWorkerClient {
             long maxFileBytes,
             long maxSessionBytes,
             List<String> contentTypes,
+            Instant serverTime
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record RealProjectCapability(
+            String protocolVersion,
+            String workerId,
+            boolean healthy,
+            List<String> projectIdentities,
+            List<AttachmentStorageScope> storageScopes,
             Instant serverTime
     ) {
     }
