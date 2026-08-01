@@ -6963,3 +6963,33 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.5-v62-migration-tests`;
 the SHA-256 of its `SHA256SUMS` is
 `331a5385553d71ec63bcd91ae3757b0dc53f88d4759a7dfffe8b48d53c9e3979`.
+
+Task 1.6 is complete and change progress is `12/83`; the exact resume point is
+task 1.7. Atenea commit
+`cd332b75b518e9cc117313f0f9dd012686808284` adds the composite turn/
+attachment persistence identity, an immutable Hibernate read entity and a
+closed Spring Data repository. The repository exposes exactly one native
+insert, one exact-turn ordered read and one deterministic multi-turn ordered
+read; it does not inherit or declare save, update or delete operations.
+
+Two PostgreSQL V62 integration tests pass. They prove that persisted positions
+control one-turn order independently of insertion order, multi-turn reads are
+ordered by turn then position and the repository method surface contains no
+generic mutation path. Transaction rollback leaves zero synthetic projects,
+workers or bindings. An initial host invocation stopped before compilation on
+a previously root-owned generated `target/`; the containerized first run then
+identified an incomplete test worker fixture, which was completed without
+weakening a database constraint, and the bounded final run passed.
+
+All exact task containers were removed with zero labelled container, network
+or volume residue. The canonical Atenea checkout remains clean and synchronized
+at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production, preview and
+Beautips remain `UP`; AX42's versioned AgentRun and attachment services plus
+both backup timers remain active; RAID remains `3/3`. No production schema,
+data, WorkSession, attachment, route, service, credential or foreign resource
+changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.6-immutable-bindings`;
+the SHA-256 of its `SHA256SUMS` is
+`5483f665aef7e457932e80be03060112773500b540b67c242a577c6ab468a7f7`.
