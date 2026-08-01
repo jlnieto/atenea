@@ -65,13 +65,20 @@ public class MobileSessionService {
         boolean isActionable = isOpen || session.status() == WorkSessionStatus.CLOSING;
         boolean runInProgress = session.repoState().runInProgress();
         boolean hasPullRequest = session.pullRequestUrl() != null && !session.pullRequestUrl().isBlank();
+        boolean emptyUnpublishedSession = session.pullRequestStatus() == WorkSessionPullRequestStatus.NOT_CREATED
+                && conversation.view().latestRun() == null
+                && conversation.recentTurns().isEmpty()
+                && !conversation.historyTruncated();
         boolean canClose = isOpen
                 && !runInProgress
-                && session.pullRequestStatus() == WorkSessionPullRequestStatus.MERGED;
+                && (session.pullRequestStatus() == WorkSessionPullRequestStatus.MERGED
+                    || emptyUnpublishedSession);
 
         return new MobileSessionActionsResponse(
                 conversation.view().canCreateTurn(),
-                isOpen && !runInProgress && session.pullRequestStatus() == WorkSessionPullRequestStatus.NOT_CREATED,
+                isOpen && !runInProgress
+                        && session.pullRequestStatus() == WorkSessionPullRequestStatus.NOT_CREATED
+                        && !emptyUnpublishedSession,
                 hasPullRequest,
                 canClose,
                 isActionable,

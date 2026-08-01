@@ -62,7 +62,7 @@ class MobileSessionServiceTest {
     }
 
     @Test
-    void getSessionSummaryDoesNotExposeCloseForUnpublishedSession() {
+    void getSessionSummaryClosesEmptyUnpublishedSessionWithoutOfferingImpossiblePullRequest() {
         when(workSessionService.getSessionConversationView(12L)).thenReturn(conversation());
         when(sessionDeliverableService.getApprovedDeliverablesView(12L))
                 .thenReturn(new SessionDeliverablesViewResponse(12L, List.of(), false, false, null));
@@ -71,7 +71,22 @@ class MobileSessionServiceTest {
 
         MobileSessionSummaryResponse response = mobileSessionService.getSessionSummary(12L);
 
+        assertTrue(response.actions().canClose());
+        assertFalse(response.actions().canPublish());
+    }
+
+    @Test
+    void getSessionSummaryStillRequiresPublishForUnpublishedSessionWithWork() {
+        when(workSessionService.getSessionConversationView(12L)).thenReturn(conversationWithInsights());
+        when(sessionDeliverableService.getApprovedDeliverablesView(12L))
+                .thenReturn(new SessionDeliverablesViewResponse(12L, List.of(), false, false, null));
+        when(sessionDeliverableService.getApprovedPriceEstimateSummary(12L))
+                .thenThrow(new ApprovedPriceEstimateNotFoundException(12L));
+
+        MobileSessionSummaryResponse response = mobileSessionService.getSessionSummary(12L);
+
         assertFalse(response.actions().canClose());
+        assertTrue(response.actions().canPublish());
     }
 
     @Test
