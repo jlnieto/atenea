@@ -77,6 +77,15 @@ public class AgentRunService {
             SessionTurnEntity originTurn,
             WorkloadClass workloadClass
     ) {
+        return createRemoteQueuedRun(session, originTurn, workloadClass, null);
+    }
+
+    private AgentRunEntity createRemoteQueuedRun(
+            WorkSessionEntity session,
+            SessionTurnEntity originTurn,
+            WorkloadClass workloadClass,
+            AgentRunEntity retryOfRun
+    ) {
         Instant now = Instant.now();
         lockCodexActivation(session.getSelectedWorkerId());
         ensureNoNonTerminalRun(session.getId());
@@ -116,7 +125,17 @@ public class AgentRunService {
         run.setOutputSummary(null);
         run.setErrorSummary(null);
         run.setCreatedAt(now);
-        codexExecutionProfileSnapshotService.applyCurrentProfile(run);
+        run.setRetryOfRun(retryOfRun);
+        if (retryOfRun == null) {
+            codexExecutionProfileSnapshotService.applyCurrentProfile(run);
+        } else {
+            run.setCodexModelId(retryOfRun.getCodexModelId());
+            run.setCodexModelSource(retryOfRun.getCodexModelSource());
+            run.setCodexReasoningEffort(retryOfRun.getCodexReasoningEffort());
+            run.setCodexEffortSource(retryOfRun.getCodexEffortSource());
+            run.setCodexCatalogRevision(retryOfRun.getCodexCatalogRevision());
+            run.setCodexVersion(retryOfRun.getCodexVersion());
+        }
         return agentRunRepository.save(run);
     }
 
@@ -136,16 +155,8 @@ public class AgentRunService {
             return existing;
         }
 
-        AgentRunEntity retry = createRemoteQueuedRun(
-                source.getSession(), source.getOriginTurn(), source.getWorkloadClass());
-        retry.setRetryOfRun(source);
-        retry.setCodexModelId(source.getCodexModelId());
-        retry.setCodexModelSource(source.getCodexModelSource());
-        retry.setCodexReasoningEffort(source.getCodexReasoningEffort());
-        retry.setCodexEffortSource(source.getCodexEffortSource());
-        retry.setCodexCatalogRevision(source.getCodexCatalogRevision());
-        retry.setCodexVersion(source.getCodexVersion());
-        return agentRunRepository.save(retry);
+        return createRemoteQueuedRun(
+                source.getSession(), source.getOriginTurn(), source.getWorkloadClass(), source);
     }
 
     private void lockCodexActivation(String workerId) {

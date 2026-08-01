@@ -18,6 +18,7 @@ import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunProcessOutcome;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.CodexReasoningEffort;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
@@ -217,6 +218,48 @@ class AgentRunServiceTest {
         assertNull(run.getRemoteExecutionId());
         assertEquals(1, run.getLeaseGeneration());
         assertEquals(WorkloadClass.HEAVY, run.getWorkloadClass());
+    }
+
+    @Test
+    void createRemoteRetryPersistsImmutableLineageBeforeFirstSave() {
+        WorkSessionEntity session = buildSession(12L, 7L, "/workspace/repos/internal/atenea");
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
+        session.setCanonicalSourceCommit(TEST_CANONICAL_COMMIT);
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(Instant.now());
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        AgentRunEntity source = buildRun(81L, AgentRunStatus.FAILED);
+        source.setSession(session);
+        source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setWorkloadClass(WorkloadClass.NORMAL);
+        source.setCodexModelId("gpt-5.6-sol");
+        source.setCodexReasoningEffort(CodexReasoningEffort.HIGH);
+        when(agentRunRepository.findByIdForUpdate(81L)).thenReturn(Optional.of(source));
+        when(agentRunRepository.findFirstByRetryOfRunIdOrderByCreatedAtAsc(81L))
+                .thenReturn(Optional.empty());
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L, AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> {
+            AgentRunEntity saved = invocation.getArgument(0);
+            assertEquals(source, saved.getRetryOfRun());
+            saved.setId(82L);
+            return saved;
+        });
+
+        AgentRunEntity retry = agentRunService.createRemoteRetryRun(81L);
+
+        assertEquals(82L, retry.getId());
+        assertEquals(source, retry.getRetryOfRun());
+        assertEquals("gpt-5.6-sol", retry.getCodexModelId());
+        assertEquals(CodexReasoningEffort.HIGH, retry.getCodexReasoningEffort());
+        verify(agentRunRepository).save(any(AgentRunEntity.class));
+        verify(codexExecutionProfileSnapshotService, never()).applyCurrentProfile(retry);
     }
 
     @Test
