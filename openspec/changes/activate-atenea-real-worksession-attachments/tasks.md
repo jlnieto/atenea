@@ -27,7 +27,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 1.1 Implement a closed canonical attachment-project registry containing only `atenea` for real activation and reject unknown configured identities at startup
 - [x] 1.2 Add the global create/bind kill switch plus separate synthetic and real-project allowlists without changing list/download behavior
 - [x] 1.3 Snapshot `atenea-real-attachments-v1` only on newly resolved eligible remote Atenea WorkSessions and prove existing/local/foreign sessions remain null and ineligible
-- [ ] 1.4 Add V62 expand-only WorkSession policy, turn request identity/fingerprint, same-session ordered attachment binding, AgentRun manifest/count/byte and real storage-scope ownership fields with complete database constraints
+- [x] 1.4 Add V62 expand-only WorkSession policy, turn request identity/fingerprint, same-session ordered attachment binding, AgentRun manifest/count/byte and real storage-scope ownership fields with complete database constraints
 - [ ] 1.5 Add migration tests from an empty database and representative V61 legacy rows, including repeat migration, null legacy compatibility and invalid partial/composite ownership rejection
 - [ ] 1.6 Add persistence entities/repositories and immutable queries for ordered turn bindings without an application update/delete path
 - [ ] 1.7 Define canonical hashing for normalized message plus ordered attachment UUID/type/size/SHA-256 and prove stable order-sensitive fingerprints

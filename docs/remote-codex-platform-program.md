@@ -6900,3 +6900,39 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.3-policy-snapshot`;
 the SHA-256 of its `SHA256SUMS` is
 `c40a4cfdf1e6aef7d35457dd9ac25b7ffc59fd548f05bea8fd99fef914f774ad`.
+
+Task 1.4 is complete and change progress is `10/83`; the exact resume point is
+task 1.5. Atenea commit
+`83cf2356d87c1903b755497b1727701e312abedd` adds the single additive V62
+migration and matching JPA fields for the WorkSession policy revision, paired
+turn request identity/fingerprint, ordered same-session attachment binding,
+AgentRun attachment count/bytes/manifest and nullable real storage ownership.
+
+Database constraints accept only complete remote AX42 policy ownership, pair
+and validate idempotency fields, enforce unique request identity per session,
+bind turns and attachments through composite same-session foreign keys, reject
+project/worker/remote-session/workspace disagreement, bound distinct positions
+to zero through three and constrain AgentRuns to either the compatible
+zero/zero/null shape or one to four attachments totalling at most 32 MiB with a
+lowercase SHA-256 under `project-codex-v3`. Existing attachment ownership fields
+remain null and existing AgentRuns expand to zero/zero/null without row rewrite.
+
+Review of the first disposable fixture caught PostgreSQL `CHECK` null semantics;
+explicit non-null predicates were added before commit, that exact fixture was
+destroyed and corrected V1 through V62 were applied to a fresh database. Two
+Spring/JPA tests pass after the fresh migration and 56 focused policy/snapshot/
+WorkSession tests pass. Catalog inspection confirms V62, the four binding
+columns and all 15 named ownership constraints. Exact fixture resources were
+removed with zero residue.
+
+Production and preview remain `UP`; Beautips remains `UP`; the canonical Atenea
+checkout remains clean at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; AX42's versioned AgentRun and
+attachment services plus both backup timers remain active and RAID remains
+`3/3`. No production migration, deployment, schema, data, route, service or
+credential changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.4-v62-schema`;
+the SHA-256 of its `SHA256SUMS` is
+`1412f5f59985f96df6aa3415de78a1dd040465ac53b189499cf27df99d7af386`.
