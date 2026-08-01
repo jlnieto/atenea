@@ -47,18 +47,25 @@ public class AttachmentWorkerClient {
             String contentType,
             String sha256,
             Instant createdAt,
-            byte[] content
+            Path content
     ) {
-        HttpRequest request = request(path(workSessionId, attachmentId, "content"))
-                .header("Content-Type", contentType)
-                .header("X-Atenea-Source", source.name())
-                .header("X-Atenea-Kind", kind.name())
-                .header("X-Atenea-Retention-Class", retentionClass.name())
-                .header("X-Atenea-Sha256", sha256)
-                .header("X-Atenea-Synthetic-Fixture", "true")
-                .header("X-Atenea-Created-At", createdAt.toString())
-                .PUT(HttpRequest.BodyPublishers.ofByteArray(content))
-                .build();
+        HttpRequest request;
+        try {
+            request = request(path(workSessionId, attachmentId, "content"))
+                    .header("Content-Type", contentType)
+                    .header("X-Atenea-Source", source.name())
+                    .header("X-Atenea-Kind", kind.name())
+                    .header("X-Atenea-Retention-Class", retentionClass.name())
+                    .header("X-Atenea-Sha256", sha256)
+                    .header("X-Atenea-Synthetic-Fixture", "true")
+                    .header("X-Atenea-Created-At", createdAt.toString())
+                    .PUT(HttpRequest.BodyPublishers.ofFile(content))
+                    .build();
+        } catch (IOException exception) {
+            throw new AttachmentWorkerException(
+                    "No se pudo abrir el spool privado del adjunto.",
+                    exception);
+        }
         HttpResponse<byte[]> response = send(request);
         requireSuccess(response);
         return new PutResult(

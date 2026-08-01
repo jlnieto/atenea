@@ -1,9 +1,13 @@
 package com.atenea.attachments;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.atenea.persistence.worksession.AttachmentKind;
+import com.atenea.persistence.worksession.AttachmentRetentionClass;
+import com.atenea.persistence.worksession.AttachmentSource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpExchange;
@@ -14,6 +18,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -91,6 +97,62 @@ class AttachmentWorkerClientTest {
         assertEquals("unsupported_content_type", failure.getCode());
         assertTrue(failure.getMessage().contains("formato"));
         assertTrue(!failure.getMessage().contains("private internal path"));
+    }
+
+    @Test
+    void streamsExactPrivateSpoolWithKnownLength() throws Exception {
+        UUID attachmentId = UUID.fromString("d9e42006-8aac-42ca-84e6-c2cad4a82548");
+        Instant createdAt = Instant.parse("2026-08-01T23:00:00Z");
+        byte[] body = "%PDF-1.7 streamed".getBytes(StandardCharsets.US_ASCII);
+        Path spool = temporaryDirectory.resolve("upload.spool");
+        Files.write(spool, body);
+        String sha256 = java.util.HexFormat.of().formatHex(
+                java.security.MessageDigest.getInstance("SHA-256").digest(body));
+        server.createContext(
+                "/v1/work-sessions/12/attachments/" + attachmentId + "/content",
+                exchange -> {
+                    assertEquals(String.valueOf(body.length),
+                            exchange.getRequestHeaders().getFirst("Content-Length"));
+                    assertEquals("application/pdf",
+                            exchange.getRequestHeaders().getFirst("Content-Type"));
+                    assertEquals(sha256,
+                            exchange.getRequestHeaders().getFirst("X-Atenea-Sha256"));
+                    assertArrayEquals(body, exchange.getRequestBody().readAllBytes());
+                    respond(exchange, 201, """
+                            {
+                              "protocolVersion":"worksession-attachment/v1",
+                              "workerId":"ax42-01",
+                              "sessionId":"12",
+                              "attachmentId":"%s",
+                              "storageIdentity":"opaque",
+                              "source":"OPERATOR_UPLOAD",
+                              "kind":"FILE",
+                              "contentType":"application/pdf",
+                              "sizeBytes":%d,
+                              "retentionClass":"SESSION",
+                              "sha256":"%s",
+                              "syntheticFixture":true,
+                              "createdAt":"2026-08-01T23:00:00Z",
+                              "storedAt":"2026-08-01T23:00:01Z"
+                            }
+                            """.formatted(attachmentId, body.length, sha256));
+                });
+        server.start();
+
+        AttachmentWorkerClient.PutResult result = client.put(
+                12L,
+                attachmentId,
+                AttachmentSource.OPERATOR_UPLOAD,
+                AttachmentKind.FILE,
+                AttachmentRetentionClass.SESSION,
+                "application/pdf",
+                sha256,
+                createdAt,
+                spool);
+
+        assertTrue(result.created());
+        assertEquals(sha256, result.attachment().sha256());
+        assertTrue(Files.exists(spool));
     }
 
     @Test

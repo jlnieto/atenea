@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,6 +20,9 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.service.worksession.AttachmentIndexRequest;
 import com.atenea.service.worksession.AttachmentOwnershipException;
 import com.atenea.service.worksession.WorkSessionAttachmentMetadataService;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +31,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -37,7 +42,11 @@ class WorkSessionAttachmentServiceTest {
 
     private static final UUID ATTACHMENT_ID =
             UUID.fromString("d9e42006-8aac-42ca-84e6-c2cad4a82548");
-    private static final byte[] PNG = "\u0089PNG\r\n\u001a\nsynthetic".getBytes();
+    private static final byte[] PNG =
+            "\u0089PNG\r\n\u001a\nsynthetic".getBytes(StandardCharsets.ISO_8859_1);
+
+    @TempDir
+    Path temporaryDirectory;
 
     @Mock
     private AttachmentWorkerClient workerClient;
@@ -58,13 +67,14 @@ class WorkSessionAttachmentServiceTest {
         service = new WorkSessionAttachmentService(
                 properties,
                 new AttachmentAdmissionPolicy(properties, registry),
+                new AttachmentUploadSpooler(temporaryDirectory.resolve("spool")),
                 workerClient,
                 workSessionRepository,
                 metadataService);
     }
 
     @Test
-    void derivesRoutineImageClassificationAndIndexesOpaqueIdentity() {
+    void derivesRoutineImageClassificationAndIndexesOpaqueIdentity() throws Exception {
         WorkSessionEntity session = remoteSession(12L, 7L, "synthetic-attachments");
         WorkSessionAttachmentEntity indexed = attachment(session);
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
@@ -78,17 +88,23 @@ class WorkSessionAttachmentServiceTest {
                 org.mockito.ArgumentMatchers.eq("image/png"),
                 any(),
                 any(),
-                org.mockito.ArgumentMatchers.any(byte[].class)))
+                org.mockito.ArgumentMatchers.any(Path.class)))
                 .thenAnswer(invocation -> {
                     Instant requestedCreatedAt = invocation.getArgument(7);
                     assertEquals(0, requestedCreatedAt.getNano() % 1_000);
+                    assertArrayEquals(PNG, Files.readAllBytes(invocation.getArgument(8)));
                     return new AttachmentWorkerClient.PutResult(
                             true,
                             stored(invocation.getArgument(5), invocation.getArgument(6)));
                 });
         when(metadataService.index(org.mockito.ArgumentMatchers.eq(12L), any()))
-                .thenReturn(indexed);
+                .thenAnswer(invocation -> {
+                    assertSpoolEmpty();
+                    return indexed;
+                });
 
+        MockMultipartFile file = spy(new MockMultipartFile(
+                "file", "screen.png", "image/png", PNG));
         WorkSessionAttachmentEntity result = service.upload(
                 12L,
                 ATTACHMENT_ID,
@@ -96,7 +112,7 @@ class WorkSessionAttachmentServiceTest {
                 null,
                 null,
                 null,
-                new MockMultipartFile("file", "screen.png", "image/png", PNG));
+                file);
 
         assertEquals(ATTACHMENT_ID, result.getId());
         ArgumentCaptor<AttachmentIndexRequest> request =
@@ -106,6 +122,8 @@ class WorkSessionAttachmentServiceTest {
         assertEquals(AttachmentKind.IMAGE, request.getValue().kind());
         assertEquals(AttachmentRetentionClass.SESSION, request.getValue().retentionClass());
         verify(workerClient, never()).deleteSynthetic(any(), any());
+        verify(file, never()).getBytes();
+        assertSpoolEmpty();
     }
 
     @Test
@@ -127,14 +145,17 @@ class WorkSessionAttachmentServiceTest {
                 org.mockito.ArgumentMatchers.eq("application/pdf"),
                 any(),
                 any(),
-                org.mockito.ArgumentMatchers.eq(pdf)))
-                .thenAnswer(invocation -> new AttachmentWorkerClient.PutResult(
-                        true,
-                        stored(
-                                invocation.getArgument(5),
-                                invocation.getArgument(6),
-                                AttachmentKind.FILE,
-                                pdf.length)));
+                org.mockito.ArgumentMatchers.any(Path.class)))
+                .thenAnswer(invocation -> {
+                    assertArrayEquals(pdf, Files.readAllBytes(invocation.getArgument(8)));
+                    return new AttachmentWorkerClient.PutResult(
+                            true,
+                            stored(
+                                    invocation.getArgument(5),
+                                    invocation.getArgument(6),
+                                    AttachmentKind.FILE,
+                                    pdf.length));
+                });
         when(metadataService.index(org.mockito.ArgumentMatchers.eq(12L), any()))
                 .thenReturn(indexed);
 
@@ -154,6 +175,7 @@ class WorkSessionAttachmentServiceTest {
         assertEquals(AttachmentSource.OPERATOR_UPLOAD, request.getValue().source());
         assertEquals(AttachmentKind.FILE, request.getValue().kind());
         assertEquals(AttachmentRetentionClass.SESSION, request.getValue().retentionClass());
+        assertSpoolEmpty();
     }
 
     @Test
@@ -191,6 +213,7 @@ class WorkSessionAttachmentServiceTest {
         verify(workerClient, never()).health();
         verify(workerClient, never()).put(any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(metadataService, never()).index(any(), any());
+        assertSpoolEmpty();
     }
 
     @Test
@@ -257,6 +280,69 @@ class WorkSessionAttachmentServiceTest {
                 new MockMultipartFile("file", "screen.png", "image/png", PNG)));
 
         verify(workerClient).deleteSynthetic(12L, ATTACHMENT_ID);
+        assertSpoolEmpty();
+    }
+
+    @Test
+    void removesPrivateSpoolWhenWorkerFails() throws Exception {
+        WorkSessionEntity session = remoteSession(12L, 7L, "synthetic-attachments");
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(workerClient.health()).thenReturn(health());
+        when(workerClient.put(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new AttachmentWorkerException(
+                        "synthetic worker failure",
+                        503,
+                        "attachment_worker_unavailable"));
+
+        assertThrows(AttachmentWorkerException.class, () -> service.upload(
+                12L,
+                ATTACHMENT_ID,
+                null,
+                null,
+                null,
+                null,
+                new MockMultipartFile("file", "screen.png", "image/png", PNG)));
+
+        verify(metadataService, never()).index(any(), any());
+        assertSpoolEmpty();
+    }
+
+    @Test
+    void removesPrivateSpoolAndNewObjectWhenWorkerIdentityIsInvalid() {
+        WorkSessionEntity session = remoteSession(12L, 7L, "synthetic-attachments");
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(workerClient.health()).thenReturn(health());
+        when(workerClient.put(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new AttachmentWorkerClient.PutResult(
+                        true,
+                        new AttachmentWorkerClient.StoredAttachment(
+                                AttachmentProperties.PROTOCOL,
+                                "ax42-01",
+                                "12",
+                                ATTACHMENT_ID,
+                                "work-sessions/12/opaque",
+                                AttachmentSource.OPERATOR_UPLOAD,
+                                AttachmentKind.IMAGE,
+                                "image/png",
+                                PNG.length,
+                                AttachmentRetentionClass.SESSION,
+                                "0".repeat(64),
+                                true,
+                                Instant.parse("2026-08-01T23:00:00Z"),
+                                Instant.parse("2026-08-01T23:00:01Z"))));
+
+        assertThrows(AttachmentWorkerException.class, () -> service.upload(
+                12L,
+                ATTACHMENT_ID,
+                null,
+                null,
+                null,
+                null,
+                new MockMultipartFile("file", "screen.png", "image/png", PNG)));
+
+        verify(workerClient).deleteSynthetic(12L, ATTACHMENT_ID);
+        verify(metadataService, never()).index(any(), any());
+        assertSpoolEmpty();
     }
 
     private AttachmentWorkerClient.Health health() {
@@ -335,6 +421,18 @@ class WorkSessionAttachmentServiceTest {
                     java.security.MessageDigest.getInstance("SHA-256").digest(content));
         } catch (java.security.NoSuchAlgorithmException exception) {
             throw new IllegalStateException(exception);
+        }
+    }
+
+    private void assertSpoolEmpty() {
+        Path spoolRoot = temporaryDirectory.resolve("spool");
+        if (!Files.exists(spoolRoot)) {
+            return;
+        }
+        try (var files = Files.list(spoolRoot)) {
+            assertEquals(0L, files.count());
+        } catch (java.io.IOException exception) {
+            throw new AssertionError("Could not inspect the test spool", exception);
         }
     }
 }

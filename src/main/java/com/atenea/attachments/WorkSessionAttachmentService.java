@@ -12,7 +12,6 @@ import com.atenea.service.worksession.AttachmentLimitException;
 import com.atenea.service.worksession.AttachmentOwnershipException;
 import com.atenea.service.worksession.WorkSessionAttachmentMetadataService;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
-import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -20,7 +19,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -28,13 +26,9 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class WorkSessionAttachmentService {
 
-    private static final Set<String> IMAGE_CONTENT_TYPES = Set.of(
-            "image/png",
-            "image/jpeg",
-            "image/webp");
-
     private final AttachmentProperties properties;
     private final AttachmentAdmissionPolicy admissionPolicy;
+    private final AttachmentUploadSpooler uploadSpooler;
     private final AttachmentWorkerClient workerClient;
     private final WorkSessionRepository workSessionRepository;
     private final WorkSessionAttachmentMetadataService metadataService;
@@ -42,12 +36,14 @@ public class WorkSessionAttachmentService {
     public WorkSessionAttachmentService(
             AttachmentProperties properties,
             AttachmentAdmissionPolicy admissionPolicy,
+            AttachmentUploadSpooler uploadSpooler,
             AttachmentWorkerClient workerClient,
             WorkSessionRepository workSessionRepository,
             WorkSessionAttachmentMetadataService metadataService
     ) {
         this.properties = properties;
         this.admissionPolicy = admissionPolicy;
+        this.uploadSpooler = uploadSpooler;
         this.workerClient = workerClient;
         this.workSessionRepository = workSessionRepository;
         this.metadataService = metadataService;
@@ -69,51 +65,56 @@ public class WorkSessionAttachmentService {
         if (file.getSize() > properties.getMaxFileBytes()) {
             throw new AttachmentLimitException("El adjunto supera el límite de 16 MiB.");
         }
-        byte[] content;
-        try {
-            content = file.getBytes();
-        } catch (IOException exception) {
-            throw new AttachmentWorkerException("No se pudo leer el adjunto seleccionado.", exception);
-        }
-        String contentType = normalizedContentType(file.getContentType());
+        AttachmentUploadSpooler.SpooledUpload upload =
+                uploadSpooler.spool(file, properties.getMaxFileBytes());
         AttachmentSource source = AttachmentSource.OPERATOR_UPLOAD;
-        AttachmentKind kind = IMAGE_CONTENT_TYPES.contains(contentType)
-                ? AttachmentKind.IMAGE
-                : AttachmentKind.FILE;
         AttachmentRetentionClass retentionClass = AttachmentRetentionClass.SESSION;
-        requireDerivedClassification(
-                claimedSource,
-                claimedKind,
-                claimedRetentionClass,
-                source,
-                kind,
-                retentionClass);
-        String sha256 = sha256(content);
-        // PostgreSQL stores TIMESTAMPTZ at microsecond precision. Normalize
-        // before worker retention so an idempotent read-back remains identical.
-        Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
         UUID attachmentId = idempotencyKey == null ? UUID.randomUUID() : idempotencyKey;
+        AttachmentWorkerClient.PutResult stored = null;
+        try (upload) {
+            requireDerivedClassification(
+                    claimedSource,
+                    claimedKind,
+                    claimedRetentionClass,
+                    source,
+                    upload.kind(),
+                    retentionClass);
+            // PostgreSQL stores TIMESTAMPTZ at microsecond precision. Normalize
+            // before worker retention so an idempotent read-back remains identical.
+            Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
-        AttachmentWorkerClient.Health health = workerClient.health();
-        requireCompatibleWorker(session, health);
-        AttachmentWorkerClient.PutResult stored = workerClient.put(
-                workSessionId,
-                attachmentId,
-                source,
-                kind,
-                retentionClass,
-                contentType,
-                sha256,
-                createdAt,
-                content);
-        validateStored(session, attachmentId, sha256, content.length, stored.attachment());
-        validateStoredClassification(
-                source,
-                kind,
-                retentionClass,
-                contentType,
-                stored.attachment());
+            AttachmentWorkerClient.Health health = workerClient.health();
+            requireCompatibleWorker(session, health);
+            stored = workerClient.put(
+                    workSessionId,
+                    attachmentId,
+                    source,
+                    upload.kind(),
+                    retentionClass,
+                    upload.contentType(),
+                    upload.sha256(),
+                    createdAt,
+                    upload.path());
+            validateStored(
+                    session,
+                    attachmentId,
+                    upload.sha256(),
+                    upload.sizeBytes(),
+                    stored.attachment());
+            validateStoredClassification(
+                    source,
+                    upload.kind(),
+                    retentionClass,
+                    upload.contentType(),
+                    stored.attachment());
+        } catch (RuntimeException transferFailure) {
+            cleanupNewSynthetic(stored, workSessionId, attachmentId, transferFailure);
+            throw transferFailure;
+        }
 
+        AttachmentWorkerClient.PutResult acceptedStored = Objects.requireNonNull(
+                stored,
+                "The attachment worker returned no storage result");
         try {
             return metadataService.index(
                     workSessionId,
@@ -121,24 +122,33 @@ public class WorkSessionAttachmentService {
                             attachmentId,
                             agentRunId,
                             source,
-                            kind,
+                            upload.kind(),
                             file.getOriginalFilename(),
-                            contentType,
-                            content.length,
+                            upload.contentType(),
+                            upload.sizeBytes(),
                             retentionClass,
-                            sha256,
-                            stored.attachment().workerId(),
-                            stored.attachment().storageIdentity(),
-                            stored.attachment().createdAt()));
+                            upload.sha256(),
+                            acceptedStored.attachment().workerId(),
+                            acceptedStored.attachment().storageIdentity(),
+                            acceptedStored.attachment().createdAt()));
         } catch (RuntimeException indexingFailure) {
-            if (stored.created()) {
-                try {
-                    workerClient.deleteSynthetic(workSessionId, attachmentId);
-                } catch (RuntimeException cleanupFailure) {
-                    indexingFailure.addSuppressed(cleanupFailure);
-                }
-            }
+            cleanupNewSynthetic(acceptedStored, workSessionId, attachmentId, indexingFailure);
             throw indexingFailure;
+        }
+    }
+
+    private void cleanupNewSynthetic(
+            AttachmentWorkerClient.PutResult stored,
+            Long workSessionId,
+            UUID attachmentId,
+            RuntimeException failure
+    ) {
+        if (stored != null && stored.created()) {
+            try {
+                workerClient.deleteSynthetic(workSessionId, attachmentId);
+            } catch (RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
         }
     }
 
@@ -206,7 +216,7 @@ public class WorkSessionAttachmentService {
             WorkSessionEntity session,
             UUID attachmentId,
             String sha256,
-            int size,
+            long size,
             AttachmentWorkerClient.StoredAttachment stored
     ) {
         if (!AttachmentProperties.PROTOCOL.equals(stored.protocolVersion())
