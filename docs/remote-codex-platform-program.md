@@ -6993,3 +6993,36 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.6-immutable-bindings`;
 the SHA-256 of its `SHA256SUMS` is
 `5483f665aef7e457932e80be03060112773500b540b67c242a577c6ab468a7f7`.
+
+Task 1.7 is complete and change progress is `13/83`; the exact resume point is
+task 1.8. Atenea commit
+`064e4b278757d179a3159c1c4039e7485413226f` defines separate versioned
+SHA-256 domains for the ordered attachment manifest and its image-turn request.
+Message normalization converts CRLF/CR to LF, applies Unicode NFC and strips
+outer whitespace while preserving internal content.
+
+The canonical binary format length-prefixes UTF-8 text and writes the ordered
+count, UUID bits, byte size and raw content digest in big-endian form. The
+request then frames the normalized message and raw manifest digest. It does not
+depend on JSON ordering, locale or text delimiters and fails closed on blank
+messages, empty, duplicate or over-bound lists, non-canonical image media type,
+non-positive size and non-lowercase SHA-256.
+
+Four focused tests pass with locked golden manifest/request vectors. They prove
+normalization stability, attachment-order sensitivity, influence of every
+immutable field and rejection of malformed or ambiguous inputs. An independent
+Perl/Digest::SHA implementation with explicit UTF-8 reproduces both golden
+hashes exactly. Two earlier runs failed only on deliberate placeholder golden
+assertions used to capture those vectors; the published source contains no
+placeholder.
+
+All exact task containers were removed with zero labelled container, network
+or volume residue. The canonical Atenea checkout remains clean and synchronized
+at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production, preview and
+Beautips remain `UP`; the versioned AX42 services and both backup timers remain
+active; RAID remains `3/3`. No production or foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.7-canonical-fingerprints`;
+the SHA-256 of its `SHA256SUMS` is
+`1a87034915d9f0e10566f8c4ce3e35edeada74e880d75b10a02d5654b8638553`.
