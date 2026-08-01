@@ -25,6 +25,13 @@ source "${SCRIPT_DIR}/install-agent-run-worker-v1.sh"
 require_root() { :; }
 chown() { :; }
 
+MODE_FIXTURE="${TEST_ROOT}/mode-fixture"
+mkdir -p "${MODE_FIXTURE}"
+chmod 2770 "${MODE_FIXTURE}"
+install_exact_directory "$(id -un)" "$(id -gn)" 0750 "${MODE_FIXTURE}/release"
+[[ "$(stat -c '%a' "${MODE_FIXTURE}/release")" == 750 ]] \
+  || fail "exact directory mode retained a setgid parent bit"
+
 [[ "$(sha256sum "${SCRIPT_DIR}/templates/atenea-agent-run-worker-v1.service" | cut -d' ' -f1)" \
     == "${SERVICE_TEMPLATE_SHA256}" ]] || fail "service template fingerprint is stale"
 [[ "$(sha256sum "${SCRIPT_DIR}/codex-platform-instructions-v1.md" | cut -d' ' -f1)" \

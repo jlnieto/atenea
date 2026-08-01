@@ -44,6 +44,19 @@ require_root() {
   [[ "$(id -u)" -eq 0 ]] || fail "run this action as root"
 }
 
+install_exact_directory() {
+  local owner="$1"
+  local group="$2"
+  local mode="$3"
+  local path="$4"
+  install -d -o "$owner" -g "$group" -m "$mode" "$path"
+  # A newly created child inherits setgid from /srv/atenea/worker.  The
+  # reviewed verifier intentionally requires the declared exact mode, so clear
+  # inherited special bits after creation instead of weakening verification.
+  chmod "$mode" "$path"
+  chmod u-s,g-s,o-t "$path"
+}
+
 tailscale_ipv4() {
   ip -4 -o address show dev tailscale0 scope global \
     | awk 'NR == 1 { split($4, value, "/"); print value[1] }'
@@ -220,13 +233,13 @@ apply_install() {
   id atenea-worker-role >/dev/null 2>&1 || useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin atenea-worker-role
   install -o root -g root -m 0755 "$SCRIPT_DIR/install-agent-run-worker-v1.sh" "$INSTALLER"
   install -d -o root -g atenea -m 0750 /etc/atenea-worker
-  install -d -o atenea-worker -g atenea -m 0700 "$STATE_DIR"
-  install -d -o root -g atenea -m 0750 "$CODEX_RELEASE_ROOT"
-  install -d -o root -g atenea -m 0750 "$CODEX_RELEASE_ROOT/inbox"
-  install -d -o atenea-worker -g atenea -m 0750 \
-    "$CODEX_RELEASE_ROOT/releases" "$CODEX_RELEASE_ROOT/operations"
-  install -d -o root -g atenea -m 0750 "$CODEX_RELEASE_ROOT/activations"
-  install -d -o root -g atenea -m 0750 "$CODEX_RELEASE_ROOT/rollbacks"
+  install_exact_directory atenea-worker atenea 0700 "$STATE_DIR"
+  install_exact_directory root atenea 0750 "$CODEX_RELEASE_ROOT"
+  install_exact_directory root atenea 0750 "$CODEX_RELEASE_ROOT/inbox"
+  install_exact_directory atenea-worker atenea 0750 "$CODEX_RELEASE_ROOT/releases"
+  install_exact_directory atenea-worker atenea 0750 "$CODEX_RELEASE_ROOT/operations"
+  install_exact_directory root atenea 0750 "$CODEX_RELEASE_ROOT/activations"
+  install_exact_directory root atenea 0750 "$CODEX_RELEASE_ROOT/rollbacks"
   if [[ ! -e "$TOKEN_FILE" ]]; then
     umask 0077
     openssl rand -hex 32 >"$TOKEN_FILE"
