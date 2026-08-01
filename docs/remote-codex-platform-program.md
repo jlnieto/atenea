@@ -7060,3 +7060,39 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.8-policy-migration-slice`;
 the SHA-256 of its `SHA256SUMS` is
 `b57194a5ada8c33226cbd19e8fae568ecbbd576ed484907471e70e011c6ca956`.
+
+Task 2.1 is complete and change progress is `15/83`; the exact resume point is
+task 2.2. Atenea commit
+`f04ea4f2a62992a81ee8483acc81d9cba7c5b08e` makes the routine authenticated
+upload route derive `OPERATOR_UPLOAD`, `SESSION` and `IMAGE`/`FILE`
+classification server-side. PNG, JPEG and WebP derive `IMAGE`; other media
+types derive `FILE` and remain subject to the existing closed worker allowlist
+and content validation.
+
+Legacy source, kind and retention form fields remain optional for compatible
+rollout, but now act only as equality assertions. Browser screenshot, browser
+trace and report sources; trace, report or media-mismatched kinds; and
+`EVIDENCE` or `TRANSIENT` retention claims all fail before worker health,
+storage or metadata indexing. Mediated preview/evidence authority is unchanged.
+
+Eleven focused controller/service tests pass in 16.81 seconds under a
+180-second timeout, with no network and an ephemeral build target. They prove
+omitted and matching compatibility fields, image/file derivation, eight closed
+rejection variants and zero worker or index calls after rejection. Three
+earlier invocations stopped before tests solely on isolated Maven cache/target
+runner configuration; the corrected offline runner passed without a following
+source change.
+
+The implementation branch is clean and published with tree
+`db950a130b087e565089d97c800ad3ef535be299`. The canonical Atenea checkout
+remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production, preview and
+Beautips remain `UP`; AX42's versioned services and both backup timers remain
+active; RAID remains `3/3`; slot container counts remain `3/0/0/3`. No
+deployment, schema/data record, route, service, retained content, credential or
+foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.1-server-derived-classification`;
+the SHA-256 of its `SHA256SUMS` is
+`0571e817b6742845ffbfd67ccbecb3042b489868a545975111da2202249c3d36`.
