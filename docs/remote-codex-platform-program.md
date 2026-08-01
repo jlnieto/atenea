@@ -7136,3 +7136,49 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.2-private-upload-spool`;
 the SHA-256 of its `SHA256SUMS` is
 `d2198e7f66250d9828b8b5e94815fded7317e758a280bd461eb1ec46a346d634`.
+
+Task 2.3 is complete and change progress is `17/83`; the exact resume point is
+task 2.4. Atenea commit
+`223a20ee07da3ba4b5b885e90b83e24b2dbbd4de` separates legacy synthetic and
+real attachment storage ownership without changing the public base-v1 response.
+
+Synthetic uploads retain their positive decimal control-plane WorkSession
+identity, explicit `syntheticFixture=true`, null V62 real-scope fields and exact
+synthetic-only cleanup. Real upload requires the immutable accepted policy
+revision plus exact canonical Atenea project, AX42 worker, remote workload,
+remote WorkSession UUID and deterministic workspace identity.
+
+Before any real PUT, Atenea requires the separate authenticated
+`real-project-attachment/v1` capability. An absent or incompatible endpoint
+fails before worker content. The accepted PUT uses the remote UUID in the base
+v1 route and sends only server-derived `atenea`, workspace, `REAL_SESSION` and
+explicit non-synthetic ownership headers. Returned public metadata must match
+the UUID, worker, attachment, size, SHA-256, classification and non-synthetic
+identity before indexing.
+
+V62 indexing persists and compares complete real scope against the locked
+canonical WorkSession while continuing to accept only all-null legacy scope.
+Base-v1 metadata/content retrieval routes null legacy scope by decimal identity
+and complete real scope by remote UUID; partial or mixed scope fails before
+network. Real content is never sent to the synthetic delete route, including
+after an index failure.
+
+The final focused suite passes `38/38` tests in 11.53 seconds under a 300-second
+timeout, with no network and an ephemeral build target. One broadened
+intermediate command also passed those 38 tests but selected three V62 migration
+tests without their required isolated-PostgreSQL environment; only those three
+stopped before their bodies and no resource was created.
+
+The implementation branch is clean and published with tree
+`372a204838c4a6738e0a4790dc2b34d5d21996d3`. The canonical Atenea checkout
+remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production, preview and
+Beautips remain `UP`; AX42's versioned services and both backup timers remain
+active; RAID remains `3/3`; slot container counts remain `3/0/0/3`. No
+deployment, schema/data record, route, service, retained content, credential or
+foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.3-real-storage-scope`;
+the SHA-256 of its `SHA256SUMS` is
+`bc2494d04de1af4590aac406149945a7228a00f4e5a166228e4137100a884bfc`.
