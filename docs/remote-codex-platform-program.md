@@ -7026,3 +7026,37 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.7-canonical-fingerprints`;
 the SHA-256 of its `SHA256SUMS` is
 `1a87034915d9f0e10566f8c4ce3e35edeada74e880d75b10a02d5654b8638553`.
+
+Task 1.8 is complete and change progress is `14/83`; Phase 1 is complete and
+the exact resume point is task 2.1. Atenea closure commit
+`f6a233714afaf2d8c5d199e14c66a58aa405d39b` publishes the already-tested
+tree `7644e41313f44791bb5ae9259a0e18e1fd8b33d2` for the complete policy,
+migration and immutable-ownership slice.
+
+The combined PostgreSQL suite passes all 69 registry, admission, retained-
+synthetic compatibility, new-session snapshot, WorkSession, V62 migration,
+invalid ownership, immutable ordered repository and canonical hashing tests.
+The first combined runner passed 66 tests while the three isolated migration
+tests stopped before their bodies because their datasource was supplied as
+Spring properties but not the required test environment names. The corrected
+runner used both forms against the same isolated database and passed `69/69`.
+
+Static V62 inspection finds no `DROP TABLE`, `DROP COLUMN`, row `UPDATE`, row
+`DELETE` or `TRUNCATE`. The only drops replace the two existing AgentRun check
+constraints in the same migration with v1/v3-compatible constraints. V62's
+SHA-256 is
+`cc55e65b536384365a9b0efd824aab032c6f3892095bf7230329fde26a3ef1db`;
+the migration regressions prove null/zero legacy compatibility and zero change
+on repetition.
+
+All isolated schemas, transaction fixtures and exact task containers were
+removed with zero labelled container, network or volume residue. The canonical
+Atenea checkout remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production, preview and
+Beautips remain `UP`; AX42's versioned services and both backup timers remain
+active; RAID remains `3/3`. No production or foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.8-policy-migration-slice`;
+the SHA-256 of its `SHA256SUMS` is
+`b57194a5ada8c33226cbd19e8fae568ecbbd576ed484907471e70e011c6ca956`.

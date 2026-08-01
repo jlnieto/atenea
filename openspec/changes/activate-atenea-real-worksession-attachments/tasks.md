@@ -31,7 +31,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 1.5 Add migration tests from an empty database and representative V61 legacy rows, including repeat migration, null legacy compatibility and invalid partial/composite ownership rejection
 - [x] 1.6 Add persistence entities/repositories and immutable queries for ordered turn bindings without an application update/delete path
 - [x] 1.7 Define canonical hashing for normalized message plus ordered attachment UUID/type/size/SHA-256 and prove stable order-sensitive fingerprints
-- [ ] 1.8 Run the focused migration/persistence suite, inspect the change for destructive DDL or implicit legacy rewrites, then commit and push the completed policy/migration slice
+- [x] 1.8 Run the focused migration/persistence suite, inspect the change for destructive DDL or implicit legacy rewrites, then commit and push the completed policy/migration slice
 
 ## 2. Atenea upload, turn and dispatch contracts
 
