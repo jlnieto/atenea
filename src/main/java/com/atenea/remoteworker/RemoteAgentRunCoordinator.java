@@ -13,7 +13,6 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.service.worksession.AgentRunNotFoundException;
 import com.atenea.service.worksession.AgentRunProgressService;
 import com.atenea.mobilepush.MobilePushDispatchService;
-import com.atenea.persistence.worksession.AgentRunProgressNextAction;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.List;
@@ -349,15 +348,14 @@ public class RemoteAgentRunCoordinator {
             if (run == null || run.getStatus().isTerminal()) {
                 return;
             }
-            boolean firstActionRequired = run.getStatus() != AgentRunStatus.RECONCILING
-                    || run.getProgressRequiredNextAction() != AgentRunProgressNextAction.REQUEST_RECONCILIATION;
+            boolean firstActionRequired = run.getStatus() != AgentRunStatus.RECONCILING;
             run.setStatus(AgentRunStatus.RECONCILING);
             run.setReconciliationStartedAt(
                     run.getReconciliationStartedAt() == null ? Instant.now() : run.getReconciliationStartedAt());
             run.setStatusReason("Remote worker unavailable; no replacement dispatched: " + safeReason(reason));
-            run.setProgressRequiredNextAction(AgentRunProgressNextAction.REQUEST_RECONCILIATION);
             run = agentRunRepository.save(run);
             if (firstActionRequired) {
+                progressService.append(runId, AgentRunProgressCategory.RECONCILING);
                 mobilePushDispatchService.notifyRunActionRequired(run);
             }
         });
@@ -374,6 +372,7 @@ public class RemoteAgentRunCoordinator {
             run.setErrorSummary("Remote worker remained unavailable through the bounded reconciliation window");
             run.setStatusReason("Explicit operator review required; execution was not reassigned");
             run = agentRunRepository.save(run);
+            progressService.append(runId, AgentRunProgressCategory.FAILED);
             mobilePushDispatchService.notifyRunFailed(run);
         });
     }
@@ -388,6 +387,7 @@ public class RemoteAgentRunCoordinator {
             run.setFinishedAt(Instant.now());
             run.setStatusReason("Cancelled after worker proved the dispatch identity was not admitted");
             agentRunRepository.save(run);
+            progressService.append(runId, AgentRunProgressCategory.CANCELLED);
         });
     }
 

@@ -283,6 +283,10 @@ class RemoteAgentRunCoordinatorTest {
                 run.getStatusReason());
         verify(mobilePushDispatchService, times(1)).notifyRunActionRequired(run);
         verify(mobilePushDispatchService, times(1)).notifyRunFailed(run);
+        verify(progressService, times(1)).append(
+                run.getId(), AgentRunProgressCategory.RECONCILING);
+        verify(progressService, times(1)).append(
+                run.getId(), AgentRunProgressCategory.FAILED);
         verify(client, never()).dispatch(any(), any());
     }
 
