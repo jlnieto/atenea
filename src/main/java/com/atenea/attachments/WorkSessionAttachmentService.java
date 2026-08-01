@@ -28,17 +28,20 @@ import org.springframework.web.multipart.MultipartFile;
 public class WorkSessionAttachmentService {
 
     private final AttachmentProperties properties;
+    private final AttachmentAdmissionPolicy admissionPolicy;
     private final AttachmentWorkerClient workerClient;
     private final WorkSessionRepository workSessionRepository;
     private final WorkSessionAttachmentMetadataService metadataService;
 
     public WorkSessionAttachmentService(
             AttachmentProperties properties,
+            AttachmentAdmissionPolicy admissionPolicy,
             AttachmentWorkerClient workerClient,
             WorkSessionRepository workSessionRepository,
             WorkSessionAttachmentMetadataService metadataService
     ) {
         this.properties = properties;
+        this.admissionPolicy = admissionPolicy;
         this.workerClient = workerClient;
         this.workSessionRepository = workSessionRepository;
         this.metadataService = metadataService;
@@ -156,14 +159,7 @@ public class WorkSessionAttachmentService {
     private WorkSessionEntity requireCreateAllowed(Long workSessionId) {
         WorkSessionEntity session = workSessionRepository.findWithProjectById(workSessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(workSessionId));
-        if (!properties.isEnabled()) {
-            throw new AttachmentFeatureDisabledException(
-                    "Los adjuntos nuevos están desactivados; la evidencia ya retenida sigue disponible.");
-        }
-        if (!properties.getSyntheticProjectAllowlist().contains(session.getProject().getName())) {
-            throw new AttachmentFeatureDisabledException(
-                    "Este proyecto no está autorizado para adjuntos sintéticos.");
-        }
+        admissionPolicy.requireSyntheticCreationAllowed(session.getProject().getName());
         if (session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !Objects.equals(session.getSelectedWorkerId(), properties.getWorkerId())) {
             throw new AttachmentOwnershipException(

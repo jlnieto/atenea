@@ -52,8 +52,10 @@ class WorkSessionAttachmentServiceTest {
         properties = new AttachmentProperties();
         properties.setEnabled(true);
         properties.setSyntheticProjectAllowlist(Set.of("synthetic-attachments"));
+        RealAttachmentProjectRegistry registry = new RealAttachmentProjectRegistry(properties);
         service = new WorkSessionAttachmentService(
                 properties,
+                new AttachmentAdmissionPolicy(properties, registry),
                 workerClient,
                 workSessionRepository,
                 metadataService);
@@ -125,6 +127,7 @@ class WorkSessionAttachmentServiceTest {
         WorkSessionAttachmentEntity metadata = attachment(session);
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
         when(metadataService.get(12L, ATTACHMENT_ID)).thenReturn(metadata);
+        when(metadataService.list(12L, 50)).thenReturn(List.of(metadata));
         when(workerClient.content(12L, ATTACHMENT_ID))
                 .thenReturn(new AttachmentWorkerClient.Content("image/png", PNG));
 
@@ -136,6 +139,7 @@ class WorkSessionAttachmentServiceTest {
                 AttachmentKind.IMAGE,
                 AttachmentRetentionClass.SESSION,
                 new MockMultipartFile("file", "screen.png", "image/png", PNG)));
+        assertEquals(List.of(metadata), service.list(12L, 50));
         assertArrayEquals(PNG, service.download(12L, ATTACHMENT_ID).content());
     }
 
