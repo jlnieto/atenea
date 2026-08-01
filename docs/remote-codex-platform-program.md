@@ -6871,3 +6871,32 @@ is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.2-admission-separation`;
 the SHA-256 of its `SHA256SUMS` is
 `3b82523a3da52b9d18393b2c4734b8427dd9fabc9e35246d250a18629fa82178`.
+
+Task 1.3 is complete and change progress is `9/83`; the exact resume point is
+task 1.4. Atenea commit
+`ba116da3996a249ef2e6ac1bcca3ece11f9af2ad` snapshots
+`atenea-real-attachments-v1` only after a newly created WorkSession has been
+routed with the exact canonical Atenea identity, AX42 worker, remote session
+UUID, project workload and deterministic workspace identity. Global or project
+disable, local placement and foreign, partial or ambiguous ownership retain a
+null revision. Resolving an existing open WorkSession returns before routing or
+snapshot evaluation, and an existing revision is never rewritten.
+
+The V61-compatible domain property remains transient in this task; additive
+V62 persistence and constraints are explicitly owned by task 1.4. Fifty-six
+focused registry, admission, snapshot and WorkSession tests pass, followed by
+two Spring/JPA tests against isolated PostgreSQL after a clean V1-to-V61
+migration. All exact test containers, networks, volumes and images were removed
+with zero residue and no fixed-name foreign local resource was changed.
+
+The canonical Atenea checkout remains clean and equal to its upstream at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production, preview and
+Beautips report `UP`; the versioned AX42 AgentRun and attachment services plus
+both backup timers are active; RAID is `3/3`; slot container counts remain
+`3/0/0/3`. No production deployment, schema, database row, WorkSession,
+attachment, route, service or credential changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-1.3-policy-snapshot`;
+the SHA-256 of its `SHA256SUMS` is
+`c40a4cfdf1e6aef7d35457dd9ac25b7ffc59fd548f05bea8fd99fef914f774ad`.
