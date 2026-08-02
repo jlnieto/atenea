@@ -9178,3 +9178,53 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.5-blocked-wrapper-compose-mode`.
 The SHA-256 of its `SHA256SUMS` is
 `4893feeb7e069e02d734bcffc5cbd9df519c95d8fcb383480365cf9c14fe6102`.
+
+The operator explicitly authorized restoring only the production Compose mode
+from `0664` to `0600`, deploying the exact response-wrapper fix and preparing a
+new clean WorkSession. Task 7.5 remains unmarked at `69/83`.
+
+After exact owner/content assertions, the Compose mode was changed to `0600`
+without changing SHA-256
+`ad292a88149ca1eeea5eb3c720c5fcb9153c2dd5facb289cd2b72891e719e29d`.
+The candidate Compose then changed only the backend image reference, was
+strict-validated against the protected environment and atomically installed
+mode `0600`; its SHA-256 is
+`d7f94b1e611fad6329cb66346cbe99eba91d79bdba30e19fda73e48b51abb4ba`.
+The exact prior Compose remains as a mode-0600 rollback copy with its original
+hash.
+
+Only `atenea-backend-prod` was recreated. It reached readiness in 13 seconds on
+immutable image
+`sha256:ca076c3a615c7745c8a86fe7abd729123041bf9c38e529716892dd72c6dbc0c3`,
+source commit `57b4123abaa4d66ba335fcb0cf4b64cd9fdd589d`, with restart count zero.
+The served JavaScript SHA-256 is
+`8f7e89bc6ed0adf4a65a71cadb7585685cc87af2546a890ccdb78f147a3cb6b4`,
+matching the candidate. The global gate remains true, the real allowlist
+remains exactly `atenea` and the synthetic allowlist remains empty.
+
+WorkSession `14` was closed through the normal authenticated API with its
+attachment, binding, terminal v3 run, worktree and artifacts intact. Only its
+exact `slot2/heavy1` admission was released; allocation SHA-256
+`ebc691bec22ab966e887915e59817a014a2a6e7703eeaa27d8fa3a92b489fa86`
+was retained under the canonical retired name, and only its exact registration
+was removed.
+
+The API then created WorkSession `15`, remote session
+`c80c1e72-e34f-46b9-ba34-5a9a0c0ad2d7`; authentication values remained
+memory-only and logout returned 204. The reviewed mediator activated its exact
+workspace in 1.63 seconds. It is the sole open/registered Atenea session,
+reports `READY/NONE/COMPATIBLE`, owns `slot2/heavy1`, and has zero attachments,
+turns, bindings, AgentRuns, runtime objects and materializations. Its worktree
+is clean at commit `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`.
+
+Worker services and required timers remain active; rootless slots remain
+`3/0/0/3`; RAID remains `3/3 [UU]`; rootful Docker remains inactive; SSH,
+Tailscale and UFW remain active. Production, preview and Beautips remain HTTP
+200. The next action is the operator's manual selected-state receipt in session
+`15`; no prompt has been submitted there.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.5-authorized-wrapper-rollout-clean-session`.
+The SHA-256 of its `SHA256SUMS` is
+`e0d517a3f678292bb03c364569d6d3e7592fbf001fbf69e24ba74b9c0f682773`.
