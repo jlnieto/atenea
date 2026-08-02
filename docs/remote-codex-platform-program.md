@@ -9447,3 +9447,40 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.9-new-backup-isolated-restore`;
 the SHA-256 of its `SHA256SUMS` is
 `b98b18089ccc2888516c39a5db61044b7eb9db64cc38687d09aaf9e6bc002ef6`.
+
+Task 7.10 is complete. Change progress is `75/83`; task 8.1 is the exact
+resume point and was not started.
+
+Immediately before cleanup, the isolated restore projection still matched its
+accepted device/inode `2306:10780335`, mode `2755`, numeric owner `0:988`,
+3,870-file count, 12,257,180-byte total and normalized manifest SHA-256
+`51cf5989796d05093548e65cacfe2e9d02f8ec68ed9f087a54b38e76e233fb25`.
+Every manifest entry was a regular non-symlink file with exact path, size, mode
+and digest, and the restored tree contained no extra file.
+
+Only projection `task-7.9-15261384-62e7-46cd-9069-72cd3580ff52` was removed.
+The restore parent contained zero other projections before and after; its
+normalized foreign-projection fingerprint remained
+`4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`.
+The exact target is absent. The removed disposable projection remains
+recoverable from the preserved accepted external snapshot and no source or
+remote backup content was removed.
+
+A fresh post-cleanup repository check completed successfully in 3,437 ms and
+still selected accepted snapshot
+`50980a4b74d68ed40525b73ebba2945f92885839fef4af5412d58d96e3d77de4`.
+Both external-backup timers remain enabled and active. Attachment, AgentRun and
+worker-health units remain active with zero service restarts; materializations
+remain zero, RAID remains `3/3 [UU]`, and rootful Docker remains inactive.
+
+Production WorkSession 15 remains exactly one attachment, four turns, one
+binding and two AgentRuns. Its worktree remains clean at commit
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`. Production, preview and Beautips
+containers remain up. No gate, route, runtime, WorkSession, source attachment,
+snapshot or unrelated resource changed.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.10-exact-restore-cleanup`;
+the SHA-256 of its `SHA256SUMS` is
+`a164dd08a401ffc15a54eb1daa064b058f74bf86642d99848e552c9c1fe67329`.

@@ -110,7 +110,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 7.7 Restart the backend, attachment service and AgentRun worker separately with finite bounds, then prove retained download, historical binding, zero duplicate execution/result and zero materialization residue
 - [x] 7.8 Attempt exact old-session, Beautips, foreign-session and conflicting-idempotency operations and prove fail-closed rejection leaves every real/foreign resource unchanged
 - [x] 7.9 Run a newer external backup plus repository check, restore its exact snapshot to a new empty isolated target and prove the canary sidecar/content size and SHA-256 without retaining bytes, filename, prompt or answer
-- [ ] 7.10 Remove only the exact isolated restore projection after equality, preserve the accepted remote snapshot and confirm backup timers remain active
+- [x] 7.10 Remove only the exact isolated restore projection after equality, preserve the accepted remote snapshot and confirm backup timers remain active
 
 ## 8. Rollback, re-enable and closure
 
