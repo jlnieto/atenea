@@ -8387,3 +8387,36 @@ rollout or unrelated mutation occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.4-restart-retry-continuity`;
 the SHA-256 of its `SHA256SUMS` is
 `c8a1f76bf5dea5b2cf8f848f33286da0ea893e13df0aa17a32b9bc0b09bd8a70`.
+
+Task 5.5 is complete and change progress is `53/83`; the exact resume point is
+task 5.6. The permanent fail-closed matrix covered all 11 required classes:
+unlabelled, partial, foreign-project, foreign-session, foreign-workspace,
+modified-content, symlink, unsupported, duplicate, expired and ambiguous.
+
+Runner fixtures were fingerprinted before rejection using relative identity,
+mode, owner, group, size and file SHA-256 or symlink target. Every complete
+before/after snapshot remained identical and no Codex process started. Backend
+validation stopped duplicates before repository/worker access, retained
+foreign/partial/expired rows, rejected unsupported kind/type before worker
+access and never invoked deletion for metadata or content mismatch. AgentRun
+protocol denial created no execution state; attachment-service denial retained
+no partial content and never adopted or removed foreign/ambiguous content.
+
+Backend validation passed `12/12` in 12 seconds. Project runner, AgentRun worker
+and WorkSession attachment service passed `22/22`, `54/54` and `17/17`
+respectively (`93/93`) in 11 seconds. Maven output, task fixture containers,
+known temporary roots, bytecode and browser processes are zero. No product
+change was required.
+
+Candidate Atenea remains clean and published at
+`99bda7d1a93f9aa5e9f6e3e8f9f0365cef36ce59`; programme/worker Git is clean
+and published at `0ad4ec45b3d4cca2f5f27b8ed61daa8cdeaef35d`; canonical Atenea
+remains clean at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production, preview
+and Beautips return HTTP 200; required AX42 services/timers are active; RAID
+remains `[UU]`; slots remain `3/0/0/3`. No rollout or unrelated mutation
+occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.5-fail-closed-fixture-matrix`;
+the SHA-256 of its `SHA256SUMS` is
+`c7d3fe5fe374d3a574d5f5e754fdad4e338687bf24f71fbd3ed10c680d2cb134`.
