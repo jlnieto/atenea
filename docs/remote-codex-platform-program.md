@@ -7720,3 +7720,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.5-retained-image-verification`;
 the SHA-256 of its `SHA256SUMS` is
 `a23aafc165c67847e3d3f580e055faeb08ab4b7fcf2a8cda6edd9136a0168043`.
+
+Task 3.6 is complete and change progress is `33/83`; the exact resume point is
+task 3.7. Programme/worker commit
+`114cdef2d81dabb3c4131d247f477b9a8b94c7a5` adds ordered runtime image
+materialization, individual read-only Bubblewrap exposure and the closed v3
+result contract.
+
+After retained verification, each image is recopied and reverified into the
+canonical execution UUID directory beneath `/run/atenea/codex-images`. That
+directory is owned by the unprivileged execution identity at mode `0700`; every
+derived position/UUID/type copy is mode `0600`. Source filenames never
+participate. The namespace creates only the empty runtime directory chain and
+read-only binds each exact copy; neither the retained attachment root nor a
+retained content path appears in the command.
+
+New turns receive one ordered fixed `--image` argument before stdin. Resumed
+turns receive the same ordered flags after the `resume` subcommand and before
+the exact thread UUID and stdin. The installed Codex 0.145.0 parser accepts both
+forms. A two-image synthetic proof checks copy order, ownership modes, mount
+sources, argument order, absence of retained paths, unchanged source bytes and
+an empty execution boundary after the successful context. The worker also
+requires a result summary matching the exact workload kind, and the new closed
+v3 result schema validates. Exhaustive terminal cleanup and stale reconciliation
+remain task 3.7. The focused suites passed `76/76` in 13.509 seconds under a
+120-second timeout.
+
+Programme/worker tree `b50a1c402d16b20da8415264d8c70acd14a99c09` is clean and
+published. The installed runner remains byte-identical to its previous
+`d15c78b09fcf048f7968168861ed976dd054b038168548b7216781568d1126f0`
+version, so no candidate was installed. Canonical Atenea remains clean at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and Beautips
+return HTTP 200; AX42 attachment/AgentRun services and health/backup timers are
+active; RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.6-ordered-image-materialization`;
+the SHA-256 of its `SHA256SUMS` is
+`d70248d49394812e45432b1758a405798be00b28e6c55ed55cd9351af74598c8`.

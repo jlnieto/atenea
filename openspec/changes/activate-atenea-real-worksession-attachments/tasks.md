@@ -56,7 +56,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 3.3 Prove base v1 readers can retrieve extended real sidecars and that synthetic deletion always rejects real content unchanged
 - [x] 3.4 Extend AgentRun schema/semantic validation and durable request fingerprints for exact `project-codex-v3` attachment arrays while preserving v1/v2 compatibility
 - [x] 3.5 Extend the fixed Atenea runner configuration with a non-caller attachment root and validate every referenced sidecar/file, ownership, mode, project, session, workspace, type, size and SHA-256 before process creation
-- [ ] 3.6 Materialize only selected images under an execution-labelled `/run/atenea/codex-images` boundary, expose only those files read-only to Bubblewrap and pass ordered fixed `--image` arguments for new and resumed Codex turns
+- [x] 3.6 Materialize only selected images under an execution-labelled `/run/atenea/codex-images` boundary, expose only those files read-only to Bubblewrap and pass ordered fixed `--image` arguments for new and resumed Codex turns
 - [ ] 3.7 Remove exact materializations in `finally` after success, failure, cancellation, timeout and interruption; reconcile stale paths only against absent/terminal exact executions
 - [ ] 3.8 Add fail-closed tests for missing, modified, symlinked, partial, unlabelled, foreign, ambiguous, permission-invalid and over-bound sidecars/files with zero Codex process and no retained-content mutation
 - [ ] 3.9 Add new-thread, resumed-thread, request repetition, cancellation, timeout, service restart and stale-materialization tests proving one execution and zero temporary residue
