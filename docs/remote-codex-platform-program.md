@@ -8974,3 +8974,66 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.2-global-empty-allowlists`;
 the SHA-256 of its `SHA256SUMS` is
 `236b396402b62235f52d665b17ecd57d63b3e7f769a8db7f5687af273f9e4932`.
+
+Task 7.3 is complete. Change progress is `68/83`; task 7.4 is the exact
+resume point and requires the operator's real web interaction.
+
+The exact global-only Compose was retained mode `0600` with SHA-256
+`ed90865e76afca8c3ef8d917648d893e630025bc23d7f13404dcc4280483985f`.
+The atomically installed definition has SHA-256
+`ad292a88149ca1eeea5eb3c720c5fcb9153c2dd5facb289cd2b72891e719e29d`
+and adds only canonical `atenea` to the real-project allowlist. The global gate
+remains true and the synthetic allowlist remains empty. Only the production
+backend was recreated on the same immutable image; it reached readiness in 14
+seconds with restart count zero.
+
+Before project activation, all seven prior Atenea WorkSessions retained null
+policy. The reviewed worker mediator added the sole fixed attachment root while
+preserving the registered workspace and clean Git. The normal authenticated
+production API then closed the sole clean old open Atenea session and created
+WorkSession `13`, remote session
+`707c58a1-5105-45be-b7b7-bebd9bf8ab8e`. Authentication material and tokens
+remained memory-only inside the backend, no value was emitted or written, and
+logout returned 204.
+
+The new WorkSession is `OPEN`, pinned to `ax42-01` with workload
+`project-codex-v1`, and is the sole row carrying immutable policy revision
+`atenea-real-attachments-v1`. It has zero turns and zero AgentRuns. The former
+open session is `CLOSED`, retains null policy and reports capability
+`BLOCKED/SESSION_NOT_ELIGIBLE`; the new session reports
+`READY/NONE/COMPATIBLE`; Beautips reports
+`BLOCKED/PROJECT_DISABLED` with null policy.
+
+Before provisioning the new workspace, AX42's sole registration was resolved
+as exact retained ownership of older WorkSession `11`, already `CLOSED`, not a
+foreign resource. Database identity, worker config, clean Git, admission and
+allocation matched. Its assigned containers, network, volumes, listeners and
+runtime unit were all absent. Heavy then normal admission were released, its
+allocation was retained under the canonical retired name with unchanged
+SHA-256
+`4ca527500e94573324a082cad6803b565bfec82a1fb5b52885853503af4b255b`,
+and only that exact registration was removed.
+
+An administrative direct activation attempt was rejected before mutation as
+a foreign caller; absence of the new session root, admission and registration
+was confirmed. The accepted retry used the exact `atenea-worker` privilege
+chain and completed in 1.613 seconds. The new worktree is clean at commit
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`; it owns slot 2 and heavy 1, one
+allocation and the sole worker registration, but no runtime was started.
+
+The final worker project configuration SHA-256 is
+`413170ed2dff0067fe74fabeaa98e83bc04dd10083b522d5009c05bdcfb2e868`.
+Attachment rows, logical bytes and bindings remain zero; the retained storage
+metadata fingerprint remains
+`95d7b4c6a9e5c3b3b47ebc2acdb06f391a12119dbf932c36acad64440e6985b1`.
+Both worker services and all required timers remain active; rootless slot
+counts remain `3/0/0/3`; all RAID arrays remain `[UU]`; SSH, Tailscale and UFW
+remain active; rootful Docker remains inactive. Production, preview and
+Beautips return HTTP 200. No unrelated project, route, runtime or foreign
+resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.3-canonical-atenea-activation`;
+the SHA-256 of its `SHA256SUMS` is
+`dec649358ed24efe7c627c89c913595579a88e7515e0b6ab1ad23a114782832c`.
