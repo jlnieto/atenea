@@ -7795,3 +7795,33 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.7-exact-materialization-cleanup`;
 the SHA-256 of its `SHA256SUMS` is
 `479ede60f1479c73393603ee49ead1149f1008502597ef917b0dd48a64049027`.
+
+Task 3.8 is complete and change progress is `35/83`; the exact resume point is
+task 3.9. Programme/worker test commit
+`bcdb8c6333484aa994779af5338acedebc047cad` adds the complete retained-image
+fail-closed denial matrix without changing the accepted implementation.
+
+Fifteen isolated generated cases cover missing sidecar, missing content,
+modified content, symlinked content, symlinked sidecar, partial sidecar,
+unlabelled sidecar, foreign sidecar, ambiguous extra authority, invalid content
+mode, invalid sidecar mode, invalid directory mode, over-bound sidecar,
+over-bound file declaration and over-bound attachment count. Each case captures
+a complete lstat-based tree fingerprint after arranging the invalid fixture,
+executes the exact validation with a mocked process boundary, observes a
+sanitized rejection, proves zero `Popen` calls and obtains the identical tree
+fingerprint afterward. The runner therefore neither repairs, adopts, rewrites
+nor deletes rejected retained state. The full focused slice passed `83/83` in
+13.374 seconds under a 120-second timeout.
+
+Programme/worker tree `8a073d00db71c5173e10757c4e50d35856fedfba` is clean and
+published. The installed runner remains byte-identical to its previous
+`d15c78b09fcf048f7968168861ed976dd054b038168548b7216781568d1126f0`
+version, so the candidate remains uninstalled. Canonical Atenea remains clean
+at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and Beautips
+return HTTP 200; AX42 attachment/AgentRun services and health/backup timers are
+active; RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.8-retained-image-denial-matrix`;
+the SHA-256 of its `SHA256SUMS` is
+`2a82d7499204229f455a74b93f9ad7ea724664ad1e8f29971da8e8ff16fc7be4`.
