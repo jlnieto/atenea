@@ -104,6 +104,24 @@ class BeautipsProjectCodexRunnerTest(unittest.TestCase):
             workload, accepted = BASE.validate_request(self.request(), config)
         self.assertEqual(worktree, accepted)
         self.assertEqual("beautips", workload["projectId"])
+        image_request = self.request()
+        image_request["workload"].update({
+            "kind": BASE.IMAGE_CAPABILITY,
+            "modelId": BASE.CODEX_MODEL,
+            "reasoningEffort": "high",
+            "catalogRevision": BASE.CODEX_CATALOG_REVISION,
+            "codexVersion": BASE.CODEX_VERSION,
+            "attachments": [{
+                "attachmentId": "11111111-1111-4111-8111-111111111111",
+                "contentType": "image/png",
+                "sizeBytes": 8,
+                "sha256": "a" * 64,
+            }],
+        })
+        with mock.patch.object(Path, "is_dir", return_value=True), mock.patch.object(
+            Path, "is_symlink", return_value=False
+        ), self.assertRaises(SystemExit):
+            BASE.validate_request(image_request, config)
         for key, foreign in (
             ("projectId", "atenea"),
             ("repository", "https://github.com/jlnieto/atenea.git"),

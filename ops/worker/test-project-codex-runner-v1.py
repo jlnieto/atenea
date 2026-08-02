@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -53,6 +54,73 @@ class ProjectCodexContractTest(unittest.TestCase):
         })
         return workload
 
+    def image_fixture(self, root, content=b"\x89PNG\r\n\x1a\nsynthetic-image"):
+        session_id = "11111111-1111-4111-8111-111111111111"
+        attachment_id = "22222222-2222-4222-8222-222222222222"
+        workspace_identity = "remote:ax42-01:work-session:" + session_id
+        digest = hashlib.sha256(content).hexdigest()
+        workload = self.profiled_workload()
+        workload.update({
+            "kind": MODULE.IMAGE_CAPABILITY,
+            "attachments": [{
+                "attachmentId": attachment_id,
+                "contentType": "image/png",
+                "sizeBytes": len(content),
+                "sha256": digest,
+            }],
+        })
+        request = {
+            "dispatchId": "33333333-3333-4333-8333-333333333333",
+            "executionId": "44444444-4444-4444-8444-444444444444",
+            "sessionId": session_id,
+            "workspaceIdentity": workspace_identity,
+            "workload": workload,
+        }
+        attachment_root = root / "work-sessions" / session_id / attachment_id
+        attachment_root.mkdir(parents=True)
+        for directory in (root, root / "work-sessions", attachment_root.parent, attachment_root):
+            directory.chmod(0o700)
+        content_path = attachment_root / "content"
+        metadata_path = attachment_root / "metadata.json"
+        content_path.write_bytes(content)
+        metadata_path.write_text(json.dumps({
+            "protocolVersion": "worksession-attachment/v1",
+            "workerId": MODULE.ATTACHMENT_WORKER_ID,
+            "sessionId": session_id,
+            "attachmentId": attachment_id,
+            "storageIdentity": f"work-sessions/{session_id}/{attachment_id}/content",
+            "source": "OPERATOR_UPLOAD",
+            "kind": "IMAGE",
+            "contentType": "image/png",
+            "sizeBytes": len(content),
+            "retentionClass": "SESSION",
+            "sha256": digest,
+            "syntheticFixture": False,
+            "createdAt": "2026-08-01T00:00:00Z",
+            "storedAt": "2026-08-01T00:00:01Z",
+            "projectIdentity": "atenea",
+            "workspaceIdentity": workspace_identity,
+            "storageScope": "REAL_SESSION",
+        }, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+        content_path.chmod(0o600)
+        metadata_path.chmod(0o600)
+        return request, content_path, metadata_path
+
+    def atenea_config(self):
+        return {
+            "schemaVersion": MODULE.CAPABILITY,
+            "selectionEnabled": True,
+            "executionEnabled": True,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.REPOSITORY,
+            "branch": MODULE.BRANCH,
+            "commit": TEST_COMMIT,
+            "manifestSha256": MODULE.MANIFEST_SHA256,
+            "runner": str(Path(MODULE.__file__).resolve()),
+            "attachmentRoot": str(MODULE.ATTACHMENT_ROOT),
+            "workspaces": {},
+        }
+
     def test_request_and_result_schemas_accept_exact_envelopes(self):
         if Draft202012Validator is None:
             self.skipTest("jsonschema is not installed on this worker")
@@ -91,6 +159,90 @@ class ProjectCodexContractTest(unittest.TestCase):
             self.assertEqual(expected, reason)
             self.assertNotIn("token-value", reason)
             self.assertNotIn("/secret/path", reason)
+
+    def test_atenea_configuration_binds_one_non_caller_attachment_root(self):
+        runner = Path(MODULE.__file__).resolve()
+        config = self.atenea_config()
+        MODULE.validate_config(config, runner)
+
+        for mutation in (
+            lambda value: value.pop("attachmentRoot"),
+            lambda value: value.__setitem__("attachmentRoot", "/srv/foreign"),
+            lambda value: value.__setitem__("attachmentRoots", [str(MODULE.ATTACHMENT_ROOT)]),
+        ):
+            candidate = json.loads(json.dumps(config))
+            mutation(candidate)
+            with self.assertRaises(SystemExit):
+                MODULE.validate_config(candidate, runner)
+
+    def test_exact_real_attachment_is_verified_without_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "attachments-v1"
+            root.mkdir()
+            request, content_path, metadata_path = self.image_fixture(root)
+            config = {"attachmentRoot": str(root)}
+            before = (
+                content_path.read_bytes(), metadata_path.read_bytes(),
+                content_path.stat().st_mode, metadata_path.stat().st_mode,
+            )
+            with patch.object(MODULE, "ATTACHMENT_ROOT", root), patch.object(
+                MODULE, "attachment_owner_ids", return_value=(os.getuid(), os.getgid())
+            ):
+                verified = MODULE.validate_attachment_references(
+                    request, request["workload"], config
+                )
+            self.assertEqual(1, len(verified))
+            self.assertEqual(content_path, verified[0].content_path)
+            self.assertEqual(request["workload"]["attachments"][0]["sha256"], verified[0].sha256)
+            self.assertEqual(before, (
+                content_path.read_bytes(), metadata_path.read_bytes(),
+                content_path.stat().st_mode, metadata_path.stat().st_mode,
+            ))
+
+    def test_sidecar_file_and_request_identity_must_match_before_delivery(self):
+        cases = (
+            ("project", lambda request, metadata, content: metadata.__setitem__(
+                "projectIdentity", "beautips")),
+            ("session", lambda request, metadata, content: metadata.__setitem__(
+                "sessionId", "55555555-5555-4555-8555-555555555555")),
+            ("workspace", lambda request, metadata, content: metadata.__setitem__(
+                "workspaceIdentity", "remote:foreign")),
+            ("type", lambda request, metadata, content: metadata.__setitem__(
+                "contentType", "image/jpeg")),
+            ("size", lambda request, metadata, content: metadata.__setitem__(
+                "sizeBytes", metadata["sizeBytes"] + 1)),
+            ("sidecar_sha", lambda request, metadata, content: metadata.__setitem__(
+                "sha256", "f" * 64)),
+            ("content_sha", lambda request, metadata, content: content.write_bytes(
+                b"\x89PNG\r\n\x1a\nchanged")),
+            ("content_mode", lambda request, metadata, content: content.chmod(0o640)),
+            ("partial", lambda request, metadata, content: metadata.pop("storageScope")),
+        )
+        for name, mutate in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary) / "attachments-v1"
+                root.mkdir()
+                request, content_path, metadata_path = self.image_fixture(root)
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                mutate(request, metadata, content_path)
+                metadata_path.write_text(
+                    json.dumps(metadata, sort_keys=True, separators=(",", ":")),
+                    encoding="utf-8",
+                )
+                metadata_path.chmod(0o600)
+                before_content = content_path.read_bytes()
+                before_metadata = metadata_path.read_bytes()
+                with patch.object(MODULE, "ATTACHMENT_ROOT", root), patch.object(
+                    MODULE, "attachment_owner_ids", return_value=(os.getuid(), os.getgid())
+                ), patch.object(MODULE.subprocess, "Popen") as process, self.assertRaisesRegex(
+                    SystemExit, "2"
+                ):
+                    MODULE.validate_attachment_references(
+                        request, request["workload"], {"attachmentRoot": str(root)}
+                    )
+                process.assert_not_called()
+                self.assertEqual(before_content, content_path.read_bytes())
+                self.assertEqual(before_metadata, metadata_path.read_bytes())
 
     def test_internal_failure_classification_retains_only_allowlisted_type(self):
         self.assertEqual(

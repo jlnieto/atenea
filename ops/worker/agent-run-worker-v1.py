@@ -151,6 +151,7 @@ PROJECT_INSTRUCTION_PATH = "AGENTS.md"
 ATENEA_PROJECT_INSTRUCTION_SHA256 = "a09adc5855ff54490211a0f5c82f413cb84ee7197b2b350e0b0dc40eba7c98dc"
 ATENEA_INSTRUCTION_BUNDLE_SHA256 = "ab9f1877c83333945497797e6b8aefd20f67debf8e3bdc6d1b824fc5a3f86c04"
 PROJECT_MIRROR = Path("/srv/atenea/repositories/atenea.git")
+PROJECT_ATTACHMENT_ROOT = "/srv/atenea/attachments-v1"
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 BEAUTIPS_PROJECT_ID = "beautips"
 BEAUTIPS_PROJECT_REPOSITORY = "https://github.com/jlnieto/beautips.git"
@@ -1937,6 +1938,9 @@ class WorkerState:
             "commit", "manifestSha256", "runner", "workspaces",
         }
         exact = {"schemaVersion": PROJECT_CAPABILITY, **route["identity"]}
+        if route["identity"]["projectId"] == PROJECT_ID:
+            required.add("attachmentRoot")
+            exact["attachmentRoot"] = PROJECT_ATTACHMENT_ROOT
         if (
             not isinstance(parsed, dict)
             or set(parsed) != required
@@ -2257,6 +2261,8 @@ class WorkerState:
                 "Codex execution failed: CLI contract",
                 "Codex execution failed: network unavailable",
                 "Codex execution failed: thread persistence unavailable",
+                "Codex execution failed: image delivery unavailable",
+                "attachment ownership rejected",
                 "Codex execution failed: unclassified",
                 "Project runner internal exception: AttributeError",
                 "Project runner internal exception: FileNotFoundError",

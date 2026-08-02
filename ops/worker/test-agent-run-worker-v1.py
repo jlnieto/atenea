@@ -530,6 +530,7 @@ print(json.dumps({"sessionId": session,
             "commit": self.retained_head,
             "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
             "runner": str(self.runner),
+            "attachmentRoot": MODULE.PROJECT_ATTACHMENT_ROOT,
             "workspaces": {
                 self.workspace_identity: {
                     "sessionId": self.session_id,
@@ -808,6 +809,7 @@ print(json.dumps({
                 "commit": TEST_COMMIT,
                 "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
                 "runner": str(self.runner),
+                "attachmentRoot": MODULE.PROJECT_ATTACHMENT_ROOT,
                 "workspaces": {
                     self.workspace_identity: {
                         "sessionId": self.session_id,

@@ -4,22 +4,25 @@
 from __future__ import annotations
 
 import argparse
+import grp
 import hashlib
 import json
 import os
 import pwd
 import re
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 CAPABILITY = "project-codex-v1"
 PROFILED_CAPABILITY = "project-codex-v2"
+IMAGE_CAPABILITY = "project-codex-v3"
 CODEX_VERSION = "0.145.0"
 CODEX_MODEL = "gpt-5.6-sol"
 CODEX_EFFORTS = {"none", "low", "medium", "high", "xhigh", "max"}
@@ -57,6 +60,21 @@ WORKLOAD_KEYS = {
 PROFILED_WORKLOAD_KEYS = WORKLOAD_KEYS | {
     "modelId", "reasoningEffort", "catalogRevision", "codexVersion",
 }
+IMAGE_WORKLOAD_KEYS = PROFILED_WORKLOAD_KEYS | {"attachments"}
+ATTACHMENT_REFERENCE_KEYS = {"attachmentId", "contentType", "sizeBytes", "sha256"}
+ATTACHMENT_METADATA_KEYS = {
+    "protocolVersion", "workerId", "sessionId", "attachmentId",
+    "storageIdentity", "source", "kind", "contentType", "sizeBytes",
+    "retentionClass", "sha256", "syntheticFixture", "createdAt", "storedAt",
+    "projectIdentity", "workspaceIdentity", "storageScope",
+}
+ATTACHMENT_ROOT = Path("/srv/atenea/attachments-v1")
+ATTACHMENT_WORKER_ID = "ax42-01"
+ATTACHMENT_OWNER = "atenea-worker"
+ATTACHMENT_GROUP = "atenea"
+ATTACHMENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
+MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024
+MAX_ATTACHMENT_TOTAL_BYTES = 32 * 1024 * 1024
 CODEX_CATALOG_REVISION = (
     "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187"
 )
@@ -68,6 +86,14 @@ SAFE_PROGRESS_MESSAGES = {
     "WAITING": "Waiting for a bounded operation.",
     "FINALIZING": "Finalizing the Codex turn.",
 }
+
+
+class VerifiedAttachment(NamedTuple):
+    attachment_id: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    content_path: Path
 
 
 def reject(message: str) -> None:
@@ -97,7 +123,7 @@ def codex_failure_reason(stderr: str) -> str:
 
 
 def validate_codex_version(workload: dict[str, Any]) -> None:
-    if workload["kind"] != PROFILED_CAPABILITY:
+    if workload["kind"] not in {PROFILED_CAPABILITY, IMAGE_CAPABILITY}:
         return
     try:
         observed = subprocess.run(
@@ -115,7 +141,7 @@ def validate_codex_version(workload: dict[str, Any]) -> None:
 
 
 def effective_profile(workload: dict[str, Any]) -> dict[str, str]:
-    if workload["kind"] != PROFILED_CAPABILITY:
+    if workload["kind"] not in {PROFILED_CAPABILITY, IMAGE_CAPABILITY}:
         return {}
     return {
         key: workload[key]
@@ -210,6 +236,8 @@ def validate_config(config: dict[str, Any], runner: Path) -> None:
         "projectId", "repository", "branch",
         "commit", "manifestSha256", "runner", "workspaces",
     }
+    if PROJECT_ID == "atenea":
+        required.add("attachmentRoot")
     exact = {
         "schemaVersion": CAPABILITY,
         "selectionEnabled": True,
@@ -220,6 +248,8 @@ def validate_config(config: dict[str, Any], runner: Path) -> None:
         "manifestSha256": MANIFEST_SHA256,
         "runner": str(runner),
     }
+    if PROJECT_ID == "atenea":
+        exact["attachmentRoot"] = str(ATTACHMENT_ROOT)
     if (
         set(config) != required
         or any(config.get(key) != value for key, value in exact.items())
@@ -243,8 +273,15 @@ def validate_request(request: Any, config: dict[str, Any]) -> tuple[dict[str, An
         reject("workspace ownership rejected")
     workload = request["workload"]
     capability = workload.get("kind") if isinstance(workload, dict) else None
+    allowed_capabilities = {CAPABILITY, PROFILED_CAPABILITY}
+    if PROJECT_ID == "atenea":
+        allowed_capabilities.add(IMAGE_CAPABILITY)
     workload_keys = (
-        PROFILED_WORKLOAD_KEYS if capability == PROFILED_CAPABILITY else WORKLOAD_KEYS
+        IMAGE_WORKLOAD_KEYS
+        if capability == IMAGE_CAPABILITY
+        else PROFILED_WORKLOAD_KEYS
+        if capability == PROFILED_CAPABILITY
+        else WORKLOAD_KEYS
     )
     exact = {
         "kind": capability,
@@ -260,7 +297,7 @@ def validate_request(request: Any, config: dict[str, Any]) -> tuple[dict[str, An
     }
     if (
         not isinstance(workload, dict)
-        or capability not in {CAPABILITY, PROFILED_CAPABILITY}
+        or capability not in allowed_capabilities
         or set(workload) != workload_keys
         or any(workload.get(key) != value for key, value in exact.items())
         or workload.get("commit") != config["commit"]
@@ -268,7 +305,7 @@ def validate_request(request: Any, config: dict[str, Any]) -> tuple[dict[str, An
         or not (1 <= len(workload["message"]) <= 20_000)
     ):
         reject("workspace ownership rejected")
-    if capability == PROFILED_CAPABILITY and (
+    if capability in {PROFILED_CAPABILITY, IMAGE_CAPABILITY} and (
         workload.get("modelId") != CODEX_MODEL
         or workload.get("reasoningEffort") not in CODEX_EFFORTS
         or workload.get("catalogRevision") != CODEX_CATALOG_REVISION
@@ -299,6 +336,188 @@ def validate_request(request: Any, config: dict[str, Any]) -> tuple[dict[str, An
     if worktree != expected or not worktree.is_dir() or worktree.is_symlink():
         reject("workspace ownership rejected")
     return workload, worktree
+
+
+def attachment_owner_ids() -> tuple[int, int]:
+    try:
+        return pwd.getpwnam(ATTACHMENT_OWNER).pw_uid, grp.getgrnam(ATTACHMENT_GROUP).gr_gid
+    except KeyError:
+        reject("attachment ownership rejected")
+
+
+def validate_owned_path(
+    path: Path,
+    expected_mode: int,
+    expected_uid: int,
+    expected_gid: int,
+    directory: bool,
+) -> os.stat_result:
+    try:
+        observed = path.lstat()
+    except OSError:
+        reject("attachment ownership rejected")
+    expected_type = stat.S_ISDIR if directory else stat.S_ISREG
+    if (
+        not expected_type(observed.st_mode)
+        or stat.S_IMODE(observed.st_mode) != expected_mode
+        or observed.st_uid != expected_uid
+        or observed.st_gid != expected_gid
+        or (not directory and observed.st_nlink != 1)
+    ):
+        reject("attachment ownership rejected")
+    return observed
+
+
+def read_owned_file(
+    path: Path,
+    expected: os.stat_result,
+    maximum_bytes: int,
+) -> bytes:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        reject("attachment ownership rejected")
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            opened.st_dev != expected.st_dev
+            or opened.st_ino != expected.st_ino
+            or opened.st_size <= 0
+            or opened.st_size > maximum_bytes
+        ):
+            reject("attachment ownership rejected")
+        chunks = []
+        remaining = maximum_bytes + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        value = b"".join(chunks)
+        if len(value) != opened.st_size or len(value) > maximum_bytes:
+            reject("attachment ownership rejected")
+        return value
+    finally:
+        os.close(descriptor)
+
+
+def content_matches_type(content_type: str, prefix: bytes) -> bool:
+    if content_type == "image/png":
+        return prefix.startswith(b"\x89PNG\r\n\x1a\n")
+    if content_type == "image/jpeg":
+        return prefix.startswith(b"\xff\xd8\xff")
+    if content_type == "image/webp":
+        return len(prefix) >= 12 and prefix[:4] == b"RIFF" and prefix[8:12] == b"WEBP"
+    return False
+
+
+def validate_attachment_references(
+    request: dict[str, Any],
+    workload: dict[str, Any],
+    config: dict[str, Any],
+) -> list[VerifiedAttachment]:
+    if workload["kind"] != IMAGE_CAPABILITY:
+        return []
+    references = workload.get("attachments")
+    if not isinstance(references, list) or not (1 <= len(references) <= 4):
+        reject("attachment ownership rejected")
+    session_id = request["sessionId"]
+    try:
+        canonical_session = str(uuid.UUID(session_id))
+    except (ValueError, TypeError, AttributeError):
+        canonical_session = None
+    if canonical_session != session_id or config.get("attachmentRoot") != str(ATTACHMENT_ROOT):
+        reject("attachment ownership rejected")
+    root = Path(config["attachmentRoot"])
+    expected_uid, expected_gid = attachment_owner_ids()
+    sessions_root = root / "work-sessions"
+    session_root = sessions_root / session_id
+    for directory in (root, sessions_root, session_root):
+        validate_owned_path(directory, 0o700, expected_uid, expected_gid, True)
+
+    verified = []
+    identities: set[str] = set()
+    total_bytes = 0
+    for reference in references:
+        if not isinstance(reference, dict) or set(reference) != ATTACHMENT_REFERENCE_KEYS:
+            reject("attachment ownership rejected")
+        attachment_id = reference.get("attachmentId")
+        try:
+            canonical_attachment = str(uuid.UUID(attachment_id))
+        except (ValueError, TypeError, AttributeError):
+            canonical_attachment = None
+        if canonical_attachment != attachment_id or attachment_id in identities:
+            reject("attachment ownership rejected")
+        content_type = reference.get("contentType")
+        size_bytes = reference.get("sizeBytes")
+        digest = reference.get("sha256")
+        if (
+            content_type not in ATTACHMENT_TYPES
+            or not isinstance(size_bytes, int)
+            or isinstance(size_bytes, bool)
+            or not (1 <= size_bytes <= MAX_ATTACHMENT_BYTES)
+            or not isinstance(digest, str)
+            or SHA256_PATTERN.fullmatch(digest) is None
+        ):
+            reject("attachment ownership rejected")
+        attachment_root = session_root / attachment_id
+        validate_owned_path(attachment_root, 0o700, expected_uid, expected_gid, True)
+        metadata_path = attachment_root / "metadata.json"
+        content_path = attachment_root / "content"
+        metadata_stat = validate_owned_path(
+            metadata_path, 0o600, expected_uid, expected_gid, False
+        )
+        content_stat = validate_owned_path(
+            content_path, 0o600, expected_uid, expected_gid, False
+        )
+        try:
+            metadata = json.loads(
+                read_owned_file(metadata_path, metadata_stat, 16 * 1024).decode("utf-8")
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            reject("attachment ownership rejected")
+        expected_metadata = {
+            "protocolVersion": "worksession-attachment/v1",
+            "workerId": ATTACHMENT_WORKER_ID,
+            "sessionId": session_id,
+            "attachmentId": attachment_id,
+            "storageIdentity": f"work-sessions/{session_id}/{attachment_id}/content",
+            "source": "OPERATOR_UPLOAD",
+            "kind": "IMAGE",
+            "contentType": content_type,
+            "sizeBytes": size_bytes,
+            "retentionClass": "SESSION",
+            "sha256": digest,
+            "syntheticFixture": False,
+            "projectIdentity": PROJECT_ID,
+            "workspaceIdentity": request["workspaceIdentity"],
+            "storageScope": "REAL_SESSION",
+        }
+        if (
+            not isinstance(metadata, dict)
+            or set(metadata) != ATTACHMENT_METADATA_KEYS
+            or any(metadata.get(key) != value for key, value in expected_metadata.items())
+            or not isinstance(metadata.get("createdAt"), str)
+            or not metadata["createdAt"].endswith("Z")
+            or not isinstance(metadata.get("storedAt"), str)
+            or not metadata["storedAt"].endswith("Z")
+            or content_stat.st_size != size_bytes
+        ):
+            reject("attachment ownership rejected")
+        content = read_owned_file(content_path, content_stat, MAX_ATTACHMENT_BYTES)
+        if hashlib.sha256(content).hexdigest() != digest or not content_matches_type(
+            content_type, content[:12]
+        ):
+            reject("attachment ownership rejected")
+        identities.add(attachment_id)
+        total_bytes += size_bytes
+        verified.append(VerifiedAttachment(
+            attachment_id, content_type, size_bytes, digest, content_path
+        ))
+    if total_bytes > MAX_ATTACHMENT_TOTAL_BYTES:
+        reject("attachment ownership rejected")
+    return verified
 
 
 def checked(command: list[str], cwd: Path) -> str:
@@ -622,6 +841,9 @@ def main() -> int:
     record = config["workspaces"][request["workspaceIdentity"]]
     common_dir = validate_worktree(worktree, record)
     instruction_bundle = validate_instruction_bundle(worktree)
+    verified_attachments = validate_attachment_references(request, workload, config)
+    if verified_attachments:
+        reject("Codex execution failed: image delivery unavailable")
     try:
         result = execute(
             workload,
