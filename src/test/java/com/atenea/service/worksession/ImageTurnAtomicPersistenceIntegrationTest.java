@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.CreateSessionTurnResponse;
+import com.atenea.api.worksession.SessionTurnResponse;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
@@ -197,6 +198,8 @@ class ImageTurnAtomicPersistenceIntegrationTest {
         CreateSessionTurnResponse accepted = sessionTurnService.createTurn(
                 session.getId(),
                 originalRequest);
+        assertEquals(1, accepted.operatorTurn().attachments().size());
+        assertEquals(retained.getId(), accepted.operatorTurn().attachments().get(0).id());
         long turnsAfterAcceptance = sessionTurnRepository.count();
         long runsAfterAcceptance = agentRunRepository.count();
         long bindingsAfterAcceptance = bindingCount();
@@ -219,6 +222,16 @@ class ImageTurnAtomicPersistenceIntegrationTest {
         assertEquals(runsAfterAcceptance, agentRunRepository.count());
         assertEquals(bindingsAfterAcceptance, bindingCount());
         assertEquals(1L, attachmentRepository.count());
+        List<SessionTurnResponse> history = sessionTurnService.getTurns(session.getId());
+        SessionTurnResponse historicalOperatorTurn = history.stream()
+                .filter(turn -> turn.id().equals(accepted.operatorTurn().id()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(1, historicalOperatorTurn.attachments().size());
+        assertEquals(
+                "/api/sessions/" + session.getId() + "/attachments/"
+                        + retained.getId() + "/content",
+                historicalOperatorTurn.attachments().get(0).downloadPath());
         verify(selectionValidator, times(1)).validate(
                 any(WorkSessionEntity.class),
                 eq(List.of(retained.getId())));

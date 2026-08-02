@@ -77,6 +77,42 @@ class SessionTurnControllerTest {
     }
 
     @Test
+    void getTurnsSerializesOnlyPublicBoundImageMetadata() throws Exception {
+        UUID attachmentId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        when(sessionTurnService.getTurns(12L, null, null)).thenReturn(List.of(
+                new SessionTurnResponse(
+                        101L,
+                        SessionTurnActor.OPERATOR,
+                        "Inspect this image",
+                        Instant.parse("2026-03-25T10:05:00Z"),
+                        null,
+                        List.of(new SessionTurnAttachmentResponse(
+                                attachmentId,
+                                (short) 0,
+                                "screen.png",
+                                "image/png",
+                                1024L,
+                                "a".repeat(64),
+                                "/api/sessions/12/attachments/" + attachmentId + "/content")))));
+
+        mockMvc.perform(get("/api/sessions/12/turns"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].attachments.length()").value(1))
+                .andExpect(jsonPath("$[0].attachments[0].id").value(attachmentId.toString()))
+                .andExpect(jsonPath("$[0].attachments[0].position").value(0))
+                .andExpect(jsonPath("$[0].attachments[0].originalFilename").value("screen.png"))
+                .andExpect(jsonPath("$[0].attachments[0].contentType").value("image/png"))
+                .andExpect(jsonPath("$[0].attachments[0].sizeBytes").value(1024))
+                .andExpect(jsonPath("$[0].attachments[0].downloadPath").value(
+                        "/api/sessions/12/attachments/" + attachmentId + "/content"))
+                .andExpect(jsonPath("$[0].attachments[0].workerId").doesNotExist())
+                .andExpect(jsonPath("$[0].attachments[0].storageIdentity").doesNotExist())
+                .andExpect(jsonPath("$[0].attachments[0].workspaceIdentity").doesNotExist())
+                .andExpect(jsonPath("$[0].attachments[0].remoteSessionId").doesNotExist())
+                .andExpect(jsonPath("$[0].attachments[0].content").doesNotExist());
+    }
+
+    @Test
     void getTurnsReturnsWindowWhenBeforeTurnIdAndLimitAreProvided() throws Exception {
         when(sessionTurnService.getTurns(12L, 105L, 2)).thenReturn(List.of(
                 new SessionTurnResponse(
