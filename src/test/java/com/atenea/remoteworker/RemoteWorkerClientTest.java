@@ -1,8 +1,11 @@
 package com.atenea.remoteworker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
@@ -16,7 +19,11 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -35,6 +42,7 @@ class RemoteWorkerClientTest {
     private HttpServer server;
     private RemoteWorkerProperties properties;
     private RemoteWorkerClient client;
+    private ProjectCodexAttachmentManifestService attachmentManifestService;
 
     @BeforeEach
     void setUp() throws IOException {
@@ -285,7 +293,8 @@ class RemoteWorkerClientTest {
         properties = new RemoteWorkerProperties();
         properties.setEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
         properties.setTokenFile(token.toString());
-        client = new RemoteWorkerClient(properties, objectMapper);
+        attachmentManifestService = mock(ProjectCodexAttachmentManifestService.class);
+        client = new RemoteWorkerClient(properties, objectMapper, attachmentManifestService);
     }
 
     @AfterEach
@@ -372,6 +381,76 @@ class RemoteWorkerClientTest {
         assertNull(workload.get("command"));
         assertNull(workload.get("provider"));
         assertNull(workload.get("endpoint"));
+    }
+
+    @Test
+    void profiledImageDispatchUsesOnlyOrderedClosedV3ReferencesInFingerprint() {
+        AgentRunEntity run = projectRun("bcf43e2e-c9e8-42df-96b2-e9183462c2f4");
+        run.setSelectedWorkerId("ax42-01");
+        run.setWorkloadKind(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
+        run.setCodexModelId("gpt-5.6-sol");
+        run.setCodexReasoningEffort(
+                com.atenea.persistence.worksession.CodexReasoningEffort.HIGH);
+        run.setCodexCatalogRevision(
+                "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187");
+        run.setCodexVersion("0.145.0");
+        run.setAttachmentCount(2);
+        run.setAttachmentBytes(3072L);
+        run.setAttachmentManifestSha256("c".repeat(64));
+        UUID firstId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        UUID secondId = UUID.fromString("9aa2c7e5-1fd9-48ec-aa10-03dfdfb8ca7d");
+        ProjectCodexAttachmentManifestService.AttachmentReference first =
+                new ProjectCodexAttachmentManifestService.AttachmentReference(
+                        firstId, "image/png", 1024L, "a".repeat(64));
+        ProjectCodexAttachmentManifestService.AttachmentReference second =
+                new ProjectCodexAttachmentManifestService.AttachmentReference(
+                        secondId, "image/webp", 2048L, "b".repeat(64));
+        when(attachmentManifestService.exactReferences(run))
+                .thenReturn(List.of(first, second), List.of(second, first));
+
+        client.dispatch(run, "Inspect both accepted images.");
+        JsonNode firstWorkload = requestBody.get().get("workload").deepCopy();
+        client.dispatch(run, "Inspect both accepted images.");
+        JsonNode reorderedWorkload = requestBody.get().get("workload").deepCopy();
+
+        assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND,
+                firstWorkload.get("kind").asText());
+        assertEquals(18, firstWorkload.size());
+        JsonNode attachments = firstWorkload.get("attachments");
+        assertEquals(2, attachments.size());
+        assertEquals(firstId.toString(), attachments.get(0).get("attachmentId").asText());
+        assertEquals("image/png", attachments.get(0).get("contentType").asText());
+        assertEquals(1024L, attachments.get(0).get("sizeBytes").asLong());
+        assertEquals("a".repeat(64), attachments.get(0).get("sha256").asText());
+        assertEquals(java.util.Set.of("attachmentId", "contentType", "sizeBytes", "sha256"),
+                objectMapper.convertValue(attachments.get(0), java.util.Map.class).keySet());
+        for (String forbidden : List.of(
+                "filename", "bytes", "content", "storageIdentity", "path", "url",
+                "workerId", "workspaceIdentity", "remoteSessionId", "options")) {
+            assertNull(attachments.get(0).get(forbidden));
+            assertNull(attachments.get(1).get(forbidden));
+        }
+        for (String forbidden : List.of(
+                "command", "provider", "endpoint", "path", "host", "slot",
+                "environment", "credential", "storageIdentity", "attachmentBytes")) {
+            assertNull(firstWorkload.get(forbidden));
+        }
+        assertNotEquals(sha256(firstWorkload), sha256(reorderedWorkload));
+    }
+
+    @Test
+    void imageRunUsesTheSameExactProjectWorkspaceAuthorityAsV1AndV2() {
+        AgentRunEntity run = projectRun(null);
+        run.setWorkloadKind(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
+        run.getSession().setWorkspaceBranch("work-session/image-fixture");
+
+        RemoteWorkerClient.Workspace workspace = client.ensureWorkspace(run);
+
+        assertEquals("ready", workspace.state());
+        assertEquals(run.getRemoteSessionId().toString(), workspace.sessionId());
+        assertEquals(run.getWorkspaceIdentity(), workspace.workspaceIdentity());
+        assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, workspace.projectId());
+        assertEquals(TEST_CANONICAL_COMMIT, workspace.canonicalCommit());
     }
 
     @Test
@@ -803,6 +882,15 @@ class RemoteWorkerClientTest {
         ReviewedInstructionBundleIdentity.apply(
                 run, ProjectCodexIdentity.PROJECT_IDENTITY);
         return run;
+    }
+
+    private String sha256(JsonNode value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(objectMapper.writeValueAsBytes(value)));
+        } catch (NoSuchAlgorithmException | IOException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private java.util.Map<String, Object> role(

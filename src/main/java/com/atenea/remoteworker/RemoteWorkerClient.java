@@ -25,11 +25,17 @@ public class RemoteWorkerClient {
 
     private final RemoteWorkerProperties properties;
     private final ObjectMapper objectMapper;
+    private final ProjectCodexAttachmentManifestService attachmentManifestService;
     private final HttpClient httpClient;
 
-    public RemoteWorkerClient(RemoteWorkerProperties properties, ObjectMapper objectMapper) {
+    public RemoteWorkerClient(
+            RemoteWorkerProperties properties,
+            ObjectMapper objectMapper,
+            ProjectCodexAttachmentManifestService attachmentManifestService
+    ) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.attachmentManifestService = attachmentManifestService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getConnectTimeout())
                 .build();
@@ -271,7 +277,15 @@ public class RemoteWorkerClient {
                 || run.getCodexVersion() == null)) {
             throw new RemoteWorkerException("Persisted Codex profile is incomplete", 409);
         }
-        workload.put("kind", hasProfile ? "project-codex-v2" : ProjectCodexIdentity.WORKLOAD_KIND);
+        boolean imageWorkload = ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(
+                run.getWorkloadKind());
+        if (imageWorkload && !hasProfile) {
+            throw new RemoteWorkerException(
+                    "Persisted image workload has no complete Codex profile", 409);
+        }
+        workload.put("kind", imageWorkload
+                ? ProjectCodexIdentity.IMAGE_WORKLOAD_KIND
+                : hasProfile ? "project-codex-v2" : ProjectCodexIdentity.WORKLOAD_KIND);
         workload.put("projectId", run.getProjectIdentity());
         workload.put("repository", run.getRepositoryUrl());
         workload.put("branch", run.getRepositoryBranch());
@@ -289,6 +303,18 @@ public class RemoteWorkerClient {
             workload.put("reasoningEffort", run.getCodexReasoningEffort().canonicalValue());
             workload.put("catalogRevision", run.getCodexCatalogRevision());
             workload.put("codexVersion", run.getCodexVersion());
+        }
+        if (imageWorkload) {
+            workload.put("attachments", attachmentManifestService.exactReferences(run).stream()
+                    .map(reference -> {
+                        Map<String, Object> serialized = new LinkedHashMap<>();
+                        serialized.put("attachmentId", reference.attachmentId().toString());
+                        serialized.put("contentType", reference.contentType());
+                        serialized.put("sizeBytes", reference.sizeBytes());
+                        serialized.put("sha256", reference.sha256());
+                        return serialized;
+                    })
+                    .toList());
         }
         return workload;
     }

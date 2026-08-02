@@ -28,7 +28,8 @@ public final class ProjectCodexIdentity {
 
     public static boolean matches(AgentRunEntity run) {
         return run != null
-                && WORKLOAD_KIND.equals(run.getWorkloadKind())
+                && (WORKLOAD_KIND.equals(run.getWorkloadKind())
+                    || IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
                 && PROJECT_IDENTITY.equals(run.getProjectIdentity())
                 && REPOSITORY.equals(run.getRepositoryUrl())
                 && BRANCH.equals(run.getRepositoryBranch())
