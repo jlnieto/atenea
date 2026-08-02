@@ -7400,3 +7400,44 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.9-historical-image-projection`;
 the SHA-256 of its `SHA256SUMS` is
 `203f4aa8972ead9d1f626f4ff6176574403c0af5fd18b58f39c7226807b018ba`.
+
+Task 2.10 is complete and change progress is `24/83`; the exact resume point
+is task 2.11. Atenea commit
+`1aed75fe7f679dd53eda1c692f8a846c88c7db8c` preserves the exact image
+manifest and effective Codex profile on safe failed-run retry.
+
+Recovery locks the source run, returns an already linked retry idempotently,
+and otherwise reconstructs the ordered attachment selection only from the
+failed run's immutable origin-turn bindings. Binding positions must be
+contiguous and their count, combined bytes and canonical manifest SHA-256 must
+equal the persisted `project-codex-v3` snapshot before a new linked AgentRun
+can be saved.
+
+The retry path deliberately bypasses only new create/bind admission and expiry
+eligibility. Canonical WorkSession/project/worker/workspace/storage ownership,
+worker capabilities, retained metadata and content SHA-256 still have to match
+exactly. This permits an already bound failed run to retry after `retainUntil`
+while the bytes remain intact, but missing, reordered or changed content fails
+closed rather than executing text-only. The retry copies all six effective
+Codex profile fields and creates no turn, attachment or binding.
+
+The final focused V62 suite passed `53/53` tests in 18 seconds under a
+300-second timeout: validator `11/11`, turn service `8/8`, HTTP controller
+`12/12`, AgentRun service `17/17`, binding persistence `2/2` and atomic retry
+integration `3/3`. The integration proof observed one additional linked
+AgentRun with invariant turn/binding/attachment counts and storage/workspace
+identity after retention expiry. Exact fixture rows and the uniquely named
+PostgreSQL container were removed.
+
+The implementation branch is clean and published with tree
+`5f796e22058e133ae563a8d9f01c06cf52749e99`. Canonical Atenea remains clean
+and synchronized at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`;
+production, preview and Beautips return HTTP 200; required AX42 services and
+backup timers are active; RAID remains `3/3 [UU]`; rootless slots remain
+`3/0/0/3`. No deployment, migration, production record, attachment ownership,
+retained content, route, credential or service changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.10-safe-image-retry`;
+the SHA-256 of its `SHA256SUMS` is
+`c751319208a23d131026bfc0f160b036129389875ab78af9f90c52d0c86dc999`.
