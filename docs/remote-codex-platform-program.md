@@ -7719,7 +7719,7 @@ active; RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`.
 Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.5-retained-image-verification`;
 the SHA-256 of its `SHA256SUMS` is
-`a23aafc165c67847e3d3f580e055faeb08ab4b7fcf2a8cda6edd9136a0168043`.
+`5af7647eb23deea0e8dea5fd7be0b712d97c320ee6e5b7bc25c852f62e41488e`.
 
 Task 3.6 is complete and change progress is `33/83`; the exact resume point is
 task 3.7. Programme/worker commit
@@ -7757,7 +7757,7 @@ active; RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`.
 Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.6-ordered-image-materialization`;
 the SHA-256 of its `SHA256SUMS` is
-`d70248d49394812e45432b1758a405798be00b28e6c55ed55cd9351af74598c8`.
+`85ab9b36da1fb396cc2c10aa65b6bcf2816d26f0a22e24942658a990b7083f52`.
 
 Task 3.7 is complete and change progress is `34/83`; the exact resume point is
 task 3.8. Programme/worker commit
@@ -7860,7 +7860,7 @@ service or foreign resource changed.
 Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.9-image-execution-lifecycle`;
 the SHA-256 of its `SHA256SUMS` is
-`190f31cb0b2a5e11977c4955432beeb093c811e15e75d14b524a5ad1878cb8e8`.
+`ee5388ee9c2244c261c8176c647994db1486c1302975728ba405b1544b87788f`.
 
 Task 3.10 is complete and change progress is `37/83`; the exact resume point
 is task 3.11. Programme/worker commit
@@ -7905,7 +7905,7 @@ service or foreign resource changed.
 Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.10-versioned-install-sandbox`;
 the SHA-256 of its `SHA256SUMS` is
-`ca314397629198e355deb7529648b13e8db91a4a11090c10d257ab9fa9398fc7`.
+`8b8abdbbacdb741fdb697c79c5c93c77001d60e6bf62e22be40a5631bf62bc0d`.
 
 Task 3.11 is complete, phase 3 is closed and change progress is `38/83`; the
 exact resume point is task 4.1. Completed programme/worker source commit
@@ -8020,7 +8020,7 @@ health/backup timers are active; RAID is `3/3 [UU]`; rootless slots remain
 Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.2-composer-capability`;
 the SHA-256 of its `SHA256SUMS` is
-`188caf81a9e060dbf5ed32e2536e6fe38ed8f3914f28b02794278711a959bcfc`.
+`e5baec734b019c30d2525dd5bba27af044df40058cb19816e3d2594e20c54ee2`.
 
 Task 4.3 is complete and change progress is `41/83`; the exact resume point is
 task 4.4. Atenea commit
@@ -8055,7 +8055,7 @@ occurred.
 Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.3-picker-paste`;
 the SHA-256 of its `SHA256SUMS` is
-`579cfddb433d761b276066b11bab3086f2dc40edb6bb73343a4fbc78e80ca669`.
+`3f0dfd5616fc34c55d8f5fc43f627d3f1091e691321da556b555df16de8cbd50`.
 
 Task 4.4 is complete and change progress is `42/83`; the exact resume point is
 task 4.5. Atenea commit
@@ -8081,7 +8081,7 @@ were active and RAID remained `3/3 [UU]`. No rollout or unrelated mutation
 occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.4-image-chips`;
 the SHA-256 of its `SHA256SUMS` is
-`857553d15401f9b21bdc35bb06c6ad0f5c70cc2a1d3d9124c3bd66cd20d91aae`.
+`2180cc9942af77b3ce69e1bb433b4ca78528ebffc2e9e8cf877c9834efb261b5`.
 
 Task 4.5 is complete and change progress is `43/83`; the exact resume point is
 task 4.6. Atenea commit
@@ -8107,7 +8107,7 @@ Entry operational checks retained production, preview and Beautips at HTTP
 rollout occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.5-safe-turn-retry`;
 the SHA-256 of its `SHA256SUMS` is
-`ee2f0ef22d773fadd0a1aa04a497ac64597347e332966e1285335aa7948c16a4`.
+`eee0e718caf7c16c18433fe8c5cd46139534addb45e42b71eb778a508a838f1d`.
 
 Task 4.6 is complete and change progress is `44/83`; the exact resume point is
 task 4.7. Atenea commit
@@ -8131,7 +8131,7 @@ required AX42 services active, RAID `3/3 [UU]` and slots `3/0/0/3`. No rollout
 occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.6-historical-bindings`;
 the SHA-256 of its `SHA256SUMS` is
-`1e4ea7370f552174680a6e344ab4c52e139203eb89704170ba7566d8ebe60c5b`.
+`369f3d66033f9d8b88a3a65325eefb768d025e78dd36981aa9fac8057675ba30`.
 
 Task 4.7 is complete and change progress is `45/83`; the exact resume point is
 task 4.8. Atenea commit
@@ -8161,7 +8161,7 @@ arrays remain `[UU]`; rootless slots remain `3/0/0/3`. No rollout or unrelated
 mutation occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.7-actionable-blocked-states`;
 the SHA-256 of its `SHA256SUMS` is
-`a4e27a354a744548a9f60f8b5ed072b5ab1b92ac121b12ff74cb44a1b515a673`.
+`a11e6cd7c4754fdd43a635690ba57d90f05501d16e6440e94b2e673320602abd`.
 
 Task 4.8 is complete and change progress is `46/83`; the exact resume point is
 task 4.9. Atenea commit
@@ -8219,7 +8219,7 @@ Beautips return HTTP 200; required AX42 services/timers are active; RAID is
 occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.9-production-visual-acceptance`;
 the SHA-256 of its `SHA256SUMS` is
-`d9a2b76b0c04ed9f33e18abbabacf62fb8294624bd5320391f4df18b76d5a28b`.
+`a012b21c539a918381e43677d8d01d458dd8e163c4361c8889ede99cdfdd6875`.
 
 Task 4.10 is complete, phase 4 is closed and change progress is `48/83`; the
 exact resume point is task 5.1. The complete web slice consists of eight clean,
@@ -8236,9 +8236,9 @@ remained.
 
 The task 4.7, 4.8 and 4.9 evidence sets each passed full checksum verification;
 their `SHA256SUMS` hashes remain respectively
-`a4e27a354a744548a9f60f8b5ed072b5ab1b92ac121b12ff74cb44a1b515a673`,
+`a11e6cd7c4754fdd43a635690ba57d90f05501d16e6440e94b2e673320602abd`,
 `3ab0944779d1494fd64cdc227a4ff2c60dd225d84a0961fb64eb295187537e0d`
-and `d9a2b76b0c04ed9f33e18abbabacf62fb8294624bd5320391f4df18b76d5a28b`.
+and `a012b21c539a918381e43677d8d01d458dd8e163c4361c8889ede99cdfdd6875`.
 
 Canonical Atenea remains clean and synchronized at
 `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
@@ -8484,3 +8484,45 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.7-rollback-read-compatibility`;
 the SHA-256 of its `SHA256SUMS` is
 `8b32c062818f137a43f8134ab73c1a90bc14f39b31712c1615cb51cd849a26c8`.
+
+Task 5.8 is complete and change progress is `56/83`; the exact resume point is
+task 5.9. The privacy audit covered candidate/programme source, the bounded
+attachment, AgentRun and preview journals, and every retained file beneath the
+active change evidence root without emitting journal values.
+
+The source audit found two inherited HTTP request loggers that could expose
+attachment/session or execution identities through the request line. Published
+worker commit `ae03da7baa7049f9ed7d8b338ea88a5d8bf6faf8`, tree
+`eabf14cc605fbbe7942b5fc87222325af75a90cd`, replaces both with a fixed
+timestamp plus `http_request` event, adds exact non-exposure tests and updates
+the canonical installation fingerprint. Attachment and AgentRun suites passed
+`18/18` and `55/55`; all 14 Python worker programmes passed `173/173` with one
+declared skip in 103 seconds; install/rollback validation passed.
+
+The evidence audit removed the exact 30 generated visual PNG files after
+recording only basename, viewport dimensions, byte count and SHA-256 in seven
+text manifests. It redacted six attachment-path values in four known text
+files. All 11 affected evidence directories were verified against their old
+immutable seals before mutation, then resealed; the programme's individual
+ledger hashes above now reference the sanitized seals. The old-to-new map is
+retained in task 5.8 evidence.
+
+The final audit covers 324 files and returns zero prompt values, answer values,
+screenshot bytes, thumbnail data, credentials, tokens, attachment-storage
+paths, Codex identity values, risky filenames or environment dumps. Every
+change-level `SHA256SUMS` verifies. Focused backend response tests passed
+`22/22`; the complete attachment web suite passed `17/17`; no Playwright,
+browser or bytecode process/residue remains.
+
+Candidate Atenea remains clean and published at
+`99bda7d1a93f9aa5e9f6e3e8f9f0365cef36ce59`; programme/worker and canonical
+Atenea remain clean and published. Production, preview and Beautips return
+HTTP 200; required AX42 services/timers are active; RAID remains `[UU]`;
+rootless slots remain `3/0/0/3`. No candidate service was installed/restarted
+and no rollout, production migration, WorkSession, route, credential, retained
+real attachment or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.8-privacy-audit`;
+the SHA-256 of its `SHA256SUMS` is
+`4bc0a61a9d74cf8ae2940c48e7f62c0f88338c20a2da088deb0d82c7657e751f`.
