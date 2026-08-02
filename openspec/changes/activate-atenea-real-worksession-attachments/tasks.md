@@ -52,7 +52,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 ## 3. AX42 real storage and exact Codex image delivery
 
 - [x] 3.1 Add an authenticated `real-project-attachment/v1` capability endpoint while keeping the base `worksession-attachment/v1` health and public response shapes unchanged
-- [ ] 3.2 Accept real PUT only with canonical `atenea`, remote WorkSession UUID, workspace identity and explicit `syntheticFixture=false`; persist those values privately without exposing paths
+- [x] 3.2 Accept real PUT only with canonical `atenea`, remote WorkSession UUID, workspace identity and explicit `syntheticFixture=false`; persist those values privately without exposing paths
 - [ ] 3.3 Prove base v1 readers can retrieve extended real sidecars and that synthetic deletion always rejects real content unchanged
 - [ ] 3.4 Extend AgentRun schema/semantic validation and durable request fingerprints for exact `project-codex-v3` attachment arrays while preserving v1/v2 compatibility
 - [ ] 3.5 Extend the fixed Atenea runner configuration with a non-caller attachment root and validate every referenced sidecar/file, ownership, mode, project, session, workspace, type, size and SHA-256 before process creation

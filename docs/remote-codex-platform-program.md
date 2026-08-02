@@ -7582,3 +7582,40 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.1-real-attachment-capability`;
 the SHA-256 of its `SHA256SUMS` is
 `c6ec64d9f4f0a43be91da2c6a5139b0166197e501353b9a48bb703d8894e6038`.
+
+Task 3.2 is complete and change progress is `29/83`; the exact resume point is
+task 3.3. Programme/worker commit
+`96dab152c1873bd19564c0eaa5fad794e7cdcb57` implements exact real attachment
+write ownership.
+
+A real PUT now requires a canonical remote WorkSession UUID, explicit
+`syntheticFixture=false`, project identity `atenea`, workspace identity derived
+exactly from the configured worker plus remote session, and storage scope
+`REAL_SESSION`. Legacy decimal session identities, missing ownership, Beautips
+or another project, inconsistent worker/workspace, foreign scope and synthetic
+requests carrying real ownership are rejected before any content is retained.
+
+The three real ownership fields are written only to the private sidecar. The
+common v1 response omits them and reveals no filesystem root. Legacy synthetic
+store callers remain source-compatible by normalizing absent private fields to
+null, while any supplied partial or ambiguous ownership still fails closed.
+The synthetic deletion proof now creates a fully owned real attachment and
+confirms it remains intact.
+
+After two transparent test corrections for legacy fixtures that lacked the new
+normalized fields or attempted an intentionally obsolete unowned real write,
+the final worker suite passed `15/15` in three seconds under a 120-second
+timeout. Rejected ownership cases left zero retained content. The source branch
+is clean and published with tree
+`fb9d1b854d30b73576d6ffbe0f55adb99c4f8496` before this ledger update.
+
+The candidate was not installed and no service was restarted. Canonical Atenea
+remains clean at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production,
+preview and Beautips return HTTP 200; AX42 attachment/AgentRun services and
+health/backup timers remain active; RAID is `3/3 [UU]`; rootless slots remain
+`3/0/0/3`.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.2-exact-real-put-ownership`;
+the SHA-256 of its `SHA256SUMS` is
+`fc21f2d9921b2fbc48cae8a4390b2b87dff8d98f0c9579312fc11a0a3a57ab59`.
