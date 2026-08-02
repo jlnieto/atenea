@@ -14,7 +14,7 @@ This document is the durable programme ledger for moving Atenea development exec
 - Development/execution plane: Hetzner AX42; Beautips owns one active
   WorkSession in slot 4 while the administrative slot 1 stack remains foreign
 - Canonical source: GitHub
-- Last evidence refresh: 2026-07-30
+- Last evidence refresh: 2026-08-02
 
 The normative requirements live in OpenSpec. This ledger records phase state, decisions, evidence locations and the exact resume point. Code, tests and migrations remain authoritative for existing Atenea runtime behaviour.
 
@@ -9228,3 +9228,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.5-authorized-wrapper-rollout-clean-session`.
 The SHA-256 of its `SHA256SUMS` is
 `e0d517a3f678292bb03c364569d6d3e7592fbf001fbf69e24ba74b9c0f682773`.
+
+Task 7.5 is complete. Change progress is `70/83`; task 7.6 is the exact
+resume point and was not started.
+
+The operator submitted one bounded image-bearing instruction through the real
+production web composer in WorkSession `15`. Production retains exactly one
+42,499-byte `OPERATOR_UPLOAD`/`IMAGE`/`image/png` attachment, two turns, one
+position-zero immutable binding and one AgentRun. Run `94` completed
+`SUCCEEDED/SUCCEEDED` in 8.046 seconds as `project-codex-v3` with attachment
+count/bytes `1/42499` and manifest SHA-256
+`5fb7c7c421012c6b1194d9dbac9ade928e1e37b6a37978a769c2a6b72d3bd89e`.
+There are zero non-terminal AgentRuns.
+
+The AX42 durable execution registry independently contains exactly one
+matching successful v3 execution, with one attachment and one terminal result.
+Temporary materializations, browser processes and Codex processes are zero.
+The operator's first post-submit view still held the older in-memory web bundle
+and could not render the already persisted response. No retry was performed;
+a hard refresh loaded the corrected production asset and the operator then
+confirmed the expected title and non-secret marker understanding. Evidence
+retains only those two semantic booleans, not the prompt, response, image,
+filename, private storage identity or internal Codex identity.
+
+The session worktree remains clean at commit
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`; its allocation SHA-256 remains
+`89fe98bfb3afb0d4d2c0007c22c5636669f0d3b77bfc588732992bbdb95a2a35`.
+Both worker services remain active/running with zero restarts, backup/check and
+worker-health timers remain enabled/active, rootless slot container counts
+remain `3/0/0/3`, all three RAID arrays remain `[UU]`, and rootful Docker
+remains inactive. Production, preview and Beautips return HTTP 200. The global
+gate remains true, the real allowlist remains exactly `atenea`, the synthetic
+allowlist remains empty, and no unrelated project, route or resource changed.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.5-final-real-image-canary`;
+the SHA-256 of its `SHA256SUMS` is
+`3028d878710350ccb9261525a64429e4899e7f3b8f792d389d422710d1fdaa99`.
