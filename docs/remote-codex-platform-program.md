@@ -7825,3 +7825,39 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.8-retained-image-denial-matrix`;
 the SHA-256 of its `SHA256SUMS` is
 `2a82d7499204229f455a74b93f9ad7ea724664ad1e8f29971da8e8ff16fc7be4`.
+
+Task 3.9 is complete and change progress is `36/83`; the exact resume point is
+task 3.10. Programme/worker commit
+`a89989686011fb25a3c0576b87e25ae96e80deb5` proves the complete image
+execution lifecycle without changing the accepted runtime implementation.
+
+New-thread and exact resumed-thread cases each invoke the project runner once
+and return the expected terminal thread projection. An identical request after
+durable state reload returns the same execution with zero additional runner
+calls, while a reordered manifest under the same dispatch identity is rejected
+without execution. Timeout requests terminate the process group once and
+remove their exact materialization. Existing cancellation, interruption,
+service-start reconciliation and stale-path cases prove that terminal state is
+not duplicated and that absent/terminal paths are cleaned, active paths remain
+and ambiguous paths block all mutation.
+
+The final focused AgentRun, project runner, Beautips adapter and session
+operations slice passed `85/85` tests in 13.497 seconds under a 120-second
+timeout. Every accepted terminal case left the synthetic materialization root
+empty and retained source bytes unchanged. The source tree
+`02177bd0b89e7312c542dba08580045202162ffa` is clean, published and
+synchronized before this ledger update.
+
+The candidate remains uninstalled. The installed runner retains SHA-256
+`d15c78b09fcf048f7968168861ed976dd054b038168548b7216781568d1126f0`
+and `/run/atenea/codex-images` remains absent. Canonical Atenea remains clean
+at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; AX42 attachment/AgentRun services and health/backup
+timers are active; RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`. No
+deployment, migration, production record, retained content, route, credential,
+service or foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.9-image-execution-lifecycle`;
+the SHA-256 of its `SHA256SUMS` is
+`190f31cb0b2a5e11977c4955432beeb093c811e15e75d14b524a5ad1878cb8e8`.
