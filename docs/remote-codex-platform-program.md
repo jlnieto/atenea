@@ -8162,3 +8162,32 @@ mutation occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.7-actionable-blocked-states`;
 the SHA-256 of its `SHA256SUMS` is
 `a4e27a354a744548a9f60f8b5ed072b5ab1b92ac121b12ff74cb44a1b515a673`.
+
+Task 4.8 is complete and change progress is `46/83`; the exact resume point is
+task 4.9. Atenea commit
+`fca3175161e3bb184aa6f88c725a508fca22cca1` has tree
+`d60f906d91f0e6193432b39ac86e0b6b26f69d1c` and is clean and published.
+
+The web repository now owns a typed Playwright component/API suite with one
+worker and finite test, action, navigation, web-server and outer process
+timeouts. Its 17 tests cover picker and clipboard upload through the same
+multipart API, caller-owned upload UUIDs, automatic selection, exact order,
+exact removal, stable retry identity, clearing only after exact acceptance,
+historical reload, all seven blocked capability reasons and every local type,
+file, count, turn-byte and remaining-quota rejection used by the composer.
+
+After correcting two ambiguous test locators that legitimately matched both
+the state summary and chip error, the complete suite passed `17/17` twice; the
+final run included the dedicated TypeScript test compile and completed in 16
+seconds. The canonical production web build passed in 4 seconds and transformed
+1,583 modules. The suite generates no trace, video or screenshot and its
+temporary runner metadata is outside the repository.
+
+Canonical Atenea remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; required AX42 services/timers are active; RAID is
+`3/3 [UU]`; rootless slots remain `3/0/0/3`. No rollout or unrelated mutation
+occurred. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.8-web-component-api-tests`;
+the SHA-256 of its `SHA256SUMS` is
+`3ab0944779d1494fd64cdc227a4ff2c60dd225d84a0961fb64eb295187537e0d`.
