@@ -40,7 +40,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 2.3 Use the remote WorkSession UUID and exact project/workspace/storage scope for real worker storage while preserving legacy synthetic identities and v1 retrieval
 - [x] 2.4 Add an authenticated attachment capability read model with ready/blocked reason, policy revision, worker compatibility, accepted types, current quota and per-turn limits
 - [x] 2.5 Extend turn submission additively with `clientRequestId` and ordered `attachmentIds`; require the request identity for image-bearing turns while preserving legacy text-only callers
-- [ ] 2.6 Validate one-to-four distinct same-session real PNG/JPEG/WebP images, 32 MiB combined, unexpired new-binding eligibility and complete worker/session/workspace/integrity ownership
+- [x] 2.6 Validate one-to-four distinct same-session real PNG/JPEG/WebP images, 32 MiB combined, unexpired new-binding eligibility and complete worker/session/workspace/integrity ownership
 - [ ] 2.7 Atomically persist the operator turn, ordered bindings and AgentRun attachment snapshot before dispatch, with whole-request rollback on any invalid image
 - [ ] 2.8 Make identical client-request replay return the original turn/run and conflicting replay return `409` without a second turn, binding, AgentRun or dispatch
 - [ ] 2.9 Project bound image metadata onto historical conversation turns without returning content bytes, worker paths or storage identities

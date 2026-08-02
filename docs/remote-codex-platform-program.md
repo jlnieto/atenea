@@ -7255,3 +7255,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.5-additive-turn-identities`;
 the SHA-256 of its `SHA256SUMS` is
 `e2d3482171ae555b4b94855b25b53542ceacb8f2bede1e48b806182857996b77`.
+
+Task 2.6 is complete and change progress is `20/83`; the exact resume point is
+task 2.7. Atenea commit
+`d273daa3e1ed6b977ee214c32310270432877a5d` adds a read-only validator for
+one to four ordered, distinct, same-session real PNG/JPEG/WebP selections with
+a 32 MiB combined limit.
+
+Each indexed image must retain exact canonical Atenea project, WorkSession,
+AX42 worker, remote UUID, deterministic workspace, `REAL_SESSION` scope,
+operator/session classification, positive per-file bounded size, lowercase
+SHA-256 and future `retainUntil`. Empty, over-count, duplicate, missing,
+foreign, partial, non-image, unsupported, oversized and expired selections
+fail before any AX42 request.
+
+After local validation, selection requires compatible base-v1 and exact
+`real-project-attachment/v1` capabilities. Atenea compares complete remote
+metadata against the immutable index, then performs one authenticated bounded
+content read per image and independently checks type, size and SHA-256. Reads
+are sequential, bytes do not escape the validator and no delete path is ever
+used. The accepted result exposes only ordered UUID/type/size/SHA references,
+total bytes and the canonical manifest digest needed by task 2.7.
+
+The final offline source-read-only suite passes `20/20` tests in 11.69 seconds
+under a 300-second timeout. It includes a content-modified/metadata-unchanged
+rejection. An initial `19/19` pass preceded that deliberate integrity
+strengthening and had no failure or external mutation.
+
+The implementation branch is clean and published with tree
+`3a011aaa1e011a85f16724db2b05ae37ba8120d9`. Canonical Atenea remains clean
+at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips remain `UP`; exact AX42 services and backup timers remain active;
+RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`. No deployment, schema,
+record, retained content, route, service or credential changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.6-real-image-validation`;
+the SHA-256 of its `SHA256SUMS` is
+`705010ed62c0d2b82ee18cbe9f8988b17c6fefefc7145ab61f8c57cd2a3246e9`.
