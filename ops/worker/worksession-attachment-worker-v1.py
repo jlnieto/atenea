@@ -102,7 +102,11 @@ class AttachmentStore:
     ) -> tuple[dict[str, Any], bool]:
         session_identity = self._session_identity(session_id)
         attachment_uuid = self._uuid(attachment_id, "invalid_attachment_id")
+        metadata = dict(metadata)
+        for key in ("projectIdentity", "workspaceIdentity", "storageScope"):
+            metadata.setdefault(key, None)
         self._validate_metadata(metadata, length)
+        private_ownership = self._validate_storage_ownership(session_identity, metadata)
         storage_identity = f"work-sessions/{session_identity}/{attachment_uuid}/content"
         attachment_dir = self.sessions / session_identity / attachment_uuid
         content_path = attachment_dir / "content"
@@ -181,6 +185,7 @@ class AttachmentStore:
                     "createdAt": metadata["createdAt"],
                     "storedAt": utc_now(),
                 }
+                stored.update(private_ownership)
                 self._atomic_json(metadata_path, stored)
                 self._fsync_directory(attachment_dir)
                 return self._public(stored), True
@@ -261,6 +266,12 @@ class AttachmentStore:
             "sha256": requested["sha256"],
             "syntheticFixture": requested["syntheticFixture"],
         }
+        if requested["syntheticFixture"] is False:
+            expected.update({
+                "projectIdentity": requested["projectIdentity"],
+                "workspaceIdentity": requested["workspaceIdentity"],
+                "storageScope": requested["storageScope"],
+            })
         if any(stored.get(key) != value for key, value in expected.items()):
             raise ProtocolError(
                 HTTPStatus.CONFLICT,
@@ -293,7 +304,8 @@ class AttachmentStore:
     def _validate_metadata(self, metadata: dict[str, Any], length: int) -> None:
         if set(metadata) != {
             "source", "kind", "contentType", "retentionClass", "sha256",
-            "syntheticFixture", "createdAt",
+            "syntheticFixture", "createdAt", "projectIdentity",
+            "workspaceIdentity", "storageScope",
         }:
             raise ProtocolError(
                 HTTPStatus.BAD_REQUEST,
@@ -334,6 +346,39 @@ class AttachmentStore:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_classification", "trace source requires TRACE")
         if metadata["source"] == "REPORT" and metadata["kind"] != "REPORT":
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "invalid_classification", "report source requires REPORT")
+
+    def _validate_storage_ownership(
+        self,
+        session_id: str,
+        metadata: dict[str, Any],
+    ) -> dict[str, str]:
+        private_keys = ("projectIdentity", "workspaceIdentity", "storageScope")
+        if metadata["syntheticFixture"] is True:
+            if any(metadata[key] is not None for key in private_keys):
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST,
+                    "ambiguous_storage_ownership",
+                    "synthetic attachment cannot claim real-project ownership",
+                )
+            return {}
+
+        self._uuid(session_id, "invalid_real_session_id")
+        expected_workspace = f"remote:{self.worker_id}:work-session:{session_id}"
+        if (
+            metadata["projectIdentity"] != "atenea"
+            or metadata["workspaceIdentity"] != expected_workspace
+            or metadata["storageScope"] != "REAL_SESSION"
+        ):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_real_storage_ownership",
+                "real attachment ownership is missing, foreign or inconsistent",
+            )
+        return {
+            "projectIdentity": metadata["projectIdentity"],
+            "workspaceIdentity": metadata["workspaceIdentity"],
+            "storageScope": metadata["storageScope"],
+        }
 
     def _validate_content(self, content_type: str, first: bytes, path: Path) -> None:
         valid = False
@@ -590,6 +635,9 @@ class AttachmentHandler(BaseHTTPRequestHandler):
             "sha256": self.headers.get("X-Atenea-Sha256"),
             "syntheticFixture": True if synthetic == "true" else False if synthetic == "false" else None,
             "createdAt": self.headers.get("X-Atenea-Created-At"),
+            "projectIdentity": self.headers.get("X-Atenea-Project-Identity"),
+            "workspaceIdentity": self.headers.get("X-Atenea-Workspace-Identity"),
+            "storageScope": self.headers.get("X-Atenea-Storage-Scope"),
         }
 
     def _length(self) -> int:

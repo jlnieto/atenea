@@ -167,8 +167,14 @@ class AttachmentStoreTest(unittest.TestCase):
         self.assertEqual(hashlib.sha256(self.content).hexdigest(), hashlib.sha256(content_path.read_bytes()).hexdigest())
 
     def test_only_exact_synthetic_fixture_can_be_deleted(self):
+        self.session_id = str(uuid.uuid4())
         retained_id = str(uuid.uuid4())
-        retained = self.metadata(syntheticFixture=False)
+        retained = self.metadata(
+            syntheticFixture=False,
+            projectIdentity="atenea",
+            workspaceIdentity=f"remote:test-worker:work-session:{self.session_id}",
+            storageScope="REAL_SESSION",
+        )
         self.store.put(
             self.session_id,
             retained_id,
@@ -329,6 +335,112 @@ class AttachmentHttpTest(unittest.TestCase):
         with self.request("GET", self.path(), token="t" * 64) as response:
             self.assertEqual("image/png", response.headers.get_content_type())
             self.assertEqual(self.content, response.read())
+
+    def test_real_put_requires_exact_ownership_and_keeps_it_private(self):
+        self.session_id = "a1c3af50-af6e-4cc2-85d6-a491c50cddcc"
+        workspace_identity = f"remote:http-worker:work-session:{self.session_id}"
+        headers = self.upload_headers(**{
+            "X-Atenea-Synthetic-Fixture": "false",
+            "X-Atenea-Project-Identity": "atenea",
+            "X-Atenea-Workspace-Identity": workspace_identity,
+            "X-Atenea-Storage-Scope": "REAL_SESSION",
+        })
+
+        with self.request(
+            "PUT",
+            self.path(),
+            token="t" * 64,
+            content=self.content,
+            extra_headers=headers,
+        ) as created:
+            self.assertEqual(201, created.status)
+            public = json.load(created)
+
+        for private_key in ("projectIdentity", "workspaceIdentity", "storageScope"):
+            self.assertNotIn(private_key, public)
+        self.assertNotIn(str(self.store.root), json.dumps(public))
+
+        sidecar_path = (
+            self.store.sessions
+            / self.session_id
+            / self.attachment_id
+            / "metadata.json"
+        )
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        self.assertEqual("atenea", sidecar["projectIdentity"])
+        self.assertEqual(workspace_identity, sidecar["workspaceIdentity"])
+        self.assertEqual("REAL_SESSION", sidecar["storageScope"])
+
+    def test_real_put_rejects_missing_foreign_or_inconsistent_ownership(self):
+        real_session_id = "a1c3af50-af6e-4cc2-85d6-a491c50cddcc"
+        exact_workspace = f"remote:http-worker:work-session:{real_session_id}"
+        cases = {
+            "legacy session identity": (
+                "12",
+                {
+                    "X-Atenea-Synthetic-Fixture": "false",
+                    "X-Atenea-Project-Identity": "atenea",
+                    "X-Atenea-Workspace-Identity": "remote:http-worker:work-session:12",
+                    "X-Atenea-Storage-Scope": "REAL_SESSION",
+                },
+            ),
+            "missing ownership": (
+                real_session_id,
+                {"X-Atenea-Synthetic-Fixture": "false"},
+            ),
+            "foreign project": (
+                real_session_id,
+                {
+                    "X-Atenea-Synthetic-Fixture": "false",
+                    "X-Atenea-Project-Identity": "beautips",
+                    "X-Atenea-Workspace-Identity": exact_workspace,
+                    "X-Atenea-Storage-Scope": "REAL_SESSION",
+                },
+            ),
+            "inconsistent workspace": (
+                real_session_id,
+                {
+                    "X-Atenea-Synthetic-Fixture": "false",
+                    "X-Atenea-Project-Identity": "atenea",
+                    "X-Atenea-Workspace-Identity": "remote:foreign:work-session:" + real_session_id,
+                    "X-Atenea-Storage-Scope": "REAL_SESSION",
+                },
+            ),
+            "foreign storage scope": (
+                real_session_id,
+                {
+                    "X-Atenea-Synthetic-Fixture": "false",
+                    "X-Atenea-Project-Identity": "atenea",
+                    "X-Atenea-Workspace-Identity": exact_workspace,
+                    "X-Atenea-Storage-Scope": "SYNTHETIC_SESSION",
+                },
+            ),
+            "ambiguous synthetic ownership": (
+                real_session_id,
+                {
+                    "X-Atenea-Synthetic-Fixture": "true",
+                    "X-Atenea-Project-Identity": "atenea",
+                    "X-Atenea-Workspace-Identity": exact_workspace,
+                    "X-Atenea-Storage-Scope": "REAL_SESSION",
+                },
+            ),
+        }
+
+        for scenario, (session_id, overrides) in cases.items():
+            with self.subTest(scenario=scenario):
+                self.session_id = session_id
+                self.attachment_id = str(uuid.uuid4())
+                with self.assertRaises(urllib.error.HTTPError) as rejected:
+                    self.request(
+                        "PUT",
+                        self.path(),
+                        token="t" * 64,
+                        content=self.content,
+                        extra_headers=self.upload_headers(**overrides),
+                    )
+                self.assertEqual(400, rejected.exception.code)
+
+        self.assertEqual([], list(self.store.sessions.rglob("content")))
 
     def test_missing_ambiguous_or_unsupported_metadata_fails_closed(self):
         headers = self.upload_headers()
