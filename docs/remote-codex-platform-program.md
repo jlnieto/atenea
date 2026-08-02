@@ -8583,3 +8583,32 @@ Sanitized task evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.1-protected-backup-isolated-restore`;
 the SHA-256 of its `SHA256SUMS` is
 `ed5199a718b98f22ad9db55b6fe06d14f8682f6d7cb8737dd10fb7dda709923d`.
+
+Task 6.2 is complete. Change progress is `59/83`; task 6.3 is the exact
+resume point.
+
+The candidate backend image was built from exact commit
+`99bda7d1a93f9aa5e9f6e3e8f9f0365cef36ce59` and the V62-aware rollback image
+from exact commit `409a2f3222a5fd61b693a4154d3de7820ff850e9`.
+Each image carries its full source identity. Both builds returned exit 0 within
+finite bounds.
+
+Against the isolated restored snapshot, the first candidate start advanced
+Flyway exactly from V61/61 to V62/62. A second candidate start remained
+V62/62, proving the migration no-op, and the exact rollback image then started
+healthy and read V62/62 unchanged. All starts used the global attachment gate
+false plus empty synthetic and real-project allowlists. Aggregate checks found
+zero policy revisions, turn attachments and attachment-bearing AgentRuns.
+Every short-lived backend fixture was removed by exact immutable ID after its
+check; the two labelled images and the exact task 6.1 database/network remain
+for task 6.3 fingerprinting and cleanup.
+
+Production remains V61 and production plus preview return HTTP 200. Candidate,
+programme and canonical Git remain synchronized; no production migration,
+deploy, service restart, gate, route, WorkSession, credential, attachment
+content or unrelated resource changed.
+
+Sanitized task evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.2-v62-image-compatibility`;
+the SHA-256 of its `SHA256SUMS` is
+`158b3dacad3e6b713b06160722b47ca3e94799a56fc43d092c5c55a610e76b33`.
