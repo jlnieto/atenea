@@ -8526,3 +8526,30 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.8-privacy-audit`;
 the SHA-256 of its `SHA256SUMS` is
 `4bc0a61a9d74cf8ae2940c48e7f62c0f88338c20a2da088deb0d82c7657e751f`.
+
+Task 5.9 and the complete integrated synthetic phase are complete. Change
+progress is `57/83`; the exact resume point is task 6.1.
+
+Exactly 56 accepted evidence directories through task 5.8 each passed their
+individual `SHA256SUMS`. Their checksum-manifest identity, sealed file count
+and sealed byte count are fixed in one non-circular aggregate ledger, itself
+covered by the task 5.9 seal. The complete retained evidence set remains at
+zero privacy findings after the task 5.8 sanitation.
+
+Candidate Atenea remains clean and published at
+`99bda7d1a93f9aa5e9f6e3e8f9f0365cef36ce59`; programme/worker is clean and
+published at `c9b5b822ef0880132a209f2ede1b4548ed9e9ef7`; canonical Atenea remains
+clean at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. The installed attachment
+and AgentRun worker hashes remain the pre-rollout versions and differ from the
+candidate hashes.
+
+Production, preview and Beautips return HTTP 200; required AX42 services and
+backup/health timers are active; all RAID arrays remain `[UU]`; rootless slots
+remain `3/0/0/3`. No production backup restore, V62 migration, candidate
+image/service installation, restart, rollout, route, WorkSession, credential,
+retained real attachment or unrelated mutation occurred.
+
+Sanitized phase-closure evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.9-synthetic-phase-seal`;
+the SHA-256 of its `SHA256SUMS` is
+`45296c4e788e6d7509cb9a1f1c45960310999362a7b87ffc3433b14e970ac25e`.
