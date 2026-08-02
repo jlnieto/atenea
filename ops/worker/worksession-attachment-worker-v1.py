@@ -21,6 +21,9 @@ from typing import Any, BinaryIO
 from urllib.parse import urlparse
 
 PROTOCOL = "worksession-attachment/v1"
+REAL_PROJECT_PROTOCOL = "real-project-attachment/v1"
+REAL_PROJECT_IDENTITIES = ("atenea",)
+REAL_STORAGE_SCOPES = ("REAL_SESSION",)
 MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_SESSION_BYTES = 256 * 1024 * 1024
 SOURCES = {"OPERATOR_UPLOAD", "BROWSER_SCREENSHOT", "BROWSER_TRACE", "REPORT"}
@@ -76,6 +79,16 @@ class AttachmentStore:
             "maxFileBytes": self.max_file_bytes,
             "maxSessionBytes": self.max_session_bytes,
             "contentTypes": sorted(CONTENT_TYPES),
+            "serverTime": utc_now(),
+        }
+
+    def real_project_capability(self) -> dict[str, Any]:
+        return {
+            "protocolVersion": REAL_PROJECT_PROTOCOL,
+            "workerId": self.worker_id,
+            "healthy": True,
+            "projectIdentities": list(REAL_PROJECT_IDENTITIES),
+            "storageScopes": list(REAL_STORAGE_SCOPES),
             "serverTime": utc_now(),
         }
 
@@ -501,6 +514,12 @@ class AttachmentHandler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if path == "/v1/health":
                 self._json(HTTPStatus.OK, self.server.store.health())
+                return
+            if path == "/v1/capabilities/real-project-attachment":
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.store.real_project_capability(),
+                )
                 return
             session_id, attachment_id, operation = self._route(path)
             if operation == "metadata":

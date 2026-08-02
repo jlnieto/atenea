@@ -242,6 +242,7 @@ class AttachmentHttpTest(unittest.TestCase):
     def test_health_and_all_content_routes_require_authentication(self):
         for method, path in (
             ("GET", "/v1/health"),
+            ("GET", "/v1/capabilities/real-project-attachment"),
             ("PUT", self.path()),
             ("GET", self.path()),
             ("DELETE", self.path()),
@@ -254,6 +255,43 @@ class AttachmentHttpTest(unittest.TestCase):
             health = json.load(response)
         self.assertEqual(MODULE.PROTOCOL, health["protocolVersion"])
         self.assertEqual(MODULE.MAX_FILE_BYTES, health["maxFileBytes"])
+        self.assertEqual(
+            {
+                "protocolVersion",
+                "workerId",
+                "healthy",
+                "maxFileBytes",
+                "maxSessionBytes",
+                "contentTypes",
+                "serverTime",
+            },
+            set(health),
+        )
+
+    def test_real_project_capability_is_separate_closed_and_authenticated(self):
+        with self.request(
+            "GET",
+            "/v1/capabilities/real-project-attachment",
+            token="t" * 64,
+        ) as response:
+            capability = json.load(response)
+
+        self.assertEqual(
+            {
+                "protocolVersion",
+                "workerId",
+                "healthy",
+                "projectIdentities",
+                "storageScopes",
+                "serverTime",
+            },
+            set(capability),
+        )
+        self.assertEqual(MODULE.REAL_PROJECT_PROTOCOL, capability["protocolVersion"])
+        self.assertEqual("http-worker", capability["workerId"])
+        self.assertTrue(capability["healthy"])
+        self.assertEqual(["atenea"], capability["projectIdentities"])
+        self.assertEqual(["REAL_SESSION"], capability["storageScopes"])
 
     def test_authenticated_upload_metadata_and_download_are_exact(self):
         with self.request(
@@ -265,6 +303,25 @@ class AttachmentHttpTest(unittest.TestCase):
         ) as created:
             self.assertEqual(201, created.status)
             metadata = json.load(created)
+        self.assertEqual(
+            {
+                "protocolVersion",
+                "workerId",
+                "sessionId",
+                "attachmentId",
+                "storageIdentity",
+                "source",
+                "kind",
+                "contentType",
+                "sizeBytes",
+                "retentionClass",
+                "sha256",
+                "syntheticFixture",
+                "createdAt",
+                "storedAt",
+            },
+            set(metadata),
+        )
         self.assertNotIn(str(self.store.root), json.dumps(metadata))
 
         with self.request("GET", self.path("metadata"), token="t" * 64) as response:
