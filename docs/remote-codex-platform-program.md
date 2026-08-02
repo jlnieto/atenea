@@ -8248,3 +8248,31 @@ occurred. Sanitized closure evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.10-completed-web-slice`;
 the SHA-256 of its `SHA256SUMS` is
 `7e2bfba087fe84db8ef4e0ed4b4483b067229d52b655d39a4207a807a1ac819e`.
+
+Task 5.1 is complete and change progress is `49/83`; the exact resume point is
+task 5.2. All focused cross-repository suites passed `273/273` from clean,
+published source: V62/backend `163/163` across twenty exact classes, web
+component/API `17/17`, WorkSession attachment protocol `17/17`, AgentRun worker
+`54/54` and Atenea project runner `22/22`.
+
+The backend ran against a new uniquely named PostgreSQL 16 container and empty
+workspace/upload roots. Its V62 tests migrated a new schema through all 62
+migrations and also exercised V61-to-V62. The worker suites ran with Python
+bytecode disabled. Expected database integrity and worker rejection logs came
+only from passing fail-closed negative cases; no contract mismatch or source
+change was required.
+
+The synthetic container's exact immutable ID and task label were revalidated
+before stop/removal. The empty roots, Maven target, Playwright result and all
+browser/Vite/bytecode residue were removed; the pre-existing shared test
+database was not touched.
+
+Candidate Atenea remains clean and published at
+`fca3175161e3bb184aa6f88c725a508fca22cca1`; canonical Atenea remains clean at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; required AX42 services/timers are active; RAID is
+`3/3 [UU]`; rootless slots remain `3/0/0/3`. No rollout or unrelated mutation
+occurred. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.1-focused-integration`;
+the SHA-256 of its `SHA256SUMS` is
+`6190a7306b273a4b3c4de2f2965ab14db68908b0f8f29fee2d4cfd4b1e3fc52d`.

@@ -78,7 +78,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 
 ## 5. Integrated synthetic acceptance and compatibility
 
-- [ ] 5.1 Run all focused V62, backend, web, attachment-service, AgentRun-worker and runner suites from clean source and fix any contract mismatch before broader validation
+- [x] 5.1 Run all focused V62, backend, web, attachment-service, AgentRun-worker and runner suites from clean source and fix any contract mismatch before broader validation
 - [ ] 5.2 Run the complete Atenea backend and web suites twice through canonical scripts and the complete worker suite twice, recording finite durations and exact pass counts
 - [ ] 5.3 Prove one synthetic image-bearing turn, one same-thread image-bearing continuation and one later text-only continuation use exact explicit bindings without implicit latest-image reuse
 - [ ] 5.4 Prove response loss/retry, backend restart, worker restart, attachment-service restart and safe AgentRun retry retain one turn/run/manifest/result and no re-upload
