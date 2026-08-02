@@ -5,10 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.atenea.api.worksession.CreateSessionTurnRequest;
+import com.atenea.api.worksession.CreateSessionTurnResponse;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
@@ -34,6 +36,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -67,6 +70,9 @@ class ImageTurnAtomicPersistenceIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private TurnAttachmentFingerprintService fingerprintService;
+
     @MockBean
     private TurnAttachmentSelectionValidator selectionValidator;
 
@@ -81,6 +87,29 @@ class ImageTurnAtomicPersistenceIntegrationTest {
 
     @MockBean
     private CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService;
+
+    private Long fixtureSessionId;
+    private Long fixtureProjectId;
+
+    @AfterEach
+    void removeExactFixtureRows() {
+        if (fixtureSessionId != null) {
+            jdbcTemplate.update(
+                    "DELETE FROM session_turn_attachment WHERE work_session_id = ?",
+                    fixtureSessionId);
+            jdbcTemplate.update("DELETE FROM agent_run WHERE session_id = ?", fixtureSessionId);
+            jdbcTemplate.update("DELETE FROM session_turn WHERE session_id = ?", fixtureSessionId);
+            jdbcTemplate.update(
+                    "DELETE FROM work_session_attachment WHERE work_session_id = ?",
+                    fixtureSessionId);
+            jdbcTemplate.update("DELETE FROM work_session WHERE id = ?", fixtureSessionId);
+        }
+        if (fixtureProjectId != null) {
+            jdbcTemplate.update("DELETE FROM project WHERE id = ?", fixtureProjectId);
+        }
+        fixtureSessionId = null;
+        fixtureProjectId = null;
+    }
 
     @Test
     void secondBindingFailureRollsBackTurnFirstBindingAndAgentRunBeforeDispatch() {
@@ -133,6 +162,69 @@ class ImageTurnAtomicPersistenceIntegrationTest {
         verify(remoteAgentRunCoordinator, never()).dispatchAfterCommit(any());
     }
 
+    @Test
+    void identicalReplayReturnsOriginalAndConflictingReplayPreservesOneAcceptance() {
+        Instant now = Instant.parse("2026-08-02T00:00:00Z");
+        WorkerNodeEntity worker = createWorker(now);
+        ProjectEntity project = createProject(now);
+        WorkSessionEntity session = createSession(project, worker, now);
+        WorkSessionAttachmentEntity retained = createAttachment(session, project, worker, now);
+        UUID clientRequestId = UUID.fromString("7b35f774-97f2-4a9e-b7db-0f18d59112ba");
+        List<TurnAttachmentFingerprintService.AttachmentFingerprintInput> fingerprintInputs =
+                List.of(new TurnAttachmentFingerprintService.AttachmentFingerprintInput(
+                        retained.getId(),
+                        retained.getContentType(),
+                        retained.getSizeBytes(),
+                        retained.getSha256()));
+        TurnAttachmentSelectionValidator.ValidatedSelection selection =
+                new TurnAttachmentSelectionValidator.ValidatedSelection(
+                        List.of(new TurnAttachmentSelectionValidator.ValidatedAttachment(
+                                retained.getId(),
+                                retained.getContentType(),
+                                retained.getSizeBytes(),
+                                retained.getSha256())),
+                        retained.getSizeBytes(),
+                        fingerprintService.attachmentManifestSha256(fingerprintInputs));
+        when(selectionValidator.validate(
+                any(WorkSessionEntity.class),
+                eq(List.of(retained.getId()))))
+                .thenReturn(selection);
+
+        CreateSessionTurnRequest originalRequest = new CreateSessionTurnRequest(
+                "Inspect this image",
+                clientRequestId,
+                List.of(retained.getId()));
+        CreateSessionTurnResponse accepted = sessionTurnService.createTurn(
+                session.getId(),
+                originalRequest);
+        long turnsAfterAcceptance = sessionTurnRepository.count();
+        long runsAfterAcceptance = agentRunRepository.count();
+        long bindingsAfterAcceptance = bindingCount();
+
+        CreateSessionTurnResponse replay = sessionTurnService.createTurn(
+                session.getId(),
+                originalRequest);
+
+        assertEquals(accepted.operatorTurn().id(), replay.operatorTurn().id());
+        assertEquals(accepted.run().id(), replay.run().id());
+        assertThrows(
+                AttachmentConflictException.class,
+                () -> sessionTurnService.createTurn(
+                        session.getId(),
+                        new CreateSessionTurnRequest(
+                                "Different image instruction",
+                                clientRequestId,
+                                List.of(retained.getId()))));
+        assertEquals(turnsAfterAcceptance, sessionTurnRepository.count());
+        assertEquals(runsAfterAcceptance, agentRunRepository.count());
+        assertEquals(bindingsAfterAcceptance, bindingCount());
+        assertEquals(1L, attachmentRepository.count());
+        verify(selectionValidator, times(1)).validate(
+                any(WorkSessionEntity.class),
+                eq(List.of(retained.getId())));
+        verify(remoteAgentRunCoordinator, times(1)).dispatchAfterCommit(accepted.run().id());
+    }
+
     private long bindingCount() {
         Long value = jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM session_turn_attachment",
@@ -167,7 +259,9 @@ class ImageTurnAtomicPersistenceIntegrationTest {
         project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
         project.setCreatedAt(now);
         project.setUpdatedAt(now);
-        return projectRepository.saveAndFlush(project);
+        ProjectEntity saved = projectRepository.saveAndFlush(project);
+        fixtureProjectId = saved.getId();
+        return saved;
     }
 
     private WorkSessionEntity createSession(
@@ -197,7 +291,9 @@ class ImageTurnAtomicPersistenceIntegrationTest {
         session.setLastActivityAt(now);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
-        return workSessionRepository.saveAndFlush(session);
+        WorkSessionEntity saved = workSessionRepository.saveAndFlush(session);
+        fixtureSessionId = saved.getId();
+        return saved;
     }
 
     private WorkSessionAttachmentEntity createAttachment(

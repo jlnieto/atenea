@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,7 +28,10 @@ import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
+import com.atenea.persistence.worksession.SessionTurnAttachmentEntity;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.worksession.WorkSessionAttachmentEntity;
+import com.atenea.persistence.worksession.WorkSessionAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
@@ -67,6 +71,9 @@ class SessionTurnCreateServiceTest {
 
     @Mock
     private SessionTurnAttachmentRepository sessionTurnAttachmentRepository;
+
+    @Mock
+    private WorkSessionAttachmentRepository workSessionAttachmentRepository;
 
     @Mock
     private GitRepositoryService gitRepositoryService;
@@ -110,6 +117,7 @@ class SessionTurnCreateServiceTest {
                 workSessionRepository,
                 sessionTurnRepository,
                 sessionTurnAttachmentRepository,
+                workSessionAttachmentRepository,
                 new WorkspaceRepositoryPathValidator(workspaceRoot.toString()),
                 gitRepositoryService,
                 agentRunRepository,
@@ -140,7 +148,7 @@ class SessionTurnCreateServiceTest {
                                         secondAttachmentId, "image/webp", 2048L, "b".repeat(64))),
                         3072L,
                         "c".repeat(64));
-        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(workSessionRepository.findLockedWithProjectById(12L)).thenReturn(Optional.of(session));
         when(turnAttachmentSelectionValidator.validate(
                 session,
                 List.of(firstAttachmentId, secondAttachmentId)))
@@ -201,7 +209,7 @@ class SessionTurnCreateServiceTest {
     void invalidImageSelectionCreatesNoTurnBindingRunOrDispatch() {
         WorkSessionEntity session = exactRemoteAteneaSession();
         UUID attachmentId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
-        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(workSessionRepository.findLockedWithProjectById(12L)).thenReturn(Optional.of(session));
         when(turnAttachmentSelectionValidator.validate(session, List.of(attachmentId)))
                 .thenThrow(new AttachmentOwnershipException("synthetic invalid image"));
 
@@ -219,6 +227,99 @@ class SessionTurnCreateServiceTest {
                 .insert(any(), any(), any(), anyShort());
         verify(agentRunService, never()).createRemoteQueuedRun(
                 any(), any(), any(), any(TurnAttachmentSelectionValidator.ValidatedSelection.class));
+        verify(remoteAgentRunCoordinator, never()).dispatchAfterCommit(any());
+    }
+
+    @Test
+    void acceptedImageRequestReplaysOriginalAndConflictingReuseCreatesNothing() {
+        WorkSessionEntity session = exactRemoteAteneaSession();
+        UUID clientRequestId = UUID.fromString("7b35f774-97f2-4a9e-b7db-0f18d59112ba");
+        UUID firstAttachmentId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        UUID secondAttachmentId = UUID.fromString("9aa2c7e5-1fd9-48ec-aa10-03dfdfb8ca7d");
+        SessionTurnEntity acceptedTurn = new SessionTurnEntity();
+        acceptedTurn.setId(101L);
+        acceptedTurn.setSession(session);
+        acceptedTurn.setActor(SessionTurnActor.OPERATOR);
+        acceptedTurn.setMessageText("Inspect both images");
+        acceptedTurn.setClientRequestId(clientRequestId);
+        acceptedTurn.setRequestFingerprintSha256("d".repeat(64));
+        acceptedTurn.setCreatedAt(Instant.parse("2026-08-02T00:00:00Z"));
+        SessionTurnAttachmentEntity firstBinding = mock(SessionTurnAttachmentEntity.class);
+        SessionTurnAttachmentEntity secondBinding = mock(SessionTurnAttachmentEntity.class);
+        when(firstBinding.getAttachmentId()).thenReturn(firstAttachmentId);
+        when(firstBinding.getPosition()).thenReturn((short) 0);
+        when(secondBinding.getAttachmentId()).thenReturn(secondAttachmentId);
+        when(secondBinding.getPosition()).thenReturn((short) 1);
+        WorkSessionAttachmentEntity firstAttachment = replayAttachment(
+                firstAttachmentId, "image/png", 1024L, "a".repeat(64));
+        WorkSessionAttachmentEntity secondAttachment = replayAttachment(
+                secondAttachmentId, "image/webp", 2048L, "b".repeat(64));
+        AgentRunEntity acceptedRun = new AgentRunEntity();
+        acceptedRun.setId(55L);
+        acceptedRun.setSession(session);
+        acceptedRun.setOriginTurn(acceptedTurn);
+        acceptedRun.setStatus(AgentRunStatus.QUEUED);
+        acceptedRun.setWorkloadKind(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
+        acceptedRun.setAttachmentCount(2);
+        acceptedRun.setAttachmentBytes(3072L);
+        acceptedRun.setAttachmentManifestSha256("c".repeat(64));
+        AgentRunResponse acceptedRunResponse = mock(AgentRunResponse.class);
+
+        when(workSessionRepository.findLockedWithProjectById(12L))
+                .thenReturn(Optional.of(session));
+        when(sessionTurnRepository.findBySessionIdAndClientRequestId(12L, clientRequestId))
+                .thenReturn(Optional.of(acceptedTurn));
+        when(sessionTurnAttachmentRepository
+                .findByWorkSessionIdAndSessionTurnIdOrderByPositionAsc(12L, 101L))
+                .thenReturn(List.of(firstBinding, secondBinding));
+        when(workSessionAttachmentRepository.findByIdAndWorkSessionId(firstAttachmentId, 12L))
+                .thenReturn(Optional.of(firstAttachment));
+        when(workSessionAttachmentRepository.findByIdAndWorkSessionId(secondAttachmentId, 12L))
+                .thenReturn(Optional.of(secondAttachment));
+        when(turnAttachmentFingerprintService.attachmentManifestSha256(any()))
+                .thenReturn("c".repeat(64));
+        when(turnAttachmentFingerprintService.requestFingerprintSha256(
+                eq("Inspect both images"), any()))
+                .thenReturn("d".repeat(64));
+        when(turnAttachmentFingerprintService.requestFingerprintSha256(
+                eq("Different message"), any()))
+                .thenReturn("e".repeat(64));
+        when(agentRunRepository.findFirstBySessionIdAndOriginTurnIdOrderByCreatedAtAsc(12L, 101L))
+                .thenReturn(Optional.of(acceptedRun));
+        when(agentRunService.toResponse(acceptedRun)).thenReturn(acceptedRunResponse);
+
+        CreateSessionTurnResponse replay = sessionTurnService.createTurn(
+                12L,
+                new CreateSessionTurnRequest(
+                        "Inspect both images",
+                        clientRequestId,
+                        List.of(firstAttachmentId, secondAttachmentId)));
+
+        assertEquals(101L, replay.operatorTurn().id());
+        assertEquals(acceptedRunResponse, replay.run());
+        assertThrows(
+                AttachmentConflictException.class,
+                () -> sessionTurnService.createTurn(
+                        12L,
+                        new CreateSessionTurnRequest(
+                                "Different message",
+                                clientRequestId,
+                                List.of(firstAttachmentId, secondAttachmentId))));
+        assertThrows(
+                AttachmentConflictException.class,
+                () -> sessionTurnService.createTurn(
+                        12L,
+                        new CreateSessionTurnRequest(
+                                "Inspect both images",
+                                clientRequestId,
+                                List.of(secondAttachmentId, firstAttachmentId))));
+
+        verify(turnAttachmentSelectionValidator, never()).validate(any(), any());
+        verify(canonicalSourceAdmissionService, never()).admitBeforeWrite(any());
+        verify(agentRunReconciliationService, never()).reconcileSession(any());
+        verify(sessionTurnRepository, never()).save(any());
+        verify(sessionTurnAttachmentRepository, never()).insert(any(), any(), any(), anyShort());
+        verify(agentRunService, never()).createRemoteQueuedRun(any(), any(), any(), any());
         verify(remoteAgentRunCoordinator, never()).dispatchAfterCommit(any());
     }
 
@@ -644,6 +745,20 @@ class SessionTurnCreateServiceTest {
         session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
         session.setAttachmentPolicyRevision(RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION);
         return session;
+    }
+
+    private static WorkSessionAttachmentEntity replayAttachment(
+            UUID id,
+            String contentType,
+            long sizeBytes,
+            String sha256
+    ) {
+        WorkSessionAttachmentEntity attachment = new WorkSessionAttachmentEntity();
+        attachment.setId(id);
+        attachment.setContentType(contentType);
+        attachment.setSizeBytes(sizeBytes);
+        attachment.setSha256(sha256);
+        return attachment;
     }
 
     private static SessionTurnEntity buildTurn(Long id, WorkSessionEntity session, SessionTurnActor actor, String text) {

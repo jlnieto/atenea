@@ -13,6 +13,7 @@ import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.worksession.WorkSessionAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
@@ -38,6 +39,9 @@ class SessionTurnServiceTest {
 
     @Mock
     private SessionTurnAttachmentRepository sessionTurnAttachmentRepository;
+
+    @Mock
+    private WorkSessionAttachmentRepository workSessionAttachmentRepository;
 
     @Mock
     private GitRepositoryService gitRepositoryService;
@@ -74,6 +78,7 @@ class SessionTurnServiceTest {
                 workSessionRepository,
                 sessionTurnRepository,
                 sessionTurnAttachmentRepository,
+                workSessionAttachmentRepository,
                 new WorkspaceRepositoryPathValidator("/workspace/repos"),
                 gitRepositoryService,
                 agentRunRepository,
