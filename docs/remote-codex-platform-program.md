@@ -8082,3 +8082,29 @@ occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.4-image-chips`;
 the SHA-256 of its `SHA256SUMS` is
 `857553d15401f9b21bdc35bb06c6ad0f5c70cc2a1d3d9124c3bd66cd20d91aae`.
+
+Task 4.5 is complete and change progress is `43/83`; the exact resume point is
+task 4.6. Atenea commit
+`81eeee5d6be406c1380983ca3fcbbb4b951a2e8d` has tree
+`3ee9c96675757d7fd6bbbbd2e194614f01c9b4b2` and is clean and published.
+
+Turn submission now sends the caller-owned stable request UUID and exact ready
+attachment IDs in displayed order. A failed or uncertain outcome retains text,
+selection, previews and UUID for an identical safe retry. Synchronous duplicate
+submits are blocked. Editing text, adding or removing an image starts a new
+logical request identity. Draft state is cleared only when the returned
+conversation contains an operator turn with the exact normalized message and
+ordered attachment projection.
+
+The production build passed in 5 seconds. Synthetic Playwright acceptance at
+`1440x900` and `390x844` proved 504 preservation, visible retry, identical UUID
+and order, one request for two synchronous submit events, exact accepted-turn
+confirmation and accepted clearing. Screenshots mask textarea content. There
+was no overflow or clipping and all browser/Vite processes closed.
+
+Entry operational checks retained production, preview and Beautips at HTTP
+200, required AX42 services active, RAID `3/3 [UU]` and slots `3/0/0/3`. No
+rollout occurred. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.5-safe-turn-retry`;
+the SHA-256 of its `SHA256SUMS` is
+`ee2f0ef22d773fadd0a1aa04a497ac64597347e332966e1285335aa7948c16a4`.
