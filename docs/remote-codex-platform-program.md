@@ -8276,3 +8276,39 @@ occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.1-focused-integration`;
 the SHA-256 of its `SHA256SUMS` is
 `6190a7306b273a4b3c4de2f2965ab14db68908b0f8f29fee2d4cfd4b1e3fc52d`.
+
+Task 5.2 is complete and change progress is `50/83`; the exact resume point is
+task 5.3. Two independent clean Atenea source/workspace pairs at
+`fca3175161e3bb184aa6f88c725a508fca22cca1`, tree
+`d60f906d91f0e6193432b39ac86e0b6b26f69d1c`, ran the canonical backend,
+production web-build and package Playwright entrypoints. Backend passes were
+`612/612` in 74 and 73 seconds, builds transformed 1,583 modules in 7 and 6
+seconds, and web passes were `17/17` in 17 and 18 seconds. Outer timeouts were
+1,800 seconds for backend and 900 seconds for each web step.
+
+Two independent clean worker clones at
+`385334a9671dd10732d575e644d5ca19c1d43f81`, tree
+`d0aa4d2af442232f0821edbaefa09785879a034d`, and independent Atenea inputs ran
+the same sorted 31 top-level entrypoints with a 900-second bound per entry.
+Both passed `31/31` in 471 and 479 seconds. Each contained 19 unittest reports
+totalling 190 tests, excluding separate shell assertions. Their normalized
+index/name/exit SHA-256 is identically
+`0ab4a2870682148a634587c670de8f1b1ec2625c864f78ec493c13da1f38d8d3`.
+
+Pre-acceptance diagnostics exposed only two browser-wrapper invocation
+preconditions and a Docker Compose client reap issue under a pseudo-terminal;
+accepted passes restarted from clean clones after bounded preflight. No product
+change was required. Task-owned containers, networks, volumes, clones, visual
+roots and browser processes were removed. The pre-existing local test database
+and app-server containers retained their exact immutable IDs and original
+running/exited states.
+
+Canonical Atenea remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and Beautips
+return HTTP 200. Required AX42 services and backup/health timers are active,
+all three RAID arrays remain `[UU]`, and rootless slots remain `3/0/0/3`. No
+rollout, migration, route, production record, credential, retained attachment,
+service or unrelated resource changed. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.2-complete-suites`;
+the SHA-256 of its `SHA256SUMS` is
+`00f5baccd357c2f3f09ee2ab6643025b6bfa576376b73442bc44c24292d9b2c5`.
