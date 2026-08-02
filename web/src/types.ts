@@ -344,6 +344,62 @@ export interface MobileConversationTurn {
   messageText: string;
   createdAt?: string | null;
   executionProfile?: TurnExecutionProfile | null;
+  attachments: SessionTurnAttachment[];
+}
+
+export interface SessionTurnAttachment {
+  id: string;
+  position: number;
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+  downloadPath: string;
+}
+
+export interface CreateWorkSessionTurnRequest {
+  message: string;
+  clientRequestId: string;
+  attachmentIds: string[];
+}
+
+export type WorkSessionAttachmentCapabilityState = "READY" | "BLOCKED";
+
+export type WorkSessionAttachmentBlockedReason =
+  | "NONE"
+  | "GLOBAL_DISABLED"
+  | "PROJECT_DISABLED"
+  | "SESSION_NOT_ELIGIBLE"
+  | "OWNERSHIP_INVALID"
+  | "SESSION_QUOTA_EXHAUSTED"
+  | "WORKER_UNAVAILABLE"
+  | "WORKER_UNSUPPORTED";
+
+export type WorkSessionAttachmentWorkerCompatibility =
+  | "NOT_CHECKED"
+  | "UNAVAILABLE"
+  | "INCOMPATIBLE"
+  | "COMPATIBLE";
+
+export interface WorkSessionAttachmentCapability {
+  state: WorkSessionAttachmentCapabilityState;
+  blockedReason: WorkSessionAttachmentBlockedReason;
+  message: string;
+  nextAction: string;
+  policyRevision: string;
+  workerCompatibility: WorkSessionAttachmentWorkerCompatibility;
+  acceptedContentTypes: string[];
+  currentSessionBytes: number;
+  maxSessionBytes: number;
+  remainingSessionBytes: number;
+  maxFileBytes: number;
+  maxAttachmentsPerTurn: number;
+  maxAttachmentBytesPerTurn: number;
+}
+
+export interface UploadWorkSessionAttachmentRequest {
+  file: File;
+  idempotencyKey: string;
 }
 
 export interface TurnExecutionProfile {

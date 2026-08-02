@@ -947,7 +947,11 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     setLoading(true);
     setError("");
     try {
-      const response = await api.createWorkSessionTurn(sessionId, message.trim());
+      const response = await api.createWorkSessionTurn(sessionId, {
+        message: message.trim(),
+        clientRequestId: crypto.randomUUID(),
+        attachmentIds: []
+      });
       setConversation(response);
       setMessage("");
     } catch (submitError) {
@@ -1021,7 +1025,10 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     setUploading(true);
     setAttachmentError("");
     try {
-      await api.uploadWorkSessionAttachment(sessionId, file);
+      await api.uploadWorkSessionAttachment(sessionId, {
+        file,
+        idempotencyKey: crypto.randomUUID()
+      });
       setAttachments(await api.workSessionAttachments(sessionId));
     } catch (uploadError) {
       setAttachmentError(errorMessage(uploadError));
