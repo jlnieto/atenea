@@ -8220,3 +8220,31 @@ occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.9-production-visual-acceptance`;
 the SHA-256 of its `SHA256SUMS` is
 `d9a2b76b0c04ed9f33e18abbabacf62fb8294624bd5320391f4df18b76d5a28b`.
+
+Task 4.10 is complete, phase 4 is closed and change progress is `48/83`; the
+exact resume point is task 5.1. The complete web slice consists of eight clean,
+published Atenea commits from `59f55e2` through
+`fca3175161e3bb184aa6f88c725a508fca22cca1`; local and remote candidate refs
+match exactly at tree `d60f906d91f0e6193432b39ac86e0b6b26f69d1c`.
+
+The final permanent component/API suite passed `17/17` in 18 seconds including
+its TypeScript compile, and the canonical production build passed in 4 seconds
+with 1,583 modules. Repository and local temporary-root audits found zero PNG,
+JPEG, WebP, trace, video, ZIP, Playwright report, test-result or `.last-run`
+residue outside the accepted AX42 evidence roots. No browser or Vite process
+remained.
+
+The task 4.7, 4.8 and 4.9 evidence sets each passed full checksum verification;
+their `SHA256SUMS` hashes remain respectively
+`a4e27a354a744548a9f60f8b5ed072b5ab1b92ac121b12ff74cb44a1b515a673`,
+`3ab0944779d1494fd64cdc227a4ff2c60dd225d84a0961fb64eb295187537e0d`
+and `d9a2b76b0c04ed9f33e18abbabacf62fb8294624bd5320391f4df18b76d5a28b`.
+
+Canonical Atenea remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; required AX42 services/timers are active; RAID is
+`3/3 [UU]`; rootless slots remain `3/0/0/3`. No rollout or unrelated mutation
+occurred. Sanitized closure evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.10-completed-web-slice`;
+the SHA-256 of its `SHA256SUMS` is
+`7e2bfba087fe84db8ef4e0ed4b4483b067229d52b655d39a4207a807a1ac819e`.

@@ -74,7 +74,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 4.7 Make global-disabled, project-disabled, legacy-session, worker-unavailable, unsupported, over-file, over-turn and quota states concise and actionable in the first relevant viewport
 - [x] 4.8 Add component/API tests for picker, paste, automatic selection, ordering, removal, retry, accepted clearing, historical reload and every blocked state
 - [x] 4.9 Run the production web build and Playwright data/DOM/visual acceptance at `1440x900` and `390x844`, inspect screenshots for hierarchy, clipping, overflow, responsiveness and action clarity, and close browser processes in `finally`
-- [ ] 4.10 Commit and push the completed web slice with sanitized visual evidence and no generated test artifact outside the accepted evidence root
+- [x] 4.10 Commit and push the completed web slice with sanitized visual evidence and no generated test artifact outside the accepted evidence root
 
 ## 5. Integrated synthetic acceptance and compatibility
 
