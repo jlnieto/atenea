@@ -2261,8 +2261,8 @@ class WorkerState:
                 "Codex execution failed: CLI contract",
                 "Codex execution failed: network unavailable",
                 "Codex execution failed: thread persistence unavailable",
-                "Codex execution failed: image delivery unavailable",
                 "attachment ownership rejected",
+                "attachment materialization rejected",
                 "Codex execution failed: unclassified",
                 "Project runner internal exception: AttributeError",
                 "Project runner internal exception: FileNotFoundError",
@@ -2308,6 +2308,7 @@ class WorkerState:
             not isinstance(result, dict)
             or set(result) != required_result
             or not all(isinstance(value, str) and value for value in string_result.values())
+            or result.get("outputSummary") != workload["kind"] + " completed"
             or (
                 workload["kind"] in {PROJECT_V2_CAPABILITY, PROJECT_V3_CAPABILITY}
                 and not isinstance(progress_events, list)

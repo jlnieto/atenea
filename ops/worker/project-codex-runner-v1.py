@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import grp
 import hashlib
 import json
@@ -75,6 +76,7 @@ ATTACHMENT_GROUP = "atenea"
 ATTACHMENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024
 MAX_ATTACHMENT_TOTAL_BYTES = 32 * 1024 * 1024
+MATERIALIZATION_ROOT = Path("/run/atenea/codex-images")
 CODEX_CATALOG_REVISION = (
     "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187"
 )
@@ -94,6 +96,12 @@ class VerifiedAttachment(NamedTuple):
     size_bytes: int
     sha256: str
     content_path: Path
+
+
+class MaterializedAttachment(NamedTuple):
+    attachment_id: str
+    content_type: str
+    path: Path
 
 
 def reject(message: str) -> None:
@@ -520,6 +528,99 @@ def validate_attachment_references(
     return verified
 
 
+def materialization_owner_ids() -> tuple[int, int, int, int]:
+    try:
+        return (
+            0,
+            grp.getgrnam(ATTACHMENT_GROUP).gr_gid,
+            pwd.getpwnam("jose").pw_uid,
+            pwd.getpwnam("jose").pw_gid,
+        )
+    except KeyError:
+        reject("attachment materialization rejected")
+
+
+@contextlib.contextmanager
+def materialize_attachments(
+    attachments: list[VerifiedAttachment],
+    execution_id: str,
+):
+    if not attachments:
+        yield []
+        return
+    try:
+        canonical_execution = str(uuid.UUID(execution_id))
+    except (ValueError, TypeError, AttributeError):
+        canonical_execution = None
+    if canonical_execution != execution_id:
+        reject("attachment materialization rejected")
+    root_uid, group_id, jose_uid, jose_gid = materialization_owner_ids()
+    validate_owned_path(MATERIALIZATION_ROOT, 0o710, root_uid, group_id, True)
+    execution_root = MATERIALIZATION_ROOT / execution_id
+    try:
+        execution_root.mkdir(mode=0o700)
+        os.chown(execution_root, jose_uid, jose_gid)
+    except OSError:
+        reject("attachment materialization rejected")
+
+    created: list[MaterializedAttachment] = []
+    extensions = {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/webp": ".webp",
+    }
+    try:
+        expected_uid, expected_gid = attachment_owner_ids()
+        for position, attachment in enumerate(attachments, start=1):
+            source_stat = validate_owned_path(
+                attachment.content_path, 0o600, expected_uid, expected_gid, False
+            )
+            content = read_owned_file(
+                attachment.content_path, source_stat, MAX_ATTACHMENT_BYTES
+            )
+            if (
+                len(content) != attachment.size_bytes
+                or hashlib.sha256(content).hexdigest() != attachment.sha256
+                or not content_matches_type(attachment.content_type, content[:12])
+            ):
+                reject("attachment materialization rejected")
+            target = execution_root / (
+                f"{position:02d}-{attachment.attachment_id}"
+                + extensions[attachment.content_type]
+            )
+            try:
+                descriptor = os.open(
+                    target,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                    0o600,
+                )
+                try:
+                    written = 0
+                    while written < len(content):
+                        written += os.write(descriptor, content[written:])
+                    os.fsync(descriptor)
+                    os.fchmod(descriptor, 0o600)
+                    os.fchown(descriptor, jose_uid, jose_gid)
+                finally:
+                    os.close(descriptor)
+            except OSError:
+                reject("attachment materialization rejected")
+            created.append(MaterializedAttachment(
+                attachment.attachment_id, attachment.content_type, target
+            ))
+        yield created
+    finally:
+        for attachment in reversed(created):
+            try:
+                attachment.path.unlink()
+            except FileNotFoundError:
+                pass
+        try:
+            execution_root.rmdir()
+        except OSError:
+            pass
+
+
 def checked(command: list[str], cwd: Path) -> str:
     if command and command[0] == "git":
         command = ["git", "-c", f"safe.directory={cwd}", *command[1:]]
@@ -646,6 +747,7 @@ def sandbox_command(
     instruction_mask_path: Path,
     instruction_bundle: str,
     execution_id: str,
+    materialized_attachments: list[MaterializedAttachment] | tuple[MaterializedAttachment, ...] = (),
 ) -> list[str]:
     command = [
         "/usr/bin/systemd-run",
@@ -717,14 +819,30 @@ def sandbox_command(
         "-C", str(worktree),
         "--json", "--output-last-message", str(final_path),
     ]
-    if workload["kind"] == PROFILED_CAPABILITY:
+    if materialized_attachments:
+        mounts = [
+            "--dir", str(MATERIALIZATION_ROOT.parent.parent),
+            "--dir", str(MATERIALIZATION_ROOT.parent),
+            "--dir", str(MATERIALIZATION_ROOT),
+        ]
+        mounts.extend(["--dir", str(materialized_attachments[0].path.parent)])
+        for attachment in materialized_attachments:
+            mounts.extend(["--ro-bind", str(attachment.path), str(attachment.path)])
+        mount_index = command.index("--setenv")
+        command[mount_index:mount_index] = mounts
+    if workload["kind"] in {PROFILED_CAPABILITY, IMAGE_CAPABILITY}:
         command.extend([
             "--model", workload["modelId"],
             "--config", "model_reasoning_effort=" + json.dumps(workload["reasoningEffort"]),
         ])
     if workload["threadId"] is not None:
-        command.extend(["resume", workload["threadId"], "-"])
+        command.append("resume")
+        for attachment in materialized_attachments:
+            command.extend(["--image", str(attachment.path)])
+        command.extend([workload["threadId"], "-"])
     else:
+        for attachment in materialized_attachments:
+            command.extend(["--image", str(attachment.path)])
         command.append("-")
     return command
 
@@ -736,6 +854,7 @@ def execute(
     instruction_bundle: str,
     execution_id: str,
     timeout: int,
+    materialized_attachments: list[MaterializedAttachment] | tuple[MaterializedAttachment, ...] = (),
 ) -> dict[str, str]:
     with tempfile.TemporaryDirectory(
         prefix=".atenea-codex-result-",
@@ -762,6 +881,7 @@ def execute(
             instruction_mask_path,
             instruction_bundle,
             execution_id,
+            materialized_attachments,
         )
         process = subprocess.Popen(
             command,
@@ -813,9 +933,9 @@ def execute(
             "finalAnswer": final_answer,
             "outputSummary": f"{CAPABILITY} completed",
         }
-        if workload["kind"] == PROFILED_CAPABILITY:
+        if workload["kind"] in {PROFILED_CAPABILITY, IMAGE_CAPABILITY}:
             result.update({
-                "outputSummary": f"{PROFILED_CAPABILITY} completed",
+                "outputSummary": f"{workload['kind']} completed",
                 "progressEvents": normalize_codex_events(stream),
                 **effective_profile(workload),
             })
@@ -842,17 +962,19 @@ def main() -> int:
     common_dir = validate_worktree(worktree, record)
     instruction_bundle = validate_instruction_bundle(worktree)
     verified_attachments = validate_attachment_references(request, workload, config)
-    if verified_attachments:
-        reject("Codex execution failed: image delivery unavailable")
     try:
-        result = execute(
-            workload,
-            worktree,
-            common_dir,
-            instruction_bundle,
-            request["executionId"],
-            args.timeout,
-        )
+        with materialize_attachments(
+            verified_attachments, request["executionId"]
+        ) as materialized:
+            result = execute(
+                workload,
+                worktree,
+                common_dir,
+                instruction_bundle,
+                request["executionId"],
+                args.timeout,
+                materialized,
+            )
     except SystemExit:
         raise
     except Exception as exception:

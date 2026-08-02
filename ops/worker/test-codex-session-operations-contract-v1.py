@@ -62,6 +62,9 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
             "imageDispatch": read_json(
                 CONTRACT / "agent-run-project-codex-v3.request.schema.json"
             ),
+            "imageResult": read_json(
+                CONTRACT / "agent-run-project-codex-v3.result.schema.json"
+            ),
             "result": read_json(
                 CONTRACT / "agent-run-project-codex-v2.result.schema.json"
             ),
@@ -300,6 +303,16 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
             ],
         })
         self.assert_schema_valid("imageDispatch", image_dispatch)
+        self.assert_schema_valid("imageResult", {
+            "threadId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "turnId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "finalAnswer": "Synthetic image contract accepted.",
+            "outputSummary": "project-codex-v3 completed",
+            "modelId": image_dispatch["workload"]["modelId"],
+            "reasoningEffort": image_dispatch["workload"]["reasoningEffort"],
+            "catalogRevision": image_dispatch["workload"]["catalogRevision"],
+            "codexVersion": image_dispatch["workload"]["codexVersion"],
+        })
 
         denied = []
         for mutation in (

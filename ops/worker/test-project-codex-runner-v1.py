@@ -199,6 +199,134 @@ class ProjectCodexContractTest(unittest.TestCase):
                 content_path.stat().st_mode, metadata_path.stat().st_mode,
             ))
 
+    def test_two_images_are_materialized_and_bound_read_only_in_order(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_root = Path(temporary)
+            retained_root = temporary_root / "attachments-v1"
+            retained_root.mkdir()
+            request, first_content_path, first_metadata_path = self.image_fixture(
+                retained_root
+            )
+            session_id = request["sessionId"]
+            second_id = "55555555-5555-4555-8555-555555555555"
+            second_content = b"RIFF\x08\x00\x00\x00WEBPsynthetic"
+            second_digest = hashlib.sha256(second_content).hexdigest()
+            second_root = retained_root / "work-sessions" / session_id / second_id
+            second_root.mkdir(mode=0o700)
+            second_content_path = second_root / "content"
+            second_metadata_path = second_root / "metadata.json"
+            second_content_path.write_bytes(second_content)
+            second_metadata = json.loads(first_metadata_path.read_text(encoding="utf-8"))
+            second_metadata.update({
+                "attachmentId": second_id,
+                "storageIdentity": f"work-sessions/{session_id}/{second_id}/content",
+                "contentType": "image/webp",
+                "sizeBytes": len(second_content),
+                "sha256": second_digest,
+            })
+            second_metadata_path.write_text(
+                json.dumps(second_metadata, sort_keys=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+            second_content_path.chmod(0o600)
+            second_metadata_path.chmod(0o600)
+            request["workload"]["attachments"].append({
+                "attachmentId": second_id,
+                "contentType": "image/webp",
+                "sizeBytes": len(second_content),
+                "sha256": second_digest,
+            })
+            materialization_root = temporary_root / "run" / "atenea" / "codex-images"
+            materialization_root.mkdir(parents=True)
+            materialization_root.chmod(0o710)
+            owner = (os.getuid(), os.getgid())
+            sources_before = (
+                first_content_path.read_bytes(), first_metadata_path.read_bytes(),
+                second_content_path.read_bytes(), second_metadata_path.read_bytes(),
+            )
+            with patch.object(MODULE, "ATTACHMENT_ROOT", retained_root), patch.object(
+                MODULE, "MATERIALIZATION_ROOT", materialization_root
+            ), patch.object(
+                MODULE, "attachment_owner_ids", return_value=owner
+            ), patch.object(
+                MODULE,
+                "materialization_owner_ids",
+                return_value=(os.getuid(), os.getgid(), os.getuid(), os.getgid()),
+            ):
+                verified = MODULE.validate_attachment_references(
+                    request,
+                    request["workload"],
+                    {"attachmentRoot": str(retained_root)},
+                )
+                with MODULE.materialize_attachments(
+                    verified, request["executionId"]
+                ) as materialized:
+                    self.assertEqual(
+                        [item["attachmentId"] for item in request["workload"]["attachments"]],
+                        [item.attachment_id for item in materialized],
+                    )
+                    self.assertTrue(all(item.path.stat().st_mode & 0o777 == 0o600 for item in materialized))
+                    self.assertEqual(0o700, materialized[0].path.parent.stat().st_mode & 0o777)
+                    command = MODULE.sandbox_command(
+                        request["workload"],
+                        Path("/srv/atenea/workspaces/sessions") / session_id / "atenea",
+                        MODULE.GIT_COMMON_DIR,
+                        temporary_root / "final.txt",
+                        temporary_root / "resolv.conf",
+                        temporary_root / "empty-instructions",
+                        "reviewed instructions",
+                        request["executionId"],
+                        materialized,
+                    )
+                    image_paths = [
+                        command[index + 1]
+                        for index, value in enumerate(command)
+                        if value == "--image"
+                    ]
+                    bind_sources = [
+                        command[index + 1]
+                        for index, value in enumerate(command)
+                        if value == "--ro-bind"
+                        and command[index + 1] in {str(item.path) for item in materialized}
+                    ]
+                    self.assertEqual([str(item.path) for item in materialized], image_paths)
+                    self.assertEqual(image_paths, bind_sources)
+                    self.assertNotIn(str(retained_root), command)
+                    self.assertNotIn(str(first_content_path), command)
+                    self.assertEqual("-", command[-1])
+
+                    resumed = json.loads(json.dumps(request["workload"]))
+                    resumed["threadId"] = "66666666-6666-4666-8666-666666666666"
+                    resumed_command = MODULE.sandbox_command(
+                        resumed,
+                        Path("/srv/atenea/workspaces/sessions") / session_id / "atenea",
+                        MODULE.GIT_COMMON_DIR,
+                        temporary_root / "final.txt",
+                        temporary_root / "resolv.conf",
+                        temporary_root / "empty-instructions",
+                        "reviewed instructions",
+                        request["executionId"],
+                        materialized,
+                    )
+                    resumed_images = [
+                        resumed_command[index + 1]
+                        for index, value in enumerate(resumed_command)
+                        if value == "--image"
+                    ]
+                    self.assertEqual(image_paths, resumed_images)
+                    resume_index = resumed_command.index("resume")
+                    self.assertTrue(all(
+                        resumed_command.index("--image", resume_index) > resume_index
+                        for _item in materialized
+                    ))
+                    self.assertEqual([resumed["threadId"], "-"], resumed_command[-2:])
+                self.assertFalse((materialization_root / request["executionId"]).exists())
+                self.assertEqual([], list(materialization_root.iterdir()))
+            self.assertEqual(sources_before, (
+                first_content_path.read_bytes(), first_metadata_path.read_bytes(),
+                second_content_path.read_bytes(), second_metadata_path.read_bytes(),
+            ))
+
     def test_sidecar_file_and_request_identity_must_match_before_delivery(self):
         cases = (
             ("project", lambda request, metadata, content: metadata.__setitem__(
