@@ -1265,6 +1265,92 @@ select:focus {
   white-space: nowrap;
 }
 
+.pending-image-list {
+  width: min(1148px, 100%);
+  margin: 0 auto;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  list-style: none;
+}
+
+.pending-image {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid #3b4448;
+  border-radius: 4px;
+  background: #171b1d;
+}
+
+.pending-image--ready {
+  border-color: #286d50;
+}
+
+.pending-image--error {
+  border-color: #a7544f;
+}
+
+.pending-image > img {
+  width: 42px;
+  height: 42px;
+  border-radius: 3px;
+  object-fit: cover;
+  background: #1e252b;
+}
+
+.pending-image__copy,
+.pending-image__copy strong,
+.pending-image__copy small,
+.pending-image__copy em {
+  min-width: 0;
+  display: block;
+}
+
+.pending-image__copy strong,
+.pending-image__copy em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-image__copy strong {
+  color: #e7ece9;
+  font-size: 12px;
+}
+
+.pending-image__copy small,
+.pending-image__copy em {
+  color: #9aa5a8;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.pending-image--error .pending-image__copy em {
+  color: #ffb4ab;
+}
+
+.pending-image > button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #c1c9c8;
+}
+
+.pending-image > button:hover:not(:disabled) {
+  background: #303638;
+  color: #ffffff;
+}
+
 .execution-profile {
   width: min(1148px, 100%);
   margin: 0 auto;
@@ -1548,5 +1634,9 @@ select:focus {
   .attachment-composer-action {
     grid-column: 2 / -1;
     justify-content: center;
+  }
+
+  .pending-image-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

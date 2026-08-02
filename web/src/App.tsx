@@ -840,10 +840,22 @@ function PreviewPanel({
   );
 }
 
+type PendingImageStatus = "UPLOADING" | "READY" | "ERROR";
+
+interface PendingImage {
+  localId: string;
+  filename: string;
+  sizeBytes: number;
+  previewUrl: string;
+  status: PendingImageStatus;
+  attachment?: WorkSessionAttachment;
+  error?: string;
+}
+
 function ConversationScreen({ sessionId, projectId }: { sessionId: number; projectId?: number }) {
   const [conversation, setConversation] = useState<MobileWorkSessionConversation | null>(null);
   const [attachmentCapability, setAttachmentCapability] = useState<WorkSessionAttachmentCapability | null>(null);
-  const [selectedAttachments, setSelectedAttachments] = useState<WorkSessionAttachment[]>([]);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [attachmentCapabilityLoading, setAttachmentCapabilityLoading] = useState(true);
@@ -864,6 +876,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   const [recoveryNotice, setRecoveryNotice] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
   const uploadInProgress = useRef(false);
+  const previewUrls = useRef(new Set<string>());
 
   async function loadProfile() {
     setProfileLoading(true);
@@ -910,10 +923,17 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   }
 
   useEffect(() => {
-    setSelectedAttachments([]);
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
+    setPendingImages([]);
     uploadInProgress.current = false;
     load();
   }, [sessionId]);
+
+  useEffect(() => () => {
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
+  }, []);
 
   useEffect(() => {
     const runId = conversation?.latestRun?.id;
@@ -1038,32 +1058,54 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     uploadInProgress.current = true;
     setUploading(true);
     setAttachmentError("");
-    let nextSelection = [...selectedAttachments];
+    let nextImages = [...pendingImages];
     try {
       for (const file of files) {
-        if (!attachmentCapability.acceptedContentTypes.includes(file.type)) {
-          throw new Error("Usa una imagen PNG, JPEG o WebP.");
-        }
-        if (nextSelection.length >= attachmentCapability.maxAttachmentsPerTurn) {
+        if (nextImages.length >= attachmentCapability.maxAttachmentsPerTurn) {
           throw new Error(`Puedes seleccionar hasta ${attachmentCapability.maxAttachmentsPerTurn} imágenes por mensaje.`);
         }
-        if (file.size > attachmentCapability.maxFileBytes) {
-          throw new Error(`La imagen supera el máximo de ${formatBytes(attachmentCapability.maxFileBytes)}.`);
-        }
-        const selectedBytes = nextSelection.reduce((total, attachment) => total + attachment.sizeBytes, 0);
-        if (selectedBytes + file.size > attachmentCapability.maxAttachmentBytesPerTurn) {
-          throw new Error(`Las imágenes del mensaje superan ${formatBytes(attachmentCapability.maxAttachmentBytesPerTurn)}.`);
-        }
-        if (file.size > attachmentCapability.remainingSessionBytes) {
-          throw new Error("La sesión no tiene cuota suficiente para esta imagen.");
-        }
-        const attachment = await api.uploadWorkSessionAttachment(sessionId, {
-          file,
-          idempotencyKey: crypto.randomUUID()
-        });
-        if (!nextSelection.some((selected) => selected.id === attachment.id)) {
-          nextSelection = [...nextSelection, attachment];
-          setSelectedAttachments(nextSelection);
+        const previewUrl = URL.createObjectURL(file);
+        previewUrls.current.add(previewUrl);
+        const pending: PendingImage = {
+          localId: crypto.randomUUID(),
+          filename: file.name || "imagen",
+          sizeBytes: file.size,
+          previewUrl,
+          status: "UPLOADING"
+        };
+        nextImages = [...nextImages, pending];
+        setPendingImages(nextImages);
+        try {
+          if (!attachmentCapability.acceptedContentTypes.includes(file.type)) {
+            throw new Error("Usa una imagen PNG, JPEG o WebP.");
+          }
+          if (file.size > attachmentCapability.maxFileBytes) {
+            throw new Error(`La imagen supera el máximo de ${formatBytes(attachmentCapability.maxFileBytes)}.`);
+          }
+          const selectedBytes = nextImages
+            .filter((image) => image.localId !== pending.localId && image.status === "READY")
+            .reduce((total, image) => total + image.sizeBytes, 0);
+          if (selectedBytes + file.size > attachmentCapability.maxAttachmentBytesPerTurn) {
+            throw new Error(`Las imágenes del mensaje superan ${formatBytes(attachmentCapability.maxAttachmentBytesPerTurn)}.`);
+          }
+          if (file.size > attachmentCapability.remainingSessionBytes) {
+            throw new Error("La sesión no tiene cuota suficiente para esta imagen.");
+          }
+          const attachment = await api.uploadWorkSessionAttachment(sessionId, {
+            file,
+            idempotencyKey: crypto.randomUUID()
+          });
+          nextImages = nextImages.map((image) => image.localId === pending.localId
+            ? { ...image, status: "READY", attachment }
+            : image);
+          setPendingImages(nextImages);
+        } catch (uploadError) {
+          const message = errorMessage(uploadError);
+          nextImages = nextImages.map((image) => image.localId === pending.localId
+            ? { ...image, status: "ERROR", error: message }
+            : image);
+          setPendingImages(nextImages);
+          setAttachmentError(message);
         }
       }
     } catch (uploadError) {
@@ -1094,6 +1136,18 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       return;
     }
     void uploadPendingImages(files);
+  }
+
+  function removePendingImage(localId: string) {
+    setPendingImages((current) => {
+      const removed = current.find((image) => image.localId === localId);
+      if (removed) {
+        URL.revokeObjectURL(removed.previewUrl);
+        previewUrls.current.delete(removed.previewUrl);
+      }
+      return current.filter((image) => image.localId !== localId);
+    });
+    setAttachmentError("");
   }
 
   return (
@@ -1136,9 +1190,10 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
           loading={attachmentCapabilityLoading}
           uploading={uploading}
           error={attachmentError}
-          selectedCount={selectedAttachments.length}
+          selectedCount={pendingImages.filter((image) => image.status === "READY").length}
           onPick={pickPendingImages}
         />
+        <PendingImageChips images={pendingImages} onRemove={removePendingImage} />
         <div className="conversation-composer__input">
           <textarea disabled={!conversation?.canCreateTurn} value={message} onChange={(event) => setMessage(event.target.value)} onPaste={pastePendingImages} placeholder={conversation?.canCreateTurn ? "Instrucción para Codex dentro de esta sesión..." : "Espera a que termine la ejecución actual..."} />
           <Button variant="primary" disabled={loading || !message.trim() || !conversation?.canCreateTurn || profileDirty || Boolean(profileError)}>{loading ? "Enviando" : "Enviar"}</Button>
@@ -1458,6 +1513,36 @@ function AttachmentComposerState({
         </label>
       )}
     </section>
+  );
+}
+
+function PendingImageChips({ images, onRemove }: { images: PendingImage[]; onRemove: (localId: string) => void }) {
+  if (!images.length) {
+    return null;
+  }
+  return (
+    <ul className="pending-image-list" aria-label="Imágenes seleccionadas">
+      {images.map((image) => (
+        <li className={`pending-image pending-image--${image.status.toLowerCase()}`} key={image.localId}>
+          <img src={image.previewUrl} alt="" />
+          <span className="pending-image__copy">
+            <strong title={image.filename}>{image.filename}</strong>
+            <small>
+              {formatBytes(image.sizeBytes)} · {image.status === "UPLOADING" ? "Subiendo" : image.status === "READY" ? "Lista" : "Error"}
+            </small>
+            {image.error && <em title={image.error}>{image.error}</em>}
+          </span>
+          <button
+            type="button"
+            aria-label={`Quitar ${image.filename}`}
+            disabled={image.status === "UPLOADING"}
+            onClick={() => onRemove(image.localId)}
+          >
+            <X />
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
