@@ -8420,3 +8420,31 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.5-fail-closed-fixture-matrix`;
 the SHA-256 of its `SHA256SUMS` is
 `c7d3fe5fe374d3a574d5f5e754fdad4e338687bf24f71fbd3ed10c680d2cb134`.
+
+Task 5.6 is complete and change progress is `54/83`; the exact resume point is
+task 5.7. The runner exercised forced failure, timeout,
+cancellation/interruption and closed process exit after exact image
+materialization. Every path emptied its execution-owned materialization in
+`finally`, while retained source and sidecar bytes remained identical.
+New-thread, resumed-thread and timeout execution created one bounded process,
+terminated the timeout process group and retained zero temporary image.
+
+The AgentRun worker cancelled only the exact execution while an unrelated one
+completed, and restart reconciliation refused to duplicate an uncertain
+process. Attachment storage rejected integrity/type failure with zero indexed
+content and zero `.incoming` residue. Project runner, AgentRun worker and
+WorkSession attachment service passed `22/22`, `54/54` and `17/17`
+respectively (`93/93`) in 11 seconds. Actual Codex-execution and browser-process
+counts were `0 -> 0`; known test/materialization roots and bytecode are zero.
+
+Candidate Atenea remains clean and published at
+`99bda7d1a93f9aa5e9f6e3e8f9f0365cef36ce59`; programme/worker and canonical
+Atenea remain clean. Production, preview and Beautips return HTTP 200; required
+AX42 services/timers are active; RAID remains `[UU]`; slots remain `3/0/0/3`.
+No real process or service was cancelled/restarted and no rollout or unrelated
+mutation occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.6-terminal-cleanup`;
+the SHA-256 of its `SHA256SUMS` is
+`a994288aa1f3124596c9f05992379921dca2919dfe284fb1b27ed10ca41c868a`.
