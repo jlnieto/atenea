@@ -7441,3 +7441,45 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.10-safe-image-retry`;
 the SHA-256 of its `SHA256SUMS` is
 `c751319208a23d131026bfc0f160b036129389875ab78af9f90c52d0c86dc999`.
+
+Task 2.11 is complete and change progress is `25/83`; the exact resume point
+is task 2.12. Atenea commit
+`f6e628abcae200f9ab04a9ce98140d5d3f1e0ac0` adds the closed
+`project-codex-v3` control-plane serialization.
+
+An image-bearing profiled AgentRun uses the same persisted project, canonical
+source, reviewed instruction bundle and workspace authority as v1/v2. Its sole
+additional workload field is an ordered `attachments` array. Every entry
+contains exactly `attachmentId`, `contentType`, `sizeBytes` and `sha256`;
+filenames, content bytes, paths, URLs, storage identities, remote/workspace
+identities, worker identity and arbitrary options are absent.
+
+The array is reconstructed from the immutable origin-turn binding order and
+indexed V62 metadata rather than caller input. Before serialization, Atenea
+requires exact policy, project, session, worker, remote-session, workspace and
+real-storage ownership, contiguous unique positions, supported image metadata
+and complete indexed identity. It recomputes the ordered canonical manifest
+and compares attachment count, combined bytes and SHA-256 with the AgentRun
+snapshot. Partial, foreign, reordered or changed state returns conflict before
+network dispatch. Array order participates in the serialized workload and a
+test proves reordering changes its SHA-256 fingerprint.
+
+The final combined slice passed `58/58` tests in 17 seconds under a 300-second
+timeout against PostgreSQL 16 migrated from empty through V62. It covered
+manifest projection, v1/v2/v3 client compatibility, coordinator workspace
+admission, retained recovery, AgentRun behavior and atomic V62 persistence.
+The exact serialization repetition passed `23/23`; exact fixture rows and the
+uniquely named PostgreSQL container were removed.
+
+The implementation branch is clean and published with tree
+`545c1d599c39771bc0ac3ec6c1dbe221db0b6a47`. Canonical Atenea remains clean
+and synchronized at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`;
+production, preview and Beautips return HTTP 200; required AX42 services and
+backup timers are active; RAID remains `3/3 [UU]`; rootless slots remain
+`3/0/0/3`. No deployment, migration, production record, attachment ownership,
+retained content, route, credential or service changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.11-closed-v3-serialization`;
+the SHA-256 of its `SHA256SUMS` is
+`10a21bfcd0ec852fe0ddc47abf24a3aedc7fb97ffa47bda84c15e84799002852`.
