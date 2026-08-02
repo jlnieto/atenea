@@ -114,6 +114,16 @@ project_config_install_finalize "${PREFLIGHT_SHA256}"
 [[ "$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)" == "${PRESERVED_CONFIG_SHA256}" ]] \
   || fail "installer finalize rewrote the existing configuration"
 
+jq 'del(.attachmentRoot)' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.legacy"
+mv "${PROJECT_CONFIG}.legacy" "${PROJECT_CONFIG}"
+LEGACY_CONFIG_SHA256="$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)"
+LEGACY_PREFLIGHT_SHA256="$(project_config_install_preflight)"
+[[ "${LEGACY_PREFLIGHT_SHA256}" == "${LEGACY_CONFIG_SHA256}" ]] \
+  || fail "installer preflight did not retain the exact legacy configuration"
+project_config_install_finalize "${LEGACY_PREFLIGHT_SHA256}"
+[[ "$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)" == "${LEGACY_CONFIG_SHA256}" ]] \
+  || fail "installer finalize rewrote the exact legacy configuration"
+
 if jq '.foreignAuthority = true' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.ambiguous" \
     && mv "${PROJECT_CONFIG}.ambiguous" "${PROJECT_CONFIG}" \
     && ( project_config_install_preflight ) >/dev/null 2>&1; then

@@ -259,8 +259,9 @@ def validate_config(
         "projectId", "repository", "branch",
         "commit", "manifestSha256", "runner", "workspaces",
     }
+    accepted_key_sets = {frozenset(required)}
     if PROJECT_ID == "atenea":
-        required.add("attachmentRoot")
+        accepted_key_sets.add(frozenset(required | {"attachmentRoot"}))
     exact = {
         "schemaVersion": CAPABILITY,
         "projectId": PROJECT_ID,
@@ -269,11 +270,13 @@ def validate_config(
         "manifestSha256": MANIFEST_SHA256,
         "runner": str(runner),
     }
-    if PROJECT_ID == "atenea":
-        exact["attachmentRoot"] = str(ATTACHMENT_ROOT)
     if (
-        set(config) != required
+        frozenset(config) not in accepted_key_sets
         or any(config.get(key) != value for key, value in exact.items())
+        or (
+            "attachmentRoot" in config
+            and config.get("attachmentRoot") != str(ATTACHMENT_ROOT)
+        )
         or not isinstance(config.get("commit"), str)
         or COMMIT_PATTERN.fullmatch(config["commit"]) is None
         or (BASE_COMMIT is not None and config["commit"] != BASE_COMMIT)

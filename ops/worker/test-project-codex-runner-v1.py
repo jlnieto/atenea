@@ -161,13 +161,16 @@ class ProjectCodexContractTest(unittest.TestCase):
             self.assertNotIn("token-value", reason)
             self.assertNotIn("/secret/path", reason)
 
-    def test_atenea_configuration_binds_one_non_caller_attachment_root(self):
+    def test_atenea_configuration_preserves_legacy_text_routing_until_attachment_activation(self):
         runner = Path(MODULE.__file__).resolve()
         config = self.atenea_config()
         MODULE.validate_config(config, runner)
 
+        legacy = json.loads(json.dumps(config))
+        legacy.pop("attachmentRoot")
+        MODULE.validate_config(legacy, runner)
+
         for mutation in (
-            lambda value: value.pop("attachmentRoot"),
             lambda value: value.__setitem__("attachmentRoot", "/srv/foreign"),
             lambda value: value.__setitem__("attachmentRoots", [str(MODULE.ATTACHMENT_ROOT)]),
         ):

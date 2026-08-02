@@ -1898,6 +1898,18 @@ class WorkerState:
         legacy["kind"] = PROJECT_CAPABILITY
         self._validate_project(request, legacy)
         if kind == PROJECT_V3_CAPABILITY:
+            route = self._project_route(workload.get("projectId"))
+            if (
+                route is None
+                or self._read_project_config(
+                    route, require_execution=True
+                ).get("attachmentRoot") != PROJECT_ATTACHMENT_ROOT
+            ):
+                raise ProtocolError(
+                    HTTPStatus.FORBIDDEN,
+                    "project_disabled",
+                    "image-bearing project configuration is not activated",
+                )
             self._validate_project_attachments(workload["attachments"])
 
     def _validate_project_attachments(self, attachments: Any) -> None:
@@ -2026,13 +2038,17 @@ class WorkerState:
             "commit", "manifestSha256", "runner", "workspaces",
         }
         exact = {"schemaVersion": PROJECT_CAPABILITY, **route["identity"]}
+        accepted_key_sets = {frozenset(required)}
         if route["identity"]["projectId"] == PROJECT_ID:
-            required.add("attachmentRoot")
-            exact["attachmentRoot"] = PROJECT_ATTACHMENT_ROOT
+            accepted_key_sets.add(frozenset(required | {"attachmentRoot"}))
         if (
             not isinstance(parsed, dict)
-            or set(parsed) != required
+            or frozenset(parsed) not in accepted_key_sets
             or any(parsed.get(key) != value for key, value in exact.items())
+            or (
+                "attachmentRoot" in parsed
+                and parsed.get("attachmentRoot") != PROJECT_ATTACHMENT_ROOT
+            )
             or not isinstance(parsed.get("commit"), str)
             or COMMIT_PATTERN.fullmatch(parsed["commit"]) is None
             or parsed.get("selectionEnabled") is not True

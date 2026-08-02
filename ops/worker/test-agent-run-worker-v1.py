@@ -919,6 +919,29 @@ print(json.dumps({
         self.assertEqual("SUCCEEDED", terminal["status"])
         self.assertEqual(thread_id, terminal["result"]["threadId"])
 
+    def test_legacy_configuration_preserves_text_routing_and_rejects_images(self):
+        config = json.loads(self.config.read_text(encoding="utf-8"))
+        config.pop("attachmentRoot")
+        self.config.write_text(json.dumps(config), encoding="utf-8")
+
+        text_request = self.request()
+        created, was_created = self.state.create(text_request)
+        self.assertTrue(was_created)
+        self.assertEqual(
+            "SUCCEEDED", self.wait_terminal(text_request["dispatchId"])["status"]
+        )
+        self.assertEqual(
+            created["executionId"],
+            self.state.executions[text_request["dispatchId"]]["executionId"],
+        )
+
+        image_request = self.image_request()
+        with self.assertRaisesRegex(
+            MODULE.ProtocolError, "image-bearing project configuration is not activated"
+        ):
+            self.state.create(image_request)
+        self.assertNotIn(image_request["dispatchId"], self.state.executions)
+
     def test_profiled_fingerprint_binds_model_effort_and_exact_workspace(self):
         high = self.profiled_request(effort="high")
         medium = json.loads(json.dumps(high))

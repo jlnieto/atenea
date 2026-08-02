@@ -38,8 +38,8 @@ PROJECT_REF="refs/remotes/origin/${PROJECT_BRANCH}"
 PROJECT_WORKSPACES_ROOT="/srv/atenea/workspaces/sessions"
 SERVICE_TEMPLATE_SHA256="0368f8769a6b4c505c0bb58f6cf88db1d5aa45437eb35602c4227f615a2650bc"
 MATERIALIZATION_SERVICE_TEMPLATE_SHA256="df3a3fa0d75472d8aaf6847c58b4bace6e7ed2f7d532f1f86c8c562cda2387a6"
-PROGRAM_SHA256="cdc3597b6b0cb2262cc6a6a332d17029a76c70e68696c537f6ab49e289e45872"
-PROJECT_RUNNER_SHA256="64f06d73f366dd403f542318fa6da5ec48b4985327a0f5a07d7cb9c26f8b7aee"
+PROGRAM_SHA256="b84eff7b123bb9de58fd8bf4691c868dd8de1620d1961f3771204ac3be5b7b4a"
+PROJECT_RUNNER_SHA256="eadc654ce7a6a6cf12cef64abcdaf212e1d0aff43234c635b52682fed3c8148b"
 PLATFORM_INSTRUCTIONS_SHA256="44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"
 
 fail() {
@@ -213,12 +213,16 @@ observe_project_commit() {
 }
 
 verify_project_config_content() {
-  jq -e '(keys | sort) == ["attachmentRoot", "branch", "commit",
+  jq -e '((keys | sort) == ["attachmentRoot", "branch", "commit",
       "executionEnabled", "manifestSha256", "projectId", "repository",
-      "runner", "schemaVersion", "selectionEnabled", "workspaces"] and
+      "runner", "schemaVersion", "selectionEnabled", "workspaces"] or
+    (keys | sort) == ["branch", "commit", "executionEnabled",
+      "manifestSha256", "projectId", "repository", "runner",
+      "schemaVersion", "selectionEnabled", "workspaces"]) and
     .schemaVersion == "project-codex-v1" and
     .projectId == "atenea" and
-    .attachmentRoot == "/srv/atenea/attachments-v1" and
+    ((has("attachmentRoot") | not) or
+      .attachmentRoot == "/srv/atenea/attachments-v1") and
     (.commit | test("^[0-9a-f]{40}$")) and
     (.selectionEnabled | type == "boolean") and
     (.executionEnabled | type == "boolean") and

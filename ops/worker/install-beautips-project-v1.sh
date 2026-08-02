@@ -50,12 +50,12 @@ INSTALLED_INSTALLER="${LIBEXEC}/install-beautips-project-v1.sh"
 
 declare -A HASHES=(
   [beautips-operation-mediator-v1.py]='8dea2cb1fbabf126b61aef720f8076d18425aa111e426aefa4317f181e1101f9'
-  [beautips-project-codex-runner-v1.py]='d7fd869824f1786c37757221acadaa7e9c6d93cb520d173fbefadba5e2bede26'
+  [beautips-project-codex-runner-v1.py]='60d54f1e6e6eaf1edea43e9bf3b0800226a413b4feee5a59ce8152954d97b983'
   [beautips-secret-boundary-v1.py]='6f79b5f4cfae1924a479d541e4189c3db9cc8abcb0357a38603bdc7d7d4d21b1'
   [beautips-runtime-operations-v1.json]='a334708bb1a052b413f7b3068408d17472099a439d7afb6117d4d86dce342350'
   [project-codex-allowlist-v1.json]='b26f66203f83e77fde377f0e8f9dad2d82c7ba80636ecd169f18f354a3138c62'
 )
-BASE_RUNNER_SHA256='64f06d73f366dd403f542318fa6da5ec48b4985327a0f5a07d7cb9c26f8b7aee'
+BASE_RUNNER_SHA256='eadc654ce7a6a6cf12cef64abcdaf212e1d0aff43234c635b52682fed3c8148b'
 
 source_path() {
   printf '%s/%s\n' "${SCRIPT_DIR}" "$1"
