@@ -11,6 +11,7 @@ SERVICE="atenea-agent-run-worker-v1.service"
 MATERIALIZATION_SERVICE="atenea-codex-images-v1.service"
 PROGRAM="/usr/local/libexec/atenea/agent-run-worker-v1.py"
 PROJECT_RUNNER="/usr/local/libexec/atenea/project-codex-runner-v1.py"
+BEAUTIPS_PROJECT_RUNNER="/usr/local/libexec/atenea/beautips-project-codex-runner-v1.py"
 VALIDATION_MEDIATOR="/usr/local/libexec/atenea/atenea-validation-v1.sh"
 PLAYWRIGHT_VALIDATOR="/usr/local/libexec/atenea/atenea-playwright-validation-v1.sh"
 PLAYWRIGHT_CHECK="/usr/local/libexec/atenea/atenea-playwright-validation-v1.js"
@@ -40,6 +41,8 @@ SERVICE_TEMPLATE_SHA256="0368f8769a6b4c505c0bb58f6cf88db1d5aa45437eb35602c4227f6
 MATERIALIZATION_SERVICE_TEMPLATE_SHA256="df3a3fa0d75472d8aaf6847c58b4bace6e7ed2f7d532f1f86c8c562cda2387a6"
 PROGRAM_SHA256="b84eff7b123bb9de58fd8bf4691c868dd8de1620d1961f3771204ac3be5b7b4a"
 PROJECT_RUNNER_SHA256="eadc654ce7a6a6cf12cef64abcdaf212e1d0aff43234c635b52682fed3c8148b"
+BEAUTIPS_PROJECT_RUNNER_SHA256="60d54f1e6e6eaf1edea43e9bf3b0800226a413b4feee5a59ce8152954d97b983"
+BEAUTIPS_PROJECT_RUNNER_PREDECESSOR_SHA256="55e8f585e19f6a19d3c51aaf7532b1cf0f74f6b087ae0d1ef67faaea3029b73b"
 PLATFORM_INSTRUCTIONS_SHA256="44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"
 
 fail() {
@@ -109,6 +112,21 @@ verify_project_runner_sudoers() {
     || fail "project runner sudo authority is not exact"
 }
 
+verify_beautips_project_runner_file_identity() {
+  [[ -f "$BEAUTIPS_PROJECT_RUNNER" && ! -L "$BEAUTIPS_PROJECT_RUNNER" \
+      && "$(stat -c '%a:%U:%G' "$BEAUTIPS_PROJECT_RUNNER")" == "755:root:root" ]] \
+    || fail "existing Beautips project runner identity is invalid"
+}
+
+verify_beautips_project_runner_upgrade() {
+  verify_beautips_project_runner_file_identity
+  local digest
+  digest="$(sha256sum "$BEAUTIPS_PROJECT_RUNNER" | cut -d' ' -f1)"
+  [[ "$digest" == "$BEAUTIPS_PROJECT_RUNNER_PREDECESSOR_SHA256" \
+      || "$digest" == "$BEAUTIPS_PROJECT_RUNNER_SHA256" ]] \
+    || fail "existing Beautips project runner is not an accepted predecessor"
+}
+
 tailscale_ipv4() {
   ip -4 -o address show dev tailscale0 scope global \
     | awk 'NR == 1 { split($4, value, "/"); print value[1] }'
@@ -120,6 +138,8 @@ validate_inputs() {
   [[ "$WORKER_ID" =~ ^[a-zA-Z0-9._-]{1,80}$ ]] || fail "worker id is invalid"
   [[ -f "$SCRIPT_DIR/agent-run-worker-v1.py" ]] || fail "worker program is missing"
   [[ -f "$SCRIPT_DIR/project-codex-runner-v1.py" ]] || fail "project runner is missing"
+  [[ -f "$SCRIPT_DIR/beautips-project-codex-runner-v1.py" ]] \
+    || fail "Beautips compatibility runner is missing"
   [[ -f "$SCRIPT_DIR/atenea-validation-v1.sh" ]] || fail "validation mediator is missing"
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.sh" ]] || fail "Playwright validator is missing"
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.js" ]] || fail "Playwright check is missing"
@@ -135,6 +155,9 @@ validate_inputs() {
       == "$PROGRAM_SHA256" ]] || fail "worker program fingerprint is stale"
   [[ "$(sha256sum "$SCRIPT_DIR/project-codex-runner-v1.py" | cut -d' ' -f1)" \
       == "$PROJECT_RUNNER_SHA256" ]] || fail "project runner fingerprint is stale"
+  [[ "$(sha256sum "$SCRIPT_DIR/beautips-project-codex-runner-v1.py" | cut -d' ' -f1)" \
+      == "$BEAUTIPS_PROJECT_RUNNER_SHA256" ]] \
+    || fail "Beautips compatibility runner fingerprint is stale"
 }
 
 plan() {
@@ -319,11 +342,15 @@ apply_install() {
   fi
   local retained_project_config_sha256
   retained_project_config_sha256="$(project_config_install_preflight)"
+  verify_beautips_project_runner_upgrade
+  systemctl stop "$SERVICE"
 
   install -d -o root -g root -m 0755 /usr/local/libexec/atenea
   install -d -o root -g root -m 0755 /usr/local/share/atenea
   install -o root -g root -m 0755 "$SCRIPT_DIR/agent-run-worker-v1.py" "$PROGRAM"
   install -o root -g root -m 0755 "$SCRIPT_DIR/project-codex-runner-v1.py" "$PROJECT_RUNNER"
+  install -o root -g root -m 0755 \
+    "$SCRIPT_DIR/beautips-project-codex-runner-v1.py" "$BEAUTIPS_PROJECT_RUNNER"
   install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-validation-v1.sh" "$VALIDATION_MEDIATOR"
   install -o root -g root -m 0755 "$SCRIPT_DIR/atenea-playwright-validation-v1.sh" "$PLAYWRIGHT_VALIDATOR"
   install -o root -g root -m 0644 "$SCRIPT_DIR/atenea-playwright-validation-v1.js" "$PLAYWRIGHT_CHECK"
@@ -451,6 +478,11 @@ verify() {
       && "$(stat -c '%a:%U:%G' "$PROJECT_RUNNER")" == "755:root:root" \
       && "$(sha256sum "$PROJECT_RUNNER" | cut -d' ' -f1)" == "$PROJECT_RUNNER_SHA256" ]] \
     || fail "project runner differs from the reviewed source"
+  [[ -f "$BEAUTIPS_PROJECT_RUNNER" && ! -L "$BEAUTIPS_PROJECT_RUNNER" \
+      && "$(stat -c '%a:%U:%G' "$BEAUTIPS_PROJECT_RUNNER")" == "755:root:root" \
+      && "$(sha256sum "$BEAUTIPS_PROJECT_RUNNER" | cut -d' ' -f1)" \
+        == "$BEAUTIPS_PROJECT_RUNNER_SHA256" ]] \
+    || fail "Beautips compatibility runner differs from the reviewed source"
   [[ -f "$ROLE_MEDIATOR" && ! -L "$ROLE_MEDIATOR" \
       && "$(stat -c '%a:%U:%G' "$ROLE_MEDIATOR")" == "755:root:root" \
       && "$(sha256sum "$ROLE_MEDIATOR" | cut -d' ' -f1)" \

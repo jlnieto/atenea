@@ -40,6 +40,9 @@ install_exact_directory "$(id -un)" "$(id -gn)" 0750 "${MODE_FIXTURE}/release"
     == "${PROGRAM_SHA256}" ]] || fail "worker program fingerprint is stale"
 [[ "$(sha256sum "${SCRIPT_DIR}/project-codex-runner-v1.py" | cut -d' ' -f1)" \
     == "${PROJECT_RUNNER_SHA256}" ]] || fail "project runner fingerprint is stale"
+[[ "$(sha256sum "${SCRIPT_DIR}/beautips-project-codex-runner-v1.py" | cut -d' ' -f1)" \
+    == "${BEAUTIPS_PROJECT_RUNNER_SHA256}" ]] \
+  || fail "Beautips compatibility runner fingerprint is stale"
 [[ "$(sha256sum "${SCRIPT_DIR}/templates/${MATERIALIZATION_SERVICE}" | cut -d' ' -f1)" \
     == "${MATERIALIZATION_SERVICE_TEMPLATE_SHA256}" ]] \
   || fail "materialization service fingerprint is stale"
@@ -106,6 +109,18 @@ if jq '.attachmentRoot = "/srv/foreign"' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}
 fi
 write_project_config false false '{}' "${CANONICAL_COMMIT}"
 verify_project_config_file_identity() { :; }
+BEAUTIPS_PROJECT_RUNNER="${TEST_ROOT}/beautips-project-codex-runner-v1.py"
+printf 'accepted predecessor\n' >"${BEAUTIPS_PROJECT_RUNNER}"
+BEAUTIPS_PROJECT_RUNNER_PREDECESSOR_SHA256="$(
+  sha256sum "${BEAUTIPS_PROJECT_RUNNER}" | cut -d' ' -f1
+)"
+BEAUTIPS_PROJECT_RUNNER_SHA256="${BEAUTIPS_PROJECT_RUNNER_PREDECESSOR_SHA256}"
+verify_beautips_project_runner_file_identity() { :; }
+verify_beautips_project_runner_upgrade
+printf 'foreign predecessor\n' >"${BEAUTIPS_PROJECT_RUNNER}"
+if ( verify_beautips_project_runner_upgrade ) >/dev/null 2>&1; then
+  fail "foreign Beautips compatibility runner was accepted"
+fi
 PRESERVED_CONFIG_SHA256="$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)"
 PREFLIGHT_SHA256="$(project_config_install_preflight)"
 [[ "${PREFLIGHT_SHA256}" == "${PRESERVED_CONFIG_SHA256}" ]] \
