@@ -9352,3 +9352,53 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.7-separate-service-restarts`;
 the SHA-256 of its `SHA256SUMS` is
 `3e9bfa4c24bbd78f77eeb9a9403f89f668dd317bb54d18e6fc1028c151c9fcb7`.
+
+Task 7.8 is complete. Change progress is `73/83`; task 7.9 is the exact
+resume point and was not started.
+
+An authenticated bounded production rejection matrix exercised only exact
+known identities. The pre-activation Atenea session reported
+`SESSION_NOT_ELIGIBLE` and rejected upload with HTTP 409. The Beautips session
+reported `PROJECT_DISABLED` and rejected upload with HTTP 409. A retained
+attachment from a different Atenea WorkSession was rejected for a new turn
+with HTTP 409, and a changed request reusing the accepted canary's idempotency
+identity was also rejected with HTTP 409. The rejected attachment and every
+real or foreign record remained intact; no rejected operation created a turn,
+binding, AgentRun, dispatch or worker execution.
+
+The complete pre/post structural fingerprints are byte-identical: WorkSessions
+`a1990cfcf492ba4911fef8bbe330f24c`, attachments
+`624668d9cec0a702d55673a1bb9fc732`, turns
+`c66b3e23ea933cec217b79a4ae0dfaf1`, bindings
+`ba0b31561cfd2a9cba03957f1df79acd`, AgentRuns
+`074d53bf5e24353a7124d819448dd907`, attachment metadata
+`79b061fe76c69a8d3701a10c20b1aac02f8d2e1a6cfba51666562e9252d6feb9`
+and durable execution state
+`7964895ca393c919fc265d78f64102c651344baa2c7286e7926fce1f1b4b42ff`.
+The corresponding counts remain 3 attachments, 30 turns, 2 bindings, 17
+AgentRuns, 22 retained attachment files and zero non-terminal AgentRuns.
+
+Four bounded authentication diagnostics used during the matrix were all
+explicitly logged out. They added only four normal revoked refresh-token audit
+receipts; the active-token count remained exactly 5 and no credential or token
+value entered output or evidence. The generated one-pixel request fixture was
+held only in memory and discarded. A focused isolated suite passed 38/38 tests
+with zero failures, errors or skips. Its exact temporary network, PostgreSQL
+container and two volumes were removed after the run, while pre-existing local
+test resources were neither adopted nor modified.
+
+Temporary materializations, browser processes and Codex processes remain zero.
+The session worktree remains clean at commit
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`; allocation SHA-256 remains
+`89fe98bfb3afb0d4d2c0007c22c5636669f0d3b77bfc588732992bbdb95a2a35`.
+Attachment and AgentRun services remain active with zero restarts, rootless
+slot container counts remain `3/0/0/3`, all three RAID arrays remain `[UU]`,
+and rootful Docker remains inactive. Production, preview and Beautips return
+HTTP 200. No project gate, runtime, route, unrelated slot or foreign resource
+changed.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.8-production-rejection-matrix`;
+the SHA-256 of its `SHA256SUMS` is
+`c9257432a19faa49ce281d331890f716b1c2dcd6e8501dbf9e2fb74b6cafe90e`.
