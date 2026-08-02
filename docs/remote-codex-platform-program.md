@@ -8108,3 +8108,27 @@ rollout occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.5-safe-turn-retry`;
 the SHA-256 of its `SHA256SUMS` is
 `ee2f0ef22d773fadd0a1aa04a497ac64597347e332966e1285335aa7948c16a4`.
+
+Task 4.6 is complete and change progress is `44/83`; the exact resume point is
+task 4.7. Atenea commit
+`256a69c19bc47bf3214fbfd9941e482249220740` has tree
+`0a946bf91c25257b21faecf176d5410968e69e55` and is clean and published.
+
+Each historical turn now renders only its immutable bound-image projection:
+bounded filename, size, ordinal and authenticated download. Download uses the
+session-scoped authenticated API and never exposes retained bytes or worker
+paths in conversation JSON. Turns with an empty projection render no attachment
+surface, so later text-only turns cannot inherit an earlier image.
+
+The production build passed in 4 seconds. Synthetic empty-text Playwright
+acceptance at `1440x900` and `390x844` proved two bindings on the exact owner
+turn, zero lists on the following Codex and text-only operator turns, bearer-
+authenticated download with the bounded filename and no horizontal overflow.
+Visual inspection passed and browser/Vite processes closed.
+
+Entry operational checks retained production, preview and Beautips HTTP 200,
+required AX42 services active, RAID `3/3 [UU]` and slots `3/0/0/3`. No rollout
+occurred. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.6-historical-bindings`;
+the SHA-256 of its `SHA256SUMS` is
+`1e4ea7370f552174680a6e344ab4c52e139203eb89704170ba7566d8ebe60c5b`.

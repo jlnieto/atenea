@@ -70,7 +70,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 4.3 Add a secondary file-picker action and image clipboard paste using the same validated upload flow, automatically selecting a successful image for the pending message
 - [x] 4.4 Render up to four selected image chips with thumbnail, bounded filename/size, upload/ready/error state and a clear remove action without exposing worker details
 - [x] 4.5 Preserve selected images and client request identity across failed or uncertain submission, prevent double send and clear them only after Atenea confirms the accepted turn
-- [ ] 4.6 Render historical bound-image metadata and authenticated download on the exact turn; never implicitly attach a previous image to a later text-only turn
+- [x] 4.6 Render historical bound-image metadata and authenticated download on the exact turn; never implicitly attach a previous image to a later text-only turn
 - [ ] 4.7 Make global-disabled, project-disabled, legacy-session, worker-unavailable, unsupported, over-file, over-turn and quota states concise and actionable in the first relevant viewport
 - [ ] 4.8 Add component/API tests for picker, paste, automatic selection, ordering, removal, retry, accepted clearing, historical reload and every blocked state
 - [ ] 4.9 Run the production web build and Playwright data/DOM/visual acceptance at `1440x900` and `390x844`, inspect screenshots for hierarchy, clipping, overflow, responsiveness and action clarity, and close browser processes in `finally`
