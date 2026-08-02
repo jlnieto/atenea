@@ -7182,3 +7182,45 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.3-real-storage-scope`;
 the SHA-256 of its `SHA256SUMS` is
 `bc2494d04de1af4590aac406149945a7228a00f4e5a166228e4137100a884bfc`.
+
+Task 2.4 is complete and change progress is `18/83`; the exact resume point is
+task 2.5. Atenea commit
+`409a2f3222a5fd61b693a4154d3de7820ff850e9` adds an authenticated
+state-first capability read model to the existing web/mobile WorkSession
+attachment API without enabling either UI.
+
+The response reports exactly one `READY` or `BLOCKED` state and one closed,
+actionable reason for global disable, project disable, legacy-session
+ineligibility, invalid ownership, exhausted quota, unavailable storage or an
+unsupported worker contract. It also reports the immutable session policy
+revision, explicit worker compatibility state, PNG/JPEG/WebP selection types,
+current/maximum/remaining session bytes, the 16 MiB file bound and the four-
+image/32 MiB per-turn limits. It exposes no endpoint, token, worker identity,
+storage scope or path.
+
+Policy and quota rejection stop before AX42 access. A ready response requires
+the exact new Atenea session ownership, compatible base v1 limits/types and the
+separate exact `real-project-attachment/v1` capability. Both web and existing
+mobile aliases remain beneath the stateless authenticated `/api/**` boundary.
+
+The final isolated PostgreSQL V62 suite passes `17/17` tests in 26.01 seconds:
+eight capability-service tests, six controller tests and three authentication
+integration tests. Its exact ephemeral container and network are absent after
+the cleanup trap. An earlier 14.63-second invocation stopped on one Mockito
+restubbing defect and the intentionally absent integration datasource; the
+mock was corrected without weakening the contract. The database-free rerun
+then passed `14/14` before the complete isolated run.
+
+The implementation branch is clean and published with tree
+`8ceb0a40f152866aee5b64e0e73b9d2da2a9efb5`. The canonical Atenea checkout
+remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production, preview and
+Beautips remain `UP`; AX42's versioned services and both backup timers remain
+active; RAID remains `3/3`; the corrected rootless slot inventory remains
+`3/0/0/3`. Two invalid read-only slot probes were discarded before the exact
+user/socket/binary probe; no resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.4-authenticated-capability`;
+the SHA-256 of its `SHA256SUMS` is
+`6448d1ebd8c01d6246eb8ebb42e8d79d26a455df6815f02749cc3cde9721c276`.
