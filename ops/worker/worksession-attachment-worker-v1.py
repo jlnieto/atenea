@@ -546,11 +546,10 @@ class AttachmentServer(ThreadingHTTPServer):
 class AttachmentHandler(BaseHTTPRequestHandler):
     server: AttachmentServer
 
-    def log_message(self, message: str, *args: Any) -> None:
+    def log_message(self, _message: str, *_args: Any) -> None:
         print(json.dumps({
             "at": utc_now(),
-            "remote": self.client_address[0],
-            "message": message % args,
+            "event": "http_request",
         }), flush=True)
 
     def do_GET(self) -> None:

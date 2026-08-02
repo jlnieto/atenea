@@ -2471,8 +2471,8 @@ class AgentRunServer(ThreadingHTTPServer):
 class AgentRunHandler(BaseHTTPRequestHandler):
     server: AgentRunServer
 
-    def log_message(self, message: str, *args: Any) -> None:
-        print(json.dumps({"at": utc_now(), "remote": self.client_address[0], "message": message % args}), flush=True)
+    def log_message(self, _message: str, *_args: Any) -> None:
+        print(json.dumps({"at": utc_now(), "event": "http_request"}), flush=True)
 
     def do_GET(self) -> None:
         try:

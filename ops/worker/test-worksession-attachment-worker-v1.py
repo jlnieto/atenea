@@ -11,6 +11,7 @@ import urllib.request
 import uuid
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from unittest import mock
 
 MODULE = SourceFileLoader(
     "worksession_attachment_worker_v1",
@@ -263,6 +264,21 @@ class AttachmentHttpTest(unittest.TestCase):
             ),
             timeout=2,
         )
+
+    def test_http_log_exposes_no_request_path_or_identity(self):
+        handler = object.__new__(MODULE.AttachmentHandler)
+        output = io.StringIO()
+        sensitive_path = self.path()
+
+        with mock.patch("sys.stdout", output):
+            handler.log_message('"%s" %s %s', f"GET {sensitive_path} HTTP/1.1", "200", "-")
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual({"at", "event"}, set(payload))
+        self.assertEqual("http_request", payload["event"])
+        self.assertNotIn(sensitive_path, output.getvalue())
+        self.assertNotIn(self.session_id, output.getvalue())
+        self.assertNotIn(self.attachment_id, output.getvalue())
 
     def upload_headers(self, **overrides):
         value = {

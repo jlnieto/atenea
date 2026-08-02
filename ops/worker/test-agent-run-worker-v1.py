@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import io
 import json
 import tempfile
 import threading
@@ -1681,6 +1682,21 @@ class WorkerHttpTest(unittest.TestCase):
             urllib.request.Request(self.url + path, headers=headers),
             timeout=2,
         )
+
+    def test_http_log_exposes_no_request_path_or_identity(self):
+        handler = object.__new__(MODULE.AgentRunHandler)
+        output = io.StringIO()
+        execution_id = str(uuid.uuid4())
+        sensitive_path = f"/v1/executions/{execution_id}"
+
+        with mock.patch("sys.stdout", output):
+            handler.log_message('"%s" %s %s', f"GET {sensitive_path} HTTP/1.1", "200", "-")
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual({"at", "event"}, set(payload))
+        self.assertEqual("http_request", payload["event"])
+        self.assertNotIn(sensitive_path, output.getvalue())
+        self.assertNotIn(execution_id, output.getvalue())
 
     def post(self, path, body, token=None):
         headers = {"Content-Type": "application/json"}
