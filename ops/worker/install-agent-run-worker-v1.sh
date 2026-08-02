@@ -271,6 +271,33 @@ verify_project_config_content() {
   fi
 }
 
+verify_project_config_file_identity() {
+  [[ -f "$PROJECT_CONFIG" && ! -L "$PROJECT_CONFIG" \
+      && "$(stat -c '%a:%U:%G' "$PROJECT_CONFIG")" == "644:root:root" ]] \
+    || fail "existing project configuration identity is invalid"
+}
+
+project_config_install_preflight() {
+  if [[ ! -e "$PROJECT_CONFIG" && ! -L "$PROJECT_CONFIG" ]]; then
+    return 0
+  fi
+  verify_project_config_file_identity
+  verify_project_config_content
+  sha256sum "$PROJECT_CONFIG" | cut -d' ' -f1
+}
+
+project_config_install_finalize() {
+  local retained_sha256="$1"
+  if [[ -z "$retained_sha256" ]]; then
+    write_project_config false false '{}' "$(observe_project_commit)"
+    return 0
+  fi
+  verify_project_config_file_identity
+  [[ "$(sha256sum "$PROJECT_CONFIG" | cut -d' ' -f1)" == "$retained_sha256" ]] \
+    || fail "existing project configuration changed during installation"
+  verify_project_config_content
+}
+
 apply_install() {
   require_root
   validate_inputs
@@ -286,6 +313,8 @@ apply_install() {
   if [[ -e "$MATERIALIZATION_ROOT" || -L "$MATERIALIZATION_ROOT" ]]; then
     verify_materialization_root
   fi
+  local retained_project_config_sha256
+  retained_project_config_sha256="$(project_config_install_preflight)"
 
   install -d -o root -g root -m 0755 /usr/local/libexec/atenea
   install -d -o root -g root -m 0755 /usr/local/share/atenea
@@ -326,7 +355,7 @@ apply_install() {
   } >"$ENV_FILE"
   chown root:root "$ENV_FILE"
   chmod 0644 "$ENV_FILE"
-  write_project_config false false '{}' "$(observe_project_commit)"
+  project_config_install_finalize "$retained_project_config_sha256"
   {
     printf 'atenea-worker ALL=(root) NOPASSWD: %s --config %s\n' "$PROJECT_RUNNER" "$PROJECT_CONFIG"
     printf 'atenea-worker ALL=(root) NOPASSWD: %s --config %s --reconcile-materializations\n' \

@@ -105,6 +105,29 @@ if jq '.attachmentRoot = "/srv/foreign"' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}
   fail "foreign attachment root was accepted"
 fi
 write_project_config false false '{}' "${CANONICAL_COMMIT}"
+verify_project_config_file_identity() { :; }
+PRESERVED_CONFIG_SHA256="$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)"
+PREFLIGHT_SHA256="$(project_config_install_preflight)"
+[[ "${PREFLIGHT_SHA256}" == "${PRESERVED_CONFIG_SHA256}" ]] \
+  || fail "installer preflight did not retain the existing configuration identity"
+project_config_install_finalize "${PREFLIGHT_SHA256}"
+[[ "$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)" == "${PRESERVED_CONFIG_SHA256}" ]] \
+  || fail "installer finalize rewrote the existing configuration"
+
+if jq '.foreignAuthority = true' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.ambiguous" \
+    && mv "${PROJECT_CONFIG}.ambiguous" "${PROJECT_CONFIG}" \
+    && ( project_config_install_preflight ) >/dev/null 2>&1; then
+  fail "installer preflight accepted ambiguous existing configuration"
+fi
+write_project_config false false '{}' "${CANONICAL_COMMIT}"
+mv "${PROJECT_CONFIG}" "${PROJECT_CONFIG}.retained"
+[[ -z "$(project_config_install_preflight)" ]] \
+  || fail "installer preflight invented identity for an absent configuration"
+project_config_install_finalize ""
+jq -e '.selectionEnabled == false and .executionEnabled == false and (.workspaces | length) == 0' \
+  "${PROJECT_CONFIG}" >/dev/null || fail "installer did not initialize a new configuration disabled"
+rm -f "${PROJECT_CONFIG}.retained"
+
 if jq '.attachmentRoots = [.attachmentRoot]' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.ambiguous" \
     && mv "${PROJECT_CONFIG}.ambiguous" "${PROJECT_CONFIG}" \
     && ( verify_project_config_content ) >/dev/null 2>&1; then
