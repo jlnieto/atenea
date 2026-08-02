@@ -1531,6 +1531,107 @@ print(json.dumps({
                 {**self.rollback_request, "idempotencyKey": str(uuid.uuid4())})
 
 
+class MaterializationStartupReconciliationTest(unittest.TestCase):
+    def test_start_resolves_uncertain_project_then_runs_closed_reconciler(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            captured = root / "captured.json"
+            runner = root / "runner"
+            runner.write_text(
+                """#!/usr/bin/env python3
+import json
+import pathlib
+import sys
+payload = json.load(sys.stdin)
+pathlib.Path(sys.argv[0]).with_name("captured.json").write_text(
+    json.dumps({"arguments": sys.argv[1:], "payload": payload}, sort_keys=True)
+)
+print(json.dumps({
+    "schemaVersion": "codex-image-reconciliation-v1",
+    "state": "PASS",
+    "removed": 1,
+    "retained": 0,
+    "ambiguous": 0,
+    "valuesExposed": False,
+}))
+""",
+                encoding="utf-8",
+            )
+            runner.chmod(0o755)
+            config = root / "project.json"
+            state = MODULE.WorkerState(
+                root / "state",
+                "test-worker",
+                project_config=config,
+                project_runner=runner,
+                privilege_command=(),
+                reconcile_materializations_on_start=True,
+            )
+            dispatch_id = "11111111-1111-4111-8111-111111111111"
+            execution_id = "22222222-2222-4222-8222-222222222222"
+            attachment = {
+                "attachmentId": "33333333-3333-4333-8333-333333333333",
+                "contentType": "image/png",
+                "sizeBytes": 8,
+                "sha256": "a" * 64,
+            }
+            state.executions[dispatch_id] = {
+                "dispatchId": dispatch_id,
+                "executionId": execution_id,
+                "status": "RECONCILING",
+                "statusReason": "restart",
+                "workload": {"kind": MODULE.PROJECT_V3_CAPABILITY, "attachments": [attachment]},
+                "revision": 1,
+                "updatedAt": MODULE.utc_now(),
+                "finishedAt": None,
+                "progressEvents": [],
+                "nextProgressSequence": 1,
+            }
+            state.start()
+            state.stop()
+
+            self.assertEqual("FAILED", state.executions[dispatch_id]["status"])
+            observed = json.loads(captured.read_text(encoding="utf-8"))
+            self.assertEqual(
+                ["--config", str(config), "--reconcile-materializations"],
+                observed["arguments"],
+            )
+            self.assertEqual("FAILED", observed["payload"]["executions"][0]["status"])
+            self.assertEqual([attachment], observed["payload"]["executions"][0]["attachments"])
+            self.assertNotIn("message", json.dumps(observed))
+
+    def test_ambiguous_reconciler_result_blocks_worker_start(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runner = root / "runner"
+            runner.write_text(
+                """#!/usr/bin/env python3
+import json
+print(json.dumps({
+    "schemaVersion": "codex-image-reconciliation-v1",
+    "state": "PASS",
+    "removed": 0,
+    "retained": 0,
+    "ambiguous": 1,
+    "valuesExposed": False,
+}))
+""",
+                encoding="utf-8",
+            )
+            runner.chmod(0o755)
+            state = MODULE.WorkerState(
+                root / "state",
+                "test-worker",
+                project_config=root / "project.json",
+                project_runner=runner,
+                privilege_command=(),
+                reconcile_materializations_on_start=True,
+            )
+            with self.assertRaisesRegex(RuntimeError, "failed closed"):
+                state.start()
+            self.assertIsNone(state.scheduler)
+
+
 class WorkerHttpTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

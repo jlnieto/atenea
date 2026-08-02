@@ -327,6 +327,166 @@ class ProjectCodexContractTest(unittest.TestCase):
                 second_content_path.read_bytes(), second_metadata_path.read_bytes(),
             ))
 
+    def test_materialization_finally_cleans_bounded_terminal_outcomes(self):
+        outcomes = (
+            RuntimeError("forced runner failure"),
+            subprocess.TimeoutExpired("codex", 1),
+            InterruptedError("cancelled or interrupted"),
+            SystemExit(2),
+        )
+        for outcome in outcomes:
+            with self.subTest(outcome=type(outcome).__name__), tempfile.TemporaryDirectory() as temporary:
+                temporary_root = Path(temporary)
+                retained_root = temporary_root / "attachments-v1"
+                retained_root.mkdir()
+                request, content_path, metadata_path = self.image_fixture(retained_root)
+                runtime_root = temporary_root / "run" / "atenea" / "codex-images"
+                runtime_root.mkdir(parents=True)
+                runtime_root.chmod(0o710)
+                owner = (os.getuid(), os.getgid())
+                retained_before = (content_path.read_bytes(), metadata_path.read_bytes())
+                with patch.object(MODULE, "ATTACHMENT_ROOT", retained_root), patch.object(
+                    MODULE, "MATERIALIZATION_ROOT", runtime_root
+                ), patch.object(
+                    MODULE, "attachment_owner_ids", return_value=owner
+                ), patch.object(
+                    MODULE,
+                    "materialization_owner_ids",
+                    return_value=(os.getuid(), os.getgid(), os.getuid(), os.getgid()),
+                ):
+                    verified = MODULE.validate_attachment_references(
+                        request, request["workload"], {"attachmentRoot": str(retained_root)}
+                    )
+                    with self.assertRaises(type(outcome)):
+                        with MODULE.materialize_attachments(
+                            verified, request["executionId"]
+                        ):
+                            raise outcome
+                self.assertEqual([], list(runtime_root.iterdir()))
+                self.assertEqual(
+                    retained_before,
+                    (content_path.read_bytes(), metadata_path.read_bytes()),
+                )
+
+    def test_cleanup_refuses_replaced_materialization_and_preserves_it(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_root = Path(temporary)
+            retained_root = temporary_root / "attachments-v1"
+            retained_root.mkdir()
+            request, content_path, metadata_path = self.image_fixture(retained_root)
+            runtime_root = temporary_root / "run" / "atenea" / "codex-images"
+            runtime_root.mkdir(parents=True)
+            runtime_root.chmod(0o710)
+            owner = (os.getuid(), os.getgid())
+            with patch.object(MODULE, "ATTACHMENT_ROOT", retained_root), patch.object(
+                MODULE, "MATERIALIZATION_ROOT", runtime_root
+            ), patch.object(
+                MODULE, "attachment_owner_ids", return_value=owner
+            ), patch.object(
+                MODULE,
+                "materialization_owner_ids",
+                return_value=(os.getuid(), os.getgid(), os.getuid(), os.getgid()),
+            ):
+                verified = MODULE.validate_attachment_references(
+                    request, request["workload"], {"attachmentRoot": str(retained_root)}
+                )
+                with self.assertRaises(SystemExit):
+                    with MODULE.materialize_attachments(
+                        verified, request["executionId"]
+                    ) as materialized:
+                        replaced = materialized[0].path
+                        replaced.unlink()
+                        replaced.write_bytes(b"foreign-replacement")
+                        replaced.chmod(0o600)
+                self.assertEqual(b"foreign-replacement", replaced.read_bytes())
+                self.assertTrue(replaced.parent.is_dir())
+            self.assertTrue(content_path.is_file())
+            self.assertTrue(metadata_path.is_file())
+
+    def test_startup_reconciliation_removes_only_absent_or_terminal_exact_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "codex-images"
+            root.mkdir()
+            root.chmod(0o710)
+            attachment_id = "11111111-1111-4111-8111-111111111111"
+            materialized_content = b"\x89PNG\r\n\x1a\nsynthetic"
+            reference = {
+                "attachmentId": attachment_id,
+                "contentType": "image/png",
+                "sizeBytes": len(materialized_content),
+                "sha256": hashlib.sha256(materialized_content).hexdigest(),
+            }
+
+            def candidate(execution_id):
+                directory = root / execution_id
+                directory.mkdir(mode=0o700)
+                path = directory / f"01-{attachment_id}.png"
+                path.write_bytes(materialized_content)
+                path.chmod(0o600)
+                return directory
+
+            terminal_id = "22222222-2222-4222-8222-222222222222"
+            absent_id = "33333333-3333-4333-8333-333333333333"
+            running_id = "44444444-4444-4444-8444-444444444444"
+            terminal = candidate(terminal_id)
+            absent = candidate(absent_id)
+            running = candidate(running_id)
+            payload = {
+                "schemaVersion": "codex-image-reconciliation-state-v1",
+                "executions": [
+                    {"executionId": terminal_id, "status": "FAILED", "attachments": [reference]},
+                    {"executionId": running_id, "status": "RUNNING", "attachments": [reference]},
+                ],
+            }
+            with patch.object(MODULE, "MATERIALIZATION_ROOT", root), patch.object(
+                MODULE,
+                "materialization_owner_ids",
+                return_value=(os.getuid(), os.getgid(), os.getuid(), os.getgid()),
+            ):
+                result = MODULE.reconcile_materializations(payload)
+            self.assertEqual(2, result["removed"])
+            self.assertEqual(1, result["retained"])
+            self.assertFalse(terminal.exists())
+            self.assertFalse(absent.exists())
+            self.assertTrue(running.is_dir())
+
+    def test_ambiguous_startup_candidate_blocks_without_removing_exact_candidate(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "codex-images"
+            root.mkdir()
+            root.chmod(0o710)
+            execution_id = "22222222-2222-4222-8222-222222222222"
+            attachment_id = "11111111-1111-4111-8111-111111111111"
+            materialized_content = b"\x89PNG\r\n\x1a\nsynthetic"
+            exact = root / execution_id
+            exact.mkdir(mode=0o700)
+            exact_file = exact / f"01-{attachment_id}.png"
+            exact_file.write_bytes(materialized_content)
+            exact_file.chmod(0o600)
+            ambiguous = root / "foreign-unlabelled"
+            ambiguous.write_bytes(b"untouched")
+            payload = {
+                "schemaVersion": "codex-image-reconciliation-state-v1",
+                "executions": [{
+                    "executionId": execution_id,
+                    "status": "FAILED",
+                    "attachments": [{
+                        "attachmentId": attachment_id,
+                        "contentType": "image/png",
+                        "sizeBytes": len(materialized_content),
+                        "sha256": hashlib.sha256(materialized_content).hexdigest(),
+                    }],
+                }],
+            }
+            with patch.object(MODULE, "MATERIALIZATION_ROOT", root), patch.object(
+                MODULE,
+                "materialization_owner_ids",
+                return_value=(os.getuid(), os.getgid(), os.getuid(), os.getgid()),
+            ), self.assertRaises(SystemExit):
+                MODULE.reconcile_materializations(payload)
+            self.assertEqual(materialized_content, exact_file.read_bytes())
+            self.assertEqual(b"untouched", ambiguous.read_bytes())
+
     def test_sidecar_file_and_request_identity_must_match_before_delivery(self):
         cases = (
             ("project", lambda request, metadata, content: metadata.__setitem__(

@@ -77,6 +77,15 @@ ATTACHMENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024
 MAX_ATTACHMENT_TOTAL_BYTES = 32 * 1024 * 1024
 MATERIALIZATION_ROOT = Path("/run/atenea/codex-images")
+TERMINAL_EXECUTION_STATES = {"SUCCEEDED", "FAILED", "CANCELLED"}
+NON_TERMINAL_EXECUTION_STATES = {
+    "QUEUED", "STARTING", "RUNNING", "CANCELLING", "RECONCILING",
+}
+MATERIALIZED_NAME = re.compile(
+    r"^(?P<position>0[1-4])-(?P<attachment>[0-9a-f]{8}-[0-9a-f]{4}-"
+    r"[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})"
+    r"(?P<extension>\.png|\.jpg|\.webp)$"
+)
 CODEX_CATALOG_REVISION = (
     "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187"
 )
@@ -102,6 +111,10 @@ class MaterializedAttachment(NamedTuple):
     attachment_id: str
     content_type: str
     path: Path
+    device: int
+    inode: int
+    size_bytes: int
+    sha256: str
 
 
 def reject(message: str) -> None:
@@ -238,7 +251,9 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def validate_config(config: dict[str, Any], runner: Path) -> None:
+def validate_config(
+    config: dict[str, Any], runner: Path, require_execution: bool = True
+) -> None:
     required = {
         "schemaVersion", "selectionEnabled", "executionEnabled",
         "projectId", "repository", "branch",
@@ -248,8 +263,6 @@ def validate_config(config: dict[str, Any], runner: Path) -> None:
         required.add("attachmentRoot")
     exact = {
         "schemaVersion": CAPABILITY,
-        "selectionEnabled": True,
-        "executionEnabled": True,
         "projectId": PROJECT_ID,
         "repository": REPOSITORY,
         "branch": BRANCH,
@@ -264,6 +277,12 @@ def validate_config(config: dict[str, Any], runner: Path) -> None:
         or not isinstance(config.get("commit"), str)
         or COMMIT_PATTERN.fullmatch(config["commit"]) is None
         or (BASE_COMMIT is not None and config["commit"] != BASE_COMMIT)
+        or not isinstance(config.get("selectionEnabled"), bool)
+        or not isinstance(config.get("executionEnabled"), bool)
+        or (
+            require_execution
+            and (config["selectionEnabled"] is not True or config["executionEnabled"] is not True)
+        )
         or not isinstance(config.get("workspaces"), dict)
     ):
         reject("project configuration rejected")
@@ -540,6 +559,215 @@ def materialization_owner_ids() -> tuple[int, int, int, int]:
         reject("attachment materialization rejected")
 
 
+def cleanup_exact_materialization(
+    execution_root: Path,
+    created: list[MaterializedAttachment],
+) -> bool:
+    _root_uid, _group_id, jose_uid, jose_gid = materialization_owner_ids()
+    try:
+        directory_stat = execution_root.lstat()
+        entries = sorted(execution_root.iterdir(), key=lambda path: path.name)
+    except OSError:
+        return False
+    if (
+        not stat.S_ISDIR(directory_stat.st_mode)
+        or stat.S_IMODE(directory_stat.st_mode) != 0o700
+        or directory_stat.st_uid != jose_uid
+        or directory_stat.st_gid != jose_gid
+        or [path.name for path in entries] != sorted(item.path.name for item in created)
+    ):
+        return False
+    identities = {item.path.name: item for item in created}
+    for path in entries:
+        expected = identities[path.name]
+        try:
+            observed = path.lstat()
+        except OSError:
+            return False
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or stat.S_IMODE(observed.st_mode) != 0o600
+            or observed.st_uid not in {0, jose_uid}
+            or observed.st_gid != jose_gid
+            or observed.st_nlink != 1
+            or observed.st_dev != expected.device
+            or observed.st_ino != expected.inode
+        ):
+            return False
+        content = read_owned_file(path, observed, MAX_ATTACHMENT_BYTES)
+        if (
+            len(content) != expected.size_bytes
+            or hashlib.sha256(content).hexdigest() != expected.sha256
+            or not content_matches_type(expected.content_type, content[:12])
+        ):
+            return False
+    try:
+        for path in reversed(entries):
+            path.unlink()
+        execution_root.rmdir()
+    except OSError:
+        return False
+    return True
+
+
+def expected_materialized_names(attachments: Any) -> list[str] | None:
+    if not isinstance(attachments, list) or not (1 <= len(attachments) <= 4):
+        return None
+    extensions = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+    names = []
+    identities = set()
+    for position, attachment in enumerate(attachments, start=1):
+        if not isinstance(attachment, dict) or set(attachment) != ATTACHMENT_REFERENCE_KEYS:
+            return None
+        attachment_id = attachment.get("attachmentId")
+        content_type = attachment.get("contentType")
+        try:
+            canonical = str(uuid.UUID(attachment_id))
+        except (ValueError, TypeError, AttributeError):
+            canonical = None
+        if (
+            canonical != attachment_id
+            or attachment_id in identities
+            or content_type not in extensions
+            or not isinstance(attachment.get("sizeBytes"), int)
+            or isinstance(attachment.get("sizeBytes"), bool)
+            or not (1 <= attachment["sizeBytes"] <= MAX_ATTACHMENT_BYTES)
+            or not isinstance(attachment.get("sha256"), str)
+            or SHA256_PATTERN.fullmatch(attachment["sha256"]) is None
+        ):
+            return None
+        identities.add(attachment_id)
+        names.append(f"{position:02d}-{attachment_id}{extensions[content_type]}")
+    return names
+
+
+def reconcile_materializations(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict) or set(payload) != {"schemaVersion", "executions"}:
+        reject("attachment reconciliation rejected")
+    if payload.get("schemaVersion") != "codex-image-reconciliation-state-v1":
+        reject("attachment reconciliation rejected")
+    records: dict[str, dict[str, Any]] = {}
+    executions = payload.get("executions")
+    if not isinstance(executions, list):
+        reject("attachment reconciliation rejected")
+    for record in executions:
+        if not isinstance(record, dict) or set(record) != {
+            "executionId", "status", "attachments"
+        }:
+            reject("attachment reconciliation rejected")
+        execution_id = record.get("executionId")
+        try:
+            canonical = str(uuid.UUID(execution_id))
+        except (ValueError, TypeError, AttributeError):
+            canonical = None
+        if (
+            canonical != execution_id
+            or execution_id in records
+            or record.get("status") not in TERMINAL_EXECUTION_STATES | NON_TERMINAL_EXECUTION_STATES
+            or not isinstance(record.get("attachments"), list)
+        ):
+            reject("attachment reconciliation rejected")
+        records[execution_id] = record
+
+    root_uid, group_id, jose_uid, jose_gid = materialization_owner_ids()
+    validate_owned_path(MATERIALIZATION_ROOT, 0o710, root_uid, group_id, True)
+    removed = 0
+    retained = 0
+    ambiguous = 0
+    removable: list[tuple[Path, list[Path]]] = []
+    try:
+        candidates = sorted(MATERIALIZATION_ROOT.iterdir(), key=lambda path: path.name)
+    except OSError:
+        reject("attachment reconciliation rejected")
+    for candidate in candidates:
+        try:
+            canonical = str(uuid.UUID(candidate.name))
+            directory_stat = candidate.lstat()
+        except (ValueError, TypeError, AttributeError, OSError):
+            canonical = None
+            directory_stat = None
+        record = records.get(candidate.name)
+        if (
+            canonical != candidate.name
+            or directory_stat is None
+            or not stat.S_ISDIR(directory_stat.st_mode)
+            or stat.S_IMODE(directory_stat.st_mode) != 0o700
+            or directory_stat.st_uid != jose_uid
+            or directory_stat.st_gid != jose_gid
+        ):
+            ambiguous += 1
+            continue
+        if record is not None and record["status"] in NON_TERMINAL_EXECUTION_STATES:
+            retained += 1
+            continue
+        try:
+            entries = sorted(candidate.iterdir(), key=lambda path: path.name)
+        except OSError:
+            ambiguous += 1
+            continue
+        expected_names = None if record is None else expected_materialized_names(record["attachments"])
+        if record is not None and expected_names is None:
+            ambiguous += 1
+            continue
+        if expected_names is not None and [path.name for path in entries] != expected_names:
+            ambiguous += 1
+            continue
+        valid_entries = True
+        expected_by_name = (
+            {}
+            if record is None
+            else dict(zip(expected_names or [], record["attachments"], strict=True))
+        )
+        for path in entries:
+            try:
+                observed = path.lstat()
+            except OSError:
+                valid_entries = False
+                break
+            if record is not None:
+                reference = expected_by_name[path.name]
+                content = read_owned_file(path, observed, MAX_ATTACHMENT_BYTES)
+                if (
+                    len(content) != reference["sizeBytes"]
+                    or hashlib.sha256(content).hexdigest() != reference["sha256"]
+                    or not content_matches_type(reference["contentType"], content[:12])
+                ):
+                    valid_entries = False
+                    break
+            if (
+                MATERIALIZED_NAME.fullmatch(path.name) is None
+                or not stat.S_ISREG(observed.st_mode)
+                or stat.S_IMODE(observed.st_mode) != 0o600
+                or observed.st_uid != jose_uid
+                or observed.st_gid != jose_gid
+                or observed.st_nlink != 1
+            ):
+                valid_entries = False
+                break
+        if not valid_entries or (record is None and len(entries) > 4):
+            ambiguous += 1
+            continue
+        removable.append((candidate, entries))
+    if ambiguous:
+        reject("attachment reconciliation rejected")
+    for candidate, entries in removable:
+        try:
+            for path in reversed(entries):
+                path.unlink()
+            candidate.rmdir()
+        except OSError:
+            reject("attachment reconciliation rejected")
+        removed += 1
+    return {
+        "schemaVersion": "codex-image-reconciliation-v1",
+        "state": "PASS",
+        "removed": removed,
+        "retained": retained,
+        "ambiguous": 0,
+        "valuesExposed": False,
+    }
+
+
 @contextlib.contextmanager
 def materialize_attachments(
     attachments: list[VerifiedAttachment],
@@ -569,56 +797,79 @@ def materialize_attachments(
         "image/jpeg": ".jpg",
         "image/webp": ".webp",
     }
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+
+    def interrupt_materialization(_signum: int, _frame: Any) -> None:
+        raise InterruptedError("bounded image materialization interrupted")
+
+    signal.signal(signal.SIGTERM, interrupt_materialization)
     try:
-        expected_uid, expected_gid = attachment_owner_ids()
-        for position, attachment in enumerate(attachments, start=1):
-            source_stat = validate_owned_path(
-                attachment.content_path, 0o600, expected_uid, expected_gid, False
-            )
-            content = read_owned_file(
-                attachment.content_path, source_stat, MAX_ATTACHMENT_BYTES
-            )
-            if (
-                len(content) != attachment.size_bytes
-                or hashlib.sha256(content).hexdigest() != attachment.sha256
-                or not content_matches_type(attachment.content_type, content[:12])
-            ):
-                reject("attachment materialization rejected")
-            target = execution_root / (
-                f"{position:02d}-{attachment.attachment_id}"
-                + extensions[attachment.content_type]
-            )
-            try:
-                descriptor = os.open(
-                    target,
-                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                    0o600,
+        try:
+            expected_uid, expected_gid = attachment_owner_ids()
+            for position, attachment in enumerate(attachments, start=1):
+                source_stat = validate_owned_path(
+                    attachment.content_path, 0o600, expected_uid, expected_gid, False
+                )
+                content = read_owned_file(
+                    attachment.content_path, source_stat, MAX_ATTACHMENT_BYTES
+                )
+                if (
+                    len(content) != attachment.size_bytes
+                    or hashlib.sha256(content).hexdigest() != attachment.sha256
+                    or not content_matches_type(attachment.content_type, content[:12])
+                ):
+                    reject("attachment materialization rejected")
+                target = execution_root / (
+                    f"{position:02d}-{attachment.attachment_id}"
+                    + extensions[attachment.content_type]
                 )
                 try:
-                    written = 0
-                    while written < len(content):
-                        written += os.write(descriptor, content[written:])
-                    os.fsync(descriptor)
-                    os.fchmod(descriptor, 0o600)
-                    os.fchown(descriptor, jose_uid, jose_gid)
-                finally:
-                    os.close(descriptor)
-            except OSError:
+                    descriptor = os.open(
+                        target,
+                        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                        0o600,
+                    )
+                    try:
+                        opened = os.fstat(descriptor)
+                        created.append(MaterializedAttachment(
+                            attachment.attachment_id,
+                            attachment.content_type,
+                            target,
+                            opened.st_dev,
+                            opened.st_ino,
+                            attachment.size_bytes,
+                            attachment.sha256,
+                        ))
+                        try:
+                            os.fchmod(descriptor, 0o600)
+                            os.fchown(descriptor, jose_uid, jose_gid)
+                            written = 0
+                            while written < len(content):
+                                written += os.write(descriptor, content[written:])
+                            os.fsync(descriptor)
+                        except BaseException:
+                            try:
+                                current = target.lstat()
+                                opened = os.fstat(descriptor)
+                                if (
+                                    current.st_dev == opened.st_dev
+                                    and current.st_ino == opened.st_ino
+                                ):
+                                    target.unlink()
+                                    created.pop()
+                            except OSError:
+                                pass
+                            raise
+                    finally:
+                        os.close(descriptor)
+                except OSError:
+                    reject("attachment materialization rejected")
+            yield created
+        finally:
+            if not cleanup_exact_materialization(execution_root, created):
                 reject("attachment materialization rejected")
-            created.append(MaterializedAttachment(
-                attachment.attachment_id, attachment.content_type, target
-            ))
-        yield created
     finally:
-        for attachment in reversed(created):
-            try:
-                attachment.path.unlink()
-            except FileNotFoundError:
-                pass
-        try:
-            execution_root.rmdir()
-        except OSError:
-            pass
+        signal.signal(signal.SIGTERM, previous_sigterm)
 
 
 def checked(command: list[str], cwd: Path) -> str:
@@ -898,17 +1149,23 @@ def execute(
             except ProcessLookupError:
                 pass
 
+        previous_sigterm = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGTERM, terminate)
         try:
-            stream, error_stream = process.communicate(workload["message"], timeout=timeout)
-        except subprocess.TimeoutExpired:
-            terminate(signal.SIGTERM, None)
             try:
-                process.wait(timeout=5)
+                stream, error_stream = process.communicate(
+                    workload["message"], timeout=timeout
+                )
             except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait(timeout=5)
-            reject("Codex execution failed")
+                terminate(signal.SIGTERM, None)
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=5)
+                reject("Codex execution failed")
+        finally:
+            signal.signal(signal.SIGTERM, previous_sigterm)
         if process.returncode != 0:
             reject(codex_failure_reason(error_stream))
         thread_id = workload["threadId"]
@@ -946,12 +1203,21 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--timeout", type=int, default=1800)
+    parser.add_argument("--reconcile-materializations", action="store_true")
     args = parser.parse_args()
     if os.geteuid() != 0 or not (30 <= args.timeout <= 3600):
         reject("project configuration rejected")
     runner = Path(__file__).resolve()
     config = load_json(args.config)
-    validate_config(config, runner)
+    validate_config(config, runner, require_execution=not args.reconcile_materializations)
+    if args.reconcile_materializations:
+        try:
+            reconciliation = json.load(sys.stdin)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            reject("attachment reconciliation rejected")
+        result = reconcile_materializations(reconciliation)
+        print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+        return 0
     try:
         request = json.load(sys.stdin)
     except (json.JSONDecodeError, UnicodeDecodeError):

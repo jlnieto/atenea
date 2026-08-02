@@ -212,6 +212,7 @@ class WorkerState:
         codex_restart_scheduler: Path | None = None,
         codex_update_registry: Path | None = None,
         codex_release_root: Path | None = None,
+        reconcile_materializations_on_start: bool = False,
     ):
         self.state_dir = state_dir
         self.state_file = state_dir / "executions.json"
@@ -235,6 +236,7 @@ class WorkerState:
         self.codex_restart_scheduler = codex_restart_scheduler
         self.codex_update_registry = codex_update_registry
         self.codex_release_root = codex_release_root
+        self.reconcile_materializations_on_start = reconcile_materializations_on_start
         self.lock = threading.RLock()
         self.wakeup = threading.Event()
         self.stop_event = threading.Event()
@@ -316,9 +318,95 @@ class WorkerState:
                 os.unlink(temporary)
 
     def start(self) -> None:
+        self._resolve_uncertain_project_executions()
+        if self.reconcile_materializations_on_start:
+            self._reconcile_materializations()
         self.scheduler = threading.Thread(target=self._schedule_loop, name="agent-run-scheduler", daemon=True)
         self.scheduler.start()
         self.wakeup.set()
+
+    def _resolve_uncertain_project_executions(self) -> None:
+        changed = False
+        with self.lock:
+            for execution in self.executions.values():
+                if (
+                    execution.get("status") == "RECONCILING"
+                    and execution.get("workload", {}).get("kind") in {
+                        PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY, PROJECT_V3_CAPABILITY,
+                    }
+                ):
+                    execution["status"] = "FAILED"
+                    execution["statusReason"] = (
+                        "Restart reconciliation refused to duplicate an uncertain Codex turn"
+                    )
+                    execution["finishedAt"] = utc_now()
+                    execution["revision"] += 1
+                    execution["updatedAt"] = execution["finishedAt"]
+                    self._append_progress(
+                        execution,
+                        "FAILED",
+                        "Execution failed closed during reconciliation.",
+                    )
+                    changed = True
+            if changed:
+                self._persist()
+
+    def _reconcile_materializations(self) -> None:
+        if self.project_runner is None or self.project_config is None:
+            raise RuntimeError("image materialization reconciliation is unavailable")
+        payload = {
+            "schemaVersion": "codex-image-reconciliation-state-v1",
+            "executions": [
+                {
+                    "executionId": execution.get("executionId"),
+                    "status": execution.get("status"),
+                    "attachments": (
+                        execution.get("workload", {}).get("attachments", [])
+                        if execution.get("workload", {}).get("kind") == PROJECT_V3_CAPABILITY
+                        else []
+                    ),
+                }
+                for execution in sorted(
+                    self.executions.values(), key=lambda item: str(item.get("executionId"))
+                )
+            ],
+        }
+        try:
+            completed = subprocess.run(
+                [
+                    *self.privilege_command,
+                    str(self.project_runner),
+                    "--config",
+                    str(self.project_config),
+                    "--reconcile-materializations",
+                ],
+                input=json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            result = json.loads(completed.stdout) if completed.returncode == 0 else None
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+            result = None
+        if (
+            not isinstance(result, dict)
+            or set(result) != {
+                "schemaVersion", "state", "removed", "retained", "ambiguous",
+                "valuesExposed",
+            }
+            or result.get("schemaVersion") != "codex-image-reconciliation-v1"
+            or result.get("state") != "PASS"
+            or any(
+                not isinstance(result.get(key), int) or isinstance(result.get(key), bool)
+                or result[key] < 0
+                for key in ("removed", "retained", "ambiguous")
+            )
+            or result.get("ambiguous") != 0
+            or result.get("valuesExposed") is not False
+        ):
+            raise RuntimeError("image materialization reconciliation failed closed")
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -2597,6 +2685,7 @@ def main() -> int:
         codex_restart_scheduler=args.codex_restart_scheduler,
         codex_update_registry=args.codex_update_registry,
         codex_release_root=args.codex_release_root,
+        reconcile_materializations_on_start=True,
     )
     server = AgentRunServer((args.bind, args.port), state, read_token(args.token_file))
     state.start()

@@ -8,7 +8,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-BASE_RUNNER_SHA256 = "e02010a45b88438476771e530d2dc82bd65bda53e6ca5af8a9df7a6a11528304"
+BASE_RUNNER_SHA256 = "64f06d73f366dd403f542318fa6da5ec48b4985327a0f5a07d7cb9c26f8b7aee"
 BASE_PATH = Path(__file__).resolve().with_name("project-codex-runner-v1.py")
 
 try:
