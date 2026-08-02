@@ -8312,3 +8312,40 @@ service or unrelated resource changed. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.2-complete-suites`;
 the SHA-256 of its `SHA256SUMS` is
 `00f5baccd357c2f3f09ee2ab6643025b6bfa576376b73442bc44c24292d9b2c5`.
+
+Task 5.3 is complete and change progress is `51/83`; the exact resume point is
+task 5.4. Atenea test commit
+`cade6a8c3576c9e060b7197398dd87bb70e5e919`, tree
+`eea5c97fa1d1ff3a8d473e5d4b5c0d11b9f58c9e`, adds permanent persistent and
+closed-request acceptance for one synthetic image turn, one same-thread image
+continuation with a different explicit image, and one later text-only
+continuation.
+
+The database scenario proves exactly three operator turns, three AgentRuns,
+two immutable bindings and two retained source attachments. The first two runs
+each retain one distinct exact manifest. All three preserve the same remote
+WorkSession and workspace; the second and third preserve the same persisted
+Codex thread. The third run has attachment count and bytes zero, a null manifest
+and an empty historical attachment projection.
+
+Captured worker requests are respectively `project-codex-v3`,
+`project-codex-v3` and `project-codex-v2`. The second request includes only its
+new explicit attachment, while the third contains no attachments array or
+singular attachment, image or path authority. The final backend/serialization
+slice passed `26/26` in 25 seconds against a new empty PostgreSQL 16 fixture
+migrated through V62; project-runner and AgentRun-worker suites passed `76/76`
+in 9 seconds; the permanent web suite passed `17/17` in 18 seconds.
+
+The exact synthetic database ID and label were revalidated before removal.
+Maven output, browser processes, Playwright results and bytecode residue are
+zero. Candidate Atenea and programme/worker Git are clean and published.
+Canonical Atenea remains clean at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and Beautips
+return HTTP 200; required AX42 services and timers are active; all RAID arrays
+remain `[UU]`; rootless slots remain `3/0/0/3`. No rollout or unrelated
+mutation occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.3-explicit-continuations`;
+the SHA-256 of its `SHA256SUMS` is
+`baa57f6422a9fb0c4984eecd20a24e3b0adf4700d687f54805bd6cb5cdeff714`.
