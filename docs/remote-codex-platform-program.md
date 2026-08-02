@@ -8654,3 +8654,29 @@ Sanitized task evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.3-immutable-artifacts-fixture-cleanup`;
 the SHA-256 of its `SHA256SUMS` is
 `e81b0260da63e4ec772ae812ac96af97857066a4dd165ae0c00d2e776a094ff5`.
+
+Task 6.4 is complete. Change progress is `61/83`; task 6.5 is the exact
+resume point.
+
+At `2026-08-02T12:50:11Z` the operator supplied a new separate explicit
+authorization scoped to the V62 production migration, backend/web artifact,
+exact AX42 attachment and AgentRun services, out-of-band private credential
+and initially disabled attachment configuration. The operator message itself
+is not copied into evidence. This authorization does not enable any project or
+widen scope to Beautips, Android attachments, retention deletion or unrelated
+resources.
+
+The authorization preflight reconfirmed clean synchronized programme,
+candidate and canonical Git; production V61; zero production attachment rows;
+zero non-terminal AgentRuns; absent/default-false attachment gate environment
+entries; exact candidate/rollback artifacts and protected backup; HTTP 200 for
+production and preview; active AX42 services/timers; RAID `3/3 [UU]`; and
+rootless slots `3/0/0/3`. A first read-only query used generic terminal names
+and counted the 76 successful historical runs; comparison with the source enum
+corrected the query to the accepted zero non-terminal result. No mutation
+occurred during the gate.
+
+Sanitized task evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.4-rollout-authorization`;
+the SHA-256 of its `SHA256SUMS` is
+`8a83888c1be35f29c4e6c131fc48a12a8bae2ea28c5a48469647648f51b1e1cd`.
