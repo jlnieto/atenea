@@ -8349,3 +8349,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.3-explicit-continuations`;
 the SHA-256 of its `SHA256SUMS` is
 `baa57f6422a9fb0c4984eecd20a24e3b0adf4700d687f54805bd6cb5cdeff714`.
+
+Task 5.4 is complete and change progress is `52/83`; the exact resume point is
+task 5.5. Atenea commit
+`99bda7d1a93f9aa5e9f6e3e8f9f0365cef36ce59`, tree
+`2bd29fa979372175a603d7a3b3ead1ae0745f76d`, adds a permanent two-context
+backend restart acceptance.
+
+The first complete Spring context persisted one image-bearing operator turn,
+immutable binding, terminal AgentRun, ordered manifest, Codex thread and result
+turn. It then closed its JPA pool and application context. A newly started
+context over the same V62 database replayed the request as after response loss
+and returned the exact original turn, run and result IDs. Turn, run, binding and
+attachment counts, manifest, storage identity and thread were unchanged;
+selection/upload validation and remote dispatch were not invoked again.
+
+The safe retry contract also retained its origin turn, exact manifest, binding,
+attachment, storage/workspace identities and execution profile while adding
+only the required linked retry run. Worker reconstruction retained one
+execution identity and byte-stable terminal progress/result, and duplicate
+dispatch returned that execution. Attachment-store reconstruction returned
+identical metadata/content; a base-v1 reader reopened the extended real sidecar
+without rewriting it. Runner new/resumed/recovery paths retained one process
+and zero temporary materialization residue.
+
+The final backend slice passed `28/28` in 27 seconds against a new empty
+PostgreSQL 16 fixture migrated through V62. Attachment service, AgentRun worker
+and project runner passed `17/17`, `54/54` and `22/22` respectively (`93/93`)
+in 12 seconds. The exact database ID/label was revalidated before removal;
+Maven output, browser processes and bytecode residue are zero.
+
+Candidate/programme Git are clean and published. Canonical Atenea remains clean
+at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; required AX42 services and timers are active; RAID
+remains `[UU]`; slots remain `3/0/0/3`. No real service was restarted and no
+rollout or unrelated mutation occurred. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.4-restart-retry-continuity`;
+the SHA-256 of its `SHA256SUMS` is
+`c8a1f76bf5dea5b2cf8f848f33286da0ea893e13df0aa17a32b9bc0b09bd8a70`.
