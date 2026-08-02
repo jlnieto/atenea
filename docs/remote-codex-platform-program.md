@@ -8922,8 +8922,10 @@ revision exists in production.
 
 The exact AgentRun runner, attachment worker and Beautips adapter hashes match
 the deployed candidate. Both worker services are enabled, active and running
-with zero restarts; transient AgentRun, incoming and materialization state is
-empty. The previously accepted authenticated capability seal remains the
+with zero restarts. The corrected live state path contains one expected
+durable registry with 50 terminal executions, zero validations and zero
+non-terminal state; incoming and materialization state is empty. The
+previously accepted authenticated capability seal remains the
 storage compatibility authority and the retained metadata fingerprint remains
 `9170ec9ace7e935599ab02fb6841df92ee9bc333c403592f58bf06829f8407b6`.
 
@@ -8937,4 +8939,4 @@ task 7.1.
 Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.1-activation-authorization-accepted`;
 the SHA-256 of its `SHA256SUMS` is
-`e92d2f26fd96b3842f2915aea6ed22b2b3cb7979cf1e0c8693cc951dd0a71f4e`.
+`41784d01a3c0ec88766a3beb15336ec79ec0b500210f3a6bc31342ba58934c73`.
