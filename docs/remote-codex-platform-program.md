@@ -8796,3 +8796,34 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.6-routing-preserving-deployment`;
 the SHA-256 of its `SHA256SUMS` is
 `59b1a5ce3571d08eead911f2558ff48ec15c0740b285fbf38287e76a41f0bf93`.
+
+Task 6.7 is complete. Change progress is `64/83`; task 6.8 is the exact
+resume point.
+
+Two aggregate production fingerprints separated by a bounded 20-second
+observation window matched exactly. Both contain zero attachment rows and
+logical bytes, turn bindings, attachment-bearing AgentRuns and attachment
+policy revisions. AX42 retains zero attachment-storage entries, AgentRun state
+files and materializations. All ten pre-existing WorkSessions retain null
+attachment policy revision and are therefore ineligible.
+
+Without exposing the selected existing session identity, the deployed
+capability, list and download paths each returned the expected authentication
+boundary rather than a missing route or server error. The exact candidate
+commit's retained list/download and public-shape compatibility remains proven
+by sealed task 5.7 evidence with manifest SHA-256
+`8b32c062818f137a43f8134ab73c1a90bc14f39b31712c1615cb51cd849a26c8`.
+Production contains no attachment row whose content could be read during this
+disabled gate.
+
+The backend remains on the exact V62 candidate image with restart count zero.
+The routing configuration retains SHA-256
+`d9878267d7b979197521a48d90789c593dd775ac3973f96dcf84e135f9f25b87`;
+both AX42 services remain enabled/active; rootless slots remain `3/0/0/3` and
+RAID remains `3/3 [UU]`. Production, preview and Beautips return HTTP 200. No
+project runtime, gate, route, WorkSession or foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.7-disabled-mode-production`;
+the SHA-256 of its `SHA256SUMS` is
+`563a640ffdb121bf896216eaeee78c5f00db8e3999dadef94b87de8fb80b49c3`.
