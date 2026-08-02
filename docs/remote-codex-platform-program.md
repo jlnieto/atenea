@@ -9037,3 +9037,40 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.3-canonical-atenea-activation`;
 the SHA-256 of its `SHA256SUMS` is
 `dec649358ed24efe7c627c89c913595579a88e7515e0b6ab1ad23a114782832c`.
+
+Task 7.4 is complete. Change progress is `69/83`; task 7.5 is the exact
+resume point and was not started.
+
+The operator signed in to the production web application, selected one
+generated non-secret PNG through the real composer for WorkSession `13` and
+confirmed its visible selected state. The evidence retains neither attachment
+bytes nor the user-facing filename. No prompt was submitted.
+
+Production records exactly one `OPERATOR_UPLOAD`/`IMAGE`/`image/png` attachment
+of 42,499 bytes in `SESSION` retention and `REAL_SESSION` scope. Its SHA-256
+matches the generated fixture and its canonical project, worker, remote-session
+and workspace ownership match the eligible Atenea WorkSession. The session
+still has zero turns, zero bindings and zero AgentRuns, so no dispatch or Codex
+execution occurred.
+
+The retained worker metadata fingerprint changed from
+`95d7b4c6a9e5c3b3b47ebc2acdb06f391a12119dbf932c36acad64440e6985b1` to
+`1abb194230581881b03f1f7fcbd182f5fcf6e2cb449eaf557a07b41478cc108c`,
+accounted for by the expected private content/sidecar pair. Content, names and
+private storage identities were not read or recorded. Temporary
+materializations, runner processes and browser processes remain zero.
+
+Both AX42 worker services remain enabled, active and running with zero
+restarts; required health/backup timers remain enabled and active; rootless
+slots remain `3/0/0/3`; RAID remains `3/3 [UU]`; rootful Docker remains
+inactive. Production, preview and Beautips return HTTP 200. Canonical and
+worktree Git remain clean at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. The global gate remains true,
+the real allowlist remains exactly `atenea`, and the synthetic allowlist
+remains empty. No unrelated project, route, runtime or foreign resource
+changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.4-real-web-selected-state`.
+The SHA-256 of its `SHA256SUMS` is
+`c6705a4892d5d0f15c9a1c12f510110a18d1dea5cc39b87f857e32bf885dd024`.
