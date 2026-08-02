@@ -63,7 +63,7 @@ import {
   SessionDeliverable,
   SessionDeliverableSummary,
   SessionDeliverablesView,
-  WorkSessionAttachment,
+  WorkSessionAttachmentCapability,
   WorkSessionPreview
 } from "./types";
 
@@ -840,11 +840,10 @@ function PreviewPanel({
 
 function ConversationScreen({ sessionId, projectId }: { sessionId: number; projectId?: number }) {
   const [conversation, setConversation] = useState<MobileWorkSessionConversation | null>(null);
-  const [attachments, setAttachments] = useState<WorkSessionAttachment[]>([]);
+  const [attachmentCapability, setAttachmentCapability] = useState<WorkSessionAttachmentCapability | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [attachmentsLoading, setAttachmentsLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [attachmentCapabilityLoading, setAttachmentCapabilityLoading] = useState(true);
   const [error, setError] = useState("");
   const [attachmentError, setAttachmentError] = useState("");
   const [profile, setProfile] = useState<ExecutionProfileView | null>(null);
@@ -884,20 +883,25 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
 
   async function load() {
     setError("");
-    setAttachmentsLoading(true);
-    try {
-      const [nextConversation, nextAttachments] = await Promise.all([
-        api.workSessionConversation(sessionId),
-        api.workSessionAttachments(sessionId)
-      ]);
-      setConversation(nextConversation);
-      setAttachments(nextAttachments);
-      await loadProfile();
-    } catch (loadError) {
-      setError(errorMessage(loadError));
-    } finally {
-      setAttachmentsLoading(false);
+    setAttachmentError("");
+    setAttachmentCapabilityLoading(true);
+    const [conversationResult, capabilityResult] = await Promise.allSettled([
+      api.workSessionConversation(sessionId),
+      api.workSessionAttachmentCapability(sessionId)
+    ]);
+    if (conversationResult.status === "fulfilled") {
+      setConversation(conversationResult.value);
+    } else {
+      setError(errorMessage(conversationResult.reason));
     }
+    if (capabilityResult.status === "fulfilled") {
+      setAttachmentCapability(capabilityResult.value);
+    } else {
+      setAttachmentCapability(null);
+      setAttachmentError("No se pudo comprobar si esta sesión admite imágenes.");
+    }
+    setAttachmentCapabilityLoading(false);
+    await loadProfile();
   }
 
   useEffect(() => {
@@ -1016,42 +1020,6 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     }
   }
 
-  async function uploadAttachment(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) {
-      return;
-    }
-    setUploading(true);
-    setAttachmentError("");
-    try {
-      await api.uploadWorkSessionAttachment(sessionId, {
-        file,
-        idempotencyKey: crypto.randomUUID()
-      });
-      setAttachments(await api.workSessionAttachments(sessionId));
-    } catch (uploadError) {
-      setAttachmentError(errorMessage(uploadError));
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function downloadAttachment(attachment: WorkSessionAttachment) {
-    setAttachmentError("");
-    try {
-      const blob = await api.downloadWorkSessionAttachment(sessionId, attachment.id);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = attachment.originalFilename;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (downloadError) {
-      setAttachmentError(errorMessage(downloadError));
-    }
-  }
-
   return (
     <ConversationLayout
       title={conversation?.session.title || `WorkSession #${sessionId}`}
@@ -1070,14 +1038,6 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
           onRecovery={requestRecovery}
         />
       )}
-      <AttachmentPanel
-        attachments={attachments}
-        loading={attachmentsLoading}
-        uploading={uploading}
-        error={attachmentError}
-        onUpload={uploadAttachment}
-        onDownload={downloadAttachment}
-      />
       <TurnList turns={conversation?.recentTurns || []} />
       <form className="conversation-composer" onSubmit={submit}>
         {!profileUnavailable && (
@@ -1095,6 +1055,11 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
             onApply={applyProfile}
           />
         )}
+        <AttachmentComposerState
+          capability={attachmentCapability}
+          loading={attachmentCapabilityLoading}
+          error={attachmentError}
+        />
         <div className="conversation-composer__input">
           <textarea disabled={!conversation?.canCreateTurn} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={conversation?.canCreateTurn ? "Instrucción para Codex dentro de esta sesión..." : "Espera a que termine la ejecución actual..."} />
           <Button variant="primary" disabled={loading || !message.trim() || !conversation?.canCreateTurn || profileDirty || Boolean(profileError)}>{loading ? "Enviando" : "Enviar"}</Button>
@@ -1350,67 +1315,41 @@ function ExecutionProfileControl({
   );
 }
 
-function AttachmentPanel({
-  attachments,
+function AttachmentComposerState({
+  capability,
   loading,
-  uploading,
-  error,
-  onUpload,
-  onDownload
+  error
 }: {
-  attachments: WorkSessionAttachment[];
+  capability: WorkSessionAttachmentCapability | null;
   loading: boolean;
-  uploading: boolean;
   error: string;
-  onUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onDownload: (attachment: WorkSessionAttachment) => void;
 }) {
-  const state = uploading
-    ? "Subiendo"
-    : loading
-      ? "Cargando"
-      : attachments.length
-        ? `${attachments.length} retenido${attachments.length === 1 ? "" : "s"}`
-        : "Sin adjuntos";
+  const ready = capability?.state === "READY";
+  const title = loading
+    ? "Comprobando imágenes"
+    : error
+      ? "Imágenes no disponibles"
+      : ready
+        ? "Imágenes disponibles"
+        : "Solo texto";
+  const detail = loading
+    ? "Puedes seguir preparando el mensaje."
+    : error
+      ? `${error} Continúa con texto.`
+      : capability
+        ? `${capability.message} ${capability.nextAction}`
+        : "Continúa con texto.";
   return (
-    <section className="attachment-panel" aria-label="Adjuntos de la WorkSession">
-      <div className="attachment-panel__header">
-        <div>
-          <span className="eyebrow">WorkSession actual</span>
-          <h2>Adjuntos</h2>
-          <p>{state} · máximo 16 MiB · PNG, JPEG, WebP, texto, JSON, PDF o ZIP</p>
-        </div>
-        <label className={`button button--primary ${uploading ? "is-disabled" : ""}`}>
-          <Upload />
-          <span>{uploading ? "Subiendo…" : "Adjuntar archivo"}</span>
-          <input
-            aria-label="Seleccionar adjunto"
-            type="file"
-            accept=".png,.jpg,.jpeg,.webp,.txt,.json,.pdf,.zip,image/png,image/jpeg,image/webp,text/plain,application/json,application/pdf,application/zip"
-            disabled={uploading}
-            onChange={onUpload}
-          />
-        </label>
+    <section
+      className={`attachment-composer-state attachment-composer-state--${loading ? "loading" : ready ? "ready" : "blocked"}`}
+      aria-label="Estado de imágenes del mensaje"
+      aria-live="polite"
+    >
+      <span className="attachment-composer-state__indicator" aria-hidden="true" />
+      <div>
+        <strong>{title}</strong>
+        <span>{detail}</span>
       </div>
-      {error && <InlineError>{error}</InlineError>}
-      {!loading && attachments.length > 0 && (
-        <div className="attachment-list">
-          {attachments.map((attachment) => (
-            <button
-              className="attachment-item"
-              type="button"
-              onClick={() => onDownload(attachment)}
-              key={attachment.id}
-            >
-              <span>
-                <strong>{attachment.originalFilename}</strong>
-                <small>{attachment.kind} · {formatBytes(attachment.sizeBytes)}</small>
-              </span>
-              <em>Descargar</em>
-            </button>
-          ))}
-        </div>
-      )}
     </section>
   );
 }
