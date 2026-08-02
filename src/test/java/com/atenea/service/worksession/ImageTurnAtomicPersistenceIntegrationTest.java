@@ -1,6 +1,7 @@
 package com.atenea.service.worksession;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -323,6 +324,118 @@ class ImageTurnAtomicPersistenceIntegrationTest {
                 eq(List.of(retained.getId())));
     }
 
+    @Test
+    void explicitImageTurnsContinueOneThreadAndLaterTextTurnBindsNoImage() {
+        Instant now = Instant.parse("2026-08-02T00:00:00Z");
+        WorkerNodeEntity worker = createWorker(now);
+        ProjectEntity project = createProject(now);
+        WorkSessionEntity session = createSession(project, worker, now);
+        WorkSessionAttachmentEntity firstAttachment = createAttachment(session, project, worker, now);
+        WorkSessionAttachmentEntity secondAttachment = createAttachment(
+                session,
+                project,
+                worker,
+                now,
+                UUID.fromString("9aa2c7e5-1fd9-48ec-aa10-03dfdfb8ca7d"),
+                "image/webp",
+                2048L,
+                "b".repeat(64),
+                "opaque-storage-identity-two");
+        TurnAttachmentSelectionValidator.ValidatedSelection firstSelection = selection(firstAttachment);
+        TurnAttachmentSelectionValidator.ValidatedSelection secondSelection = selection(secondAttachment);
+        when(selectionValidator.validate(
+                any(WorkSessionEntity.class),
+                eq(List.of(firstAttachment.getId()))))
+                .thenReturn(firstSelection);
+        when(selectionValidator.validate(
+                any(WorkSessionEntity.class),
+                eq(List.of(secondAttachment.getId()))))
+                .thenReturn(secondSelection);
+        doAnswer(invocation -> {
+            AgentRunEntity run = invocation.getArgument(0);
+            run.setCodexModelId("gpt-5.6-sol");
+            run.setCodexModelSource(ExecutionProfileSource.WORK_SESSION);
+            run.setCodexReasoningEffort(CodexReasoningEffort.HIGH);
+            run.setCodexEffortSource(ExecutionProfileSource.WORK_SESSION);
+            run.setCodexCatalogRevision("d".repeat(64));
+            run.setCodexVersion("0.145.0");
+            return null;
+        }).when(codexExecutionProfileSnapshotService).applyCurrentProfile(any(AgentRunEntity.class));
+        long turnsBefore = sessionTurnRepository.count();
+        long runsBefore = agentRunRepository.count();
+        long bindingsBefore = bindingCount();
+
+        CreateSessionTurnResponse first = sessionTurnService.createTurn(
+                session.getId(),
+                new CreateSessionTurnRequest(
+                        "Inspect the first synthetic image",
+                        UUID.fromString("7b35f774-97f2-4a9e-b7db-0f18d59112ba"),
+                        List.of(firstAttachment.getId())));
+        AgentRunEntity firstRun = agentRunRepository.findById(first.run().id()).orElseThrow();
+        assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, firstRun.getWorkloadKind());
+        assertEquals(1, firstRun.getAttachmentCount());
+        assertEquals(firstAttachment.getSizeBytes(), firstRun.getAttachmentBytes());
+        assertEquals(firstSelection.manifestSha256(), firstRun.getAttachmentManifestSha256());
+        assertEquals(List.of(firstAttachment.getId()), first.operatorTurn().attachments().stream()
+                .map(attachment -> attachment.id()).toList());
+        agentRunService.markSucceeded(firstRun.getId(), "turn-synthetic-one", "Synthetic success one");
+
+        String stableThreadId = "bcf43e2e-c9e8-42df-96b2-e9183462c2f4";
+        session.setExternalThreadId(stableThreadId);
+        session = workSessionRepository.saveAndFlush(session);
+
+        CreateSessionTurnResponse second = sessionTurnService.createTurn(
+                session.getId(),
+                new CreateSessionTurnRequest(
+                        "Inspect the second synthetic image in the same thread",
+                        UUID.fromString("fb332c29-d2e4-47ff-b33a-f26643179056"),
+                        List.of(secondAttachment.getId())));
+        AgentRunEntity secondRun = agentRunRepository.findById(second.run().id()).orElseThrow();
+        assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, secondRun.getWorkloadKind());
+        assertEquals(firstRun.getWorkspaceIdentity(), secondRun.getWorkspaceIdentity());
+        assertEquals(firstRun.getRemoteSessionId(), secondRun.getRemoteSessionId());
+        assertEquals(stableThreadId,
+                workSessionRepository.findById(session.getId()).orElseThrow().getExternalThreadId());
+        assertEquals(1, secondRun.getAttachmentCount());
+        assertEquals(secondAttachment.getSizeBytes(), secondRun.getAttachmentBytes());
+        assertEquals(secondSelection.manifestSha256(), secondRun.getAttachmentManifestSha256());
+        assertEquals(List.of(secondAttachment.getId()), second.operatorTurn().attachments().stream()
+                .map(attachment -> attachment.id()).toList());
+        agentRunService.markSucceeded(secondRun.getId(), "turn-synthetic-two", "Synthetic success two");
+
+        CreateSessionTurnResponse textOnly = sessionTurnService.createTurn(
+                session.getId(),
+                new CreateSessionTurnRequest("Continue in the same thread without an image"));
+        AgentRunEntity textRun = agentRunRepository.findById(textOnly.run().id()).orElseThrow();
+        assertEquals(ProjectCodexIdentity.WORKLOAD_KIND, textRun.getWorkloadKind());
+        assertEquals(firstRun.getWorkspaceIdentity(), textRun.getWorkspaceIdentity());
+        assertEquals(firstRun.getRemoteSessionId(), textRun.getRemoteSessionId());
+        assertEquals(stableThreadId,
+                workSessionRepository.findById(session.getId()).orElseThrow().getExternalThreadId());
+        assertEquals(0, textRun.getAttachmentCount());
+        assertEquals(0L, textRun.getAttachmentBytes());
+        assertNull(textRun.getAttachmentManifestSha256());
+        assertEquals(List.of(), textOnly.operatorTurn().attachments());
+
+        List<SessionTurnResponse> history = sessionTurnService.getTurns(session.getId());
+        assertEquals(3, history.size());
+        assertEquals(List.of(firstAttachment.getId()), history.get(0).attachments().stream()
+                .map(attachment -> attachment.id()).toList());
+        assertEquals(List.of(secondAttachment.getId()), history.get(1).attachments().stream()
+                .map(attachment -> attachment.id()).toList());
+        assertEquals(List.of(), history.get(2).attachments());
+        assertEquals(turnsBefore + 3, sessionTurnRepository.count());
+        assertEquals(runsBefore + 3, agentRunRepository.count());
+        assertEquals(bindingsBefore + 2, bindingCount());
+        verify(selectionValidator, times(1)).validate(
+                any(WorkSessionEntity.class),
+                eq(List.of(firstAttachment.getId())));
+        verify(selectionValidator, times(1)).validate(
+                any(WorkSessionEntity.class),
+                eq(List.of(secondAttachment.getId())));
+        verify(remoteAgentRunCoordinator, times(3)).dispatchAfterCommit(any());
+    }
+
     private long bindingCount() {
         Long value = jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM session_turn_attachment",
@@ -400,25 +513,67 @@ class ImageTurnAtomicPersistenceIntegrationTest {
             WorkerNodeEntity worker,
             Instant now
     ) {
+        return createAttachment(
+                session,
+                project,
+                worker,
+                now,
+                UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002"),
+                "image/png",
+                1024L,
+                "a".repeat(64),
+                "opaque-storage-identity");
+    }
+
+    private WorkSessionAttachmentEntity createAttachment(
+            WorkSessionEntity session,
+            ProjectEntity project,
+            WorkerNodeEntity worker,
+            Instant now,
+            UUID attachmentId,
+            String contentType,
+            long sizeBytes,
+            String sha256,
+            String storageIdentity
+    ) {
         WorkSessionAttachmentEntity attachment = new WorkSessionAttachmentEntity();
-        attachment.setId(UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002"));
+        attachment.setId(attachmentId);
         attachment.setWorkSession(session);
         attachment.setProject(project);
         attachment.setSource(AttachmentSource.OPERATOR_UPLOAD);
         attachment.setKind(AttachmentKind.IMAGE);
         attachment.setOriginalFilename("sanitized-image");
-        attachment.setContentType("image/png");
-        attachment.setSizeBytes(1024L);
+        attachment.setContentType(contentType);
+        attachment.setSizeBytes(sizeBytes);
         attachment.setRetentionClass(AttachmentRetentionClass.SESSION);
         attachment.setRetainUntil(Instant.parse("2030-01-01T00:00:00Z"));
-        attachment.setSha256("a".repeat(64));
+        attachment.setSha256(sha256);
         attachment.setWorkerId(worker.getId());
-        attachment.setStorageIdentity("opaque-storage-identity");
+        attachment.setStorageIdentity(storageIdentity);
         attachment.setStorageScope(AttachmentStorageScope.REAL_SESSION);
         attachment.setRemoteSessionId(session.getRemoteSessionId());
         attachment.setWorkspaceIdentity(session.getWorkspaceIdentity());
         attachment.setCreatedAt(now);
         attachment.setIndexedAt(now);
         return attachmentRepository.saveAndFlush(attachment);
+    }
+
+    private TurnAttachmentSelectionValidator.ValidatedSelection selection(
+            WorkSessionAttachmentEntity attachment
+    ) {
+        TurnAttachmentFingerprintService.AttachmentFingerprintInput input =
+                new TurnAttachmentFingerprintService.AttachmentFingerprintInput(
+                        attachment.getId(),
+                        attachment.getContentType(),
+                        attachment.getSizeBytes(),
+                        attachment.getSha256());
+        return new TurnAttachmentSelectionValidator.ValidatedSelection(
+                List.of(new TurnAttachmentSelectionValidator.ValidatedAttachment(
+                        attachment.getId(),
+                        attachment.getContentType(),
+                        attachment.getSizeBytes(),
+                        attachment.getSha256())),
+                attachment.getSizeBytes(),
+                fingerprintService.attachmentManifestSha256(List.of(input)));
     }
 }

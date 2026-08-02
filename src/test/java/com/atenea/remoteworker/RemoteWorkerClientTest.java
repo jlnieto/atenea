@@ -439,6 +439,61 @@ class RemoteWorkerClientTest {
     }
 
     @Test
+    void explicitImageContinuationsNeverLeakTheLatestImageIntoTextOnlyWorkload() {
+        String stableThreadId = "bcf43e2e-c9e8-42df-96b2-e9183462c2f4";
+        AgentRunEntity first = profiledImageRun(null);
+        AgentRunEntity second = profiledImageRun(stableThreadId);
+        AgentRunEntity textOnly = projectRun(stableThreadId);
+        applyProfile(textOnly);
+        UUID firstId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        UUID secondId = UUID.fromString("9aa2c7e5-1fd9-48ec-aa10-03dfdfb8ca7d");
+        ProjectCodexAttachmentManifestService.AttachmentReference firstReference =
+                new ProjectCodexAttachmentManifestService.AttachmentReference(
+                        firstId, "image/png", 1024L, "a".repeat(64));
+        ProjectCodexAttachmentManifestService.AttachmentReference secondReference =
+                new ProjectCodexAttachmentManifestService.AttachmentReference(
+                        secondId, "image/webp", 2048L, "b".repeat(64));
+        when(attachmentManifestService.exactReferences(first)).thenReturn(List.of(firstReference));
+        when(attachmentManifestService.exactReferences(second)).thenReturn(List.of(secondReference));
+
+        client.dispatch(first, "Inspect the first accepted image.");
+        JsonNode firstRequest = requestBody.get().deepCopy();
+        client.dispatch(second, "Inspect the second accepted image in the same thread.");
+        JsonNode secondRequest = requestBody.get().deepCopy();
+        client.dispatch(textOnly, "Continue in the same thread without an image.");
+        JsonNode textRequest = requestBody.get().deepCopy();
+
+        assertEquals(firstRequest.get("sessionId"), secondRequest.get("sessionId"));
+        assertEquals(firstRequest.get("sessionId"), textRequest.get("sessionId"));
+        assertEquals(firstRequest.get("workspaceIdentity"), secondRequest.get("workspaceIdentity"));
+        assertEquals(firstRequest.get("workspaceIdentity"), textRequest.get("workspaceIdentity"));
+
+        JsonNode firstWorkload = firstRequest.get("workload");
+        JsonNode secondWorkload = secondRequest.get("workload");
+        JsonNode textWorkload = textRequest.get("workload");
+        assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, firstWorkload.get("kind").asText());
+        assertEquals(1, firstWorkload.get("attachments").size());
+        assertEquals(firstId.toString(),
+                firstWorkload.get("attachments").get(0).get("attachmentId").asText());
+        assertEquals(true, firstWorkload.get("threadId").isNull());
+
+        assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, secondWorkload.get("kind").asText());
+        assertEquals(stableThreadId, secondWorkload.get("threadId").asText());
+        assertEquals(1, secondWorkload.get("attachments").size());
+        assertEquals(secondId.toString(),
+                secondWorkload.get("attachments").get(0).get("attachmentId").asText());
+        assertNotEquals(firstId.toString(),
+                secondWorkload.get("attachments").get(0).get("attachmentId").asText());
+
+        assertEquals("project-codex-v2", textWorkload.get("kind").asText());
+        assertEquals(stableThreadId, textWorkload.get("threadId").asText());
+        assertNull(textWorkload.get("attachments"));
+        assertNull(textWorkload.get("attachmentId"));
+        assertNull(textWorkload.get("image"));
+        assertNull(textWorkload.get("path"));
+    }
+
+    @Test
     void imageRunUsesTheSameExactProjectWorkspaceAuthorityAsV1AndV2() {
         AgentRunEntity run = projectRun(null);
         run.setWorkloadKind(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
@@ -882,6 +937,26 @@ class RemoteWorkerClientTest {
         ReviewedInstructionBundleIdentity.apply(
                 run, ProjectCodexIdentity.PROJECT_IDENTITY);
         return run;
+    }
+
+    private AgentRunEntity profiledImageRun(String threadId) {
+        AgentRunEntity run = projectRun(threadId);
+        run.setSelectedWorkerId("ax42-01");
+        run.setWorkloadKind(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
+        applyProfile(run);
+        run.setAttachmentCount(1);
+        run.setAttachmentBytes(1024L);
+        run.setAttachmentManifestSha256("c".repeat(64));
+        return run;
+    }
+
+    private void applyProfile(AgentRunEntity run) {
+        run.setCodexModelId("gpt-5.6-sol");
+        run.setCodexReasoningEffort(
+                com.atenea.persistence.worksession.CodexReasoningEffort.HIGH);
+        run.setCodexCatalogRevision(
+                "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187");
+        run.setCodexVersion("0.145.0");
     }
 
     private String sha256(JsonNode value) {
