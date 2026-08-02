@@ -64,6 +64,7 @@ import {
   SessionDeliverable,
   SessionDeliverableSummary,
   SessionDeliverablesView,
+  SessionTurnAttachment,
   WorkSessionAttachment,
   WorkSessionAttachmentCapability,
   WorkSessionPreview
@@ -1193,6 +1194,21 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     setAttachmentError("");
   }
 
+  async function downloadTurnAttachment(attachment: SessionTurnAttachment) {
+    setError("");
+    try {
+      const blob = await api.downloadWorkSessionAttachment(sessionId, attachment.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = attachment.originalFilename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setError(`No se pudo descargar la imagen. ${errorMessage(downloadError)}`);
+    }
+  }
+
   return (
     <ConversationLayout
       title={conversation?.session.title || `WorkSession #${sessionId}`}
@@ -1211,7 +1227,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
           onRecovery={requestRecovery}
         />
       )}
-      <TurnList turns={conversation?.recentTurns || []} />
+      <TurnList turns={conversation?.recentTurns || []} onDownloadAttachment={downloadTurnAttachment} />
       <form className="conversation-composer" onSubmit={submit}>
         {!profileUnavailable && (
           <ExecutionProfileControl
@@ -2379,7 +2395,13 @@ function ConversationLayout({ title, subtitle, back, refresh, children }: { titl
   );
 }
 
-function TurnList({ turns }: { turns: MobileConversationTurn[] }) {
+function TurnList({
+  turns,
+  onDownloadAttachment
+}: {
+  turns: MobileConversationTurn[];
+  onDownloadAttachment?: (attachment: SessionTurnAttachment) => void;
+}) {
   if (!turns.length) {
     return <EmptyState title="Sin conversación visible" detail="Envía una instrucción para iniciar el historial." />;
   }
@@ -2399,6 +2421,22 @@ function TurnList({ turns }: { turns: MobileConversationTurn[] }) {
             </span>
           </div>
           <Markdown content={turn.messageText} />
+          {onDownloadAttachment && (turn.attachments || []).length > 0 && (
+            <ul className="turn-attachment-list" aria-label={`Imágenes del turno ${turn.id}`}>
+              {turn.attachments.map((attachment) => (
+                <li key={attachment.id}>
+                  <button type="button" onClick={() => onDownloadAttachment(attachment)}>
+                    <Paperclip />
+                    <span>
+                      <strong title={attachment.originalFilename}>{attachment.originalFilename}</strong>
+                      <small>{formatBytes(attachment.sizeBytes)} · Imagen {attachment.position + 1}</small>
+                    </span>
+                    <em>Descargar</em>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </li>
       ))}
     </ol>
