@@ -9304,3 +9304,51 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.6-text-only-continuation`;
 the SHA-256 of its `SHA256SUMS` is
 `bc09cf74364356a5e6ed2d8f7c87838f711ee66bf2a1d26cf457ad996e652cc8`.
+
+Task 7.7 is complete. Change progress is `72/83`; task 7.8 is the exact
+resume point and was not started.
+
+With zero non-terminal AgentRuns, the production backend, AX42 attachment
+service and AX42 AgentRun worker were restarted separately and in that order.
+Only `atenea-backend-prod` was restarted; it returned HTTP 200 on bounded
+readiness attempt 14 in 14 seconds, with zero restart-loop count, while preview
+and Beautips remained HTTP 200. Production records immediately remained one
+attachment, four turns, one historical binding, two AgentRuns and two distinct
+result turns.
+
+The attachment service then received an isolated bounded systemd restart. Its
+PID changed, the AgentRun-worker PID remained unchanged, and the exact tailnet
+listener returned on bounded attempt 2. An authenticated in-memory download
+returned HTTP 200, exactly 42,499 bytes and SHA-256
+`3547d21c912406eb42b757109568d07af9770d1cd94f498ee90ccd95be3a63f5`,
+matching both the response digest and persisted identity. The credential never
+entered output or evidence, and downloaded bytes were not retained.
+
+The AgentRun worker was restarted only after reconfirming zero non-terminal
+runs. Its PID changed, the attachment-service PID remained unchanged, and its
+listener returned on bounded attempt 2. The durable execution-state SHA-256
+remained byte-identical at
+`7964895ca393c919fc265d78f64102c651344baa2c7286e7926fce1f1b4b42ff`.
+Post-restart state remains exactly two successful worker executions—one v3
+image run and one v2 text continuation—with attachment counts `1,0`, two
+results, preserved thread continuity and no attachment key on the continuation.
+
+A second final authenticated download after all three restarts reproduced the
+same HTTP status, size, digest and SHA-256. Database identity remains exactly
+four distinct turns, one position-zero binding, two distinct origins, results,
+dispatches and remote executions, with no non-terminal run. Temporary
+materializations, browser processes and Codex processes remain zero.
+
+The session worktree remains clean at commit
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`; allocation SHA-256 remains
+`89fe98bfb3afb0d4d2c0007c22c5636669f0d3b77bfc588732992bbdb95a2a35`.
+Worker services and backup/health timers are active, rootless slot container
+counts remain `3/0/0/3`, RAID remains `3/3 [UU]`, rootful Docker remains
+inactive, and production, preview and Beautips return HTTP 200. No project
+runtime, route, unrelated slot or foreign resource changed.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.7-separate-service-restarts`;
+the SHA-256 of its `SHA256SUMS` is
+`3e9bfa4c24bbd78f77eeb9a9403f89f668dd317bb54d18e6fc1028c151c9fcb7`.
