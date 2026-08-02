@@ -8132,3 +8132,33 @@ occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.6-historical-bindings`;
 the SHA-256 of its `SHA256SUMS` is
 `1e4ea7370f552174680a6e344ab4c52e139203eb89704170ba7566d8ebe60c5b`.
+
+Task 4.7 is complete and change progress is `45/83`; the exact resume point is
+task 4.8. Atenea commit
+`bffe7613ac45013ff0b7f73be011afe6d5e488ac` has tree
+`53a5ed2eed3f0a081f9078518e38a58f42491589` and is clean and published.
+
+The composer now names legacy-session, ownership-invalid, exhausted-quota,
+worker-unavailable and worker-incompatible blocks directly while preserving
+the server-owned reason and next action. Global-disabled and project-disabled
+remain concise text-only states. Client validation errors no longer inherit the
+green ready indicator: over-file and over-turn states use an explicit error
+state and direct the operator to choose, remove or continue with text as
+appropriate. The singular one-image limit is grammatical.
+
+The production build passed in 4 seconds. Isolated empty-conversation
+Playwright acceptance covered all eight task states at `1440x900` and
+`390x844`: six fail-closed capability blocks, over-file and over-turn. Every
+title and action was visible in the first relevant viewport; blocked states had
+zero picker, the over-turn case retained its first valid selection, Send stayed
+the only primary action, and inspected PNGs had no clipping, overlap or
+horizontal overflow. Browser and temporary Vite processes closed.
+
+Canonical Atenea remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; required AX42 services/timers are active; all RAID
+arrays remain `[UU]`; rootless slots remain `3/0/0/3`. No rollout or unrelated
+mutation occurred. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.7-actionable-blocked-states`;
+the SHA-256 of its `SHA256SUMS` is
+`a4e27a354a744548a9f60f8b5ed072b5ab1b92ac121b12ff74cb44a1b515a673`.
