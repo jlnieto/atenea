@@ -7861,3 +7861,48 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.9-image-execution-lifecycle`;
 the SHA-256 of its `SHA256SUMS` is
 `190f31cb0b2a5e11977c4955432beeb093c811e15e75d14b524a5ad1878cb8e8`.
+
+Task 3.10 is complete and change progress is `37/83`; the exact resume point
+is task 3.11. Programme/worker commit
+`80bd5e9008dc4c8475f13577cde28f4b4377379f` updates the versioned AgentRun
+installation, verification, rollback and systemd sandbox contracts in source.
+
+The generated canonical Atenea configuration now contains the sole fixed
+attachment root `/srv/atenea/attachments-v1` under an exact top-level schema.
+Foreign or additional root authority is rejected. The installer pins the
+reviewed worker and project-runner SHA-256 values, installs only the normal and
+fixed reconciliation sudo commands, and verifies the exact configuration,
+binaries, units, modes and owners.
+
+The AgentRun service receives the retained root read-only and adds only
+`/run/atenea/codex-images` to its existing write paths. A separate root oneshot
+creates the controlled parent and root only when absent, then verifies exact
+`root:atenea` ownership and `0750`/`0710` modes. Existing, foreign-owned,
+symlinked or otherwise ambiguous paths fail closed and are never repaired or
+adopted. The oneshot remains active for the worker lifetime and is recreated
+through the fixed dependency after reboot. Rollback verifies every boundary,
+stops only the two exact services and preserves all boundary content.
+
+The task-specific installer/sandbox/rollback test passed in 0.73 seconds. The
+focused AgentRun, runner, Beautips and session-operations suite passed `85/85`
+in 13.599 seconds under a 120-second timeout. Both systemd templates passed an
+isolated parser check after replacing only locally unavailable AX42 executable
+paths with `/bin/true`; static tests separately pinned the real commands and
+unit hashes. The accepted source tree
+`c0a08cec93c2540d828fe475158a86e03da66d4a` is clean, published and
+synchronized before this ledger update.
+
+The candidate remains uninstalled: its helper and materialization root remain
+absent. The installed runner retains SHA-256
+`d15c78b09fcf048f7968168861ed976dd054b038168548b7216781568d1126f0`.
+Canonical Atenea remains clean at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; AX42 attachment/AgentRun services and health/backup
+timers are active; RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`. No
+deployment, migration, production record, retained content, route, credential,
+service or foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.10-versioned-install-sandbox`;
+the SHA-256 of its `SHA256SUMS` is
+`ca314397629198e355deb7529648b13e8db91a4a11090c10d257ab9fa9398fc7`.
