@@ -9137,3 +9137,44 @@ Sanitized recovery evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.5-recovery-clean-session`.
 The SHA-256 of its `SHA256SUMS` is
 `c9d7cc33b3bcd5e8044a8b3647ed6994a16c760f34fabcab8e2d3ecd76e8eece`.
+
+The next manual Send reached the server with one exact selected attachment.
+WorkSession `14` now has one attachment, two turns, one immutable binding and
+one terminal successful AgentRun. Run `93` is `project-codex-v3` with attachment
+count/bytes `1/42499` and manifest SHA-256
+`d8f4977b555230f2812964650d4c878c3153d61dc68f4536033daa5bcb63d72f`.
+Its retained attachment SHA-256 matches the generated fixture. AX42 has zero
+materializations and runner processes after completion. Because the operator
+text was accidental, semantic image understanding is not claimed and task 7.5
+remains unmarked.
+
+The client reported that `recentTurns` was undefined. Source comparison proved
+the backend returns `CreateSessionTurnConversationViewResponse` as an outer
+record whose `view` member contains the conversation envelope, while the web
+client decoded the outer record as the envelope itself. Candidate commit
+`57b4123abaa4d66ba335fcb0cf4b64cd9fdd589d` fixes only that boundary and makes
+the synthetic test server use the exact production response shape. The 17
+attachment Playwright tests pass, the production web build passes, and rendered
+desktop `1440x900` plus mobile `390x844` submission checks retain the accepted
+turn/image, clear the composer and show no horizontal overflow.
+
+Immutable candidate image
+`sha256:ca076c3a615c7745c8a86fe7abd729123041bf9c38e529716892dd72c6dbc0c3`
+was built from the exact published commit and is used by zero containers. Its
+production rollout stopped before mutation because the live Compose mode is
+`0664`, whereas accepted tasks 7.2/7.3 require `0600`. Compose content remains
+the accepted SHA-256
+`ad292a88149ca1eeea5eb3c720c5fcb9153c2dd5facb289cd2b72891e719e29d`
+and owner `jose:jose`; the active backend remains on the prior immutable image,
+running with zero restarts. Production, preview and Beautips remain HTTP 200.
+No chmod, backup, Compose replacement or container recreation was attempted.
+
+Task 7.5 is blocked and remains the first pending task at `69/83`. Resumption
+requires explicit authorization to restore only the exact production Compose
+mode to `0600`, deploy the exact candidate image and complete a controlled
+semantic canary without retrying run `93`.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.5-blocked-wrapper-compose-mode`.
+The SHA-256 of its `SHA256SUMS` is
+`4893feeb7e069e02d734bcffc5cbd9df519c95d8fcb383480365cf9c14fe6102`.
