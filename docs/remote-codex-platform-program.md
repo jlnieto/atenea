@@ -8612,3 +8612,45 @@ Sanitized task evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.2-v62-image-compatibility`;
 the SHA-256 of its `SHA256SUMS` is
 `158b3dacad3e6b713b06160722b47ca3e94799a56fc43d092c5c55a610e76b33`.
+
+Task 6.3 is complete. Change progress is `60/83`; task 6.4 is the mandatory
+rollout-authorization stop gate and exact resume point.
+
+The candidate backend/web release remains content-addressed by image
+`sha256:208af4c93512a07f4bcd8f8a4fa9bc1c47421b1e4213dc9ab228a56c654c5277`,
+with embedded application JAR SHA-256
+`6d2e1b3ce6b8d1f705e68acd95c6ff2f8e800ddd651253572043211c6da6bf53`
+and committed static-tree digest
+`e24754b3b6a2a2fd5a4ec17ccfe05a70ab7bac77c9c3cfb7d828f1f1e1a87bf2`.
+The exact compatible backend rollback remains image
+`sha256:00afca3569c7367f1df27c4ddd380c4c643fb4045e649964c55d870cb9e46c84`.
+Both have version-addressed release tags and exact source commit/tree labels.
+
+A deterministic protected candidate worker/storage bundle contains exactly
+the reviewed AgentRun worker, attachment service, runner, installers, unit
+templates, mediators and v3 schemas from programme commit
+`d9fc09398282da9d160d3357304896c73887e256`; its SHA-256 is
+`74c98790489b57a12c0806df30253c4dd7c7ad706c36b1cdf605cd5601d40a37`.
+A separate protected pre-rollout rollback bundle contains only the six exact
+installed code/unit artifacts and explicit absence metadata; its SHA-256 is
+`ca8532832f9e24dc2544d22cd17c4dba8944b51b2be7f4628bd1eae144953411`.
+Both are root-owned, mode `0640`, and carry verified internal checksum
+manifests. No configuration, state, credential or retained content is bundled.
+
+The task 6.1 tmpfs database container and internal network were removed only
+after their IDs, labels and sole membership matched the registered ownership.
+No task 6.1–6.3 container, network or volume remains. The protected production
+backup and the candidate/rollback release artifacts are intentionally
+retained.
+
+Production remains V61; production and preview return HTTP 200; required AX42
+services/timers are active; RAID remains `3/3 [UU]`; rootless slots remain
+`3/0/0/3`, including unchanged Beautips. Git remains clean and synchronized.
+No production migration, deployment, restart, feature configuration,
+credential, route, WorkSession, attachment content or unrelated resource
+changed.
+
+Sanitized task evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.3-immutable-artifacts-fixture-cleanup`;
+the SHA-256 of its `SHA256SUMS` is
+`e81b0260da63e4ec772ae812ac96af97857066a4dd165ae0c00d2e776a094ff5`.
