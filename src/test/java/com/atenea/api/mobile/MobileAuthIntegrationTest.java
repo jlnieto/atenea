@@ -2,6 +2,7 @@ package com.atenea.api.mobile;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -45,6 +46,28 @@ class MobileAuthIntegrationTest {
         mockMvc.perform(get("/api/sessions/12/attachments/capability"))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/mobile/sessions/12/attachments/capability"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/sessions/12/attachments"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/mobile/sessions/12/attachments"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/sessions/12/attachments/"
+                        + "4e8f351e-e05a-41b6-99e5-3eb72d770002/content"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(multipart("/api/sessions/12/attachments")
+                        .file("file", new byte[] {1, 2, 3}))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/sessions/12/turns")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "Inspect selected image",
+                                  "clientRequestId": "7b35f774-97f2-4a9e-b7db-0f18d59112ba",
+                                  "attachmentIds": [
+                                    "4e8f351e-e05a-41b6-99e5-3eb72d770002"
+                                  ]
+                                }
+                                """))
                 .andExpect(status().isUnauthorized());
 
         mockMvc.perform(post("/api/mobile/auth/login")

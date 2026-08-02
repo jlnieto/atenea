@@ -224,6 +224,22 @@ class TurnAttachmentSelectionValidatorTest {
     }
 
     @Test
+    void rejectsIndividualImageAboveSixteenMibBeforeWorker() {
+        WorkSessionEntity session = exactRealSession();
+        givenIndexed(image(
+                session,
+                FIRST_ID,
+                "image/png",
+                AttachmentProperties.DEFAULT_MAX_FILE_BYTES + 1));
+
+        assertThrows(
+                AttachmentLimitException.class,
+                () -> validator.validate(session, List.of(FIRST_ID)));
+
+        verifyNoInteractions(workerClient);
+    }
+
+    @Test
     void rejectsIncompatibleWorkerBeforeReadingRetainedMetadata() {
         WorkSessionEntity session = exactRealSession();
         givenIndexed(image(session, FIRST_ID, "image/png", 1024L));

@@ -404,6 +404,37 @@ class AgentRunServiceTest {
     }
 
     @Test
+    void createRemoteImageRetryFailsClosedWhenOriginBindingIsMissing() {
+        WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        AgentRunEntity source = buildRun(81L, AgentRunStatus.FAILED);
+        source.setSession(session);
+        source.setOriginTurn(originTurn);
+        source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setWorkloadKind(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
+        source.setAttachmentCount(1);
+        source.setAttachmentBytes(1024L);
+        source.setAttachmentManifestSha256("a".repeat(64));
+        when(agentRunRepository.findByIdForUpdate(81L)).thenReturn(Optional.of(source));
+        when(agentRunRepository.findFirstByRetryOfRunIdOrderByCreatedAtAsc(81L))
+                .thenReturn(Optional.empty());
+        when(sessionTurnAttachmentRepository
+                .findByWorkSessionIdAndSessionTurnIdOrderByPositionAsc(12L, 101L))
+                .thenReturn(List.of());
+
+        assertThrows(
+                AgentRunRecoveryConflictException.class,
+                () -> agentRunService.createRemoteRetryRun(81L));
+
+        verify(turnAttachmentSelectionValidator, never()).validateBoundRetry(any(), any());
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
+        verify(sessionTurnAttachmentRepository, never()).insert(any(), any(), any(), anyShort());
+    }
+
+    @Test
     void createRemoteProjectRunPersistsExactImmutableWorkloadIdentity() {
         WorkSessionEntity session = buildSession(12L, 7L, "/workspace/repos/internal/atenea");
         session.setBaseBranch(ProjectCodexIdentity.BRANCH);
