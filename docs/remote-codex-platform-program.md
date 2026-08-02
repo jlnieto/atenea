@@ -7955,3 +7955,36 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.11-complete-worker-slice`;
 the SHA-256 of its `SHA256SUMS` is
 `c205216f47c9d7385539729f8a763aa64ca438e574a1a2998e763be0be286c55`.
+
+Task 4.1 is complete and change progress is `39/83`; the exact resume point is
+task 4.2. Atenea commit
+`59f55e27f703e6858c501aaabb07125bb88183f4` has tree
+`a65bf945dfcc854a75430a409bd07bd3f8ed2d44` and is clean and published on
+`codex/activate-atenea-real-worksession-attachments`.
+
+The web client now types the complete capability projection, caller-owned
+upload idempotency identity, caller-owned stable turn request identity, exact
+ordered attachment IDs and immutable historical turn attachment metadata. The
+HTTP layer copies caller order without sorting or deduplicating it and does not
+regenerate either identity during dispatch. The existing text-only path uses
+an empty explicit attachment selection; persistence across an uncertain UI
+submission remains deliberately assigned to task 4.5.
+
+The production TypeScript/Vite web build passed in 4 seconds under a
+600-second timeout, transforming 1,583 modules. The task has no rendered or
+styling change, so real desktop/mobile Playwright validation begins with the
+visible composer changes and is consolidated by tasks 4.9 and 4.10. Strict
+OpenSpec validation passed.
+
+Canonical Atenea remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; AX42 attachment, preview and AgentRun services plus
+health/backup timers are active; RAID is `3/3 [UU]`; rootless slots remain
+`3/0/0/3`; the candidate helper and materialization root remain absent. No
+deployment, migration, route, service, production record, retained content,
+credential or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.1-typed-web-clients`;
+the SHA-256 of its `SHA256SUMS` is
+`a0d29366ce3f59e38585ac741aa8cb59e81e51c65b75e3d57f7c7d1cee8ab147`.
