@@ -97,7 +97,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 6.5 Rotate/provision the attachment credential out of band, mount it read-only only into the production backend, configure the tailnet endpoint and verify modes/ownership without reading or retaining its value
 - [x] 6.6 Deploy V62 and the candidate backend/web with all attachment create/bind gates false, then install/restart only the exact AX42 attachment and AgentRun services with no project runtime restart
 - [x] 6.7 Prove disabled mode leaves zero production attachment rows/bytes/materializations, existing sessions ineligible, list/download compatible and production/preview/Beautips/routing/other slots unchanged
-- [ ] 6.8 Run a bounded authenticated capability/connectivity check with no upload, seal disabled-rollout evidence and update the ledger before enabling any project
+- [x] 6.8 Run a bounded authenticated capability/connectivity check with no upload, seal disabled-rollout evidence and update the ledger before enabling any project
 
 ## 7. Exact Atenea activation and real web canary
 

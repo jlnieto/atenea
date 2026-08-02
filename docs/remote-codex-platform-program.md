@@ -8827,3 +8827,43 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.7-disabled-mode-production`;
 the SHA-256 of its `SHA256SUMS` is
 `563a640ffdb121bf896216eaeee78c5f00db8e3999dadef94b87de8fb80b49c3`.
+
+Task 6.8 is complete, phase 6 is closed and change progress is `65/83`; task
+7.1 is the exact resume point.
+
+A bounded GET-only request from the control host authenticated successfully to
+the private AX42 capability. The normalized response is exactly protocol
+`real-project-attachment/v1`, worker `ax42-01`, healthy true, sole project
+identity `atenea` and sole storage scope `REAL_SESSION`. A fixed invalid
+credential returned 401. No upload, metadata read or content read was
+attempted, and no credential value or digest entered evidence.
+
+The task also corrects one earlier storage-accounting statement. Task 6.6 and
+6.7 used an unprivileged `find` with denied-path errors discarded and described
+the worker attachment store as empty. That statement is superseded; no file
+was created or removed by the mistaken observation. V62 production does have
+zero real attachment rows and logical bytes, bindings, image AgentRuns and
+policy revisions, and there are zero materializations. Separately, AX42
+correctly retains eight pre-rollout legacy attachments across two UUID session
+directories and one base-v1 numeric session directory. All eight attachment
+identities, file/directory owners and modes are exact, no unknown or incoming
+entry exists and every file predates the rollout.
+
+The complete retained-storage metadata fingerprint before and after a repeated
+authenticated capability GET is identically
+`9170ec9ace7e935599ab02fb6841df92ee9bc333c403592f58bf06829f8407b6`.
+The historical bytes were not read, adopted, deleted or rewritten. This
+preservation is required by the compatibility/no-deletion contract and does
+not make any old WorkSession eligible for new attachment creation.
+
+All attachment gates and allowlists remain disabled/empty. Routing retains
+SHA-256 `d9878267d7b979197521a48d90789c593dd775ac3973f96dcf84e135f9f25b87`;
+incoming storage, materializations and AgentRun state are empty; rootless slots
+remain `3/0/0/3`; RAID remains `3/3 [UU]`; production, preview and Beautips
+return HTTP 200. No project, WorkSession, route or foreign resource changed.
+
+Sanitized evidence, including the superseding storage-accounting correction,
+is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.8-authenticated-capability-seal`;
+the SHA-256 of its `SHA256SUMS` is
+`da6daf6c17e1ee487b5a431320ce6cac79add23cdf2503c3aaf87c45b435e987`.
