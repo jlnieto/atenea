@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.internal/contracts/agent-run-project-codex-v3.request.schema.json",
+  "title": "Atenea exact image-bearing profiled project Codex dispatch request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "dispatchId",
+    "sessionId",
+    "workspaceIdentity",
+    "workloadClass",
+    "leaseGeneration",
+    "workload"
+  ],
+  "properties": {
+    "dispatchId": {"type": "string", "format": "uuid"},
+    "sessionId": {"type": "string", "format": "uuid"},
+    "workspaceIdentity": {
+      "type": "string",
+      "pattern": "^remote:ax42-01:work-session:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "workloadClass": {"enum": ["NORMAL", "HEAVY"]},
+    "leaseGeneration": {"type": "integer", "minimum": 1},
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "projectId",
+        "repository",
+        "branch",
+        "commit",
+        "manifestSha256",
+        "instructionBundleRevision",
+        "instructionBundleSha256",
+        "platformInstructionSha256",
+        "projectInstructionPath",
+        "projectInstructionSha256",
+        "modelId",
+        "reasoningEffort",
+        "catalogRevision",
+        "codexVersion",
+        "message",
+        "threadId",
+        "attachments"
+      ],
+      "properties": {
+        "kind": {"const": "project-codex-v3"},
+        "projectId": {"const": "atenea"},
+        "repository": {"const": "https://github.com/jlnieto/atenea.git"},
+        "branch": {"const": "feature/actualizar-conversacion-en-web"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "manifestSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "instructionBundleRevision": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,79}$"},
+        "instructionBundleSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "platformInstructionSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "projectInstructionPath": {"const": "AGENTS.md"},
+        "projectInstructionSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "modelId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,79}$"},
+        "reasoningEffort": {"enum": ["none", "low", "medium", "high", "xhigh", "max"]},
+        "catalogRevision": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "codexVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "message": {"type": "string", "minLength": 1, "maxLength": 20000},
+        "threadId": {"type": ["string", "null"], "format": "uuid"},
+        "attachments": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["attachmentId", "contentType", "sizeBytes", "sha256"],
+            "properties": {
+              "attachmentId": {"type": "string", "format": "uuid"},
+              "contentType": {"enum": ["image/png", "image/jpeg", "image/webp"]},
+              "sizeBytes": {"type": "integer", "minimum": 1, "maximum": 16777216},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

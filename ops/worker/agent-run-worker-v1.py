@@ -27,6 +27,7 @@ PROTOCOL = "agent-run-worker/v1"
 SYNTHETIC_CAPABILITY = "synthetic-routing-v1"
 PROJECT_CAPABILITY = "project-codex-v1"
 PROJECT_V2_CAPABILITY = "project-codex-v2"
+PROJECT_V3_CAPABILITY = "project-codex-v3"
 CODEX_CATALOG_CAPABILITY = "codex-model-catalog-v1"
 CODEX_UPDATE_STAGE_CAPABILITY = "codex-update-stage-v1"
 CODEX_UPDATE_ACTIVATE_CAPABILITY = "codex-update-activate-v1"
@@ -71,6 +72,12 @@ PROJECT_WORKLOAD_KEYS = {
 PROJECT_V2_WORKLOAD_KEYS = PROJECT_WORKLOAD_KEYS | {
     "modelId", "reasoningEffort", "catalogRevision", "codexVersion",
 }
+PROJECT_V3_WORKLOAD_KEYS = PROJECT_V2_WORKLOAD_KEYS | {"attachments"}
+PROJECT_V3_ATTACHMENT_KEYS = {"attachmentId", "contentType", "sizeBytes", "sha256"}
+PROJECT_V3_ATTACHMENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
+PROJECT_V3_MAX_ATTACHMENTS = 4
+PROJECT_V3_MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024
+PROJECT_V3_MAX_TOTAL_BYTES = 32 * 1024 * 1024
 WORKSPACE_ENSURE_KEYS = {
     "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
     "commit", "manifestSha256", "workspaceBranch",
@@ -733,7 +740,7 @@ class WorkerState:
 
     def profiled_project_fingerprint(self, request: dict[str, Any]) -> str:
         workload = self._validate_dispatch_envelope(request)
-        if workload.get("kind") != PROJECT_V2_CAPABILITY:
+        if workload.get("kind") not in {PROJECT_V2_CAPABILITY, PROJECT_V3_CAPABILITY}:
             raise ProtocolError(
                 HTTPStatus.BAD_REQUEST,
                 "invalid_workload",
@@ -1659,6 +1666,8 @@ class WorkerState:
             self._validate_project(request, workload)
         elif workload["kind"] == PROJECT_V2_CAPABILITY:
             self._validate_profiled_project(request, workload)
+        elif workload["kind"] == PROJECT_V3_CAPABILITY:
+            self._validate_profiled_project(request, workload)
         else:
             raise ProtocolError(HTTPStatus.BAD_REQUEST, "unsupported_workload", "workload kind is unsupported")
 
@@ -1756,7 +1765,19 @@ class WorkerState:
         request: dict[str, Any],
         workload: dict[str, Any],
     ) -> None:
-        if set(workload) != PROJECT_V2_WORKLOAD_KEYS:
+        kind = workload.get("kind")
+        if kind == PROJECT_V3_CAPABILITY and workload.get("projectId") != PROJECT_ID:
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "project_ownership_conflict",
+                "image-bearing project identity is not allowlisted",
+            )
+        expected_keys = (
+            PROJECT_V3_WORKLOAD_KEYS
+            if kind == PROJECT_V3_CAPABILITY
+            else PROJECT_V2_WORKLOAD_KEYS
+        )
+        if kind not in {PROJECT_V2_CAPABILITY, PROJECT_V3_CAPABILITY} or set(workload) != expected_keys:
             raise ProtocolError(
                 HTTPStatus.BAD_REQUEST,
                 "invalid_workload",
@@ -1781,10 +1802,78 @@ class WorkerState:
         legacy = {
             key: value
             for key, value in workload.items()
-            if key not in {"modelId", "reasoningEffort", "catalogRevision", "codexVersion"}
+            if key not in {
+                "modelId", "reasoningEffort", "catalogRevision", "codexVersion", "attachments",
+            }
         }
         legacy["kind"] = PROJECT_CAPABILITY
         self._validate_project(request, legacy)
+        if kind == PROJECT_V3_CAPABILITY:
+            self._validate_project_attachments(workload["attachments"])
+
+    def _validate_project_attachments(self, attachments: Any) -> None:
+        if (
+            not isinstance(attachments, list)
+            or not (1 <= len(attachments) <= PROJECT_V3_MAX_ATTACHMENTS)
+        ):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_attachments",
+                "project attachment count is outside the bounded policy",
+            )
+        attachment_ids: set[str] = set()
+        total_bytes = 0
+        for attachment in attachments:
+            if not isinstance(attachment, dict) or set(attachment) != PROJECT_V3_ATTACHMENT_KEYS:
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST,
+                    "invalid_attachments",
+                    "project attachment fields are invalid",
+                )
+            attachment_id = attachment.get("attachmentId")
+            try:
+                canonical_id = str(uuid.UUID(attachment_id))
+            except (ValueError, TypeError, AttributeError):
+                canonical_id = None
+            if canonical_id != attachment_id or attachment_id in attachment_ids:
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST,
+                    "invalid_attachments",
+                    "project attachment identities must be distinct canonical UUIDs",
+                )
+            content_type = attachment.get("contentType")
+            size_bytes = attachment.get("sizeBytes")
+            digest = attachment.get("sha256")
+            if content_type not in PROJECT_V3_ATTACHMENT_TYPES:
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST,
+                    "invalid_attachments",
+                    "project attachment media type is not an accepted image",
+                )
+            if (
+                not isinstance(size_bytes, int)
+                or isinstance(size_bytes, bool)
+                or not (1 <= size_bytes <= PROJECT_V3_MAX_ATTACHMENT_BYTES)
+            ):
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST,
+                    "invalid_attachments",
+                    "project attachment size is outside the bounded policy",
+                )
+            if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                raise ProtocolError(
+                    HTTPStatus.BAD_REQUEST,
+                    "invalid_attachments",
+                    "project attachment SHA-256 is invalid",
+                )
+            attachment_ids.add(attachment_id)
+            total_bytes += size_bytes
+        if total_bytes > PROJECT_V3_MAX_TOTAL_BYTES:
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_attachments",
+                "project attachment total size is outside the bounded policy",
+            )
 
     def _project_route(self, project_id: Any) -> dict[str, Any] | None:
         if project_id == PROJECT_ID:
@@ -1986,7 +2075,7 @@ class WorkerState:
                         self._finish_cancelled(execution)
                         continue
                     if execution["reconcileRequired"] and execution["workload"]["kind"] in {
-                        PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY,
+                        PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY, PROJECT_V3_CAPABILITY,
                     }:
                         execution["status"] = "FAILED"
                         execution["statusReason"] = (
@@ -2038,7 +2127,9 @@ class WorkerState:
                 execution["status"] = "RUNNING"
                 execution["statusReason"] = (
                     "Exact project Codex execution running"
-                    if execution["workload"]["kind"] in {PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY}
+                    if execution["workload"]["kind"] in {
+                        PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY, PROJECT_V3_CAPABILITY,
+                    }
                     else "Synthetic execution running"
                 )
                 execution["startedAt"] = execution["startedAt"] or utc_now()
@@ -2050,7 +2141,9 @@ class WorkerState:
                     "Codex started the accepted turn.",
                 )
                 self._persist()
-                if execution["workload"]["kind"] in {PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY}:
+                if execution["workload"]["kind"] in {
+                    PROJECT_CAPABILITY, PROJECT_V2_CAPABILITY, PROJECT_V3_CAPABILITY,
+                }:
                     request = {
                         "dispatchId": execution["dispatchId"],
                         "executionId": execution["executionId"],
@@ -2196,7 +2289,7 @@ class WorkerState:
             return
         workload = request["workload"]
         required_result = {"threadId", "turnId", "finalAnswer", "outputSummary"}
-        if workload["kind"] == PROJECT_V2_CAPABILITY:
+        if workload["kind"] in {PROJECT_V2_CAPABILITY, PROJECT_V3_CAPABILITY}:
             required_result |= {
                 "modelId", "reasoningEffort", "catalogRevision", "codexVersion",
                 "progressEvents",
@@ -2209,9 +2302,12 @@ class WorkerState:
             not isinstance(result, dict)
             or set(result) != required_result
             or not all(isinstance(value, str) and value for value in string_result.values())
-            or (workload["kind"] == PROJECT_V2_CAPABILITY and not isinstance(progress_events, list))
             or (
-                workload["kind"] == PROJECT_V2_CAPABILITY
+                workload["kind"] in {PROJECT_V2_CAPABILITY, PROJECT_V3_CAPABILITY}
+                and not isinstance(progress_events, list)
+            )
+            or (
+                workload["kind"] in {PROJECT_V2_CAPABILITY, PROJECT_V3_CAPABILITY}
                 and any(result[key] != workload[key] for key in (
                     "modelId", "reasoningEffort", "catalogRevision", "codexVersion"
                 ))

@@ -59,6 +59,9 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
             "dispatch": read_json(
                 CONTRACT / "agent-run-project-codex-v2.request.schema.json"
             ),
+            "imageDispatch": read_json(
+                CONTRACT / "agent-run-project-codex-v3.request.schema.json"
+            ),
             "result": read_json(
                 CONTRACT / "agent-run-project-codex-v2.result.schema.json"
             ),
@@ -282,6 +285,39 @@ class CodexSessionOperationsContractTest(unittest.TestCase):
         ):
             candidate = {**exact_operation, field: value}
             self.assertTrue(list(self.validators["exactOperation"].iter_errors(candidate)))
+
+    def test_image_dispatch_schema_is_exact_additive_and_bounded(self):
+        image_dispatch = copy.deepcopy(self.dispatch)
+        image_dispatch["workload"].update({
+            "kind": "project-codex-v3",
+            "attachments": [
+                {
+                    "attachmentId": "11111111-1111-4111-8111-111111111111",
+                    "contentType": "image/png",
+                    "sizeBytes": 1024,
+                    "sha256": "1" * 64,
+                }
+            ],
+        })
+        self.assert_schema_valid("imageDispatch", image_dispatch)
+
+        denied = []
+        for mutation in (
+            lambda request: request["workload"].__setitem__("attachments", []),
+            lambda request: request["workload"]["attachments"][0].__setitem__(
+                "contentType", "text/plain"),
+            lambda request: request["workload"]["attachments"][0].__setitem__(
+                "sizeBytes", 16777217),
+            lambda request: request["workload"]["attachments"][0].__setitem__(
+                "path", "/srv/foreign"),
+            lambda request: request["workload"].__setitem__(
+                "attachments", request["workload"]["attachments"] * 5),
+        ):
+            candidate = copy.deepcopy(image_dispatch)
+            mutation(candidate)
+            denied.append(candidate)
+        for candidate in denied:
+            self.assertTrue(list(self.validators["imageDispatch"].iter_errors(candidate)))
 
     def test_negative_corpus_is_rejected_at_its_declared_boundary(self):
         bases = {

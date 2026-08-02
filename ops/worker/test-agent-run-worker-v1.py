@@ -788,7 +788,7 @@ print(json.dumps({
          "message": "Inspecting the accepted project."},
         {"category": "CHECKING", "occurredAt": "unsafe-ignored",
          "message": "Checking the accepted project."}
-    ]} if request["workload"]["kind"] == "project-codex-v2" else {})
+    ]} if request["workload"]["kind"] in {"project-codex-v2", "project-codex-v3"} else {})
 }))
 """,
             encoding="utf-8",
@@ -871,6 +871,27 @@ print(json.dumps({
         })
         return request
 
+    def image_request(self):
+        request = self.profiled_request()
+        request["workload"].update({
+            "kind": MODULE.PROJECT_V3_CAPABILITY,
+            "attachments": [
+                {
+                    "attachmentId": "11111111-1111-4111-8111-111111111111",
+                    "contentType": "image/png",
+                    "sizeBytes": 1024,
+                    "sha256": "1" * 64,
+                },
+                {
+                    "attachmentId": "22222222-2222-4222-8222-222222222222",
+                    "contentType": "image/webp",
+                    "sizeBytes": 2048,
+                    "sha256": "2" * 64,
+                },
+            ],
+        })
+        return request
+
     def wait_terminal(self, dispatch_id, timeout=5):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -935,6 +956,106 @@ print(json.dumps({
         with self.assertRaisesRegex(MODULE.ProtocolError, "fields are invalid"):
             self.state.profiled_project_fingerprint(request)
         self.assertNotIn(request["dispatchId"], self.state.executions)
+
+    def test_image_dispatch_fingerprint_is_ordered_idempotent_and_durable(self):
+        request = self.image_request()
+        expected_fingerprint = MODULE.canonical_hash(request)
+
+        created, was_created = self.state.create(request)
+        self.assertTrue(was_created)
+        terminal = self.wait_terminal(request["dispatchId"])
+        self.assertEqual("SUCCEEDED", terminal["status"])
+        self.assertEqual(
+            expected_fingerprint,
+            self.state.executions[request["dispatchId"]]["requestFingerprint"],
+        )
+        self.assertEqual(request["workload"]["attachments"], self.state.executions[
+            request["dispatchId"]
+        ]["workload"]["attachments"])
+
+        self.state.stop()
+        reloaded = MODULE.WorkerState(
+            Path(self.temporary.name) / "state",
+            "test-worker",
+            project_config=self.config,
+            project_runner=self.runner,
+            project_timeout=30,
+            project_config_uid=os.getuid(),
+            privilege_command=(),
+        )
+        reloaded._observe_project_commit = lambda _route: TEST_COMMIT
+        self.state = reloaded
+        duplicate, was_created_again = self.state.create(json.loads(json.dumps(request)))
+        self.assertFalse(was_created_again)
+        self.assertEqual(created["executionId"], duplicate["executionId"])
+
+        reordered = json.loads(json.dumps(request))
+        reordered["workload"]["attachments"].reverse()
+        self.assertNotEqual(
+            expected_fingerprint,
+            self.state.profiled_project_fingerprint(reordered),
+        )
+        state_before = self.state.state_file.read_bytes()
+        with self.assertRaisesRegex(MODULE.ProtocolError, "different immutable request"):
+            self.state.create(reordered)
+        self.assertEqual(state_before, self.state.state_file.read_bytes())
+
+    def test_image_dispatch_rejects_non_exact_or_over_bound_arrays_without_state(self):
+        def duplicate_identity(request):
+            request["workload"]["attachments"][1]["attachmentId"] = (
+                request["workload"]["attachments"][0]["attachmentId"]
+            )
+
+        def over_total(request):
+            request["workload"]["attachments"] = [
+                {
+                    "attachmentId": f"{index:08d}-0000-4000-8000-000000000000",
+                    "contentType": "image/jpeg",
+                    "sizeBytes": MODULE.PROJECT_V3_MAX_ATTACHMENT_BYTES,
+                    "sha256": f"{index}" * 64,
+                }
+                for index in (1, 2)
+            ]
+            request["workload"]["attachments"].append({
+                "attachmentId": "00000003-0000-4000-8000-000000000000",
+                "contentType": "image/jpeg",
+                "sizeBytes": 1,
+                "sha256": "3" * 64,
+            })
+
+        cases = (
+            ("empty", lambda request: request["workload"].__setitem__("attachments", [])),
+            ("over_count", lambda request: request["workload"].__setitem__(
+                "attachments", request["workload"]["attachments"] * 3)),
+            ("duplicate", duplicate_identity),
+            ("non_image", lambda request: request["workload"]["attachments"][0].__setitem__(
+                "contentType", "text/plain")),
+            ("over_file", lambda request: request["workload"]["attachments"][0].__setitem__(
+                "sizeBytes", MODULE.PROJECT_V3_MAX_ATTACHMENT_BYTES + 1)),
+            ("boolean_size", lambda request: request["workload"]["attachments"][0].__setitem__(
+                "sizeBytes", True)),
+            ("over_total", over_total),
+            ("bad_digest", lambda request: request["workload"]["attachments"][0].__setitem__(
+                "sha256", "A" * 64)),
+            ("partial", lambda request: request["workload"]["attachments"][0].pop("sha256")),
+            ("path_authority", lambda request: request["workload"]["attachments"][0].__setitem__(
+                "path", "/srv/foreign")),
+            ("top_level_storage", lambda request: request["workload"].__setitem__(
+                "attachmentRoot", "/srv/atenea/attachments-v1")),
+            ("foreign_project", lambda request: request["workload"].__setitem__(
+                "projectId", MODULE.BEAUTIPS_PROJECT_ID)),
+            ("v2_cannot_carry_images", lambda request: request["workload"].__setitem__(
+                "kind", MODULE.PROJECT_V2_CAPABILITY)),
+            ("v3_requires_images", lambda request: request["workload"].pop("attachments")),
+        )
+        baseline = MODULE.canonical_hash(self.state.executions)
+        for name, mutate in cases:
+            request = self.image_request()
+            mutate(request)
+            with self.subTest(case=name), self.assertRaises(MODULE.ProtocolError):
+                self.state.create(request)
+            self.assertEqual(baseline, MODULE.canonical_hash(self.state.executions))
+            self.assertEqual({}, self.state.processes)
 
     def test_profiled_runner_cannot_report_a_different_effective_profile(self):
         self.runner.write_text(
