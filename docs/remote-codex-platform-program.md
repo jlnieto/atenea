@@ -7293,3 +7293,36 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.6-real-image-validation`;
 the SHA-256 of its `SHA256SUMS` is
 `705010ed62c0d2b82ee18cbe9f8988b17c6fefefc7145ab61f8c57cd2a3246e9`.
+
+Task 2.7 is complete and change progress is `21/83`; the exact resume point is
+task 2.8. Atenea commit
+`651473e78a390afc25e7b960624a52b148908439` atomically persists an accepted
+image-bearing operator turn, its stable client request identity and request
+fingerprint, an immutable `project-codex-v3` AgentRun attachment snapshot and
+the ordered positional bindings before dispatch registration.
+
+The complete selection still validates before the first write. Dispatch is
+registered only after every binding exists and remains an after-commit action.
+An invalid selection therefore creates no turn, AgentRun, binding or dispatch;
+a deliberately induced second-binding foreign-key rejection rolled back the
+turn, first binding, AgentRun and WorkSession activity timestamp while leaving
+the already retained attachment intact.
+
+The final focused suite used an isolated PostgreSQL 16 database migrated from
+empty through Flyway V62, a read-only source checkout and an ephemeral build
+target. It passed `46/46` tests in 26 seconds under a 300-second timeout. The
+evidence also records the preceding compile, datasource, matcher and build
+environment failures transparently; none contacted or changed production.
+
+The implementation branch is clean and published with tree
+`2ad90e0ed85e19be3d540a4cccfc5ebefd46f31b`. Canonical Atenea remains clean
+and synchronized at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`;
+production, preview and Beautips remain `UP`; the AgentRun worker, attachment
+service and backup timers are active; RAID remains `3/3 [UU]`; rootless slots
+remain `3/0/0/3`. No deployment, migration, production record, retained
+content, route, credential or service changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.7-atomic-image-turn`;
+the SHA-256 of its `SHA256SUMS` is
+`24a185d01c8f10f63bd9e9c7dbfdb42067f74ecb5d7defc11cc54b66ca6dc3d3`.
