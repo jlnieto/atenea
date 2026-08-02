@@ -7363,3 +7363,40 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.8-idempotent-image-turn`;
 the SHA-256 of its `SHA256SUMS` is
 `2b53a1fb2624bc1a38c349569545f98718dab9fae084f0b785f4679e1be5e3ea`.
+
+Task 2.9 is complete and change progress is `23/83`; the exact resume point is
+task 2.10. Atenea commit
+`35a02e6723d64acd06e4f002a5f13aae3609e618` projects exact bound-image
+metadata onto immediate and historical turn responses.
+
+The new additive per-turn list contains only attachment UUID, immutable
+position, normalized filename, media type, byte size, SHA-256 and an
+authenticated same-session API download path. It contains no content bytes,
+worker ID, storage identity, workspace identity, remote-session identity or
+filesystem path. Legacy response constructors remain source-compatible and
+text-only turns expose an immutable empty list.
+
+Historical windows use one bounded binding query and one indexed metadata
+query rather than per-turn reads. Missing metadata, non-contiguous positions,
+more than four bindings, unsupported/non-image types, invalid size/SHA or more
+than 32 MiB per turn fails closed. Exact-turn grouping proves that a later
+text/Codex turn never inherits an earlier image.
+
+The final isolated PostgreSQL V62 slice passed `49/49` tests in 17 seconds
+under a 300-second timeout. The HTTP boundary passed `12/12`, asserting all
+permitted JSON fields and the absence of forbidden ownership/content fields;
+the controller/mobile/Core/voice compatibility slice passed `85/85`. Exact
+fixtures and named containers were removed.
+
+The implementation branch is clean and published with tree
+`e18f77b34876020789d3d3ed6c3dd6011d0ef780`. Canonical Atenea remains clean
+at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips remain `UP`; required AX42 services and backup timers are active;
+RAID remains `3/3 [UU]`; rootless slots remain `3/0/0/3`. No deployment,
+migration, production record, retained content, route, credential or service
+changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.9-historical-image-projection`;
+the SHA-256 of its `SHA256SUMS` is
+`203f4aa8972ead9d1f626f4ff6176574403c0af5fd18b58f39c7226807b018ba`.
