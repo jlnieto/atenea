@@ -8940,3 +8940,37 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.1-activation-authorization-accepted`;
 the SHA-256 of its `SHA256SUMS` is
 `41784d01a3c0ec88766a3beb15336ec79ec0b500210f3a6bc31342ba58934c73`.
+
+Task 7.2 is complete. Change progress is `67/83`; task 7.3 is the exact
+resume point.
+
+The exact production Compose was retained mode `0600` with SHA-256
+`87f5c1251dd093cb5a7ef8ba3ee466937c458906d12f98a8bec3d4aebdab7336`.
+The atomically installed definition has SHA-256
+`ed90865e76afca8c3ef8d917648d893e630025bc23d7f13404dcc4280483985f`
+and changes only the global attachment gate from false to true. Both the
+synthetic and real-project allowlists remain empty.
+
+Only `atenea-backend-prod` was recreated, retaining immutable image
+`sha256:208af4c93512a07f4bcd8f8a4fa9bc1c47421b1e4213dc9ab228a56c654c5277`,
+reaching readiness in 13 seconds with restart count zero. Live configuration
+confirms the global gate true and both allowlists empty. All nine observed
+projects, including Atenea and Beautips, retain zero attachment policy
+revisions and are therefore fail-closed.
+
+Before/after aggregate production counts remain zero attachment rows, logical
+bytes, turn bindings, attachment policy revisions and non-terminal AgentRuns.
+The retained worker storage metadata fingerprint is identically
+`95d7b4c6a9e5c3b3b47ebc2acdb06f391a12119dbf932c36acad64440e6985b1`;
+the expected durable AgentRun registry contains zero non-terminal entries.
+No retained content was read or changed.
+
+The worker project configuration remains byte-identical. Both worker services
+remain active with zero restarts, rootless slot counts remain `3/0/0/3`, all
+three RAID arrays remain `[UU]`, and production, preview and Beautips return
+HTTP 200. No WorkSession, route, project runtime or foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.2-global-empty-allowlists`;
+the SHA-256 of its `SHA256SUMS` is
+`236b396402b62235f52d665b17ecd57d63b3e7f769a8db7f5687af273f9e4932`.
