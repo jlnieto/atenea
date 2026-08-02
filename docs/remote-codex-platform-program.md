@@ -7483,3 +7483,38 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.11-closed-v3-serialization`;
 the SHA-256 of its `SHA256SUMS` is
 `10a21bfcd0ec852fe0ddc47abf24a3aedc7fb97ffa47bda84c15e84799002852`.
+
+Task 2.12 is complete and change progress is `26/83`; the exact resume point
+is task 2.13. Atenea commit
+`e16287d037298d9b909eeac9e77f8187b5dc3955` closes the backend denial and
+authorization coverage matrix for the real Atenea attachment contract.
+
+The HTTP boundary now proves unauthenticated web and mobile attachment list,
+content, multipart upload and image-bearing turn submission all return `401`.
+Attachment ownership/conflict failures map to `409` and individual/combined
+size failures map to `413` without disclosing worker identity, storage identity
+or filesystem paths. The service matrix covers same-session ordered success,
+empty and duplicate selection, expired content, individual and aggregate size,
+unsupported image type, partial/foreign/inconsistent ownership, conflicting
+idempotency and absent immutable retry bindings. Every rejection occurs before
+dispatch or additional persistence.
+
+The final isolated PostgreSQL V62 matrix passed `107/107` tests in 21 seconds
+under a 300-second timeout across twelve exact controller, authorization,
+admission, persistence, idempotency, retry, manifest and serialization classes.
+Its deliberate foreign composite binding was rejected by the V62 database
+constraint and rolled back atomically. The uniquely named PostgreSQL fixture
+was removed after the run.
+
+The implementation branch is clean and published with tree
+`f1ee9dafdf33934236e2da593f62ea39f58b86d3`. Canonical Atenea remains clean
+and synchronized at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production,
+preview and Beautips return HTTP 200; required AX42 services and backup/health
+timers are active; RAID remains `3/3 [UU]`; rootless slots remain `3/0/0/3`.
+No deployment, migration, production record, retained content, route,
+credential or service changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.12-backend-coverage-matrix`;
+the SHA-256 of its `SHA256SUMS` is
+`970c1fd09bcac49045c3e07b567e157ba2d966975053507850cc00f50cbbe5ac`.
