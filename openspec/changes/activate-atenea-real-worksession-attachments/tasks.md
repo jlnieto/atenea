@@ -90,7 +90,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 
 ## 6. Disabled production rollout
 
-- [ ] 6.1 Capture a protected production PostgreSQL backup and restore it into a network-isolated disposable fixture without exposing row values or production endpoints
+- [x] 6.1 Capture a protected production PostgreSQL backup and restore it into a network-isolated disposable fixture without exposing row values or production endpoints
 - [ ] 6.2 Apply V62 twice in the fixture and prove both the candidate backend and exact V62-aware rollback image start/read it with global, synthetic and real-project attachment creation disabled
 - [ ] 6.3 Build and fingerprint immutable backend/web and worker/storage artifacts; verify the rollback set and remove only exact disposable fixture resources
 - [ ] 6.4 Obtain separate explicit authorization before changing production schema, backend image, AX42 attachment/AgentRun services, private credential or feature configuration; otherwise stop here with implementation complete and activation pending

@@ -8553,3 +8553,33 @@ Sanitized phase-closure evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.9-synthetic-phase-seal`;
 the SHA-256 of its `SHA256SUMS` is
 `45296c4e788e6d7509cb9a1f1c45960310999362a7b87ffc3433b14e970ac25e`.
+
+Task 6.1 is complete. Change progress is `58/83`; task 6.2 is the exact
+resume point.
+
+A PostgreSQL 16 custom-format production backup was created atomically under
+mode `0600`, retained in the protected backup boundary and identified by
+SHA-256 without recording its production endpoint or any row value. Its
+catalog is readable and it restored successfully into an exact task-labelled
+PostgreSQL 16 container whose data directory is tmpfs. The disposable fixture
+uses an internal-only Docker network, publishes no port and has no persistent
+mount. Its immutable container and network identities were recorded before
+use and remain intact for the V62 compatibility proof in task 6.2.
+
+The restored snapshot reports V61, all 61 successful Flyway rows and 50 public
+tables. Production remained live and accumulated three additional rows after
+the snapshot; only aggregate counts and digests were retained, and the normal
+post-snapshot drift was not mistaken for restore failure. The dump restore and
+catalog checks returned exit 0 within finite bounds.
+
+Programme, candidate and canonical Git remain clean and synchronized at their
+accepted commits. Production and preview return HTTP 200; the AX42 attachment,
+preview and AgentRun services plus backup/check/health timers are active; RAID
+remains `3/3 [UU]`; rootless slots remain `3/0/0/3`, including unchanged
+Beautips. No migration, deploy, restart, gate, route, WorkSession, credential,
+attachment content or unrelated resource changed.
+
+Sanitized task evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.1-protected-backup-isolated-restore`;
+the SHA-256 of its `SHA256SUMS` is
+`ed5199a718b98f22ad9db55b6fe06d14f8682f6d7cb8737dd10fb7dda709923d`.
