@@ -8710,3 +8710,37 @@ Sanitized task evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.5-private-channel-and-mount`;
 the SHA-256 of its `SHA256SUMS` is
 `c30ac1d39da94c2bd7dcea80b67647f4209c05f901468560f5778638431d361b`.
+
+Task 6.6 is blocked and remains the first pending task. Change progress remains
+`62/83`.
+
+The final pre-install ownership check found the authoritative AX42
+`project-codex-v1` configuration has selection and execution enabled with
+exactly one structurally valid persisted canonical Atenea workspace. Its
+sanitized configuration SHA-256 is
+`d9878267d7b979197521a48d90789c593dd775ac3973f96dcf84e135f9f25b87`.
+The reviewed candidate installer at SHA-256
+`0bb94c9e8246abb1a8845697da410573f5d036684e025194a4fc701088f29846`
+instead invokes `write_project_config false false '{}'` in its `apply` path
+before restarting the AgentRun service. Executing it would silently replace
+the existing one-workspace routing registry with an empty disabled registry.
+That conflicts with the exact persisted ownership and the no-routing-change
+contract.
+
+In accordance with the fail-closed divergence rule, neither candidate
+installer ran. V62 was not applied, the candidate backend was not deployed and
+no AX42 service was restarted. No automatic merge, adoption, repair or manual
+installation bypass was attempted. Production remains V61 on exact former
+image `sha256:bb983725de00ca3cba29f45ffce34c071943d3a6dc25923cdcc4730b300a3a7f`;
+production and preview return HTTP 200; required AX42 services are active;
+rootless slots remain `3/0/0/3`; RAID remains `3/3 [UU]`.
+
+Task 6.6 can resume only after a reviewed candidate change preserves the exact
+existing project configuration during installation, with focused regression,
+complete worker-suite, install/rollback and immutable-artifact verification
+repeated before deployment.
+
+Sanitized blocking evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.6-blocked-persisted-routing-preservation`;
+the SHA-256 of its `SHA256SUMS` is
+`f932806f0bee48aa9c542e32183d24306008ec18f30069dc5b8de382fcf2dcc1`.
