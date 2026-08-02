@@ -7224,3 +7224,34 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.4-authenticated-capability`;
 the SHA-256 of its `SHA256SUMS` is
 `6448d1ebd8c01d6246eb8ebb42e8d79d26a455df6815f02749cc3cde9721c276`.
+
+Task 2.5 is complete and change progress is `19/83`; the exact resume point is
+task 2.6. Atenea commit
+`cfb9409663cbc27fe2f3e3f42494b3bad3e8215b` extends the authenticated turn
+request additively with an optional `clientRequestId` UUID and immutable
+ordered `attachmentIds` UUID list.
+
+Missing or null attachment lists normalize to empty. A non-empty list without
+the stable client request identity fails Jakarta request validation before
+`SessionTurnService`; exact attachment order reaches the service unchanged.
+The existing one-argument Java constructor and legacy JSON containing only
+`message` retain null identity plus an empty list, so web/mobile text turns,
+voice and Core call sites remain compatible.
+
+This task deliberately adds no count, duplicate, size, type, expiry, integrity
+or ownership validation and creates no binding, turn snapshot or dispatch;
+those remain tasks 2.6 onward. The offline source-read-only compatibility suite
+passes `58/58` tests in 14.93 seconds under a 300-second timeout, covering the
+web request boundary plus existing mobile, service, voice and Core callers.
+
+The implementation branch is clean and published with tree
+`457fd0e81926a04abc9a0ed60185c34d4ab7c32e`. Canonical Atenea remains clean
+at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips remain `UP`; exact AX42 services and backup timers remain active;
+RAID is `3/3 [UU]`; rootless slot inventory remains `3/0/0/3`. No deployment,
+schema/data, WorkSession, turn, attachment, routing or credential changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.5-additive-turn-identities`;
+the SHA-256 of its `SHA256SUMS` is
+`e2d3482171ae555b4b94855b25b53542ceacb8f2bede1e48b806182857996b77`.
