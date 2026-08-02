@@ -532,6 +532,102 @@ class ProjectCodexContractTest(unittest.TestCase):
                 self.assertEqual(before_content, content_path.read_bytes())
                 self.assertEqual(before_metadata, metadata_path.read_bytes())
 
+    def test_complete_retained_denial_matrix_starts_no_process_and_mutates_nothing(self):
+        def snapshot(root):
+            observed = []
+            for path in sorted(root.rglob("*"), key=lambda item: str(item)):
+                info = path.lstat()
+                identity = (
+                    str(path.relative_to(root)),
+                    info.st_mode,
+                    info.st_uid,
+                    info.st_gid,
+                    info.st_size,
+                )
+                if path.is_symlink():
+                    value = ("symlink", os.readlink(path))
+                elif path.is_file():
+                    value = ("file", hashlib.sha256(path.read_bytes()).hexdigest())
+                else:
+                    value = ("directory", None)
+                observed.append((identity, value))
+            return observed
+
+        def rewrite_metadata(path, mutate):
+            value = json.loads(path.read_text(encoding="utf-8"))
+            mutate(value)
+            path.write_text(
+                json.dumps(value, sort_keys=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+            path.chmod(0o600)
+
+        def symlink_file(path):
+            retained = path.read_bytes()
+            foreign = path.parent.parent / "foreign-content"
+            foreign.write_bytes(retained)
+            path.unlink()
+            path.symlink_to(foreign)
+
+        def symlink_sidecar(path):
+            retained = path.read_bytes()
+            foreign = path.parent.parent / "foreign-sidecar"
+            foreign.write_bytes(retained)
+            path.unlink()
+            path.symlink_to(foreign)
+
+        def over_count(request, _content, _metadata):
+            base = request["workload"]["attachments"][0]
+            request["workload"]["attachments"] = [
+                {**base, "attachmentId": f"0000000{index}-0000-4000-8000-000000000000"}
+                for index in range(1, 6)
+            ]
+
+        cases = (
+            ("missing_sidecar", lambda request, content, metadata: metadata.unlink()),
+            ("missing_file", lambda request, content, metadata: content.unlink()),
+            ("modified_file", lambda request, content, metadata: content.write_bytes(
+                b"\x89PNG\r\n\x1a\nmodified")),
+            ("symlinked_file", lambda request, content, metadata: symlink_file(content)),
+            ("symlinked_sidecar", lambda request, content, metadata: symlink_sidecar(metadata)),
+            ("partial_sidecar", lambda request, content, metadata: rewrite_metadata(
+                metadata, lambda value: value.pop("storageScope"))),
+            ("unlabelled_sidecar", lambda request, content, metadata: rewrite_metadata(
+                metadata, lambda value: value.__setitem__("projectIdentity", None))),
+            ("foreign_sidecar", lambda request, content, metadata: rewrite_metadata(
+                metadata, lambda value: value.__setitem__("workspaceIdentity", "remote:foreign"))),
+            ("ambiguous_sidecar", lambda request, content, metadata: rewrite_metadata(
+                metadata, lambda value: value.__setitem__("path", "/srv/foreign"))),
+            ("permission_invalid_file", lambda request, content, metadata: content.chmod(0o640)),
+            ("permission_invalid_sidecar", lambda request, content, metadata: metadata.chmod(0o644)),
+            ("permission_invalid_directory", lambda request, content, metadata: content.parent.chmod(0o750)),
+            ("over_bound_sidecar", lambda request, content, metadata: (
+                metadata.write_bytes(b"{" + b" " * (16 * 1024) + b"}"), metadata.chmod(0o600))),
+            ("over_bound_file", lambda request, content, metadata: request["workload"][
+                "attachments"
+            ][0].__setitem__("sizeBytes", MODULE.MAX_ATTACHMENT_BYTES + 1)),
+            ("over_bound_count", over_count),
+        )
+        for name, mutate in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as temporary:
+                retained_root = Path(temporary) / "attachments-v1"
+                retained_root.mkdir()
+                request, content_path, metadata_path = self.image_fixture(retained_root)
+                mutate(request, content_path, metadata_path)
+                before = snapshot(retained_root)
+                with patch.object(MODULE, "ATTACHMENT_ROOT", retained_root), patch.object(
+                    MODULE, "attachment_owner_ids", return_value=(os.getuid(), os.getgid())
+                ), patch.object(MODULE.subprocess, "Popen") as process, self.assertRaises(
+                    SystemExit
+                ):
+                    MODULE.validate_attachment_references(
+                        request,
+                        request["workload"],
+                        {"attachmentRoot": str(retained_root)},
+                    )
+                process.assert_not_called()
+                self.assertEqual(before, snapshot(retained_root))
+
     def test_internal_failure_classification_retains_only_allowlisted_type(self):
         self.assertEqual(
             "Project runner internal exception: PermissionError",
