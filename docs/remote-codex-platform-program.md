@@ -8680,3 +8680,33 @@ Sanitized task evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.4-rollout-authorization`;
 the SHA-256 of its `SHA256SUMS` is
 `8a83888c1be35f29c4e6c131fc48a12a8bae2ea28c5a48469647648f51b1e1cd`.
+
+Task 6.5 is complete. Change progress is `62/83`; task 6.6 is the exact
+resume point.
+
+The AX42 attachment identity was rotated atomically from fresh 256-bit random
+material and transferred directly over bounded SSH into the control host's
+protected secret boundary. Its value and digest were never emitted or retained
+in evidence. Opaque equality passed; worker ownership/mode is
+`0640 root:atenea` and control-host ownership/mode is `0640 jose:atenea`.
+
+The byte-exact former production Compose was retained under mode `0600`. The
+new Compose validates against the protected environment and declares the
+attachment gate false, both synthetic and real-project allowlists empty, the
+tailnet service location and exactly one read-only secret mount on only the
+production backend. Its SHA-256 is
+`610c60251e42eb1e42e9dfba2c3de68710e4a17fd1e7b5500fc70b0f0e84df29`.
+
+The current production backend was recreated alone with `--no-deps --no-build`
+to make the mount real before candidate rollout. It retained exact former image
+`sha256:bb983725de00ca3cba29f45ffce34c071943d3a6dc25923cdcc4730b300a3a7f`,
+returned HTTP 200 in 15 seconds and has restart count zero. The application
+identity can read and validate the mounted file without outputting it; all
+running rootful containers expose exactly one such mount. Production and
+preview remain healthy, unrelated rootful and rootless inventories are
+unchanged, production remains V61 and no AX42 service was yet restarted.
+
+Sanitized task evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.5-private-channel-and-mount`;
+the SHA-256 of its `SHA256SUMS` is
+`c30ac1d39da94c2bd7dcea80b67647f4209c05f901468560f5778638431d361b`.
