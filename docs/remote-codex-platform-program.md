@@ -7326,3 +7326,40 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.7-atomic-image-turn`;
 the SHA-256 of its `SHA256SUMS` is
 `24a185d01c8f10f63bd9e9c7dbfdb42067f74ecb5d7defc11cc54b66ca6dc3d3`.
+
+Task 2.8 is complete and change progress is `22/83`; the exact resume point is
+task 2.9. Atenea commit
+`74b50c3e3fb6e6ba9e2135ccf042d329685f31ff` makes accepted image-turn
+submission idempotent under the existing V62 request identity.
+
+Any request carrying a client UUID locks its exact WorkSession before reading
+the unique `(session_id, client_request_id)` row. A replay succeeds only when
+the normalized request fingerprint, exact ordered and contiguous bindings,
+indexed immutable manifest and original `project-codex-v3` AgentRun snapshot
+all agree. It then returns the original turn/run without attachment
+revalidation, reconciliation, worker access, binding insertion or dispatch.
+
+Different message or image order, malformed binding positions, changed
+manifest or incomplete persisted ownership uses the existing attachment
+conflict mapping to return `409` and preserves the first acceptance unchanged.
+The session lock serializes concurrent UUID reuse before the V62 unique
+constraint can be raced.
+
+The final focused suite passed `48/48` tests in 24 seconds under a 300-second
+timeout against an isolated PostgreSQL 16 database migrated from empty through
+V62. It proved identical replay returns the original identities, conflict keeps
+one turn/binding/run/dispatch and retained content remains intact. All exact
+synthetic rows and the named database container were removed.
+
+The implementation branch is clean and published with tree
+`4d0b9fdfe19f9b4cf567f03775a5a26c28d5e198`. Canonical Atenea remains clean
+at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips remain `UP`; required AX42 services and backup timers are active;
+RAID remains `3/3 [UU]`; rootless slots remain `3/0/0/3`. No deployment,
+migration, production record, retained content, route, credential or service
+changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.8-idempotent-image-turn`;
+the SHA-256 of its `SHA256SUMS` is
+`2b53a1fb2624bc1a38c349569545f98718dab9fae084f0b785f4679e1be5e3ea`.

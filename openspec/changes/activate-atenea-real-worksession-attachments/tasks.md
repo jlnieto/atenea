@@ -42,7 +42,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 2.5 Extend turn submission additively with `clientRequestId` and ordered `attachmentIds`; require the request identity for image-bearing turns while preserving legacy text-only callers
 - [x] 2.6 Validate one-to-four distinct same-session real PNG/JPEG/WebP images, 32 MiB combined, unexpired new-binding eligibility and complete worker/session/workspace/integrity ownership
 - [x] 2.7 Atomically persist the operator turn, ordered bindings and AgentRun attachment snapshot before dispatch, with whole-request rollback on any invalid image
-- [ ] 2.8 Make identical client-request replay return the original turn/run and conflicting replay return `409` without a second turn, binding, AgentRun or dispatch
+- [x] 2.8 Make identical client-request replay return the original turn/run and conflicting replay return `409` without a second turn, binding, AgentRun or dispatch
 - [ ] 2.9 Project bound image metadata onto historical conversation turns without returning content bytes, worker paths or storage identities
 - [ ] 2.10 Make a safe failed-run retry inherit the exact origin turn, ordered attachment manifest and Codex profile without creating or mutating attachment ownership
 - [ ] 2.11 Add `project-codex-v3` serialization for image-bearing profiled runs and include only ordered UUID, media type, size and SHA-256 references in its closed workload fingerprint
