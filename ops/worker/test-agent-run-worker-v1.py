@@ -773,7 +773,10 @@ class ProjectWorkerStateTest(unittest.TestCase):
 import json
 import sys
 import time
+from pathlib import Path
 request = json.load(sys.stdin)
+calls = Path(sys.argv[0]).with_name("project-runner-calls")
+calls.write_text(calls.read_text() + "call\\n" if calls.exists() else "call\\n")
 message = request["workload"]["message"]
 if message.startswith("sleep:"):
     time.sleep(float(message.split(":", 1)[1]))
@@ -1001,6 +1004,27 @@ print(json.dumps({
         with self.assertRaisesRegex(MODULE.ProtocolError, "different immutable request"):
             self.state.create(reordered)
         self.assertEqual(state_before, self.state.state_file.read_bytes())
+        self.assertEqual(1, (Path(self.temporary.name) / "project-runner-calls").read_text().count(
+            "call"
+        ))
+
+    def test_image_dispatch_preserves_exact_resumed_thread_with_one_execution(self):
+        thread_id = "77777777-7777-4777-8777-777777777777"
+        request = self.image_request()
+        request["workload"]["threadId"] = thread_id
+
+        created, was_created = self.state.create(request)
+        duplicate, was_created_again = self.state.create(json.loads(json.dumps(request)))
+        terminal = self.wait_terminal(request["dispatchId"])
+
+        self.assertTrue(was_created)
+        self.assertFalse(was_created_again)
+        self.assertEqual(created["executionId"], duplicate["executionId"])
+        self.assertEqual("SUCCEEDED", terminal["status"])
+        self.assertEqual(thread_id, terminal["result"]["threadId"])
+        self.assertEqual(1, (Path(self.temporary.name) / "project-runner-calls").read_text().count(
+            "call"
+        ))
 
     def test_image_dispatch_rejects_non_exact_or_over_bound_arrays_without_state(self):
         def duplicate_identity(request):

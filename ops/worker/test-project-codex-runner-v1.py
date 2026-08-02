@@ -9,6 +9,7 @@ import unittest
 import uuid
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 try:
@@ -367,6 +368,112 @@ class ProjectCodexContractTest(unittest.TestCase):
                     retained_before,
                     (content_path.read_bytes(), metadata_path.read_bytes()),
                 )
+
+    def test_new_resumed_and_timeout_execute_with_one_process_and_zero_residue(self):
+        class SuccessProcess:
+            commands = []
+
+            def __init__(self, command, **_kwargs):
+                self.command = command
+                self.returncode = 0
+                self.pid = 999999
+                self.commands.append(command)
+
+            def communicate(self, _message, timeout):
+                self.assert_timeout = timeout
+                final_path = Path(
+                    self.command[self.command.index("--output-last-message") + 1]
+                )
+                final_path.write_text("bounded synthetic answer", encoding="utf-8")
+                thread_id = (
+                    self.command[-2]
+                    if "resume" in self.command
+                    else "77777777-7777-4777-8777-777777777777"
+                )
+                stream = json.dumps({
+                    "type": "thread.started",
+                    "thread_id": thread_id,
+                })
+                return stream, ""
+
+        class TimeoutProcess(SuccessProcess):
+            def communicate(self, _message, timeout):
+                raise subprocess.TimeoutExpired("codex", timeout)
+
+            def wait(self, timeout):
+                self.returncode = -15
+                return -15
+
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_root = Path(temporary)
+            retained_root = temporary_root / "attachments-v1"
+            retained_root.mkdir()
+            request, content_path, metadata_path = self.image_fixture(retained_root)
+            runtime_root = temporary_root / "run" / "atenea" / "codex-images"
+            runtime_root.mkdir(parents=True)
+            runtime_root.chmod(0o710)
+            worktree = temporary_root / "sessions" / request["sessionId"] / "atenea"
+            worktree.mkdir(parents=True)
+            owner = (os.getuid(), os.getgid())
+            identity = SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid())
+            with patch.object(MODULE, "ATTACHMENT_ROOT", retained_root), patch.object(
+                MODULE, "MATERIALIZATION_ROOT", runtime_root
+            ), patch.object(
+                MODULE, "attachment_owner_ids", return_value=owner
+            ), patch.object(
+                MODULE,
+                "materialization_owner_ids",
+                return_value=(os.getuid(), os.getgid(), os.getuid(), os.getgid()),
+            ), patch.object(MODULE.pwd, "getpwnam", return_value=identity):
+                verified = MODULE.validate_attachment_references(
+                    request, request["workload"], {"attachmentRoot": str(retained_root)}
+                )
+                for thread_id in (None, "88888888-8888-4888-8888-888888888888"):
+                    workload = json.loads(json.dumps(request["workload"]))
+                    workload["threadId"] = thread_id
+                    execution_id = str(uuid.uuid4())
+                    with MODULE.materialize_attachments(
+                        verified, execution_id
+                    ) as materialized, patch.object(
+                        MODULE.subprocess, "Popen", SuccessProcess
+                    ):
+                        result = MODULE.execute(
+                            workload,
+                            worktree,
+                            MODULE.GIT_COMMON_DIR,
+                            "reviewed instructions",
+                            execution_id,
+                            30,
+                            materialized,
+                        )
+                    self.assertEqual(
+                        thread_id or "77777777-7777-4777-8777-777777777777",
+                        result["threadId"],
+                    )
+                    self.assertEqual([], list(runtime_root.iterdir()))
+
+                timeout_execution = str(uuid.uuid4())
+                with self.assertRaises(SystemExit), patch.object(
+                    MODULE.os, "killpg"
+                ) as killpg, MODULE.materialize_attachments(
+                    verified, timeout_execution
+                ) as materialized, patch.object(
+                    MODULE.subprocess, "Popen", TimeoutProcess
+                ):
+                    MODULE.execute(
+                        request["workload"],
+                        worktree,
+                        MODULE.GIT_COMMON_DIR,
+                        "reviewed instructions",
+                        timeout_execution,
+                        30,
+                        materialized,
+                    )
+                killpg.assert_called_once()
+                self.assertEqual([], list(runtime_root.iterdir()))
+            self.assertEqual(3, len(SuccessProcess.commands))
+            self.assertTrue(content_path.is_file())
+            self.assertTrue(metadata_path.is_file())
 
     def test_cleanup_refuses_replaced_materialization_and_preserves_it(self):
         with tempfile.TemporaryDirectory() as temporary:
