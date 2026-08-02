@@ -7683,3 +7683,40 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.4-project-codex-v3-contract`;
 the SHA-256 of its `SHA256SUMS` is
 `cdcc2f9a61f572c3a64bddd055261a10268182fcce2d9c3e570b68ae677b8c55`.
+
+Task 3.5 is complete and change progress is `32/83`; the exact resume point is
+task 3.6. Programme/worker commit
+`c1d6eafcd2bfddcbdfc4ee27bfa2eb2133750807` binds the canonical Atenea runner
+configuration to the non-caller root `/srv/atenea/attachments-v1` and verifies
+each retained image before process creation.
+
+For v3 only, the runner derives every path from canonical session and attachment
+UUIDs. Root, session and attachment directories must be non-symlink owned mode
+`0700`; private sidecar and content must be single-link regular owned mode
+`0600` and are opened no-follow. The exact sidecar binds the attachment service
+protocol and worker plus canonical project, session, workspace, storage scope,
+UUID, type, byte count and SHA-256. The content size, digest and PNG/JPEG/WebP
+signature are reverified from the same opened file. No caller filename, path,
+root, URL or storage identity is accepted.
+
+One exact synthetic retained image validates without changing bytes or modes.
+Project, session, workspace, type, size, sidecar digest, content digest,
+permission and partial-metadata conflicts all fail before `Popen`, and both
+retained files remain byte-identical. The source-only runner deliberately keeps
+image delivery unavailable until task 3.6 provides the bounded materialization.
+The Beautips adapter retains its old configuration and explicitly rejects v3.
+The focused runner, AgentRun, Beautips and session-operation suites passed
+`75/75` in 13.444 seconds under a 120-second timeout.
+
+Programme/worker tree `0f60053b72755611f9e29729803e5ca5971a171b` is clean and
+published. The installed runner remains byte-identical to its previous
+`d15c78b09fcf048f7968168861ed976dd054b038168548b7216781568d1126f0`
+version, so no candidate was installed. Canonical Atenea is clean at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and Beautips
+return HTTP 200; AX42 attachment/AgentRun services and health/backup timers are
+active; RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.5-retained-image-verification`;
+the SHA-256 of its `SHA256SUMS` is
+`a23aafc165c67847e3d3f580e055faeb08ab4b7fcf2a8cda6edd9136a0168043`.
