@@ -95,7 +95,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 6.3 Build and fingerprint immutable backend/web and worker/storage artifacts; verify the rollback set and remove only exact disposable fixture resources
 - [x] 6.4 Obtain separate explicit authorization before changing production schema, backend image, AX42 attachment/AgentRun services, private credential or feature configuration; otherwise stop here with implementation complete and activation pending
 - [x] 6.5 Rotate/provision the attachment credential out of band, mount it read-only only into the production backend, configure the tailnet endpoint and verify modes/ownership without reading or retaining its value
-- [ ] 6.6 Deploy V62 and the candidate backend/web with all attachment create/bind gates false, then install/restart only the exact AX42 attachment and AgentRun services with no project runtime restart
+- [x] 6.6 Deploy V62 and the candidate backend/web with all attachment create/bind gates false, then install/restart only the exact AX42 attachment and AgentRun services with no project runtime restart
 - [ ] 6.7 Prove disabled mode leaves zero production attachment rows/bytes/materializations, existing sessions ineligible, list/download compatible and production/preview/Beautips/routing/other slots unchanged
 - [ ] 6.8 Run a bounded authenticated capability/connectivity check with no upload, seal disabled-rollout evidence and update the ledger before enabling any project
 

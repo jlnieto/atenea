@@ -8744,3 +8744,55 @@ Sanitized blocking evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.6-blocked-persisted-routing-preservation`;
 the SHA-256 of its `SHA256SUMS` is
 `f932806f0bee48aa9c542e32183d24306008ec18f30069dc5b8de382fcf2dcc1`.
+
+Task 6.6 is complete. Change progress is `63/83`; task 6.7 is the exact
+resume point.
+
+The blocking installer was corrected and published through programme commits
+`843367e8e7bbb4334c1ccd2aeed4ad37cb7eddf6`,
+`c93c19073af031b441fdbae9d69dc01d8aa4253d` and final deployable commit
+`4ea60175e77c2fca8a5f888fe50a54b7b6010c19`. The final installer accepts only
+the exact legacy or attachment-aware Atenea configuration schemas, validates
+complete persisted ownership before mutation and preserves an existing file
+byte for byte. Existing text routing remains available under the legacy form;
+image-bearing work remains fail-closed until explicit attachment activation.
+The shared runner change also updates only the exact known Beautips adapter
+predecessor while AgentRun is stopped, preserving Beautips compatibility
+without enabling its attachment capability.
+
+Focused AgentRun, runner and installer tests passed. Two independent clean
+clones at the final programme commit ran all 31 sorted worker entrypoints with
+900-second per-entry limits and passed `31/31` in 385 and 416 seconds. The
+candidate and rollback archives were rebuilt deterministically, passed every
+internal checksum and are retained under a new immutable root-owned release.
+Their SHA-256 values are respectively
+`2e847db4283bad3c1f9d7e65bcecdef611fe946dfca813e4b1697bcb761e6445`
+and `d3bdaf5f4c89bda187642d8f52d7ec088a01e2e2a4fe3c01af1b8f1c7c3474ac`.
+
+The exact former production Compose is retained mode `0600`. The candidate
+definition SHA-256 is
+`87f5c1251dd093cb5a7ef8ba3ee466937c458906d12f98a8bec3d4aebdab7336`.
+Only the production backend was recreated, reaching HTTP 200 in 15 seconds on
+candidate image
+`sha256:208af4c93512a07f4bcd8f8a4fa9bc1c47421b1e4213dc9ab228a56c654c5277`
+with restart count zero. Production migrated to V62 while the global gate
+remained false and both allowlists remained empty.
+
+Only the exact AX42 attachment and AgentRun services were installed/restarted;
+no project runtime restarted. The persisted routing configuration retained
+SHA-256 `d9878267d7b979197521a48d90789c593dd775ac3973f96dcf84e135f9f25b87`,
+one workspace and its enabled text-routing state. Both services are enabled
+and active with zero restart count, exactly two tailnet listeners and no
+wildcard listener. Storage, materializations and AgentRun state contain zero
+files. Policy revisions, real attachment rows, turn bindings and
+attachment-bearing AgentRuns are all zero.
+
+Production, preview and Beautips return HTTP 200. Required AX42 services and
+timers are active, rootless slots remain `3/0/0/3`, RAID remains `3/3 [UU]`,
+and canonical/candidate Git remain clean and synchronized. No project was
+activated, no credential value was emitted and no foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.6-routing-preserving-deployment`;
+the SHA-256 of its `SHA256SUMS` is
+`59b1a5ce3571d08eead911f2558ff48ec15c0740b285fbf38287e76a41f0bf93`.
