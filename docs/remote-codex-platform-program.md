@@ -9074,3 +9074,34 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.4-real-web-selected-state`.
 The SHA-256 of its `SHA256SUMS` is
 `c6705a4892d5d0f15c9a1c12f510110a18d1dea5cc39b87f857e32bf885dd024`.
+
+Task 7.5 is blocked and remains unmarked. Change progress remains `69/83`, with
+task 7.5 still the exact resume point.
+
+On the first operator Send attempt, the production conversation screen became
+fully blank. The backend remained healthy and persisted exactly two new
+immutable turns plus one terminal successful AgentRun, but the attachment
+binding count remained zero. AgentRun `92` is `project-codex-v1` with attachment
+count/bytes `0/0` and no manifest, rather than the required
+`project-codex-v3` run with one exact binding. The retained real attachment
+remains intact, unbound and without an AgentRun association. Prompt, response,
+attachment and screenshot content were not read or retained.
+
+The immutable production JavaScript asset has SHA-256
+`84aa38dd2481933589c9770b0aa7b7c7788171c5478e884a084524871edcd12f` and
+contains the reviewed `attachmentIds` submission and accepted-turn
+confirmation paths. The evidence therefore locates the divergence at the
+client submission/rendering boundary. A stale in-memory client or browser-side
+exception is consistent with the blank screen, but neither is asserted as the
+exact cause without a browser console/network trace.
+
+Production, preview and Beautips continue to return HTTP 200. The backend and
+both AX42 worker services remain active/running with zero restarts; temporary
+materializations and runner processes remain zero. No retry, deletion,
+adoption, session replacement, service restart or automatic repair was
+performed. The existing canary state is preserved for review.
+
+Sanitized blocking evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.5-blocked-unbound-submit`.
+The SHA-256 of its `SHA256SUMS` is
+`f38e8856269708bd942bc2a4c5399e2670caac65307f570394a29f872e8115cc`.
