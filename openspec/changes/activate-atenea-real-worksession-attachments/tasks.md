@@ -106,7 +106,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 7.3 Enable only canonical `atenea`, prove an old Atenea session remains ineligible, create one new clean WorkSession with revision `atenea-real-attachments-v1` and leave Beautips/all other projects blocked
 - [x] 7.4 Have the operator sign in and upload one generated non-secret PNG through the real web composer, confirming visible selected state without retaining its bytes or user-facing filename in evidence
 - [x] 7.5 Submit one bounded image-bearing prompt and prove one immutable turn binding, one `project-codex-v3` AgentRun, exact manifest, one worker execution, expected image understanding and one terminal response
-- [ ] 7.6 Submit a later text-only continuation and prove the same workspace/thread continues without implicitly attaching the previous screenshot
+- [x] 7.6 Submit a later text-only continuation and prove the same workspace/thread continues without implicitly attaching the previous screenshot
 - [ ] 7.7 Restart the backend, attachment service and AgentRun worker separately with finite bounds, then prove retained download, historical binding, zero duplicate execution/result and zero materialization residue
 - [ ] 7.8 Attempt exact old-session, Beautips, foreign-session and conflicting-idempotency operations and prove fail-closed rejection leaves every real/foreign resource unchanged
 - [ ] 7.9 Run a newer external backup plus repository check, restore its exact snapshot to a new empty isolated target and prove the canary sidecar/content size and SHA-256 without retaining bytes, filename, prompt or answer

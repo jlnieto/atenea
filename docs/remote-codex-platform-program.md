@@ -9266,3 +9266,41 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.5-final-real-image-canary`;
 the SHA-256 of its `SHA256SUMS` is
 `3028d878710350ccb9261525a64429e4899e7f3b8f792d389d422710d1fdaa99`.
+
+Task 7.6 is complete. Change progress is `71/83`; task 7.7 is the exact
+resume point and was not started.
+
+The operator submitted one later text-only continuation through the same
+production conversation in WorkSession `15`. The session now has four turns,
+two terminal successful AgentRuns, but still exactly one retained attachment,
+one immutable binding and one bound turn. Run `95` completed
+`SUCCEEDED/SUCCEEDED` in 5.607 seconds with attachment count/bytes `0/0` and a
+null attachment-manifest identity. No prompt or response content was selected
+or retained.
+
+The control plane correctly retains the base text workload identity while its
+complete Codex profile is serialized to the worker's closed
+`project-codex-v2` contract. AX42 durable state proves the continuation uses
+the same remote WorkSession and workspace as the image run, its input thread
+equals the prior result thread, its result preserves that thread, and its
+workload has no `attachments` key. The two durable executions are exactly one
+successful v3 image run followed by one successful v2 text run, with attachment
+counts `1,0`; both have terminal results and there is no third execution.
+
+The focused `RemoteWorkerClientTest` contract suite passes `22/22` with zero
+failures or errors. Temporary materializations, browser processes and Codex
+processes remain zero. The session worktree remains clean at commit
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`; allocation SHA-256 remains
+`89fe98bfb3afb0d4d2c0007c22c5636669f0d3b77bfc588732992bbdb95a2a35`.
+Worker services and backup/health timers remain active, rootless slot container
+counts remain `3/0/0/3`, all three RAID arrays remain `[UU]`, and rootful
+Docker remains inactive. Production, preview and Beautips return HTTP 200; the
+backend remains running with zero restarts and the protected Compose remains
+mode `0600` with unchanged SHA-256. No unrelated project, route or resource
+changed.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.6-text-only-continuation`;
+the SHA-256 of its `SHA256SUMS` is
+`bc09cf74364356a5e6ed2d8f7c87838f711ee66bf2a1d26cf457ad996e652cc8`.
