@@ -19,6 +19,7 @@ import {
   Menu,
   MessageSquare,
   MonitorCheck,
+  Paperclip,
   RefreshCw,
   Search,
   Server,
@@ -28,7 +29,7 @@ import {
   Upload,
   X
 } from "lucide-react";
-import React, { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import React, { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import {
   ApiError,
@@ -63,6 +64,7 @@ import {
   SessionDeliverable,
   SessionDeliverableSummary,
   SessionDeliverablesView,
+  WorkSessionAttachment,
   WorkSessionAttachmentCapability,
   WorkSessionPreview
 } from "./types";
@@ -841,9 +843,11 @@ function PreviewPanel({
 function ConversationScreen({ sessionId, projectId }: { sessionId: number; projectId?: number }) {
   const [conversation, setConversation] = useState<MobileWorkSessionConversation | null>(null);
   const [attachmentCapability, setAttachmentCapability] = useState<WorkSessionAttachmentCapability | null>(null);
+  const [selectedAttachments, setSelectedAttachments] = useState<WorkSessionAttachment[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [attachmentCapabilityLoading, setAttachmentCapabilityLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [attachmentError, setAttachmentError] = useState("");
   const [profile, setProfile] = useState<ExecutionProfileView | null>(null);
@@ -859,6 +863,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   const [recoveryPending, setRecoveryPending] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
+  const uploadInProgress = useRef(false);
 
   async function loadProfile() {
     setProfileLoading(true);
@@ -905,6 +910,8 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   }
 
   useEffect(() => {
+    setSelectedAttachments([]);
+    uploadInProgress.current = false;
     load();
   }, [sessionId]);
 
@@ -1020,6 +1027,75 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     }
   }
 
+  async function uploadPendingImages(files: File[]) {
+    if (!files.length || uploadInProgress.current) {
+      return;
+    }
+    if (attachmentCapability?.state !== "READY") {
+      setAttachmentError("Las imágenes no están disponibles para esta sesión.");
+      return;
+    }
+    uploadInProgress.current = true;
+    setUploading(true);
+    setAttachmentError("");
+    let nextSelection = [...selectedAttachments];
+    try {
+      for (const file of files) {
+        if (!attachmentCapability.acceptedContentTypes.includes(file.type)) {
+          throw new Error("Usa una imagen PNG, JPEG o WebP.");
+        }
+        if (nextSelection.length >= attachmentCapability.maxAttachmentsPerTurn) {
+          throw new Error(`Puedes seleccionar hasta ${attachmentCapability.maxAttachmentsPerTurn} imágenes por mensaje.`);
+        }
+        if (file.size > attachmentCapability.maxFileBytes) {
+          throw new Error(`La imagen supera el máximo de ${formatBytes(attachmentCapability.maxFileBytes)}.`);
+        }
+        const selectedBytes = nextSelection.reduce((total, attachment) => total + attachment.sizeBytes, 0);
+        if (selectedBytes + file.size > attachmentCapability.maxAttachmentBytesPerTurn) {
+          throw new Error(`Las imágenes del mensaje superan ${formatBytes(attachmentCapability.maxAttachmentBytesPerTurn)}.`);
+        }
+        if (file.size > attachmentCapability.remainingSessionBytes) {
+          throw new Error("La sesión no tiene cuota suficiente para esta imagen.");
+        }
+        const attachment = await api.uploadWorkSessionAttachment(sessionId, {
+          file,
+          idempotencyKey: crypto.randomUUID()
+        });
+        if (!nextSelection.some((selected) => selected.id === attachment.id)) {
+          nextSelection = [...nextSelection, attachment];
+          setSelectedAttachments(nextSelection);
+        }
+      }
+    } catch (uploadError) {
+      setAttachmentError(errorMessage(uploadError));
+    } finally {
+      uploadInProgress.current = false;
+      setUploading(false);
+    }
+  }
+
+  function pickPendingImages(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    void uploadPendingImages(files);
+  }
+
+  function pastePendingImages(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (!files.length) {
+      return;
+    }
+    event.preventDefault();
+    if (uploadInProgress.current) {
+      setAttachmentError("Espera a que termine la subida actual y vuelve a pegar la imagen.");
+      return;
+    }
+    void uploadPendingImages(files);
+  }
+
   return (
     <ConversationLayout
       title={conversation?.session.title || `WorkSession #${sessionId}`}
@@ -1058,10 +1134,13 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
         <AttachmentComposerState
           capability={attachmentCapability}
           loading={attachmentCapabilityLoading}
+          uploading={uploading}
           error={attachmentError}
+          selectedCount={selectedAttachments.length}
+          onPick={pickPendingImages}
         />
         <div className="conversation-composer__input">
-          <textarea disabled={!conversation?.canCreateTurn} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={conversation?.canCreateTurn ? "Instrucción para Codex dentro de esta sesión..." : "Espera a que termine la ejecución actual..."} />
+          <textarea disabled={!conversation?.canCreateTurn} value={message} onChange={(event) => setMessage(event.target.value)} onPaste={pastePendingImages} placeholder={conversation?.canCreateTurn ? "Instrucción para Codex dentro de esta sesión..." : "Espera a que termine la ejecución actual..."} />
           <Button variant="primary" disabled={loading || !message.trim() || !conversation?.canCreateTurn || profileDirty || Boolean(profileError)}>{loading ? "Enviando" : "Enviar"}</Button>
         </div>
       </form>
@@ -1318,24 +1397,38 @@ function ExecutionProfileControl({
 function AttachmentComposerState({
   capability,
   loading,
-  error
+  uploading,
+  error,
+  selectedCount,
+  onPick
 }: {
   capability: WorkSessionAttachmentCapability | null;
   loading: boolean;
+  uploading: boolean;
   error: string;
+  selectedCount: number;
+  onPick: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   const ready = capability?.state === "READY";
   const title = loading
     ? "Comprobando imágenes"
+    : uploading
+      ? "Subiendo imagen"
     : error
       ? "Imágenes no disponibles"
+      : selectedCount
+        ? selectedCount === 1 ? "1 imagen lista" : `${selectedCount} imágenes listas`
       : ready
         ? "Imágenes disponibles"
         : "Solo texto";
   const detail = loading
     ? "Puedes seguir preparando el mensaje."
+    : uploading
+      ? "La imagen se seleccionará al terminar."
     : error
       ? `${error} Continúa con texto.`
+      : selectedCount
+        ? "Seleccionadas para el próximo mensaje."
       : capability
         ? `${capability.message} ${capability.nextAction}`
         : "Continúa con texto.";
@@ -1346,10 +1439,24 @@ function AttachmentComposerState({
       aria-live="polite"
     >
       <span className="attachment-composer-state__indicator" aria-hidden="true" />
-      <div>
+      <div className="attachment-composer-state__copy">
         <strong>{title}</strong>
         <span>{detail}</span>
       </div>
+      {ready && (
+        <label className={`attachment-composer-action ${uploading ? "is-disabled" : ""}`}>
+          <Paperclip />
+          <span>{uploading ? "Subiendo…" : "Añadir imagen"}</span>
+          <input
+            aria-label="Seleccionar imágenes"
+            type="file"
+            accept={capability.acceptedContentTypes.join(",")}
+            multiple
+            disabled={uploading}
+            onChange={onPick}
+          />
+        </label>
+      )}
     </section>
   );
 }
