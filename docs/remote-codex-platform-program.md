@@ -8867,3 +8867,38 @@ is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-6.8-authenticated-capability-seal`;
 the SHA-256 of its `SHA256SUMS` is
 `da6daf6c17e1ee487b5a431320ce6cac79add23cdf2503c3aaf87c45b435e987`.
+
+Task 7.1 remains the first pending task and change progress remains `65/83`.
+The complete read-only technical preflight passes, but activation is blocked
+before any gate change pending separate explicit operator authorization.
+
+Programme, candidate and canonical Git are clean and synchronized at
+`caeb2c78b02aad2b40659a232b4e12c36a5971dd`,
+`99bda7d1a93f9aa5e9f6e3e8f9f0365cef36ce59` and
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production is V62 with all
+attachment gates disabled and both allowlists empty. The 76 succeeded, 14
+failed and one cancelled historical AgentRuns are terminal; non-terminal
+AgentRuns are zero. Worker AgentRun state, incoming storage and materialization
+state are empty.
+
+The exact runner, attachment worker and Beautips adapter fingerprints match
+the deployed bundle. Retained-storage metadata retains SHA-256
+`9170ec9ace7e935599ab02fb6841df92ee9bc333c403592f58bf06829f8407b6`.
+The canonical `atenea-worker-health.timer`, `atenea-external-backup-v1.timer`
+and `atenea-external-backup-check-v1.timer` are enabled/active and all three
+paired services last completed with result success and exit 0. The backup
+sandbox includes the fixed attachment root read-only. SSH, Tailscale and UFW
+are active, RAID is `3/3 [UU]`, and production, preview and Beautips return
+HTTP 200.
+
+The authorization accepted for task 6.4 expressly scoped the production
+rollout to initially disabled configuration. It does not separately authorize
+enabling the global/project gates or performing the real operator canary. The
+change contract requires that activation authorization to be explicit. No
+gate, route, WorkSession, service, runtime, retained content or foreign
+resource was changed during this preflight.
+
+Sanitized blocking evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.1-blocked-activation-authorization`;
+the SHA-256 of its `SHA256SUMS` is
+`b420b4e35d57d3456d0f8ef3e517a910c828f2de00d78bdee3420d444db5d920`.
