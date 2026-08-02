@@ -7648,3 +7648,38 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.3-base-reader-delete-preservation`;
 the SHA-256 of its `SHA256SUMS` is
 `a5ae1859a9cf87f7035b3c0fe1df62582f0e7757871b3e67f828e1b19f08cf9d`.
+
+Task 3.4 is complete and change progress is `31/83`; the exact resume point is
+task 3.5. Programme/worker commit
+`a0f58ad0320716d7da9b58ddf339045e9b6a71ab` adds the closed
+`project-codex-v3` request schema, exact semantic bounds and durable ordered
+attachment fingerprint behavior.
+
+V3 is accepted only for canonical Atenea ownership and extends the existing v2
+profile by exactly one ordered `attachments` array. It admits one to four
+distinct canonical UUIDs, PNG/JPEG/WebP only, 16 MiB per image and 32 MiB
+combined, with each entry restricted to UUID, media type, byte count and
+lowercase SHA-256. Empty, partial, duplicate, non-image, over-bound, foreign or
+authority-bearing input is rejected before execution state or a process exists.
+
+The durable proof persists a two-image request, reloads `WorkerState` and shows
+that identical replay returns the same execution. Reordering those references
+changes the canonical request fingerprint and reuse of the dispatch identity is
+rejected while the existing durable state remains byte-identical. The existing
+v1/v2 request and project runner behavior remains compatible. The focused
+AgentRun, session-operation contract and runner suites passed `68/68` in 5.928
+seconds under a 120-second timeout.
+
+The source-only candidate remains uninstalled and does not advertise v3 before
+the bounded runner path is complete. Programme/worker tree
+`d39139e2447539a61596e0ddf1e3b5305fb072ca` is clean and published; the Atenea
+implementation branch remains clean at
+`fe9ac3fa2095069d99bf29db1c4c78e5ab850fa8`. Canonical Atenea is clean at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and Beautips
+return HTTP 200; AX42 attachment/AgentRun services and health/backup timers are
+active; RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.4-project-codex-v3-contract`;
+the SHA-256 of its `SHA256SUMS` is
+`cdcc2f9a61f572c3a64bddd055261a10268182fcce2d9c3e570b68ae677b8c55`.
