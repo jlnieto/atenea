@@ -1,5 +1,8 @@
 package com.atenea.api.worksession;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -18,6 +21,7 @@ import com.atenea.service.worksession.WorkSessionNotFoundException;
 import com.atenea.service.worksession.WorkSessionTurnExecutionFailedException;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -155,6 +159,65 @@ class SessionTurnControllerTest {
                 .andExpect(jsonPath("$.run.id").value(55))
                 .andExpect(jsonPath("$.run.externalTurnId").value("turn-1"))
                 .andExpect(jsonPath("$.codexTurn.actor").value("CODEX"));
+
+        verify(sessionTurnService).createTurn(
+                12L,
+                new CreateSessionTurnRequest("Inspect the project", null, List.of()));
+    }
+
+    @Test
+    void createTurnPreservesOrderedAttachmentIdsAndClientRequestIdentity() throws Exception {
+        UUID clientRequestId = UUID.fromString("7b35f774-97f2-4a9e-b7db-0f18d59112ba");
+        UUID firstAttachmentId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        UUID secondAttachmentId = UUID.fromString("9aa2c7e5-1fd9-48ec-aa10-03dfdfb8ca7d");
+        when(sessionTurnService.createTurn(
+                org.mockito.ArgumentMatchers.eq(12L),
+                any(CreateSessionTurnRequest.class)))
+                .thenReturn(null);
+
+        mockMvc.perform(post("/api/sessions/12/turns")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "Inspect both images",
+                                  "clientRequestId": "%s",
+                                  "attachmentIds": ["%s", "%s"]
+                                }
+                                """.formatted(
+                                    clientRequestId,
+                                    firstAttachmentId,
+                                    secondAttachmentId)))
+                .andExpect(status().isCreated());
+
+        verify(sessionTurnService).createTurn(
+                12L,
+                new CreateSessionTurnRequest(
+                        "Inspect both images",
+                        clientRequestId,
+                        List.of(firstAttachmentId, secondAttachmentId)));
+    }
+
+    @Test
+    void createTurnRejectsAttachmentsWithoutClientRequestIdentityBeforeService() throws Exception {
+        UUID attachmentId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+
+        mockMvc.perform(post("/api/sessions/12/turns")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "Inspect this image",
+                                  "attachmentIds": ["%s"]
+                                }
+                                """.formatted(attachmentId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.details[0]").value(
+                        "requestIdentityPresentForAttachments: "
+                                + "clientRequestId is required when attachmentIds are present"));
+
+        verify(sessionTurnService, never()).createTurn(
+                org.mockito.ArgumentMatchers.eq(12L),
+                any(CreateSessionTurnRequest.class));
     }
 
     @Test
