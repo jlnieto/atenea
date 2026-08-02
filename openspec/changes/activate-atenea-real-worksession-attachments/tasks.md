@@ -101,7 +101,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 
 ## 7. Exact Atenea activation and real web canary
 
-- [ ] 7.1 Reconfirm explicit authorization, clean Git, zero non-terminal AgentRuns, healthy backup/check timers, compatible storage/runner capabilities and unchanged production/preview/Beautips/RAID before changing a gate
+- [x] 7.1 Reconfirm explicit authorization, clean Git, zero non-terminal AgentRuns, healthy backup/check timers, compatible storage/runner capabilities and unchanged production/preview/Beautips/RAID before changing a gate
 - [ ] 7.2 Enable the global gate with the real-project allowlist empty and prove all projects remain blocked with zero metadata/content/binding mutation
 - [ ] 7.3 Enable only canonical `atenea`, prove an old Atenea session remains ineligible, create one new clean WorkSession with revision `atenea-real-attachments-v1` and leave Beautips/all other projects blocked
 - [ ] 7.4 Have the operator sign in and upload one generated non-secret PNG through the real web composer, confirming visible selected state without retaining its bytes or user-facing filename in evidence

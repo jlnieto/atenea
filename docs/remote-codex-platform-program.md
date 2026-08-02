@@ -8902,3 +8902,39 @@ Sanitized blocking evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.1-blocked-activation-authorization`;
 the SHA-256 of its `SHA256SUMS` is
 `b420b4e35d57d3456d0f8ef3e517a910c828f2de00d78bdee3420d444db5d920`.
+
+Task 7.1 is complete. Change progress is `66/83`; task 7.2 is the exact
+resume point.
+
+The operator separately and explicitly authorized enabling the global real
+attachment gate, then enabling only canonical `atenea`, and creating one new
+eligible WorkSession. Beautips and every other project remain outside that
+authorization. The authorization was accepted only after repeating the full
+read-only technical preflight.
+
+Programme, candidate and canonical Git are clean and synchronized at
+`524ffb4ade1a3aa3f23385655b638ed79cf653ef`,
+`99bda7d1a93f9aa5e9f6e3e8f9f0365cef36ce59` and
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`. Production remains on V62 with
+the global gate false and both allowlists empty. All 91 historical AgentRuns
+are terminal and no attachment row, logical byte, turn binding or policy
+revision exists in production.
+
+The exact AgentRun runner, attachment worker and Beautips adapter hashes match
+the deployed candidate. Both worker services are enabled, active and running
+with zero restarts; transient AgentRun, incoming and materialization state is
+empty. The previously accepted authenticated capability seal remains the
+storage compatibility authority and the retained metadata fingerprint remains
+`9170ec9ace7e935599ab02fb6841df92ee9bc333c403592f58bf06829f8407b6`.
+
+Health and both external-backup timers are enabled/active with successful
+paired service results. SSH, Tailscale and UFW are active, rootful Docker is
+inactive, all three RAID arrays are `[UU]`, rootless slot counts remain
+`3/0/0/3`, and production, preview and Beautips return HTTP 200. No gate,
+WorkSession, runtime, route, retained content or foreign resource changed in
+task 7.1.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.1-activation-authorization-accepted`;
+the SHA-256 of its `SHA256SUMS` is
+`e92d2f26fd96b3842f2915aea6ed22b2b3cb7979cf1e0c8693cc951dd0a71f4e`.
