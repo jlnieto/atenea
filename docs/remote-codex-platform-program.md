@@ -8021,3 +8021,38 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.2-composer-capability`;
 the SHA-256 of its `SHA256SUMS` is
 `188caf81a9e060dbf5ed32e2536e6fe38ed8f3914f28b02794278711a959bcfc`.
+
+Task 4.3 is complete and change progress is `41/83`; the exact resume point is
+task 4.4. Atenea commit
+`81f819fa86d2a205e8e84de67c6192501d3d79aa` has tree
+`449b154385064b6ee98b8dc394e559f844a07c0d` and is clean and published.
+
+The composer now offers one secondary `Añadir imagen` file picker and accepts
+PNG, JPEG or WebP clipboard images on the message textarea. Both paths use the
+same bounded validation and multipart upload, supply one explicit UUID v4
+idempotency identity per upload, retain picker/paste order and automatically
+append each successful immutable result to the pending selection. Unsupported,
+over-file, over-turn and over-quota inputs stop before dispatch. A paste during
+an in-flight upload receives an actionable wait-and-retry message instead of
+being silently lost.
+
+The production web build passed in 4 seconds. Isolated Chromium acceptance
+used only synthetic empty-conversation data and performed one picker upload
+followed by one clipboard upload in each viewport. All four requests were
+multipart, carried four distinct UUID identities and produced the expected
+`1 imagen lista` then `2 imágenes listas` DOM states. At `1440x900` and
+`390x844`, the clip stayed secondary, Send remained the sole primary action,
+there was no horizontal overflow or clipping, and manual PNG inspection found
+clear hierarchy and responsive stacking. Browser and temporary Vite processes
+were closed.
+
+Canonical Atenea remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; required AX42 services/timers are active; RAID is
+`3/3 [UU]`; rootless slots remain `3/0/0/3`. No rollout or unrelated mutation
+occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.3-picker-paste`;
+the SHA-256 of its `SHA256SUMS` is
+`579cfddb433d761b276066b11bab3086f2dc40edb6bb73343a4fbc78e80ca669`.
