@@ -9402,3 +9402,48 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.8-production-rejection-matrix`;
 the SHA-256 of its `SHA256SUMS` is
 `c9257432a19faa49ce281d331890f716b1c2dcd6e8501dbf9e2fb74b6cafe90e`.
+
+Task 7.9 is complete. Change progress is `74/83`; task 7.10 is the exact
+resume point and was not started.
+
+The canonical external-backup service created snapshot
+`50980a4b74d68ed40525b73ebba2945f92885839fef4af5412d58d96e3d77de4`,
+newer than accepted predecessor
+`01cdda7f985e88bf60b78185011704b3afa31182c256258f42d5329b4c8645b2`.
+Its exact source policy selected 3,870 regular files totalling 12,257,180
+bytes with normalized manifest SHA-256
+`51cf5989796d05093548e65cacfe2e9d02f8ec68ed9f087a54b38e76e233fb25`.
+Backup completed in 5,498 ms, the repository check completed against the same
+snapshot in 4,563 ms, and bounded retention ran only after both succeeded.
+
+The exact snapshot was restored in 4,250 ms to the newly allocated empty
+isolated projection
+`task-7.9-15261384-62e7-46cd-9069-72cd3580ff52`. The restored aggregate is
+exactly 3,870 files, 12,257,180 bytes and the same normalized manifest, with
+zero symbolic links. The projection is retained solely for task 7.10 and is
+bound to device/inode `2306:10780335`, mode `2755` and numeric owner
+`0:988`; it was not removed or otherwise changed after verification.
+
+The exact canonical WorkSession sidecar selected one unambiguous real Atenea
+canary from three equal-content historical copies. Source and restore both have
+42,499 content bytes with SHA-256
+`3547d21c912406eb42b757109568d07af9770d1cd94f498ee90ccd95be3a63f5`
+and 730 sidecar bytes with SHA-256
+`6491b3ef325a9bc4bb11b090a1953ac02102c1611eeb6460e4ed318bee6172cf`;
+all four files retain mode `0600` and exact real-project ownership metadata.
+No attachment bytes, user-facing filename, prompt, answer, credential, token
+or private provider value entered evidence.
+
+Production WorkSession 15 remains exactly one attachment, four turns, one
+binding and two AgentRuns. Its Git worktree remains clean at commit
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`. Attachment, AgentRun,
+backup, check and worker-health units remain active with zero service restarts;
+temporary materializations remain zero, RAID remains `3/3 [UU]`, and rootful
+Docker remains inactive. Production, preview and Beautips containers remain
+up. No gate, route, runtime, WorkSession or unrelated resource changed.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.9-new-backup-isolated-restore`;
+the SHA-256 of its `SHA256SUMS` is
+`b98b18089ccc2888516c39a5db61044b7eb9db64cc38687d09aaf9e6bc002ef6`.
