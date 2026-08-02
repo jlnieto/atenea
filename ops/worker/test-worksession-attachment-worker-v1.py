@@ -166,6 +166,44 @@ class AttachmentStoreTest(unittest.TestCase):
         self.assertEqual(first, metadata)
         self.assertEqual(hashlib.sha256(self.content).hexdigest(), hashlib.sha256(content_path.read_bytes()).hexdigest())
 
+    def test_base_v1_restart_reads_extended_real_sidecar_without_rewrite(self):
+        self.session_id = str(uuid.uuid4())
+        real_metadata = self.metadata(
+            syntheticFixture=False,
+            projectIdentity="atenea",
+            workspaceIdentity=f"remote:test-worker:work-session:{self.session_id}",
+            storageScope="REAL_SESSION",
+        )
+        public, created = self.store.put(
+            self.session_id,
+            self.attachment_id,
+            real_metadata,
+            io.BytesIO(self.content),
+            len(self.content),
+        )
+        self.assertTrue(created)
+        sidecar_path = (
+            self.store.sessions
+            / self.session_id
+            / self.attachment_id
+            / "metadata.json"
+        )
+        sidecar_before = sidecar_path.read_bytes()
+
+        restarted = MODULE.AttachmentStore(self.root, "test-worker")
+        read_metadata = restarted.metadata(self.session_id, self.attachment_id)
+        content_metadata, content_path = restarted.content(
+            self.session_id,
+            self.attachment_id,
+        )
+
+        self.assertEqual(public, read_metadata)
+        self.assertEqual(public, content_metadata)
+        self.assertEqual(self.content, content_path.read_bytes())
+        self.assertEqual(sidecar_before, sidecar_path.read_bytes())
+        for private_key in ("projectIdentity", "workspaceIdentity", "storageScope"):
+            self.assertNotIn(private_key, read_metadata)
+
     def test_only_exact_synthetic_fixture_can_be_deleted(self):
         self.session_id = str(uuid.uuid4())
         retained_id = str(uuid.uuid4())
@@ -441,6 +479,43 @@ class AttachmentHttpTest(unittest.TestCase):
                 self.assertEqual(400, rejected.exception.code)
 
         self.assertEqual([], list(self.store.sessions.rglob("content")))
+
+    def test_synthetic_delete_rejects_real_content_and_sidecar_unchanged(self):
+        self.session_id = "a1c3af50-af6e-4cc2-85d6-a491c50cddcc"
+        headers = self.upload_headers(**{
+            "X-Atenea-Synthetic-Fixture": "false",
+            "X-Atenea-Project-Identity": "atenea",
+            "X-Atenea-Workspace-Identity":
+                f"remote:http-worker:work-session:{self.session_id}",
+            "X-Atenea-Storage-Scope": "REAL_SESSION",
+        })
+        self.request(
+            "PUT",
+            self.path(),
+            token="t" * 64,
+            content=self.content,
+            extra_headers=headers,
+        ).close()
+        attachment_dir = (
+            self.store.sessions
+            / self.session_id
+            / self.attachment_id
+        )
+        content_path = attachment_dir / "content"
+        sidecar_path = attachment_dir / "metadata.json"
+        content_before = content_path.read_bytes()
+        sidecar_before = sidecar_path.read_bytes()
+
+        with self.assertRaises(urllib.error.HTTPError) as rejected:
+            self.request(
+                "DELETE",
+                self.path(),
+                token="t" * 64,
+                extra_headers={"X-Atenea-Synthetic-Fixture": "true"},
+            )
+        self.assertEqual(403, rejected.exception.code)
+        self.assertEqual(content_before, content_path.read_bytes())
+        self.assertEqual(sidecar_before, sidecar_path.read_bytes())
 
     def test_missing_ambiguous_or_unsupported_metadata_fails_closed(self):
         headers = self.upload_headers()
