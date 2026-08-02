@@ -7518,3 +7518,38 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.12-backend-coverage-matrix`;
 the SHA-256 of its `SHA256SUMS` is
 `970c1fd09bcac49045c3e07b567e157ba2d966975053507850cc00f50cbbe5ac`.
+
+Task 2.13 is complete and change progress is `27/83`; the exact resume point
+is task 3.1. Atenea closure commit
+`fe9ac3fa2095069d99bf29db1c4c78e5ab850fa8` publishes the completed backend
+contract slice without changing its accepted tree.
+
+The final focused backend run passed `158/158` tests across twenty exact V62,
+upload, admission, authorization, turn, atomic persistence, idempotency, retry,
+manifest and v1/v2/v3 serialization classes in 29 seconds. The complete Maven
+backend suite then passed `612/612` tests across 96 classes in 70 seconds from
+a clean target and a new empty PostgreSQL 16 database migrated through V62.
+
+Two earlier complete-suite attempts were retained transparently as sanitized
+harness diagnostics. The first reused the focused database and lacked the
+legacy integration workspace. The second used a fresh database and proved the
+remaining `400` responses were the correct fail-closed result of starting the
+application with `/repos` while the legacy test fixture creates repositories
+beneath `/workspace/repos`. A third new database, clean target and the fixture's
+exact application workspace root passed without any source relaxation or
+contract change.
+
+All uniquely named PostgreSQL containers and the exact task-created workspace
+were removed. The implementation branch is clean, published and synchronized
+at the closure commit with tree
+`f1ee9dafdf33934236e2da593f62ea39f58b86d3`. Canonical Atenea remains clean
+at `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; AX42 attachment/AgentRun services and health/backup
+timers remain active; RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`.
+No production deployment, schema, row, content, credential, route, service or
+unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-2.13-complete-backend-suite`;
+the SHA-256 of its `SHA256SUMS` is
+`c32aa634eebb9454dacf17fad43b3f0ed9716ea06470781e4e069a4680c89f64`.

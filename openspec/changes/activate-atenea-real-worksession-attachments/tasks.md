@@ -47,7 +47,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 2.10 Make a safe failed-run retry inherit the exact origin turn, ordered attachment manifest and Codex profile without creating or mutating attachment ownership
 - [x] 2.11 Add `project-codex-v3` serialization for image-bearing profiled runs and include only ordered UUID, media type, size and SHA-256 references in its closed workload fingerprint
 - [x] 2.12 Add controller/service/authorization/idempotency/retry/serialization tests for same-session success and empty, duplicate, expired, oversized, non-image, partial, foreign and conflicting denial
-- [ ] 2.13 Run the focused backend slice and complete backend suite, then commit and push the completed Atenea contract slice
+- [x] 2.13 Run the focused backend slice and complete backend suite, then commit and push the completed Atenea contract slice
 
 ## 3. AX42 real storage and exact Codex image delivery
 
