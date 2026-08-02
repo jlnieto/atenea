@@ -7988,3 +7988,36 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.1-typed-web-clients`;
 the SHA-256 of its `SHA256SUMS` is
 `a0d29366ce3f59e38585ac741aa8cb59e81e51c65b75e3d57f7c7d1cee8ab147`.
+
+Task 4.2 is complete and change progress is `40/83`; the exact resume point is
+task 4.3. Atenea commit
+`5ba98287547bce4b51d53057304f6167889d206b` has tree
+`334b0095b981f65ed7e77603dd0690e5ea5e15e6` and is clean and published.
+
+The misleading standalone enabled-looking attachment panel and its primary
+upload action are removed. A compact capability-aware status now belongs to
+the fixed conversation composer, distinguishes checking, ready and fail-closed
+text-only states, displays the server-owned message and next action, and keeps
+`Enviar` as the sole primary action. The same-screen review also corrected the
+inherited dark empty-state title that had been unreadable on the dark
+conversation surface.
+
+The production web build passed in 4 seconds under a 600-second timeout. A
+fresh isolated Chromium acceptance used only synthetic empty-conversation,
+profile and capability data and passed in 3 seconds. At `1440x900` and
+`390x844`, data and DOM assertions proved the ready state, zero standalone
+panel, one primary action and visible Send button. Geometry and manual PNG
+inspection proved zero horizontal overflow, no clipped composer, readable
+hierarchy, consistent spacing and responsive stacking. Browser, contexts,
+pages and temporary Vite were closed.
+
+Canonical Atenea remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; AX42 attachment, preview and AgentRun services plus
+health/backup timers are active; RAID is `3/3 [UU]`; rootless slots remain
+`3/0/0/3`. No rollout or unrelated mutation occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.2-composer-capability`;
+the SHA-256 of its `SHA256SUMS` is
+`188caf81a9e060dbf5ed32e2536e6fe38ed8f3914f28b02794278711a959bcfc`.

@@ -66,7 +66,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 ## 4. State-first web composer
 
 - [x] 4.1 Add typed web clients for capability state, upload, stable turn request UUID, exact ordered attachment submission and historical attachment projection
-- [ ] 4.2 Replace the standalone enabled-looking attachment panel with one compact composer-integrated state that keeps Send as the only primary action
+- [x] 4.2 Replace the standalone enabled-looking attachment panel with one compact composer-integrated state that keeps Send as the only primary action
 - [ ] 4.3 Add a secondary file-picker action and image clipboard paste using the same validated upload flow, automatically selecting a successful image for the pending message
 - [ ] 4.4 Render up to four selected image chips with thumbnail, bounded filename/size, upload/ready/error state and a clear remove action without exposing worker details
 - [ ] 4.5 Preserve selected images and client request identity across failed or uncertain submission, prevent double send and clear them only after Atenea confirms the accepted turn
