@@ -8056,3 +8056,29 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.3-picker-paste`;
 the SHA-256 of its `SHA256SUMS` is
 `579cfddb433d761b276066b11bab3086f2dc40edb6bb73343a4fbc78e80ca669`.
+
+Task 4.4 is complete and change progress is `42/83`; the exact resume point is
+task 4.5. Atenea commit
+`9fac3d785a4023e96a782e53e97d9e01fb25c4e8` has tree
+`b786e201d7467d498ee9e631bae36b221d3434c6` and is clean and published.
+
+The composer now renders at most four pending-image chips with a local
+thumbnail, bounded filename and byte size, explicit uploading/ready/error state
+and an exact remove action. Object URLs are revoked on removal, session change
+and unmount. No storage path, worker identity or implementation detail is
+projected.
+
+The production web build passed in 4 seconds. Isolated Playwright acceptance
+proved uploading, one ready and one rejected chip, exact rejection removal,
+then four ready thumbnails and four remove actions. Desktop `1440x900` and
+mobile `390x844` had no horizontal overflow or clipped composer; manual PNG
+inspection confirmed readable state colors, bounded metadata and responsive
+four-column/two-column layouts. Send remained the sole primary action. Browser
+and temporary Vite processes were closed.
+
+Production, preview and Beautips returned HTTP 200; required AX42 services
+were active and RAID remained `3/3 [UU]`. No rollout or unrelated mutation
+occurred. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.4-image-chips`;
+the SHA-256 of its `SHA256SUMS` is
+`857553d15401f9b21bdc35bb06c6ad0f5c70cc2a1d3d9124c3bd66cd20d91aae`.
