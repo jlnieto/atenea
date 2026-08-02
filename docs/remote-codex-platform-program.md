@@ -7758,3 +7758,40 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.6-ordered-image-materialization`;
 the SHA-256 of its `SHA256SUMS` is
 `d70248d49394812e45432b1758a405798be00b28e6c55ed55cd9351af74598c8`.
+
+Task 3.7 is complete and change progress is `34/83`; the exact resume point is
+task 3.8. Programme/worker commit
+`4bba01e558129bc34184d8dae3ede653905ce3a4` adds identity-checked terminal
+cleanup and startup reconciliation for the image materialization boundary.
+
+The managed materialization context records the exact created device/inode,
+derived path, media type, size and digest. Its `finally` path removes only the
+complete matching file set from the exact `0700` execution directory. Success,
+forced failure, timeout, cancellation/interruption and explicit runner exit all
+leave the synthetic runtime boundary empty and the retained sources unchanged.
+A replaced inode or changed content fails closed, remains untouched and produces
+only the sanitized materialization rejection.
+
+Worker startup first resolves a persisted uncertain project execution to
+terminal failure without duplicating its turn, then sends the root runner a
+closed projection containing only execution ID, state and v3 attachment
+references. The runner uses a two-pass scan: exact absent and terminal paths are
+removed; non-terminal paths are retained; unlabelled, foreign or ambiguous
+candidates cause rejection before any otherwise removable candidate changes.
+The mediator result is closed and any nonzero ambiguous count prevents the
+worker scheduler from starting. The focused suites passed `82/82` in 13.528
+seconds under a 120-second timeout.
+
+Programme/worker tree `f1326a7c7ef3b6b42e7d27be1d4074b7c6a747af` is clean and
+published. The installed runner remains byte-identical to its previous
+`d15c78b09fcf048f7968168861ed976dd054b038168548b7216781568d1126f0`
+version and the installed materialization root remains absent, as expected
+before task 3.10. Canonical Atenea remains clean at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and Beautips
+return HTTP 200; AX42 attachment/AgentRun services and health/backup timers are
+active; RAID is `3/3 [UU]`; rootless slots remain `3/0/0/3`.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-3.7-exact-materialization-cleanup`;
+the SHA-256 of its `SHA256SUMS` is
+`479ede60f1479c73393603ee49ead1149f1008502597ef917b0dd48a64049027`.
