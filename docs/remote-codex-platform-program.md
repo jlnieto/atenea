@@ -8448,3 +8448,39 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.6-terminal-cleanup`;
 the SHA-256 of its `SHA256SUMS` is
 `a994288aa1f3124596c9f05992379921dca2919dfe284fb1b27ed10ca41c868a`.
+
+Task 5.7 is complete and change progress is `55/83`; the exact resume point is
+task 5.8. The V62-aware rollback backend is fixed at commit
+`409a2f3222a5fd61b693a4154d3de7820ff850e9`, tree
+`8ceb0a40f152866aee5b64e0e73b9d2da2a9efb5`. It understands the expanded V62
+schema and exact remote-session read identity while predating image-bearing
+turn dispatch. Global, synthetic and real create/bind admission default false.
+
+With creation disabled, the rollback service rejected upload before worker
+creation while retained metadata list and integrity-checked download remained
+available. Exact real ownership read through the remote WorkSession UUID;
+ambiguous ownership failed before worker access. There is no new image-binding
+submission surface in the rollback source. Admission, service and controller
+tests passed `25/25` in 11 seconds, and V62 migration tests passed `3/3` in 6
+seconds against one labelled disposable PostgreSQL 16 fixture.
+
+The exact legacy base-v1 attachment service at
+`6baa87488ca32967f16790e0e607b74908320856` reopened content written by the
+extended real-compatible store. Listed metadata and downloaded bytes matched,
+private ownership fields were not exposed, and the full sidecar hash was
+identical before and after the legacy read. The exact database fixture and
+temporary worktrees were removed after identity validation; Maven output,
+Python bytecode and browser processes are zero.
+
+Candidate Atenea remains clean and published at
+`99bda7d1a93f9aa5e9f6e3e8f9f0365cef36ce59`; programme/worker and canonical
+Atenea remain clean. Production, preview and Beautips return HTTP 200; required
+AX42 services/timers are active; RAID remains `[UU]`; rootless slots remain
+`3/0/0/3`. No service was restarted and no rollout, production migration,
+WorkSession, route, credential, retained real content or unrelated resource
+changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-5.7-rollback-read-compatibility`;
+the SHA-256 of its `SHA256SUMS` is
+`8b32c062818f137a43f8134ab73c1a90bc14f39b31712c1615cb51cd849a26c8`.

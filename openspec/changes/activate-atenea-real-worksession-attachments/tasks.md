@@ -84,7 +84,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 5.4 Prove response loss/retry, backend restart, worker restart, attachment-service restart and safe AgentRun retry retain one turn/run/manifest/result and no re-upload
 - [x] 5.5 Exercise unlabelled, partial, foreign-project, foreign-session, foreign-workspace, modified-content, symlink, unsupported, duplicate, expired and ambiguous fixtures and prove every rejected resource remains intact
 - [x] 5.6 Prove cancellation, timeout and forced runner failure leave zero materialized images, Codex processes or unindexed worker content while preserving retained source attachments
-- [ ] 5.7 Verify an old base-v1 attachment service and the V62-aware rollback backend can list/download retained real-compatible content with create/bind disabled
+- [x] 5.7 Verify an old base-v1 attachment service and the V62-aware rollback backend can list/download retained real-compatible content with create/bind disabled
 - [ ] 5.8 Audit source, logs and artifacts for prompt/answer, screenshot bytes, thumbnail data, credentials, tokens, storage paths, Codex identities and environment dumps; retain only permitted sanitized metadata
 - [ ] 5.9 Seal synthetic evidence and `SHA256SUMS`, update the programme ledger and strict-validate before any production migration or service installation
 
