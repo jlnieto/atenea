@@ -8,6 +8,7 @@ WORKER_ID="${ATENEA_AGENT_RUN_WORKER_ID:-ax42-01}"
 PORT="${ATENEA_AGENT_RUN_WORKER_PORT:-8787}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE="atenea-agent-run-worker-v1.service"
+MATERIALIZATION_SERVICE="atenea-codex-images-v1.service"
 PROGRAM="/usr/local/libexec/atenea/agent-run-worker-v1.py"
 PROJECT_RUNNER="/usr/local/libexec/atenea/project-codex-runner-v1.py"
 VALIDATION_MEDIATOR="/usr/local/libexec/atenea/atenea-validation-v1.sh"
@@ -26,13 +27,19 @@ TOKEN_FILE="/etc/atenea-worker/agent-run-worker-v1.token"
 PROJECT_CONFIG="/etc/atenea-worker/project-codex-v1.json"
 SUDOERS_FILE="/etc/sudoers.d/atenea-project-codex-v1"
 STATE_DIR="/srv/atenea/worker/agent-runs-v1"
+ATTACHMENT_ROOT="/srv/atenea/attachments-v1"
+MATERIALIZATION_ROOT="/run/atenea/codex-images"
+MATERIALIZATION_PARENT="/run/atenea"
 PROJECT_REPOSITORY="https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH="feature/actualizar-conversacion-en-web"
 PROJECT_MANIFEST_SHA256="3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
 PROJECT_MIRROR="/srv/atenea/repositories/atenea.git"
 PROJECT_REF="refs/remotes/origin/${PROJECT_BRANCH}"
 PROJECT_WORKSPACES_ROOT="/srv/atenea/workspaces/sessions"
-SERVICE_TEMPLATE_SHA256="cd29d53ac6249e19ccec9217a66017f8c377f1f6af07d88659b858c1333bd142"
+SERVICE_TEMPLATE_SHA256="0368f8769a6b4c505c0bb58f6cf88db1d5aa45437eb35602c4227f615a2650bc"
+MATERIALIZATION_SERVICE_TEMPLATE_SHA256="df3a3fa0d75472d8aaf6847c58b4bace6e7ed2f7d532f1f86c8c562cda2387a6"
+PROGRAM_SHA256="127d3cef240517a3d788025444c718f0b37a7dad7d9a02e52a670cb3d7bc1495"
+PROJECT_RUNNER_SHA256="64f06d73f366dd403f542318fa6da5ec48b4985327a0f5a07d7cb9c26f8b7aee"
 PLATFORM_INSTRUCTIONS_SHA256="44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"
 
 fail() {
@@ -57,6 +64,51 @@ install_exact_directory() {
   chmod u-s,g-s,o-t "$path"
 }
 
+verify_attachment_root() {
+  [[ -d "$ATTACHMENT_ROOT" && ! -L "$ATTACHMENT_ROOT" ]] \
+    || fail "attachment root is absent or ambiguous"
+  [[ "$(stat -c '%a:%U:%G' "$ATTACHMENT_ROOT")" == "700:atenea-worker:atenea" ]] \
+    || fail "attachment root ownership or mode is invalid"
+}
+
+verify_materialization_root() {
+  [[ -d "$MATERIALIZATION_ROOT" && ! -L "$MATERIALIZATION_ROOT" ]] \
+    || fail "materialization root is absent or ambiguous"
+  [[ "$(stat -c '%a:%U:%G' "$MATERIALIZATION_ROOT")" == "710:root:atenea" ]] \
+    || fail "materialization root ownership or mode is invalid"
+}
+
+verify_materialization_parent() {
+  [[ -d "$MATERIALIZATION_PARENT" && ! -L "$MATERIALIZATION_PARENT" ]] \
+    || fail "materialization parent is absent or ambiguous"
+  [[ "$(stat -c '%a:%U:%G' "$MATERIALIZATION_PARENT")" == "750:root:atenea" ]] \
+    || fail "materialization parent ownership or mode is invalid"
+}
+
+prepare_materialization_root() {
+  require_root
+  if [[ -e "$MATERIALIZATION_PARENT" || -L "$MATERIALIZATION_PARENT" ]]; then
+    verify_materialization_parent
+  else
+    install_exact_directory root atenea 0750 "$MATERIALIZATION_PARENT"
+  fi
+  if [[ -e "$MATERIALIZATION_ROOT" || -L "$MATERIALIZATION_ROOT" ]]; then
+    verify_materialization_root
+  else
+    install_exact_directory root atenea 0710 "$MATERIALIZATION_ROOT"
+  fi
+  verify_materialization_parent
+  verify_materialization_root
+}
+
+verify_project_runner_sudoers() {
+  mapfile -t project_runner_rules < <(grep -F -- "$PROJECT_RUNNER" "$SUDOERS_FILE")
+  [[ "${#project_runner_rules[@]}" -eq 2 \
+      && "${project_runner_rules[0]}" == "atenea-worker ALL=(root) NOPASSWD: $PROJECT_RUNNER --config $PROJECT_CONFIG" \
+      && "${project_runner_rules[1]}" == "atenea-worker ALL=(root) NOPASSWD: $PROJECT_RUNNER --config $PROJECT_CONFIG --reconcile-materializations" ]] \
+    || fail "project runner sudo authority is not exact"
+}
+
 tailscale_ipv4() {
   ip -4 -o address show dev tailscale0 scope global \
     | awk 'NR == 1 { split($4, value, "/"); print value[1] }'
@@ -77,6 +129,12 @@ validate_inputs() {
   [[ -f "$SCRIPT_DIR/codex-release-restart-v1.sh" ]] || fail "Codex update restart scheduler is missing"
   [[ -f "$SCRIPT_DIR/codex-platform-instructions-v1.md" ]] || fail "platform instructions are missing"
   [[ -f "$SCRIPT_DIR/templates/$SERVICE" ]] || fail "systemd template is missing"
+  [[ -f "$SCRIPT_DIR/templates/$MATERIALIZATION_SERVICE" ]] \
+    || fail "materialization service template is missing"
+  [[ "$(sha256sum "$SCRIPT_DIR/agent-run-worker-v1.py" | cut -d' ' -f1)" \
+      == "$PROGRAM_SHA256" ]] || fail "worker program fingerprint is stale"
+  [[ "$(sha256sum "$SCRIPT_DIR/project-codex-runner-v1.py" | cut -d' ' -f1)" \
+      == "$PROJECT_RUNNER_SHA256" ]] || fail "project runner fingerprint is stale"
 }
 
 plan() {
@@ -126,6 +184,7 @@ write_project_config() {
     --arg commit "$canonical_commit" \
     --arg manifest_sha256 "$PROJECT_MANIFEST_SHA256" \
     --arg runner "$PROJECT_RUNNER" \
+    --arg attachment_root "$ATTACHMENT_ROOT" \
     --argjson workspaces "$workspaces_json" \
     '{
       schemaVersion: $schema_version,
@@ -137,6 +196,7 @@ write_project_config() {
       commit: $commit,
       manifestSha256: $manifest_sha256,
       runner: $runner,
+      attachmentRoot: $attachment_root,
       workspaces: $workspaces
     }' >"$temporary"
   chown root:root "$temporary"
@@ -153,8 +213,12 @@ observe_project_commit() {
 }
 
 verify_project_config_content() {
-  jq -e '.schemaVersion == "project-codex-v1" and
+  jq -e '(keys | sort) == ["attachmentRoot", "branch", "commit",
+      "executionEnabled", "manifestSha256", "projectId", "repository",
+      "runner", "schemaVersion", "selectionEnabled", "workspaces"] and
+    .schemaVersion == "project-codex-v1" and
     .projectId == "atenea" and
+    .attachmentRoot == "/srv/atenea/attachments-v1" and
     (.commit | test("^[0-9a-f]{40}$")) and
     (.selectionEnabled | type == "boolean") and
     (.executionEnabled | type == "boolean") and
@@ -215,6 +279,13 @@ apply_install() {
   local bind
   bind="$(tailscale_ipv4)"
   [[ -n "$bind" ]] || fail "tailscale0 has no global IPv4 address"
+  verify_attachment_root
+  if [[ -e "$MATERIALIZATION_PARENT" || -L "$MATERIALIZATION_PARENT" ]]; then
+    verify_materialization_parent
+  fi
+  if [[ -e "$MATERIALIZATION_ROOT" || -L "$MATERIALIZATION_ROOT" ]]; then
+    verify_materialization_root
+  fi
 
   install -d -o root -g root -m 0755 /usr/local/libexec/atenea
   install -d -o root -g root -m 0755 /usr/local/share/atenea
@@ -234,6 +305,7 @@ apply_install() {
   install -o root -g root -m 0755 "$SCRIPT_DIR/install-agent-run-worker-v1.sh" "$INSTALLER"
   install -d -o root -g atenea -m 0750 /etc/atenea-worker
   install_exact_directory atenea-worker atenea 0700 "$STATE_DIR"
+  prepare_materialization_root
   install_exact_directory root atenea 0750 "$CODEX_RELEASE_ROOT"
   install_exact_directory root atenea 0750 "$CODEX_RELEASE_ROOT/inbox"
   install_exact_directory atenea-worker atenea 0750 "$CODEX_RELEASE_ROOT/releases"
@@ -257,6 +329,8 @@ apply_install() {
   write_project_config false false '{}' "$(observe_project_commit)"
   {
     printf 'atenea-worker ALL=(root) NOPASSWD: %s --config %s\n' "$PROJECT_RUNNER" "$PROJECT_CONFIG"
+    printf 'atenea-worker ALL=(root) NOPASSWD: %s --config %s --reconcile-materializations\n' \
+      "$PROJECT_RUNNER" "$PROJECT_CONFIG"
     printf 'atenea-worker ALL=(root) NOPASSWD: %s BACKEND_TEST *\n' "$VALIDATION_MEDIATOR"
     printf 'atenea-worker ALL=(root) NOPASSWD: %s WEB_BUILD *\n' "$VALIDATION_MEDIATOR"
     printf 'atenea-worker ALL=(root) NOPASSWD: %s ANDROID_BUILD *\n' "$VALIDATION_MEDIATOR"
@@ -271,8 +345,11 @@ apply_install() {
   chmod 0440 "$SUDOERS_FILE"
   visudo -cf "$SUDOERS_FILE" >/dev/null
 
+  install -o root -g root -m 0644 \
+    "$SCRIPT_DIR/templates/$MATERIALIZATION_SERVICE" "/etc/systemd/system/$MATERIALIZATION_SERVICE"
   install -o root -g root -m 0644 "$SCRIPT_DIR/templates/$SERVICE" "/etc/systemd/system/$SERVICE"
   systemctl daemon-reload
+  systemctl start "$MATERIALIZATION_SERVICE"
   ufw allow in on tailscale0 proto tcp from "$CONTROL_PLANE_IP" to any port "$PORT" \
     comment 'atenea-agent-run-worker-v1' >/dev/null
   systemctl enable "$SERVICE"
@@ -285,6 +362,7 @@ verify() {
   local bind
   bind="$(tailscale_ipv4)"
   systemctl is-enabled "$SERVICE"
+  systemctl is-active "$MATERIALIZATION_SERVICE"
   local ready=false
   for _attempt in $(seq 1 60); do
     if systemctl is-active --quiet "$SERVICE" \
@@ -305,6 +383,9 @@ verify() {
     || fail "token file ownership or mode is invalid"
   [[ "$(stat -c '%a:%U:%G' "$STATE_DIR")" == "700:atenea-worker:atenea" ]] \
     || fail "state directory ownership or mode is invalid"
+  verify_attachment_root
+  verify_materialization_parent
+  verify_materialization_root
   [[ "$(stat -c '%a:%U:%G' "$CODEX_RELEASE_ROOT")" == "750:root:atenea" ]] \
     || fail "Codex release root ownership or mode is invalid"
   [[ "$(stat -c '%a:%U:%G' "$CODEX_RELEASE_ROOT/activations")" == "750:root:atenea" ]] \
@@ -313,15 +394,30 @@ verify() {
     || fail "Codex rollback operation directory ownership or mode is invalid"
   [[ "$(stat -c '%a:%U:%G' "$PROJECT_CONFIG")" == "644:root:root" ]] \
     || fail "project configuration ownership or mode is invalid"
-  [[ -f "/etc/systemd/system/$SERVICE" \
+  [[ -f "/etc/systemd/system/$SERVICE" && ! -L "/etc/systemd/system/$SERVICE" \
+      && "$(stat -c '%a:%U:%G' "/etc/systemd/system/$SERVICE")" == "644:root:root" \
       && "$(sha256sum "/etc/systemd/system/$SERVICE" | cut -d' ' -f1)" \
         == "$SERVICE_TEMPLATE_SHA256" ]] \
     || fail "worker systemd unit differs from the reviewed template"
+  [[ -f "/etc/systemd/system/$MATERIALIZATION_SERVICE" \
+      && ! -L "/etc/systemd/system/$MATERIALIZATION_SERVICE" \
+      && "$(stat -c '%a:%U:%G' "/etc/systemd/system/$MATERIALIZATION_SERVICE")" == "644:root:root" \
+      && "$(sha256sum "/etc/systemd/system/$MATERIALIZATION_SERVICE" | cut -d' ' -f1)" \
+        == "$MATERIALIZATION_SERVICE_TEMPLATE_SHA256" ]] \
+    || fail "materialization service differs from the reviewed template"
   [[ -f "$INSTALLER" && ! -L "$INSTALLER" \
       && "$(stat -c '%a:%U:%G' "$INSTALLER")" == "755:root:root" \
       && "$(sha256sum "$INSTALLER" | cut -d' ' -f1)" \
         == "$(sha256sum "$SCRIPT_DIR/install-agent-run-worker-v1.sh" | cut -d' ' -f1)" ]] \
     || fail "worker installer differs from the reviewed source"
+  [[ -f "$PROGRAM" && ! -L "$PROGRAM" \
+      && "$(stat -c '%a:%U:%G' "$PROGRAM")" == "755:root:root" \
+      && "$(sha256sum "$PROGRAM" | cut -d' ' -f1)" == "$PROGRAM_SHA256" ]] \
+    || fail "worker program differs from the reviewed source"
+  [[ -f "$PROJECT_RUNNER" && ! -L "$PROJECT_RUNNER" \
+      && "$(stat -c '%a:%U:%G' "$PROJECT_RUNNER")" == "755:root:root" \
+      && "$(sha256sum "$PROJECT_RUNNER" | cut -d' ' -f1)" == "$PROJECT_RUNNER_SHA256" ]] \
+    || fail "project runner differs from the reviewed source"
   [[ -f "$ROLE_MEDIATOR" && ! -L "$ROLE_MEDIATOR" \
       && "$(stat -c '%a:%U:%G' "$ROLE_MEDIATOR")" == "755:root:root" \
       && "$(sha256sum "$ROLE_MEDIATOR" | cut -d' ' -f1)" \
@@ -358,6 +454,7 @@ verify() {
     || fail "worker source role identity is unavailable or interactive"
   verify_project_config_content
   visudo -cf "$SUDOERS_FILE" >/dev/null
+  verify_project_runner_sudoers
   printf '%s\n' 'agent-run-worker-v1 verification passed'
 }
 
@@ -519,17 +616,25 @@ project_unregister() {
 disable_endpoint() {
   require_root
   systemctl disable --now "$SERVICE"
+  systemctl stop "$MATERIALIZATION_SERVICE"
 }
 
 rollback_endpoint() {
   require_root
   [[ "$CONTROL_PLANE_IP" =~ ^100\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] \
     || fail "ATENEA_CONTROL_PLANE_TAILSCALE_IP must be an exact tailnet IPv4 address"
+  verify_attachment_root
+  verify_materialization_parent
+  verify_materialization_root
   systemctl disable --now "$SERVICE"
+  systemctl stop "$MATERIALIZATION_SERVICE"
   if ufw status | grep -F "$PORT/tcp on tailscale0" | grep -Fq "$CONTROL_PLANE_IP"; then
     ufw --force delete allow in on tailscale0 proto tcp from "$CONTROL_PLANE_IP" \
       to any port "$PORT" comment 'atenea-agent-run-worker-v1' >/dev/null
   fi
+  verify_attachment_root
+  verify_materialization_parent
+  verify_materialization_root
 }
 
 enable_endpoint() {
@@ -556,5 +661,6 @@ case "$ACTION" in
   project-enable) project_enable ;;
   project-disable) project_disable ;;
   project-unregister) shift; project_unregister "$@" ;;
-  *) fail "usage: $0 plan|apply|verify|disable|rollback|enable|project-register|project-retained-draft-register|project-activate|project-selection-enable|project-enable|project-disable|project-unregister" ;;
+  prepare-materialization-root) prepare_materialization_root ;;
+  *) fail "usage: $0 plan|apply|verify|disable|rollback|enable|project-register|project-retained-draft-register|project-activate|project-selection-enable|project-enable|project-disable|project-unregister|prepare-materialization-root" ;;
 esac

@@ -1,6 +1,7 @@
 [Unit]
 Description=Atenea private AgentRun worker v1
-After=network-online.target tailscaled.service
+Requires=atenea-codex-images-v1.service
+After=network-online.target tailscaled.service atenea-codex-images-v1.service
 Wants=network-online.target
 
 [Service]
@@ -25,7 +26,8 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictSUIDSGID=false
 LockPersonality=true
 MemoryDenyWriteExecute=true
-ReadWritePaths=/etc/atenea-worker /srv/atenea/worker/agent-runs-v1 /srv/atenea/worker/codex-releases-v1 /srv/atenea/worker/workspace-locks /srv/atenea/worker/runtime-admission-v1 /srv/atenea/worker/runtime-allocation-v1 /srv/atenea/repositories /srv/atenea/workspaces/sessions /srv/atenea/artifacts /srv/atenea/caches /home/jose/.codex
+ReadOnlyPaths=/srv/atenea/attachments-v1
+ReadWritePaths=/etc/atenea-worker /srv/atenea/worker/agent-runs-v1 /srv/atenea/worker/codex-releases-v1 /srv/atenea/worker/workspace-locks /srv/atenea/worker/runtime-admission-v1 /srv/atenea/worker/runtime-allocation-v1 /srv/atenea/repositories /srv/atenea/workspaces/sessions /srv/atenea/artifacts /srv/atenea/caches /home/jose/.codex /run/atenea/codex-images
 CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE
 AmbientCapabilities=
 

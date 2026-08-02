@@ -36,6 +36,29 @@ install_exact_directory "$(id -un)" "$(id -gn)" 0750 "${MODE_FIXTURE}/release"
     == "${SERVICE_TEMPLATE_SHA256}" ]] || fail "service template fingerprint is stale"
 [[ "$(sha256sum "${SCRIPT_DIR}/codex-platform-instructions-v1.md" | cut -d' ' -f1)" \
     == "${PLATFORM_INSTRUCTIONS_SHA256}" ]] || fail "platform instruction fingerprint is stale"
+[[ "$(sha256sum "${SCRIPT_DIR}/agent-run-worker-v1.py" | cut -d' ' -f1)" \
+    == "${PROGRAM_SHA256}" ]] || fail "worker program fingerprint is stale"
+[[ "$(sha256sum "${SCRIPT_DIR}/project-codex-runner-v1.py" | cut -d' ' -f1)" \
+    == "${PROJECT_RUNNER_SHA256}" ]] || fail "project runner fingerprint is stale"
+[[ "$(sha256sum "${SCRIPT_DIR}/templates/${MATERIALIZATION_SERVICE}" | cut -d' ' -f1)" \
+    == "${MATERIALIZATION_SERVICE_TEMPLATE_SHA256}" ]] \
+  || fail "materialization service fingerprint is stale"
+grep -Fqx 'ExecStart=/usr/local/libexec/atenea/install-agent-run-worker-v1.sh prepare-materialization-root' \
+  "${SCRIPT_DIR}/templates/${MATERIALIZATION_SERVICE}" \
+  || fail "materialization preparation command is not exact"
+grep -Fqx "Requires=${MATERIALIZATION_SERVICE}" \
+  "${SCRIPT_DIR}/templates/${SERVICE}" \
+  || fail "worker does not require exact materialization preparation"
+grep -Fqx 'RemainAfterExit=yes' "${SCRIPT_DIR}/templates/${MATERIALIZATION_SERVICE}" \
+  || fail "materialization preparation is not retained for the worker lifetime"
+
+SERVICE_TEMPLATE="${SCRIPT_DIR}/templates/atenea-agent-run-worker-v1.service"
+[[ "$(grep -Fxc 'ReadOnlyPaths=/srv/atenea/attachments-v1' "${SERVICE_TEMPLATE}")" -eq 1 ]] \
+  || fail "service does not expose only the fixed retained root read-only"
+[[ "$(grep -Fc '/run/atenea/codex-images' "${SERVICE_TEMPLATE}")" -eq 1 ]] \
+  || fail "service materialization write boundary is not exact"
+! grep -E '^ReadWritePaths=.*attachments-v1' "${SERVICE_TEMPLATE}" >/dev/null \
+  || fail "service grants attachment write access"
 
 SESSION_ID=11111111-1111-4111-8111-111111111111
 WORKSPACE_IDENTITY="remote:ax42-01:work-session:${SESSION_ID}"
@@ -72,7 +95,34 @@ printf 'owned\n' >"${TEST_ROOT}/allocation"
 mkdir -p "$(dirname -- "${WORKTREE}")"
 cp "${TEST_ROOT}/allocation" "$(dirname -- "${WORKTREE}")/runtime-allocation-v1.json"
 
+ATTACHMENT_ROOT="/srv/atenea/attachments-v1"
 write_project_config false false '{}' "${CANONICAL_COMMIT}"
+[[ "$(jq -r '.attachmentRoot' "${PROJECT_CONFIG}")" == "${ATTACHMENT_ROOT}" ]] \
+  || fail "project configuration omitted the fixed attachment root"
+if jq '.attachmentRoot = "/srv/foreign"' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.foreign" \
+    && mv "${PROJECT_CONFIG}.foreign" "${PROJECT_CONFIG}" \
+    && ( verify_project_config_content ) >/dev/null 2>&1; then
+  fail "foreign attachment root was accepted"
+fi
+write_project_config false false '{}' "${CANONICAL_COMMIT}"
+if jq '.attachmentRoots = [.attachmentRoot]' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.ambiguous" \
+    && mv "${PROJECT_CONFIG}.ambiguous" "${PROJECT_CONFIG}" \
+    && ( verify_project_config_content ) >/dev/null 2>&1; then
+  fail "ambiguous attachment root authority was accepted"
+fi
+write_project_config false false '{}' "${CANONICAL_COMMIT}"
+SUDOERS_FILE="${TEST_ROOT}/project-runner.sudoers"
+printf '%s\n' \
+  "atenea-worker ALL=(root) NOPASSWD: ${PROJECT_RUNNER} --config ${PROJECT_CONFIG}" \
+  "atenea-worker ALL=(root) NOPASSWD: ${PROJECT_RUNNER} --config ${PROJECT_CONFIG} --reconcile-materializations" \
+  >"${SUDOERS_FILE}"
+verify_project_runner_sudoers
+printf '%s\n' \
+  "atenea-worker ALL=(root) NOPASSWD: ${PROJECT_RUNNER} --config ${PROJECT_CONFIG} *" \
+  >>"${SUDOERS_FILE}"
+if ( verify_project_runner_sudoers ) >/dev/null 2>&1; then
+  fail "broad project runner sudo authority was accepted"
+fi
 BEFORE="$(git -C "${WORKTREE}" status --porcelain=v1 --untracked-files=all)"
 project_retained_draft_register "${SESSION_ID}" "${WORKSPACE_IDENTITY}" "${RETAINED_COMMIT}"
 project_retained_draft_register "${SESSION_ID}" "${WORKSPACE_IDENTITY}" "${RETAINED_COMMIT}"
@@ -96,4 +146,91 @@ if ( project_retained_draft_register \
   fail "current commit was accepted as retained"
 fi
 
-printf 'agent-run worker retained-draft installer tests passed\n'
+CONTROL_PLANE_IP=100.64.0.10
+ATTACHMENT_ROOT="${TEST_ROOT}/retained"
+MATERIALIZATION_PARENT="${TEST_ROOT}/materialization-parent"
+MATERIALIZATION_ROOT="${MATERIALIZATION_PARENT}/codex-images"
+mkdir -p "${ATTACHMENT_ROOT}" "${MATERIALIZATION_ROOT}"
+chmod 0700 "${ATTACHMENT_ROOT}"
+chmod 0750 "${MATERIALIZATION_PARENT}"
+chmod 0710 "${MATERIALIZATION_ROOT}"
+if ( verify_attachment_root ) >/dev/null 2>&1; then
+  fail "foreign-owned attachment root was accepted"
+fi
+if ( verify_materialization_parent ) >/dev/null 2>&1; then
+  fail "foreign-owned materialization parent was accepted"
+fi
+if ( verify_materialization_root ) >/dev/null 2>&1; then
+  fail "foreign-owned materialization root was accepted"
+fi
+AMBIGUOUS_TARGET="${TEST_ROOT}/ambiguous-target"
+mkdir -p "${AMBIGUOUS_TARGET}"
+MATERIALIZATION_ROOT="${TEST_ROOT}/ambiguous-link"
+ln -s "${AMBIGUOUS_TARGET}" "${MATERIALIZATION_ROOT}"
+if ( verify_materialization_root ) >/dev/null 2>&1; then
+  fail "symlinked materialization root was accepted"
+fi
+
+MATERIALIZATION_PARENT="${TEST_ROOT}/prepared-parent"
+MATERIALIZATION_ROOT="${MATERIALIZATION_PARENT}/codex-images"
+INSTALL_CALLS=()
+install_exact_directory() {
+  INSTALL_CALLS+=("$1:$2:$3:$4")
+  mkdir -p "$4"
+  chmod "$3" "$4"
+}
+PREPARE_PARENT_CHECKS=0
+PREPARE_ROOT_CHECKS=0
+verify_materialization_parent() {
+  [[ -d "${MATERIALIZATION_PARENT}" && ! -L "${MATERIALIZATION_PARENT}" ]] \
+    || fail "prepared parent is absent"
+  PREPARE_PARENT_CHECKS=$((PREPARE_PARENT_CHECKS + 1))
+}
+verify_materialization_root() {
+  [[ -d "${MATERIALIZATION_ROOT}" && ! -L "${MATERIALIZATION_ROOT}" ]] \
+    || fail "prepared root is absent"
+  PREPARE_ROOT_CHECKS=$((PREPARE_ROOT_CHECKS + 1))
+}
+prepare_materialization_root
+prepare_materialization_root
+[[ "${#INSTALL_CALLS[@]}" -eq 2 \
+    && "${INSTALL_CALLS[0]}" == "root:atenea:0750:${MATERIALIZATION_PARENT}" \
+    && "${INSTALL_CALLS[1]}" == "root:atenea:0710:${MATERIALIZATION_ROOT}" ]] \
+  || fail "materialization preparer created anything beyond the exact absent paths"
+[[ "${PREPARE_PARENT_CHECKS}" -eq 3 && "${PREPARE_ROOT_CHECKS}" -eq 3 ]] \
+  || fail "materialization preparer did not reverify existing exact paths"
+
+MATERIALIZATION_PARENT="${TEST_ROOT}/materialization-parent"
+MATERIALIZATION_ROOT="${MATERIALIZATION_PARENT}/codex-images"
+printf 'retained-sentinel\n' >"${ATTACHMENT_ROOT}/sentinel"
+printf 'parent-sentinel\n' >"${MATERIALIZATION_PARENT}/sentinel"
+printf 'materialized-sentinel\n' >"${MATERIALIZATION_ROOT}/sentinel"
+BEFORE_BOUNDARIES="$(sha256sum "${ATTACHMENT_ROOT}/sentinel" \
+  "${MATERIALIZATION_PARENT}/sentinel" "${MATERIALIZATION_ROOT}/sentinel")"
+BOUNDARY_CHECKS=0
+verify_attachment_root() { BOUNDARY_CHECKS=$((BOUNDARY_CHECKS + 1)); }
+verify_materialization_parent() { BOUNDARY_CHECKS=$((BOUNDARY_CHECKS + 1)); }
+verify_materialization_root() { BOUNDARY_CHECKS=$((BOUNDARY_CHECKS + 1)); }
+SYSTEMCTL_CALLS=()
+systemctl() { SYSTEMCTL_CALLS+=("$*"); }
+UFW_CALLS=()
+ufw() {
+  if [[ "${1:-}" == status ]]; then
+    printf '%s\n' "${PORT}/tcp on tailscale0 ALLOW IN ${CONTROL_PLANE_IP}"
+  else
+    UFW_CALLS+=("$*")
+  fi
+}
+rollback_endpoint
+AFTER_BOUNDARIES="$(sha256sum "${ATTACHMENT_ROOT}/sentinel" \
+  "${MATERIALIZATION_PARENT}/sentinel" "${MATERIALIZATION_ROOT}/sentinel")"
+[[ "${BOUNDARY_CHECKS}" -eq 6 ]] || fail "rollback did not verify all boundaries before and after"
+[[ "${#SYSTEMCTL_CALLS[@]}" -eq 2 \
+    && "${SYSTEMCTL_CALLS[0]}" == "disable --now ${SERVICE}" \
+    && "${SYSTEMCTL_CALLS[1]}" == "stop ${MATERIALIZATION_SERVICE}" ]] \
+  || fail "rollback service scope is not exact"
+[[ "${#UFW_CALLS[@]}" -eq 1 ]] || fail "rollback firewall scope is not exact"
+[[ "${BEFORE_BOUNDARIES}" == "${AFTER_BOUNDARIES}" ]] \
+  || fail "rollback changed retained or materialized boundary content"
+
+printf 'agent-run worker installer, sandbox and rollback tests passed\n'
