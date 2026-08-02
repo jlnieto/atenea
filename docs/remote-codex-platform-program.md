@@ -8191,3 +8191,32 @@ occurred. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.8-web-component-api-tests`;
 the SHA-256 of its `SHA256SUMS` is
 `3ab0944779d1494fd64cdc227a4ff2c60dd225d84a0961fb64eb295187537e0d`.
+
+Task 4.9 is complete and change progress is `47/83`; the exact resume point is
+task 4.10. The production web bundle was rebuilt from clean published Atenea
+commit `fca3175161e3bb184aa6f88c725a508fca22cca1`, tree
+`d60f906d91f0e6193432b39ac86e0b6b26f69d1c`.
+
+Playwright loaded that production bundle and passed 16 data/DOM/visual
+scenarios: ready, global-disabled, project-disabled, worker-unavailable,
+uploading, selected, over-limit and accepted-turn at both `1440x900` and
+`390x844`. It proved one exact accepted historical binding, zero pending
+selection after acceptance, blocked picker omission, ready picker presence,
+one primary action and exact document/viewport widths. State and textarea
+geometry remained ordered and entirely inside the viewport.
+
+All 16 screenshots were inspected. Hierarchy, state colors, next-action copy,
+secondary attachment action, bounded chips and responsive stacking are clear;
+there is no overlap, clipping or horizontal overflow. Accepted-turn text is
+masked in retained PNGs. Browser/context/page cleanup ran in `finally`, the
+preview server was stopped explicitly and Playwright-safe returned idle with
+zero related process.
+
+Canonical Atenea remains clean and synchronized at
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; production, preview and
+Beautips return HTTP 200; required AX42 services/timers are active; RAID is
+`3/3 [UU]`; rootless slots remain `3/0/0/3`. No rollout or unrelated mutation
+occurred. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-4.9-production-visual-acceptance`;
+the SHA-256 of its `SHA256SUMS` is
+`d9a2b76b0c04ed9f33e18abbabacf62fb8294624bd5320391f4df18b76d5a28b`.
