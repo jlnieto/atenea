@@ -9105,3 +9105,35 @@ Sanitized blocking evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.5-blocked-unbound-submit`.
 The SHA-256 of its `SHA256SUMS` is
 `f38e8856269708bd942bc2a4c5399e2670caac65307f570394a29f872e8115cc`.
+
+The operator explicitly authorized the reviewed clean-session recovery. Task
+7.5 remains unmarked and progress remains `69/83`.
+
+WorkSession `13` was closed through the normal authenticated API after its sole
+AgentRun was terminal and both canonical and remote worktrees were clean. Its
+real attachment, immutable turns/run, worktree and artifacts remain retained.
+Only its exact `slot2/heavy1` admission was released; allocation SHA-256
+`d5006a1c0707eb61af29999cb0291c3fae2078042cd3f6115e56b98d919d9df2`
+was preserved under the canonical retired name, and only its exact worker
+registration was removed. No runtime object or listener existed.
+
+The same authenticated API created WorkSession `14`, remote session
+`8497e4e4-951e-477a-b457-cf91d341eed8`, with attachment policy
+`atenea-real-attachments-v1`. Authentication values and tokens remained
+memory-only and both logout operations returned 204. The reviewed worker
+mediator activated its exact branch and workspace in 1.64 seconds through the
+`atenea-worker` privilege chain.
+
+WorkSession `14` is the sole open Atenea session and sole active Atenea worker
+registration. It reports `READY/NONE/COMPATIBLE`, owns `slot2/heavy1`, and has
+zero attachments, turns, bindings, AgentRuns, runtime objects and temporary
+materializations. Its worktree is clean at commit
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`. Production, preview and Beautips
+remain HTTP 200. The next action is manual web selection of the generated
+non-secret PNG in session `14`; no prompt may be submitted before that receipt.
+
+Sanitized recovery evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.5-recovery-clean-session`.
+The SHA-256 of its `SHA256SUMS` is
+`c9d7cc33b3bcd5e8044a8b3647ed6994a16c760f34fabcab8e2d3ecd76e8eece`.
