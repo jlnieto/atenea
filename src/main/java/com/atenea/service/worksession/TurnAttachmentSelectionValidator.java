@@ -58,7 +58,23 @@ public class TurnAttachmentSelectionValidator {
             WorkSessionEntity session,
             List<UUID> attachmentIds
     ) {
-        requireExactEligibleSession(session);
+        return validate(session, attachmentIds, true);
+    }
+
+    @Transactional(readOnly = true)
+    public ValidatedSelection validateBoundRetry(
+            WorkSessionEntity session,
+            List<UUID> attachmentIds
+    ) {
+        return validate(session, attachmentIds, false);
+    }
+
+    private ValidatedSelection validate(
+            WorkSessionEntity session,
+            List<UUID> attachmentIds,
+            boolean newBinding
+    ) {
+        requireExactEligibleSession(session, newBinding);
         List<UUID> orderedIds = requireBoundedDistinctIds(attachmentIds);
         Instant now = Instant.now();
         List<WorkSessionAttachmentEntity> attachments = new ArrayList<>(orderedIds.size());
@@ -69,7 +85,7 @@ public class TurnAttachmentSelectionValidator {
                     .findByIdAndWorkSessionId(attachmentId, session.getId())
                     .orElseThrow(() -> new AttachmentOwnershipException(
                             "Una imagen no pertenece a esta WorkSession."));
-            requireExactIndexedOwnership(session, attachment, now);
+            requireExactIndexedOwnership(session, attachment, now, newBinding);
             if (totalBytes > AttachmentProperties.DEFAULT_MAX_ATTACHMENT_BYTES_PER_TURN
                     - attachment.getSizeBytes()) {
                 throw new AttachmentLimitException(
@@ -112,12 +128,14 @@ public class TurnAttachmentSelectionValidator {
                 fingerprintService.attachmentManifestSha256(fingerprintInputs));
     }
 
-    private void requireExactEligibleSession(WorkSessionEntity session) {
+    private void requireExactEligibleSession(WorkSessionEntity session, boolean newBinding) {
         if (session == null || session.getId() == null || session.getProject() == null) {
             throw new AttachmentOwnershipException(
                     "La WorkSession no tiene ownership real completo para adjuntos.");
         }
-        admissionPolicy.requireRealCreateBindAllowed(ProjectCodexIdentity.PROJECT_IDENTITY);
+        if (newBinding) {
+            admissionPolicy.requireRealCreateBindAllowed(ProjectCodexIdentity.PROJECT_IDENTITY);
+        }
         String expectedWorkspace = "remote:" + RealAttachmentProjectRegistry.ATENEA_WORKER_ID
                 + ":work-session:" + session.getRemoteSessionId();
         if (!RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION.equals(
@@ -156,7 +174,8 @@ public class TurnAttachmentSelectionValidator {
     private void requireExactIndexedOwnership(
             WorkSessionEntity session,
             WorkSessionAttachmentEntity attachment,
-            Instant now
+            Instant now,
+            boolean newBinding
     ) {
         String expectedWorkspace = session.getWorkspaceIdentity();
         boolean exactOwnership = attachment.getWorkSession() != null
@@ -171,7 +190,7 @@ public class TurnAttachmentSelectionValidator {
                 && attachment.getSizeBytes() <= properties.getMaxFileBytes()
                 && attachment.getRetentionClass() == AttachmentRetentionClass.SESSION
                 && attachment.getRetainUntil() != null
-                && attachment.getRetainUntil().isAfter(now)
+                && (!newBinding || attachment.getRetainUntil().isAfter(now))
                 && attachment.getSha256() != null
                 && LOWERCASE_SHA256.matcher(attachment.getSha256()).matches()
                 && Objects.equals(session.getSelectedWorkerId(), attachment.getWorkerId())
@@ -183,7 +202,7 @@ public class TurnAttachmentSelectionValidator {
                 && attachment.getCreatedAt() != null
                 && attachment.getIndexedAt() != null;
         if (!exactOwnership) {
-            if (attachment.getRetainUntil() != null
+            if (newBinding && attachment.getRetainUntil() != null
                     && !attachment.getRetainUntil().isAfter(now)) {
                 throw new AttachmentConflictException(
                         "La imagen ya no admite una vinculación nueva.");

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,11 +17,14 @@ import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.AgentRunRepository;
+import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AttachmentKind;
 import com.atenea.persistence.worksession.AttachmentRetentionClass;
 import com.atenea.persistence.worksession.AttachmentSource;
 import com.atenea.persistence.worksession.AttachmentStorageScope;
 import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.ExecutionProfileSource;
+import com.atenea.persistence.worksession.CodexReasoningEffort;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionAttachmentEntity;
 import com.atenea.persistence.worksession.WorkSessionAttachmentRepository;
@@ -49,6 +53,9 @@ class ImageTurnAtomicPersistenceIntegrationTest {
 
     @Autowired
     private SessionTurnService sessionTurnService;
+
+    @Autowired
+    private AgentRunService agentRunService;
 
     @Autowired
     private ProjectRepository projectRepository;
@@ -236,6 +243,84 @@ class ImageTurnAtomicPersistenceIntegrationTest {
                 any(WorkSessionEntity.class),
                 eq(List.of(retained.getId())));
         verify(remoteAgentRunCoordinator, times(1)).dispatchAfterCommit(accepted.run().id());
+    }
+
+    @Test
+    void safeRetryAfterRetentionReusesPersistedBindingAndOnlyAddsLinkedRun() {
+        Instant now = Instant.parse("2026-07-01T00:00:00Z");
+        WorkerNodeEntity worker = createWorker(now);
+        ProjectEntity project = createProject(now);
+        WorkSessionEntity session = createSession(project, worker, now);
+        WorkSessionAttachmentEntity retained = createAttachment(session, project, worker, now);
+        TurnAttachmentSelectionValidator.ValidatedSelection selection =
+                new TurnAttachmentSelectionValidator.ValidatedSelection(
+                        List.of(new TurnAttachmentSelectionValidator.ValidatedAttachment(
+                                retained.getId(),
+                                retained.getContentType(),
+                                retained.getSizeBytes(),
+                                retained.getSha256())),
+                        retained.getSizeBytes(),
+                        fingerprintService.attachmentManifestSha256(List.of(
+                                new TurnAttachmentFingerprintService.AttachmentFingerprintInput(
+                                        retained.getId(),
+                                        retained.getContentType(),
+                                        retained.getSizeBytes(),
+                                        retained.getSha256()))));
+        when(selectionValidator.validate(
+                any(WorkSessionEntity.class),
+                eq(List.of(retained.getId())))).thenReturn(selection);
+        doAnswer(invocation -> {
+            AgentRunEntity run = invocation.getArgument(0);
+            run.setCodexModelId("gpt-5.6-sol");
+            run.setCodexModelSource(ExecutionProfileSource.WORK_SESSION);
+            run.setCodexReasoningEffort(CodexReasoningEffort.HIGH);
+            run.setCodexEffortSource(ExecutionProfileSource.NEXT_TURN);
+            run.setCodexCatalogRevision("d".repeat(64));
+            run.setCodexVersion("0.145.0");
+            return null;
+        }).when(codexExecutionProfileSnapshotService).applyCurrentProfile(any(AgentRunEntity.class));
+        CreateSessionTurnResponse accepted = sessionTurnService.createTurn(
+                session.getId(),
+                new CreateSessionTurnRequest(
+                        "Inspect retained image",
+                        UUID.fromString("7b35f774-97f2-4a9e-b7db-0f18d59112ba"),
+                        List.of(retained.getId())));
+        AgentRunEntity source = agentRunService.markFailed(
+                accepted.run().id(), null, "Synthetic retry fixture failure");
+        retained.setRetainUntil(Instant.parse("2026-07-02T00:00:00Z"));
+        attachmentRepository.saveAndFlush(retained);
+        when(selectionValidator.validateBoundRetry(
+                any(WorkSessionEntity.class),
+                eq(List.of(retained.getId())))).thenReturn(selection);
+        long turnsBefore = sessionTurnRepository.count();
+        long bindingsBefore = bindingCount();
+        long attachmentsBefore = attachmentRepository.count();
+        long runsBefore = agentRunRepository.count();
+        String storageIdentityBefore = retained.getStorageIdentity();
+        String workspaceIdentityBefore = retained.getWorkspaceIdentity();
+
+        AgentRunEntity retry = agentRunService.createRemoteRetryRun(source.getId());
+
+        assertEquals(runsBefore + 1, agentRunRepository.count());
+        assertEquals(turnsBefore, sessionTurnRepository.count());
+        assertEquals(bindingsBefore, bindingCount());
+        assertEquals(attachmentsBefore, attachmentRepository.count());
+        WorkSessionAttachmentEntity unchanged = attachmentRepository
+                .findById(retained.getId()).orElseThrow();
+        assertEquals(Instant.parse("2026-07-02T00:00:00Z"), unchanged.getRetainUntil());
+        assertEquals(storageIdentityBefore, unchanged.getStorageIdentity());
+        assertEquals(workspaceIdentityBefore, unchanged.getWorkspaceIdentity());
+        assertEquals(source.getOriginTurn().getId(), retry.getOriginTurn().getId());
+        assertEquals(source.getAttachmentManifestSha256(), retry.getAttachmentManifestSha256());
+        assertEquals(source.getCodexModelId(), retry.getCodexModelId());
+        assertEquals(source.getCodexModelSource(), retry.getCodexModelSource());
+        assertEquals(source.getCodexReasoningEffort(), retry.getCodexReasoningEffort());
+        assertEquals(source.getCodexEffortSource(), retry.getCodexEffortSource());
+        assertEquals(source.getCodexCatalogRevision(), retry.getCodexCatalogRevision());
+        assertEquals(source.getCodexVersion(), retry.getCodexVersion());
+        verify(selectionValidator).validateBoundRetry(
+                any(WorkSessionEntity.class),
+                eq(List.of(retained.getId())));
     }
 
     private long bindingCount() {

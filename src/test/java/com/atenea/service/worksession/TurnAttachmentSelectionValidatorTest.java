@@ -166,6 +166,33 @@ class TurnAttachmentSelectionValidatorTest {
     }
 
     @Test
+    void validatesExpiredAlreadyBoundImageForExactRetryWhenRetainedBytesStillMatch() {
+        WorkSessionEntity session = exactRealSession();
+        WorkSessionAttachmentEntity attachment = image(session, FIRST_ID, "image/png", 1024L);
+        byte[] content = new byte[1024];
+        content[0] = 7;
+        attachment.setSha256(sha256(content));
+        attachment.setRetainUntil(Instant.parse("2020-01-01T00:00:00Z"));
+        givenIndexed(attachment);
+        givenCompatibleWorker();
+        when(workerClient.metadata(session.getRemoteSessionId(), FIRST_ID))
+                .thenReturn(retained(session, attachment));
+        when(workerClient.content(session.getRemoteSessionId(), FIRST_ID))
+                .thenReturn(new AttachmentWorkerClient.Content("image/png", content));
+
+        TurnAttachmentSelectionValidator.ValidatedSelection result =
+                validator.validateBoundRetry(session, List.of(FIRST_ID));
+
+        assertEquals(List.of(FIRST_ID), result.attachments().stream()
+                .map(TurnAttachmentSelectionValidator.ValidatedAttachment::id)
+                .toList());
+        assertEquals(1024L, result.totalBytes());
+        assertTrue(result.manifestSha256().matches("^[0-9a-f]{64}$"));
+        verify(workerClient).metadata(session.getRemoteSessionId(), FIRST_ID);
+        verify(workerClient).content(session.getRemoteSessionId(), FIRST_ID);
+    }
+
+    @Test
     void rejectsNonImageAndUnsupportedImageTypeBeforeWorker() {
         WorkSessionEntity session = exactRealSession();
         WorkSessionAttachmentEntity text = image(session, FIRST_ID, "text/plain", 1024L);
