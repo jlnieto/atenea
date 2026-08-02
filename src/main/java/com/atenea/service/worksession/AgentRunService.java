@@ -77,14 +77,34 @@ public class AgentRunService {
             SessionTurnEntity originTurn,
             WorkloadClass workloadClass
     ) {
-        return createRemoteQueuedRun(session, originTurn, workloadClass, null);
+        return createRemoteQueuedRun(session, originTurn, workloadClass, null, null);
+    }
+
+    @Transactional
+    public AgentRunEntity createRemoteQueuedRun(
+            WorkSessionEntity session,
+            SessionTurnEntity originTurn,
+            WorkloadClass workloadClass,
+            TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection
+    ) {
+        if (attachmentSelection == null || attachmentSelection.attachments().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "An image-bearing AgentRun requires a validated attachment selection");
+        }
+        return createRemoteQueuedRun(
+                session,
+                originTurn,
+                workloadClass,
+                null,
+                attachmentSelection);
     }
 
     private AgentRunEntity createRemoteQueuedRun(
             WorkSessionEntity session,
             SessionTurnEntity originTurn,
             WorkloadClass workloadClass,
-            AgentRunEntity retryOfRun
+            AgentRunEntity retryOfRun,
+            TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection
     ) {
         Instant now = Instant.now();
         lockCodexActivation(session.getSelectedWorkerId());
@@ -109,8 +129,19 @@ public class AgentRunService {
         run.setSelectedWorkerId(session.getSelectedWorkerId());
         run.setWorkspaceIdentity(session.getWorkspaceIdentity());
         run.setRemoteSessionId(session.getRemoteSessionId());
-        run.setWorkloadKind(session.getRemoteWorkloadKind());
+        run.setWorkloadKind(attachmentSelection == null
+                ? session.getRemoteWorkloadKind()
+                : ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
         applyProjectIdentity(run);
+        if (attachmentSelection == null) {
+            run.setAttachmentCount(0);
+            run.setAttachmentBytes(0L);
+            run.setAttachmentManifestSha256(null);
+        } else {
+            run.setAttachmentCount(attachmentSelection.attachments().size());
+            run.setAttachmentBytes(attachmentSelection.totalBytes());
+            run.setAttachmentManifestSha256(attachmentSelection.manifestSha256());
+        }
         run.setDispatchId(UUID.randomUUID());
         run.setRemoteExecutionId(null);
         run.setWorkloadClass(workloadClass);
@@ -156,7 +187,7 @@ public class AgentRunService {
         }
 
         return createRemoteQueuedRun(
-                source.getSession(), source.getOriginTurn(), source.getWorkloadClass(), source);
+                source.getSession(), source.getOriginTurn(), source.getWorkloadClass(), source, null);
     }
 
     private void lockCodexActivation(String workerId) {
@@ -307,7 +338,8 @@ public class AgentRunService {
             run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
             ReviewedInstructionBundleIdentity.apply(
                     run, BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
-        } else if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
+        } else if ((ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
+                    || ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
                 && ProjectCodexIdentity.hasCanonicalSourceObservation(run.getSession())) {
             run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
             run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);

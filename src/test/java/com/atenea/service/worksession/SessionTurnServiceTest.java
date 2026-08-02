@@ -11,6 +11,7 @@ import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
+import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
@@ -36,6 +37,9 @@ class SessionTurnServiceTest {
     private SessionTurnRepository sessionTurnRepository;
 
     @Mock
+    private SessionTurnAttachmentRepository sessionTurnAttachmentRepository;
+
+    @Mock
     private GitRepositoryService gitRepositoryService;
 
     @Mock
@@ -56,6 +60,12 @@ class SessionTurnServiceTest {
     @Mock
     private CanonicalSourceAdmissionService canonicalSourceAdmissionService;
 
+    @Mock
+    private TurnAttachmentSelectionValidator turnAttachmentSelectionValidator;
+
+    @Mock
+    private TurnAttachmentFingerprintService turnAttachmentFingerprintService;
+
     private SessionTurnService sessionTurnService;
 
     @BeforeEach
@@ -63,6 +73,7 @@ class SessionTurnServiceTest {
         sessionTurnService = new SessionTurnService(
                 workSessionRepository,
                 sessionTurnRepository,
+                sessionTurnAttachmentRepository,
                 new WorkspaceRepositoryPathValidator("/workspace/repos"),
                 gitRepositoryService,
                 agentRunRepository,
@@ -71,7 +82,9 @@ class SessionTurnServiceTest {
                 agentRunReconciliationService,
                 sessionCodexOrchestrator,
                 sessionTurnCompletionService,
-                canonicalSourceAdmissionService
+                canonicalSourceAdmissionService,
+                turnAttachmentSelectionValidator,
+                turnAttachmentFingerprintService
         );
     }
 

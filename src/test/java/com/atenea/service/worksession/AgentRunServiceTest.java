@@ -32,6 +32,7 @@ import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -306,6 +307,67 @@ class AgentRunServiceTest {
                 run.getProjectInstructionPath());
         assertEquals(ReviewedInstructionBundleIdentity.ATENEA_PROJECT_SHA256,
                 run.getProjectInstructionSha256());
+    }
+
+    @Test
+    void createRemoteImageRunPersistsV3AttachmentSnapshotBeforeFirstSave() {
+        WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
+        session.setCanonicalSourceCommit(TEST_CANONICAL_COMMIT);
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(Instant.now());
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        originTurn.setActor(SessionTurnActor.OPERATOR);
+        originTurn.setMessageText("image turn");
+        originTurn.setCreatedAt(Instant.now());
+        TurnAttachmentSelectionValidator.ValidatedSelection selection =
+                new TurnAttachmentSelectionValidator.ValidatedSelection(
+                        List.of(
+                                new TurnAttachmentSelectionValidator.ValidatedAttachment(
+                                        UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002"),
+                                        "image/png",
+                                        1024L,
+                                        "a".repeat(64)),
+                                new TurnAttachmentSelectionValidator.ValidatedAttachment(
+                                        UUID.fromString("9aa2c7e5-1fd9-48ec-aa10-03dfdfb8ca7d"),
+                                        "image/webp",
+                                        2048L,
+                                        "b".repeat(64))),
+                        3072L,
+                        "c".repeat(64));
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L,
+                AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> {
+            AgentRunEntity saved = invocation.getArgument(0);
+            assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, saved.getWorkloadKind());
+            assertEquals(2, saved.getAttachmentCount());
+            assertEquals(3072L, saved.getAttachmentBytes());
+            assertEquals("c".repeat(64), saved.getAttachmentManifestSha256());
+            return saved;
+        });
+
+        AgentRunEntity run = agentRunService.createRemoteQueuedRun(
+                session,
+                originTurn,
+                WorkloadClass.NORMAL,
+                selection);
+
+        assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, run.getWorkloadKind());
+        assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, run.getProjectIdentity());
+        assertEquals(2, run.getAttachmentCount());
+        assertEquals(3072L, run.getAttachmentBytes());
+        assertEquals("c".repeat(64), run.getAttachmentManifestSha256());
+        verify(codexExecutionProfileSnapshotService).applyCurrentProfile(run);
     }
 
     @Test

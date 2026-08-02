@@ -12,6 +12,7 @@ import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
+import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
@@ -45,6 +46,7 @@ public class SessionTurnService {
 
     private final WorkSessionRepository workSessionRepository;
     private final SessionTurnRepository sessionTurnRepository;
+    private final SessionTurnAttachmentRepository sessionTurnAttachmentRepository;
     private final WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator;
     private final GitRepositoryService gitRepositoryService;
     private final AgentRunRepository agentRunRepository;
@@ -54,11 +56,14 @@ public class SessionTurnService {
     private final SessionCodexOrchestrator sessionCodexOrchestrator;
     private final SessionTurnCompletionService sessionTurnCompletionService;
     private final CanonicalSourceAdmissionService canonicalSourceAdmissionService;
+    private final TurnAttachmentSelectionValidator turnAttachmentSelectionValidator;
+    private final TurnAttachmentFingerprintService turnAttachmentFingerprintService;
     private RemoteAgentRunCoordinator remoteAgentRunCoordinator;
 
     public SessionTurnService(
             WorkSessionRepository workSessionRepository,
             SessionTurnRepository sessionTurnRepository,
+            SessionTurnAttachmentRepository sessionTurnAttachmentRepository,
             WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator,
             GitRepositoryService gitRepositoryService,
             AgentRunRepository agentRunRepository,
@@ -67,10 +72,13 @@ public class SessionTurnService {
             AgentRunReconciliationService agentRunReconciliationService,
             SessionCodexOrchestrator sessionCodexOrchestrator,
             SessionTurnCompletionService sessionTurnCompletionService,
-            CanonicalSourceAdmissionService canonicalSourceAdmissionService
+            CanonicalSourceAdmissionService canonicalSourceAdmissionService,
+            TurnAttachmentSelectionValidator turnAttachmentSelectionValidator,
+            TurnAttachmentFingerprintService turnAttachmentFingerprintService
     ) {
         this.workSessionRepository = workSessionRepository;
         this.sessionTurnRepository = sessionTurnRepository;
+        this.sessionTurnAttachmentRepository = sessionTurnAttachmentRepository;
         this.workspaceRepositoryPathValidator = workspaceRepositoryPathValidator;
         this.gitRepositoryService = gitRepositoryService;
         this.agentRunRepository = agentRunRepository;
@@ -80,6 +88,8 @@ public class SessionTurnService {
         this.sessionCodexOrchestrator = sessionCodexOrchestrator;
         this.sessionTurnCompletionService = sessionTurnCompletionService;
         this.canonicalSourceAdmissionService = canonicalSourceAdmissionService;
+        this.turnAttachmentSelectionValidator = turnAttachmentSelectionValidator;
+        this.turnAttachmentFingerprintService = turnAttachmentFingerprintService;
     }
 
     @Autowired(required = false)
@@ -151,15 +161,50 @@ public class SessionTurnService {
             throw new WorkSessionAlreadyRunningException(sessionId);
         }
 
+        TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection = null;
+        String requestFingerprintSha256 = null;
+        if (!request.attachmentIds().isEmpty()) {
+            attachmentSelection = turnAttachmentSelectionValidator.validate(
+                    session,
+                    request.attachmentIds());
+            requestFingerprintSha256 = turnAttachmentFingerprintService.requestFingerprintSha256(
+                    message,
+                    attachmentSelection.attachments().stream()
+                            .map(attachment -> new TurnAttachmentFingerprintService.AttachmentFingerprintInput(
+                                    attachment.id(),
+                                    attachment.contentType(),
+                                    attachment.sizeBytes(),
+                                    attachment.sha256()))
+                            .toList());
+        }
+
         Instant now = Instant.now();
-        SessionTurnEntity operatorTurn = createVisibleTurn(session, SessionTurnActor.OPERATOR, message, now);
+        SessionTurnEntity operatorTurn = createVisibleTurn(
+                session,
+                SessionTurnActor.OPERATOR,
+                message,
+                now,
+                attachmentSelection == null ? null : request.clientRequestId(),
+                requestFingerprintSha256);
         touchSession(session, now);
 
         if (session.getExecutionTarget() == ExecutionTarget.REMOTE) {
             if (remoteAgentRunCoordinator == null) {
                 throw new WorkSessionOperationBlockedException("Remote AgentRun coordinator is unavailable");
             }
-            AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, operatorTurn, WorkloadClass.NORMAL);
+            AgentRunEntity run = attachmentSelection == null
+                    ? agentRunService.createRemoteQueuedRun(
+                            session,
+                            operatorTurn,
+                            WorkloadClass.NORMAL)
+                    : agentRunService.createRemoteQueuedRun(
+                            session,
+                            operatorTurn,
+                            WorkloadClass.NORMAL,
+                            attachmentSelection);
+            if (attachmentSelection != null) {
+                insertAttachmentBindings(sessionId, operatorTurn.getId(), attachmentSelection);
+            }
             registerRemoteDispatch(run.getId());
             return new CreateSessionTurnResponse(
                     toResponse(operatorTurn, executionProfile(run)),
@@ -339,15 +384,37 @@ public class SessionTurnService {
             WorkSessionEntity session,
             SessionTurnActor actor,
             String messageText,
-            Instant createdAt
+            Instant createdAt,
+            java.util.UUID clientRequestId,
+            String requestFingerprintSha256
     ) {
         SessionTurnEntity turn = new SessionTurnEntity();
         turn.setSession(session);
         turn.setActor(actor);
         turn.setMessageText(messageText);
         turn.setInternal(false);
+        turn.setClientRequestId(clientRequestId);
+        turn.setRequestFingerprintSha256(requestFingerprintSha256);
         turn.setCreatedAt(createdAt);
         return sessionTurnRepository.save(turn);
+    }
+
+    private void insertAttachmentBindings(
+            Long sessionId,
+            Long turnId,
+            TurnAttachmentSelectionValidator.ValidatedSelection selection
+    ) {
+        for (int index = 0; index < selection.attachments().size(); index++) {
+            int inserted = sessionTurnAttachmentRepository.insert(
+                    sessionId,
+                    turnId,
+                    selection.attachments().get(index).id(),
+                    (short) index);
+            if (inserted != 1) {
+                throw new AttachmentConflictException(
+                        "No se pudo confirmar el binding inmutable de todas las imágenes.");
+            }
+        }
     }
 
     private void persistExecutionProgress(

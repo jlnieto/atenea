@@ -6,6 +6,7 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 public final class ProjectCodexIdentity {
 
     public static final String WORKLOAD_KIND = "project-codex-v1";
+    public static final String IMAGE_WORKLOAD_KIND = "project-codex-v3";
     public static final String PROJECT_NAME = "Atenea";
     public static final String PROJECT_IDENTITY = "atenea";
     public static final String REPOSITORY = "https://github.com/jlnieto/atenea.git";
