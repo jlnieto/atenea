@@ -239,7 +239,7 @@ async function installSyntheticApi(page: Page, apiState: ApiState) {
         attachments: body.attachmentIds.map((id, index) => historicalAttachment(id, index + 1))
       };
       apiState.turns = [...apiState.turns, accepted];
-      return json(route, conversationEnvelope(apiState.turns), 201);
+      return json(route, { view: conversationEnvelope(apiState.turns) }, 201);
     }
     if (path === "/api/codex/catalog") {
       return json(route, {

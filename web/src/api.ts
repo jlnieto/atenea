@@ -56,6 +56,10 @@ type WorkSessionConversationEnvelope = {
   historyTruncated: boolean;
 };
 
+type CreateWorkSessionTurnEnvelope = {
+  view: WorkSessionConversationEnvelope;
+};
+
 function unwrapWorkSessionConversation(
   response: WorkSessionConversationEnvelope
 ): MobileWorkSessionConversation {
@@ -171,7 +175,7 @@ export class AteneaApi {
   }
 
   async createWorkSessionTurn(sessionId: number, request: CreateWorkSessionTurnRequest) {
-    const response = await this.post<WorkSessionConversationEnvelope>(
+    const response = await this.post<CreateWorkSessionTurnEnvelope>(
       `/api/mobile/sessions/${sessionId}/turns`,
       {
         message: request.message,
@@ -179,7 +183,7 @@ export class AteneaApi {
         attachmentIds: [...request.attachmentIds]
       }
     );
-    return unwrapWorkSessionConversation(response);
+    return unwrapWorkSessionConversation(response.view);
   }
 
   codexCatalog() {
