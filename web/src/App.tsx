@@ -856,6 +856,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   const [conversation, setConversation] = useState<MobileWorkSessionConversation | null>(null);
   const [attachmentCapability, setAttachmentCapability] = useState<WorkSessionAttachmentCapability | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [turnRequestId, setTurnRequestId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [attachmentCapabilityLoading, setAttachmentCapabilityLoading] = useState(true);
@@ -876,6 +877,8 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   const [recoveryNotice, setRecoveryNotice] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
   const uploadInProgress = useRef(false);
+  const submitInProgress = useRef(false);
+  const turnRequestIdRef = useRef<string | null>(null);
   const previewUrls = useRef(new Set<string>());
 
   async function loadProfile() {
@@ -926,7 +929,10 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
     previewUrls.current.clear();
     setPendingImages([]);
+    setTurnRequestId(null);
+    turnRequestIdRef.current = null;
     uploadInProgress.current = false;
+    submitInProgress.current = false;
     load();
   }, [sessionId]);
 
@@ -972,24 +978,59 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!message.trim()) {
+    const submittedMessage = message.trim();
+    const readyImages = pendingImages.filter((image) => image.status === "READY" && image.attachment);
+    const attachmentIds = readyImages.map((image) => image.attachment!.id);
+    if (!submittedMessage || submitInProgress.current || pendingImages.some((image) => image.status !== "READY")) {
       return;
     }
+    const requestId = turnRequestIdRef.current || crypto.randomUUID();
+    turnRequestIdRef.current = requestId;
+    setTurnRequestId(requestId);
+    submitInProgress.current = true;
     setLoading(true);
     setError("");
     try {
       const response = await api.createWorkSessionTurn(sessionId, {
-        message: message.trim(),
-        clientRequestId: crypto.randomUUID(),
-        attachmentIds: []
+        message: submittedMessage,
+        clientRequestId: requestId,
+        attachmentIds
       });
+      const acceptedTurn = [...response.recentTurns].reverse().find((turn) => turn.actor === "OPERATOR");
+      const acceptedIds = acceptedTurn?.attachments.map((attachment) => attachment.id) || [];
+      if (!acceptedTurn
+          || acceptedTurn.messageText !== submittedMessage
+          || acceptedIds.length !== attachmentIds.length
+          || acceptedIds.some((id, index) => id !== attachmentIds[index])) {
+        throw new Error("Atenea no confirmó todavía el turno enviado. Reintenta sin cambiar el mensaje ni las imágenes.");
+      }
       setConversation(response);
       setMessage("");
+      pendingImages.forEach((image) => {
+        URL.revokeObjectURL(image.previewUrl);
+        previewUrls.current.delete(image.previewUrl);
+      });
+      setPendingImages([]);
+      turnRequestIdRef.current = null;
+      setTurnRequestId(null);
     } catch (submitError) {
       setError(errorMessage(submitError));
     } finally {
+      submitInProgress.current = false;
       setLoading(false);
     }
+  }
+
+  function invalidateTurnRequest() {
+    turnRequestIdRef.current = null;
+    setTurnRequestId(null);
+  }
+
+  function changeMessage(value: string) {
+    if (value !== message && !loading) {
+      invalidateTurnRequest();
+    }
+    setMessage(value);
   }
 
   async function applyProfile() {
@@ -1048,7 +1089,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   }
 
   async function uploadPendingImages(files: File[]) {
-    if (!files.length || uploadInProgress.current) {
+    if (!files.length || uploadInProgress.current || submitInProgress.current) {
       return;
     }
     if (attachmentCapability?.state !== "READY") {
@@ -1056,6 +1097,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       return;
     }
     uploadInProgress.current = true;
+    invalidateTurnRequest();
     setUploading(true);
     setAttachmentError("");
     let nextImages = [...pendingImages];
@@ -1139,6 +1181,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   }
 
   function removePendingImage(localId: string) {
+    invalidateTurnRequest();
     setPendingImages((current) => {
       const removed = current.find((image) => image.localId === localId);
       if (removed) {
@@ -1189,14 +1232,15 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
           capability={attachmentCapability}
           loading={attachmentCapabilityLoading}
           uploading={uploading}
+          disabled={loading}
           error={attachmentError}
           selectedCount={pendingImages.filter((image) => image.status === "READY").length}
           onPick={pickPendingImages}
         />
-        <PendingImageChips images={pendingImages} onRemove={removePendingImage} />
+        <PendingImageChips images={pendingImages} locked={loading} onRemove={removePendingImage} />
         <div className="conversation-composer__input">
-          <textarea disabled={!conversation?.canCreateTurn} value={message} onChange={(event) => setMessage(event.target.value)} onPaste={pastePendingImages} placeholder={conversation?.canCreateTurn ? "Instrucción para Codex dentro de esta sesión..." : "Espera a que termine la ejecución actual..."} />
-          <Button variant="primary" disabled={loading || !message.trim() || !conversation?.canCreateTurn || profileDirty || Boolean(profileError)}>{loading ? "Enviando" : "Enviar"}</Button>
+          <textarea disabled={!conversation?.canCreateTurn || loading} value={message} onChange={(event) => changeMessage(event.target.value)} onPaste={pastePendingImages} placeholder={conversation?.canCreateTurn ? "Instrucción para Codex dentro de esta sesión..." : "Espera a que termine la ejecución actual..."} />
+          <Button variant="primary" disabled={loading || uploading || pendingImages.some((image) => image.status !== "READY") || !message.trim() || !conversation?.canCreateTurn || profileDirty || Boolean(profileError)}>{loading ? "Enviando" : turnRequestId ? "Reintentar envío" : "Enviar"}</Button>
         </div>
       </form>
     </ConversationLayout>
@@ -1453,6 +1497,7 @@ function AttachmentComposerState({
   capability,
   loading,
   uploading,
+  disabled,
   error,
   selectedCount,
   onPick
@@ -1460,6 +1505,7 @@ function AttachmentComposerState({
   capability: WorkSessionAttachmentCapability | null;
   loading: boolean;
   uploading: boolean;
+  disabled: boolean;
   error: string;
   selectedCount: number;
   onPick: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -1499,7 +1545,7 @@ function AttachmentComposerState({
         <span>{detail}</span>
       </div>
       {ready && (
-        <label className={`attachment-composer-action ${uploading ? "is-disabled" : ""}`}>
+        <label className={`attachment-composer-action ${uploading || disabled ? "is-disabled" : ""}`}>
           <Paperclip />
           <span>{uploading ? "Subiendo…" : "Añadir imagen"}</span>
           <input
@@ -1507,7 +1553,7 @@ function AttachmentComposerState({
             type="file"
             accept={capability.acceptedContentTypes.join(",")}
             multiple
-            disabled={uploading}
+            disabled={uploading || disabled}
             onChange={onPick}
           />
         </label>
@@ -1516,7 +1562,7 @@ function AttachmentComposerState({
   );
 }
 
-function PendingImageChips({ images, onRemove }: { images: PendingImage[]; onRemove: (localId: string) => void }) {
+function PendingImageChips({ images, locked, onRemove }: { images: PendingImage[]; locked: boolean; onRemove: (localId: string) => void }) {
   if (!images.length) {
     return null;
   }
@@ -1535,7 +1581,7 @@ function PendingImageChips({ images, onRemove }: { images: PendingImage[]; onRem
           <button
             type="button"
             aria-label={`Quitar ${image.filename}`}
-            disabled={image.status === "UPLOADING"}
+            disabled={locked || image.status === "UPLOADING"}
             onClick={() => onRemove(image.localId)}
           >
             <X />
