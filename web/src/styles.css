@@ -1267,6 +1267,10 @@ select:focus {
   background: #e4ad63;
 }
 
+.attachment-composer-state--error .attachment-composer-state__indicator {
+  background: #e06b65;
+}
+
 .attachment-composer-state__copy {
   min-width: 0;
   display: flex;

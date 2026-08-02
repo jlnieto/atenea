@@ -1105,7 +1105,8 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     try {
       for (const file of files) {
         if (nextImages.length >= attachmentCapability.maxAttachmentsPerTurn) {
-          throw new Error(`Puedes seleccionar hasta ${attachmentCapability.maxAttachmentsPerTurn} imágenes por mensaje.`);
+          const imageLabel = attachmentCapability.maxAttachmentsPerTurn === 1 ? "imagen" : "imágenes";
+          throw new Error(`Puedes seleccionar hasta ${attachmentCapability.maxAttachmentsPerTurn} ${imageLabel} por mensaje.`);
         }
         const previewUrl = URL.createObjectURL(file);
         previewUrls.current.add(previewUrl);
@@ -1527,31 +1528,50 @@ function AttachmentComposerState({
   onPick: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   const ready = capability?.state === "READY";
+  const blockedTitle = (() => {
+    switch (capability?.blockedReason) {
+      case "SESSION_NOT_ELIGIBLE":
+        return "Sesión sin imágenes";
+      case "OWNERSHIP_INVALID":
+        return "Sesión no válida para imágenes";
+      case "SESSION_QUOTA_EXHAUSTED":
+        return "Cuota de imágenes agotada";
+      case "WORKER_UNAVAILABLE":
+        return "Imágenes temporalmente no disponibles";
+      case "WORKER_UNSUPPORTED":
+        return "AX42 necesita actualizarse";
+      default:
+        return "Solo texto";
+    }
+  })();
   const title = loading
     ? "Comprobando imágenes"
     : uploading
       ? "Subiendo imagen"
     : error
-      ? "Imágenes no disponibles"
+      ? selectedCount ? "Revisa las imágenes" : "No se pudo añadir la imagen"
       : selectedCount
         ? selectedCount === 1 ? "1 imagen lista" : `${selectedCount} imágenes listas`
       : ready
         ? "Imágenes disponibles"
-        : "Solo texto";
+        : blockedTitle;
   const detail = loading
     ? "Puedes seguir preparando el mensaje."
     : uploading
       ? "La imagen se seleccionará al terminar."
     : error
-      ? `${error} Continúa con texto.`
+      ? selectedCount
+        ? `${error} Quita una imagen o elige otra.`
+        : `${error} Elige otra imagen o continúa con texto.`
       : selectedCount
         ? "Seleccionadas para el próximo mensaje."
       : capability
         ? `${capability.message} ${capability.nextAction}`
         : "Continúa con texto.";
+  const visualState = loading ? "loading" : error ? "error" : ready ? "ready" : "blocked";
   return (
     <section
-      className={`attachment-composer-state attachment-composer-state--${loading ? "loading" : ready ? "ready" : "blocked"}`}
+      className={`attachment-composer-state attachment-composer-state--${visualState}`}
       aria-label="Estado de imágenes del mensaje"
       aria-live="polite"
     >
