@@ -9636,3 +9636,32 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.4-current-restore-reenable`;
 the SHA-256 of its `SHA256SUMS` is
 `e071771aa8d8ae2ba1c37ffbe0e8c7594f1eb858d84436ec4f47deebc65a8574`.
+
+Task 8.5 is complete. Change progress is `80/83`; task 8.6 is the exact
+resume point. The check was deliberately read-only: no upload route, file
+selection or turn route was invoked.
+
+Canonical WorkSession 15 reports `READY/NONE/COMPATIBLE`, policy revision
+`atenea-real-attachments-v1`, exactly PNG/JPEG/WebP acceptance and a maximum
+of four selected images per turn. Every pre-activation Atenea WorkSession
+without an accepted policy revision, IDs 6 through 12, reports
+`BLOCKED/SESSION_NOT_ELIGIBLE`. All sessions belonging to the only two
+non-Atenea projects, Fomasys and Beautips, report
+`BLOCKED/PROJECT_DISABLED`; the real-project allowlist remains exactly
+canonical `atenea`.
+
+Database counts before and after remained three attachments, 172 turns, two
+bindings, 95 AgentRuns and five active refresh tokens. Their content-free
+ownership fingerprint remained
+`79adbbbcecd953735432fa056e3491c15ae2d3f490366c650e7903cc96713d66`.
+Metadata-only worker storage remained 22 files, 20 directories and 390,963
+bytes with fingerprint
+`d9c0086da648d7e0f0ef0ac17b86cddc52540bc542b6e4a1ec6c51a4df3927cd`.
+Materializations and temporary attachment/browser processes remained zero.
+All authentication probes logged out; no credential, token, filename,
+attachment content, prompt or response entered evidence.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.5-read-only-reenable-check`;
+the SHA-256 of its `SHA256SUMS` is
+`f471f0b2f4a46dec63c24b6c809eaa7ee6b121560fbb934aa77dcd6d9ece888f`.
