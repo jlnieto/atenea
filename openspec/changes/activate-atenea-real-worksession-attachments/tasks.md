@@ -115,7 +115,7 @@ adopt, delete or reconstruct ambiguous state automatically.
 ## 8. Rollback, re-enable and closure
 
 - [x] 8.1 Disable canonical `atenea` then the global create/bind gate before changing an image/service and prove retained content, bindings, history and download remain available
-- [ ] 8.2 Reconcile or wait only for exact non-terminal v3 ownership, apply the V62-aware backend and base-v1-compatible worker rollback, and prove no down migration, deletion, routing change or foreign mutation
+- [x] 8.2 Reconcile or wait only for exact non-terminal v3 ownership, apply the V62-aware backend and base-v1-compatible worker rollback, and prove no down migration, deletion, routing change or foreign mutation
 - [ ] 8.3 Repeat the complete rollback idempotently and prove it removes or changes nothing additional, including real canary, backups, Git, WorkSessions, Beautips and unrelated slots
 - [ ] 8.4 Restore current backend/worker artifacts disabled, verify health, then re-enable global plus only canonical `atenea` after the accepted canary/backup gates still match
 - [ ] 8.5 Confirm the existing eligible Atenea session can upload/select again, old sessions and every other project remain blocked, and no test upload or Codex turn is created during the re-enable check

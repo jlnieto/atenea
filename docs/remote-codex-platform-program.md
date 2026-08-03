@@ -9519,3 +9519,49 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.1-disable-first`;
 the SHA-256 of its `SHA256SUMS` is
 `66f20372c77c7885018639e1b2264298dd07bb70cfc8936963fa16dc01fe9b62`.
+
+Task 8.2 is complete. Change progress is `77/83`; task 8.3 is the exact
+resume point and the rollback has not yet been repeated.
+
+The rollback precondition found zero non-terminal `project-codex-v3` AgentRuns
+and production schema V62. With both create/bind gates already false, only the
+backend image changed to the accepted V62-aware rollback
+`sha256:00afca3569c7367f1df27c4ddd380c4c643fb4045e649964c55d870cb9e46c84`.
+It reached HTTP 200 on bounded attempt 13 with zero restarts; Compose remains
+`jose:jose 0600`, globally disabled with empty allowlists, and has SHA-256
+`8e034951181c5ed40747da133a5a249e338cf0c8bc4ccec0d3266e98fcd08de0`.
+Flyway remains exactly V62 and no down migration ran.
+
+The accepted worker rollback archive SHA-256
+`ca8532832f9e24dc2544d22cd17c4dba8944b51b2be7f4628bd1eae144953411`
+passed safe-member and internal-checksum verification. Only the six declared
+pre-rollout code/unit artifacts were installed. The single new
+`attachmentRoot` configuration key was removed while the exact registered
+workspace and true selection/execution state were preserved; the compatible
+configuration SHA-256 is
+`6db2823c96b5776c7bbe5a0ebbe43b3ee83c339094874ecaf2ccd01f6a8dc634`.
+The candidate-only materialization unit was stopped and removed according to
+the rollback absence manifest; its data boundary remains empty.
+
+Both base services are enabled, active and restart-count zero. Authenticated
+health returns HTTP 200, the old attachment service has no real-project create
+capability (`404`), and the AgentRun worker advertises only v1/v2 plus its
+pre-existing fixed capabilities, not v3. The disabled rollback backend still
+lists the retained canary and downloads exactly 42,499 bytes with SHA-256
+`3547d21c912406eb42b757109568d07af9770d1cd94f498ee90ccd95be3a63f5`.
+The canary sidecar remains 730 bytes with SHA-256
+`6491b3ef325a9bc4bb11b090a1953ac02102c1611eeb6460e4ed318bee6172cf`.
+
+The immutable binding remains in V62 even though the older conversation view
+does not project it; production counts remain one attachment, four turns, one
+binding and two AgentRuns. Atenea Git, allocation and workspace are unchanged;
+Beautips remains `OPEN` with `0/22/0/13` attachment/turn/binding/run counts and
+slot counts remain `3/0/0/3`. RAID remains `3/3 [UU]`, rootful Docker remains
+inactive, backup timers remain active, and production, preview and Beautips
+containers remain up. No route, WorkSession, snapshot, attachment, Git or
+foreign resource was deleted or moved.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.2-compatible-rollback`;
+the SHA-256 of its `SHA256SUMS` is
+`cdb93f9b02327f52c8e68ec65a4045841592c72928868c98943c1046a6ca8c15`.
