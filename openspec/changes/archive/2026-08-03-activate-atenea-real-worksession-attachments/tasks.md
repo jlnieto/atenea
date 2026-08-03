@@ -121,4 +121,4 @@ adopt, delete or reconstruct ambiguous state automatically.
 - [x] 8.5 Confirm the existing eligible Atenea session can upload/select again, old sessions and every other project remain blocked, and no test upload or Codex turn is created during the re-enable check
 - [x] 8.6 Capture final Git, V62, gates, project/session policy, attachment/binding/run fingerprints, storage, backup, services, processes, routing, production, preview, Beautips, slots, RAID, firewall, SSH and Tailscale
 - [x] 8.7 Seal sanitized commands, codes, timeouts, durations, DOM/visual evidence, canary/backup receipts and `SHA256SUMS` with zero prohibited content
-- [ ] 8.8 Update the programme decisions and ledger, mark only completed tasks, run strict OpenSpec validation, confirm no pending task, archive, commit and push both repositories, then stop before enabling Beautips, Android attachments or retention deletion
+- [x] 8.8 Update the programme decisions and ledger, mark only completed tasks, run strict OpenSpec validation, confirm no pending task, archive, commit and push both repositories, then stop before enabling Beautips, Android attachments or retention deletion
