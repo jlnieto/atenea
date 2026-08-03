@@ -10056,3 +10056,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.1-canonical-checkout`;
 the SHA-256 of its `SHA256SUMS` is
 `f88d9ea45bac89dc1dd79ddc77940e8a51bbfcff58a4cd92348b2d56aed0f6f8`.
+
+Task 4.2 is blocked and remains the first pending task. Change progress remains
+`14/22`.
+
+The final-main application tree and deployed backend still require exact
+branch `feature/actualizar-conversacion-en-web` through
+`ProjectCodexIdentity.BRANCH`; the accepted runtime manifest names the same
+branch and has pinned SHA-256
+`3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3`.
+AX42's AgentRun worker, project runner, activation/validation/multi-repository
+mediators, installer and three request schemas independently require that
+same feature branch. Changing only the worker JSON and project default to
+`main` would therefore leave new sessions local or fail closed against
+inconsistent authorities. Correct reconciliation requires an application
+successor, coordinated worker/schema update, new manifest identity, complete
+validation and production rollout, all explicitly excluded by this change's
+current non-goals.
+
+The ownership audit also found the sole registered AX42 Atenea workspace
+belongs to closed WorkSession 15, remote session
+`c80c1e72-e34f-46b9-ba34-5a9a0c0ad2d7`. Its clean feature worktree and
+allocation are retained, while admission still reports `slot2=held` and
+`heavy1=held` and slot 2 has zero containers. The exact worker contract
+permits only one registered Atenea workspace, so preserving this record would
+reject a new main canary; unregistering/releasing it would exceed task 4.2's
+declared pin-only mutation and cannot be inferred under the fail-closed
+ownership rule.
+
+No mirror fetch, worker/config write, service restart, admission release,
+project-row mutation, runtime start or routing change was attempted.
+Production, preview and Beautips remain HTTP 200, rootless slot counts remain
+`3/0/0/3`, the worker is active with zero restarts, non-terminal AgentRuns are
+zero and all RAID arrays remain `[UU]`.
+
+Sanitized blocking evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.2-blocked-source-contract`;
+the SHA-256 of its `SHA256SUMS` is
+`e80ee6e9d8f20078612084f9eca7b054b27d1142f2fcdf2b40e77918ca346e5d`.
