@@ -10415,3 +10415,38 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.9-activation-corrective-source`;
 the SHA-256 of its `SHA256SUMS` is
 `4e21609b8dbd77fa61d9f99d696130f8c679cf8632b8c7d26c5369c7fb17995e`.
+
+Task 4.10 is complete and amended change progress is `23/27`; task 5.1 is again
+the exact resume point. Immutable corrective release
+`4252719b8ab092e4431bfbae5033a75d4c3abdfd` has source-tar SHA-256
+`102dc45b2d649438a83a6bc8d3c496a7f289b0f25c6e3dc2e14a0c1ea08584b2`.
+Its top `SHA256SUMS` hash is
+`76764dddd7619f35d0213ab1ee5a4f42d67bf6f55943e2d9ef971aee5756004f`;
+the six-file exact installed-predecessor rollback `SHA256SUMS` hash is
+`bccce0096d4c7c63c35c205ba0f8c64472e0ca078dbf79e6d3adfbff66781002`.
+
+The dedicated apply advanced only the exact reviewed activation mediator from
+SHA-256
+`61fc03da468f2f9fa1fb101dc42129a773f02acaacbc40fd46e18d7a06724df2`
+to main SHA-256
+`5ef544c478c17a0ae6ae88586915185572721ca89dc48dbbf15b65ad417aa889`,
+retained the byte-identical sudoers boundary and dependencies, and installed
+the complete AgentRun verifier at SHA-256
+`d7c103ea181a5bf542fe839e002aaf53336bf78fb1cbd00f5934696c8aa4a819`.
+Apply took 127 ms. Both installed verification paths passed twice in 220/221
+ms.
+
+No service restarted: the AgentRun worker retained PID `1420261`, zero
+restarts and active state. Registry, service, listener and four-slot
+projections remained byte-identical. WorkSession 16 remains `OPEN/DRAFT/main`
+with zero turns, AgentRuns, attachments and previews; its workspace,
+allocation, admission and runtime remain absent. Global non-terminal AgentRuns
+and active leases remain zero. Backup timers remain active, rootful daemons
+remain inactive/masked, RAID remains `3/3 [UU]`, temporary worker browser
+processes remain zero, and production, preview and Beautips remain HTTP 200.
+Automatic exact rollback was armed but not needed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.10-activation-corrective-rollout`;
+the SHA-256 of its `SHA256SUMS` is
+`a29a80a7c6ecb6b5f026a2840123eac0032d7c5b7e1dab5e84a9a50442bd7261`.

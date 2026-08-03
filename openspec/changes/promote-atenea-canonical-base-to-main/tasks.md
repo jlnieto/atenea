@@ -82,7 +82,7 @@ repair, adoption or deletion.
   accept only an absent, current or exact reviewed predecessor activation
   bundle, make the AgentRun installer preflight and verify that complete
   dependency, add focused regression coverage and run the complete worker suite
-- [ ] 4.10 Create an immutable source and exact installed-predecessor rollback,
+- [x] 4.10 Create an immutable source and exact installed-predecessor rollback,
   install only the reviewed Atenea activation bundle on AX42 without restarting
   an unrelated service, prove complete reconciliation/non-impact, seal evidence,
   strict-validate, commit and push
