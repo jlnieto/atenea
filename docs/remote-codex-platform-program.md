@@ -9598,3 +9598,41 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.3-idempotent-rollback`;
 the SHA-256 of its `SHA256SUMS` is
 `f34eee61d9173c5e5361793f3a64dd3c2bc2b639fa802f7b7e46d4d13c6eeae6`.
+
+Task 8.4 is complete. Change progress is `79/83`; task 8.5 is the exact
+resume point and no validation upload or Codex turn has been created.
+
+The accepted current backend image
+`sha256:ca076c3a615c7745c8a86fe7abd729123041bf9c38e529716892dd72c6dbc0c3`
+was restored while the global gate and both allowlists remained empty. It
+reached HTTP 200 with V62 unchanged and zero non-terminal AgentRuns. The exact
+published worker archive SHA-256
+`2e847db4283bad3c1f9d7e65bcecdef611fe946dfca813e4b1697bcb761e6445`
+passed member-safety and internal-checksum validation; its current code,
+service units and protected project configuration were restored exactly.
+Materialization preparation is active/exited with an empty boundary, and both
+runtime services are active with zero restarts.
+
+Before re-enabling, the retained canary still downloaded as 42,499 bytes with
+SHA-256
+`3547d21c912406eb42b757109568d07af9770d1cd94f498ee90ccd95be3a63f5`,
+and external inventory still contained accepted snapshot
+`50980a4b74d68ed40525b73ebba2945f92885839fef4af5412d58d96e3d77de4`
+exactly once among seven snapshots. The global gate was then enabled with both
+allowlists empty and returned `BLOCKED/PROJECT_DISABLED`. Only after that
+proof, the real-project allowlist was restored to quoted canonical `atenea`;
+the final protected Compose is byte-identical to the accepted pre-disable file,
+mode `0600`, SHA-256
+`d7f94b1e611fad6329cb66346cbe99eba91d79bdba30e19fda73e48b51abb4ba`.
+
+Canonical WorkSession 15 now reports `READY/NONE/COMPATIBLE`, while its
+counts remain exactly one attachment, four turns, one binding and two
+AgentRuns. No upload, binding, turn or execution was created. Production,
+preview and Beautips remain up; no route, WorkSession, snapshot, Git or foreign
+resource changed. All successful authentication probes logged out and no
+credential or token value entered evidence.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.4-current-restore-reenable`;
+the SHA-256 of its `SHA256SUMS` is
+`e071771aa8d8ae2ba1c37ffbe0e8c7594f1eb858d84436ec4f47deebc65a8574`.
