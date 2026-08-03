@@ -94,7 +94,7 @@ repair, adoption or deletion.
 
 ## 5. New-main canary and closure
 
-- [ ] 5.1 Create one clean Atenea WorkSession and prove persisted
+- [x] 5.1 Create one clean Atenea WorkSession and prove persisted
   `baseBranch=main`, exact accepted commit/workspace ownership, compatible
   policy and zero AgentRuns/runtime start
 - [ ] 5.2 Verify the web/API exposes the correct ready state and `main` base;

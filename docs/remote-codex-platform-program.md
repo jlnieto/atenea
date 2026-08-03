@@ -10519,3 +10519,40 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.11-retire-closed-allocation`;
 the SHA-256 of its `SHA256SUMS` is
 `fe6560e0f1229b33b4503c6cbf31fec56d50a6e5cfa60be4112df33a574b6a82`.
+
+Task 5.1 is complete and amended change progress is `25/28`; task 5.2 is the
+exact resume point. The installed reviewed mediator completed the retained
+WorkSession 16 activation in 1350 ms and an immediate idempotent repeat in
+1213 ms, both under 300-second timeouts and with identical closed results.
+No prompt was sent, no AgentRun was created and no runtime was started.
+
+The WorkSession remains `OPEN/DRAFT`, persists `baseBranch=main`, remote
+workload `project-codex-v1`, attachment policy
+`atenea-real-attachments-v1`, worker `ax42-01` and exact workspace identity
+`remote:ax42-01:work-session:7151dce0-69ab-4614-86e4-f93f1af825e4`.
+Its clean worktree is at accepted main commit
+`615e539d1f2622a4ac2568ba7697b876d49ae33e` and tree
+`3b8a5517bdc0845e3a2f52718173e6ef5307245a`.
+
+Workspace-record SHA-256 remains
+`6014606bb884c808a8f9603b9eb86aa7fc65c785fae59bd45a4caf468f0e065c`;
+new allocation SHA-256 is
+`af69156b9a6935cb11c96e0b7bdd73b950ec97959281a97b870bdad0c691a80f`;
+held admission SHA-256 remains
+`099e565f0df471685c24925ce02d69431639b024499fd91e4d47c08c6d946e11`;
+and the exact one-workspace enabled registry SHA-256 is
+`6dbb541e51d672236af660e01f83d9f89b0e3c0a5652757340170f2a70ca87e7`.
+The allocation owns `slot2/heavy1`, but containers, networks, volumes,
+listeners and runtime units remain zero.
+
+WorkSession turns, AgentRuns, attachments and previews remain zero, as do
+global non-terminal AgentRuns and active leases. WorkSession 15's retired
+allocation remains byte-identical. Worker services and backup timers remain
+active, worker restarts remain zero, rootful daemons remain inactive/masked,
+RAID remains `3/3 [UU]`, temporary browser processes remain zero, and
+production, preview and Beautips remain HTTP 200.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.1-main-no-run-canary`;
+the SHA-256 of its `SHA256SUMS` is
+`10993b55fe0f70025519c4ab38735fc84d64f9447f656fd0c0e8d8c222afcd3e`.
