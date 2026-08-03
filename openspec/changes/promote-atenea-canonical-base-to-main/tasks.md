@@ -69,7 +69,7 @@ repair, adoption or deletion.
 - [x] 4.5 Prove closed WorkSession 15 exact ownership and zero runtime/run
   activity, then mediatedly unregister and release only its held admission;
   preserve allocation, worktree, Git, logs, attachments and artifacts
-- [ ] 4.6 Refresh the AX42 mirror with the bounded canonical fetch contract,
+- [x] 4.6 Refresh the AX42 mirror with the bounded canonical fetch contract,
   install the exact reviewed worker identity/configuration and restart only the
   AgentRun worker with finite readiness and rollback
 - [ ] 4.7 Deploy only the exact identity-successor production backend, then

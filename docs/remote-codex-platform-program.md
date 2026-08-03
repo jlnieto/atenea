@@ -10208,3 +10208,54 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.5-closed-session-ownership-release`;
 the SHA-256 of its `SHA256SUMS` is
 `808eaedb24130e655056598d3a8c43e46f0008d8e6f73a8f4035dae9f926fbae`.
+
+Task 4.6 is complete and amended change progress is `19/25`; task 4.7 is the
+exact resume point. The AX42 bare mirror passed owner, mode, remote, single
+fetch-refspec, absent-pushurl and integrity checks. Its bounded fetch advanced
+only from the published repository and moved `origin/main` from
+`7e8afa6c7039a70aea3b330234ddeabdcf2a6587` to exact accepted main
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`; the historical feature ref remains
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`.
+
+Deployment preflight exposed that preserving the exact empty, disabled feature
+registry after main advanced correctly failed closed. Programme commit
+`cd004e846b7ebf2acd089988613ffa1e97c78655` added an atomic installer
+transition which accepts only that exact predecessor while the worker is
+stopped, requires the reviewed target commit, and validates current repository,
+branch, manifest and runner authorities literally. A timestamp-substring
+flakiness in the attachment log test was also bounded to its two-character
+fixture; the replacement UUID passed 20 consecutive runs.
+
+The first candidate then rejected the installed Beautips compatibility runner
+before stopping or writing anything. Its SHA-256
+`60d54f1e6e6eaf1edea43e9bf3b0800226a413b4feee5a59ce8152954d97b983`
+matched reviewed commits `c93c19073af031b441fdbae9d69dc01d8aa4253d` and
+`4ea60175e77c2fca8a5f888fe50a54b7b6010c19`; it was the omitted immediate
+predecessor, not a foreign file. Commit
+`c0872d286527b98e1f44cecd442ee5b5428e22e0` advances only that exact
+predecessor identity. The final source passed all 31 sorted worker entrypoints
+in 487 seconds.
+
+The immutable release source SHA-256 is
+`0ef7866357c4834bedf6b631a27edf651bc4eb17890f20fd7abf8fa3d31adb29`.
+Its 16-file whitelist-only rollback excludes tokens, credentials and
+environment dumps and has manifest SHA-256
+`373084bc1746d66b63fd5fd08c7214d07b504f0709b3e57b08a92d9e1270076f`.
+The release `SHA256SUMS` hash is
+`139f3636dacf87afe08586ad20feedc95b89bc95d0e59b564a70251c608cf7f5`.
+
+Final apply completed in 1,085 ms, installed the reviewed files, transitioned
+the empty registry to disabled `main@615e539d1f2622a4ac2568ba7697b876d49ae33e`
+with manifest SHA-256
+`327a0c521017109d7c0067a11e7d8c3ad2079de4ea78d28296848f9de39c164b`,
+and restarted only the AgentRun worker. Full installed verification passed.
+No workspace was registered or runtime started. The closed allocation and
+released admission remain exact, all four slot identity manifests match,
+non-terminal AgentRuns remain zero, and the Atenea project default remains on
+the feature branch for task 4.7. Production, preview and Beautips remain HTTP
+200; backups, firewall and RAID remain healthy.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.6-main-mirror-worker-install`;
+the SHA-256 of its `SHA256SUMS` is
+`435a94e644ffde45f341812adeec109308a87a8e9e17905a58f5c7d3229aff49`.
