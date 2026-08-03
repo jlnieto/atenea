@@ -14,7 +14,7 @@ repair, adoption or deletion.
   workspace, allocation, admission, services, slots, backup timers, RAID,
   production, preview and Beautips fingerprints with finite timeouts and
   `SHA256SUMS`
-- [ ] 0.4 Strict-validate, commit and publish the accepted entry contract
+- [x] 0.4 Strict-validate, commit and publish the accepted entry contract
 
 ## 1. Historical draft disposition
 

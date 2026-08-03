@@ -9825,5 +9825,7 @@ Sanitized entry evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-0-entry`;
 the SHA-256 of its `SHA256SUMS` is
 `eca6d664cce819fbe6273afda3531673a85529570181d31f99b7684523aab8ec`.
-Task 0.4 is the exact resume point; no GitHub ref, project setting, worker
-registry, mirror, WorkSession or service has changed.
+The accepted entry contract passed strict validation and was published at
+programme commit `e8d532c732b065a462049c2934553bef02a57421`. Task group 0 is
+complete at `4/21`; task 1.1 is the exact resume point. No GitHub Atenea ref,
+project setting, worker registry, mirror, WorkSession or service has changed.
