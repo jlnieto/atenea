@@ -99,6 +99,7 @@ class ImageTurnAtomicPersistenceIntegrationTest {
 
     private Long fixtureSessionId;
     private Long fixtureProjectId;
+    private boolean fixtureWorkerCreated;
 
     @AfterEach
     void removeExactFixtureRows() {
@@ -116,8 +117,15 @@ class ImageTurnAtomicPersistenceIntegrationTest {
         if (fixtureProjectId != null) {
             jdbcTemplate.update("DELETE FROM project WHERE id = ?", fixtureProjectId);
         }
+        if (fixtureWorkerCreated) {
+            jdbcTemplate.update(
+                    "DELETE FROM worker_codex_activation_barrier WHERE worker_id = ?",
+                    "ax42-01");
+            jdbcTemplate.update("DELETE FROM worker_node WHERE id = ?", "ax42-01");
+        }
         fixtureSessionId = null;
         fixtureProjectId = null;
+        fixtureWorkerCreated = false;
     }
 
     @Test
@@ -445,6 +453,7 @@ class ImageTurnAtomicPersistenceIntegrationTest {
 
     private WorkerNodeEntity createWorker(Instant now) {
         WorkerNodeEntity worker = workerNodeRepository.findById("ax42-01").orElseGet(() -> {
+            fixtureWorkerCreated = true;
             WorkerNodeEntity created = new WorkerNodeEntity();
             created.setId("ax42-01");
             created.setProtocolVersion("agent-run-worker/v1");

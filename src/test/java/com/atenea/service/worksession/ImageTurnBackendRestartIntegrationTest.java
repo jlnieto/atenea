@@ -109,6 +109,7 @@ class ImageTurnBackendRestartIntegrationTest {
 
     private Long fixtureProjectId;
     private Long fixtureSessionId;
+    private boolean fixtureWorkerCreated;
     private Long acceptedTurnId;
     private Long acceptedRunId;
     private Long resultTurnId;
@@ -227,6 +228,12 @@ class ImageTurnBackendRestartIntegrationTest {
         if (fixtureProjectId != null) {
             jdbcTemplate.update("DELETE FROM project WHERE id = ?", fixtureProjectId);
         }
+        if (fixtureWorkerCreated) {
+            jdbcTemplate.update(
+                    "DELETE FROM worker_codex_activation_barrier WHERE worker_id = ?",
+                    "ax42-01");
+            jdbcTemplate.update("DELETE FROM worker_node WHERE id = ?", "ax42-01");
+        }
     }
 
     private long bindingCount() {
@@ -238,6 +245,7 @@ class ImageTurnBackendRestartIntegrationTest {
 
     private WorkerNodeEntity createWorker(Instant now) {
         WorkerNodeEntity worker = workerNodeRepository.findById("ax42-01").orElseGet(() -> {
+            fixtureWorkerCreated = true;
             WorkerNodeEntity created = new WorkerNodeEntity();
             created.setId("ax42-01");
             created.setProtocolVersion("agent-run-worker/v1");
