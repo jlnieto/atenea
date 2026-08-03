@@ -53,7 +53,7 @@ repair, adoption or deletion.
 
 ## 4. Canonical main reconciliation
 
-- [ ] 4.1 Capture final pre-change values and update the clean canonical Atenea
+- [x] 4.1 Capture final pre-change values and update the clean canonical Atenea
   checkout plus `origin/HEAD` to the exact merged `main` without rewriting
   history
 - [ ] 4.2 Refresh the AX42 mirror with the bounded canonical fetch contract and

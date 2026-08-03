@@ -10036,3 +10036,23 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-3.3-post-merge-nonimpact`;
 the SHA-256 of its `SHA256SUMS` is
 `6cd7ce7149f700ba7111482f270c7f9e9f1b3ebfeedbeb822f4690c8581443fb`.
+
+Task 4.1 is complete and change progress is `14/22`; task 4.2 is the exact
+resume point. After rechecking the clean feature checkout, ordinary GitHub
+origin and both accepted ancestors, a bounded fetch advanced only
+`origin/main` from `7e8afa6c7039a70aea3b330234ddeabdcf2a6587` to exact merged main
+`51e6ea40286ae8c44e6235b32be9f644af57b11c`. The local `main` branch was
+then fast-forwarded to that same commit and `origin/HEAD` now points to
+`refs/remotes/origin/main`.
+
+The canonical checkout is clean on `main`, its upstream is exact, its tree is
+`40e8e9fab894ecad8f4ee6af340b32b918cb0148`, object integrity passes and the
+feature branch remains unchanged at its accepted tip. The inverse operation
+is recorded without rewriting GitHub or local-main history. No deployment,
+service restart, project row, mirror, worker registry, WorkSession, runtime or
+routing state changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.1-canonical-checkout`;
+the SHA-256 of its `SHA256SUMS` is
+`f88d9ea45bac89dc1dd79ddc77940e8a51bbfcff58a4cd92348b2d56aed0f6f8`.
