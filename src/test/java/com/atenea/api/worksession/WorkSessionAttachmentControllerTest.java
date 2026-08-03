@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.atenea.api.ApiExceptionHandler;
 import com.atenea.attachments.AttachmentFeatureDisabledException;
+import com.atenea.attachments.AttachmentCapability;
+import com.atenea.attachments.AttachmentCapabilityService;
 import com.atenea.attachments.AttachmentWorkerException;
 import com.atenea.attachments.WorkSessionAttachmentService;
 import com.atenea.persistence.project.ProjectEntity;
@@ -46,18 +48,52 @@ class WorkSessionAttachmentControllerTest {
     @Mock
     private WorkSessionAttachmentService attachmentService;
 
+    @Mock
+    private AttachmentCapabilityService capabilityService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new WorkSessionAttachmentController(attachmentService))
+                        new WorkSessionAttachmentController(attachmentService, capabilityService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(
                         new ByteArrayHttpMessageConverter(),
                         new MappingJackson2HttpMessageConverter(
                                 Jackson2ObjectMapperBuilder.json().build()))
                 .build();
+    }
+
+    @Test
+    void capabilityRouteExposesStateAndLimitsWithoutPrivateWorkerAuthority() throws Exception {
+        when(capabilityService.get(12L)).thenReturn(new AttachmentCapability(
+                AttachmentCapability.State.READY,
+                AttachmentCapability.BlockedReason.NONE,
+                "Puedes adjuntar hasta 4 imágenes al próximo mensaje.",
+                "Selecciona imágenes PNG, JPEG o WebP.",
+                "atenea-real-attachments-v1",
+                AttachmentCapability.WorkerCompatibility.COMPATIBLE,
+                List.of("image/png", "image/jpeg", "image/webp"),
+                1024L,
+                268435456L,
+                268434432L,
+                16777216L,
+                4,
+                33554432L));
+
+        mockMvc.perform(get("/api/sessions/12/attachments/capability"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("READY"))
+                .andExpect(jsonPath("$.blockedReason").value("NONE"))
+                .andExpect(jsonPath("$.workerCompatibility").value("COMPATIBLE"))
+                .andExpect(jsonPath("$.acceptedContentTypes.length()").value(3))
+                .andExpect(jsonPath("$.currentSessionBytes").value(1024))
+                .andExpect(jsonPath("$.maxAttachmentsPerTurn").value(4))
+                .andExpect(jsonPath("$.maxAttachmentBytesPerTurn").value(33554432))
+                .andExpect(jsonPath("$.workerId").doesNotExist())
+                .andExpect(jsonPath("$.endpoint").doesNotExist())
+                .andExpect(jsonPath("$.storageScope").doesNotExist());
     }
 
     @Test
@@ -100,16 +136,15 @@ class WorkSessionAttachmentControllerTest {
                 org.mockito.ArgumentMatchers.eq(12L),
                 org.mockito.ArgumentMatchers.eq(key),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(AttachmentSource.OPERATOR_UPLOAD),
-                org.mockito.ArgumentMatchers.eq(AttachmentKind.IMAGE),
-                org.mockito.ArgumentMatchers.eq(AttachmentRetentionClass.SESSION),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new AttachmentFeatureDisabledException("Adjuntos nuevos desactivados."));
 
         mockMvc.perform(multipart("/api/mobile/sessions/12/attachments")
                         .file(file)
-                        .header("Idempotency-Key", key)
-                        .param("kind", "IMAGE"))
+                        .header("Idempotency-Key", key))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("Adjuntos nuevos desactivados."));
     }
@@ -132,9 +167,9 @@ class WorkSessionAttachmentControllerTest {
                 org.mockito.ArgumentMatchers.eq(12L),
                 org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(AttachmentSource.OPERATOR_UPLOAD),
+                org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.eq(AttachmentKind.IMAGE),
-                org.mockito.ArgumentMatchers.eq(AttachmentRetentionClass.SESSION),
+                org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new AttachmentLimitException("El adjunto supera el límite de 16 MiB."))
                 .thenThrow(new AttachmentWorkerException(

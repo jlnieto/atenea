@@ -60,6 +60,9 @@ public class WorkSessionEntity {
     @Column(name = "remote_workload_kind", length = 80)
     private String remoteWorkloadKind;
 
+    @Column(name = "attachment_policy_revision", length = 80)
+    private String attachmentPolicyRevision;
+
     @Column(name = "default_codex_model_id", length = 80)
     private String defaultCodexModelId;
 
@@ -254,6 +257,14 @@ public class WorkSessionEntity {
 
     public void setRemoteSessionId(UUID remoteSessionId) {
         this.remoteSessionId = remoteSessionId;
+    }
+
+    public String getAttachmentPolicyRevision() {
+        return attachmentPolicyRevision;
+    }
+
+    public void setAttachmentPolicyRevision(String attachmentPolicyRevision) {
+        this.attachmentPolicyRevision = attachmentPolicyRevision;
     }
 
     public String getRemoteWorkloadKind() {

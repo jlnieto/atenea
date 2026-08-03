@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,16 +24,20 @@ import com.atenea.persistence.worksession.CodexReasoningEffort;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
+import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.ExecutionProfileSource;
+import com.atenea.persistence.worksession.SessionTurnAttachmentEntity;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +60,12 @@ class AgentRunServiceTest {
 
     @Mock
     private SessionTurnRepository sessionTurnRepository;
+
+    @Mock
+    private SessionTurnAttachmentRepository sessionTurnAttachmentRepository;
+
+    @Mock
+    private TurnAttachmentSelectionValidator turnAttachmentSelectionValidator;
 
     @Mock
     private com.atenea.codexappserver.CodexAppServerProperties codexAppServerProperties;
@@ -81,6 +93,8 @@ class AgentRunServiceTest {
                 workSessionRepository,
                 agentRunRepository,
                 sessionTurnRepository,
+                sessionTurnAttachmentRepository,
+                turnAttachmentSelectionValidator,
                 new AgentRunProgressService(),
                 mobilePushDispatchService,
                 workSessionAcceptanceService,
@@ -263,6 +277,164 @@ class AgentRunServiceTest {
     }
 
     @Test
+    void createRemoteImageRetryReusesExactTurnManifestAndProfileWithoutRebinding() {
+        WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
+        session.setCanonicalSourceCommit(TEST_CANONICAL_COMMIT);
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(Instant.now());
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        UUID firstId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        UUID secondId = UUID.fromString("9aa2c7e5-1fd9-48ec-aa10-03dfdfb8ca7d");
+        TurnAttachmentSelectionValidator.ValidatedSelection selection =
+                new TurnAttachmentSelectionValidator.ValidatedSelection(
+                        List.of(
+                                new TurnAttachmentSelectionValidator.ValidatedAttachment(
+                                        firstId, "image/png", 1024L, "a".repeat(64)),
+                                new TurnAttachmentSelectionValidator.ValidatedAttachment(
+                                        secondId, "image/webp", 2048L, "b".repeat(64))),
+                        3072L,
+                        "c".repeat(64));
+        AgentRunEntity source = buildRun(81L, AgentRunStatus.FAILED);
+        source.setSession(session);
+        source.setOriginTurn(originTurn);
+        source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setWorkloadKind(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
+        source.setWorkloadClass(WorkloadClass.NORMAL);
+        source.setAttachmentCount(2);
+        source.setAttachmentBytes(3072L);
+        source.setAttachmentManifestSha256("c".repeat(64));
+        source.setCodexModelId("gpt-5.6-sol");
+        source.setCodexModelSource(ExecutionProfileSource.WORK_SESSION);
+        source.setCodexReasoningEffort(CodexReasoningEffort.HIGH);
+        source.setCodexEffortSource(ExecutionProfileSource.NEXT_TURN);
+        source.setCodexCatalogRevision("d".repeat(64));
+        source.setCodexVersion("0.145.0");
+        SessionTurnAttachmentEntity firstBinding = mock(SessionTurnAttachmentEntity.class);
+        SessionTurnAttachmentEntity secondBinding = mock(SessionTurnAttachmentEntity.class);
+        when(firstBinding.getPosition()).thenReturn((short) 0);
+        when(firstBinding.getAttachmentId()).thenReturn(firstId);
+        when(secondBinding.getPosition()).thenReturn((short) 1);
+        when(secondBinding.getAttachmentId()).thenReturn(secondId);
+        when(agentRunRepository.findByIdForUpdate(81L)).thenReturn(Optional.of(source));
+        when(agentRunRepository.findFirstByRetryOfRunIdOrderByCreatedAtAsc(81L))
+                .thenReturn(Optional.empty());
+        when(sessionTurnAttachmentRepository
+                .findByWorkSessionIdAndSessionTurnIdOrderByPositionAsc(12L, 101L))
+                .thenReturn(List.of(firstBinding, secondBinding));
+        when(turnAttachmentSelectionValidator.validateBoundRetry(
+                session, List.of(firstId, secondId))).thenReturn(selection);
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L, AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> {
+            AgentRunEntity saved = invocation.getArgument(0);
+            saved.setId(82L);
+            return saved;
+        });
+
+        AgentRunEntity retry = agentRunService.createRemoteRetryRun(81L);
+
+        assertEquals(82L, retry.getId());
+        assertEquals(source, retry.getRetryOfRun());
+        assertEquals(originTurn, retry.getOriginTurn());
+        assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, retry.getWorkloadKind());
+        assertEquals(2, retry.getAttachmentCount());
+        assertEquals(3072L, retry.getAttachmentBytes());
+        assertEquals("c".repeat(64), retry.getAttachmentManifestSha256());
+        assertEquals("gpt-5.6-sol", retry.getCodexModelId());
+        assertEquals(ExecutionProfileSource.WORK_SESSION, retry.getCodexModelSource());
+        assertEquals(CodexReasoningEffort.HIGH, retry.getCodexReasoningEffort());
+        assertEquals(ExecutionProfileSource.NEXT_TURN, retry.getCodexEffortSource());
+        assertEquals("d".repeat(64), retry.getCodexCatalogRevision());
+        assertEquals("0.145.0", retry.getCodexVersion());
+        verify(sessionTurnAttachmentRepository, never()).insert(any(), any(), any(), anyShort());
+        verify(sessionTurnRepository, never()).save(any(SessionTurnEntity.class));
+        verify(codexExecutionProfileSnapshotService, never()).applyCurrentProfile(retry);
+    }
+
+    @Test
+    void createRemoteImageRetryFailsClosedWhenRetainedManifestChanges() {
+        WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        UUID attachmentId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        AgentRunEntity source = buildRun(81L, AgentRunStatus.FAILED);
+        source.setSession(session);
+        source.setOriginTurn(originTurn);
+        source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setWorkloadKind(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
+        source.setAttachmentCount(1);
+        source.setAttachmentBytes(1024L);
+        source.setAttachmentManifestSha256("a".repeat(64));
+        SessionTurnAttachmentEntity binding = mock(SessionTurnAttachmentEntity.class);
+        when(binding.getPosition()).thenReturn((short) 0);
+        when(binding.getAttachmentId()).thenReturn(attachmentId);
+        when(agentRunRepository.findByIdForUpdate(81L)).thenReturn(Optional.of(source));
+        when(agentRunRepository.findFirstByRetryOfRunIdOrderByCreatedAtAsc(81L))
+                .thenReturn(Optional.empty());
+        when(sessionTurnAttachmentRepository
+                .findByWorkSessionIdAndSessionTurnIdOrderByPositionAsc(12L, 101L))
+                .thenReturn(List.of(binding));
+        when(turnAttachmentSelectionValidator.validateBoundRetry(
+                session, List.of(attachmentId))).thenReturn(
+                        new TurnAttachmentSelectionValidator.ValidatedSelection(
+                                List.of(new TurnAttachmentSelectionValidator.ValidatedAttachment(
+                                        attachmentId, "image/png", 1024L, "b".repeat(64))),
+                                1024L,
+                                "b".repeat(64)));
+
+        assertThrows(
+                AgentRunRecoveryConflictException.class,
+                () -> agentRunService.createRemoteRetryRun(81L));
+
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
+        verify(sessionTurnAttachmentRepository, never()).insert(any(), any(), any(), anyShort());
+        verify(sessionTurnRepository, never()).save(any(SessionTurnEntity.class));
+    }
+
+    @Test
+    void createRemoteImageRetryFailsClosedWhenOriginBindingIsMissing() {
+        WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        AgentRunEntity source = buildRun(81L, AgentRunStatus.FAILED);
+        source.setSession(session);
+        source.setOriginTurn(originTurn);
+        source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setWorkloadKind(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
+        source.setAttachmentCount(1);
+        source.setAttachmentBytes(1024L);
+        source.setAttachmentManifestSha256("a".repeat(64));
+        when(agentRunRepository.findByIdForUpdate(81L)).thenReturn(Optional.of(source));
+        when(agentRunRepository.findFirstByRetryOfRunIdOrderByCreatedAtAsc(81L))
+                .thenReturn(Optional.empty());
+        when(sessionTurnAttachmentRepository
+                .findByWorkSessionIdAndSessionTurnIdOrderByPositionAsc(12L, 101L))
+                .thenReturn(List.of());
+
+        assertThrows(
+                AgentRunRecoveryConflictException.class,
+                () -> agentRunService.createRemoteRetryRun(81L));
+
+        verify(turnAttachmentSelectionValidator, never()).validateBoundRetry(any(), any());
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
+        verify(sessionTurnAttachmentRepository, never()).insert(any(), any(), any(), anyShort());
+    }
+
+    @Test
     void createRemoteProjectRunPersistsExactImmutableWorkloadIdentity() {
         WorkSessionEntity session = buildSession(12L, 7L, "/workspace/repos/internal/atenea");
         session.setBaseBranch(ProjectCodexIdentity.BRANCH);
@@ -306,6 +478,67 @@ class AgentRunServiceTest {
                 run.getProjectInstructionPath());
         assertEquals(ReviewedInstructionBundleIdentity.ATENEA_PROJECT_SHA256,
                 run.getProjectInstructionSha256());
+    }
+
+    @Test
+    void createRemoteImageRunPersistsV3AttachmentSnapshotBeforeFirstSave() {
+        WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
+        session.setCanonicalSourceCommit(TEST_CANONICAL_COMMIT);
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(Instant.now());
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        originTurn.setActor(SessionTurnActor.OPERATOR);
+        originTurn.setMessageText("image turn");
+        originTurn.setCreatedAt(Instant.now());
+        TurnAttachmentSelectionValidator.ValidatedSelection selection =
+                new TurnAttachmentSelectionValidator.ValidatedSelection(
+                        List.of(
+                                new TurnAttachmentSelectionValidator.ValidatedAttachment(
+                                        UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002"),
+                                        "image/png",
+                                        1024L,
+                                        "a".repeat(64)),
+                                new TurnAttachmentSelectionValidator.ValidatedAttachment(
+                                        UUID.fromString("9aa2c7e5-1fd9-48ec-aa10-03dfdfb8ca7d"),
+                                        "image/webp",
+                                        2048L,
+                                        "b".repeat(64))),
+                        3072L,
+                        "c".repeat(64));
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L,
+                AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> {
+            AgentRunEntity saved = invocation.getArgument(0);
+            assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, saved.getWorkloadKind());
+            assertEquals(2, saved.getAttachmentCount());
+            assertEquals(3072L, saved.getAttachmentBytes());
+            assertEquals("c".repeat(64), saved.getAttachmentManifestSha256());
+            return saved;
+        });
+
+        AgentRunEntity run = agentRunService.createRemoteQueuedRun(
+                session,
+                originTurn,
+                WorkloadClass.NORMAL,
+                selection);
+
+        assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, run.getWorkloadKind());
+        assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, run.getProjectIdentity());
+        assertEquals(2, run.getAttachmentCount());
+        assertEquals(3072L, run.getAttachmentBytes());
+        assertEquals("c".repeat(64), run.getAttachmentManifestSha256());
+        verify(codexExecutionProfileSnapshotService).applyCurrentProfile(run);
     }
 
     @Test

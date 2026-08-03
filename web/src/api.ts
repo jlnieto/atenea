@@ -18,6 +18,7 @@ import {
   CoreCommandResponse,
   CoreCommandSummary,
   CoreScope,
+  CreateWorkSessionTurnRequest,
   ManagedHost,
   MobileApiCostsOverview,
   MobileProjectOverview,
@@ -32,7 +33,9 @@ import {
   ResolveMobileWorkSessionResult,
   SessionDeliverable,
   SessionDeliverablesView,
+  UploadWorkSessionAttachmentRequest,
   WorkSessionAttachment,
+  WorkSessionAttachmentCapability,
   WorkSessionPreview
 } from "./types";
 
@@ -51,6 +54,10 @@ type WorkSessionConversationEnvelope = {
   recentTurns: MobileWorkSessionConversation["recentTurns"];
   recentTurnLimit: number;
   historyTruncated: boolean;
+};
+
+type CreateWorkSessionTurnEnvelope = {
+  view: WorkSessionConversationEnvelope;
 };
 
 function unwrapWorkSessionConversation(
@@ -167,12 +174,16 @@ export class AteneaApi {
     return unwrapWorkSessionConversation(response);
   }
 
-  async createWorkSessionTurn(sessionId: number, message: string) {
-    const response = await this.post<WorkSessionConversationEnvelope>(
+  async createWorkSessionTurn(sessionId: number, request: CreateWorkSessionTurnRequest) {
+    const response = await this.post<CreateWorkSessionTurnEnvelope>(
       `/api/mobile/sessions/${sessionId}/turns`,
-      { message }
+      {
+        message: request.message,
+        clientRequestId: request.clientRequestId,
+        attachmentIds: [...request.attachmentIds]
+      }
     );
-    return unwrapWorkSessionConversation(response);
+    return unwrapWorkSessionConversation(response.view);
   }
 
   codexCatalog() {
@@ -347,15 +358,21 @@ export class AteneaApi {
     );
   }
 
+  workSessionAttachmentCapability(sessionId: number) {
+    return this.get<WorkSessionAttachmentCapability>(
+      `/api/mobile/sessions/${sessionId}/attachments/capability`
+    );
+  }
+
   workSessionPreview(sessionId: number) {
     return this.get<WorkSessionPreview>(`/api/mobile/sessions/${sessionId}/preview`);
   }
 
-  async uploadWorkSessionAttachment(sessionId: number, file: File) {
+  async uploadWorkSessionAttachment(sessionId: number, request: UploadWorkSessionAttachmentRequest) {
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", request.file);
     form.append("source", "OPERATOR_UPLOAD");
-    form.append("kind", file.type.startsWith("image/") ? "IMAGE" : "FILE");
+    form.append("kind", request.file.type.startsWith("image/") ? "IMAGE" : "FILE");
     form.append("retentionClass", "SESSION");
     return this.request<WorkSessionAttachment>(
       `/api/mobile/sessions/${sessionId}/attachments`,
@@ -364,7 +381,7 @@ export class AteneaApi {
         body: form,
         authenticated: true,
         jsonBody: false,
-        headers: { "Idempotency-Key": crypto.randomUUID() }
+        headers: { "Idempotency-Key": request.idempotencyKey }
       }
     );
   }

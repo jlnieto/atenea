@@ -7,6 +7,8 @@ import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
+import com.atenea.persistence.worksession.SessionTurnAttachmentEntity;
+import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.ExecutionTarget;
@@ -31,6 +33,8 @@ public class AgentRunService {
     private final WorkSessionRepository workSessionRepository;
     private final AgentRunRepository agentRunRepository;
     private final SessionTurnRepository sessionTurnRepository;
+    private final SessionTurnAttachmentRepository sessionTurnAttachmentRepository;
+    private final TurnAttachmentSelectionValidator turnAttachmentSelectionValidator;
     private final AgentRunProgressService agentRunProgressService;
     private final MobilePushDispatchService mobilePushDispatchService;
     private final WorkSessionAcceptanceService workSessionAcceptanceService;
@@ -41,6 +45,8 @@ public class AgentRunService {
             WorkSessionRepository workSessionRepository,
             AgentRunRepository agentRunRepository,
             SessionTurnRepository sessionTurnRepository,
+            SessionTurnAttachmentRepository sessionTurnAttachmentRepository,
+            TurnAttachmentSelectionValidator turnAttachmentSelectionValidator,
             AgentRunProgressService agentRunProgressService,
             MobilePushDispatchService mobilePushDispatchService,
             WorkSessionAcceptanceService workSessionAcceptanceService,
@@ -50,6 +56,8 @@ public class AgentRunService {
         this.workSessionRepository = workSessionRepository;
         this.agentRunRepository = agentRunRepository;
         this.sessionTurnRepository = sessionTurnRepository;
+        this.sessionTurnAttachmentRepository = sessionTurnAttachmentRepository;
+        this.turnAttachmentSelectionValidator = turnAttachmentSelectionValidator;
         this.agentRunProgressService = agentRunProgressService;
         this.mobilePushDispatchService = mobilePushDispatchService;
         this.workSessionAcceptanceService = workSessionAcceptanceService;
@@ -77,14 +85,34 @@ public class AgentRunService {
             SessionTurnEntity originTurn,
             WorkloadClass workloadClass
     ) {
-        return createRemoteQueuedRun(session, originTurn, workloadClass, null);
+        return createRemoteQueuedRun(session, originTurn, workloadClass, null, null);
+    }
+
+    @Transactional
+    public AgentRunEntity createRemoteQueuedRun(
+            WorkSessionEntity session,
+            SessionTurnEntity originTurn,
+            WorkloadClass workloadClass,
+            TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection
+    ) {
+        if (attachmentSelection == null || attachmentSelection.attachments().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "An image-bearing AgentRun requires a validated attachment selection");
+        }
+        return createRemoteQueuedRun(
+                session,
+                originTurn,
+                workloadClass,
+                null,
+                attachmentSelection);
     }
 
     private AgentRunEntity createRemoteQueuedRun(
             WorkSessionEntity session,
             SessionTurnEntity originTurn,
             WorkloadClass workloadClass,
-            AgentRunEntity retryOfRun
+            AgentRunEntity retryOfRun,
+            TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection
     ) {
         Instant now = Instant.now();
         lockCodexActivation(session.getSelectedWorkerId());
@@ -109,8 +137,19 @@ public class AgentRunService {
         run.setSelectedWorkerId(session.getSelectedWorkerId());
         run.setWorkspaceIdentity(session.getWorkspaceIdentity());
         run.setRemoteSessionId(session.getRemoteSessionId());
-        run.setWorkloadKind(session.getRemoteWorkloadKind());
+        run.setWorkloadKind(attachmentSelection == null
+                ? session.getRemoteWorkloadKind()
+                : ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
         applyProjectIdentity(run);
+        if (attachmentSelection == null) {
+            run.setAttachmentCount(0);
+            run.setAttachmentBytes(0L);
+            run.setAttachmentManifestSha256(null);
+        } else {
+            run.setAttachmentCount(attachmentSelection.attachments().size());
+            run.setAttachmentBytes(attachmentSelection.totalBytes());
+            run.setAttachmentManifestSha256(attachmentSelection.manifestSha256());
+        }
         run.setDispatchId(UUID.randomUUID());
         run.setRemoteExecutionId(null);
         run.setWorkloadClass(workloadClass);
@@ -155,8 +194,63 @@ public class AgentRunService {
             return existing;
         }
 
+        TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection =
+                retryAttachmentSelection(source);
         return createRemoteQueuedRun(
-                source.getSession(), source.getOriginTurn(), source.getWorkloadClass(), source);
+                source.getSession(),
+                source.getOriginTurn(),
+                source.getWorkloadClass(),
+                source,
+                attachmentSelection);
+    }
+
+    private TurnAttachmentSelectionValidator.ValidatedSelection retryAttachmentSelection(
+            AgentRunEntity source
+    ) {
+        if (!ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(source.getWorkloadKind())) {
+            if (source.getAttachmentCount() != 0
+                    || source.getAttachmentBytes() != 0
+                    || source.getAttachmentManifestSha256() != null) {
+                throw new AgentRunRecoveryConflictException(
+                        "The failed AgentRun attachment snapshot is inconsistent");
+            }
+            return null;
+        }
+        if (source.getOriginTurn() == null
+                || source.getAttachmentCount() < 1
+                || source.getAttachmentCount() > 4
+                || source.getAttachmentBytes() < 1
+                || source.getAttachmentManifestSha256() == null) {
+            throw new AgentRunRecoveryConflictException(
+                    "The failed image AgentRun has no complete immutable attachment snapshot");
+        }
+        List<SessionTurnAttachmentEntity> bindings = sessionTurnAttachmentRepository
+                .findByWorkSessionIdAndSessionTurnIdOrderByPositionAsc(
+                        source.getSession().getId(),
+                        source.getOriginTurn().getId());
+        if (bindings.size() != source.getAttachmentCount()) {
+            throw new AgentRunRecoveryConflictException(
+                    "The failed image AgentRun binding count no longer matches its snapshot");
+        }
+        for (int index = 0; index < bindings.size(); index++) {
+            if (bindings.get(index).getPosition() != index) {
+                throw new AgentRunRecoveryConflictException(
+                        "The failed image AgentRun binding order is incomplete");
+            }
+        }
+        TurnAttachmentSelectionValidator.ValidatedSelection selection =
+                turnAttachmentSelectionValidator.validateBoundRetry(
+                        source.getSession(),
+                        bindings.stream()
+                                .map(SessionTurnAttachmentEntity::getAttachmentId)
+                                .toList());
+        if (selection.attachments().size() != source.getAttachmentCount()
+                || selection.totalBytes() != source.getAttachmentBytes()
+                || !source.getAttachmentManifestSha256().equals(selection.manifestSha256())) {
+            throw new AgentRunRecoveryConflictException(
+                    "The retained image manifest no longer matches the failed AgentRun snapshot");
+        }
+        return selection;
     }
 
     private void lockCodexActivation(String workerId) {
@@ -307,7 +401,8 @@ public class AgentRunService {
             run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
             ReviewedInstructionBundleIdentity.apply(
                     run, BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
-        } else if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
+        } else if ((ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
+                    || ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
                 && ProjectCodexIdentity.hasCanonicalSourceObservation(run.getSession())) {
             run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
             run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);

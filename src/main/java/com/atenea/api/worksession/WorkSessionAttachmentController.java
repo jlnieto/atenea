@@ -1,6 +1,8 @@
 package com.atenea.api.worksession;
 
 import com.atenea.attachments.WorkSessionAttachmentService;
+import com.atenea.attachments.AttachmentCapability;
+import com.atenea.attachments.AttachmentCapabilityService;
 import com.atenea.persistence.worksession.AttachmentKind;
 import com.atenea.persistence.worksession.AttachmentRetentionClass;
 import com.atenea.persistence.worksession.AttachmentSource;
@@ -27,9 +29,19 @@ import org.springframework.web.multipart.MultipartFile;
 public class WorkSessionAttachmentController {
 
     private final WorkSessionAttachmentService attachmentService;
+    private final AttachmentCapabilityService capabilityService;
 
-    public WorkSessionAttachmentController(WorkSessionAttachmentService attachmentService) {
+    public WorkSessionAttachmentController(
+            WorkSessionAttachmentService attachmentService,
+            AttachmentCapabilityService capabilityService
+    ) {
         this.attachmentService = attachmentService;
+        this.capabilityService = capabilityService;
+    }
+
+    @GetMapping("/capability")
+    public AttachmentCapability capability(@PathVariable Long sessionId) {
+        return capabilityService.get(sessionId);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -38,9 +50,9 @@ public class WorkSessionAttachmentController {
             @PathVariable Long sessionId,
             @RequestHeader(name = "Idempotency-Key", required = false) UUID idempotencyKey,
             @RequestParam(name = "agentRunId", required = false) Long agentRunId,
-            @RequestParam(defaultValue = "OPERATOR_UPLOAD") AttachmentSource source,
-            @RequestParam(defaultValue = "FILE") AttachmentKind kind,
-            @RequestParam(defaultValue = "SESSION") AttachmentRetentionClass retentionClass,
+            @RequestParam(required = false) AttachmentSource source,
+            @RequestParam(required = false) AttachmentKind kind,
+            @RequestParam(required = false) AttachmentRetentionClass retentionClass,
             @RequestParam MultipartFile file
     ) {
         return WorkSessionAttachmentResponse.from(attachmentService.upload(

@@ -3,15 +3,21 @@ package com.atenea.service.worksession;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.CreateSessionTurnResponse;
 import com.atenea.api.worksession.SessionTurnResponse;
+import com.atenea.api.worksession.SessionTurnAttachmentResponse;
 import com.atenea.api.worksession.TurnExecutionProfileResponse;
 import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionListener;
+import com.atenea.attachments.AttachmentProperties;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
+import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
+import com.atenea.persistence.worksession.SessionTurnAttachmentEntity;
+import com.atenea.persistence.worksession.WorkSessionAttachmentEntity;
+import com.atenea.persistence.worksession.WorkSessionAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
@@ -19,6 +25,7 @@ import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.remoteworker.RemoteAgentRunCoordinator;
 import com.atenea.remoteworker.CanonicalSourceAdmissionService;
+import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
@@ -27,7 +34,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -41,10 +53,14 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class SessionTurnService {
 
     private static final int MAX_TURN_WINDOW_LIMIT = 100;
+    private static final Set<String> HISTORICAL_IMAGE_CONTENT_TYPES = Set.of(
+            "image/png", "image/jpeg", "image/webp");
     private static final Logger log = LoggerFactory.getLogger(SessionTurnService.class);
 
     private final WorkSessionRepository workSessionRepository;
     private final SessionTurnRepository sessionTurnRepository;
+    private final SessionTurnAttachmentRepository sessionTurnAttachmentRepository;
+    private final WorkSessionAttachmentRepository workSessionAttachmentRepository;
     private final WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator;
     private final GitRepositoryService gitRepositoryService;
     private final AgentRunRepository agentRunRepository;
@@ -54,11 +70,15 @@ public class SessionTurnService {
     private final SessionCodexOrchestrator sessionCodexOrchestrator;
     private final SessionTurnCompletionService sessionTurnCompletionService;
     private final CanonicalSourceAdmissionService canonicalSourceAdmissionService;
+    private final TurnAttachmentSelectionValidator turnAttachmentSelectionValidator;
+    private final TurnAttachmentFingerprintService turnAttachmentFingerprintService;
     private RemoteAgentRunCoordinator remoteAgentRunCoordinator;
 
     public SessionTurnService(
             WorkSessionRepository workSessionRepository,
             SessionTurnRepository sessionTurnRepository,
+            SessionTurnAttachmentRepository sessionTurnAttachmentRepository,
+            WorkSessionAttachmentRepository workSessionAttachmentRepository,
             WorkspaceRepositoryPathValidator workspaceRepositoryPathValidator,
             GitRepositoryService gitRepositoryService,
             AgentRunRepository agentRunRepository,
@@ -67,10 +87,14 @@ public class SessionTurnService {
             AgentRunReconciliationService agentRunReconciliationService,
             SessionCodexOrchestrator sessionCodexOrchestrator,
             SessionTurnCompletionService sessionTurnCompletionService,
-            CanonicalSourceAdmissionService canonicalSourceAdmissionService
+            CanonicalSourceAdmissionService canonicalSourceAdmissionService,
+            TurnAttachmentSelectionValidator turnAttachmentSelectionValidator,
+            TurnAttachmentFingerprintService turnAttachmentFingerprintService
     ) {
         this.workSessionRepository = workSessionRepository;
         this.sessionTurnRepository = sessionTurnRepository;
+        this.sessionTurnAttachmentRepository = sessionTurnAttachmentRepository;
+        this.workSessionAttachmentRepository = workSessionAttachmentRepository;
         this.workspaceRepositoryPathValidator = workspaceRepositoryPathValidator;
         this.gitRepositoryService = gitRepositoryService;
         this.agentRunRepository = agentRunRepository;
@@ -80,6 +104,8 @@ public class SessionTurnService {
         this.sessionCodexOrchestrator = sessionCodexOrchestrator;
         this.sessionTurnCompletionService = sessionTurnCompletionService;
         this.canonicalSourceAdmissionService = canonicalSourceAdmissionService;
+        this.turnAttachmentSelectionValidator = turnAttachmentSelectionValidator;
+        this.turnAttachmentFingerprintService = turnAttachmentFingerprintService;
     }
 
     @Autowired(required = false)
@@ -101,10 +127,9 @@ public class SessionTurnService {
         Integer effectiveLimit = normalizeOptionalLimit(limit);
         if (effectiveLimit == null) {
             Map<Long, TurnExecutionProfileResponse> profiles = profilesByTurnId(sessionId);
-            return sessionTurnRepository.findBySessionIdAndInternalFalseOrderByCreatedAtAsc(sessionId)
-                    .stream()
-                    .map(turn -> toResponse(turn, profiles.get(turn.getId())))
-                    .toList();
+            List<SessionTurnEntity> turns =
+                    sessionTurnRepository.findBySessionIdAndInternalFalseOrderByCreatedAtAsc(sessionId);
+            return toResponses(sessionId, turns, profiles);
         }
 
         List<SessionTurnEntity> newestFirst = beforeTurnId == null
@@ -118,7 +143,7 @@ public class SessionTurnService {
         List<SessionTurnEntity> chronological = new ArrayList<>(newestFirst);
         Collections.reverse(chronological);
         Map<Long, TurnExecutionProfileResponse> profiles = profilesByTurnId(sessionId);
-        return chronological.stream().map(turn -> toResponse(turn, profiles.get(turn.getId()))).toList();
+        return toResponses(sessionId, chronological, profiles);
     }
 
     @Transactional(readOnly = true)
@@ -136,8 +161,19 @@ public class SessionTurnService {
             throw new IllegalArgumentException("Turn message must not be blank");
         }
 
-        WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
+        WorkSessionEntity session = (request.clientRequestId() == null
+                ? workSessionRepository.findWithProjectById(sessionId)
+                : workSessionRepository.findLockedWithProjectById(sessionId))
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+
+        if (request.clientRequestId() != null) {
+            SessionTurnEntity acceptedTurn = sessionTurnRepository
+                    .findBySessionIdAndClientRequestId(sessionId, request.clientRequestId())
+                    .orElse(null);
+            if (acceptedTurn != null) {
+                return replayAcceptedImageTurn(session, acceptedTurn, request, message);
+            }
+        }
 
         if (session.getStatus() != WorkSessionStatus.OPEN) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
@@ -151,18 +187,60 @@ public class SessionTurnService {
             throw new WorkSessionAlreadyRunningException(sessionId);
         }
 
+        TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection = null;
+        String requestFingerprintSha256 = null;
+        if (!request.attachmentIds().isEmpty()) {
+            attachmentSelection = turnAttachmentSelectionValidator.validate(
+                    session,
+                    request.attachmentIds());
+            requestFingerprintSha256 = turnAttachmentFingerprintService.requestFingerprintSha256(
+                    message,
+                    attachmentSelection.attachments().stream()
+                            .map(attachment -> new TurnAttachmentFingerprintService.AttachmentFingerprintInput(
+                                    attachment.id(),
+                                    attachment.contentType(),
+                                    attachment.sizeBytes(),
+                                    attachment.sha256()))
+                            .toList());
+        }
+
         Instant now = Instant.now();
-        SessionTurnEntity operatorTurn = createVisibleTurn(session, SessionTurnActor.OPERATOR, message, now);
+        SessionTurnEntity operatorTurn = createVisibleTurn(
+                session,
+                SessionTurnActor.OPERATOR,
+                message,
+                now,
+                attachmentSelection == null ? null : request.clientRequestId(),
+                requestFingerprintSha256);
         touchSession(session, now);
 
         if (session.getExecutionTarget() == ExecutionTarget.REMOTE) {
             if (remoteAgentRunCoordinator == null) {
                 throw new WorkSessionOperationBlockedException("Remote AgentRun coordinator is unavailable");
             }
-            AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, operatorTurn, WorkloadClass.NORMAL);
+            AgentRunEntity run = attachmentSelection == null
+                    ? agentRunService.createRemoteQueuedRun(
+                            session,
+                            operatorTurn,
+                            WorkloadClass.NORMAL)
+                    : agentRunService.createRemoteQueuedRun(
+                            session,
+                            operatorTurn,
+                            WorkloadClass.NORMAL,
+                            attachmentSelection);
+            if (attachmentSelection != null) {
+                insertAttachmentBindings(sessionId, operatorTurn.getId(), attachmentSelection);
+            }
             registerRemoteDispatch(run.getId());
+            List<SessionTurnAttachmentResponse> responseAttachments = attachmentSelection == null
+                    ? List.of()
+                    : attachmentResponses(sessionId, List.of(operatorTurn))
+                            .getOrDefault(operatorTurn.getId(), List.of());
             return new CreateSessionTurnResponse(
-                    toResponse(operatorTurn, executionProfile(run)),
+                    toResponse(
+                            operatorTurn,
+                            executionProfile(run),
+                            responseAttachments),
                     agentRunService.toResponse(run),
                     null);
         }
@@ -291,13 +369,107 @@ public class SessionTurnService {
     }
 
     private SessionTurnResponse toResponse(SessionTurnEntity turn, TurnExecutionProfileResponse profile) {
+        return toResponse(turn, profile, List.of());
+    }
+
+    private SessionTurnResponse toResponse(
+            SessionTurnEntity turn,
+            TurnExecutionProfileResponse profile,
+            List<SessionTurnAttachmentResponse> attachments
+    ) {
         return new SessionTurnResponse(
                 turn.getId(),
                 turn.getActor(),
                 turn.getMessageText(),
                 turn.getCreatedAt(),
-                profile
+                profile,
+                attachments
         );
+    }
+
+    private List<SessionTurnResponse> toResponses(
+            Long sessionId,
+            List<SessionTurnEntity> turns,
+            Map<Long, TurnExecutionProfileResponse> profiles
+    ) {
+        Map<Long, List<SessionTurnAttachmentResponse>> attachments =
+                attachmentResponses(sessionId, turns);
+        return turns.stream()
+                .map(turn -> toResponse(
+                        turn,
+                        profiles.get(turn.getId()),
+                        attachments.getOrDefault(turn.getId(), List.of())))
+                .toList();
+    }
+
+    private Map<Long, List<SessionTurnAttachmentResponse>> attachmentResponses(
+            Long sessionId,
+            List<SessionTurnEntity> turns
+    ) {
+        if (turns.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> turnIds = turns.stream().map(SessionTurnEntity::getId).toList();
+        List<SessionTurnAttachmentEntity> bindings = sessionTurnAttachmentRepository
+                .findByWorkSessionIdAndSessionTurnIdInOrderBySessionTurnIdAscPositionAsc(
+                        sessionId,
+                        turnIds);
+        if (bindings.isEmpty()) {
+            return Map.of();
+        }
+
+        Set<UUID> attachmentIds = bindings.stream()
+                .map(SessionTurnAttachmentEntity::getAttachmentId)
+                .collect(Collectors.toSet());
+        Map<UUID, WorkSessionAttachmentEntity> indexed = workSessionAttachmentRepository
+                .findAllById(attachmentIds)
+                .stream()
+                .collect(Collectors.toMap(WorkSessionAttachmentEntity::getId, Function.identity()));
+        if (indexed.size() != attachmentIds.size()) {
+            throw historicalAttachmentConflict();
+        }
+
+        Map<Long, List<SessionTurnAttachmentResponse>> result = new LinkedHashMap<>();
+        for (SessionTurnAttachmentEntity binding : bindings) {
+            List<SessionTurnAttachmentResponse> projected = result.computeIfAbsent(
+                    binding.getSessionTurnId(),
+                    ignored -> new ArrayList<>());
+            if (binding.getPosition() != projected.size() || projected.size() >= 4) {
+                throw historicalAttachmentConflict();
+            }
+            WorkSessionAttachmentEntity attachment = indexed.get(binding.getAttachmentId());
+            long projectedBytes = projected.stream()
+                    .mapToLong(SessionTurnAttachmentResponse::sizeBytes)
+                    .sum();
+            if (attachment == null
+                    || attachment.getKind() != com.atenea.persistence.worksession.AttachmentKind.IMAGE
+                    || !HISTORICAL_IMAGE_CONTENT_TYPES.contains(attachment.getContentType())
+                    || attachment.getSizeBytes() <= 0
+                    || attachment.getSizeBytes() > WorkSessionAttachmentMetadataService.DEFAULT_MAX_FILE_BYTES
+                    || projectedBytes > AttachmentProperties.DEFAULT_MAX_ATTACHMENT_BYTES_PER_TURN
+                            - attachment.getSizeBytes()
+                    || attachment.getSha256() == null
+                    || !attachment.getSha256().matches("[0-9a-f]{64}")) {
+                throw historicalAttachmentConflict();
+            }
+            projected.add(new SessionTurnAttachmentResponse(
+                    attachment.getId(),
+                    binding.getPosition(),
+                    attachment.getOriginalFilename(),
+                    attachment.getContentType(),
+                    attachment.getSizeBytes(),
+                    attachment.getSha256(),
+                    "/api/sessions/" + sessionId + "/attachments/"
+                            + attachment.getId() + "/content"));
+        }
+        return result.entrySet().stream().collect(Collectors.toUnmodifiableMap(
+                Map.Entry::getKey,
+                entry -> List.copyOf(entry.getValue())));
+    }
+
+    private AttachmentOwnershipException historicalAttachmentConflict() {
+        return new AttachmentOwnershipException(
+                "Los adjuntos históricos no conservan un binding de imagen completo y verificable.");
     }
 
     private Map<Long, TurnExecutionProfileResponse> profilesByTurnId(Long sessionId) {
@@ -339,15 +511,124 @@ public class SessionTurnService {
             WorkSessionEntity session,
             SessionTurnActor actor,
             String messageText,
-            Instant createdAt
+            Instant createdAt,
+            java.util.UUID clientRequestId,
+            String requestFingerprintSha256
     ) {
         SessionTurnEntity turn = new SessionTurnEntity();
         turn.setSession(session);
         turn.setActor(actor);
         turn.setMessageText(messageText);
         turn.setInternal(false);
+        turn.setClientRequestId(clientRequestId);
+        turn.setRequestFingerprintSha256(requestFingerprintSha256);
         turn.setCreatedAt(createdAt);
         return sessionTurnRepository.save(turn);
+    }
+
+    private void insertAttachmentBindings(
+            Long sessionId,
+            Long turnId,
+            TurnAttachmentSelectionValidator.ValidatedSelection selection
+    ) {
+        for (int index = 0; index < selection.attachments().size(); index++) {
+            int inserted = sessionTurnAttachmentRepository.insert(
+                    sessionId,
+                    turnId,
+                    selection.attachments().get(index).id(),
+                    (short) index);
+            if (inserted != 1) {
+                throw new AttachmentConflictException(
+                        "No se pudo confirmar el binding inmutable de todas las imágenes.");
+            }
+        }
+    }
+
+    private CreateSessionTurnResponse replayAcceptedImageTurn(
+            WorkSessionEntity session,
+            SessionTurnEntity acceptedTurn,
+            CreateSessionTurnRequest request,
+            String message
+    ) {
+        if (acceptedTurn.getRequestFingerprintSha256() == null) {
+            throw conflictingImageReplay();
+        }
+
+        List<SessionTurnAttachmentEntity> bindings = sessionTurnAttachmentRepository
+                .findByWorkSessionIdAndSessionTurnIdOrderByPositionAsc(
+                        session.getId(),
+                        acceptedTurn.getId());
+        for (int index = 0; index < bindings.size(); index++) {
+            if (bindings.get(index).getPosition() != index) {
+                throw conflictingImageReplay();
+            }
+        }
+        List<java.util.UUID> acceptedIds = bindings.stream()
+                .map(SessionTurnAttachmentEntity::getAttachmentId)
+                .toList();
+        if (acceptedIds.isEmpty() || !acceptedIds.equals(request.attachmentIds())) {
+            throw conflictingImageReplay();
+        }
+
+        List<TurnAttachmentFingerprintService.AttachmentFingerprintInput> fingerprintInputs =
+                acceptedIds.stream()
+                        .map(attachmentId -> replayFingerprintInput(session.getId(), attachmentId))
+                        .toList();
+        String manifestSha256;
+        String requestFingerprintSha256;
+        try {
+            manifestSha256 = turnAttachmentFingerprintService
+                    .attachmentManifestSha256(fingerprintInputs);
+            requestFingerprintSha256 = turnAttachmentFingerprintService
+                    .requestFingerprintSha256(message, fingerprintInputs);
+        } catch (IllegalArgumentException exception) {
+            throw conflictingImageReplay();
+        }
+        long attachmentBytes = fingerprintInputs.stream()
+                .mapToLong(TurnAttachmentFingerprintService.AttachmentFingerprintInput::sizeBytes)
+                .sum();
+
+        AgentRunEntity acceptedRun = agentRunRepository
+                .findFirstBySessionIdAndOriginTurnIdOrderByCreatedAtAsc(
+                        session.getId(),
+                        acceptedTurn.getId())
+                .orElseThrow(this::conflictingImageReplay);
+        if (!ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(acceptedRun.getWorkloadKind())
+                || acceptedRun.getAttachmentCount() != acceptedIds.size()
+                || acceptedRun.getAttachmentBytes() != attachmentBytes
+                || !manifestSha256.equals(acceptedRun.getAttachmentManifestSha256())
+                || !requestFingerprintSha256.equals(acceptedTurn.getRequestFingerprintSha256())) {
+            throw conflictingImageReplay();
+        }
+
+        return new CreateSessionTurnResponse(
+                toResponse(
+                        acceptedTurn,
+                        executionProfile(acceptedRun),
+                        attachmentResponses(session.getId(), List.of(acceptedTurn))
+                                .getOrDefault(acceptedTurn.getId(), List.of())),
+                agentRunService.toResponse(acceptedRun),
+                null);
+    }
+
+    private TurnAttachmentFingerprintService.AttachmentFingerprintInput replayFingerprintInput(
+            Long sessionId,
+            java.util.UUID attachmentId
+    ) {
+        WorkSessionAttachmentEntity attachment = workSessionAttachmentRepository
+                .findByIdAndWorkSessionId(attachmentId, sessionId)
+                .orElseThrow(this::conflictingImageReplay);
+        return new TurnAttachmentFingerprintService.AttachmentFingerprintInput(
+                attachment.getId(),
+                attachment.getContentType(),
+                attachment.getSizeBytes(),
+                attachment.getSha256());
+    }
+
+    private AttachmentConflictException conflictingImageReplay() {
+        return new AttachmentConflictException(
+                "La identidad de esta solicitud ya pertenece a otro contenido; "
+                        + "se conserva intacta la aceptación original.");
     }
 
     private void persistExecutionProgress(

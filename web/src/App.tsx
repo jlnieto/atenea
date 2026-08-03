@@ -19,6 +19,7 @@ import {
   Menu,
   MessageSquare,
   MonitorCheck,
+  Paperclip,
   RefreshCw,
   Search,
   Server,
@@ -28,7 +29,7 @@ import {
   Upload,
   X
 } from "lucide-react";
-import React, { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import React, { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import {
   ApiError,
@@ -63,7 +64,9 @@ import {
   SessionDeliverable,
   SessionDeliverableSummary,
   SessionDeliverablesView,
+  SessionTurnAttachment,
   WorkSessionAttachment,
+  WorkSessionAttachmentCapability,
   WorkSessionPreview
 } from "./types";
 
@@ -838,12 +841,26 @@ function PreviewPanel({
   );
 }
 
+type PendingImageStatus = "UPLOADING" | "READY" | "ERROR";
+
+interface PendingImage {
+  localId: string;
+  filename: string;
+  sizeBytes: number;
+  previewUrl: string;
+  status: PendingImageStatus;
+  attachment?: WorkSessionAttachment;
+  error?: string;
+}
+
 function ConversationScreen({ sessionId, projectId }: { sessionId: number; projectId?: number }) {
   const [conversation, setConversation] = useState<MobileWorkSessionConversation | null>(null);
-  const [attachments, setAttachments] = useState<WorkSessionAttachment[]>([]);
+  const [attachmentCapability, setAttachmentCapability] = useState<WorkSessionAttachmentCapability | null>(null);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [turnRequestId, setTurnRequestId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [attachmentsLoading, setAttachmentsLoading] = useState(true);
+  const [attachmentCapabilityLoading, setAttachmentCapabilityLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [attachmentError, setAttachmentError] = useState("");
@@ -860,6 +877,10 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   const [recoveryPending, setRecoveryPending] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
+  const uploadInProgress = useRef(false);
+  const submitInProgress = useRef(false);
+  const turnRequestIdRef = useRef<string | null>(null);
+  const previewUrls = useRef(new Set<string>());
 
   async function loadProfile() {
     setProfileLoading(true);
@@ -884,25 +905,42 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
 
   async function load() {
     setError("");
-    setAttachmentsLoading(true);
-    try {
-      const [nextConversation, nextAttachments] = await Promise.all([
-        api.workSessionConversation(sessionId),
-        api.workSessionAttachments(sessionId)
-      ]);
-      setConversation(nextConversation);
-      setAttachments(nextAttachments);
-      await loadProfile();
-    } catch (loadError) {
-      setError(errorMessage(loadError));
-    } finally {
-      setAttachmentsLoading(false);
+    setAttachmentError("");
+    setAttachmentCapabilityLoading(true);
+    const [conversationResult, capabilityResult] = await Promise.allSettled([
+      api.workSessionConversation(sessionId),
+      api.workSessionAttachmentCapability(sessionId)
+    ]);
+    if (conversationResult.status === "fulfilled") {
+      setConversation(conversationResult.value);
+    } else {
+      setError(errorMessage(conversationResult.reason));
     }
+    if (capabilityResult.status === "fulfilled") {
+      setAttachmentCapability(capabilityResult.value);
+    } else {
+      setAttachmentCapability(null);
+      setAttachmentError("No se pudo comprobar si esta sesión admite imágenes.");
+    }
+    setAttachmentCapabilityLoading(false);
+    await loadProfile();
   }
 
   useEffect(() => {
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
+    setPendingImages([]);
+    setTurnRequestId(null);
+    turnRequestIdRef.current = null;
+    uploadInProgress.current = false;
+    submitInProgress.current = false;
     load();
   }, [sessionId]);
+
+  useEffect(() => () => {
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
+  }, []);
 
   useEffect(() => {
     const runId = conversation?.latestRun?.id;
@@ -941,20 +979,59 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!message.trim()) {
+    const submittedMessage = message.trim();
+    const readyImages = pendingImages.filter((image) => image.status === "READY" && image.attachment);
+    const attachmentIds = readyImages.map((image) => image.attachment!.id);
+    if (!submittedMessage || submitInProgress.current || pendingImages.some((image) => image.status !== "READY")) {
       return;
     }
+    const requestId = turnRequestIdRef.current || crypto.randomUUID();
+    turnRequestIdRef.current = requestId;
+    setTurnRequestId(requestId);
+    submitInProgress.current = true;
     setLoading(true);
     setError("");
     try {
-      const response = await api.createWorkSessionTurn(sessionId, message.trim());
+      const response = await api.createWorkSessionTurn(sessionId, {
+        message: submittedMessage,
+        clientRequestId: requestId,
+        attachmentIds
+      });
+      const acceptedTurn = [...response.recentTurns].reverse().find((turn) => turn.actor === "OPERATOR");
+      const acceptedIds = acceptedTurn?.attachments.map((attachment) => attachment.id) || [];
+      if (!acceptedTurn
+          || acceptedTurn.messageText !== submittedMessage
+          || acceptedIds.length !== attachmentIds.length
+          || acceptedIds.some((id, index) => id !== attachmentIds[index])) {
+        throw new Error("Atenea no confirmó todavía el turno enviado. Reintenta sin cambiar el mensaje ni las imágenes.");
+      }
       setConversation(response);
       setMessage("");
+      pendingImages.forEach((image) => {
+        URL.revokeObjectURL(image.previewUrl);
+        previewUrls.current.delete(image.previewUrl);
+      });
+      setPendingImages([]);
+      turnRequestIdRef.current = null;
+      setTurnRequestId(null);
     } catch (submitError) {
       setError(errorMessage(submitError));
     } finally {
+      submitInProgress.current = false;
       setLoading(false);
     }
+  }
+
+  function invalidateTurnRequest() {
+    turnRequestIdRef.current = null;
+    setTurnRequestId(null);
+  }
+
+  function changeMessage(value: string) {
+    if (value !== message && !loading) {
+      invalidateTurnRequest();
+    }
+    setMessage(value);
   }
 
   async function applyProfile() {
@@ -1012,26 +1089,114 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     }
   }
 
-  async function uploadAttachment(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) {
+  async function uploadPendingImages(files: File[]) {
+    if (!files.length || uploadInProgress.current || submitInProgress.current) {
       return;
     }
+    if (attachmentCapability?.state !== "READY") {
+      setAttachmentError("Las imágenes no están disponibles para esta sesión.");
+      return;
+    }
+    uploadInProgress.current = true;
+    invalidateTurnRequest();
     setUploading(true);
     setAttachmentError("");
+    let nextImages = [...pendingImages];
     try {
-      await api.uploadWorkSessionAttachment(sessionId, file);
-      setAttachments(await api.workSessionAttachments(sessionId));
+      for (const file of files) {
+        if (nextImages.length >= attachmentCapability.maxAttachmentsPerTurn) {
+          const imageLabel = attachmentCapability.maxAttachmentsPerTurn === 1 ? "imagen" : "imágenes";
+          throw new Error(`Puedes seleccionar hasta ${attachmentCapability.maxAttachmentsPerTurn} ${imageLabel} por mensaje.`);
+        }
+        const previewUrl = URL.createObjectURL(file);
+        previewUrls.current.add(previewUrl);
+        const pending: PendingImage = {
+          localId: crypto.randomUUID(),
+          filename: file.name || "imagen",
+          sizeBytes: file.size,
+          previewUrl,
+          status: "UPLOADING"
+        };
+        nextImages = [...nextImages, pending];
+        setPendingImages(nextImages);
+        try {
+          if (!attachmentCapability.acceptedContentTypes.includes(file.type)) {
+            throw new Error("Usa una imagen PNG, JPEG o WebP.");
+          }
+          if (file.size > attachmentCapability.maxFileBytes) {
+            throw new Error(`La imagen supera el máximo de ${formatBytes(attachmentCapability.maxFileBytes)}.`);
+          }
+          const selectedBytes = nextImages
+            .filter((image) => image.localId !== pending.localId && image.status === "READY")
+            .reduce((total, image) => total + image.sizeBytes, 0);
+          if (selectedBytes + file.size > attachmentCapability.maxAttachmentBytesPerTurn) {
+            throw new Error(`Las imágenes del mensaje superan ${formatBytes(attachmentCapability.maxAttachmentBytesPerTurn)}.`);
+          }
+          if (file.size > attachmentCapability.remainingSessionBytes) {
+            throw new Error("La sesión no tiene cuota suficiente para esta imagen.");
+          }
+          const attachment = await api.uploadWorkSessionAttachment(sessionId, {
+            file,
+            idempotencyKey: crypto.randomUUID()
+          });
+          nextImages = nextImages.map((image) => image.localId === pending.localId
+            ? { ...image, status: "READY", attachment }
+            : image);
+          setPendingImages(nextImages);
+        } catch (uploadError) {
+          const message = errorMessage(uploadError);
+          nextImages = nextImages.map((image) => image.localId === pending.localId
+            ? { ...image, status: "ERROR", error: message }
+            : image);
+          setPendingImages(nextImages);
+          setAttachmentError(message);
+        }
+      }
     } catch (uploadError) {
       setAttachmentError(errorMessage(uploadError));
     } finally {
+      uploadInProgress.current = false;
       setUploading(false);
     }
   }
 
-  async function downloadAttachment(attachment: WorkSessionAttachment) {
+  function pickPendingImages(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    void uploadPendingImages(files);
+  }
+
+  function pastePendingImages(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (!files.length) {
+      return;
+    }
+    event.preventDefault();
+    if (uploadInProgress.current) {
+      setAttachmentError("Espera a que termine la subida actual y vuelve a pegar la imagen.");
+      return;
+    }
+    void uploadPendingImages(files);
+  }
+
+  function removePendingImage(localId: string) {
+    invalidateTurnRequest();
+    setPendingImages((current) => {
+      const removed = current.find((image) => image.localId === localId);
+      if (removed) {
+        URL.revokeObjectURL(removed.previewUrl);
+        previewUrls.current.delete(removed.previewUrl);
+      }
+      return current.filter((image) => image.localId !== localId);
+    });
     setAttachmentError("");
+  }
+
+  async function downloadTurnAttachment(attachment: SessionTurnAttachment) {
+    setError("");
     try {
       const blob = await api.downloadWorkSessionAttachment(sessionId, attachment.id);
       const url = URL.createObjectURL(blob);
@@ -1041,7 +1206,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (downloadError) {
-      setAttachmentError(errorMessage(downloadError));
+      setError(`No se pudo descargar la imagen. ${errorMessage(downloadError)}`);
     }
   }
 
@@ -1063,15 +1228,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
           onRecovery={requestRecovery}
         />
       )}
-      <AttachmentPanel
-        attachments={attachments}
-        loading={attachmentsLoading}
-        uploading={uploading}
-        error={attachmentError}
-        onUpload={uploadAttachment}
-        onDownload={downloadAttachment}
-      />
-      <TurnList turns={conversation?.recentTurns || []} />
+      <TurnList turns={conversation?.recentTurns || []} onDownloadAttachment={downloadTurnAttachment} />
       <form className="conversation-composer" onSubmit={submit}>
         {!profileUnavailable && (
           <ExecutionProfileControl
@@ -1088,9 +1245,19 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
             onApply={applyProfile}
           />
         )}
+        <AttachmentComposerState
+          capability={attachmentCapability}
+          loading={attachmentCapabilityLoading}
+          uploading={uploading}
+          disabled={loading}
+          error={attachmentError}
+          selectedCount={pendingImages.filter((image) => image.status === "READY").length}
+          onPick={pickPendingImages}
+        />
+        <PendingImageChips images={pendingImages} locked={loading} onRemove={removePendingImage} />
         <div className="conversation-composer__input">
-          <textarea disabled={!conversation?.canCreateTurn} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={conversation?.canCreateTurn ? "Instrucción para Codex dentro de esta sesión..." : "Espera a que termine la ejecución actual..."} />
-          <Button variant="primary" disabled={loading || !message.trim() || !conversation?.canCreateTurn || profileDirty || Boolean(profileError)}>{loading ? "Enviando" : "Enviar"}</Button>
+          <textarea disabled={!conversation?.canCreateTurn || loading} value={message} onChange={(event) => changeMessage(event.target.value)} onPaste={pastePendingImages} placeholder={conversation?.canCreateTurn ? "Instrucción para Codex dentro de esta sesión..." : "Espera a que termine la ejecución actual..."} />
+          <Button variant="primary" disabled={loading || uploading || pendingImages.some((image) => image.status !== "READY") || !message.trim() || !conversation?.canCreateTurn || profileDirty || Boolean(profileError)}>{loading ? "Enviando" : turnRequestId ? "Reintentar envío" : "Enviar"}</Button>
         </div>
       </form>
     </ConversationLayout>
@@ -1343,68 +1510,121 @@ function ExecutionProfileControl({
   );
 }
 
-function AttachmentPanel({
-  attachments,
+function AttachmentComposerState({
+  capability,
   loading,
   uploading,
+  disabled,
   error,
-  onUpload,
-  onDownload
+  selectedCount,
+  onPick
 }: {
-  attachments: WorkSessionAttachment[];
+  capability: WorkSessionAttachmentCapability | null;
   loading: boolean;
   uploading: boolean;
+  disabled: boolean;
   error: string;
-  onUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onDownload: (attachment: WorkSessionAttachment) => void;
+  selectedCount: number;
+  onPick: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
-  const state = uploading
-    ? "Subiendo"
-    : loading
-      ? "Cargando"
-      : attachments.length
-        ? `${attachments.length} retenido${attachments.length === 1 ? "" : "s"}`
-        : "Sin adjuntos";
+  const ready = capability?.state === "READY";
+  const blockedTitle = (() => {
+    switch (capability?.blockedReason) {
+      case "SESSION_NOT_ELIGIBLE":
+        return "Sesión sin imágenes";
+      case "OWNERSHIP_INVALID":
+        return "Sesión no válida para imágenes";
+      case "SESSION_QUOTA_EXHAUSTED":
+        return "Cuota de imágenes agotada";
+      case "WORKER_UNAVAILABLE":
+        return "Imágenes temporalmente no disponibles";
+      case "WORKER_UNSUPPORTED":
+        return "AX42 necesita actualizarse";
+      default:
+        return "Solo texto";
+    }
+  })();
+  const title = loading
+    ? "Comprobando imágenes"
+    : uploading
+      ? "Subiendo imagen"
+    : error
+      ? selectedCount ? "Revisa las imágenes" : "No se pudo añadir la imagen"
+      : selectedCount
+        ? selectedCount === 1 ? "1 imagen lista" : `${selectedCount} imágenes listas`
+      : ready
+        ? "Imágenes disponibles"
+        : blockedTitle;
+  const detail = loading
+    ? "Puedes seguir preparando el mensaje."
+    : uploading
+      ? "La imagen se seleccionará al terminar."
+    : error
+      ? selectedCount
+        ? `${error} Quita una imagen o elige otra.`
+        : `${error} Elige otra imagen o continúa con texto.`
+      : selectedCount
+        ? "Seleccionadas para el próximo mensaje."
+      : capability
+        ? `${capability.message} ${capability.nextAction}`
+        : "Continúa con texto.";
+  const visualState = loading ? "loading" : error ? "error" : ready ? "ready" : "blocked";
   return (
-    <section className="attachment-panel" aria-label="Adjuntos de la WorkSession">
-      <div className="attachment-panel__header">
-        <div>
-          <span className="eyebrow">WorkSession actual</span>
-          <h2>Adjuntos</h2>
-          <p>{state} · máximo 16 MiB · PNG, JPEG, WebP, texto, JSON, PDF o ZIP</p>
-        </div>
-        <label className={`button button--primary ${uploading ? "is-disabled" : ""}`}>
-          <Upload />
-          <span>{uploading ? "Subiendo…" : "Adjuntar archivo"}</span>
+    <section
+      className={`attachment-composer-state attachment-composer-state--${visualState}`}
+      aria-label="Estado de imágenes del mensaje"
+      aria-live="polite"
+    >
+      <span className="attachment-composer-state__indicator" aria-hidden="true" />
+      <div className="attachment-composer-state__copy">
+        <strong>{title}</strong>
+        <span>{detail}</span>
+      </div>
+      {ready && (
+        <label className={`attachment-composer-action ${uploading || disabled ? "is-disabled" : ""}`}>
+          <Paperclip />
+          <span>{uploading ? "Subiendo…" : "Añadir imagen"}</span>
           <input
-            aria-label="Seleccionar adjunto"
+            aria-label="Seleccionar imágenes"
             type="file"
-            accept=".png,.jpg,.jpeg,.webp,.txt,.json,.pdf,.zip,image/png,image/jpeg,image/webp,text/plain,application/json,application/pdf,application/zip"
-            disabled={uploading}
-            onChange={onUpload}
+            accept={capability.acceptedContentTypes.join(",")}
+            multiple
+            disabled={uploading || disabled}
+            onChange={onPick}
           />
         </label>
-      </div>
-      {error && <InlineError>{error}</InlineError>}
-      {!loading && attachments.length > 0 && (
-        <div className="attachment-list">
-          {attachments.map((attachment) => (
-            <button
-              className="attachment-item"
-              type="button"
-              onClick={() => onDownload(attachment)}
-              key={attachment.id}
-            >
-              <span>
-                <strong>{attachment.originalFilename}</strong>
-                <small>{attachment.kind} · {formatBytes(attachment.sizeBytes)}</small>
-              </span>
-              <em>Descargar</em>
-            </button>
-          ))}
-        </div>
       )}
     </section>
+  );
+}
+
+function PendingImageChips({ images, locked, onRemove }: { images: PendingImage[]; locked: boolean; onRemove: (localId: string) => void }) {
+  if (!images.length) {
+    return null;
+  }
+  return (
+    <ul className="pending-image-list" aria-label="Imágenes seleccionadas">
+      {images.map((image) => (
+        <li className={`pending-image pending-image--${image.status.toLowerCase()}`} key={image.localId}>
+          <img src={image.previewUrl} alt="" />
+          <span className="pending-image__copy">
+            <strong title={image.filename}>{image.filename}</strong>
+            <small>
+              {formatBytes(image.sizeBytes)} · {image.status === "UPLOADING" ? "Subiendo" : image.status === "READY" ? "Lista" : "Error"}
+            </small>
+            {image.error && <em title={image.error}>{image.error}</em>}
+          </span>
+          <button
+            type="button"
+            aria-label={`Quitar ${image.filename}`}
+            disabled={locked || image.status === "UPLOADING"}
+            onClick={() => onRemove(image.localId)}
+          >
+            <X />
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -2195,7 +2415,13 @@ function ConversationLayout({ title, subtitle, back, refresh, children }: { titl
   );
 }
 
-function TurnList({ turns }: { turns: MobileConversationTurn[] }) {
+function TurnList({
+  turns,
+  onDownloadAttachment
+}: {
+  turns: MobileConversationTurn[];
+  onDownloadAttachment?: (attachment: SessionTurnAttachment) => void;
+}) {
   if (!turns.length) {
     return <EmptyState title="Sin conversación visible" detail="Envía una instrucción para iniciar el historial." />;
   }
@@ -2215,6 +2441,22 @@ function TurnList({ turns }: { turns: MobileConversationTurn[] }) {
             </span>
           </div>
           <Markdown content={turn.messageText} />
+          {onDownloadAttachment && (turn.attachments || []).length > 0 && (
+            <ul className="turn-attachment-list" aria-label={`Imágenes del turno ${turn.id}`}>
+              {turn.attachments.map((attachment) => (
+                <li key={attachment.id}>
+                  <button type="button" onClick={() => onDownloadAttachment(attachment)}>
+                    <Paperclip />
+                    <span>
+                      <strong title={attachment.originalFilename}>{attachment.originalFilename}</strong>
+                      <small>{formatBytes(attachment.sizeBytes)} · Imagen {attachment.position + 1}</small>
+                    </span>
+                    <em>Descargar</em>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </li>
       ))}
     </ol>

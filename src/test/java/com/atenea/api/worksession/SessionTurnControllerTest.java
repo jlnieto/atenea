@@ -1,5 +1,8 @@
 package com.atenea.api.worksession;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -11,6 +14,9 @@ import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.worksession.SessionTurnService;
+import com.atenea.service.worksession.AttachmentConflictException;
+import com.atenea.service.worksession.AttachmentLimitException;
+import com.atenea.service.worksession.AttachmentOwnershipException;
 import com.atenea.service.worksession.WorkSessionService;
 import com.atenea.service.worksession.WorkSessionAlreadyRunningException;
 import com.atenea.service.worksession.WorkSessionNotOpenException;
@@ -18,8 +24,12 @@ import com.atenea.service.worksession.WorkSessionNotFoundException;
 import com.atenea.service.worksession.WorkSessionTurnExecutionFailedException;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -28,6 +38,7 @@ import org.springframework.http.converter.json.MappingJackson2HttpMessageConvert
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import java.util.stream.Stream;
 
 @ExtendWith(MockitoExtension.class)
 class SessionTurnControllerTest {
@@ -70,6 +81,42 @@ class SessionTurnControllerTest {
                 .andExpect(jsonPath("$[0].messageText").value("Explain the current implementation"))
                 .andExpect(jsonPath("$[1].id").value(102))
                 .andExpect(jsonPath("$[1].actor").value("CODEX"));
+    }
+
+    @Test
+    void getTurnsSerializesOnlyPublicBoundImageMetadata() throws Exception {
+        UUID attachmentId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        when(sessionTurnService.getTurns(12L, null, null)).thenReturn(List.of(
+                new SessionTurnResponse(
+                        101L,
+                        SessionTurnActor.OPERATOR,
+                        "Inspect this image",
+                        Instant.parse("2026-03-25T10:05:00Z"),
+                        null,
+                        List.of(new SessionTurnAttachmentResponse(
+                                attachmentId,
+                                (short) 0,
+                                "screen.png",
+                                "image/png",
+                                1024L,
+                                "a".repeat(64),
+                                "/api/sessions/12/attachments/" + attachmentId + "/content")))));
+
+        mockMvc.perform(get("/api/sessions/12/turns"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].attachments.length()").value(1))
+                .andExpect(jsonPath("$[0].attachments[0].id").value(attachmentId.toString()))
+                .andExpect(jsonPath("$[0].attachments[0].position").value(0))
+                .andExpect(jsonPath("$[0].attachments[0].originalFilename").value("screen.png"))
+                .andExpect(jsonPath("$[0].attachments[0].contentType").value("image/png"))
+                .andExpect(jsonPath("$[0].attachments[0].sizeBytes").value(1024))
+                .andExpect(jsonPath("$[0].attachments[0].downloadPath").value(
+                        "/api/sessions/12/attachments/" + attachmentId + "/content"))
+                .andExpect(jsonPath("$[0].attachments[0].workerId").doesNotExist())
+                .andExpect(jsonPath("$[0].attachments[0].storageIdentity").doesNotExist())
+                .andExpect(jsonPath("$[0].attachments[0].workspaceIdentity").doesNotExist())
+                .andExpect(jsonPath("$[0].attachments[0].remoteSessionId").doesNotExist())
+                .andExpect(jsonPath("$[0].attachments[0].content").doesNotExist());
     }
 
     @Test
@@ -155,6 +202,110 @@ class SessionTurnControllerTest {
                 .andExpect(jsonPath("$.run.id").value(55))
                 .andExpect(jsonPath("$.run.externalTurnId").value("turn-1"))
                 .andExpect(jsonPath("$.codexTurn.actor").value("CODEX"));
+
+        verify(sessionTurnService).createTurn(
+                12L,
+                new CreateSessionTurnRequest("Inspect the project", null, List.of()));
+    }
+
+    @Test
+    void createTurnPreservesOrderedAttachmentIdsAndClientRequestIdentity() throws Exception {
+        UUID clientRequestId = UUID.fromString("7b35f774-97f2-4a9e-b7db-0f18d59112ba");
+        UUID firstAttachmentId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        UUID secondAttachmentId = UUID.fromString("9aa2c7e5-1fd9-48ec-aa10-03dfdfb8ca7d");
+        when(sessionTurnService.createTurn(
+                org.mockito.ArgumentMatchers.eq(12L),
+                any(CreateSessionTurnRequest.class)))
+                .thenReturn(null);
+
+        mockMvc.perform(post("/api/sessions/12/turns")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "Inspect both images",
+                                  "clientRequestId": "%s",
+                                  "attachmentIds": ["%s", "%s"]
+                                }
+                                """.formatted(
+                                    clientRequestId,
+                                    firstAttachmentId,
+                                    secondAttachmentId)))
+                .andExpect(status().isCreated());
+
+        verify(sessionTurnService).createTurn(
+                12L,
+                new CreateSessionTurnRequest(
+                        "Inspect both images",
+                        clientRequestId,
+                        List.of(firstAttachmentId, secondAttachmentId)));
+    }
+
+    @Test
+    void createTurnRejectsAttachmentsWithoutClientRequestIdentityBeforeService() throws Exception {
+        UUID attachmentId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+
+        mockMvc.perform(post("/api/sessions/12/turns")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "Inspect this image",
+                                  "attachmentIds": ["%s"]
+                                }
+                                """.formatted(attachmentId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.details[0]").value(
+                        "requestIdentityPresentForAttachments: "
+                                + "clientRequestId is required when attachmentIds are present"));
+
+        verify(sessionTurnService, never()).createTurn(
+                org.mockito.ArgumentMatchers.eq(12L),
+                any(CreateSessionTurnRequest.class));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("closedAttachmentDenials")
+    void createTurnMapsAttachmentDenialsWithoutReturningPrivateDetails(
+            String scenario,
+            RuntimeException denial,
+            int expectedStatus
+    ) throws Exception {
+        UUID attachmentId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        when(sessionTurnService.createTurn(
+                org.mockito.ArgumentMatchers.eq(12L),
+                any(CreateSessionTurnRequest.class))).thenThrow(denial);
+
+        mockMvc.perform(post("/api/sessions/12/turns")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "Inspect selected image",
+                                  "clientRequestId": "7b35f774-97f2-4a9e-b7db-0f18d59112ba",
+                                  "attachmentIds": ["%s"]
+                                }
+                                """.formatted(attachmentId)))
+                .andExpect(status().is(expectedStatus))
+                .andExpect(jsonPath("$.message").value(denial.getMessage()))
+                .andExpect(jsonPath("$.details").isEmpty())
+                .andExpect(jsonPath("$.workerId").doesNotExist())
+                .andExpect(jsonPath("$.storageIdentity").doesNotExist())
+                .andExpect(jsonPath("$.path").doesNotExist());
+    }
+
+    private static Stream<Arguments> closedAttachmentDenials() {
+        return Stream.of(
+                Arguments.of(
+                        "duplicate or conflicting selection",
+                        new AttachmentConflictException("La selección de imágenes entra en conflicto."),
+                        409),
+                Arguments.of(
+                        "expired, non-image, partial or foreign ownership",
+                        new AttachmentOwnershipException("La imagen no tiene ownership verificable."),
+                        409),
+                Arguments.of(
+                        "individual or combined size limit",
+                        new AttachmentLimitException("La selección supera el límite permitido."),
+                        413));
     }
 
     @Test

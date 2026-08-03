@@ -3,15 +3,22 @@ package com.atenea.service.worksession;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.atenea.api.worksession.SessionTurnResponse;
+import com.atenea.api.worksession.SessionTurnAttachmentResponse;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
+import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
+import com.atenea.persistence.worksession.SessionTurnAttachmentEntity;
+import com.atenea.persistence.worksession.AttachmentKind;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.worksession.WorkSessionAttachmentEntity;
+import com.atenea.persistence.worksession.WorkSessionAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
@@ -19,6 +26,8 @@ import com.atenea.service.git.GitRepositoryService;
 import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +43,12 @@ class SessionTurnServiceTest {
 
     @Mock
     private SessionTurnRepository sessionTurnRepository;
+
+    @Mock
+    private SessionTurnAttachmentRepository sessionTurnAttachmentRepository;
+
+    @Mock
+    private WorkSessionAttachmentRepository workSessionAttachmentRepository;
 
     @Mock
     private GitRepositoryService gitRepositoryService;
@@ -56,6 +71,12 @@ class SessionTurnServiceTest {
     @Mock
     private CanonicalSourceAdmissionService canonicalSourceAdmissionService;
 
+    @Mock
+    private TurnAttachmentSelectionValidator turnAttachmentSelectionValidator;
+
+    @Mock
+    private TurnAttachmentFingerprintService turnAttachmentFingerprintService;
+
     private SessionTurnService sessionTurnService;
 
     @BeforeEach
@@ -63,6 +84,8 @@ class SessionTurnServiceTest {
         sessionTurnService = new SessionTurnService(
                 workSessionRepository,
                 sessionTurnRepository,
+                sessionTurnAttachmentRepository,
+                workSessionAttachmentRepository,
                 new WorkspaceRepositoryPathValidator("/workspace/repos"),
                 gitRepositoryService,
                 agentRunRepository,
@@ -71,7 +94,9 @@ class SessionTurnServiceTest {
                 agentRunReconciliationService,
                 sessionCodexOrchestrator,
                 sessionTurnCompletionService,
-                canonicalSourceAdmissionService
+                canonicalSourceAdmissionService,
+                turnAttachmentSelectionValidator,
+                turnAttachmentFingerprintService
         );
     }
 
@@ -89,6 +114,59 @@ class SessionTurnServiceTest {
         assertEquals("First question", turns.get(0).messageText());
         assertEquals(102L, turns.get(1).id());
         assertEquals("First answer", turns.get(1).messageText());
+    }
+
+    @Test
+    void getTurnsProjectsOnlyOrderedPublicAttachmentMetadataOnItsExactTurn() {
+        SessionTurnEntity operatorTurn = buildTurn(
+                101L,
+                SessionTurnActor.OPERATOR,
+                "Inspect both images",
+                false,
+                "2026-03-25T10:05:00Z");
+        SessionTurnEntity codexTurn = buildTurn(
+                102L,
+                SessionTurnActor.CODEX,
+                "Done",
+                false,
+                "2026-03-25T10:06:00Z");
+        UUID firstId = UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
+        UUID secondId = UUID.fromString("9aa2c7e5-1fd9-48ec-aa10-03dfdfb8ca7d");
+        SessionTurnAttachmentEntity firstBinding = binding(101L, firstId, (short) 0);
+        SessionTurnAttachmentEntity secondBinding = binding(101L, secondId, (short) 1);
+        WorkSessionAttachmentEntity first = image(
+                firstId, "screen-one.png", "image/png", 1024L, "a".repeat(64));
+        WorkSessionAttachmentEntity second = image(
+                secondId, "screen-two.webp", "image/webp", 2048L, "b".repeat(64));
+        when(workSessionRepository.existsById(12L)).thenReturn(true);
+        when(sessionTurnRepository.findBySessionIdAndInternalFalseOrderByCreatedAtAsc(12L))
+                .thenReturn(List.of(operatorTurn, codexTurn));
+        when(sessionTurnAttachmentRepository
+                .findByWorkSessionIdAndSessionTurnIdInOrderBySessionTurnIdAscPositionAsc(
+                        12L,
+                        List.of(101L, 102L)))
+                .thenReturn(List.of(firstBinding, secondBinding));
+        when(workSessionAttachmentRepository.findAllById(Set.of(firstId, secondId)))
+                .thenReturn(List.of(second, first));
+
+        List<SessionTurnResponse> turns = sessionTurnService.getTurns(12L);
+
+        assertEquals(2, turns.get(0).attachments().size());
+        assertEquals(List.of(firstId, secondId), turns.get(0).attachments().stream()
+                .map(SessionTurnAttachmentResponse::id)
+                .toList());
+        assertEquals(List.of((short) 0, (short) 1), turns.get(0).attachments().stream()
+                .map(SessionTurnAttachmentResponse::position)
+                .toList());
+        assertEquals(
+                "/api/sessions/12/attachments/" + firstId + "/content",
+                turns.get(0).attachments().get(0).downloadPath());
+        assertEquals(List.of(), turns.get(1).attachments());
+        assertEquals(
+                Set.of("id", "position", "originalFilename", "contentType", "sizeBytes", "sha256", "downloadPath"),
+                java.util.Arrays.stream(SessionTurnAttachmentResponse.class.getRecordComponents())
+                        .map(java.lang.reflect.RecordComponent::getName)
+                        .collect(java.util.stream.Collectors.toSet()));
     }
 
     @Test
@@ -197,5 +275,34 @@ class SessionTurnServiceTest {
         turn.setInternal(internal);
         turn.setCreatedAt(Instant.parse(createdAt));
         return turn;
+    }
+
+    private static SessionTurnAttachmentEntity binding(
+            Long turnId,
+            UUID attachmentId,
+            short position
+    ) {
+        SessionTurnAttachmentEntity binding = mock(SessionTurnAttachmentEntity.class);
+        when(binding.getSessionTurnId()).thenReturn(turnId);
+        when(binding.getAttachmentId()).thenReturn(attachmentId);
+        when(binding.getPosition()).thenReturn(position);
+        return binding;
+    }
+
+    private static WorkSessionAttachmentEntity image(
+            UUID id,
+            String filename,
+            String contentType,
+            long sizeBytes,
+            String sha256
+    ) {
+        WorkSessionAttachmentEntity attachment = new WorkSessionAttachmentEntity();
+        attachment.setId(id);
+        attachment.setKind(AttachmentKind.IMAGE);
+        attachment.setOriginalFilename(filename);
+        attachment.setContentType(contentType);
+        attachment.setSizeBytes(sizeBytes);
+        attachment.setSha256(sha256);
+        return attachment;
     }
 }
