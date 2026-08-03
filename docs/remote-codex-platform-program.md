@@ -9917,3 +9917,30 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-2.2-feature-pr-merge`;
 the SHA-256 of its `SHA256SUMS` is
 `f355fd3f23c523bdae5f441400e2b2dd6752779c08017725cb74dd25a50a47c4`.
+
+Task 2.3 is complete and change progress is `10/22`; task 3.1 is the exact
+resume point. GitHub's comparison from retained feature tip
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` to merged main
+`f3c4e7e6433b9d943a840be9e65932c0d7bfff73` reports ahead by exactly the
+single merge commit, behind by zero, with the feature tip as the exact merge
+base. Both GitHub refs remain present and unchanged.
+
+The canonical checkout, project default and reviewed worker pin deliberately
+remain on the feature tip until the bounded reconciliation in section 4.
+Their Git and ownership state is unchanged. Rootful container identities,
+rootless slot counts `3/0/0/3`, non-closed WorkSessions and terminal AgentRun
+counts match entry fingerprints. Production and preview remain HTTP 200; the
+Beautips administrative and WorkSession resources retain their exact six
+container IDs. The four canonical worker services are active, both backup
+timers are active/enabled and all three RAID arrays remain `[UU]`.
+
+Initial read-only discovery used three plausible but non-canonical service
+unit names and received `inactive`; inventory identified the actual names and
+the exact check proved all four active. Protected selected-field registry and
+named-database queries likewise passed after two bounded read-only invocation
+errors. No repair, restart or mutation was performed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-2.3-feature-nonimpact`;
+the SHA-256 of its `SHA256SUMS` is
+`c5f015712287043d2f705fbf959942fc75331aae55823ec8aac434d5eef3d30d`.

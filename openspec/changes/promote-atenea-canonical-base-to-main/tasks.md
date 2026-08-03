@@ -34,7 +34,7 @@ repair, adoption or deletion.
 - [x] 2.2 Create one GitHub pull request from
   `feature/actualizar-conversacion-en-web` to `main`, verify its exact refs and
   checks, and merge using merge-commit semantics only
-- [ ] 2.3 Prove the feature tip is an ancestor of the new main, preserve the
+- [x] 2.3 Prove the feature tip is an ancestor of the new main, preserve the
   source branch, verify health/non-impact, seal evidence, validate, commit and
   push
 
