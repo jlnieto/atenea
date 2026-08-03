@@ -1,0 +1,92 @@
+## ADDED Requirements
+
+### Requirement: Action-specific pre-admission recovery
+
+A pre-dispatch remote AgentRun failure SHALL persist a stable safe failure code
+and one applicable next action independently from its generic terminal progress
+category. Retry SHALL be offered only when the prior execution is terminal or
+absent and every deterministic admission blocker has been cleared.
+
+#### Scenario: Closed session owns required capacity
+
+- **WHEN** the worker identifies a blocker and Atenea proves it is an exact
+  same-project, same-worker `CLOSED` WorkSession with zero non-terminal runs
+- **THEN** the failed run shows `RECONCILE_REMOTE_CLOSE` and generic retry is
+  unavailable until that close reconciliation succeeds
+
+#### Scenario: Open session owns required capacity
+
+- **WHEN** the exact blocking owner remains open or closing
+- **THEN** the new run remains visibly queued or waiting with cancel available
+  and no ownership is released automatically
+
+#### Scenario: Blocking owner is foreign or ambiguous
+
+- **WHEN** the reported owner cannot be matched exactly to the control-plane
+  worker, project and WorkSession
+- **THEN** the run requires platform-administrator review and neither retry nor
+  cleanup is invoked
+
+#### Scenario: Deterministic blocker was reconciled
+
+- **WHEN** exact closed-session release succeeds and the prior dispatch is
+  proven absent or terminal
+- **THEN** Atenea may offer one explicit safe retry linked to the original
+  failed AgentRun while preserving its turn, profile and attachments
+
+### Requirement: Confirmed legacy remote-close reconciliation
+
+A `PLATFORM_ADMINISTRATOR` SHALL be able to request only the fixed
+`RECONCILE_REMOTE_CLOSE` operation for one selected historical remote
+WorkSession. The operation SHALL require an explicit single-use finite
+confirmation bound to the exact session, worker, project and read-only
+ownership fingerprint. It SHALL never retry a prompt or accept an arbitrary
+resource target.
+
+#### Scenario: Exact legacy owner is confirmed
+
+- **WHEN** the selected session is `CLOSED/UNVERIFIED_LEGACY`, every AgentRun is
+  terminal and the confirmed worker ownership fingerprint still matches
+- **THEN** Atenea invokes the exact workspace-release operation and records its
+  receipt without changing historical session or delivery state
+
+#### Scenario: Confirmation is stale or reused
+
+- **WHEN** ownership changes, the confirmation expires or the same
+  authorization is submitted again with different input
+- **THEN** reconciliation fails before worker mutation and requires a fresh
+  read-only plan
+
+#### Scenario: Routine operator requests legacy release
+
+- **WHEN** an operator without platform-administrator authority invokes the
+  action
+- **THEN** Atenea rejects it and displays the required role without changing
+  the session or worker
+
+### Requirement: Remote-close state-first operator surface
+
+Web and Android SHALL present the same persisted remote-close state, safe
+reason and single primary next action in the first viewport. A deterministic
+ownership or capacity failure MUST NOT appear as worker unavailability, and
+raw infrastructure identities or error payloads MUST NOT be exposed.
+
+#### Scenario: Remote close is reconciling
+
+- **WHEN** a release request may have completed but its receipt is not yet
+  reconciled
+- **THEN** both surfaces show that closing is in progress and offer only wait
+  or same-operation reconciliation
+
+#### Scenario: Closed predecessor blocks a new run
+
+- **WHEN** an exact legacy closed session retains required capacity
+- **THEN** an authorized surface makes `Reconciliar cierre` the primary action
+  and explains that retry will become available only afterwards
+
+#### Scenario: Capacity was released
+
+- **WHEN** the exact release receipt is persisted and the failed dispatch is
+  proven absent or terminal
+- **THEN** both surfaces show `Capacidad liberada` and offer an explicit retry
+  without executing it automatically

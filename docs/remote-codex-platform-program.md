@@ -6,15 +6,18 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: Beautips production remote routing accepted after independent
-  backup, exact rollback/reactivation and real laptop preview validation
-- Runtime routing: only the exact Beautips route is enabled; the generic
-  project route, Atenea and every unrelated project remain disabled
+- Current phase: `complete-remote-worksession-close-lifecycle` planned after
+  the first consecutive real Atenea WorkSession exposed retained closed-session
+  ownership and incorrect admission-error classification
+- Runtime routing: exact canonical Atenea and Beautips project routes are
+  enabled; generic project routing and every unrelated project remain disabled
 - Production/control plane: current Atenea VPS
-- Development/execution plane: Hetzner AX42; Beautips owns one active
-  WorkSession in slot 4 while the administrative slot 1 stack remains foreign
+- Development/execution plane: Hetzner AX42; closed Atenea WorkSession 16 still
+  owns slot 2 pending exact reconciliation, open WorkSession 17 has only its
+  clean workspace, and Beautips retains its accepted slot-4 WorkSession while
+  the administrative slot-1 stack remains foreign
 - Canonical source: GitHub
-- Last evidence refresh: 2026-08-02
+- Last evidence refresh: 2026-08-03
 
 The normative requirements live in OpenSpec. This ledger records phase state, decisions, evidence locations and the exact resume point. Code, tests and migrations remain authoritative for existing Atenea runtime behaviour.
 
@@ -300,6 +303,10 @@ production activation are recorded later in this ledger.
 | D-097 | Promote Atenea's two accepted descendant histories to GitHub `main` in order using merge-commit semantics, then reconcile every canonical base declaration to the resulting immutable commit. Squash, force update and source-branch deletion are forbidden. | The attachment candidate already descends from the accumulated feature history; preserving that ancestry makes the second review contain only its additional commits and prevents split source authority for future WorkSessions. | accepted and live-verified | platform/Git/operations owners | before opening the next real Atenea development WorkSession |
 | D-098 | Preserve WorkSession 6 as an immutable `DRAFT_BLOCKED` retained draft during main promotion; do not call ordinary close, rewrite its worktree or change its row after its accepted replacement and allocation-retirement contract has completed. | V51 intentionally requires retained drafts to remain non-closed and fingerprinted; the state is reviewable history rather than an active project lock, and closing it would destroy the distinction the recovery contract created. | accepted and live-verified | WorkSession/programme owners | before any retained-draft lifecycle expansion or deletion policy |
 | D-099 | Retire only WorkSession 15's exact active-name allocation after proving it closed, released, unregistered and resource-free; preserve bytes, inode, ownership, mode, size and mtime under the canonical retired name before repeating WorkSession 16 activation. | The active filename continued to assert fixed slot-2 ownership after the mediated registration/admission release, so the corrected activator properly rejected the replacement; an exact same-filesystem rename retains audit evidence while making released capacity reusable. | accepted and live-verified for the exact closed canary | runtime/programme owners | before general closed-allocation retirement support |
+| D-100 | Make one exact worker `RELEASED` receipt a precondition for a remote WorkSession to become `CLOSED`; mark pre-V63 remote closures `UNVERIFIED_LEGACY` without inferring or changing worker state. | Git reconciliation alone cannot prove that registration, admission, allocation or ephemeral runtime ownership was released, and automatically trusting historical rows would adopt unknown state. | proposed in `complete-remote-worksession-close-lifecycle` | backend/data/worker owners | task 1 persistence implementation |
+| D-101 | Preserve a strict bounded worker error envelope and classify authenticated deterministic rejections separately from transport unavailability. | Discarding the HTTP 409 body caused 81 repetitions of an impossible activation and reported a healthy worker as unavailable, hiding the action that could actually resolve the blocker. | proposed in `complete-remote-worksession-close-lifecycle` | backend/worker/security owners | task 2 protocol implementation |
+| D-102 | Serialize ensure/release under one lifecycle lock and finalize exact ownership through a monotonic crash-resumable journal while retaining source, conversation, attachments, logs, artifacts, backups and policy-retained volumes. | A multi-resource close can stop between mutations; a reviewed prefix journal permits only the same operation to continue without recreating released ownership or deleting ambiguous state. | proposed in `complete-remote-worksession-close-lifecycle` | runtime/worker/security owners | task 3 finalizer implementation |
+| D-103 | Permit historical closed-session release only through a separately confirmed platform-administrator action in Atenea, and never retry the preserved prompt automatically after capacity is released. | Legacy repair is materially different from ordinary retry; binding confirmation to an exact ownership fingerprint makes it self-service without granting arbitrary cleanup or duplicating user work. | proposed in `complete-remote-worksession-close-lifecycle` | product/platform/security owners | tasks 4–7 operator workflow |
 
 ## Deferred decisions and gates
 
@@ -10628,3 +10635,45 @@ Sanitized closure evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.4-archive-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `127ff3882176eda80342cc985c90177f6c7a712d7dc8957b3adf46f1e01477b9`.
+
+## Active change: complete remote WorkSession close lifecycle
+
+`complete-remote-worksession-close-lifecycle` is the active planned change at
+`0/60`; task 0.1 is the exact implementation resume point. Its proposal,
+design, five capability deltas and ordered task plan define the product and
+worker correction required before consecutive canonical Atenea WorkSessions
+can be considered operationally complete.
+
+Read-only inspection found that production WorkSession 16 was closed after its
+Git reconciliation but still owns the AX42 Atenea registration,
+`slot2/heavy1` admission and active allocation SHA-256
+`af69156b9a6935cb11c96e0b7bdd73b950ec97959281a97b870bdad0c691a80f`.
+It owns zero runtime containers, networks, volumes, listeners or runtime unit.
+WorkSession 17 is open and clean on exact accepted `main`; its workspace record
+SHA-256 is
+`97b41b63e425eb483175b96bce875ac3190300cedb089b176aa2fdaedd515cbb`,
+while its admission, allocation and runtime are absent.
+
+Its first real AgentRun 96 failed before worker dispatch. The worker was active
+and healthy but rejected workspace activation 81 times because fixed slot 2
+was still owned. The authenticated HTTP 409 body was discarded by the current
+client, so the coordinator used the network-unavailability window and finally
+persisted the misleading generic error. The run has no remote execution
+identity; its operator turn and one attachment remain durable. Their text and
+content were not inspected.
+
+The planned correction adds an additive V63 close lifecycle, typed bounded
+worker failures, one exact idempotent workspace-release protocol, a
+crash-resumable ownership finalizer, durable normal close, confirmed legacy
+close reconciliation and state-first web/Android actions. All new gates remain
+disabled by default. Task 6.8 requires a separate explicit production
+authorization before V63, deployment, AX42 installation or activation. Task
+7.7 then requires a real in-product single-use operator confirmation before
+WorkSession 16 may be released. AgentRun 96 is never retried automatically.
+
+At planning time no database row, worker configuration, admission, allocation,
+runtime, route, prompt, attachment, service or production component was
+modified. Canonical Atenea remains clean at
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`; the worker services, SSH,
+Tailscale and firewall are active; production, preview and Beautips containers
+remain up. Strict validation passes for the active change.
