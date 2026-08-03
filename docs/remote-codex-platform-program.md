@@ -10259,3 +10259,51 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.6-main-mirror-worker-install`;
 the SHA-256 of its `SHA256SUMS` is
 `435a94e644ffde45f341812adeec109308a87a8e9e17905a58f5c7d3229aff49`.
+
+Task 4.7 is complete and amended change progress is `20/25`; task 4.8 is the
+exact resume point. A fresh canonical encrypted external backup, repository
+check and bounded retention sequence completed successfully before production
+changed. The clean canonical checkout advanced by ordinary fast-forward to
+accepted `main` commit
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`, tree
+`3b8a5517bdc0845e3a2f52718173e6ef5307245a`, with its upstream and
+`origin/HEAD` exact.
+
+The identity-successor backend image was built from that exact source in 16
+seconds. It has immutable image ID
+`sha256:fe5bb7a6b39dbcc2f9847dd05b68b9aabe72bf4d2775ad55f5624fcd99b1d96f`
+and application JAR SHA-256
+`4d3f4222e559c7f6787e73ad9dc5af151cd10fe9262de390bf01e09c6dea9978`.
+The protected production Compose changed only its backend image reference,
+remains `jose:jose` mode `0600`, and has SHA-256
+`6951a486535b19f348d305bd48a443fe93698f3aade2880f1bd1565babec5d40`.
+Its exact prior definition remains mode `0600` with original SHA-256
+`d7f94b1e611fad6329cb66346cbe99eba91d79bdba30e19fda73e48b51abb4ba`
+as the bounded rollback.
+
+Only `atenea-backend-prod` was recreated. It reached HTTP 200 on bounded
+readiness attempt 14 in 14,418 ms with zero restarts. Container, network and
+volume fingerprints excluding that one backend remained byte-identical; preview
+and Beautips remained HTTP 200.
+
+The persisted configuration contract then locked and changed exactly project
+ID 1 whose immutable name, in-container repo path, old branch and prior
+timestamp all matched. Its default is now `main`; the target row SHA-256 moved
+from `717297825b03378bd172ffd34bc04ff6d0cc0089a9aa27a312ad5890593e3d29`
+to `0572a20dc12d8ee3a804c38431a3127546314b2e9741e95ce08813e0e2917dac`.
+Every non-target project remains byte-identical at SHA-256
+`1e8e55413658bc080054b558838220a5f5ffa6340896cd84f15f4698019cf80e`.
+The inverse exact-row transaction is recorded against the new timestamp.
+
+Flyway remains `62/62`; all 95 AgentRuns are terminal, active leases are zero,
+and WorkSession, attachment, binding, policy-snapshot and preview counts remain
+`13/3/2/3/1`. The unauthenticated project API correctly returned 401 and no
+credential was read. AX42's reviewed registry SHA-256 remains
+`7369170a308ea81746ca5fd2cc4ae01fa11e36194ff08204122ee5cfa871c4db`;
+its services have zero restarts, slot counts remain `3/0/0/3`, backup timers
+remain active/enabled and RAID remains `3/3 [UU]`.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.7-main-backend-project-default`;
+the SHA-256 of its `SHA256SUMS` is
+`2e23e53082006d5e8d53c95673b0400acf7296a9d9fc3bf2d65a26aecee329cd`.

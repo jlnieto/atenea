@@ -72,7 +72,7 @@ repair, adoption or deletion.
 - [x] 4.6 Refresh the AX42 mirror with the bounded canonical fetch contract,
   install the exact reviewed worker identity/configuration and restart only the
   AgentRun worker with finite readiness and rollback
-- [ ] 4.7 Deploy only the exact identity-successor production backend, then
+- [x] 4.7 Deploy only the exact identity-successor production backend, then
   update only canonical Atenea's project default to `main` through the
   supported control-plane/configuration contract
 - [ ] 4.8 Prove exact application/worker/project reconciliation and no runtime,
