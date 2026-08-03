@@ -42,7 +42,7 @@ ADAPTER_SOURCE="${SCRIPT_DIR}/atenea-runtime-engine-adapter-v1.sh"
 [[ -f "${SOURCE_MANIFEST}" && -f "${SOURCE_COMPOSE}" ]] ||
   fail "the exact Atenea manifest and AX42 Compose inputs are required"
 [[ "$(sha256sum "${SOURCE_MANIFEST}" | cut -d' ' -f1)" == \
-    "3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3" ]] ||
+    "327a0c521017109d7c0067a11e7d8c3ad2079de4ea78d28296848f9de39c164b" ]] ||
   fail "Atenea manifest input hash differs"
 [[ "$(sha256sum "${SOURCE_COMPOSE}" | cut -d' ' -f1)" == \
     "2133646b9fe6227ca417d6d62c92a74306caaa46a2957cdee810d5d7b0e5bb9f" ]] ||

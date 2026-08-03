@@ -14,7 +14,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$ROOT/source" "$ROOT/sessions/$SESSION"
-git -C "$ROOT/source" init -q -b feature/actualizar-conversacion-en-web
+git -C "$ROOT/source" init -q -b main
 git -C "$ROOT/source" config user.name Test
 git -C "$ROOT/source" config user.email test@example.invalid
 printf 'code\n' >"$ROOT/source/code.txt"
@@ -32,7 +32,7 @@ git clone -q --bare "$ROOT/source" "$ROOT/atenea.git"
 git --git-dir="$ROOT/atenea.git" config remote.origin.url \
   https://github.com/jlnieto/atenea.git
 git --git-dir="$ROOT/atenea.git" update-ref \
-  refs/remotes/origin/feature/actualizar-conversacion-en-web "$CODE"
+  refs/remotes/origin/main "$CODE"
 git --git-dir="$ROOT/atenea.git" update-ref \
   refs/remotes/origin/program/remote-codex-worker-platform "$PROGRAM"
 git --git-dir="$ROOT/atenea.git" worktree add --detach \

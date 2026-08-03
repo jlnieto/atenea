@@ -48,7 +48,7 @@ PROGRAM_WORKTREE="$SESSION_ROOT/programme-openspec"
 SOURCE_WORKTREE="$SESSION_ROOT/worker-source"
 RECORD="$SESSION_ROOT/repository-roles-v1.json"
 REPOSITORY=https://github.com/jlnieto/atenea.git
-CODE_BRANCH=feature/actualizar-conversacion-en-web
+CODE_BRANCH=main
 PROGRAM_BRANCH=program/remote-codex-worker-platform
 WORKSPACE_ID="remote:ax42-01:work-session:$SESSION_ID"
 
@@ -122,7 +122,7 @@ jq -n --arg session "$SESSION_ID" --arg workspace "$WORKSPACE_ID" \
     changeIdentity: $change,
     roles: {
       ATENEA_CODE: {authority:"READ_WRITE", repository:$repository,
-        branch:"feature/actualizar-conversacion-en-web", commit:$codeCommit,
+        branch:"main", commit:$codeCommit,
         mirrorIdentitySha256:$mirror, worktreeIdentitySha256:$codeTree,
         validationProfile:"atenea-code-v1", readiness:"DRAFT"},
       PROGRAMME_OPENSPEC: {authority:"READ_WRITE", repository:$repository,

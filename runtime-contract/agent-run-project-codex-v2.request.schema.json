@@ -47,7 +47,7 @@
         "kind": {"const": "project-codex-v2"},
         "projectId": {"const": "atenea"},
         "repository": {"const": "https://github.com/jlnieto/atenea.git"},
-        "branch": {"const": "feature/actualizar-conversacion-en-web"},
+        "branch": {"const": "main"},
         "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "manifestSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "instructionBundleRevision": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,79}$"},

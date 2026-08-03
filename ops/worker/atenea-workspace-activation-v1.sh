@@ -42,14 +42,14 @@ done
 
 PROJECT_ID=atenea
 REPOSITORY=https://github.com/jlnieto/atenea.git
-BASE_BRANCH=feature/actualizar-conversacion-en-web
+BASE_BRANCH=main
 MIRROR=/srv/atenea/repositories/atenea.git
 CANONICAL_REF="refs/remotes/origin/${BASE_BRANCH}"
 PINNED_COMMIT="$(git --git-dir="${MIRROR}" rev-parse --verify "${CANONICAL_REF}^{commit}")" ||
   fail 'canonical mirror ref is unavailable'
 [[ "${PINNED_COMMIT}" =~ ^[0-9a-f]{40}$ ]] ||
   fail 'canonical mirror ref is ambiguous'
-MANIFEST_SHA256=3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3
+MANIFEST_SHA256=327a0c521017109d7c0067a11e7d8c3ad2079de4ea78d28296848f9de39c164b
 SLOT=slot2
 WORKSPACE_IDENTITY="remote:ax42-01:work-session:${SESSION_ID}"
 

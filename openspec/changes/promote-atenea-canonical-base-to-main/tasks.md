@@ -60,7 +60,7 @@ repair, adoption or deletion.
   contract for the complete compiled identity transition, exact closed-canary
   ownership release, validation, rollback and production rollout; seal the
   prior fail-closed evidence, strict-validate, commit and push
-- [ ] 4.3 Change only Atenea's application/manifest and complete AX42
+- [x] 4.3 Change only Atenea's application/manifest and complete AX42
   worker/schema source identity from the feature branch to `main`; add focused
   regression coverage, calculate the new manifest pin, test, commit and publish
 - [ ] 4.4 Run complete backend, web and worker validation, create and merge one

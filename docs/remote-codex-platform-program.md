@@ -10113,3 +10113,35 @@ UI, attachment-policy, routing-policy, preview, Beautips, unrelated-session or
 runtime change. Rollback restores exact recorded worker artifacts/config and
 the prior backend image without rewriting the append-only GitHub history or
 reintroducing retired closed-session ownership.
+
+Task 4.3 is complete and amended change progress is `16/25`; task 4.4 is the
+exact resume point. Atenea branch
+`codex/promote-atenea-main-identity-20260803` contains one identity-only commit
+`3d02c3ec8fbbe21c4a6d20bf6ddddb2e8b3f0c1c` over merged main. It changes
+only the application branch constant, runtime-manifest default, derived
+manifest SHA-256
+`327a0c521017109d7c0067a11e7d8c3ad2079de4ea78d28296848f9de39c164b`
+and a literal regression test. The clean branch is published to the internal
+canonical remote.
+
+The programme worker sources now move the complete Atenea authority set to
+`main`: AgentRun worker, project runner, activation/validation/
+multi-repository mediators, installer, runtime manager/engine/adapter and all
+three request schemas. No former branch or manifest identity remains in the
+operational source set. Beautips' adapter and installers changed only their
+derived shared-runner fingerprints; all Beautips repository, commit,
+manifest, routing and runtime identities remain unchanged.
+
+Focused validation passed 58 backend tests, 56 AgentRun-worker tests, 22
+project-runner tests, four Beautips-runner tests, five Codex contract tests,
+three Beautips session-contract tests, both install/rollback lifecycles, both
+runtime adapter corpora and all 10 project-runtime groups. Two rejected
+backend harness attempts exposed historical container-name ownership and an
+incorrect default bind; neither foreign container changed. The accepted
+isolated run removed all exact temporary Compose resources and restored its
+temporary Compose edits before commit.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.3-main-identity-sources`;
+the SHA-256 of its `SHA256SUMS` is
+`96a017cf4c51976134e8045e409c56373b14b7522d1d44b7eb2d8b186503554d`.

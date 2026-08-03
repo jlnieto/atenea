@@ -31,7 +31,7 @@ jq -e \
   '.schemaVersion == "project-codex-v1"
    and .projectId == "atenea"
    and .repository == "https://github.com/jlnieto/atenea.git"
-   and .branch == "feature/actualizar-conversacion-en-web"
+   and .branch == "main"
    and .workspaces[$identity].sessionId == $session
    and .workspaces[$identity].worktree == $worktree
    and .workspaces[$identity].canonicalCommit == .commit' \

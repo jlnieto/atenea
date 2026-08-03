@@ -504,7 +504,7 @@ repository = "https://github.com/jlnieto/atenea.git"
 program = "3" * 40
 roles = []
 for role, branch, commit, profile in (
-    ("ATENEA_CODE", "feature/actualizar-conversacion-en-web", code, "atenea-code-v1"),
+    ("ATENEA_CODE", "main", code, "atenea-code-v1"),
     ("PROGRAMME_OPENSPEC", "program/remote-codex-worker-platform", program, "openspec-strict-v1"),
     ("WORKER_SOURCE", "program/remote-codex-worker-platform", program, "worker-contract-v1"),
 ):
