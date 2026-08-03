@@ -10176,3 +10176,35 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.4-main-identity-validation-merge`;
 the SHA-256 of its `SHA256SUMS` is
 `7446d11fb78ae820a953d84768d627af20f78f917128adfd07d3e7c72adac936`.
+
+Task 4.5 is complete and amended change progress is `18/25`; task 4.6 is the
+exact resume point. Production WorkSession 15 is still `CLOSED` with exact
+remote identity `c80c1e72-e34f-46b9-ba34-5a9a0c0ad2d7`, two terminal
+`SUCCEEDED` AgentRuns and zero non-terminal runs globally. Its registry,
+allocation, workspace record, clean feature worktree and admission record
+matched all reviewed pre-change hashes. It owned no container, network,
+volume, image, listener, runtime unit or process.
+
+Installed mediator SHA-256
+`da60b0a1d871b0815f81d864735d88518f224323d831036b51fb1eb440931db6`
+matches reviewed programme commit
+`4ea60175e77c2fca8a5f888fe50a54b7b6010c19`. Its exact
+`project-unregister` operation removed only this workspace registration,
+disabled the former Atenea selection/execution gates and restarted only the
+AgentRun worker. The installed verification passed. The unchanged reviewed
+admission helper then released `heavy1` before `slot2`; both released states
+remain persisted.
+
+The allocation and workspace-record hashes, retained filesystem inodes,
+worktree HEAD/tree/cleanliness, database row, two runs, one attachment row and
+four turn rows are unchanged. Every foreign admission fingerprint and all
+four rootless slot container-identity manifests match their before values.
+The worker is active with `NRestarts=0`; production, preview and Beautips
+remain HTTP 200 and RAID remains `[UU]`. No mirror, worktree, Git, allocation,
+log, attachment, artifact, runtime, routing or unrelated resource was removed
+or modified.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.5-closed-session-ownership-release`;
+the SHA-256 of its `SHA256SUMS` is
+`808eaedb24130e655056598d3a8c43e46f0008d8e6f73a8f4035dae9f926fbae`.

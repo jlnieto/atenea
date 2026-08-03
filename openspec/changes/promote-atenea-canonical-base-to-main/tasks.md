@@ -66,7 +66,7 @@ repair, adoption or deletion.
 - [x] 4.4 Run complete backend, web and worker validation, create and merge one
   head-locked GitHub PR for the identity-only Atenea successor, and seal
   evidence
-- [ ] 4.5 Prove closed WorkSession 15 exact ownership and zero runtime/run
+- [x] 4.5 Prove closed WorkSession 15 exact ownership and zero runtime/run
   activity, then mediatedly unregister and release only its held admission;
   preserve allocation, worktree, Git, logs, attachments and artifacts
 - [ ] 4.6 Refresh the AX42 mirror with the bounded canonical fetch contract,
