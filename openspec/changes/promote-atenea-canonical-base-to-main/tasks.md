@@ -100,7 +100,7 @@ repair, adoption or deletion.
 - [x] 5.2 Verify the web/API exposes the correct ready state and `main` base;
   close only temporary browser processes and retain the WorkSession for the
   operator's next real task
-- [ ] 5.3 Capture final Git, project/session, worker, mirror, workspace,
+- [x] 5.3 Capture final Git, project/session, worker, mirror, workspace,
   services, slots, backups, RAID, production, preview and Beautips state
 - [ ] 5.4 Seal sanitized evidence and `SHA256SUMS`, update the programme ledger,
   strict-validate, archive, commit and push, then stop before sending a prompt

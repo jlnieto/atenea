@@ -10580,3 +10580,30 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.2-web-api-ready-state`;
 the SHA-256 of its `SHA256SUMS` is
 `ce545a5e9aef04d9fc26578b8ecaa071d68568989366354e20f8124245dc7556`.
+
+Task 5.3 is complete and amended change progress is `27/28`; task 5.4 is the
+exact resume point. Final programme Git was clean and upstream-exact at
+`c38e1763d1a258c8b59dc905a8e73e5fb4e90da3`. Canonical Atenea Git and the
+AX42 mirror/worktree were clean and exact at main commit
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`; both accepted historical tips
+remain ancestors and the mirror passed full fsck.
+
+WorkSession 16 remains open, draft, remote, main-based and prompt-free. Its
+turns, AgentRuns, attachments, previews, runtime resources, listeners and
+runtime unit are zero, as are global non-terminal AgentRuns and active leases.
+Workspace, allocation, admission and registry fingerprints remain exact;
+WorkSession 15's retired allocation remains byte-identical.
+
+The complete rootless slot container inventory remains `3/0/0/3`, with
+slot/inventory SHA-256
+`54f050afa4baab9600b3e26cbd1d433cd4d6f60aab21d25effb0124da83db5f3`.
+Worker services remain active with zero AgentRun-worker restarts. Both
+external-backup timers remain active/enabled and their last services completed
+successfully. Rootful Docker/containerd remain inactive/masked, RAID remains
+`3/3 [UU]`, SSH/Tailscale/UFW remain active, temporary browser processes
+remain zero, and production, preview and Beautips remain HTTP 200.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.3-final-fingerprints`;
+the SHA-256 of its `SHA256SUMS` is
+`2342c1fde6644c7f8f09aa13edbb96b11cd80be96a98e3ae6eb6e70de82e831a`.
