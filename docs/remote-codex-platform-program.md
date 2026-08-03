@@ -9677,3 +9677,53 @@ sessions inventory and the exact one-entry `atenea` allowlist is beneath
 the SHA-256 of its `SHA256SUMS` is
 `9012903d9838f99c082f769c33ebc72ef937c97702d575d7368470d4c662048b`.
 No operational state changed.
+
+Task 8.6 is complete. Change progress is `81/83`; task 8.7 is the exact
+resume point. The final inventory is read-only and contains no private content.
+
+Programme head/upstream are exact at
+`5781abe334b5399e7fbe49b4a91ebaf13df0b961`, candidate head/upstream remain
+`57b4123abaa4d66ba335fcb0cf4b64cd9fdd589d`, and canonical Atenea
+head/upstream remain `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`; every index is clean.
+The canonical mirror and single registered workspace match canonical head and
+tree `f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`, with object checks passing.
+
+Production remains V62 with 13 WorkSessions, three attachment rows totalling
+127,497 logical bytes, 172 turns, two bindings, 95 terminal AgentRuns, zero
+non-terminal runs and zero active leases. The final sanitized policy,
+attachment, binding, run and routing fingerprints are respectively
+`3c86c0bb10086303fc476b5fa7c99b4d9fb13b5bbd80c2ad5b71ae40e0622715`,
+`475e8d5acf79fe797a2b321ec34a9a0862a59fc24921fcfc691ed29b464b9f6b`,
+`1e79669caacb08b1619dd26a5a2d2d60d6a7d766c8be2ec2c01f89a6a4659915`,
+`e0d5a0821d548003537e915c8c537fa5992efdb73fc315992419f8629040768a`
+and `6b66c9a0b241ec8bb4719b0490f39d62d5a1911bb1e35ee6f6e347e6f214d074`.
+
+The final protected Compose remains mode `0600`, global true, synthetic empty
+and real allowlist exactly `atenea`, with accepted SHA-256
+`d7f94b1e611fad6329cb66346cbe99eba91d79bdba30e19fda73e48b51abb4ba`.
+Production, preview and Beautips remain running with zero restarts and HTTP
+200. The canary is still `READY/COMPATIBLE` and downloads as 42,499 bytes with
+SHA-256
+`3547d21c912406eb42b757109568d07af9770d1cd94f498ee90ccd95be3a63f5`;
+the old session and Beautips remain blocked.
+
+Worker storage remains 22 files, 20 directories and 390,963 bytes with
+metadata-only fingerprint
+`d9c0086da648d7e0f0ef0ac17b86cddc52540bc542b6e4a1ec6c51a4df3927cd`.
+Materializations, backend spools, execution runners, Codex children, Bubblewrap
+and browser/Playwright processes are all zero. The worker services and four
+slot proxies are active with zero restarts; rootless running counts remain
+`3/0/0/3`, rootful Docker remains inactive, and allocation SHA-256 remains
+`89fe98bfb3afb0d4d2c0007c22c5636669f0d3b77bfc588732992bbdb95a2a35`.
+
+Both backup timers remain enabled/active with successful last runs. Seven
+external snapshots include accepted snapshot
+`50980a4b74d68ed40525b73ebba2945f92885839fef4af5412d58d96e3d77de4`.
+All three RAID1 arrays are clean `2/2 [UU]`; UFW, SSH sockets and Tailscale are
+active on both hosts. No production route, foreign resource, credential or
+prohibited content changed or entered evidence.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.6-final-fingerprints`;
+the SHA-256 of its `SHA256SUMS` is
+`fc369111526ae042ef3f95c88f1dc05581db9bd069aa2a09cbe7eab9a69d7e13`.
