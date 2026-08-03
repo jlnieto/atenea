@@ -9646,9 +9646,10 @@ Canonical WorkSession 15 reports `READY/NONE/COMPATIBLE`, policy revision
 of four selected images per turn. Every pre-activation Atenea WorkSession
 without an accepted policy revision, IDs 6 through 12, reports
 `BLOCKED/SESSION_NOT_ELIGIBLE`. All sessions belonging to the only two
-non-Atenea projects, Fomasys and Beautips, report
-`BLOCKED/PROJECT_DISABLED`; the real-project allowlist remains exactly
-canonical `atenea`.
+non-Atenea projects that currently have WorkSessions, Fomasys and Beautips,
+report `BLOCKED/PROJECT_DISABLED`. There are eight registered non-Atenea
+projects in total; all remain structurally blocked because the closed
+real-project allowlist contains exactly canonical `atenea`.
 
 Database counts before and after remained three attachments, 172 turns, two
 bindings, 95 AgentRuns and five active refresh tokens. Their content-free
@@ -9665,3 +9666,14 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.5-read-only-reenable-check`;
 the SHA-256 of its `SHA256SUMS` is
 `f471f0b2f4a46dec63c24b6c809eaa7ee6b121560fbb934aa77dcd6d9ece888f`.
+
+A read-only project-inventory audit during task 8.6 found that the original
+8.5 result field `non_atenea_project_count=2` was mislabeled: two is the number
+of non-Atenea projects with WorkSessions, while eight non-Atenea projects are
+registered. The original immutable package remains unchanged. A sanitized
+corrective addendum proving the `9/8/2` registered/non-Atenea/non-Atenea-with-
+sessions inventory and the exact one-entry `atenea` allowlist is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.5-project-inventory-correction`;
+the SHA-256 of its `SHA256SUMS` is
+`9012903d9838f99c082f769c33ebc72ef937c97702d575d7368470d4c662048b`.
+No operational state changed.
