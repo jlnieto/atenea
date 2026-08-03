@@ -47,7 +47,7 @@ repair, adoption or deletion.
   test-fixture isolation leak in successor
   `d0036e427bae2d6753d81a4725971f2fb91c5add`, create its PR to `main`, verify
   exact refs/checks and merge using merge-commit semantics only
-- [ ] 3.3 Prove both accepted tips are ancestors of the new main, preserve both
+- [x] 3.3 Prove both accepted tips are ancestors of the new main, preserve both
   source refs, verify health/non-impact, seal evidence, validate, commit and
   push
 

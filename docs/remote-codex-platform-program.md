@@ -10013,3 +10013,26 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-3.2-candidate-validation-merge`;
 the SHA-256 of its `SHA256SUMS` is
 `d99c3e2f377b496d5b97873b6b86b07222fa3da8cbcc38892d19c998d62fe81a`.
+
+Task 3.3 is complete and change progress is `13/22`; task 4.1 is the exact
+resume point. GitHub main
+`51e6ea40286ae8c44e6235b32be9f644af57b11c` retains feature tip
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` and validated attachment tip
+`d0036e427bae2d6753d81a4725971f2fb91c5add` as ancestors. The comparisons
+report behind by zero and exact merge bases at the corresponding accepted
+tips. Both source branches remain published at their exact immutable SHAs;
+PRs 5 and 6 remain merged through their expected merge commits.
+
+The canonical checkout, project default, worker registry and mirror remain
+deliberately unreconciled until section 4. The checkout is clean at the
+feature tip. Non-closed WorkSessions and terminal AgentRun totals match entry
+fingerprints, with zero non-terminal runs. Rootful container identities and
+rootless slot counts `3/0/0/3` are unchanged. Production, preview and Beautips
+return HTTP 200; the four worker services and both active/enabled backup
+timers retain state, and all three RAID arrays remain `[UU]`. No deployment,
+restart, routing change, runtime start or resource mutation occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-3.3-post-merge-nonimpact`;
+the SHA-256 of its `SHA256SUMS` is
+`6cd7ce7149f700ba7111482f270c7f9e9f1b3ebfeedbeb822f4690c8581443fb`.
