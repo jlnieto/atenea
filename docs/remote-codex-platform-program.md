@@ -10450,3 +10450,39 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.10-activation-corrective-rollout`;
 the SHA-256 of its `SHA256SUMS` is
 `a29a80a7c6ecb6b5f026a2840123eac0032d7c5b7e1dab5e84a9a50442bd7261`.
+
+Task 5.1 remains incomplete and progress remains `23/27`. The corrected main
+mediator began the authorized no-run activation for retained WorkSession 16.
+It created the exact clean worktree and workspace record at accepted main
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`, then acquired its exact free
+admission as `slot2=held/heavy1=held`. Runtime allocation failed closed with
+`RUNTIME_OWNERSHIP_CONFLICT` before registry activation because closed
+WorkSession 15 still retains an active-name `runtime-allocation-v1.json` that
+declares `slot2`.
+
+The target partial state is exact and retained: workspace-record SHA-256
+`6014606bb884c808a8f9603b9eb86aa7fc65c785fae59bd45a4caf468f0e065c`,
+admission SHA-256
+`099e565f0df471685c24925ce02d69431639b024499fd91e4d47c08c6d946e11`,
+no target allocation, no registry entry and zero runtime resources. The
+conflicting WorkSession 15 allocation has unchanged SHA-256
+`89fe98bfb3afb0d4d2c0007c22c5636669f0d3b77bfc588732992bbdb95a2a35`;
+its control-plane session is `CLOSED`, admission is
+`slot2=released/heavy1=released`, registry ownership is absent and runtime
+resources are zero. It was not renamed, repaired or modified.
+
+The conflict is between task 4.5's retained active-name allocation and the
+fixed-slot no-run canary contract. No retry or cleanup was attempted. Global
+non-terminal AgentRuns and active leases remain zero, the worker remains active
+with zero restarts, RAID remains `3/3 [UU]`, and production, preview and
+Beautips remain HTTP 200.
+
+Resume requires separate authorization to prove and atomically retire only
+WorkSession 15's exact allocation from `runtime-allocation-v1.json` to the
+canonical `runtime-allocation-v1.retired.json`, preserving bytes and metadata,
+then repeat the same idempotent WorkSession 16 activation. Its exact worktree
+and admission must remain retained for that retry. Sanitized blocker evidence
+is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.1-blocked-retained-allocation-slot-conflict`;
+the SHA-256 of its `SHA256SUMS` is
+`8ed5c18625f59215e6a9f3e505fcd8bcc7570465c802c6d1824061e17bba73d9`.
