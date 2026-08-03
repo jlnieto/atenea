@@ -4,7 +4,7 @@
     "id": "atenea",
     "repository": {
       "url": "https://github.com/jlnieto/atenea.git",
-      "defaultBranch": "feature/actualizar-conversacion-en-web"
+      "defaultBranch": "main"
     }
   },
   "toolchains": [
