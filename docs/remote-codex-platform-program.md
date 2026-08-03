@@ -9484,3 +9484,38 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-7.10-exact-restore-cleanup`;
 the SHA-256 of its `SHA256SUMS` is
 `a164dd08a401ffc15a54eb1daa064b058f74bf86642d99848e552c9c1fe67329`.
+
+Task 8.1 is complete. Change progress is `76/83`; task 8.2 is the exact
+resume point and no image or worker service has yet changed.
+
+The protected production Compose was backed up and changed in two atomic,
+separately deployed steps. First the exact real-project allowlist changed from
+`atenea` to empty while the global gate remained true; only the production
+backend was recreated on unchanged image
+`sha256:ca076c3a615c7745c8a86fe7abd729123041bf9c38e529716892dd72c6dbc0c3`
+and reached HTTP 200 on bounded attempt 14. The canonical session then reported
+`BLOCKED/PROJECT_DISABLED`, while its one-item list, four-turn history, one
+historical projection and authenticated download remained available.
+
+Only after that proof, the global gate changed from true to false with both
+allowlists empty. The same backend image was recreated and again reached HTTP
+200 on attempt 14. The canonical session now reports
+`BLOCKED/GLOBAL_DISABLED`; list and history still return the exact same counts,
+and the retained download remains 42,499 bytes with SHA-256
+`3547d21c912406eb42b757109568d07af9770d1cd94f498ee90ccd95be3a63f5`.
+The final protected Compose remains `jose:jose 0600` with SHA-256
+`dd43f6e8ed0d13431956ab0763731cc0d212f277375f643faa047a368b9286c4`.
+
+All successful authentication probes explicitly logged out and active refresh
+tokens remain exactly 5; no credential or token value entered output or
+evidence. Production WorkSession 15 remains exactly one attachment, four
+turns, one binding and two AgentRuns. Materializations remain zero, attachment
+and AgentRun services remain active with zero restarts, rootless slot counts
+remain `3/0/0/3`, RAID remains `3/3 [UU]`, and rootful Docker remains inactive.
+Production, preview and Beautips containers remain up. No route, runtime,
+WorkSession, source attachment, snapshot or unrelated resource changed.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.1-disable-first`;
+the SHA-256 of its `SHA256SUMS` is
+`66f20372c77c7885018639e1b2264298dd07bb70cfc8936963fa16dc01fe9b62`.
