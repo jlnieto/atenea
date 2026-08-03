@@ -241,7 +241,7 @@ class AttachmentHttpTest(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base = f"http://127.0.0.1:{self.server.server_port}"
-        self.session_id = "12"
+        self.session_id = "6f54ed49-80a3-4c43-9dd8-f524267ed930"
         self.attachment_id = str(uuid.uuid4())
         self.content = b"\x89PNG\r\n\x1a\nhttp-image"
 

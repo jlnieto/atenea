@@ -109,6 +109,15 @@ if jq '.attachmentRoot = "/srv/foreign"' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}
 fi
 write_project_config false false '{}' "${CANONICAL_COMMIT}"
 verify_project_config_file_identity() { :; }
+cp "${PROJECT_CONFIG}" "${TEST_ROOT}/current-project-config.json"
+for field in repository branch manifestSha256 runner; do
+  jq --arg field "${field}" '.[$field] = "foreign"' \
+    "${TEST_ROOT}/current-project-config.json" >"${PROJECT_CONFIG}"
+  if ( verify_project_config_content ) >/dev/null 2>&1; then
+    fail "foreign current project authority was accepted: ${field}"
+  fi
+done
+cp "${TEST_ROOT}/current-project-config.json" "${PROJECT_CONFIG}"
 BEAUTIPS_PROJECT_RUNNER="${TEST_ROOT}/beautips-project-codex-runner-v1.py"
 printf 'accepted predecessor\n' >"${BEAUTIPS_PROJECT_RUNNER}"
 BEAUTIPS_PROJECT_RUNNER_PREDECESSOR_SHA256="$(
@@ -123,7 +132,7 @@ if ( verify_beautips_project_runner_upgrade ) >/dev/null 2>&1; then
 fi
 PRESERVED_CONFIG_SHA256="$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)"
 PREFLIGHT_SHA256="$(project_config_install_preflight)"
-[[ "${PREFLIGHT_SHA256}" == "${PRESERVED_CONFIG_SHA256}" ]] \
+[[ "${PREFLIGHT_SHA256}" == "retain:${PRESERVED_CONFIG_SHA256}" ]] \
   || fail "installer preflight did not retain the existing configuration identity"
 project_config_install_finalize "${PREFLIGHT_SHA256}"
 [[ "$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)" == "${PRESERVED_CONFIG_SHA256}" ]] \
@@ -133,7 +142,7 @@ jq 'del(.attachmentRoot)' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.legacy"
 mv "${PROJECT_CONFIG}.legacy" "${PROJECT_CONFIG}"
 LEGACY_CONFIG_SHA256="$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)"
 LEGACY_PREFLIGHT_SHA256="$(project_config_install_preflight)"
-[[ "${LEGACY_PREFLIGHT_SHA256}" == "${LEGACY_CONFIG_SHA256}" ]] \
+[[ "${LEGACY_PREFLIGHT_SHA256}" == "retain:${LEGACY_CONFIG_SHA256}" ]] \
   || fail "installer preflight did not retain the exact legacy configuration"
 project_config_install_finalize "${LEGACY_PREFLIGHT_SHA256}"
 [[ "$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)" == "${LEGACY_CONFIG_SHA256}" ]] \
@@ -152,6 +161,61 @@ project_config_install_finalize ""
 jq -e '.selectionEnabled == false and .executionEnabled == false and (.workspaces | length) == 0' \
   "${PROJECT_CONFIG}" >/dev/null || fail "installer did not initialize a new configuration disabled"
 rm -f "${PROJECT_CONFIG}.retained"
+
+PROJECT_TRANSITION_TARGET_COMMIT="${CANONICAL_COMMIT}"
+jq -n \
+  --arg repository "${PROJECT_REPOSITORY}" \
+  --arg branch "${PROJECT_TRANSITION_PREDECESSOR_BRANCH}" \
+  --arg commit "${PROJECT_TRANSITION_PREDECESSOR_COMMIT}" \
+  --arg manifest "${PROJECT_TRANSITION_PREDECESSOR_MANIFEST_SHA256}" \
+  --arg runner "${PROJECT_RUNNER}" \
+  --arg attachment_root "${ATTACHMENT_ROOT}" '{
+    schemaVersion: "project-codex-v1",
+    selectionEnabled: false,
+    executionEnabled: false,
+    projectId: "atenea",
+    repository: $repository,
+    branch: $branch,
+    commit: $commit,
+    manifestSha256: $manifest,
+    runner: $runner,
+    attachmentRoot: $attachment_root,
+    workspaces: {}
+  }' >"${PROJECT_CONFIG}"
+cp "${PROJECT_CONFIG}" "${TEST_ROOT}/transition-predecessor.json"
+TRANSITION_CONFIG_SHA256="$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)"
+TRANSITION_PREFLIGHT="$(project_config_install_preflight)"
+[[ "${TRANSITION_PREFLIGHT}" == "transition:${TRANSITION_CONFIG_SHA256}" ]] \
+  || fail "installer did not recognize the exact empty transition predecessor"
+project_config_install_finalize "${TRANSITION_PREFLIGHT}"
+jq -e \
+  --arg branch "${PROJECT_BRANCH}" \
+  --arg commit "${CANONICAL_COMMIT}" \
+  --arg manifest "${PROJECT_MANIFEST_SHA256}" '
+    .branch == $branch and
+    .commit == $commit and
+    .manifestSha256 == $manifest and
+    .selectionEnabled == false and
+    .executionEnabled == false and
+    .workspaces == {}
+  ' "${PROJECT_CONFIG}" >/dev/null \
+  || fail "installer did not atomically migrate the exact empty predecessor"
+
+for mutation in selection workspace commit manifest; do
+  cp "${TEST_ROOT}/transition-predecessor.json" "${PROJECT_CONFIG}"
+  jq \
+    --arg mutation "${mutation}" \
+    'if $mutation == "selection" then .selectionEnabled = true
+     elif $mutation == "workspace" then .workspaces.foreign = {}
+     elif $mutation == "commit" then .commit = "1111111111111111111111111111111111111111"
+     else .manifestSha256 = ("1" * 64)
+     end' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.rejected"
+  mv "${PROJECT_CONFIG}.rejected" "${PROJECT_CONFIG}"
+  if ( verify_project_config_transition_predecessor_content ) >/dev/null 2>&1; then
+    fail "installer accepted a non-exact transition predecessor: ${mutation}"
+  fi
+done
+write_project_config false false '{}' "${CANONICAL_COMMIT}"
 
 if jq '.attachmentRoots = [.attachmentRoot]' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.ambiguous" \
     && mv "${PROJECT_CONFIG}.ambiguous" "${PROJECT_CONFIG}" \

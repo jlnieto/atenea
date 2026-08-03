@@ -34,6 +34,10 @@ MATERIALIZATION_PARENT="/run/atenea"
 PROJECT_REPOSITORY="https://github.com/jlnieto/atenea.git"
 PROJECT_BRANCH="main"
 PROJECT_MANIFEST_SHA256="327a0c521017109d7c0067a11e7d8c3ad2079de4ea78d28296848f9de39c164b"
+PROJECT_TRANSITION_PREDECESSOR_BRANCH="feature/actualizar-conversacion-en-web"
+PROJECT_TRANSITION_PREDECESSOR_COMMIT="8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d"
+PROJECT_TRANSITION_PREDECESSOR_MANIFEST_SHA256="3b26e1899a06993bee69ac596e7cb69b6200a37d063d98203ad308058c91bfa3"
+PROJECT_TRANSITION_TARGET_COMMIT="615e539d1f2622a4ac2568ba7697b876d49ae33e"
 PROJECT_MIRROR="/srv/atenea/repositories/atenea.git"
 PROJECT_REF="refs/remotes/origin/${PROJECT_BRANCH}"
 PROJECT_WORKSPACES_ROOT="/srv/atenea/workspaces/sessions"
@@ -236,7 +240,13 @@ observe_project_commit() {
 }
 
 verify_project_config_content() {
-  jq -e '((keys | sort) == ["attachmentRoot", "branch", "commit",
+  jq -e \
+    --arg repository "$PROJECT_REPOSITORY" \
+    --arg branch "$PROJECT_BRANCH" \
+    --arg manifest_sha256 "$PROJECT_MANIFEST_SHA256" \
+    --arg runner "$PROJECT_RUNNER" \
+    --arg attachment_root "$ATTACHMENT_ROOT" '
+    ((keys | sort) == ["attachmentRoot", "branch", "commit",
       "executionEnabled", "manifestSha256", "projectId", "repository",
       "runner", "schemaVersion", "selectionEnabled", "workspaces"] or
     (keys | sort) == ["branch", "commit", "executionEnabled",
@@ -244,8 +254,12 @@ verify_project_config_content() {
       "schemaVersion", "selectionEnabled", "workspaces"]) and
     .schemaVersion == "project-codex-v1" and
     .projectId == "atenea" and
+    .repository == $repository and
+    .branch == $branch and
+    .manifestSha256 == $manifest_sha256 and
+    .runner == $runner and
     ((has("attachmentRoot") | not) or
-      .attachmentRoot == "/srv/atenea/attachments-v1") and
+      .attachmentRoot == $attachment_root) and
     (.commit | test("^[0-9a-f]{40}$")) and
     (.selectionEnabled | type == "boolean") and
     (.executionEnabled | type == "boolean") and
@@ -304,24 +318,73 @@ verify_project_config_file_identity() {
     || fail "existing project configuration identity is invalid"
 }
 
+verify_project_config_transition_predecessor_content() {
+  jq -e \
+    --arg repository "$PROJECT_REPOSITORY" \
+    --arg branch "$PROJECT_TRANSITION_PREDECESSOR_BRANCH" \
+    --arg commit "$PROJECT_TRANSITION_PREDECESSOR_COMMIT" \
+    --arg manifest_sha256 "$PROJECT_TRANSITION_PREDECESSOR_MANIFEST_SHA256" \
+    --arg runner "$PROJECT_RUNNER" \
+    --arg attachment_root "$ATTACHMENT_ROOT" '
+    (keys | sort) == ["attachmentRoot", "branch", "commit",
+      "executionEnabled", "manifestSha256", "projectId", "repository",
+      "runner", "schemaVersion", "selectionEnabled", "workspaces"] and
+    .schemaVersion == "project-codex-v1" and
+    .selectionEnabled == false and
+    .executionEnabled == false and
+    .projectId == "atenea" and
+    .repository == $repository and
+    .branch == $branch and
+    .commit == $commit and
+    .manifestSha256 == $manifest_sha256 and
+    .runner == $runner and
+    .attachmentRoot == $attachment_root and
+    .workspaces == {}
+  ' "$PROJECT_CONFIG" >/dev/null \
+    || fail "existing project configuration is not the exact empty transition predecessor"
+}
+
 project_config_install_preflight() {
   if [[ ! -e "$PROJECT_CONFIG" && ! -L "$PROJECT_CONFIG" ]]; then
     return 0
   fi
   verify_project_config_file_identity
+  local retained_sha256
+  retained_sha256="$(sha256sum "$PROJECT_CONFIG" | cut -d' ' -f1)"
+  if ( verify_project_config_transition_predecessor_content ) >/dev/null 2>&1; then
+    printf 'transition:%s\n' "$retained_sha256"
+    return 0
+  fi
   verify_project_config_content
-  sha256sum "$PROJECT_CONFIG" | cut -d' ' -f1
+  printf 'retain:%s\n' "$retained_sha256"
 }
 
 project_config_install_finalize() {
-  local retained_sha256="$1"
-  if [[ -z "$retained_sha256" ]]; then
+  local retained_identity="$1"
+  if [[ -z "$retained_identity" ]]; then
     write_project_config false false '{}' "$(observe_project_commit)"
     return 0
   fi
+  local operation retained_sha256
+  operation="${retained_identity%%:*}"
+  retained_sha256="${retained_identity#*:}"
+  [[ "$operation" == "retain" || "$operation" == "transition" ]] \
+    || fail "existing project configuration transition identity is invalid"
+  [[ "$retained_sha256" =~ ^[0-9a-f]{64}$ ]] \
+    || fail "existing project configuration fingerprint is invalid"
   verify_project_config_file_identity
   [[ "$(sha256sum "$PROJECT_CONFIG" | cut -d' ' -f1)" == "$retained_sha256" ]] \
     || fail "existing project configuration changed during installation"
+  if [[ "$operation" == "transition" ]]; then
+    verify_project_config_transition_predecessor_content
+    local canonical_commit
+    canonical_commit="$(observe_project_commit)"
+    [[ "$canonical_commit" == "$PROJECT_TRANSITION_TARGET_COMMIT" ]] \
+      || fail "canonical main commit is not the reviewed transition target"
+    write_project_config false false '{}' "$canonical_commit"
+    verify_project_config_content
+    return 0
+  fi
   verify_project_config_content
 }
 
