@@ -16,6 +16,9 @@ VALIDATION_MEDIATOR="/usr/local/libexec/atenea/atenea-validation-v1.sh"
 PLAYWRIGHT_VALIDATOR="/usr/local/libexec/atenea/atenea-playwright-validation-v1.sh"
 PLAYWRIGHT_CHECK="/usr/local/libexec/atenea/atenea-playwright-validation-v1.js"
 ROLE_MEDIATOR="/usr/local/libexec/atenea/atenea-multi-repository-v1.sh"
+WORKSPACE_ACTIVATOR="/usr/local/libexec/atenea/atenea-workspace-activation-v1.sh"
+WORKSPACE_ACTIVATION_SUDOERS="/etc/sudoers.d/92-atenea-routing-activation-v1"
+WORKSPACE_ACTIVATION_BUNDLE="/srv/atenea/worker/workspace-v1/ops/worker"
 CODEX_UPDATE_MEDIATOR="/usr/local/libexec/atenea/codex-release-stage-v1.py"
 CODEX_ACTIVATE_MEDIATOR="/usr/local/libexec/atenea/codex-release-activate-v1.py"
 CODEX_RESTART_SCHEDULER="/usr/local/libexec/atenea/codex-release-restart-v1.sh"
@@ -48,6 +51,10 @@ PROJECT_RUNNER_SHA256="2ca885104cda9a6e14b4c65ec96346b17844147c7fcb8c571c6932488
 BEAUTIPS_PROJECT_RUNNER_SHA256="6234de1167cbcb32533398b9e421ada018e3097bf868bd627ddd712f20ad17cc"
 BEAUTIPS_PROJECT_RUNNER_PREDECESSOR_SHA256="60d54f1e6e6eaf1edea43e9bf3b0800226a413b4feee5a59ce8152954d97b983"
 PLATFORM_INSTRUCTIONS_SHA256="44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"
+WORKSPACE_ACTIVATOR_SHA256="5ef544c478c17a0ae6ae88586915185572721ca89dc48dbbf15b65ad417aa889"
+SESSION_WORKSPACE_SHA256="3e41ae7f218f360920bed7cd4b2d75cab5396bb07649635694db3271b12d2ffe"
+RUNTIME_ADMISSION_SHA256="a81366d3495bb2a7bf4702e9ea934a74e9b3edb30f728926e655a5c0a6a9f7ce"
+SESSION_ALLOCATION_SHA256="2efceeaaba78b349f1d6aa79bfba5d908d397a9e3a480cfa3b100bde52fb99d7"
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -131,6 +138,38 @@ verify_beautips_project_runner_upgrade() {
     || fail "existing Beautips project runner is not an accepted predecessor"
 }
 
+workspace_activation_sudoers_content() {
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s ensure *\n' "$WORKSPACE_ACTIVATOR"
+}
+
+verify_workspace_activation_dependency() {
+  [[ -f "$WORKSPACE_ACTIVATOR" && ! -L "$WORKSPACE_ACTIVATOR" \
+      && "$(stat -c '%a:%U:%G' "$WORKSPACE_ACTIVATOR")" == "755:root:root" \
+      && "$(sha256sum "$WORKSPACE_ACTIVATOR" | cut -d' ' -f1)" \
+        == "$WORKSPACE_ACTIVATOR_SHA256" ]] \
+    || fail "Atenea workspace activator differs from the reviewed source"
+  [[ -f "$WORKSPACE_ACTIVATION_SUDOERS" && ! -L "$WORKSPACE_ACTIVATION_SUDOERS" \
+      && "$(stat -c '%a:%U:%G' "$WORKSPACE_ACTIVATION_SUDOERS")" == "440:root:root" \
+      && "$(cat "$WORKSPACE_ACTIVATION_SUDOERS")" \
+        == "$(workspace_activation_sudoers_content)" ]] \
+    || fail "Atenea workspace activation sudo authority is not exact"
+  visudo -cf "$WORKSPACE_ACTIVATION_SUDOERS" >/dev/null \
+    || fail "Atenea workspace activation sudo authority is invalid"
+
+  local name expected installed
+  while IFS='|' read -r name expected; do
+    installed="$WORKSPACE_ACTIVATION_BUNDLE/$name"
+    [[ -f "$installed" && ! -L "$installed" \
+        && "$(stat -c '%a:%U:%G' "$installed")" == "750:atenea-worker:atenea" \
+        && "$(sha256sum "$installed" | cut -d' ' -f1)" == "$expected" ]] \
+      || fail "Atenea workspace activation dependency differs: $name"
+  done <<EOF
+session-workspace-v1.sh|$SESSION_WORKSPACE_SHA256
+runtime-admission-v1.sh|$RUNTIME_ADMISSION_SHA256
+session-runtime-allocation-v1.sh|$SESSION_ALLOCATION_SHA256
+EOF
+}
+
 tailscale_ipv4() {
   ip -4 -o address show dev tailscale0 scope global \
     | awk 'NR == 1 { split($4, value, "/"); print value[1] }'
@@ -148,6 +187,7 @@ validate_inputs() {
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.sh" ]] || fail "Playwright validator is missing"
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.js" ]] || fail "Playwright check is missing"
   [[ -f "$SCRIPT_DIR/atenea-multi-repository-v1.sh" ]] || fail "repository role mediator is missing"
+  [[ -f "$SCRIPT_DIR/atenea-workspace-activation-v1.sh" ]] || fail "workspace activator is missing"
   [[ -f "$SCRIPT_DIR/codex-release-stage-v1.py" ]] || fail "Codex update stage mediator is missing"
   [[ -f "$SCRIPT_DIR/codex-release-activate-v1.py" ]] || fail "Codex update activation mediator is missing"
   [[ -f "$SCRIPT_DIR/codex-release-restart-v1.sh" ]] || fail "Codex update restart scheduler is missing"
@@ -162,6 +202,9 @@ validate_inputs() {
   [[ "$(sha256sum "$SCRIPT_DIR/beautips-project-codex-runner-v1.py" | cut -d' ' -f1)" \
       == "$BEAUTIPS_PROJECT_RUNNER_SHA256" ]] \
     || fail "Beautips compatibility runner fingerprint is stale"
+  [[ "$(sha256sum "$SCRIPT_DIR/atenea-workspace-activation-v1.sh" | cut -d' ' -f1)" \
+      == "$WORKSPACE_ACTIVATOR_SHA256" ]] \
+    || fail "workspace activator fingerprint is stale"
 }
 
 plan() {
@@ -406,6 +449,7 @@ apply_install() {
   local retained_project_config_sha256
   retained_project_config_sha256="$(project_config_install_preflight)"
   verify_beautips_project_runner_upgrade
+  verify_workspace_activation_dependency
   systemctl stop "$SERVICE"
 
   install -d -o root -g root -m 0755 /usr/local/libexec/atenea
@@ -482,6 +526,7 @@ apply_install() {
 
 verify() {
   require_root
+  verify_workspace_activation_dependency
   local bind
   bind="$(tailscale_ipv4)"
   systemctl is-enabled "$SERVICE"

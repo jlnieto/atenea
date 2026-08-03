@@ -27,6 +27,10 @@ three refs.
 - Create one clean WorkSession proving that new Atenea work now starts from
   `main` while routing, production, preview, Beautips and unrelated worker
   resources remain unchanged.
+- Correct the discovered stale installed Atenea activation mediator through its
+  dedicated versioned installer, with exact-predecessor admission, complete
+  AgentRun-installer verification and an immutable rollback, before activating
+  the retained no-run canary.
 
 ## Capabilities
 
@@ -53,5 +57,8 @@ None.
   exact closed-canary registration/admission residue is released, and the
   canonical mirror/registry pin advances to the resulting commit; no runtime
   or unrelated slot is started, reassigned or rebuilt.
+- AX42 corrective: only the exact stale Atenea activation bundle may advance to
+  the already reviewed `main` bytes; a partial, foreign or ambiguous installed
+  bundle is rejected before any write.
 - Programme repository: contract, worker identity sources, tests, evidence
   and ledger.

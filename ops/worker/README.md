@@ -438,10 +438,15 @@ Installation updates the existing private tailnet worker endpoint and leaves
 the real-project capability disabled:
 
 ```bash
+sudo ./install-atenea-routing-activation-v1.sh apply
 sudo env ATENEA_CONTROL_PLANE_TAILSCALE_IP=100.88.252.28 \
   ./install-agent-run-worker-v1.sh apply
 sudo ./install-agent-run-worker-v1.sh disable
 ```
+
+The activation installer must run first. The AgentRun installer fails closed
+before stopping or writing if the installed activation program, sudoers
+boundary or three fixed workspace dependencies are absent, stale or foreign.
 
 Selection may be enabled with zero registered workspaces solely so Atenea can
 open a new WorkSession and persist its worker-generated UUID. Dispatch remains

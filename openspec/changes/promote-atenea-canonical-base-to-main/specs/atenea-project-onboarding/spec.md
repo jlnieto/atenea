@@ -30,6 +30,21 @@ mirror, project policy and worker registry to one exact resulting commit.
   assigns the resulting immutable manifest hash and is completely validated
   before any production declaration moves
 
+#### Scenario: Installed activation mediator is stale
+
+- **WHEN** the reviewed release is `main` but the installed activator is the
+  one exact accepted feature predecessor
+- **THEN** the dedicated installer may replace only that exact bundle, the
+  AgentRun installer verifies the resulting dependency, and a sealed rollback
+  retains the predecessor bytes without starting a runtime or AgentRun
+
+#### Scenario: Installed activation bundle is not exact
+
+- **WHEN** its program, sudoers boundary or dependencies are partial,
+  symlinked, foreign, ambiguous or changed after preflight
+- **THEN** installation fails closed before writing, restarting a service or
+  adopting any resource
+
 #### Scenario: Closed prior canary retains active worker ownership
 
 - **WHEN** the exact sole worker registration and held admission belong to a

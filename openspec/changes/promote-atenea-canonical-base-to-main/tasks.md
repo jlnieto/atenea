@@ -78,6 +78,14 @@ repair, adoption or deletion.
 - [x] 4.8 Prove exact application/worker/project reconciliation and no runtime,
   routing, AgentRun, attachment, preview, Beautips or unrelated-resource
   change; seal evidence, strict-validate, commit and push
+- [x] 4.9 Amend the authorized corrective contract; make the routing installer
+  accept only an absent, current or exact reviewed predecessor activation
+  bundle, make the AgentRun installer preflight and verify that complete
+  dependency, add focused regression coverage and run the complete worker suite
+- [ ] 4.10 Create an immutable source and exact installed-predecessor rollback,
+  install only the reviewed Atenea activation bundle on AX42 without restarting
+  an unrelated service, prove complete reconciliation/non-impact, seal evidence,
+  strict-validate, commit and push
 
 ## 5. New-main canary and closure
 

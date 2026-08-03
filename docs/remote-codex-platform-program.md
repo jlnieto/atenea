@@ -10387,3 +10387,31 @@ beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.1-blocked-stale-activation-mediator`;
 the SHA-256 of its `SHA256SUMS` is
 `fa3ac7672d1e439cd922bb2c27d463f54d65d8b78e9960a8b36b0e36bf89c69b`.
+
+Task 4.9 of the authorized activation corrective is complete. Amended change
+progress is `22/27`; task 4.10 is the exact resume point. The dedicated Atenea
+routing installer now accepts only a completely absent bundle, the exact
+current bundle, or the exact reviewed feature-program predecessor with current
+sudoers and dependency identities. Partial, symlinked, foreign and ambiguous
+state is rejected unchanged, and the whole-bundle preflight is repeated before
+the first write.
+
+The AgentRun installer now verifies the exact main activator, sudo boundary and
+three workspace dependencies before it stops the service and again in its
+ordinary installed verification. The deployment runbook explicitly applies
+the dedicated activation installer first. Corrective routing-installer and
+AgentRun-installer SHA-256 values are respectively
+`bd4c406399011f87d21643dd94de8e2254098c7c7d883107d6e863ffced3cd07`
+and
+`d7c103ea181a5bf542fe839e002aaf53336bf78fb1cbd00f5934696c8aa4a819`.
+
+Both focused suites passed twice. The complete 32-entry worker suite, including
+the bounded synthetic Playwright browser/cleanup entry, passed `32/32` in 522
+seconds. Strict OpenSpec validation passed. No AX42 install, service restart,
+registry change, workspace activation, prompt, runtime or AgentRun occurred in
+this source-only task. WorkSession 16 remains the retained no-run canary.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.9-activation-corrective-source`;
+the SHA-256 of its `SHA256SUMS` is
+`4e21609b8dbd77fa61d9f99d696130f8c679cf8632b8c7d26c5369c7fb17995e`.

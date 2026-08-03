@@ -120,6 +120,30 @@ requires persisted `baseBranch=main`, exact AX42 workspace ownership derived
 from the new source pin, zero AgentRuns and no runtime start. This isolates
 base-branch validation from application or Codex behavior.
 
+### Close activation installation as one verified dependency
+
+The no-run canary exposed that the AgentRun worker installer verified its
+service command but not the separately installed Atenea workspace activator.
+The reviewed release source already contains the correct `main` activator;
+only the installed copy remained at the accepted feature predecessor. The
+corrective rollout therefore keeps the dedicated activation installer as the
+sole writer, adds an exact whole-bundle preflight that accepts only all-absent,
+all-current or the one reviewed predecessor-program plus current dependencies,
+and rejects partial, symlinked, foreign or ambiguous state before writing.
+
+The AgentRun installer now treats the complete installed activation bundle as
+a mandatory preflight and verification dependency. Its deployment order is
+explicit: apply and verify the dedicated activation bundle first, then apply
+or verify the AgentRun worker. The correction itself requires no service
+restart because each workspace request invokes the mediator by path; if an
+unexpected runtime condition requires a restart, authorization is limited to
+the AgentRun worker only.
+
+Rollback is not the generic first-install removal action. Before upgrade, the
+exact installed mediator, sudoers boundary and dependency bundle are copied to
+a checksum-sealed private release directory. Operational rollback may restore
+only those same paths after matching their expected post-install identities.
+
 ## Rollback
 
 Before each mutation, record old refs, project row, registry and installed
@@ -147,8 +171,9 @@ preserves sanitized evidence.
 5. Publish and validate the bounded compiled source-identity successor.
 6. Release only the exact closed-canary active ownership.
 7. Reconcile and roll out all canonical source declarations to the successor.
-8. Create a clean no-run WorkSession and verify `main` end to end.
-9. Seal evidence, update the programme ledger, archive and publish this change.
+8. Correct and reconcile the exact stale installed activation bundle.
+9. Create a clean no-run WorkSession and verify `main` end to end.
+10. Seal evidence, update the programme ledger, archive and publish this change.
 
 ## Open Questions
 

@@ -43,6 +43,28 @@ install_exact_directory "$(id -un)" "$(id -gn)" 0750 "${MODE_FIXTURE}/release"
 [[ "$(sha256sum "${SCRIPT_DIR}/beautips-project-codex-runner-v1.py" | cut -d' ' -f1)" \
     == "${BEAUTIPS_PROJECT_RUNNER_SHA256}" ]] \
   || fail "Beautips compatibility runner fingerprint is stale"
+[[ "$(sha256sum "${SCRIPT_DIR}/atenea-workspace-activation-v1.sh" | cut -d' ' -f1)" \
+    == "${WORKSPACE_ACTIVATOR_SHA256}" ]] \
+  || fail "Atenea workspace activator fingerprint is stale"
+[[ "$(sha256sum "${SCRIPT_DIR}/session-workspace-v1.sh" | cut -d' ' -f1)" \
+    == "${SESSION_WORKSPACE_SHA256}" ]] \
+  || fail "workspace dependency fingerprint is stale"
+[[ "$(sha256sum "${SCRIPT_DIR}/runtime-admission-v1.sh" | cut -d' ' -f1)" \
+    == "${RUNTIME_ADMISSION_SHA256}" ]] \
+  || fail "admission dependency fingerprint is stale"
+[[ "$(sha256sum "${SCRIPT_DIR}/session-runtime-allocation-v1.sh" | cut -d' ' -f1)" \
+    == "${SESSION_ALLOCATION_SHA256}" ]] \
+  || fail "allocation dependency fingerprint is stale"
+dependency_preflight_line="$(grep -n -m1 '^  verify_workspace_activation_dependency$' \
+  "${SCRIPT_DIR}/install-agent-run-worker-v1.sh" | cut -d: -f1)"
+service_stop_line="$(grep -n -m1 '^  systemctl stop "\$SERVICE"$' \
+  "${SCRIPT_DIR}/install-agent-run-worker-v1.sh" | cut -d: -f1)"
+[[ -n "${dependency_preflight_line}" && -n "${service_stop_line}" \
+    && "${dependency_preflight_line}" -lt "${service_stop_line}" ]] \
+  || fail "activation dependency is not checked before the worker stops"
+[[ "$(grep -Fc '  verify_workspace_activation_dependency' \
+  "${SCRIPT_DIR}/install-agent-run-worker-v1.sh")" -eq 2 ]] \
+  || fail "activation dependency is not checked by both apply and verify"
 [[ "$(sha256sum "${SCRIPT_DIR}/templates/${MATERIALIZATION_SERVICE}" | cut -d' ' -f1)" \
     == "${MATERIALIZATION_SERVICE_TEMPLATE_SHA256}" ]] \
   || fail "materialization service fingerprint is stale"
