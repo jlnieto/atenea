@@ -9944,3 +9944,28 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-2.3-feature-nonimpact`;
 the SHA-256 of its `SHA256SUMS` is
 `c5f015712287043d2f705fbf959942fc75331aae55823ec8aac434d5eef3d30d`.
+
+Task 3.1 is complete and change progress is `11/22`; task 3.2 is the exact
+resume point. Clean candidate branch
+`codex/activate-atenea-real-worksession-attachments` remains synchronized to
+internal upstream at exact commit
+`57b4123abaa4d66ba335fcb0cf4b64cd9fdd589d` and has been published as a new
+GitHub ref at that same SHA using an ordinary, non-force push.
+
+The GitHub comparison against merged main reports exactly 32 candidate
+commits, 71 changed files, 9,011 additions and 394 deletions. The apparent
+one-commit behind count is solely main's accepted merge commit: the exact
+merge base is feature tip `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`,
+and main plus feature have the identical tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`. Thus the second review contains
+only the 32 descendant attachment commits and no repeated historical diff.
+
+A read-only SSH GitHub probe failed because this account's configured protocol
+is HTTPS; it created no state. The authenticated HTTPS publication and all
+exact remote/tree checks passed. No runtime, service, deployment, routing,
+project, WorkSession or foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-3.1-candidate-publication`;
+the SHA-256 of its `SHA256SUMS` is
+`67f446a909a4ab8240eb47b84b2e44480171b6ffbaa40e54b6998799acc29ee1`.

@@ -40,7 +40,7 @@ repair, adoption or deletion.
 
 ## 3. Attachment history promotion
 
-- [ ] 3.1 Reconfirm candidate cleanliness and ancestry, publish exact candidate
+- [x] 3.1 Reconfirm candidate cleanliness and ancestry, publish exact candidate
   tip `57b4123abaa4d66ba335fcb0cf4b64cd9fdd589d` to GitHub without force, and
   verify the new-main comparison contains only the 32 descendant commits
 - [ ] 3.2 Run the canonical validation for the exact candidate, create its PR
