@@ -9565,3 +9565,36 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.2-compatible-rollback`;
 the SHA-256 of its `SHA256SUMS` is
 `cdb93f9b02327f52c8e68ec65a4045841592c72928868c98943c1046a6ca8c15`.
+
+Task 8.3 is complete. Change progress is `78/83`; task 8.4 is the exact
+resume point and current artifacts have not yet been restored.
+
+The complete desired rollback was repeated without forced recreation,
+reinstallation, deletion or service restart. `docker compose up` reported the
+rollback backend already running; its container/image/restart identity, the
+protected Compose SHA-256
+`8e034951181c5ed40747da133a5a249e338cf0c8bc4ccec0d3266e98fcd08de0`,
+preview and Beautips container identities, V62, Atenea counts `1/4/1/2`,
+Beautips counts `0/22/0/13` and canonical Git tree were identical before and
+after the four-second repetition.
+
+On AX42, the six-file rollback aggregate, compatible project configuration,
+both service PIDs/restart counts, exact canary content/sidecar fingerprint,
+workspace tree, allocation and all rootless container identities remained
+byte-identical around a no-op start of the already active services. The
+materialization unit remained absent and materializations remained zero. No
+archive was extracted and no cleanup or retention operation ran.
+
+The scheduled backup timer had independently created newer snapshot
+`1f19641cfcbb19f85e3dd4fece2cc21616a044a9314d40200b1ab82d00b10dd2`
+before this rollback repetition. Repository inventory contains seven snapshots
+and still includes the accepted canary snapshot
+`50980a4b74d68ed40525b73ebba2945f92885839fef4af5412d58d96e3d77de4`.
+Backup and check timers remain enabled and active, RAID remains `3/3 [UU]`,
+and production health remains HTTP 200. The repeated rollback removed or
+changed nothing additional.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.3-idempotent-rollback`;
+the SHA-256 of its `SHA256SUMS` is
+`f34eee61d9173c5e5361793f3a64dd3c2bc2b639fa802f7b7e46d4d13c6eeae6`.
