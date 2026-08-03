@@ -16,9 +16,13 @@ exact owner-aware fixture cleanup to those two tests; no application or
 runtime source changes. It is the reviewed promotion head after passing the
 complete canonical gate.
 
-The promotion changes source authority, not application behavior. It must
-therefore preserve every accepted commit and must not trigger a production
-deploy, routing change or runtime reconstruction.
+The promotion changes source authority, not product behavior. The first
+reconciliation attempt proved that source authority is compiled into both the
+backend and the reviewed AX42 contracts, so a configuration-only switch would
+fail closed. The operator explicitly authorized the bounded identity-only
+successor, AX42 reconciliation and production rollout on 2026-08-03. Every
+accepted commit remains append-only and no runtime or routing-policy change is
+permitted.
 
 ## Goals / Non-Goals
 
@@ -27,15 +31,20 @@ deploy, routing change or runtime reconstruction.
 - make GitHub `main` contain both accepted layers with inspectable ancestry;
 - make every canonical source declaration resolve to the same immutable main
   commit;
+- update the complete compiled application/worker identity and manifest as
+  one validated transition rather than creating mixed authorities;
+- release only the exact stale active worker ownership of the already closed
+  previous Atenea canary while retaining its worktree, allocation sidecar,
+  Git, logs, attachments and artifacts;
 - prove one newly created Atenea WorkSession reports `main` and that its
   workspace is derived from that exact accepted commit;
 - retain production, preview, Beautips, backups and unrelated worker state.
 
 **Non-Goals:**
 
-- changing application code, UI, attachment policy or routing;
+- changing application behavior, UI, attachment policy or routing policy;
 - enabling attachments for Beautips or another project;
-- deploying new images or migrating the production database;
+- migrating the production database;
 - rewriting or deleting historical WorkSession, branch or pull-request state;
 - starting a development runtime or submitting a Codex prompt.
 
@@ -64,6 +73,35 @@ worker registry are updated only after both pull requests are merged and the
 resulting main commit has both accepted tips as ancestors. Every mutation is
 preceded by an exact fingerprint and has an inverse operation recorded.
 
+### Treat compiled source identity as one authority set
+
+The backend project identity, runtime manifest, AX42 AgentRun worker, project
+runner, activation/validation/multi-repository mediators, installer and v1-v3
+request schemas all name the canonical branch. They move to `main` together in
+one bounded successor. The runtime manifest receives a new immutable SHA-256,
+all focused and complete suites run before merge, and the deployed backend and
+worker artifacts must match the reviewed successor before the persisted
+project default changes.
+
+### Retire only exact closed-canary active ownership
+
+Entry inspection did not decode nested admission state and therefore missed
+that closed WorkSession 15 still holds `slot2/heavy1` and the sole enabled
+worker registration. Reconciliation may release only that exact registered
+session after proving its control-plane `CLOSED` state, zero non-terminal runs,
+zero runtime resources, exact registry/allocation hashes and exact admission
+identity. The registry entry and active admission are removed through the
+reviewed mediated contracts; its worktree, allocation sidecar, Git, logs,
+attachments and artifacts remain immutable.
+
+### Roll out identity without changing routing policy
+
+AX42 receives only reviewed identity artifacts and its exact main registry;
+only the AgentRun worker is restarted because it embeds the branch constant.
+The backend is rebuilt from the merged identity successor and only the
+production backend is recreated. Existing global/project routing gates,
+attachment policy, database schema, preview and Beautips remain unchanged.
+
 ### Treat retained sessions as immutable history
 
 Closed WorkSessions keep their original base, branch, commit, delivery and
@@ -84,13 +122,16 @@ base-branch validation from application or Codex behavior.
 
 ## Rollback
 
-Before each mutation, record old refs, project row, registry file hash,
-mirror refs, services and resource inventories. Before either PR is merged,
+Before each mutation, record old refs, project row, registry and installed
+worker file hashes, mirror refs, services and resource inventories. Before
+any PR is merged,
 rollback is ordinary PR closure and deletion only of the newly published
 candidate ref. After merge, history is never rewritten: operational rollback
-restores the project/worker base declarations to their recorded old values
-while leaving GitHub main as an append-only accepted history. A newly created
-canary may be closed through the normal endpoint but is never deleted.
+restores the prior backend image, project/worker base declarations and exact
+installed worker artifacts to their recorded old values while leaving GitHub
+main as append-only accepted history. The closed canary's released active
+ownership is not reintroduced automatically. A newly created canary may be
+closed through the normal endpoint but is never deleted.
 
 Any failed ancestry, Git cleanliness, ownership, backup, RAID, production,
 preview, Beautips or unrelated-resource check blocks the current task and
@@ -103,9 +144,11 @@ preserves sanitized evidence.
 3. Validate and merge feature to main with a merge commit.
 4. Publish, validate and merge the descendant candidate to main with a merge
    commit.
-5. Reconcile all canonical source declarations to the resulting main commit.
-6. Create a clean no-run WorkSession and verify `main` end to end.
-7. Seal evidence, update the programme ledger, archive and publish this change.
+5. Publish and validate the bounded compiled source-identity successor.
+6. Release only the exact closed-canary active ownership.
+7. Reconcile and roll out all canonical source declarations to the successor.
+8. Create a clean no-run WorkSession and verify `main` end to end.
+9. Seal evidence, update the programme ledger, archive and publish this change.
 
 ## Open Questions
 

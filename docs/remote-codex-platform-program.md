@@ -10094,3 +10094,22 @@ Sanitized blocking evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.2-blocked-source-contract`;
 the SHA-256 of its `SHA256SUMS` is
 `e80ee6e9d8f20078612084f9eca7b054b27d1142f2fcdf2b40e77918ca346e5d`.
+
+The operator separately authorized the complete corrective path on
+2026-08-03. Task 4.2 is now complete and the amended change progress is
+`15/25`; task 4.3 is the exact resume point.
+
+The reviewed contract now treats Atenea's compiled backend identity, runtime
+manifest, complete AX42 worker/mediator/schema identity, immutable manifest
+hash and persisted project declarations as one transition to `main`. It also
+permits releasing only the exact stale registration and held admission of
+already closed WorkSession 15 after complete ownership and zero-resource
+proof, while retaining its allocation sidecar, worktree, Git, logs,
+attachments and artifacts.
+
+The authorized rollout is bounded to the identity-only Atenea successor, the
+AgentRun worker and the production backend. It does not authorize a schema,
+UI, attachment-policy, routing-policy, preview, Beautips, unrelated-session or
+runtime change. Rollback restores exact recorded worker artifacts/config and
+the prior backend image without rewriting the append-only GitHub history or
+reintroducing retired closed-session ownership.

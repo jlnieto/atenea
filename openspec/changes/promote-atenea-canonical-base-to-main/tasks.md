@@ -56,14 +56,28 @@ repair, adoption or deletion.
 - [x] 4.1 Capture final pre-change values and update the clean canonical Atenea
   checkout plus `origin/HEAD` to the exact merged `main` without rewriting
   history
-- [ ] 4.2 Refresh the AX42 mirror with the bounded canonical fetch contract and
-  update only Atenea's reviewed worker project pin/branch to exact merged main
-- [ ] 4.3 Update only the canonical Atenea project default base to `main`
-  through the supported control-plane/configuration contract
-- [ ] 4.4 Reconcile services only if the normative contract requires it; prove
-  no runtime, slot, routing, AgentRun, attachment, production, preview,
-  Beautips or unrelated-resource change
-- [ ] 4.5 Seal evidence, strict-validate, commit and push
+- [x] 4.2 Record the separate rollout authorization and amend the reviewed
+  contract for the complete compiled identity transition, exact closed-canary
+  ownership release, validation, rollback and production rollout; seal the
+  prior fail-closed evidence, strict-validate, commit and push
+- [ ] 4.3 Change only Atenea's application/manifest and complete AX42
+  worker/schema source identity from the feature branch to `main`; add focused
+  regression coverage, calculate the new manifest pin, test, commit and publish
+- [ ] 4.4 Run complete backend, web and worker validation, create and merge one
+  head-locked GitHub PR for the identity-only Atenea successor, and seal
+  evidence
+- [ ] 4.5 Prove closed WorkSession 15 exact ownership and zero runtime/run
+  activity, then mediatedly unregister and release only its held admission;
+  preserve allocation, worktree, Git, logs, attachments and artifacts
+- [ ] 4.6 Refresh the AX42 mirror with the bounded canonical fetch contract,
+  install the exact reviewed worker identity/configuration and restart only the
+  AgentRun worker with finite readiness and rollback
+- [ ] 4.7 Deploy only the exact identity-successor production backend, then
+  update only canonical Atenea's project default to `main` through the
+  supported control-plane/configuration contract
+- [ ] 4.8 Prove exact application/worker/project reconciliation and no runtime,
+  routing, AgentRun, attachment, preview, Beautips or unrelated-resource
+  change; seal evidence, strict-validate, commit and push
 
 ## 5. New-main canary and closure
 

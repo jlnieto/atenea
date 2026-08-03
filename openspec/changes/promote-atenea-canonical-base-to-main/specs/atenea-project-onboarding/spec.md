@@ -22,6 +22,23 @@ mirror, project policy and worker registry to one exact resulting commit.
 - **THEN** the WorkSession persists `main` as its base and derives its exact
   remote workspace from that commit without starting a runtime or AgentRun
 
+#### Scenario: Compiled source authority is reconciled
+
+- **WHEN** the accepted backend, runtime manifest, worker programs, mediators
+  and request schemas still name the retained feature branch
+- **THEN** one reviewed identity-only successor changes all of them to `main`,
+  assigns the resulting immutable manifest hash and is completely validated
+  before any production declaration moves
+
+#### Scenario: Closed prior canary retains active worker ownership
+
+- **WHEN** the exact sole worker registration and held admission belong to a
+  control-plane WorkSession proven closed with zero non-terminal runs and zero
+  runtime resources
+- **THEN** only its registration and active admission are mediatedly released,
+  while its allocation sidecar, worktree, Git, logs, attachments and artifacts
+  remain unchanged
+
 #### Scenario: Promotion identity is inconsistent
 
 - **WHEN** a ref, ancestry, project row, mirror, registry, workspace or service

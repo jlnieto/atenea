@@ -15,6 +15,12 @@ three refs.
   resulting `main`, also without squash.
 - Reconcile the canonical Atenea checkout, mirror, project default and AX42
   project registry to the exact resulting `main` commit.
+- Publish one bounded source-identity successor that changes Atenea's
+  application identity, runtime manifest and the complete reviewed AX42
+  request/runner/validation authority from the retained feature branch to
+  `main`, without changing product behavior.
+- Reconcile the exact stale active worker ownership retained by the already
+  closed previous Atenea canary before admitting its main-based replacement.
 - Confirm that the one historical non-runnable draft is already quarantined
   through the accepted retained-draft contract and preserve it unchanged,
   without adopting, closing or deleting its reviewable state.
@@ -37,10 +43,15 @@ None.
 
 ## Impact
 
-- GitHub Atenea repository: two ordered pull requests and merge commits; no
-  force push, squash, history rewrite or branch deletion.
-- Atenea control plane: project default base changes from the retained feature
-  branch to `main`; no schema or production routing change.
-- AX42: canonical mirror/registry source pin advances to the resulting `main`
-  commit; no runtime or unrelated slot is started, reassigned or rebuilt.
-- Programme repository: this contract, evidence and ledger only.
+- GitHub Atenea repository: the two ordered history pull requests plus one
+  bounded identity-only successor; no force push, squash, history rewrite or
+  branch deletion.
+- Atenea control plane: the reviewed identity-only backend successor is
+  deployed, then the project default base changes from the retained feature
+  branch to `main`; no schema or production routing policy changes.
+- AX42: the complete reviewed Atenea worker identity advances to `main`, the
+  exact closed-canary registration/admission residue is released, and the
+  canonical mirror/registry pin advances to the resulting commit; no runtime
+  or unrelated slot is started, reassigned or rebuilt.
+- Programme repository: contract, worker identity sources, tests, evidence
+  and ledger.
