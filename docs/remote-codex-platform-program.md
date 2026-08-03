@@ -298,6 +298,7 @@ production activation are recorded later in this ledger.
 | D-095 | Treat `retainUntil` as the minimum keep and new-binding boundary, with no general automatic deletion in the first real activation. | First use needs reversible retention and verified external backup; adding destructive cleanup simultaneously would introduce an unproven ownership/tombstone policy. | accepted, retention/no-deletion verified | data/operations owners | before any attachment expiry/deletion implementation |
 | D-096 | Deploy V62, backend and worker support disabled, then require separate production-rollout authorization and one operator-assisted non-secret Atenea web canary followed by backup/check/isolated restore before accepting the project gate. | A synthetic pass does not prove real browser-to-Codex delivery or non-empty external recovery, while disabled-first deployment and exact canary evidence bound the production risk. | accepted, rollback/re-enable/canary/restore verified | platform/operations/product owners | before another real-project rollout or changing the acceptance gates |
 | D-097 | Promote Atenea's two accepted descendant histories to GitHub `main` in order using merge-commit semantics, then reconcile every canonical base declaration to the resulting immutable commit. Squash, force update and source-branch deletion are forbidden. | The attachment candidate already descends from the accumulated feature history; preserving that ancestry makes the second review contain only its additional commits and prevents split source authority for future WorkSessions. | accepted, execution pending | platform/Git/operations owners | before opening the next real Atenea development WorkSession |
+| D-098 | Preserve WorkSession 6 as an immutable `DRAFT_BLOCKED` retained draft during main promotion; do not call ordinary close, rewrite its worktree or change its row after its accepted replacement and allocation-retirement contract has completed. | V51 intentionally requires retained drafts to remain non-closed and fingerprinted; the state is reviewable history rather than an active project lock, and closing it would destroy the distinction the recovery contract created. | accepted and live-verified | WorkSession/programme owners | before any retained-draft lifecycle expansion or deletion policy |
 
 ## Deferred decisions and gates
 
@@ -9811,7 +9812,8 @@ The canonical project default, checkout and worker registry still name the
 feature branch and commit. The AX42 mirror has the matching feature and old
 main refs; the candidate is not yet published there. The only non-closed
 Atenea session is historical WorkSession 6 in `DRAFT_BLOCKED`; its worktree is
-retained with 37 changes and will be inspected before any mediated close.
+retained with 37 porcelain entries and will be inspected against its accepted
+retained-draft contract before any disposition.
 Every AgentRun is terminal.
 
 Production and preview return HTTP 200. AX42 AgentRun, attachment, preview and
@@ -9827,5 +9829,40 @@ the SHA-256 of its `SHA256SUMS` is
 `eca6d664cce819fbe6273afda3531673a85529570181d31f99b7684523aab8ec`.
 The accepted entry contract passed strict validation and was published at
 programme commit `e8d532c732b065a462049c2934553bef02a57421`. Task group 0 is
-complete at `4/21`; task 1.1 is the exact resume point. No GitHub Atenea ref,
+complete at `4/22`; task 1.1 is the exact resume point. No GitHub Atenea ref,
 project setting, worker registry, mirror, WorkSession or service has changed.
+
+Task group 1 is complete and change progress is `7/22`; task 2.1 is the exact
+resume point. Live inspection proves WorkSession 6 is already the accepted V51
+retained-draft quarantine, not an active stale session. It persists exact
+remote UUID `c750641d-3226-44c3-81dc-d9149aac0de1`, retained HEAD
+`d5ea39e7b575b63c6fff3a66a0400c5af5e9ff2b`, accepted commit
+`ec867f75bd4bb58f582607cf0025a003400f02c8`, fingerprint
+`19450e0fc0edb52625f93fe19688b2fc7de94c5c422d3fde12b25d70ee325f37`
+and its linked replacement WorkSession 7, which is closed.
+
+The retained worktree still has tree
+`7e4531a5c5538d4f30fdb63d588db1afc9e34ddc`, clean index, 28 tracked
+modified files, 16 untracked files and the accepted tracked binary-diff
+SHA-256
+`fe004b66dc9d76da024c6c514ccd7992b6846b2556fab8694bbfd3feb6257fa8`.
+Its retired allocation remains byte-identical with SHA-256
+`f143453718f4c8758665a02986ce44c607feff3f44cc0971100fb63ab4ac1cac`.
+It owns zero containers, networks, units, listeners and worktree processes in
+all four slots. Every AgentRun is terminal.
+
+The ordinary close service accepts only `OPEN` or `CLOSING`, while the V51
+constraint deliberately keeps a fingerprinted retained draft non-closed.
+Accordingly, no close endpoint, recovery mutation or database update ran.
+One focused local test attempt stopped before Maven because the fixed
+`atenea-db-test` name belongs to a separate retained Compose project; that
+foreign test container was left intact. Existing accepted tests, source
+hashes and live invariants establish the disposition, and GitHub checks remain
+mandatory before merge.
+
+Production/preview remain HTTP 200; rootless slot counts remain `3/0/0/3`,
+worker services and backup timers remain active and RAID remains `[UU]`.
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-1-retained-draft-disposition`;
+the SHA-256 of its `SHA256SUMS` is
+`95c4c04218e22c160f22903409ad9bc4aebf3e95e392dfd9c6caca4e3a2eaa90`.

@@ -15,8 +15,9 @@ three refs.
   resulting `main`, also without squash.
 - Reconcile the canonical Atenea checkout, mirror, project default and AX42
   project registry to the exact resulting `main` commit.
-- Resolve the one historical non-runnable draft through the normal
-  WorkSession contract, without adopting or deleting ambiguous state.
+- Confirm that the one historical non-runnable draft is already quarantined
+  through the accepted retained-draft contract and preserve it unchanged,
+  without adopting, closing or deleting its reviewable state.
 - Create one clean WorkSession proving that new Atenea work now starts from
   `main` while routing, production, preview, Beautips and unrelated worker
   resources remain unchanged.

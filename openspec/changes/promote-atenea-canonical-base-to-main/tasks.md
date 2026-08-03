@@ -18,12 +18,12 @@ repair, adoption or deletion.
 
 ## 1. Historical draft disposition
 
-- [ ] 1.1 Inspect the sole non-closed Atenea WorkSession and prove its exact
+- [x] 1.1 Inspect the sole non-closed Atenea WorkSession and prove its exact
   project, base, branch, workspace, delivery, run and resource ownership
-- [ ] 1.2 Close it only through the normal reconciled WorkSession endpoint, or
-  stop with evidence if exact ownership cannot be proven; never edit or delete
-  the row directly
-- [ ] 1.3 Prove zero non-terminal AgentRuns and no resource, routing,
+- [x] 1.2 Prove its accepted retained-draft recovery already created and linked
+  a clean replacement, its active allocation is retired and V51 intentionally
+  keeps it `DRAFT_BLOCKED`; do not call close or mutate its row/worktree
+- [x] 1.3 Prove zero non-terminal AgentRuns and no resource, routing,
   production, preview, Beautips or unrelated-session mutation; seal evidence,
   validate, commit and push
 

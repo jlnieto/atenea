@@ -59,10 +59,13 @@ preceded by an exact fingerprint and has an inverse operation recorded.
 ### Treat retained sessions as immutable history
 
 Closed WorkSessions keep their original base, branch, commit, delivery and
-artifacts. The historical `DRAFT_BLOCKED` session may be closed only through a
-normal endpoint that proves its exact identity. If the contract cannot close
-it without mutation of ambiguous state, it remains documented and the
-promotion stops rather than editing database state directly.
+artifacts. Inspection established that the historical `DRAFT_BLOCKED` session
+is not a stale open lock: V51 deliberately requires it to remain non-closed,
+fingerprinted and linked to its clean replacement. Its replacement is already
+closed, its active allocation marker is retired and it does not block later
+sessions. Calling the ordinary close endpoint would violate the state
+contract, so promotion preserves the retained draft byte-for-byte and records
+its disposition rather than editing database state directly.
 
 ### Validate with a no-run canary
 
@@ -88,7 +91,7 @@ preserves sanitized evidence.
 ## Migration Plan
 
 1. Seal entry fingerprints, ancestry and rollback values.
-2. Resolve the historical draft only through the mediated contract.
+2. Prove the historical draft's completed mediated quarantine and preserve it.
 3. Validate and merge feature to main with a merge commit.
 4. Publish, validate and merge the descendant candidate to main with a merge
    commit.
