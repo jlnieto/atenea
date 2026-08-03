@@ -1,0 +1,304 @@
+{
+  "schemaVersion": 1,
+  "contract": "atenea-development-data",
+  "scope": "relocate-atenea-development-to-ax42",
+  "classification": "synthetic-development-only",
+  "database": {
+    "engine": "postgresql",
+    "majorVersion": 16,
+    "databaseName": "atenea_ax42_synthetic_v1",
+    "databaseUser": "atenea_ax42_synthetic_v1",
+    "networkScope": "session-internal-only",
+    "storage": {
+      "initialState": "new-empty-volume",
+      "owner": "admitted-session",
+      "reuseExistingVolume": false,
+      "importAllowed": false
+    },
+    "allowedHostRefs": [
+      "ATENEA_SESSION_DATABASE_SERVICE"
+    ]
+  },
+  "migrations": {
+    "executor": "flyway",
+    "location": "src/main/resources/db/migration",
+    "order": "numeric-version-ascending",
+    "checksumInventory": "ops/atenea-development-migrations-v1.sha256",
+    "checksumInventorySha256": "360203affcb287b446a106651602affe11f6f60d0523283825d9a403d449a9ff",
+    "expected": {
+      "validatedCount": 45,
+      "appliedCount": 45,
+      "firstVersion": "1",
+      "lastVersion": "45",
+      "failedCount": 0,
+      "publicTableCountIncludingFlywayHistory": 29,
+      "legacyTaskTableCount": 0,
+      "domainRowCountBeforeFixtures": 0
+    }
+  },
+  "secrets": {
+    "literalValuesAllowed": false,
+    "references": [
+      {
+        "name": "ATENEA_DEV_POSTGRES_PASSWORD",
+        "purpose": "synthetic PostgreSQL credential"
+      },
+      {
+        "name": "ATENEA_DEV_JWT_SECRET",
+        "purpose": "synthetic operator JWT signing"
+      },
+      {
+        "name": "ATENEA_DEV_OPERATOR_PASSWORD",
+        "purpose": "synthetic operator bootstrap"
+      },
+      {
+        "name": "ATENEA_DEV_OPERATOR_BROWSER_PASSWORD",
+        "purpose": "synthetic operator browser login"
+      }
+    ],
+    "requiredEquality": [
+      [
+        "ATENEA_DEV_OPERATOR_PASSWORD",
+        "ATENEA_DEV_OPERATOR_BROWSER_PASSWORD"
+      ]
+    ],
+    "forbiddenReferences": [
+      "ATENEA_DEV_CODEX_AUTH",
+      "ATENEA_GITHUB_TOKEN",
+      "ATENEA_OPENAI_API_KEY",
+      "ATENEA_OPENAI_COSTS_ADMIN_KEY",
+      "ATENEA_DEEPSEEK_API_KEY",
+      "ATENEA_MOBILE_PUSH_FCM_PRIVATE_KEY"
+    ]
+  },
+  "fixtures": {
+    "fixtureId": "ATENEA-AX42-SYNTHETIC-V1",
+    "applyAfterFlywayVersion": "45",
+    "idempotency": "natural-key-or-fixed-id-no-op-on-exact-match-fail-on-conflict",
+    "records": [
+      {
+        "table": "operator_account",
+        "count": 1,
+        "identity": {
+          "email": "operator.ax42.synthetic.v1@invalid.example",
+          "displayName": "[SYNTHETIC] AX42 Operator V1"
+        },
+        "generatedFields": {
+          "passwordHash": {
+            "algorithm": "bcrypt",
+            "secretRef": "ATENEA_DEV_OPERATOR_PASSWORD"
+          }
+        },
+        "fixedFields": {
+          "active": true
+        }
+      },
+      {
+        "table": "project",
+        "count": 1,
+        "identity": {
+          "id": 8000000000000201,
+          "name": "[SYNTHETIC] Atenea AX42 V1"
+        },
+        "fixedFields": {
+          "description": "Synthetic development-only project. Never production.",
+          "defaultBaseBranch": "synthetic/fixture-v1"
+        },
+        "runtimeRefs": {
+          "repoPath": "ATENEA_SESSION_OWNED_WORKTREE"
+        }
+      },
+      {
+        "table": "work_session",
+        "count": 1,
+        "identity": {
+          "id": 8000000000000301,
+          "title": "[SYNTHETIC] Atenea AX42 fixture session V1"
+        },
+        "foreignKeys": {
+          "projectId": 8000000000000201
+        },
+        "fixedFields": {
+          "status": "CLOSED",
+          "baseBranch": "synthetic/fixture-v1",
+          "workspaceBranch": "synthetic/atenea-ax42-fixture-v1",
+          "externalThreadId": null,
+          "pullRequestStatus": "NOT_CREATED",
+          "finalCommitSha": null,
+          "publishedAt": null,
+          "closeBlockedState": null,
+          "closeBlockedReason": null,
+          "closeBlockedAction": null,
+          "closeRetryable": false,
+          "openedAt": "2000-01-01T00:00:00Z",
+          "lastActivityAt": "2000-01-01T00:02:00Z",
+          "closedAt": "2000-01-01T00:02:00Z",
+          "createdAt": "2000-01-01T00:00:00Z",
+          "updatedAt": "2000-01-01T00:02:00Z"
+        }
+      },
+      {
+        "table": "session_turn",
+        "count": 2,
+        "records": [
+          {
+            "id": 8000000000000401,
+            "sessionId": 8000000000000301,
+            "actor": "OPERATOR",
+            "messageText": "[SYNTHETIC] Verify the isolated Atenea development fixture.",
+            "internal": false,
+            "createdAt": "2000-01-01T00:01:00Z"
+          },
+          {
+            "id": 8000000000000402,
+            "sessionId": 8000000000000301,
+            "actor": "ATENEA",
+            "messageText": "[SYNTHETIC] Fixture ready; every external integration is denied.",
+            "internal": false,
+            "createdAt": "2000-01-01T00:02:00Z"
+          }
+        ]
+      }
+    ]
+  },
+  "baselineCounts": {
+    "operator_account": 1,
+    "project": 1,
+    "work_session": 1,
+    "session_turn": 2,
+    "operator_refresh_token": 0,
+    "operator_push_device": 0,
+    "operator_session_read_state": 0,
+    "agent_run": 0,
+    "session_deliverable": 0,
+    "mobile_push_notification_log": 0,
+    "core_command": 0,
+    "core_command_event": 0,
+    "core_operator_context": 0,
+    "rescue_session": 0,
+    "rescue_session_turn": 0,
+    "managed_host": 0,
+    "managed_service": 0,
+    "managed_website": 0,
+    "operations_incident": 0,
+    "operations_action_run": 0,
+    "voice_focus": 0,
+    "voice_note": 0,
+    "voice_note_send_intent": 0,
+    "project_verification_run": 0,
+    "project_database_refresh_run": 0,
+    "api_usage_record": 0,
+    "voice_command_telemetry": 0,
+    "session_speech_briefing_cache": 0
+  },
+  "auditChecks": [
+    {
+      "name": "flyway-chain",
+      "query": "SELECT count(*) AS applied_count, min(installed_rank) AS first_rank, max(installed_rank) AS last_rank, count(*) FILTER (WHERE NOT success) AS failed_count FROM flyway_schema_history;",
+      "expected": {
+        "appliedCount": 45,
+        "firstRank": 1,
+        "lastRank": 45,
+        "failedCount": 0
+      }
+    },
+    {
+      "name": "synthetic-operator",
+      "query": "SELECT count(*) FROM operator_account WHERE email = 'operator.ax42.synthetic.v1@invalid.example' AND display_name = '[SYNTHETIC] AX42 Operator V1' AND active AND password_hash LIKE '$2%';",
+      "expectedScalar": 1
+    },
+    {
+      "name": "synthetic-project",
+      "query": "SELECT count(*) FROM project WHERE id = 8000000000000201 AND name = '[SYNTHETIC] Atenea AX42 V1' AND description LIKE 'Synthetic development-only%' AND repo_path LIKE '/srv/atenea/workspaces/sessions/%';",
+      "expectedScalar": 1
+    },
+    {
+      "name": "synthetic-closed-session",
+      "query": "SELECT count(*) FROM work_session WHERE id = 8000000000000301 AND project_id = 8000000000000201 AND status = 'CLOSED' AND external_thread_id IS NULL AND pull_request_url IS NULL;",
+      "expectedScalar": 1
+    },
+    {
+      "name": "synthetic-turns",
+      "query": "SELECT count(*) FROM session_turn WHERE session_id = 8000000000000301 AND id IN (8000000000000401, 8000000000000402) AND message_text LIKE '[SYNTHETIC]%';",
+      "expectedScalar": 2
+    },
+    {
+      "name": "no-active-session-or-run",
+      "query": "SELECT (SELECT count(*) FROM work_session WHERE status IN ('OPEN', 'CLOSING')) + (SELECT count(*) FROM agent_run WHERE status = 'RUNNING');",
+      "expectedScalar": 0
+    },
+    {
+      "name": "no-operational-or-external-records",
+      "query": "SELECT (SELECT count(*) FROM managed_host) + (SELECT count(*) FROM managed_service) + (SELECT count(*) FROM managed_website) + (SELECT count(*) FROM operator_push_device) + (SELECT count(*) FROM mobile_push_notification_log) + (SELECT count(*) FROM api_usage_record) + (SELECT count(*) FROM project_database_refresh_run);",
+      "expectedScalar": 0
+    }
+  ],
+  "externalIntegrations": [
+    {
+      "integration": "openai",
+      "requiredState": "disabled",
+      "requiredSettings": [
+        "ATENEA_OPENAI_ENABLED=false",
+        "ATENEA_OPENAI_COSTS_ENABLED=false"
+      ],
+      "credentialsAllowed": false,
+      "networkAllowed": false
+    },
+    {
+      "integration": "deepseek",
+      "requiredState": "disabled",
+      "requiredSettings": [
+        "ATENEA_CORE_INTENT_ROUTER_ENABLED=false",
+        "ATENEA_BRIEFING_ENABLED=false",
+        "ATENEA_DEEPSEEK_COSTS_ENABLED=false"
+      ],
+      "credentialsAllowed": false,
+      "networkAllowed": false
+    },
+    {
+      "integration": "fcm",
+      "requiredState": "disabled",
+      "requiredSettings": [
+        "ATENEA_MOBILE_PUSH_ENABLED=false"
+      ],
+      "credentialsAllowed": false,
+      "networkAllowed": false
+    },
+    {
+      "integration": "github-runtime",
+      "requiredState": "disabled",
+      "credentialsAllowed": false,
+      "networkAllowed": false,
+      "note": "Canonical source fetch remains an operator or worker-control action outside the Atenea application runtime."
+    },
+    {
+      "integration": "codex-app-server-external-auth",
+      "requiredState": "unavailable-or-local-fake",
+      "credentialsAllowed": false,
+      "networkAllowed": false
+    }
+  ],
+  "explicitDenials": [
+    "production database dumps",
+    "production database volumes",
+    "production database rows",
+    "production database hosts or endpoints",
+    "production or preview credentials",
+    "production GitHub tokens or runtime API access",
+    "real OpenAI, DeepSeek, FCM or other external integration traffic",
+    "real Codex or ChatGPT authentication material",
+    "managed hosts, services or websites",
+    "deployments, promotions or rollbacks",
+    "production or preview backups and restore operations",
+    "production monitoring or incident operations",
+    "any host, database, volume, fixture or endpoint not declared by this contract"
+  ],
+  "failClosedRules": [
+    "Reject before connection when a database host, name or user does not match this contract and the admitted session.",
+    "Reject before read or copy when any source is a dump, existing volume, row export, backup or snapshot.",
+    "Reject before startup when a forbidden secret reference is present or a literal secret is supplied.",
+    "Reject before network access when an external integration is enabled or resolves outside the session-owned network and loopback.",
+    "Reject before fixture mutation when existing rows differ from the declared identity, counts or fixed fields.",
+    "Reject every managed-host, deployment, backup, restore, production-operation or undeclared-fixture request."
+  ]
+}

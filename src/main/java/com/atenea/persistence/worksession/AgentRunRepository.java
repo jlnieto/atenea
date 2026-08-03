@@ -8,10 +8,18 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 
 public interface AgentRunRepository extends JpaRepository<AgentRunEntity, Long> {
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select run from AgentRunEntity run where run.id = :runId")
+    Optional<AgentRunEntity> findByIdForUpdate(@Param("runId") Long runId);
+
     boolean existsBySessionIdAndStatus(Long sessionId, AgentRunStatus status);
+
+    boolean existsBySessionIdAndStatusIn(Long sessionId, List<AgentRunStatus> statuses);
 
     @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
     Optional<AgentRunEntity> findFirstBySessionIdOrderByCreatedAtDesc(Long sessionId);
@@ -28,13 +36,25 @@ public interface AgentRunRepository extends JpaRepository<AgentRunEntity, Long> 
     @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
     List<AgentRunEntity> findBySessionIdOrderByCreatedAtAsc(Long sessionId);
 
+    @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn", "retryOfRun"})
+    Optional<AgentRunEntity> findFirstByRetryOfRunIdOrderByCreatedAtAsc(Long retryOfRunId);
+
     @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
     List<AgentRunEntity> findByStatusOrderByCreatedAtAsc(AgentRunStatus status);
+
+    @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
+    List<AgentRunEntity> findByExecutionTargetAndStatusInOrderByCreatedAtAsc(
+            ExecutionTarget executionTarget,
+            List<AgentRunStatus> statuses);
+
+    @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
+    Optional<AgentRunEntity> findByDispatchId(java.util.UUID dispatchId);
 
     @Modifying
     @Query("""
             update AgentRunEntity run
             set run.status = com.atenea.persistence.worksession.AgentRunStatus.FAILED,
+                run.processOutcome = com.atenea.persistence.worksession.AgentRunProcessOutcome.FAILED,
                 run.finishedAt = :finishedAt,
                 run.outputSummary = null,
                 run.errorSummary = :errorSummary,

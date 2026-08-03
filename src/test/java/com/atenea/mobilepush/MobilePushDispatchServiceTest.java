@@ -10,6 +10,9 @@ import com.atenea.persistence.auth.MobilePushNotificationLogRepository;
 import com.atenea.persistence.auth.OperatorEntity;
 import com.atenea.persistence.auth.OperatorPushDeviceEntity;
 import com.atenea.persistence.auth.OperatorPushDeviceRepository;
+import com.atenea.codexoperations.CodexSessionOperationsProperties;
+import com.atenea.persistence.notification.NotificationCategory;
+import com.atenea.service.notification.NotificationOutboxService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.SessionDeliverableEntity;
@@ -35,15 +38,65 @@ class MobilePushDispatchServiceTest {
     @Mock
     private FcmPushSender fcmPushSender;
 
+    @Mock
+    private NotificationOutboxService notificationOutboxService;
+
+    private CodexSessionOperationsProperties codexOperationsProperties;
+
     private MobilePushDispatchService mobilePushDispatchService;
 
     @BeforeEach
     void setUp() {
+        codexOperationsProperties = new CodexSessionOperationsProperties();
         mobilePushDispatchService = new MobilePushDispatchService(
                 operatorPushDeviceRepository,
                 mobilePushNotificationLogRepository,
-                fcmPushSender
+                fcmPushSender,
+                codexOperationsProperties,
+                notificationOutboxService
         );
+    }
+
+    @Test
+    void notifyRunSucceededUsesGenericOutboxWithoutLegacySendAfterCutover() {
+        AgentRunEntity run = new AgentRunEntity();
+        run.setId(55L);
+        run.setLifecycleRevision(7);
+        run.setSession(buildSession(12L, "Atenea", "Inspect project state"));
+        codexOperationsProperties.setNotificationOutboxEnabled(true);
+
+        mobilePushDispatchService.notifyRunSucceeded(run);
+
+        verify(notificationOutboxService).record(55L, NotificationCategory.RUN_COMPLETED, 7);
+        verify(operatorPushDeviceRepository, never()).findByActiveTrueOrderByUpdatedAtDesc();
+        verify(fcmPushSender, never()).send(any());
+        verify(mobilePushNotificationLogRepository, never()).save(any());
+    }
+
+    @Test
+    void notifyRunFailedUsesGenericOutboxAfterCutover() {
+        AgentRunEntity run = new AgentRunEntity();
+        run.setId(55L);
+        run.setLifecycleRevision(8);
+        codexOperationsProperties.setNotificationOutboxEnabled(true);
+
+        mobilePushDispatchService.notifyRunFailed(run);
+
+        verify(notificationOutboxService).record(55L, NotificationCategory.RUN_FAILED, 8);
+        verify(fcmPushSender, never()).send(any());
+    }
+
+    @Test
+    void notifyRunActionRequiredUsesGenericOutboxAfterCutover() {
+        AgentRunEntity run = new AgentRunEntity();
+        run.setId(55L);
+        run.setLifecycleRevision(9);
+        codexOperationsProperties.setNotificationOutboxEnabled(true);
+
+        mobilePushDispatchService.notifyRunActionRequired(run);
+
+        verify(notificationOutboxService).record(55L, NotificationCategory.ACTION_REQUIRED, 9);
+        verify(fcmPushSender, never()).send(any());
     }
 
     @Test

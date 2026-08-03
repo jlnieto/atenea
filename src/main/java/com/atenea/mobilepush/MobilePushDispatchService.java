@@ -7,6 +7,9 @@ import com.atenea.persistence.auth.OperatorPushDeviceRepository;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.SessionDeliverableEntity;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.codexoperations.CodexSessionOperationsProperties;
+import com.atenea.persistence.notification.NotificationCategory;
+import com.atenea.service.notification.NotificationOutboxService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -23,19 +26,32 @@ public class MobilePushDispatchService {
     private final OperatorPushDeviceRepository operatorPushDeviceRepository;
     private final MobilePushNotificationLogRepository mobilePushNotificationLogRepository;
     private final FcmPushSender fcmPushSender;
+    private final CodexSessionOperationsProperties codexOperationsProperties;
+    private final NotificationOutboxService notificationOutboxService;
 
     public MobilePushDispatchService(
             OperatorPushDeviceRepository operatorPushDeviceRepository,
             MobilePushNotificationLogRepository mobilePushNotificationLogRepository,
-            FcmPushSender fcmPushSender
+            FcmPushSender fcmPushSender,
+            CodexSessionOperationsProperties codexOperationsProperties,
+            NotificationOutboxService notificationOutboxService
     ) {
         this.operatorPushDeviceRepository = operatorPushDeviceRepository;
         this.mobilePushNotificationLogRepository = mobilePushNotificationLogRepository;
         this.fcmPushSender = fcmPushSender;
+        this.codexOperationsProperties = codexOperationsProperties;
+        this.notificationOutboxService = notificationOutboxService;
     }
 
     @Transactional
     public void notifyRunSucceeded(AgentRunEntity run) {
+        if (codexOperationsProperties.isNotificationOutboxEnabled()) {
+            notificationOutboxService.record(
+                    run.getId(),
+                    NotificationCategory.RUN_COMPLETED,
+                    Math.max(0, run.getLifecycleRevision()));
+            return;
+        }
         sendOnce(
                 "RUN_SUCCEEDED:" + run.getId(),
                 "RUN_SUCCEEDED",
@@ -50,6 +66,26 @@ public class MobilePushDispatchService {
                         "runId", run.getId()
                 )
         );
+    }
+
+    @Transactional
+    public void notifyRunFailed(AgentRunEntity run) {
+        if (codexOperationsProperties.isNotificationOutboxEnabled()) {
+            notificationOutboxService.record(
+                    run.getId(),
+                    NotificationCategory.RUN_FAILED,
+                    Math.max(0, run.getLifecycleRevision()));
+        }
+    }
+
+    @Transactional
+    public void notifyRunActionRequired(AgentRunEntity run) {
+        if (codexOperationsProperties.isNotificationOutboxEnabled()) {
+            notificationOutboxService.record(
+                    run.getId(),
+                    NotificationCategory.ACTION_REQUIRED,
+                    Math.max(0, run.getLifecycleRevision()));
+        }
     }
 
     @Transactional

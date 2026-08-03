@@ -90,7 +90,14 @@ public class WorkSessionGitHubService {
             gitRepositoryService.commit(repoPath, commitMessage);
         }
 
-        gitRepositoryService.pushBranchSetUpstream(repoPath, workspaceBranch);
+        String localHead = gitRepositoryService.getHeadCommitSha(repoPath);
+        String remoteHead = gitRepositoryService.getRemoteBranchHeadSha(repoPath, workspaceBranch);
+        if (remoteHead == null) {
+            gitRepositoryService.pushBranchSetUpstream(repoPath, workspaceBranch);
+        } else if (!remoteHead.equals(localHead)) {
+            throw new WorkSessionPublishConflictException(sessionId,
+                    "remote workspace branch points to a different commit");
+        }
 
         GitHubRepositoryRef repository = resolveRepository(session, repoPath);
         String pullRequestTitle = generatePullRequestTitle(session, commitMessage);
@@ -140,6 +147,7 @@ public class WorkSessionGitHubService {
         if (pullRequest == null) {
             throw new GitHubIntegrationException("GitHub did not return pull request metadata during synchronization");
         }
+        WorkSessionPullRequestIdentity.validate(session, repository, pullRequestNumber, pullRequest);
 
         Instant now = Instant.now();
         session.setPullRequestUrl(pullRequest.htmlUrl());
@@ -171,7 +179,10 @@ public class WorkSessionGitHubService {
         }
 
         agentRunReconciliationService.reconcileSession(session.getId());
-        if (agentRunRepository.existsBySessionIdAndStatus(session.getId(), AgentRunStatus.RUNNING)) {
+        if (agentRunRepository.existsBySessionIdAndStatus(session.getId(), AgentRunStatus.RUNNING)
+                || agentRunRepository.existsBySessionIdAndStatusIn(
+                        session.getId(),
+                        AgentRunStatus.nonTerminalStatuses())) {
             throw new AgentRunAlreadyRunningException(session.getId());
         }
 

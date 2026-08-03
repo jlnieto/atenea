@@ -10,6 +10,7 @@ import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
+import java.util.UUID
 
 class AteneaApiClient(
     baseUrl: String,
@@ -171,6 +172,12 @@ class AteneaApiClient(
         parser = ::parseMobileSessionSummary
     )
 
+    suspend fun fetchMobileSessionPreview(sessionId: Long): MobileSessionPreview = getJson(
+        path = "/api/mobile/sessions/$sessionId/preview",
+        authenticated = true,
+        parser = ::parseMobileSessionPreview
+    )
+
     suspend fun fetchMobileSessionDeliverables(sessionId: Long): SessionDeliverablesView = getJson(
         path = "/api/mobile/sessions/$sessionId/deliverables",
         authenticated = true,
@@ -210,6 +217,66 @@ class AteneaApiClient(
         body = JSONObject().put("message", message),
         authenticated = true
     ) { json -> parseMobileWorkSessionConversation(json.getJSONObject("view")) }
+
+    suspend fun fetchCodexCatalog(): CodexCatalog = getJson(
+        path = "/api/codex/catalog",
+        authenticated = true,
+        parser = ::parseCodexCatalog
+    )
+
+    suspend fun fetchProjectCodexSettings(projectId: Long): CodexSettings = getJson(
+        path = "/api/projects/$projectId/codex-settings",
+        authenticated = true,
+        parser = ::parseCodexSettings
+    )
+
+    suspend fun fetchSessionCodexSettings(sessionId: Long): CodexSettings = getJson(
+        path = "/api/sessions/$sessionId/codex-settings",
+        authenticated = true,
+        parser = ::parseCodexSettings
+    )
+
+    suspend fun updateSessionCodexSettings(
+        sessionId: Long,
+        modelId: String,
+        reasoningEffort: String,
+        catalogRevision: String
+    ): CodexSettings = putJson(
+        path = "/api/sessions/$sessionId/codex-settings",
+        body = JSONObject()
+            .put("modelId", modelId)
+            .put("reasoningEffort", reasoningEffort)
+            .put("catalogRevision", catalogRevision)
+            .put("idempotencyKey", UUID.randomUUID().toString()),
+        authenticated = true,
+        parser = ::parseCodexSettings
+    )
+
+    suspend fun fetchCodexRunDetail(runId: Long): CodexRunDetail = getJson(
+        path = "/api/runs/$runId/codex-detail",
+        authenticated = true,
+        parser = ::parseCodexRunDetail
+    )
+
+    suspend fun fetchCodexRunProgress(runId: Long, afterSequence: Long = 0): CodexProgressReplay = getJson(
+        path = "/api/runs/$runId/progress?afterSequence=$afterSequence",
+        authenticated = true,
+        parser = ::parseCodexProgressReplay
+    )
+
+    suspend fun requestCodexRecovery(
+        runId: Long,
+        workSessionId: Long,
+        action: CodexRecoveryAction
+    ): CodexRecoveryResponse = postJson(
+        path = "/api/runs/$runId/recovery",
+        body = JSONObject()
+            .put("workSessionId", workSessionId)
+            .put("action", action.name)
+            .put("idempotencyKey", UUID.randomUUID().toString()),
+        authenticated = true,
+        parser = ::parseCodexRecoveryResponse
+    )
 
     suspend fun resolveMobileRescueSession(projectId: Long, title: String? = "Rescate operativo"): ResolveMobileRescueSessionResult = postJson(
         path = "/api/mobile/projects/$projectId/rescue-sessions/resolve",
@@ -508,6 +575,13 @@ class AteneaApiClient(
         authenticated: Boolean,
         parser: (JSONObject) -> T
     ): T = requestJson(path = path, method = "POST", body = body, authenticated = authenticated, parser = parser)
+
+    private suspend fun <T> putJson(
+        path: String,
+        body: JSONObject,
+        authenticated: Boolean,
+        parser: (JSONObject) -> T
+    ): T = requestJson(path = path, method = "PUT", body = body, authenticated = authenticated, parser = parser)
 
     private suspend fun <T> postJsonBytes(
         path: String,
@@ -912,11 +986,95 @@ data class MobileAgentRun(
     val errorSummary: String?
 )
 
+data class CodexCatalogModel(
+    val modelId: String,
+    val displayName: String,
+    val defaultEffort: String,
+    val availability: String,
+    val efforts: List<String>
+)
+
+data class CodexCatalog(
+    val workerId: String,
+    val catalogRevision: String,
+    val schemaVersion: String,
+    val codexVersion: String,
+    val generatedAt: String?,
+    val observedAt: String?,
+    val models: List<CodexCatalogModel>
+)
+
+data class CodexSettings(
+    val scope: String,
+    val id: Long,
+    val modelId: String?,
+    val reasoningEffort: String?
+)
+
+data class CodexRunDetail(
+    val runId: Long,
+    val workSessionId: Long,
+    val status: String,
+    val modelId: String?,
+    val modelSource: String?,
+    val reasoningEffort: String?,
+    val effortSource: String?,
+    val catalogRevision: String?,
+    val codexVersion: String?,
+    val currentState: String?,
+    val latestSequence: Long,
+    val retainedFloor: Long,
+    val elapsedMillis: Long,
+    val requiredNextAction: String?,
+    val retryOfRunId: Long?
+)
+
+data class CodexProgressEvent(
+    val sequence: Long,
+    val category: String,
+    val message: String,
+    val occurredAt: String?
+)
+
+data class CodexProgressReplay(
+    val requestedAfterSequence: Long,
+    val retainedFloor: Long,
+    val cursorWasBelowRetainedFloor: Boolean,
+    val currentState: String?,
+    val latestEvent: CodexProgressEvent?,
+    val terminalOutcome: String?,
+    val elapsedMillis: Long,
+    val requiredNextAction: String?,
+    val events: List<CodexProgressEvent>
+)
+
+enum class CodexRecoveryAction { CANCEL, RETRY, RECONCILE }
+
+data class CodexRecoveryResponse(
+    val operationId: String,
+    val state: String,
+    val action: CodexRecoveryAction,
+    val outcome: String?,
+    val summary: String?,
+    val requiredNextAction: String?,
+    val resultAgentRunId: Long?
+)
+
 data class MobileConversationTurn(
     val id: Long,
     val actor: String,
     val messageText: String,
-    val createdAt: String?
+    val createdAt: String?,
+    val executionProfile: CodexTurnExecutionProfile? = null
+)
+
+data class CodexTurnExecutionProfile(
+    val runId: Long,
+    val modelId: String,
+    val modelSource: String,
+    val reasoningEffort: String,
+    val effortSource: String,
+    val codexVersion: String
 )
 
 data class MobileSessionSummary(
@@ -925,6 +1083,23 @@ data class MobileSessionSummary(
     val approvedPriceEstimate: ApprovedPriceEstimateSummary?,
     val actions: MobileSessionActions,
     val insights: MobileSessionInsights
+)
+
+data class MobileSessionPreview(
+    val id: String,
+    val workSessionId: Long,
+    val projectId: Long,
+    val agentRunId: Long?,
+    val state: String,
+    val lifecycleRevision: Long,
+    val privateUrl: String?,
+    val localhostCompatible: Boolean,
+    val leaseExpiresAt: String,
+    val hardExpiresAt: String,
+    val auditRetainUntil: String,
+    val failureReason: String?,
+    val nextAction: String,
+    val primaryAction: String
 )
 
 data class MobileSessionActions(
@@ -1025,7 +1200,9 @@ data class MobileSessionEvent(
     val details: String?,
     val runId: Long?,
     val turnId: Long?,
-    val deliverableId: Long?
+    val deliverableId: Long?,
+    val eventId: String?,
+    val progressSequence: Long?
 )
 
 data class ResolveMobileRescueSessionResult(
@@ -1534,6 +1711,86 @@ private fun parseMobileWorkSessionConversation(json: JSONObject): MobileWorkSess
     )
 }
 
+private fun parseCodexCatalog(json: JSONObject): CodexCatalog {
+    val models = json.optJSONArray("models") ?: JSONArray()
+    return CodexCatalog(
+        workerId = json.optString("workerId", ""),
+        catalogRevision = json.optString("catalogRevision", ""),
+        schemaVersion = json.optString("schemaVersion", ""),
+        codexVersion = json.optString("codexVersion", ""),
+        generatedAt = json.optNullableString("generatedAt"),
+        observedAt = json.optNullableString("observedAt"),
+        models = List(models.length()) { index ->
+            val model = models.getJSONObject(index)
+            val efforts = model.optJSONArray("efforts") ?: JSONArray()
+            CodexCatalogModel(
+                modelId = model.optString("modelId", ""),
+                displayName = model.optString("displayName", ""),
+                defaultEffort = model.optString("defaultEffort", ""),
+                availability = model.optString("availability", ""),
+                efforts = List(efforts.length()) { effortIndex -> efforts.getString(effortIndex) }
+            )
+        }
+    )
+}
+
+private fun parseCodexSettings(json: JSONObject): CodexSettings = CodexSettings(
+    scope = json.optString("scope", ""),
+    id = json.getLong("id"),
+    modelId = json.optNullableString("modelId"),
+    reasoningEffort = json.optNullableString("reasoningEffort")
+)
+
+private fun parseCodexRunDetail(json: JSONObject): CodexRunDetail = CodexRunDetail(
+    runId = json.getLong("runId"),
+    workSessionId = json.getLong("workSessionId"),
+    status = json.optString("status", ""),
+    modelId = json.optNullableString("modelId"),
+    modelSource = json.optNullableString("modelSource"),
+    reasoningEffort = json.optNullableString("reasoningEffort"),
+    effortSource = json.optNullableString("effortSource"),
+    catalogRevision = json.optNullableString("catalogRevision"),
+    codexVersion = json.optNullableString("codexVersion"),
+    currentState = json.optNullableString("currentState"),
+    latestSequence = json.optLong("latestSequence", 0),
+    retainedFloor = json.optLong("retainedFloor", 0),
+    elapsedMillis = json.optLong("elapsedMillis", 0),
+    requiredNextAction = json.optNullableString("requiredNextAction"),
+    retryOfRunId = json.optNullableLong("retryOfRunId")
+)
+
+private fun parseCodexProgressEvent(json: JSONObject): CodexProgressEvent = CodexProgressEvent(
+    sequence = json.getLong("sequence"),
+    category = json.optString("category", ""),
+    message = json.optString("message", ""),
+    occurredAt = json.optNullableString("occurredAt")
+)
+
+private fun parseCodexProgressReplay(json: JSONObject): CodexProgressReplay {
+    val events = json.optJSONArray("events") ?: JSONArray()
+    return CodexProgressReplay(
+        requestedAfterSequence = json.optLong("requestedAfterSequence", 0),
+        retainedFloor = json.optLong("retainedFloor", 0),
+        cursorWasBelowRetainedFloor = json.optBoolean("cursorWasBelowRetainedFloor", false),
+        currentState = json.optNullableString("currentState"),
+        latestEvent = json.optJSONObject("latestEvent")?.let(::parseCodexProgressEvent),
+        terminalOutcome = json.optNullableString("terminalOutcome"),
+        elapsedMillis = json.optLong("elapsedMillis", 0),
+        requiredNextAction = json.optNullableString("requiredNextAction"),
+        events = List(events.length()) { index -> parseCodexProgressEvent(events.getJSONObject(index)) }
+    )
+}
+
+private fun parseCodexRecoveryResponse(json: JSONObject): CodexRecoveryResponse = CodexRecoveryResponse(
+    operationId = json.optString("operationId", ""),
+    state = json.optString("state", ""),
+    action = CodexRecoveryAction.valueOf(json.getString("action")),
+    outcome = json.optNullableString("outcome"),
+    summary = json.optNullableString("summary"),
+    requiredNextAction = json.optNullableString("requiredNextAction"),
+    resultAgentRunId = json.optNullableLong("resultAgentRunId")
+)
+
 private fun parseMobileWorkSession(json: JSONObject): MobileWorkSession =
     MobileWorkSession(
         id = json.getLong("id"),
@@ -1565,6 +1822,24 @@ private fun parseMobileSessionSummary(json: JSONObject): MobileSessionSummary =
         approvedPriceEstimate = json.optJSONObject("approvedPriceEstimate")?.let(::parseApprovedPriceEstimateSummary),
         actions = parseMobileSessionActions(json.optJSONObject("actions") ?: JSONObject()),
         insights = parseMobileSessionInsights(json.optJSONObject("insights") ?: JSONObject())
+    )
+
+private fun parseMobileSessionPreview(json: JSONObject): MobileSessionPreview =
+    MobileSessionPreview(
+        id = json.getString("id"),
+        workSessionId = json.getLong("workSessionId"),
+        projectId = json.getLong("projectId"),
+        agentRunId = json.optNullableLong("agentRunId"),
+        state = json.getString("state"),
+        lifecycleRevision = json.getLong("lifecycleRevision"),
+        privateUrl = json.optNullableString("privateUrl"),
+        localhostCompatible = json.optBoolean("localhostCompatible", false),
+        leaseExpiresAt = json.getString("leaseExpiresAt"),
+        hardExpiresAt = json.getString("hardExpiresAt"),
+        auditRetainUntil = json.getString("auditRetainUntil"),
+        failureReason = json.optNullableString("failureReason"),
+        nextAction = json.optString("nextAction"),
+        primaryAction = json.optString("primaryAction")
     )
 
 private fun parseMobileSessionActions(json: JSONObject): MobileSessionActions =
@@ -1675,7 +1950,9 @@ private fun parseMobileSessionEvents(json: JSONObject): MobileSessionEvents {
                 details = item.optNullableString("details"),
                 runId = item.optNullableLong("runId"),
                 turnId = item.optNullableLong("turnId"),
-                deliverableId = item.optNullableLong("deliverableId")
+                deliverableId = item.optNullableLong("deliverableId"),
+                eventId = item.optNullableString("eventId"),
+                progressSequence = item.optNullableLong("progressSequence")
             )
         },
         generatedAt = json.optNullableString("generatedAt")
@@ -1711,7 +1988,17 @@ private fun parseMobileConversationTurn(json: JSONObject): MobileConversationTur
         id = json.getLong("id"),
         actor = json.optString("actor", ""),
         messageText = json.optString("messageText", ""),
-        createdAt = json.optNullableString("createdAt")
+        createdAt = json.optNullableString("createdAt"),
+        executionProfile = json.optJSONObject("executionProfile")?.let { profile ->
+            CodexTurnExecutionProfile(
+                runId = profile.getLong("runId"),
+                modelId = profile.optString("modelId", ""),
+                modelSource = profile.optString("modelSource", ""),
+                reasoningEffort = profile.optString("reasoningEffort", ""),
+                effortSource = profile.optString("effortSource", ""),
+                codexVersion = profile.optString("codexVersion", "")
+            )
+        }
     )
 
 private fun parseManagedHost(json: JSONObject): ManagedHost = ManagedHost(

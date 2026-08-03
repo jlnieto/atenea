@@ -86,6 +86,26 @@ public class GitRepositoryService {
         return !runAndReadAllowingEmpty(repoPath, List.of("git", "ls-remote", "--heads", "origin", branchName)).isBlank();
     }
 
+    public String getRemoteBranchHeadSha(String repoPath, String branchName) {
+        String output = runAndReadAllowingEmpty(
+                repoPath,
+                List.of("git", "ls-remote", "--heads", "origin", branchName));
+        if (output.isBlank()) {
+            return null;
+        }
+        String[] lines = output.split("\\R");
+        String[] fields = lines[0].trim().split("\\s+");
+        String expectedRef = "refs/heads/" + branchName;
+        if (lines.length != 1
+                || fields.length != 2
+                || !fields[0].matches("[0-9a-f]{40}")
+                || !expectedRef.equals(fields[1])) {
+            throw new GitRepositoryOperationException(
+                    "Remote branch '" + branchName + "' returned ambiguous ownership");
+        }
+        return fields[0];
+    }
+
     public void deleteRemoteBranch(String repoPath, String branchName) {
         runOrThrow(repoPath, List.of("git", "push", "origin", "--delete", branchName),
                 "Could not delete remote branch '" + branchName + "'");

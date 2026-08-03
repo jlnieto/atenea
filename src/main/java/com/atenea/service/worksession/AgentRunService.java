@@ -9,10 +9,18 @@ import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
+import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
+import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -25,19 +33,28 @@ public class AgentRunService {
     private final SessionTurnRepository sessionTurnRepository;
     private final AgentRunProgressService agentRunProgressService;
     private final MobilePushDispatchService mobilePushDispatchService;
+    private final WorkSessionAcceptanceService workSessionAcceptanceService;
+    private final CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService;
+    private final JdbcTemplate jdbcTemplate;
 
     public AgentRunService(
             WorkSessionRepository workSessionRepository,
             AgentRunRepository agentRunRepository,
             SessionTurnRepository sessionTurnRepository,
             AgentRunProgressService agentRunProgressService,
-            MobilePushDispatchService mobilePushDispatchService
+            MobilePushDispatchService mobilePushDispatchService,
+            WorkSessionAcceptanceService workSessionAcceptanceService,
+            CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService,
+            JdbcTemplate jdbcTemplate
     ) {
         this.workSessionRepository = workSessionRepository;
         this.agentRunRepository = agentRunRepository;
         this.sessionTurnRepository = sessionTurnRepository;
         this.agentRunProgressService = agentRunProgressService;
         this.mobilePushDispatchService = mobilePushDispatchService;
+        this.workSessionAcceptanceService = workSessionAcceptanceService;
+        this.codexExecutionProfileSnapshotService = codexExecutionProfileSnapshotService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional
@@ -52,6 +69,108 @@ public class AgentRunService {
     @Transactional
     public AgentRunEntity createRunningRun(WorkSessionEntity session, SessionTurnEntity originTurn) {
         return createRunningRun(session, originTurn, Instant.now());
+    }
+
+    @Transactional
+    public AgentRunEntity createRemoteQueuedRun(
+            WorkSessionEntity session,
+            SessionTurnEntity originTurn,
+            WorkloadClass workloadClass
+    ) {
+        return createRemoteQueuedRun(session, originTurn, workloadClass, null);
+    }
+
+    private AgentRunEntity createRemoteQueuedRun(
+            WorkSessionEntity session,
+            SessionTurnEntity originTurn,
+            WorkloadClass workloadClass,
+            AgentRunEntity retryOfRun
+    ) {
+        Instant now = Instant.now();
+        lockCodexActivation(session.getSelectedWorkerId());
+        ensureNoNonTerminalRun(session.getId());
+        workSessionAcceptanceService.invalidateForNewRun(session);
+        if (session.getRemoteSessionId() == null
+                || (!"synthetic-routing-v1".equals(session.getRemoteWorkloadKind())
+                    && !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind()))
+                || (ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
+                    && !matchesProjectWorkload(session))) {
+            throw new IllegalStateException("Remote WorkSession workload ownership is incomplete or incompatible");
+        }
+
+        AgentRunEntity run = new AgentRunEntity();
+        run.setSession(session);
+        run.setOriginTurn(originTurn);
+        run.setResultTurn(null);
+        run.setStatus(AgentRunStatus.QUEUED);
+        run.setTargetRepoPath(session.getProject().getRepoPath());
+        run.setExternalTurnId(null);
+        run.setExecutionTarget(ExecutionTarget.REMOTE);
+        run.setSelectedWorkerId(session.getSelectedWorkerId());
+        run.setWorkspaceIdentity(session.getWorkspaceIdentity());
+        run.setRemoteSessionId(session.getRemoteSessionId());
+        run.setWorkloadKind(session.getRemoteWorkloadKind());
+        applyProjectIdentity(run);
+        run.setDispatchId(UUID.randomUUID());
+        run.setRemoteExecutionId(null);
+        run.setWorkloadClass(workloadClass);
+        run.setLeaseGeneration(1);
+        run.setLeaseExpiresAt(now.plusSeconds(90));
+        run.setLastHeartbeatAt(null);
+        run.setLifecycleRevision(0);
+        run.setQueuedAt(now);
+        run.setStatusReason("Awaiting worker admission");
+        run.setStartedAt(now);
+        run.setFinishedAt(null);
+        run.setOutputSummary(null);
+        run.setErrorSummary(null);
+        run.setCreatedAt(now);
+        run.setRetryOfRun(retryOfRun);
+        if (retryOfRun == null) {
+            codexExecutionProfileSnapshotService.applyCurrentProfile(run);
+        } else {
+            run.setCodexModelId(retryOfRun.getCodexModelId());
+            run.setCodexModelSource(retryOfRun.getCodexModelSource());
+            run.setCodexReasoningEffort(retryOfRun.getCodexReasoningEffort());
+            run.setCodexEffortSource(retryOfRun.getCodexEffortSource());
+            run.setCodexCatalogRevision(retryOfRun.getCodexCatalogRevision());
+            run.setCodexVersion(retryOfRun.getCodexVersion());
+        }
+        return agentRunRepository.save(run);
+    }
+
+    @Transactional
+    public AgentRunEntity createRemoteRetryRun(Long sourceRunId) {
+        AgentRunEntity source = agentRunRepository.findByIdForUpdate(sourceRunId)
+                .orElseThrow(() -> new AgentRunNotFoundException(sourceRunId));
+        if (source.getStatus() != AgentRunStatus.FAILED
+                || source.getExecutionTarget() != ExecutionTarget.REMOTE) {
+            throw new AgentRunRecoveryConflictException(
+                    "Only an exact failed remote AgentRun may be retried");
+        }
+        AgentRunEntity existing = agentRunRepository
+                .findFirstByRetryOfRunIdOrderByCreatedAtAsc(sourceRunId)
+                .orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+
+        return createRemoteQueuedRun(
+                source.getSession(), source.getOriginTurn(), source.getWorkloadClass(), source);
+    }
+
+    private void lockCodexActivation(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            throw new IllegalStateException("Remote worker ownership is incomplete");
+        }
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_activation_barrier (worker_id)
+                VALUES (?) ON CONFLICT (worker_id) DO NOTHING
+                """, workerId);
+        jdbcTemplate.queryForObject("""
+                SELECT worker_id FROM worker_codex_activation_barrier
+                 WHERE worker_id = ? FOR UPDATE
+                """, String.class, workerId);
     }
 
     @Transactional
@@ -90,18 +209,25 @@ public class AgentRunService {
         run.setFinishedAt(Instant.now());
         run.setOutputSummary(null);
         run.setErrorSummary(errorSummary);
-        return agentRunRepository.save(run);
+        AgentRunEntity savedRun = agentRunRepository.save(run);
+        mobilePushDispatchService.notifyRunFailed(savedRun);
+        return savedRun;
     }
 
     @Transactional
     public boolean forceMarkFailedIfRunning(Long runId, String externalTurnId, String errorSummary) {
         String normalizedTurnId = normalizeNullableText(externalTurnId);
         String normalizedErrorSummary = normalizeNullableText(errorSummary);
-        return agentRunRepository.forceMarkFailedIfRunning(
+        boolean changed = agentRunRepository.forceMarkFailedIfRunning(
                 runId,
                 normalizedTurnId,
                 normalizedErrorSummary,
                 Instant.now()) > 0;
+        if (changed) {
+            agentRunRepository.findWithSessionById(runId)
+                    .ifPresent(mobilePushDispatchService::notifyRunFailed);
+        }
+        return changed;
     }
 
     @Transactional(readOnly = true)
@@ -134,16 +260,15 @@ public class AgentRunService {
     }
 
     private void ensureRunning(AgentRunEntity run, AgentRunStatus targetStatus) {
-        if (run.getStatus() != AgentRunStatus.RUNNING) {
+        if (run.getStatus().isTerminal()) {
             throw new AgentRunTransitionNotAllowedException(run.getId(), run.getStatus(), targetStatus);
         }
     }
 
     private AgentRunEntity createRunningRun(WorkSessionEntity session, SessionTurnEntity originTurn, Instant now) {
         Long sessionId = session.getId();
-        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
-            throw new AgentRunAlreadyRunningException(sessionId);
-        }
+        ensureNoNonTerminalRun(sessionId);
+        workSessionAcceptanceService.invalidateForNewRun(session);
 
         AgentRunEntity run = new AgentRunEntity();
         run.setSession(session);
@@ -152,6 +277,17 @@ public class AgentRunService {
         run.setStatus(AgentRunStatus.RUNNING);
         run.setTargetRepoPath(session.getProject().getRepoPath());
         run.setExternalTurnId(null);
+        run.setExecutionTarget(ExecutionTarget.LOCAL);
+        run.setSelectedWorkerId(null);
+        run.setWorkspaceIdentity(session.getWorkspaceIdentity());
+        run.setRemoteSessionId(null);
+        run.setWorkloadKind(null);
+        clearProjectIdentity(run);
+        run.setDispatchId(null);
+        run.setRemoteExecutionId(null);
+        run.setWorkloadClass(WorkloadClass.NORMAL);
+        run.setLeaseGeneration(0);
+        run.setLifecycleRevision(0);
         run.setStartedAt(now);
         run.setFinishedAt(null);
         run.setOutputSummary(null);
@@ -159,6 +295,62 @@ public class AgentRunService {
         run.setCreatedAt(now);
 
         return agentRunRepository.save(run);
+    }
+
+    private void applyProjectIdentity(AgentRunEntity run) {
+        if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
+                && BeautipsProjectCodexIdentity.matchesPinnedSession(run.getSession())) {
+            run.setProjectIdentity(BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
+            run.setRepositoryUrl(BeautipsProjectCodexIdentity.REPOSITORY);
+            run.setRepositoryBranch(BeautipsProjectCodexIdentity.BRANCH);
+            run.setRepositoryCommit(BeautipsProjectCodexIdentity.COMMIT);
+            run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
+            ReviewedInstructionBundleIdentity.apply(
+                    run, BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
+        } else if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
+                && ProjectCodexIdentity.hasCanonicalSourceObservation(run.getSession())) {
+            run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
+            run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);
+            run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
+            run.setRepositoryCommit(run.getSession().getCanonicalSourceCommit());
+            run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
+            ReviewedInstructionBundleIdentity.apply(
+                    run, ProjectCodexIdentity.PROJECT_IDENTITY);
+        } else {
+            clearProjectIdentity(run);
+        }
+    }
+
+    private boolean matchesProjectWorkload(WorkSessionEntity session) {
+        return ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+                || BeautipsProjectCodexIdentity.matchesPinnedSession(session);
+    }
+
+    private void clearProjectIdentity(AgentRunEntity run) {
+        run.setProjectIdentity(null);
+        run.setRepositoryUrl(null);
+        run.setRepositoryBranch(null);
+        run.setRepositoryCommit(null);
+        run.setManifestSha256(null);
+        run.setInstructionBundleRevision(null);
+        run.setInstructionBundleSha256(null);
+        run.setPlatformInstructionSha256(null);
+        run.setProjectInstructionPath(null);
+        run.setProjectInstructionSha256(null);
+        run.setWorkerMirrorCommit(null);
+    }
+
+    private void ensureNoNonTerminalRun(Long sessionId) {
+        if (hasNonTerminalRun(sessionId)) {
+            throw new AgentRunAlreadyRunningException(sessionId);
+        }
+    }
+
+    private boolean hasNonTerminalRun(Long sessionId) {
+        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
+            return true;
+        }
+        return agentRunRepository.existsBySessionIdAndStatusIn(sessionId, AgentRunStatus.nonTerminalStatuses());
     }
 
     private SessionTurnEntity createInternalOriginTurn(WorkSessionEntity session, Instant now) {
@@ -184,7 +376,19 @@ public class AgentRunService {
                 run.getFinishedAt(),
                 run.getOutputSummary(),
                 run.getErrorSummary(),
-                run.getCreatedAt()
+                run.getCreatedAt(),
+                run.getExecutionTarget(),
+                run.getSelectedWorkerId(),
+                run.getWorkspaceIdentity(),
+                run.getDispatchId(),
+                run.getRemoteExecutionId(),
+                run.getWorkloadClass(),
+                run.getLeaseGeneration(),
+                run.getLeaseExpiresAt(),
+                run.getLastHeartbeatAt(),
+                run.getLifecycleRevision(),
+                run.getStatusReason(),
+                run.getProcessOutcome()
         );
     }
 }

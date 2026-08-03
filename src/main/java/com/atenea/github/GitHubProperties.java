@@ -10,6 +10,7 @@ public class GitHubProperties {
 
     private URI apiBaseUrl = URI.create("https://api.github.com");
     private String token;
+    private String tokenFile;
     private Instant tokenExpiresAt;
     private Duration connectTimeout = Duration.ofSeconds(10);
     private Duration readTimeout = Duration.ofSeconds(20);
@@ -28,6 +29,14 @@ public class GitHubProperties {
 
     public void setToken(String token) {
         this.token = token;
+    }
+
+    public String getTokenFile() {
+        return tokenFile;
+    }
+
+    public void setTokenFile(String tokenFile) {
+        this.tokenFile = tokenFile;
     }
 
     public Instant getTokenExpiresAt() {

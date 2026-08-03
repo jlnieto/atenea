@@ -52,13 +52,13 @@ class MobileAuthControllerTest {
                 Instant.parse("2026-03-29T10:15:00Z"),
                 "refresh-token",
                 Instant.parse("2026-04-28T10:00:00Z"),
-                new OperatorProfileResponse(4L, "operator@atenea.local", "Operator"));
+                new OperatorProfileResponse(4L, "operator@atenea.local", "Operator", "ROUTINE_OPERATOR"));
         when(operatorAuthenticationService.login(new MobileLoginRequest("operator@atenea.local", "secret")))
                 .thenReturn(session);
         when(operatorAuthenticationService.refresh(new MobileRefreshTokenRequest("refresh-token")))
                 .thenReturn(session);
         when(operatorAuthenticationService.getCurrentOperator(any(AuthenticatedOperator.class)))
-                .thenReturn(new OperatorProfileResponse(4L, "operator@atenea.local", "Operator"));
+                .thenReturn(new OperatorProfileResponse(4L, "operator@atenea.local", "Operator", "ROUTINE_OPERATOR"));
 
         mockMvc.perform(post("/api/mobile/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -70,7 +70,8 @@ class MobileAuthControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value("access-token"))
-                .andExpect(jsonPath("$.operator.email").value("operator@atenea.local"));
+                .andExpect(jsonPath("$.operator.email").value("operator@atenea.local"))
+                .andExpect(jsonPath("$.operator.codexOperationsRole").value("ROUTINE_OPERATOR"));
 
         mockMvc.perform(post("/api/mobile/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)

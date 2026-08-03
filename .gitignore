@@ -2,6 +2,7 @@ target/
 *.log
 .env
 node_modules/
+*.tsbuildinfo
 android/.gradle/
 android/**/build/
 android/local.properties

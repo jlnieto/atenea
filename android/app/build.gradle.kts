@@ -12,8 +12,8 @@ android {
         applicationId = "com.atenea.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 127
-        versionName = "0.5.94"
+        versionCode = 130
+        versionName = "0.5.97"
 
         val ateneaApiBaseUrl = providers.gradleProperty("ATENEA_API_BASE_URL")
             .orElse("https://atenea.yudri.es")
@@ -74,6 +74,7 @@ dependencies {
     implementation(libs.firebase.messaging)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+    testImplementation(kotlin("test"))
 }
 
 fun escapeBuildConfigString(value: String): String =

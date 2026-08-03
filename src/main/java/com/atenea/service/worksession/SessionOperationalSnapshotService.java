@@ -30,7 +30,12 @@ public class SessionOperationalSnapshotService {
 
     public SessionOperationalSnapshotResponse snapshot(WorkSessionEntity session) {
         agentRunReconciliationService.reconcileSession(session.getId());
-        boolean runInProgress = agentRunRepository.existsBySessionIdAndStatus(session.getId(), AgentRunStatus.RUNNING);
+        boolean runInProgress = agentRunRepository.existsBySessionIdAndStatus(
+                session.getId(),
+                AgentRunStatus.RUNNING)
+                || agentRunRepository.existsBySessionIdAndStatusIn(
+                        session.getId(),
+                        AgentRunStatus.nonTerminalStatuses());
         try {
             String repoPath = workspaceRepositoryPathValidator.normalizeConfiguredRepoPath(session.getProject().getRepoPath());
             String currentBranch = gitRepositoryService.getCurrentBranch(repoPath);

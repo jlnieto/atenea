@@ -16,6 +16,7 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +53,9 @@ class SessionTurnServiceTest {
     @Mock
     private SessionTurnCompletionService sessionTurnCompletionService;
 
+    @Mock
+    private CanonicalSourceAdmissionService canonicalSourceAdmissionService;
+
     private SessionTurnService sessionTurnService;
 
     @BeforeEach
@@ -66,7 +70,8 @@ class SessionTurnServiceTest {
                 new AgentRunProgressService(),
                 agentRunReconciliationService,
                 sessionCodexOrchestrator,
-                sessionTurnCompletionService
+                sessionTurnCompletionService,
+                canonicalSourceAdmissionService
         );
     }
 

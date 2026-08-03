@@ -4,5 +4,6 @@ public enum WorkSessionOperationalState {
     IDLE,
     RUNNING,
     CLOSING,
+    DRAFT_BLOCKED,
     CLOSED
 }

@@ -42,7 +42,8 @@ fun CoreConsoleApp(
     updateManifestUrl: String,
     currentVersionCode: Int,
     currentVersionName: String,
-    pushRegistration: AteneaPushRegistration? = null
+    pushRegistration: AteneaPushRegistration? = null,
+    requestedConversation: AteneaNotificationRoute? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -94,7 +95,8 @@ fun CoreConsoleApp(
                     session = null
                     pushRegistrationAttempted = false
                 }
-            }
+            },
+            requestedConversation = requestedConversation
         )
     }
 }

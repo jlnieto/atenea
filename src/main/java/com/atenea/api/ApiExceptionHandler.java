@@ -1,5 +1,9 @@
 package com.atenea.api;
 
+import com.atenea.attachments.AttachmentFeatureDisabledException;
+import com.atenea.attachments.AttachmentWorkerException;
+import com.atenea.previews.PreviewFeatureDisabledException;
+import com.atenea.previews.PreviewWorkerException;
 import com.atenea.auth.OperatorAuthenticationException;
 import com.atenea.service.project.CanonicalProjectConflictException;
 import com.atenea.github.GitHubIntegrationException;
@@ -26,8 +30,17 @@ import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.AgentRunNotFoundException;
 import com.atenea.service.worksession.AgentRunTransitionNotAllowedException;
+import com.atenea.service.worksession.AgentRunRecoveryAuthorizationException;
+import com.atenea.service.worksession.AgentRunRecoveryConflictException;
+import com.atenea.service.worksession.AttachmentConflictException;
+import com.atenea.service.worksession.AttachmentLimitException;
+import com.atenea.service.worksession.AttachmentNotFoundException;
+import com.atenea.service.worksession.AttachmentOwnershipException;
 import com.atenea.service.worksession.ApprovedPriceEstimateNotFoundException;
 import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
+import com.atenea.service.worksession.PreviewConflictException;
+import com.atenea.service.worksession.PreviewNotFoundException;
+import com.atenea.service.worksession.PreviewOwnershipException;
 import com.atenea.service.worksession.WorkSessionNotOpenException;
 import com.atenea.service.worksession.WorkSessionNotFoundException;
 import com.atenea.service.worksession.WorkSessionOperationBlockedException;
@@ -44,6 +57,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -83,6 +97,76 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleWorkSessionNotFound(WorkSessionNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(AttachmentNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleAttachmentNotFound(AttachmentNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler({
+            AttachmentConflictException.class,
+            AttachmentOwnershipException.class,
+            AttachmentFeatureDisabledException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleAttachmentConflict(RuntimeException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler({AttachmentLimitException.class, MaxUploadSizeExceededException.class})
+    public ResponseEntity<ApiErrorResponse> handleAttachmentLimit(RuntimeException exception) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiErrorResponse(
+                        exception instanceof AttachmentLimitException
+                                ? exception.getMessage()
+                                : "El adjunto supera el límite permitido.",
+                        List.of()));
+    }
+
+    @ExceptionHandler(AttachmentWorkerException.class)
+    public ResponseEntity<ApiErrorResponse> handleAttachmentWorker(AttachmentWorkerException exception) {
+        int upstream = exception.getStatusCode();
+        HttpStatus status = switch (upstream) {
+            case 409 -> HttpStatus.CONFLICT;
+            case 413 -> HttpStatus.PAYLOAD_TOO_LARGE;
+            case 415 -> HttpStatus.UNSUPPORTED_MEDIA_TYPE;
+            case 422 -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case 503 -> HttpStatus.SERVICE_UNAVAILABLE;
+            default -> HttpStatus.BAD_GATEWAY;
+        };
+        return ResponseEntity.status(status)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of(exception.getCode())));
+    }
+
+    @ExceptionHandler(PreviewNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handlePreviewNotFound(PreviewNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler({
+            PreviewConflictException.class,
+            PreviewOwnershipException.class,
+            PreviewFeatureDisabledException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handlePreviewConflict(RuntimeException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(PreviewWorkerException.class)
+    public ResponseEntity<ApiErrorResponse> handlePreviewWorker(PreviewWorkerException exception) {
+        HttpStatus status = switch (exception.getStatusCode()) {
+            case 401 -> HttpStatus.BAD_GATEWAY;
+            case 404 -> HttpStatus.NOT_FOUND;
+            case 409 -> HttpStatus.CONFLICT;
+            case 503 -> HttpStatus.SERVICE_UNAVAILABLE;
+            default -> HttpStatus.BAD_GATEWAY;
+        };
+        return ResponseEntity.status(status)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of(exception.getCode())));
     }
 
     @ExceptionHandler(RescueSessionNotFoundException.class)
@@ -216,6 +300,20 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException exception) {
         return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(AgentRunRecoveryAuthorizationException.class)
+    public ResponseEntity<ApiErrorResponse> handleRecoveryAuthorization(
+            AgentRunRecoveryAuthorizationException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(AgentRunRecoveryConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleRecoveryConflict(
+            AgentRunRecoveryConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 

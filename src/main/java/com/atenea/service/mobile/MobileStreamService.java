@@ -6,7 +6,10 @@ import com.atenea.api.mobile.MobileSessionEventsResponse;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
@@ -63,16 +66,21 @@ public class MobileStreamService {
 
     public SseEmitter streamSessionEvents(Long sessionId) {
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
-        MobileSessionEventsResponse initial = mobileSessionEventService.getEvents(sessionId, null, 50);
+        MobileSessionEventsResponse initial = mobileSessionEventService.getEvents(sessionId, null, 200);
         send(emitter, "session-events", initial);
 
-        final Instant[] cursor = new Instant[]{latestEventAt(initial)};
+        final Set<String> sentEventIds = new HashSet<>();
+        initial.events().stream()
+                .map(MobileSessionEventResponse::eventId)
+                .filter(Objects::nonNull)
+                .forEach(sentEventIds::add);
         ScheduledFuture<?> task = scheduler.scheduleAtFixedRate(() -> {
             try {
-                MobileSessionEventsResponse current = mobileSessionEventService.getEvents(sessionId, cursor[0], 50);
-                if (!current.events().isEmpty()) {
-                    send(emitter, "session-events", current);
-                    cursor[0] = latestEventAt(current);
+                MobileSessionEventsResponse current = mobileSessionEventService.getEvents(sessionId, null, 200);
+                List<MobileSessionEventResponse> unseen = unseenEvents(current.events(), sentEventIds);
+                if (!unseen.isEmpty()) {
+                    send(emitter, "session-events", new MobileSessionEventsResponse(
+                            sessionId, unseen, current.generatedAt()));
                 } else {
                     send(emitter, "heartbeat", Instant.now().toString());
                 }
@@ -83,6 +91,14 @@ public class MobileStreamService {
 
         registerLifecycle(emitter, task);
         return emitter;
+    }
+
+    static List<MobileSessionEventResponse> unseenEvents(
+            List<MobileSessionEventResponse> events,
+            Set<String> sentEventIds) {
+        return events.stream()
+                .filter(event -> event.eventId() == null || sentEventIds.add(event.eventId()))
+                .toList();
     }
 
     private void registerLifecycle(SseEmitter emitter, ScheduledFuture<?> task) {
@@ -97,14 +113,6 @@ public class MobileStreamService {
         if (task != null) {
             task.cancel(true);
         }
-    }
-
-    private Instant latestEventAt(MobileSessionEventsResponse response) {
-        return response.events().stream()
-                .map(MobileSessionEventResponse::at)
-                .filter(Objects::nonNull)
-                .max(Instant::compareTo)
-                .orElse(null);
     }
 
     private void send(SseEmitter emitter, String eventName, Object data) {

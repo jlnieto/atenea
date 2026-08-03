@@ -1,5 +1,6 @@
 package com.atenea.service.worksession;
 
+import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
@@ -16,6 +17,9 @@ public class SessionBranchService {
 
     public String prepareWorkspaceBranch(WorkSessionEntity session, String repoPath) {
         String workspaceBranch = resolveWorkspaceBranch(session);
+        if (session.getExecutionTarget() == ExecutionTarget.REMOTE) {
+            return workspaceBranch;
+        }
 
         try {
             String currentBranch = gitRepositoryService.getCurrentBranch(repoPath);
@@ -55,6 +59,13 @@ public class SessionBranchService {
         }
         if (session.getId() == null) {
             throw new IllegalArgumentException("WorkSession id is required to derive workspaceBranch");
+        }
+        if (session.getExecutionTarget() == ExecutionTarget.REMOTE) {
+            if (session.getRemoteSessionId() == null) {
+                throw new IllegalArgumentException(
+                        "Remote WorkSession identity is required to derive workspaceBranch");
+            }
+            return "atenea/session-" + session.getRemoteSessionId();
         }
         return "atenea/session-" + session.getId();
     }

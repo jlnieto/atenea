@@ -18,6 +18,10 @@ Documentos clave:
 - `docs/voice-engine/README.md`: contrato de producto, arquitectura y plan del motor de voz premium de Atenea
 - `android/README.md`: estado y guía operativa del nuevo cliente Android nativo
 - `docs/session-deliverables-design.md`: diseño objetivo para deliverables persistidos, reporting y pricing de sesión
+- `docs/learning/ai-agent-mastery-plan.md`: plan vivo para aprender agentes IA usando Atenea como laboratorio aplicado
+- `docs/learning/daily-log.md`: diario operativo con avance, decisiones, dudas y siguiente paso exacto
+- `docs/architecture/current-system-map.md`: mapa compacto del runtime actual para recuperar contexto rápido
+- `docs/evals/coding-agent-eval-plan.md`: plan de evaluación para comparar runtimes, modos y prompts con tareas reales
 - `docs/task-branch-workflow.md`: referencia histórica del flujo retirado `Task` / `TaskExecution`
 - `AGENTS.md`: guía local canónica para agentes/Codex
 

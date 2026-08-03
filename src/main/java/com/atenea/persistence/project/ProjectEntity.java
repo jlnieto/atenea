@@ -1,6 +1,9 @@
 package com.atenea.persistence.project;
 
+import com.atenea.persistence.worksession.CodexReasoningEffort;
+import com.atenea.persistence.worksession.CodexReasoningEffortConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -27,6 +30,13 @@ public class ProjectEntity {
 
     @Column(name = "default_base_branch", length = 120)
     private String defaultBaseBranch;
+
+    @Column(name = "default_codex_model_id", length = 80)
+    private String defaultCodexModelId;
+
+    @Convert(converter = CodexReasoningEffortConverter.class)
+    @Column(name = "default_codex_reasoning_effort", length = 16)
+    private CodexReasoningEffort defaultCodexReasoningEffort;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -72,6 +82,22 @@ public class ProjectEntity {
 
     public void setDefaultBaseBranch(String defaultBaseBranch) {
         this.defaultBaseBranch = defaultBaseBranch;
+    }
+
+    public String getDefaultCodexModelId() {
+        return defaultCodexModelId;
+    }
+
+    public void setDefaultCodexModelId(String defaultCodexModelId) {
+        this.defaultCodexModelId = defaultCodexModelId;
+    }
+
+    public CodexReasoningEffort getDefaultCodexReasoningEffort() {
+        return defaultCodexReasoningEffort;
+    }
+
+    public void setDefaultCodexReasoningEffort(CodexReasoningEffort defaultCodexReasoningEffort) {
+        this.defaultCodexReasoningEffort = defaultCodexReasoningEffort;
     }
 
     public Instant getCreatedAt() {

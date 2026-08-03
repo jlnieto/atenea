@@ -22,17 +22,20 @@ import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -51,6 +54,7 @@ public class WorkSessionService {
     private final AgentRunReconciliationService agentRunReconciliationService;
     private final SessionBranchService sessionBranchService;
     private final GitHubClient gitHubClient;
+    private RemoteRoutingSelector remoteRoutingSelector;
 
     public WorkSessionService(
             ProjectRepository projectRepository,
@@ -76,6 +80,11 @@ public class WorkSessionService {
         this.agentRunReconciliationService = agentRunReconciliationService;
         this.sessionBranchService = sessionBranchService;
         this.gitHubClient = gitHubClient;
+    }
+
+    @Autowired(required = false)
+    void setRemoteRoutingSelector(RemoteRoutingSelector remoteRoutingSelector) {
+        this.remoteRoutingSelector = remoteRoutingSelector;
     }
 
     @Transactional
@@ -105,6 +114,11 @@ public class WorkSessionService {
         session.setBaseBranch(baseBranch);
         session.setWorkspaceBranch(null);
         session.setExternalThreadId(null);
+        session.setExecutionTarget(ExecutionTarget.LOCAL);
+        session.setSelectedWorkerId(null);
+        session.setWorkspaceIdentity("local:pending");
+        session.setRemoteSessionId(null);
+        session.setRemoteWorkloadKind(null);
         session.setPullRequestUrl(null);
         session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
         session.setFinalCommitSha(null);
@@ -120,6 +134,11 @@ public class WorkSessionService {
         session.setUpdatedAt(now);
 
         WorkSessionEntity persistedSession = workSessionRepository.save(session);
+        if (remoteRoutingSelector == null) {
+            persistedSession.setWorkspaceIdentity("local:work-session:" + persistedSession.getId());
+        } else {
+            remoteRoutingSelector.pinNewSession(persistedSession);
+        }
         persistedSession.setWorkspaceBranch(sessionBranchService.prepareWorkspaceBranch(persistedSession, normalizedRepoPath));
         persistedSession.setUpdatedAt(Instant.now());
 
@@ -211,12 +230,42 @@ public class WorkSessionService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public boolean canCloseUnpublishedSession(Long sessionId) {
+        WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
+                .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        if (session.getStatus() != WorkSessionStatus.OPEN
+                || session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED
+                || agentRunRepository.existsBySessionIdAndStatusIn(
+                        sessionId, AgentRunStatus.nonTerminalStatuses())) {
+            return false;
+        }
+        try {
+            String repoPath = workspaceRepositoryPathValidator
+                    .normalizeConfiguredRepoPath(session.getProject().getRepoPath());
+            String currentBranch = gitRepositoryService.getCurrentBranch(repoPath);
+            String workspaceBranch = normalizeNullableText(session.getWorkspaceBranch());
+            if (!gitRepositoryService.isWorkingTreeClean(repoPath)
+                    || (!currentBranch.equals(session.getBaseBranch())
+                        && !currentBranch.equals(workspaceBranch))) {
+                return false;
+            }
+            return workspaceBranch == null
+                    || !gitRepositoryService.branchExists(repoPath, workspaceBranch)
+                    || !gitRepositoryService.branchContainsCommitsBeyond(
+                            repoPath, session.getBaseBranch(), workspaceBranch);
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
     @Transactional(noRollbackFor = WorkSessionCloseBlockedException.class)
     public WorkSessionResponse closeSession(Long sessionId) {
         WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
 
-        if (session.getStatus() == WorkSessionStatus.CLOSED) {
+        if (session.getStatus() != WorkSessionStatus.OPEN
+                && session.getStatus() != WorkSessionStatus.CLOSING) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
 
@@ -286,6 +335,9 @@ public class WorkSessionService {
                 session.getCloseBlockedReason(),
                 session.getCloseBlockedAction(),
                 session.isCloseRetryable(),
+                session.getExecutionTarget(),
+                session.getSelectedWorkerId(),
+                session.getWorkspaceIdentity(),
                 snapshot
         );
     }
@@ -300,7 +352,15 @@ public class WorkSessionService {
                 run.getStartedAt(),
                 run.getFinishedAt(),
                 run.getOutputSummary(),
-                run.getErrorSummary()
+                run.getErrorSummary(),
+                run.getExecutionTarget(),
+                run.getSelectedWorkerId(),
+                run.getWorkspaceIdentity(),
+                run.getDispatchId(),
+                run.getRemoteExecutionId(),
+                run.getWorkloadClass(),
+                run.getLifecycleRevision(),
+                run.getStatusReason()
         );
     }
 
@@ -314,6 +374,9 @@ public class WorkSessionService {
         if (session.getStatus() == WorkSessionStatus.CLOSING) {
             return WorkSessionOperationalState.CLOSING;
         }
+        if (session.getStatus() == WorkSessionStatus.DRAFT_BLOCKED) {
+            return WorkSessionOperationalState.DRAFT_BLOCKED;
+        }
         if (snapshot.runInProgress()) {
             return WorkSessionOperationalState.RUNNING;
         }
@@ -321,13 +384,17 @@ public class WorkSessionService {
     }
 
     private boolean canCreateTurn(WorkSessionResponse session) {
-        return session.operationalState() == WorkSessionOperationalState.IDLE;
+        return session.status() == WorkSessionStatus.OPEN
+                && session.operationalState() == WorkSessionOperationalState.IDLE;
     }
 
     private void reconcileClose(WorkSessionEntity session) {
         Long sessionId = session.getId();
         agentRunReconciliationService.reconcileSession(sessionId);
-        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
+        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)
+                || agentRunRepository.existsBySessionIdAndStatusIn(
+                        sessionId,
+                        AgentRunStatus.nonTerminalStatuses())) {
             blockClose(
                     session,
                     "running_run",
@@ -561,9 +628,17 @@ public class WorkSessionService {
         try {
             long pullRequestNumber = gitHubClient.extractPullRequestNumber(pullRequestUrl);
             GitHubPullRequest pullRequest = gitHubClient.getPullRequest(repository, pullRequestNumber);
+            WorkSessionPullRequestIdentity.validate(session, repository, pullRequestNumber, pullRequest);
             session.setPullRequestUrl(pullRequest.htmlUrl());
             session.setPullRequestStatus(mapPullRequestStatus(pullRequest));
             session.setUpdatedAt(Instant.now());
+        } catch (WorkSessionPublishConflictException exception) {
+            blockClose(
+                    session,
+                    "pull_request_identity_conflict",
+                    exception.getMessage(),
+                    "Restore the exact WorkSession pull request identity before retrying close",
+                    false);
         } catch (GitHubIntegrationException exception) {
             blockClose(
                     session,

@@ -83,7 +83,8 @@ public class OperatorAuthenticationService {
     }
 
     private OperatorProfileResponse toProfile(OperatorEntity operator) {
-        return new OperatorProfileResponse(operator.getId(), operator.getEmail(), operator.getDisplayName());
+        return new OperatorProfileResponse(operator.getId(), operator.getEmail(), operator.getDisplayName(),
+                operator.getCodexOperationsRole().name());
     }
 
     @Transactional

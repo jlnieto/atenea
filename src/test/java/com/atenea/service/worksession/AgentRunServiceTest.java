@@ -7,32 +7,44 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
+import com.atenea.persistence.worksession.AgentRunProcessOutcome;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.CodexReasoningEffort;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
-import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.WorkloadClass;
+import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
+import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class AgentRunServiceTest {
+    private static final String TEST_CANONICAL_COMMIT = "1".repeat(40);
 
     @Mock
     private WorkSessionRepository workSessionRepository;
@@ -49,18 +61,31 @@ class AgentRunServiceTest {
     @Mock
     private MobilePushDispatchService mobilePushDispatchService;
 
+    @Mock
+    private WorkSessionAcceptanceService workSessionAcceptanceService;
+
+    @Mock
+    private CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService;
+
+    @Mock
+    private JdbcTemplate jdbcTemplate;
+
     private AgentRunService agentRunService;
     private AgentRunReconciliationService agentRunReconciliationService;
 
     @BeforeEach
     void setUp() {
-        agentRunReconciliationService = new AgentRunReconciliationService(agentRunRepository, codexAppServerProperties);
+        agentRunReconciliationService = new AgentRunReconciliationService(
+                agentRunRepository, codexAppServerProperties, mobilePushDispatchService);
         agentRunService = new AgentRunService(
                 workSessionRepository,
                 agentRunRepository,
                 sessionTurnRepository,
                 new AgentRunProgressService(),
-                mobilePushDispatchService
+                mobilePushDispatchService,
+                workSessionAcceptanceService,
+                codexExecutionProfileSnapshotService,
+                jdbcTemplate
         );
     }
 
@@ -85,6 +110,7 @@ class AgentRunServiceTest {
 
         assertEquals(55L, run.getId());
         assertEquals(AgentRunStatus.RUNNING, run.getStatus());
+        assertNull(run.getProcessOutcome());
         assertEquals("/workspace/repos/internal/atenea", run.getTargetRepoPath());
         assertNull(run.getExternalTurnId());
         assertNotNull(run.getStartedAt());
@@ -108,10 +134,12 @@ class AgentRunServiceTest {
         AgentRunEntity updated = agentRunService.markSucceeded(55L, " turn_123 ", "Completed successfully");
 
         assertEquals(AgentRunStatus.SUCCEEDED, updated.getStatus());
+        assertEquals(AgentRunProcessOutcome.SUCCEEDED, updated.getProcessOutcome());
         assertEquals("turn_123", updated.getExternalTurnId());
         assertEquals("Completed successfully", updated.getOutputSummary());
         assertNull(updated.getErrorSummary());
         assertNotNull(updated.getFinishedAt());
+        verify(mobilePushDispatchService).notifyRunSucceeded(updated);
     }
 
     @Test
@@ -124,20 +152,25 @@ class AgentRunServiceTest {
         AgentRunEntity updated = agentRunService.markFailed(55L, "turn_456", "Codex execution failed");
 
         assertEquals(AgentRunStatus.FAILED, updated.getStatus());
+        assertEquals(AgentRunProcessOutcome.FAILED, updated.getProcessOutcome());
         assertEquals("turn_456", updated.getExternalTurnId());
         assertEquals("Codex execution failed", updated.getErrorSummary());
         assertNull(updated.getOutputSummary());
         assertNotNull(updated.getFinishedAt());
+        verify(mobilePushDispatchService).notifyRunFailed(updated);
     }
 
     @Test
     void forceMarkFailedIfRunningUsesConditionalRepositoryUpdate() {
+        AgentRunEntity run = buildRun(55L, AgentRunStatus.FAILED);
         when(agentRunRepository.forceMarkFailedIfRunning(eq(55L), eq("turn_456"), eq("Codex execution failed"), any()))
                 .thenReturn(1);
+        when(agentRunRepository.findWithSessionById(55L)).thenReturn(Optional.of(run));
 
         boolean updated = agentRunService.forceMarkFailedIfRunning(55L, " turn_456 ", " Codex execution failed ");
 
         assertTrue(updated);
+        verify(mobilePushDispatchService).notifyRunFailed(run);
     }
 
     @Test
@@ -148,6 +181,205 @@ class AgentRunServiceTest {
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(true);
 
         assertThrows(AgentRunAlreadyRunningException.class, () -> agentRunService.createRunningRun(12L));
+    }
+
+    @Test
+    void createRemoteQueuedRunPersistsAffinityAndDispatchBeforeExecution() {
+        WorkSessionEntity session = buildSession(12L, 7L, "/workspace/repos/internal/atenea");
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind("synthetic-routing-v1");
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        originTurn.setActor(SessionTurnActor.OPERATOR);
+        originTurn.setMessageText("synthetic turn");
+        originTurn.setCreatedAt(Instant.now());
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L,
+                AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, originTurn, WorkloadClass.HEAVY);
+
+        verify(codexExecutionProfileSnapshotService).applyCurrentProfile(run);
+
+        assertEquals(AgentRunStatus.QUEUED, run.getStatus());
+        assertEquals(ExecutionTarget.REMOTE, run.getExecutionTarget());
+        assertEquals("ax42-01", run.getSelectedWorkerId());
+        assertEquals("remote:ax42-01:work-session:" + remoteSessionId, run.getWorkspaceIdentity());
+        assertEquals(remoteSessionId, run.getRemoteSessionId());
+        assertEquals("synthetic-routing-v1", run.getWorkloadKind());
+        assertNotNull(run.getDispatchId());
+        assertNull(run.getRemoteExecutionId());
+        assertEquals(1, run.getLeaseGeneration());
+        assertEquals(WorkloadClass.HEAVY, run.getWorkloadClass());
+    }
+
+    @Test
+    void createRemoteRetryPersistsImmutableLineageBeforeFirstSave() {
+        WorkSessionEntity session = buildSession(12L, 7L, "/workspace/repos/internal/atenea");
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
+        session.setCanonicalSourceCommit(TEST_CANONICAL_COMMIT);
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(Instant.now());
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        AgentRunEntity source = buildRun(81L, AgentRunStatus.FAILED);
+        source.setSession(session);
+        source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setWorkloadClass(WorkloadClass.NORMAL);
+        source.setCodexModelId("gpt-5.6-sol");
+        source.setCodexReasoningEffort(CodexReasoningEffort.HIGH);
+        when(agentRunRepository.findByIdForUpdate(81L)).thenReturn(Optional.of(source));
+        when(agentRunRepository.findFirstByRetryOfRunIdOrderByCreatedAtAsc(81L))
+                .thenReturn(Optional.empty());
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L, AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> {
+            AgentRunEntity saved = invocation.getArgument(0);
+            assertEquals(source, saved.getRetryOfRun());
+            saved.setId(82L);
+            return saved;
+        });
+
+        AgentRunEntity retry = agentRunService.createRemoteRetryRun(81L);
+
+        assertEquals(82L, retry.getId());
+        assertEquals(source, retry.getRetryOfRun());
+        assertEquals("gpt-5.6-sol", retry.getCodexModelId());
+        assertEquals(CodexReasoningEffort.HIGH, retry.getCodexReasoningEffort());
+        verify(agentRunRepository).save(any(AgentRunEntity.class));
+        verify(codexExecutionProfileSnapshotService, never()).applyCurrentProfile(retry);
+    }
+
+    @Test
+    void createRemoteProjectRunPersistsExactImmutableWorkloadIdentity() {
+        WorkSessionEntity session = buildSession(12L, 7L, "/workspace/repos/internal/atenea");
+        session.setBaseBranch(ProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
+        session.setCanonicalSourceCommit(TEST_CANONICAL_COMMIT);
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(Instant.now());
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        originTurn.setActor(SessionTurnActor.OPERATOR);
+        originTurn.setMessageText("project turn");
+        originTurn.setCreatedAt(Instant.now());
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L,
+                AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, originTurn, WorkloadClass.NORMAL);
+
+        assertEquals(ProjectCodexIdentity.WORKLOAD_KIND, run.getWorkloadKind());
+        assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, run.getProjectIdentity());
+        assertEquals(ProjectCodexIdentity.REPOSITORY, run.getRepositoryUrl());
+        assertEquals(ProjectCodexIdentity.BRANCH, run.getRepositoryBranch());
+        assertEquals(TEST_CANONICAL_COMMIT, run.getRepositoryCommit());
+        assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, run.getManifestSha256());
+        assertEquals(ReviewedInstructionBundleIdentity.REVISION,
+                run.getInstructionBundleRevision());
+        assertEquals(ReviewedInstructionBundleIdentity.ATENEA_BUNDLE_SHA256,
+                run.getInstructionBundleSha256());
+        assertEquals(ReviewedInstructionBundleIdentity.PLATFORM_SHA256,
+                run.getPlatformInstructionSha256());
+        assertEquals(ReviewedInstructionBundleIdentity.PROJECT_PATH,
+                run.getProjectInstructionPath());
+        assertEquals(ReviewedInstructionBundleIdentity.ATENEA_PROJECT_SHA256,
+                run.getProjectInstructionSha256());
+    }
+
+    @Test
+    void createRemoteBeautipsRunPersistsExactImmutableIdentityBeforeDispatch() {
+        WorkSessionEntity session = buildSession(
+                12L,
+                8L,
+                BeautipsProjectCodexIdentity.REPO_PATH);
+        session.getProject().setName(BeautipsProjectCodexIdentity.PROJECT_NAME);
+        session.getProject().setDefaultBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        session.setBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        originTurn.setActor(SessionTurnActor.OPERATOR);
+        originTurn.setMessageText("beautips project turn");
+        originTurn.setCreatedAt(Instant.now());
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L,
+                AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, originTurn, WorkloadClass.NORMAL);
+
+        assertEquals(AgentRunStatus.QUEUED, run.getStatus());
+        assertEquals(BeautipsProjectCodexIdentity.REPO_PATH, run.getTargetRepoPath());
+        assertEquals("ax42-01", run.getSelectedWorkerId());
+        assertEquals("remote:ax42-01:work-session:" + remoteSessionId, run.getWorkspaceIdentity());
+        assertEquals(remoteSessionId, run.getRemoteSessionId());
+        assertEquals(ProjectCodexIdentity.WORKLOAD_KIND, run.getWorkloadKind());
+        assertEquals(BeautipsProjectCodexIdentity.PROJECT_IDENTITY, run.getProjectIdentity());
+        assertEquals(BeautipsProjectCodexIdentity.REPOSITORY, run.getRepositoryUrl());
+        assertEquals(BeautipsProjectCodexIdentity.BRANCH, run.getRepositoryBranch());
+        assertEquals(BeautipsProjectCodexIdentity.COMMIT, run.getRepositoryCommit());
+        assertEquals(BeautipsProjectCodexIdentity.MANIFEST_SHA256, run.getManifestSha256());
+        assertEquals(ReviewedInstructionBundleIdentity.BEAUTIPS_BUNDLE_SHA256,
+                run.getInstructionBundleSha256());
+        assertEquals(ReviewedInstructionBundleIdentity.BEAUTIPS_PROJECT_SHA256,
+                run.getProjectInstructionSha256());
+        assertNotNull(run.getDispatchId());
+        assertNull(run.getRemoteExecutionId());
+        assertTrue(BeautipsProjectCodexIdentity.matches(run));
+    }
+
+    @Test
+    void createRemoteBeautipsRunRejectsPartialIdentityBeforePersistence() {
+        WorkSessionEntity session = buildSession(
+                12L,
+                8L,
+                BeautipsProjectCodexIdentity.REPO_PATH);
+        session.getProject().setName(BeautipsProjectCodexIdentity.PROJECT_NAME);
+        session.getProject().setDefaultBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        session.setBaseBranch(BeautipsProjectCodexIdentity.BRANCH);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId(BeautipsProjectCodexIdentity.WORKER_ID);
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setWorkspaceIdentity("remote:foreign:work-session:" + remoteSessionId);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> agentRunService.createRemoteQueuedRun(
+                        session,
+                        new SessionTurnEntity(),
+                        WorkloadClass.NORMAL));
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
     }
 
     @Test
@@ -169,6 +401,7 @@ class AgentRunServiceTest {
                 run.getErrorSummary());
         assertNotNull(run.getFinishedAt());
         assertNull(run.getOutputSummary());
+        verify(mobilePushDispatchService).notifyRunFailed(run);
     }
 
     @Test
@@ -207,6 +440,22 @@ class AgentRunServiceTest {
                 firstRun.getErrorSummary());
         assertNotNull(firstRun.getFinishedAt());
         assertNull(firstRun.getOutputSummary());
+        verify(mobilePushDispatchService).notifyRunFailed(firstRun);
+        verify(mobilePushDispatchService).notifyRunFailed(secondRun);
+    }
+
+    @Test
+    void localStartupReconciliationDoesNotFailRemoteRunningRun() {
+        AgentRunEntity remote = buildRun(55L, AgentRunStatus.RUNNING);
+        remote.setExecutionTarget(ExecutionTarget.REMOTE);
+        when(agentRunRepository.findByStatusOrderByCreatedAtAsc(AgentRunStatus.RUNNING))
+                .thenReturn(java.util.List.of(remote));
+
+        int reconciledCount = agentRunReconciliationService.reconcileRunningRunsAfterStartup();
+
+        assertEquals(0, reconciledCount);
+        assertEquals(AgentRunStatus.RUNNING, remote.getStatus());
+        assertNull(remote.getFinishedAt());
     }
 
     private static WorkSessionEntity buildSession(Long sessionId, Long projectId, String repoPath) {

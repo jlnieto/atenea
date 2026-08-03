@@ -50,6 +50,7 @@ class MobileSessionServiceTest {
     @Test
     void getSessionSummaryReturnsNullApprovedPriceEstimateWhenNoApprovedPricingExists() {
         when(workSessionService.getSessionConversationView(12L)).thenReturn(conversation());
+        when(workSessionService.canCloseUnpublishedSession(12L)).thenReturn(true);
         when(sessionDeliverableService.getApprovedDeliverablesView(12L))
                 .thenReturn(new SessionDeliverablesViewResponse(12L, List.of(), false, false, null));
         when(sessionDeliverableService.getApprovedPriceEstimateSummary(12L))
@@ -62,8 +63,24 @@ class MobileSessionServiceTest {
     }
 
     @Test
-    void getSessionSummaryDoesNotExposeCloseForUnpublishedSession() {
+    void getSessionSummaryClosesEmptyUnpublishedSessionWithoutOfferingImpossiblePullRequest() {
         when(workSessionService.getSessionConversationView(12L)).thenReturn(conversation());
+        when(workSessionService.canCloseUnpublishedSession(12L)).thenReturn(true);
+        when(sessionDeliverableService.getApprovedDeliverablesView(12L))
+                .thenReturn(new SessionDeliverablesViewResponse(12L, List.of(), false, false, null));
+        when(sessionDeliverableService.getApprovedPriceEstimateSummary(12L))
+                .thenThrow(new ApprovedPriceEstimateNotFoundException(12L));
+
+        MobileSessionSummaryResponse response = mobileSessionService.getSessionSummary(12L);
+
+        assertTrue(response.actions().canClose());
+        assertFalse(response.actions().canPublish());
+    }
+
+    @Test
+    void getSessionSummaryStillRequiresPublishForUnpublishedSessionWithWork() {
+        when(workSessionService.getSessionConversationView(12L)).thenReturn(conversationWithInsights());
+        when(workSessionService.canCloseUnpublishedSession(12L)).thenReturn(false);
         when(sessionDeliverableService.getApprovedDeliverablesView(12L))
                 .thenReturn(new SessionDeliverablesViewResponse(12L, List.of(), false, false, null));
         when(sessionDeliverableService.getApprovedPriceEstimateSummary(12L))
@@ -72,11 +89,13 @@ class MobileSessionServiceTest {
         MobileSessionSummaryResponse response = mobileSessionService.getSessionSummary(12L);
 
         assertFalse(response.actions().canClose());
+        assertTrue(response.actions().canPublish());
     }
 
     @Test
     void getSessionSummaryIncludesStructuredInsights() {
         when(workSessionService.getSessionConversationView(12L)).thenReturn(conversationWithInsights());
+        when(workSessionService.canCloseUnpublishedSession(12L)).thenReturn(false);
         when(sessionDeliverableService.getApprovedDeliverablesView(12L))
                 .thenReturn(new SessionDeliverablesViewResponse(12L, List.of(), false, false, null));
         when(sessionDeliverableService.getApprovedPriceEstimateSummary(12L))

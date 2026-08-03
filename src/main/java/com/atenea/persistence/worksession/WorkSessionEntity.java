@@ -2,6 +2,7 @@ package com.atenea.persistence.worksession;
 
 import com.atenea.persistence.project.ProjectEntity;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -13,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "work_session")
@@ -41,6 +43,90 @@ public class WorkSessionEntity {
 
     @Column(name = "external_thread_id", length = 100)
     private String externalThreadId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_target", nullable = false, length = 16)
+    private ExecutionTarget executionTarget = ExecutionTarget.LOCAL;
+
+    @Column(name = "selected_worker_id", length = 80)
+    private String selectedWorkerId;
+
+    @Column(name = "workspace_identity", nullable = false, length = 200)
+    private String workspaceIdentity;
+
+    @Column(name = "remote_session_id")
+    private UUID remoteSessionId;
+
+    @Column(name = "remote_workload_kind", length = 80)
+    private String remoteWorkloadKind;
+
+    @Column(name = "default_codex_model_id", length = 80)
+    private String defaultCodexModelId;
+
+    @Convert(converter = CodexReasoningEffortConverter.class)
+    @Column(name = "default_codex_reasoning_effort", length = 16)
+    private CodexReasoningEffort defaultCodexReasoningEffort;
+
+    @Column(name = "canonical_source_ref", length = 220)
+    private String canonicalSourceRef;
+
+    @Column(name = "canonical_source_commit", length = 64)
+    private String canonicalSourceCommit;
+
+    @Column(name = "canonical_source_observation_sha256", length = 64)
+    private String canonicalSourceObservationSha256;
+
+    @Column(name = "canonical_source_observed_at")
+    private Instant canonicalSourceObservedAt;
+
+    @Column(name = "draft_fingerprint_sha256", length = 64)
+    private String draftFingerprintSha256;
+
+    @Column(name = "draft_retained_head", length = 64)
+    private String draftRetainedHead;
+
+    @Column(name = "draft_staged_change_count")
+    private Integer draftStagedChangeCount;
+
+    @Column(name = "draft_unstaged_change_count")
+    private Integer draftUnstagedChangeCount;
+
+    @Column(name = "draft_untracked_change_count")
+    private Integer draftUntrackedChangeCount;
+
+    @Column(name = "draft_blocked_at")
+    private Instant draftBlockedAt;
+
+    @Column(name = "replacement_work_session_id")
+    private Long replacementWorkSessionId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "acceptance_state", nullable = false, length = 32)
+    private WorkSessionAcceptanceState acceptanceState = WorkSessionAcceptanceState.DRAFT;
+
+    @Column(name = "source_tree_fingerprint_sha256", length = 64)
+    private String sourceTreeFingerprintSha256;
+
+    @Column(name = "source_tree_observed_at")
+    private Instant sourceTreeObservedAt;
+
+    @Column(name = "validation_projection_sha256", length = 64)
+    private String validationProjectionSha256;
+
+    @Column(name = "validation_definition_revision", length = 80)
+    private String validationDefinitionRevision;
+
+    @Column(name = "acceptance_blocked_check", length = 80)
+    private String acceptanceBlockedCheck;
+
+    @Column(name = "acceptance_next_action", length = 240)
+    private String acceptanceNextAction;
+
+    @Column(name = "validated_at")
+    private Instant validatedAt;
+
+    @Column(name = "integration_ready_at")
+    private Instant integrationReadyAt;
 
     @Column(name = "pull_request_url", length = 500)
     private String pullRequestUrl;
@@ -136,6 +222,222 @@ public class WorkSessionEntity {
 
     public void setExternalThreadId(String externalThreadId) {
         this.externalThreadId = externalThreadId;
+    }
+
+    public ExecutionTarget getExecutionTarget() {
+        return executionTarget;
+    }
+
+    public void setExecutionTarget(ExecutionTarget executionTarget) {
+        this.executionTarget = executionTarget;
+    }
+
+    public String getSelectedWorkerId() {
+        return selectedWorkerId;
+    }
+
+    public void setSelectedWorkerId(String selectedWorkerId) {
+        this.selectedWorkerId = selectedWorkerId;
+    }
+
+    public String getWorkspaceIdentity() {
+        return workspaceIdentity;
+    }
+
+    public void setWorkspaceIdentity(String workspaceIdentity) {
+        this.workspaceIdentity = workspaceIdentity;
+    }
+
+    public UUID getRemoteSessionId() {
+        return remoteSessionId;
+    }
+
+    public void setRemoteSessionId(UUID remoteSessionId) {
+        this.remoteSessionId = remoteSessionId;
+    }
+
+    public String getRemoteWorkloadKind() {
+        return remoteWorkloadKind;
+    }
+
+    public void setRemoteWorkloadKind(String remoteWorkloadKind) {
+        this.remoteWorkloadKind = remoteWorkloadKind;
+    }
+
+    public String getDefaultCodexModelId() {
+        return defaultCodexModelId;
+    }
+
+    public void setDefaultCodexModelId(String defaultCodexModelId) {
+        this.defaultCodexModelId = defaultCodexModelId;
+    }
+
+    public CodexReasoningEffort getDefaultCodexReasoningEffort() {
+        return defaultCodexReasoningEffort;
+    }
+
+    public void setDefaultCodexReasoningEffort(CodexReasoningEffort value) {
+        this.defaultCodexReasoningEffort = value;
+    }
+
+    public String getCanonicalSourceRef() {
+        return canonicalSourceRef;
+    }
+
+    public void setCanonicalSourceRef(String canonicalSourceRef) {
+        this.canonicalSourceRef = canonicalSourceRef;
+    }
+
+    public String getCanonicalSourceCommit() {
+        return canonicalSourceCommit;
+    }
+
+    public void setCanonicalSourceCommit(String canonicalSourceCommit) {
+        this.canonicalSourceCommit = canonicalSourceCommit;
+    }
+
+    public String getCanonicalSourceObservationSha256() {
+        return canonicalSourceObservationSha256;
+    }
+
+    public void setCanonicalSourceObservationSha256(String canonicalSourceObservationSha256) {
+        this.canonicalSourceObservationSha256 = canonicalSourceObservationSha256;
+    }
+
+    public Instant getCanonicalSourceObservedAt() {
+        return canonicalSourceObservedAt;
+    }
+
+    public void setCanonicalSourceObservedAt(Instant canonicalSourceObservedAt) {
+        this.canonicalSourceObservedAt = canonicalSourceObservedAt;
+    }
+
+    public String getDraftFingerprintSha256() {
+        return draftFingerprintSha256;
+    }
+
+    public void setDraftFingerprintSha256(String draftFingerprintSha256) {
+        this.draftFingerprintSha256 = draftFingerprintSha256;
+    }
+
+    public String getDraftRetainedHead() {
+        return draftRetainedHead;
+    }
+
+    public void setDraftRetainedHead(String draftRetainedHead) {
+        this.draftRetainedHead = draftRetainedHead;
+    }
+
+    public Integer getDraftStagedChangeCount() {
+        return draftStagedChangeCount;
+    }
+
+    public void setDraftStagedChangeCount(Integer draftStagedChangeCount) {
+        this.draftStagedChangeCount = draftStagedChangeCount;
+    }
+
+    public Integer getDraftUnstagedChangeCount() {
+        return draftUnstagedChangeCount;
+    }
+
+    public void setDraftUnstagedChangeCount(Integer draftUnstagedChangeCount) {
+        this.draftUnstagedChangeCount = draftUnstagedChangeCount;
+    }
+
+    public Integer getDraftUntrackedChangeCount() {
+        return draftUntrackedChangeCount;
+    }
+
+    public void setDraftUntrackedChangeCount(Integer draftUntrackedChangeCount) {
+        this.draftUntrackedChangeCount = draftUntrackedChangeCount;
+    }
+
+    public Instant getDraftBlockedAt() {
+        return draftBlockedAt;
+    }
+
+    public void setDraftBlockedAt(Instant draftBlockedAt) {
+        this.draftBlockedAt = draftBlockedAt;
+    }
+
+    public Long getReplacementWorkSessionId() {
+        return replacementWorkSessionId;
+    }
+
+    public void setReplacementWorkSessionId(Long replacementWorkSessionId) {
+        this.replacementWorkSessionId = replacementWorkSessionId;
+    }
+
+    public WorkSessionAcceptanceState getAcceptanceState() {
+        return acceptanceState;
+    }
+
+    public void setAcceptanceState(WorkSessionAcceptanceState acceptanceState) {
+        this.acceptanceState = acceptanceState;
+    }
+
+    public String getSourceTreeFingerprintSha256() {
+        return sourceTreeFingerprintSha256;
+    }
+
+    public void setSourceTreeFingerprintSha256(String sourceTreeFingerprintSha256) {
+        this.sourceTreeFingerprintSha256 = sourceTreeFingerprintSha256;
+    }
+
+    public Instant getSourceTreeObservedAt() {
+        return sourceTreeObservedAt;
+    }
+
+    public void setSourceTreeObservedAt(Instant sourceTreeObservedAt) {
+        this.sourceTreeObservedAt = sourceTreeObservedAt;
+    }
+
+    public String getValidationProjectionSha256() {
+        return validationProjectionSha256;
+    }
+
+    public void setValidationProjectionSha256(String validationProjectionSha256) {
+        this.validationProjectionSha256 = validationProjectionSha256;
+    }
+
+    public String getValidationDefinitionRevision() {
+        return validationDefinitionRevision;
+    }
+
+    public void setValidationDefinitionRevision(String validationDefinitionRevision) {
+        this.validationDefinitionRevision = validationDefinitionRevision;
+    }
+
+    public String getAcceptanceBlockedCheck() {
+        return acceptanceBlockedCheck;
+    }
+
+    public void setAcceptanceBlockedCheck(String acceptanceBlockedCheck) {
+        this.acceptanceBlockedCheck = acceptanceBlockedCheck;
+    }
+
+    public String getAcceptanceNextAction() {
+        return acceptanceNextAction;
+    }
+
+    public void setAcceptanceNextAction(String acceptanceNextAction) {
+        this.acceptanceNextAction = acceptanceNextAction;
+    }
+
+    public Instant getValidatedAt() {
+        return validatedAt;
+    }
+
+    public void setValidatedAt(Instant validatedAt) {
+        this.validatedAt = validatedAt;
+    }
+
+    public Instant getIntegrationReadyAt() {
+        return integrationReadyAt;
+    }
+
+    public void setIntegrationReadyAt(Instant integrationReadyAt) {
+        this.integrationReadyAt = integrationReadyAt;
     }
 
     public String getPullRequestUrl() {

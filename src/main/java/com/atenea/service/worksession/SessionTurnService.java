@@ -3,6 +3,7 @@ package com.atenea.service.worksession;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.CreateSessionTurnResponse;
 import com.atenea.api.worksession.SessionTurnResponse;
+import com.atenea.api.worksession.TurnExecutionProfileResponse;
 import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionListener;
 import com.atenea.persistence.worksession.AgentRunEntity;
@@ -14,6 +15,10 @@ import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.WorkloadClass;
+import com.atenea.remoteworker.RemoteAgentRunCoordinator;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
@@ -21,10 +26,13 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -45,6 +53,8 @@ public class SessionTurnService {
     private final AgentRunReconciliationService agentRunReconciliationService;
     private final SessionCodexOrchestrator sessionCodexOrchestrator;
     private final SessionTurnCompletionService sessionTurnCompletionService;
+    private final CanonicalSourceAdmissionService canonicalSourceAdmissionService;
+    private RemoteAgentRunCoordinator remoteAgentRunCoordinator;
 
     public SessionTurnService(
             WorkSessionRepository workSessionRepository,
@@ -56,7 +66,8 @@ public class SessionTurnService {
             AgentRunProgressService agentRunProgressService,
             AgentRunReconciliationService agentRunReconciliationService,
             SessionCodexOrchestrator sessionCodexOrchestrator,
-            SessionTurnCompletionService sessionTurnCompletionService
+            SessionTurnCompletionService sessionTurnCompletionService,
+            CanonicalSourceAdmissionService canonicalSourceAdmissionService
     ) {
         this.workSessionRepository = workSessionRepository;
         this.sessionTurnRepository = sessionTurnRepository;
@@ -68,6 +79,12 @@ public class SessionTurnService {
         this.agentRunReconciliationService = agentRunReconciliationService;
         this.sessionCodexOrchestrator = sessionCodexOrchestrator;
         this.sessionTurnCompletionService = sessionTurnCompletionService;
+        this.canonicalSourceAdmissionService = canonicalSourceAdmissionService;
+    }
+
+    @Autowired(required = false)
+    void setRemoteAgentRunCoordinator(RemoteAgentRunCoordinator remoteAgentRunCoordinator) {
+        this.remoteAgentRunCoordinator = remoteAgentRunCoordinator;
     }
 
     @Transactional(readOnly = true)
@@ -83,9 +100,10 @@ public class SessionTurnService {
 
         Integer effectiveLimit = normalizeOptionalLimit(limit);
         if (effectiveLimit == null) {
+            Map<Long, TurnExecutionProfileResponse> profiles = profilesByTurnId(sessionId);
             return sessionTurnRepository.findBySessionIdAndInternalFalseOrderByCreatedAtAsc(sessionId)
                     .stream()
-                    .map(this::toResponse)
+                    .map(turn -> toResponse(turn, profiles.get(turn.getId())))
                     .toList();
         }
 
@@ -99,7 +117,8 @@ public class SessionTurnService {
                         PageRequest.of(0, effectiveLimit));
         List<SessionTurnEntity> chronological = new ArrayList<>(newestFirst);
         Collections.reverse(chronological);
-        return chronological.stream().map(this::toResponse).toList();
+        Map<Long, TurnExecutionProfileResponse> profiles = profilesByTurnId(sessionId);
+        return chronological.stream().map(turn -> toResponse(turn, profiles.get(turn.getId()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -123,16 +142,32 @@ public class SessionTurnService {
         if (session.getStatus() != WorkSessionStatus.OPEN) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
+        canonicalSourceAdmissionService.admitBeforeWrite(session);
         agentRunReconciliationService.reconcileSession(sessionId);
-        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)) {
+        if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)
+                || agentRunRepository.existsBySessionIdAndStatusIn(
+                        sessionId,
+                        AgentRunStatus.nonTerminalStatuses())) {
             throw new WorkSessionAlreadyRunningException(sessionId);
         }
 
-        String repoPath = resolveOperationalRepoPath(session);
         Instant now = Instant.now();
         SessionTurnEntity operatorTurn = createVisibleTurn(session, SessionTurnActor.OPERATOR, message, now);
         touchSession(session, now);
 
+        if (session.getExecutionTarget() == ExecutionTarget.REMOTE) {
+            if (remoteAgentRunCoordinator == null) {
+                throw new WorkSessionOperationBlockedException("Remote AgentRun coordinator is unavailable");
+            }
+            AgentRunEntity run = agentRunService.createRemoteQueuedRun(session, operatorTurn, WorkloadClass.NORMAL);
+            registerRemoteDispatch(run.getId());
+            return new CreateSessionTurnResponse(
+                    toResponse(operatorTurn, executionProfile(run)),
+                    agentRunService.toResponse(run),
+                    null);
+        }
+
+        String repoPath = resolveOperationalRepoPath(session);
         AgentRunEntity run = agentRunService.createRunningRun(session, operatorTurn);
         ExecutionProgress progress = new ExecutionProgress();
 
@@ -157,7 +192,7 @@ public class SessionTurnService {
                     executionHandle);
 
             return new CreateSessionTurnResponse(
-                    toResponse(operatorTurn),
+                    toResponse(operatorTurn, null),
                     agentRunService.toResponse(run),
                     null
             );
@@ -171,6 +206,19 @@ public class SessionTurnService {
                     "Codex execution failed for WorkSession turn",
                     exception);
         }
+    }
+
+    private void registerRemoteDispatch(Long runId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            remoteAgentRunCoordinator.dispatchAfterCommit(runId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                remoteAgentRunCoordinator.dispatchAfterCommit(runId);
+            }
+        });
     }
 
     private CodexAppServerExecutionHandle startTurnWithThreadRecovery(
@@ -239,12 +287,40 @@ public class SessionTurnService {
     }
 
     private SessionTurnResponse toResponse(SessionTurnEntity turn) {
+        return toResponse(turn, null);
+    }
+
+    private SessionTurnResponse toResponse(SessionTurnEntity turn, TurnExecutionProfileResponse profile) {
         return new SessionTurnResponse(
                 turn.getId(),
                 turn.getActor(),
                 turn.getMessageText(),
-                turn.getCreatedAt()
+                turn.getCreatedAt(),
+                profile
         );
+    }
+
+    private Map<Long, TurnExecutionProfileResponse> profilesByTurnId(Long sessionId) {
+        Map<Long, TurnExecutionProfileResponse> result = new HashMap<>();
+        for (AgentRunEntity run : agentRunRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)) {
+            TurnExecutionProfileResponse profile = executionProfile(run);
+            if (profile == null) continue;
+            if (run.getOriginTurn() != null && !run.getOriginTurn().isInternal()) {
+                result.put(run.getOriginTurn().getId(), profile);
+            }
+            if (run.getResultTurn() != null && !run.getResultTurn().isInternal()) {
+                result.put(run.getResultTurn().getId(), profile);
+            }
+        }
+        return result;
+    }
+
+    private TurnExecutionProfileResponse executionProfile(AgentRunEntity run) {
+        if (run.getCodexModelId() == null) return null;
+        return new TurnExecutionProfileResponse(
+                run.getId(), run.getCodexModelId(), run.getCodexModelSource().name(),
+                run.getCodexReasoningEffort().canonicalValue(), run.getCodexEffortSource().name(),
+                run.getCodexVersion());
     }
 
     private String resolveOperationalRepoPath(WorkSessionEntity session) {
