@@ -297,7 +297,7 @@ production activation are recorded later in this ledger.
 | D-094 | Extend attachment v1 compatibly for real ownership, then have the fixed runner verify and materialize only the selected images into an execution-owned temporary boundary exposed read-only to Codex. | Rollback must keep retained downloads readable, and neither Codex nor a caller may gain visibility of the attachment store or choose filesystem paths. | accepted, worker-tested and live-verified | worker/security owners | before changing real storage, materialization or runner support |
 | D-095 | Treat `retainUntil` as the minimum keep and new-binding boundary, with no general automatic deletion in the first real activation. | First use needs reversible retention and verified external backup; adding destructive cleanup simultaneously would introduce an unproven ownership/tombstone policy. | accepted, retention/no-deletion verified | data/operations owners | before any attachment expiry/deletion implementation |
 | D-096 | Deploy V62, backend and worker support disabled, then require separate production-rollout authorization and one operator-assisted non-secret Atenea web canary followed by backup/check/isolated restore before accepting the project gate. | A synthetic pass does not prove real browser-to-Codex delivery or non-empty external recovery, while disabled-first deployment and exact canary evidence bound the production risk. | accepted, rollback/re-enable/canary/restore verified | platform/operations/product owners | before another real-project rollout or changing the acceptance gates |
-| D-097 | Promote Atenea's two accepted descendant histories to GitHub `main` in order using merge-commit semantics, then reconcile every canonical base declaration to the resulting immutable commit. Squash, force update and source-branch deletion are forbidden. | The attachment candidate already descends from the accumulated feature history; preserving that ancestry makes the second review contain only its additional commits and prevents split source authority for future WorkSessions. | accepted, execution pending | platform/Git/operations owners | before opening the next real Atenea development WorkSession |
+| D-097 | Promote Atenea's two accepted descendant histories to GitHub `main` in order using merge-commit semantics, then reconcile every canonical base declaration to the resulting immutable commit. Squash, force update and source-branch deletion are forbidden. | The attachment candidate already descends from the accumulated feature history; preserving that ancestry makes the second review contain only its additional commits and prevents split source authority for future WorkSessions. | accepted and live-verified | platform/Git/operations owners | before opening the next real Atenea development WorkSession |
 | D-098 | Preserve WorkSession 6 as an immutable `DRAFT_BLOCKED` retained draft during main promotion; do not call ordinary close, rewrite its worktree or change its row after its accepted replacement and allocation-retirement contract has completed. | V51 intentionally requires retained drafts to remain non-closed and fingerprinted; the state is reviewable history rather than an active project lock, and closing it would destroy the distinction the recovery contract created. | accepted and live-verified | WorkSession/programme owners | before any retained-draft lifecycle expansion or deletion policy |
 | D-099 | Retire only WorkSession 15's exact active-name allocation after proving it closed, released, unregistered and resource-free; preserve bytes, inode, ownership, mode, size and mtime under the canonical retired name before repeating WorkSession 16 activation. | The active filename continued to assert fixed slot-2 ownership after the mediated registration/admission release, so the corrected activator properly rejected the replacement; an exact same-filesystem rename retains audit evidence while making released capacity reusable. | accepted and live-verified for the exact closed canary | runtime/programme owners | before general closed-allocation retirement support |
 
@@ -10607,3 +10607,24 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.3-final-fingerprints`;
 the SHA-256 of its `SHA256SUMS` is
 `2342c1fde6644c7f8f09aa13edbb96b11cd80be96a98e3ae6eb6e70de82e831a`.
+
+Task 5.4 and `promote-atenea-canonical-base-to-main` are complete at amended
+progress `28/28`. Twenty-four prior task/blocker evidence packages were
+checksum-verified across the control plane and AX42 before archive. The active
+change passed strict validation, added one requirement each to canonical
+`atenea-project-onboarding` and `remote-work-continuity`, and was archived as
+`2026-08-03-promote-atenea-canonical-base-to-main` with all 28 tasks marked.
+
+Strict global validation passed all 12 canonical specifications with zero
+failures. The aggregate SHA-256 of the two updated canonical specs is
+`723d68c90e3898e36a603f7bf05be10cf22c95e01cd8314b453a4ab6cfb699d3`.
+Post-archive checks retained zero WorkSession-16 turns, AgentRuns,
+attachments, previews, non-terminal AgentRuns, active leases and runtime
+resources; exact worker fingerprints; zero worker restarts; RAID `3/3 [UU]`;
+zero temporary browser processes; and production, preview and Beautips HTTP
+200. No prompt was sent and no runtime was started.
+
+Sanitized closure evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.4-archive-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`127ff3882176eda80342cc985c90177f6c7a712d7dc8957b3adf46f1e01477b9`.
