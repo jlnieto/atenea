@@ -9727,3 +9727,35 @@ Sanitized accepted evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.6-final-fingerprints`;
 the SHA-256 of its `SHA256SUMS` is
 `fc369111526ae042ef3f95c88f1dc05581db9bd069aa2a09cbe7eab9a69d7e13`.
+
+Task 8.7 is complete. Change progress is `82/83`; task 8.8 is the exact
+resume point and no archive command has yet run.
+
+Sixteen authoritative evidence packages containing 84 files revalidated
+against their original `SHA256SUMS`. Every package has a sanitized command
+record with finite timeout and exit result. The normalized credential/content
+scan found zero JWT-like values, provider keys, unredacted Bearer values,
+credential-like email values, private attachment child paths or internal Codex
+identity fields.
+
+The production DOM/visual matrix remains sealed for `1440x900` and `390x844`
+across all eight composer states, including DOM presence/omission, exact
+viewport geometry, one primary action, no overlap, no clipping and no
+horizontal overflow. The real operator selected-state receipt and the later
+current-wrapper Playwright/build receipt are chained without copying pixels.
+The deployed image is exactly candidate commit
+`57b4123abaa4d66ba335fcb0cf4b64cd9fdd589d`, digest
+`sha256:ca076c3a615c7745c8a86fe7abd729123041bf9c38e529716892dd72c6dbc0c3`.
+
+The final semantic canary, external snapshot/restore, exact cleanup,
+rollback/idempotence/re-enable and final infrastructure receipts are all
+linked by immutable hashes. Accepted snapshot
+`50980a4b74d68ed40525b73ebba2945f92885839fef4af5412d58d96e3d77de4`
+remains present. The closure package itself is text-only and retains no
+attachment/screenshot content, prompt, response, filename, credential, token,
+private storage identity or internal Codex identity.
+
+Sanitized accepted evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.7-closure-seal`;
+the SHA-256 of its `SHA256SUMS` is
+`d67116247925d202746500e1c8aea33e269071f0f12af3a6aea4d6c5a9d9aa27`.
