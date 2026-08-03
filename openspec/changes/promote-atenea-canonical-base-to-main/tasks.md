@@ -63,7 +63,7 @@ repair, adoption or deletion.
 - [x] 4.3 Change only Atenea's application/manifest and complete AX42
   worker/schema source identity from the feature branch to `main`; add focused
   regression coverage, calculate the new manifest pin, test, commit and publish
-- [ ] 4.4 Run complete backend, web and worker validation, create and merge one
+- [x] 4.4 Run complete backend, web and worker validation, create and merge one
   head-locked GitHub PR for the identity-only Atenea successor, and seal
   evidence
 - [ ] 4.5 Prove closed WorkSession 15 exact ownership and zero runtime/run

@@ -10145,3 +10145,34 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.3-main-identity-sources`;
 the SHA-256 of its `SHA256SUMS` is
 `96a017cf4c51976134e8045e409c56373b14b7522d1d44b7eb2d8b186503554d`.
+
+Task 4.4 is complete and amended change progress is `17/25`; task 4.5 is the
+exact resume point. The clean Atenea successor passed all 617 backend tests
+with zero failures or errors and validated all 62 migrations. Its production
+web build compiled 1,583 modules with zero npm vulnerabilities. The complete
+sorted worker suite passed all 31 entrypoints from detached clean sources.
+The browser-cleanup entrypoint first rejected its absent mandatory synthetic
+wrapper before product execution; after supplying the same bounded
+`playwright-safe` wrapper required by the accepted historical suite, it and
+the remaining entrypoints passed.
+
+GitHub PR `https://github.com/jlnieto/atenea/pull/7` was non-draft,
+`MERGEABLE`/`CLEAN`, had exact head
+`3d02c3ec8fbbe21c4a6d20bf6ddddb2e8b3f0c1c`, one commit and only the three
+reviewed identity files. A head-locked merge commit produced main
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`, whose ordered parents are former
+main `51e6ea40286ae8c44e6235b32be9f644af57b11c` and the validated successor;
+its tree exactly equals candidate tree
+`3b8a5517bdc0845e3a2f52718173e6ef5307245a`. The feature, attachment and
+identity source refs remain published.
+
+All exact temporary Compose resources were removed and both accepted source
+trees are clean. Production, preview and Beautips remain HTTP 200; worker
+services, registry fingerprint, rootless slot counts `3/0/0/3` and all three
+RAID arrays retain their prior state. No deployment, service restart, mirror
+refresh, project default mutation, runtime start or routing change occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.4-main-identity-validation-merge`;
+the SHA-256 of its `SHA256SUMS` is
+`7446d11fb78ae820a953d84768d627af20f78f917128adfd07d3e7c72adac936`.
