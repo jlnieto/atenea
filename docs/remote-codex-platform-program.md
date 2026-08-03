@@ -10556,3 +10556,27 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.1-main-no-run-canary`;
 the SHA-256 of its `SHA256SUMS` is
 `10993b55fe0f70025519c4ab38735fc84d64f9447f656fd0c0e8d8c222afcd3e`.
+
+Task 5.2 is complete and amended change progress is `26/28`; task 5.3 is the
+exact resume point. The operator opened WorkSession 16 through the real
+authenticated production web application and confirmed visible state `IDLE`,
+`Base main`, `Sin runs` / `Codex en reposo` and a conversation ready to
+operate. No prompt was sent and no session action was invoked.
+
+That authenticated observation was cross-checked against the exact
+control-plane projection and the production-served web bundle
+`/assets/index-Aqg6-x4j.js`, SHA-256
+`8f7e89bc6ed0adf4a65a71cadb7585685cc87af2546a890ccdb78f147a3cb6b4`.
+The bundle contains the required base, no-run, resting and ready-state copy;
+unauthenticated session, summary and conversation API requests remained
+fail-closed at HTTP 401.
+
+Workspace, allocation, admission and registry remain exact and the worktree
+remains clean. No automated browser was launched, no operator browser profile
+was inspected or closed, and AX42 temporary browser processes remained zero.
+Production, preview and Beautips remained HTTP 200.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.2-web-api-ready-state`;
+the SHA-256 of its `SHA256SUMS` is
+`ce545a5e9aef04d9fc26578b8ecaa071d68568989366354e20f8124245dc7556`.

@@ -97,7 +97,7 @@ repair, adoption or deletion.
 - [x] 5.1 Create one clean Atenea WorkSession and prove persisted
   `baseBranch=main`, exact accepted commit/workspace ownership, compatible
   policy and zero AgentRuns/runtime start
-- [ ] 5.2 Verify the web/API exposes the correct ready state and `main` base;
+- [x] 5.2 Verify the web/API exposes the correct ready state and `main` base;
   close only temporary browser processes and retain the WorkSession for the
   operator's next real task
 - [ ] 5.3 Capture final Git, project/session, worker, mirror, workspace,
