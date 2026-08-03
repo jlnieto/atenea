@@ -31,6 +31,10 @@ three refs.
   dedicated versioned installer, with exact-predecessor admission, complete
   AgentRun-installer verification and an immutable rollback, before activating
   the retained no-run canary.
+- Retire only the closed WorkSession 15 allocation marker that still occupies
+  the active filename after its registration and admission were released,
+  preserving the exact bytes and filesystem metadata under the canonical
+  retired filename before repeating WorkSession 16 activation.
 
 ## Capabilities
 
@@ -60,5 +64,9 @@ None.
 - AX42 corrective: only the exact stale Atenea activation bundle may advance to
   the already reviewed `main` bytes; a partial, foreign or ambiguous installed
   bundle is rejected before any write.
+- AX42 allocation corrective: only WorkSession 15's pre-recorded allocation
+  SHA-256 may move from `runtime-allocation-v1.json` to
+  `runtime-allocation-v1.retired.json`, after closed state, released admission
+  and zero owned resources are re-proved; no allocation bytes are rewritten.
 - Programme repository: contract, worker identity sources, tests, evidence
   and ledger.

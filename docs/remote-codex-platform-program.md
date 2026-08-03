@@ -299,6 +299,7 @@ production activation are recorded later in this ledger.
 | D-096 | Deploy V62, backend and worker support disabled, then require separate production-rollout authorization and one operator-assisted non-secret Atenea web canary followed by backup/check/isolated restore before accepting the project gate. | A synthetic pass does not prove real browser-to-Codex delivery or non-empty external recovery, while disabled-first deployment and exact canary evidence bound the production risk. | accepted, rollback/re-enable/canary/restore verified | platform/operations/product owners | before another real-project rollout or changing the acceptance gates |
 | D-097 | Promote Atenea's two accepted descendant histories to GitHub `main` in order using merge-commit semantics, then reconcile every canonical base declaration to the resulting immutable commit. Squash, force update and source-branch deletion are forbidden. | The attachment candidate already descends from the accumulated feature history; preserving that ancestry makes the second review contain only its additional commits and prevents split source authority for future WorkSessions. | accepted, execution pending | platform/Git/operations owners | before opening the next real Atenea development WorkSession |
 | D-098 | Preserve WorkSession 6 as an immutable `DRAFT_BLOCKED` retained draft during main promotion; do not call ordinary close, rewrite its worktree or change its row after its accepted replacement and allocation-retirement contract has completed. | V51 intentionally requires retained drafts to remain non-closed and fingerprinted; the state is reviewable history rather than an active project lock, and closing it would destroy the distinction the recovery contract created. | accepted and live-verified | WorkSession/programme owners | before any retained-draft lifecycle expansion or deletion policy |
+| D-099 | Retire only WorkSession 15's exact active-name allocation after proving it closed, released, unregistered and resource-free; preserve bytes, inode, ownership, mode, size and mtime under the canonical retired name before repeating WorkSession 16 activation. | The active filename continued to assert fixed slot-2 ownership after the mediated registration/admission release, so the corrected activator properly rejected the replacement; an exact same-filesystem rename retains audit evidence while making released capacity reusable. | accepted and live-verified for the exact closed canary | runtime/programme owners | before general closed-allocation retirement support |
 
 ## Deferred decisions and gates
 
@@ -10486,3 +10487,35 @@ is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.1-blocked-retained-allocation-slot-conflict`;
 the SHA-256 of its `SHA256SUMS` is
 `8ed5c18625f59215e6a9f3e505fcd8bcc7570465c802c6d1824061e17bba73d9`.
+
+Task 4.11 is complete and amended change progress is `24/28`; task 5.1 is the
+exact resume point. Following the operator's separate bounded authorization
+and D-099, WorkSession 15 was re-proved `CLOSED`, with both admission permits
+released, no registry entry, zero non-terminal AgentRuns and zero owned
+containers, networks, images, volumes, listeners or runtime unit. Its exact
+active allocation SHA-256 was
+`89fe98bfb3afb0d4d2c0007c22c5636669f0d3b77bfc588732992bbdb95a2a35`
+and the canonical retired destination was absent.
+
+One same-filesystem rename moved only that inode from
+`runtime-allocation-v1.json` to `runtime-allocation-v1.retired.json` in 9 ms
+under a 10-second timeout. SHA-256, device/inode `2306:10780300`, numeric
+owner/group `999:988`, mode `0640`, size `1854` and mtime `1785699877` are
+identical before and after. Required hash reads and namespace changes advanced
+filesystem-managed atime/ctime; neither was rewritten. The first collector
+attempt stopped before mutation, and three diagnostic renames were restored
+automatically and exactly while isolating an invalid atime-equality assertion;
+none changed bytes or stable metadata or touched another resource.
+
+WorkSession 16 remains `OPEN/DRAFT/main` with its clean exact workspace and
+`slot2=held/heavy1=held` admission, but no allocation, registry entry,
+AgentRun, turn or runtime. Every other allocation, admission, four-slot
+inventory, listener, registry and service projection remained byte-identical.
+The AgentRun worker retained zero restarts, backup timers stayed active, RAID
+remained `3/3 [UU]`, temporary browser processes remained zero, and
+production, preview and Beautips remained HTTP 200.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.11-retire-closed-allocation`;
+the SHA-256 of its `SHA256SUMS` is
+`fe6560e0f1229b33b4503c6cbf31fec56d50a6e5cfa60be4112df33a574b6a82`.

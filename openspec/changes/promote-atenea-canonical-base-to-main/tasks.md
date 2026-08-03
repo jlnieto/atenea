@@ -86,6 +86,11 @@ repair, adoption or deletion.
   install only the reviewed Atenea activation bundle on AX42 without restarting
   an unrelated service, prove complete reconciliation/non-impact, seal evidence,
   strict-validate, commit and push
+- [x] 4.11 Record the separate bounded authorization; prove WorkSession 15 is
+  closed with released admission, absent registration and zero owned resources;
+  rename only its exact pre-fingerprinted active allocation to the canonical
+  retired name on the same filesystem; prove identical bytes and metadata plus
+  unrelated-state non-impact; seal evidence, strict-validate, commit and push
 
 ## 5. New-main canary and closure
 

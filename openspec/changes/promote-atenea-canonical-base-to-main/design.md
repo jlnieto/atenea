@@ -144,6 +144,34 @@ exact installed mediator, sudoers boundary and dependency bundle are copied to
 a checksum-sealed private release directory. Operational rollback may restore
 only those same paths after matching their expected post-install identities.
 
+### Retire the exact closed allocation marker before slot reuse
+
+The first corrected activation attempt proved that WorkSession 15 no longer
+owns a registry entry or admission permit and owns zero runtime resources, but
+its byte-preserved allocation still uses the active filename and therefore
+correctly blocks WorkSession 16 from acquiring fixed slot 2. The operator
+separately authorized this bounded correction on 2026-08-03.
+
+The correction accepts only WorkSession 15 in control-plane `CLOSED` state,
+released `slot2/heavy1` admission, absent registration and zero owned
+containers, networks, images, volumes, listeners or processes. The active
+allocation must match the previously sealed SHA-256
+`89fe98bfb3afb0d4d2c0007c22c5636669f0d3b77bfc588732992bbdb95a2a35`,
+the retired target must be absent and both names must share the same parent
+filesystem. One same-filesystem rename changes only the filename to
+`runtime-allocation-v1.retired.json`; byte hash, inode, owner, group, mode,
+size and mtime must remain identical. The filesystem-managed atime and ctime
+are recorded before and after and may advance only through the mandatory hash
+reads and intrinsic namespace change; they are not rewritten because doing so
+would itself be an additional metadata mutation. Any partial, foreign or
+changed state fails closed before mutation.
+
+The inverse rollback is permitted only while the retired file still matches
+the complete recorded post-rename identity and the active name remains absent.
+It restores the same inode to the active name without changing bytes. A
+successful retirement is not automatically reversed merely because later
+WorkSession 16 activation fails.
+
 ## Rollback
 
 Before each mutation, record old refs, project row, registry and installed
@@ -172,8 +200,10 @@ preserves sanitized evidence.
 6. Release only the exact closed-canary active ownership.
 7. Reconcile and roll out all canonical source declarations to the successor.
 8. Correct and reconcile the exact stale installed activation bundle.
-9. Create a clean no-run WorkSession and verify `main` end to end.
-10. Seal evidence, update the programme ledger, archive and publish this change.
+9. Retire the exact closed WorkSession 15 allocation marker without rewriting
+   its bytes or metadata.
+10. Create a clean no-run WorkSession and verify `main` end to end.
+11. Seal evidence, update the programme ledger, archive and publish this change.
 
 ## Open Questions
 

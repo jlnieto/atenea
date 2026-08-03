@@ -54,6 +54,25 @@ mirror, project policy and worker registry to one exact resulting commit.
   while its allocation sidecar, worktree, Git, logs, attachments and artifacts
   remain unchanged
 
+#### Scenario: Released closed canary still occupies the active allocation name
+
+- **WHEN** WorkSession 15 is exactly closed, its admission is released, its
+  registration and owned runtime resources are absent, and its active
+  allocation matches the previously sealed immutable identity
+- **THEN** only that file is renamed on the same filesystem to the canonical
+  retired allocation name with identical bytes, inode, ownership, mode, size
+  and mtime before WorkSession 16 activation is repeated; filesystem-managed
+  atime and ctime are recorded but may advance through required reads and the
+  intrinsic rename
+
+#### Scenario: Closed allocation retirement is not exact
+
+- **WHEN** the source hash or metadata differs, the retired destination exists,
+  ownership is partial or ambiguous, admission is not released, or any owned
+  resource remains
+- **THEN** retirement fails closed without moving, rewriting, adopting or
+  deleting either the allocation or any foreign resource
+
 #### Scenario: Promotion identity is inconsistent
 
 - **WHEN** a ref, ancestry, project row, mirror, registry, workspace or service
