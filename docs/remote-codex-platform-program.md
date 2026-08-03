@@ -10344,3 +10344,46 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.8-main-reconciliation`;
 the SHA-256 of its `SHA256SUMS` is
 `77670483bb1632e11edf2bbd5942bc390f2c0a2da31991b9c5422a2200fdb318`.
+
+Task 5.1 remains the exact resume point and amended change progress remains
+`21/25`. The operator created the one new canonical Atenea WorkSession through
+the real web flow. Persisted WorkSession 16 has remote session ID
+`7151dce0-69ab-4614-86e4-f93f1af825e4`, exact `baseBranch=main`, remote AX42
+affinity, the compatible `project-codex-v1` and
+`atenea-real-attachments-v1` policies, and zero turns, AgentRuns, attachments
+or previews. It remains deliberately `OPEN/DRAFT`: canonical source fields are
+null and no workspace, allocation, admission record or slot resource exists.
+
+The required activation then failed closed before invocation. AX42's installed
+`/usr/local/libexec/atenea/atenea-workspace-activation-v1.sh` has SHA-256
+`61fc03da468f2f9fa1fb101dc42129a773f02acaacbc40fd46e18d7a06724df2`
+and still pins `feature/actualizar-conversacion-en-web` plus the preceding
+manifest. The reviewed immutable release contains the correct `main` mediator
+at SHA-256
+`5ef544c478c17a0ae6ae88586915185572721ca89dc48dbbf15b65ad417aa889`,
+but the installed installer at SHA-256
+`9c841e1a6e76d7477f056792f9749609682532d56d309d2c17c069b348d9f48f`
+contains zero references to the Atenea activation mediator. Its previous
+successful verification therefore could neither detect nor replace this stale
+installed program. The task 4.6 installation-completeness assumption and the
+corresponding task 4.8 verifier claim are superseded by this exact finding
+until a reviewed corrective closure is completed; their other sealed
+fingerprints remain valid.
+
+Executing the installed mediator would create a workspace from the rejected
+feature identity, so it was not run. No repair, adoption, deletion, prompt,
+runtime or AgentRun was attempted. The registry remains disabled and empty at
+exact `main@615e539d1f2622a4ac2568ba7697b876d49ae33e`, the mirror passed full
+object integrity, global non-terminal AgentRuns and active leases remain zero,
+all three worker services remain active, and production, preview and Beautips
+remain HTTP 200.
+
+Resume requires a separately reviewed corrective change that adds this
+mediator to the versioned installer and verifier, proves exact rollback and
+the complete worker regression, installs only that correction, and repeats
+reconciliation. Task 5.1 may then continue against retained WorkSession 16
+without sending a prompt or starting a runtime. Sanitized blocker evidence is
+beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-5.1-blocked-stale-activation-mediator`;
+the SHA-256 of its `SHA256SUMS` is
+`fa3ac7672d1e439cd922bb2c27d463f54d65d8b78e9960a8b36b0e36bf89c69b`.
