@@ -31,7 +31,7 @@ repair, adoption or deletion.
 
 - [x] 2.1 Run the canonical validation for exact feature tip
   `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` without modifying its source
-- [ ] 2.2 Create one GitHub pull request from
+- [x] 2.2 Create one GitHub pull request from
   `feature/actualizar-conversacion-en-web` to `main`, verify its exact refs and
   checks, and merge using merge-commit semantics only
 - [ ] 2.3 Prove the feature tip is an ancestor of the new main, preserve the

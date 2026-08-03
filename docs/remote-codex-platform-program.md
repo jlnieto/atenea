@@ -9894,3 +9894,26 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-2.1-feature-validation`;
 the SHA-256 of its `SHA256SUMS` is
 `064b734699b02c1ca15c444941a8cfa6ba744e46136373c54d42bae0d9a387bb`.
+
+Task 2.2 is complete and change progress is `9/22`; task 2.3 is the exact
+resume point. GitHub PR
+`https://github.com/jlnieto/atenea/pull/5` integrated exact feature tip
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` into `main` using merge-commit
+semantics. The resulting immutable main commit is
+`f3c4e7e6433b9d943a840be9e65932c0d7bfff73`, with old main
+`7e8afa6c7039a70aea3b330234ddeabdcf2a6587` and the validated feature tip as
+its two ordered parents, and tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`.
+
+Before merge, the PR was non-draft, `MERGEABLE`/`CLEAN`, had the exact base
+and head refs and reported no GitHub status checks. The merge command was
+head-locked to the validated SHA. No squash, rebase, force update, branch
+deletion, deployment, routing change or runtime mutation occurred. The source
+branch remains published at its unchanged exact tip. The GitHub connector's
+write integration returned a bounded HTTP 403 without creating state, so the
+documented authenticated `gh` fallback performed the authorized operation.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-2.2-feature-pr-merge`;
+the SHA-256 of its `SHA256SUMS` is
+`f355fd3f23c523bdae5f441400e2b2dd6752779c08017725cb74dd25a50a47c4`.
