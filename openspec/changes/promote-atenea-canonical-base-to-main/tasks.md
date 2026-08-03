@@ -29,7 +29,7 @@ repair, adoption or deletion.
 
 ## 2. Feature history promotion
 
-- [ ] 2.1 Run the canonical validation for exact feature tip
+- [x] 2.1 Run the canonical validation for exact feature tip
   `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` without modifying its source
 - [ ] 2.2 Create one GitHub pull request from
   `feature/actualizar-conversacion-en-web` to `main`, verify its exact refs and

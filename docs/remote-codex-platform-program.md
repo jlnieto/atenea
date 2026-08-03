@@ -9866,3 +9866,31 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-1-retained-draft-disposition`;
 the SHA-256 of its `SHA256SUMS` is
 `95c4c04218e22c160f22903409ad9bc4aebf3e95e392dfd9c6caca4e3a2eaa90`.
+
+Task 2.1 is complete and change progress is `8/22`; task 2.2 is the exact
+resume point. Exact detached feature tip
+`8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d`, tree
+`f7b3c8c56abfcefd40b5aa2cbcca133278a29ae9`, passed all 526 backend
+tests with zero failures, errors or skips and validated/applied all 61 Flyway
+migrations to an empty disposable PostgreSQL database. The TypeScript/Vite
+production web build passed with 1,583 transformed modules and zero reported
+npm vulnerabilities.
+
+The isolated validation used three unique disposable Compose container names
+because two six-week-old exited canonical development containers retain the
+fixed defaults. Those foreign containers stayed byte-identical and stopped.
+The accepted harness changed only those three temporary names; application,
+test, migration, web and built static sources matched the exact commit.
+
+Exact cleanup removed the test containers, network, volumes, images and
+detached worktree. A first removal returned 1 after the tests left 2,502
+root-owned synthetic repository entries under the recorded temporary root; a
+single exact bind-mounted cleanup container removed only those entries and
+then removed itself. The root and every project-labelled resource are absent.
+Production/canonical Git remained clean and synchronized and production plus
+preview remain HTTP 200.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-2.1-feature-validation`;
+the SHA-256 of its `SHA256SUMS` is
+`064b734699b02c1ca15c444941a8cfa6ba744e46136373c54d42bae0d9a387bb`.
