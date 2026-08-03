@@ -10307,3 +10307,40 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.7-main-backend-project-default`;
 the SHA-256 of its `SHA256SUMS` is
 `2e23e53082006d5e8d53c95673b0400acf7296a9d9fc3bf2d65a26aecee329cd`.
+
+Task 4.8 is complete and amended change progress is `21/25`; task 5.1 is the
+exact resume point. Repeated application reconciliation was a no-op: Compose
+reported the exact backend already `Running` in 102 ms, retained container ID
+`ab4d4e95fc3e0486ab51efeabc969243236baf6953a8aae149e60bf62ba13005`,
+and the locked project transaction verified the sole canonical `main` row in
+129 ms without issuing an update. Container, network and volume inventories
+remained byte-identical.
+
+Sanitized database projections remained identical before and after. There are
+still 9 projects, 13 WorkSessions, 95 terminal AgentRuns, 3 attachments, 2
+bindings and 1 preview; non-terminal runs and active leases remain zero. The
+historical `DRAFT_BLOCKED` WorkSession 6 and closed feature-based WorkSession 15
+remain immutable. Flyway remains `62/62`; production, preview and Beautips
+remain HTTP 200.
+
+The installed AX42 worker verifier passed in 165 ms without restarting a
+service. Registry SHA-256
+`7369170a308ea81746ca5fd2cc4ae01fa11e36194ff08204122ee5cfa871c4db`
+remains disabled, empty and exact at
+`main@615e539d1f2622a4ac2568ba7697b876d49ae33e`. Mirror ref-set SHA-256
+`f18d94266a4e74f5183131aa365e2b371c6e3438617926d43629d5e48e9c24f0`
+remained unchanged and full object integrity passed. The closed allocation,
+workspace-record and released-admission SHA-256 values remain exact, with zero
+session runtime references.
+
+Worker service, listener and four-slot inventory projections remained
+byte-identical. Rootful Docker and containerd remain inactive/masked, both
+backup timers remain active/enabled and RAID remains `3/3 [UU]`. No runtime,
+route, AgentRun, lease, listener, container, network, volume, attachment,
+preview, Beautips or unrelated resource was created, adopted, restarted or
+modified.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-4.8-main-reconciliation`;
+the SHA-256 of its `SHA256SUMS` is
+`77670483bb1632e11edf2bbd5942bc390f2c0a2da31991b9c5422a2200fdb318`.

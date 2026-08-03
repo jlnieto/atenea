@@ -75,7 +75,7 @@ repair, adoption or deletion.
 - [x] 4.7 Deploy only the exact identity-successor production backend, then
   update only canonical Atenea's project default to `main` through the
   supported control-plane/configuration contract
-- [ ] 4.8 Prove exact application/worker/project reconciliation and no runtime,
+- [x] 4.8 Prove exact application/worker/project reconciliation and no runtime,
   routing, AgentRun, attachment, preview, Beautips or unrelated-resource
   change; seal evidence, strict-validate, commit and push
 
