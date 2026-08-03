@@ -9,6 +9,13 @@ The published branch `feature/actualizar-conversacion-en-web` is commit
 has the feature tip as an ancestor. Production already runs artifacts built
 from the candidate, but GitHub and new WorkSessions still use the older refs.
 
+Fresh promotion validation found that two candidate-only integration tests
+left their synthetic worker and durable activation-barrier fixtures behind.
+The bounded successor `d0036e427bae2d6753d81a4725971f2fb91c5add` adds only
+exact owner-aware fixture cleanup to those two tests; no application or
+runtime source changes. It is the reviewed promotion head after passing the
+complete canonical gate.
+
 The promotion changes source authority, not application behavior. It must
 therefore preserve every accepted commit and must not trigger a production
 deploy, routing change or runtime reconstruction.
@@ -38,8 +45,9 @@ deploy, routing change or runtime reconstruction.
 
 The feature branch is merged first. Only after its merge is visible in
 GitHub `main` is the attachment candidate published and compared against the
-new base. This makes the second pull request represent only the 32 descendant
-commits and prevents reviewers from seeing the first layer twice.
+new base. This makes the second pull request represent only the 32 functional
+descendant commits plus the one validation-only fixture-isolation correction
+and prevents reviewers from seeing the first layer twice.
 
 ### Forbid squash and force updates
 

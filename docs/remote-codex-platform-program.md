@@ -9969,3 +9969,47 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-3.1-candidate-publication`;
 the SHA-256 of its `SHA256SUMS` is
 `67f446a909a4ab8240eb47b84b2e44480171b6ffbaa40e54b6998799acc29ee1`.
+
+Task 3.2 is complete and change progress is `12/22`; task 3.3 is the exact
+resume point. The first green validation attempt was rejected because its
+default Compose bind mounted the canonical feature checkout. The corrected
+isolated repository layout then executed original candidate
+`57b4123abaa4d66ba335fcb0cf4b64cd9fdd589d`, validated 62 migrations and
+exposed one failure plus seven errors among 616 tests.
+
+The cause was bounded to two new image-turn integration tests: each created
+synthetic worker `ax42-01` and its durable activation barrier but cleaned only
+session/project rows. Historical Codex administration tests therefore saw a
+duplicate or foreign fixture. Test-only commit
+`d0036e427bae2d6753d81a4725971f2fb91c5add` tracks whether each fixture
+created the worker and deletes its exact barrier/worker only under that
+ownership. It preserves any pre-existing node and changes no application or
+runtime source.
+
+The corrected sequence passed 6/6 new tests, proved both synthetic rows absent
+and then passed 14/14 historical Codex operations tests on the same database.
+A fresh empty database passed all 616 tests with zero failures, errors or
+skips and all 62 migrations. The web production build passed with 1,583
+modules and zero npm vulnerabilities.
+
+Every uniquely labelled Compose resource, image and temporary worktree was
+removed. Exact cleanup removed 4,998 root-owned entries beneath the recorded
+temporary root. The rejected default bind's 28 work repositories plus 28 bare
+remotes were registered by immutable name/inode and normalized manifest
+SHA-256 `d88fb9847dc0e5b0a68544690cb453e1f134ae690499f6cfdab18581e1867909`,
+then only those 56 exact creation-window fixtures were deleted; older fixtures
+and the two historical exited development containers remain intact.
+
+GitHub PR `https://github.com/jlnieto/atenea/pull/6` was non-draft,
+`MERGEABLE`/`CLEAN`, had exact head
+`d0036e427bae2d6753d81a4725971f2fb91c5add` and no status checks. A head-locked
+merge commit produced new main `51e6ea40286ae8c44e6235b32be9f644af57b11c`,
+whose ordered parents are prior main
+`f3c4e7e6433b9d943a840be9e65932c0d7bfff73` and the exact validated
+successor. Both source branches remain published. No deployment, routing,
+configuration, service or runtime mutation occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-3.2-candidate-validation-merge`;
+the SHA-256 of its `SHA256SUMS` is
+`d99c3e2f377b496d5b97873b6b86b07222fa3da8cbcc38892d19c998d62fe81a`.

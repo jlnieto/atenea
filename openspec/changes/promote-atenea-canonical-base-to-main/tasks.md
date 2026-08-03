@@ -43,9 +43,10 @@ repair, adoption or deletion.
 - [x] 3.1 Reconfirm candidate cleanliness and ancestry, publish exact candidate
   tip `57b4123abaa4d66ba335fcb0cf4b64cd9fdd589d` to GitHub without force, and
   verify the new-main comparison contains only the 32 descendant commits
-- [ ] 3.2 Run the canonical validation for the exact candidate, create its PR
-  to `main`, verify exact refs/checks and merge using merge-commit semantics
-  only
+- [x] 3.2 Run the canonical validation, correct only the discovered synthetic
+  test-fixture isolation leak in successor
+  `d0036e427bae2d6753d81a4725971f2fb91c5add`, create its PR to `main`, verify
+  exact refs/checks and merge using merge-commit semantics only
 - [ ] 3.3 Prove both accepted tips are ancestors of the new main, preserve both
   source refs, verify health/non-impact, seal evidence, validate, commit and
   push
