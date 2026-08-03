@@ -297,6 +297,7 @@ production activation are recorded later in this ledger.
 | D-094 | Extend attachment v1 compatibly for real ownership, then have the fixed runner verify and materialize only the selected images into an execution-owned temporary boundary exposed read-only to Codex. | Rollback must keep retained downloads readable, and neither Codex nor a caller may gain visibility of the attachment store or choose filesystem paths. | accepted, worker-tested and live-verified | worker/security owners | before changing real storage, materialization or runner support |
 | D-095 | Treat `retainUntil` as the minimum keep and new-binding boundary, with no general automatic deletion in the first real activation. | First use needs reversible retention and verified external backup; adding destructive cleanup simultaneously would introduce an unproven ownership/tombstone policy. | accepted, retention/no-deletion verified | data/operations owners | before any attachment expiry/deletion implementation |
 | D-096 | Deploy V62, backend and worker support disabled, then require separate production-rollout authorization and one operator-assisted non-secret Atenea web canary followed by backup/check/isolated restore before accepting the project gate. | A synthetic pass does not prove real browser-to-Codex delivery or non-empty external recovery, while disabled-first deployment and exact canary evidence bound the production risk. | accepted, rollback/re-enable/canary/restore verified | platform/operations/product owners | before another real-project rollout or changing the acceptance gates |
+| D-097 | Promote Atenea's two accepted descendant histories to GitHub `main` in order using merge-commit semantics, then reconcile every canonical base declaration to the resulting immutable commit. Squash, force update and source-branch deletion are forbidden. | The attachment candidate already descends from the accumulated feature history; preserving that ancestry makes the second review contain only its additional commits and prevents split source authority for future WorkSessions. | accepted, execution pending | platform/Git/operations owners | before opening the next real Atenea development WorkSession |
 
 ## Deferred decisions and gates
 
@@ -9789,3 +9790,40 @@ Sanitized accepted archive evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/activate-atenea-real-worksession-attachments/runs/task-8.8-openspec-archive`;
 the SHA-256 of its `SHA256SUMS` is
 `2f0f83c0e68d9f1648cb4d543d99e16e40fc3ff67557b58e92629329b6c4311c`.
+
+## Atenea canonical main promotion
+
+Tasks 0.1 through 0.3 of `promote-atenea-canonical-base-to-main` are
+complete. The change contract fixes two ordered GitHub pull requests and
+forbids squash, rebase rewriting, force updates and source-branch deletion.
+Operational reconciliation begins only after both accepted tips are ancestors
+of GitHub `main`.
+
+Entry Git is clean for the candidate and canonical Atenea sources. GitHub
+default is `main` at `7e8afa6c7039a70aea3b330234ddeabdcf2a6587`; published
+feature tip `8d5acdf9d593a2b0bafbf00fbef1ab2cc11cad9d` is exactly 86
+commits ahead with `main` as ancestor. Attachment candidate tip
+`57b4123abaa4d66ba335fcb0cf4b64cd9fdd589d` is exactly 32 further
+commits with the feature tip as ancestor. GitHub permits merge commits and has
+no open pull request.
+
+The canonical project default, checkout and worker registry still name the
+feature branch and commit. The AX42 mirror has the matching feature and old
+main refs; the candidate is not yet published there. The only non-closed
+Atenea session is historical WorkSession 6 in `DRAFT_BLOCKED`; its worktree is
+retained with 37 changes and will be inspected before any mediated close.
+Every AgentRun is terminal.
+
+Production and preview return HTTP 200. AX42 AgentRun, attachment, preview and
+Tailscale services are active; both external-backup timers are enabled and
+active; all three RAID1 arrays are `[UU]`. Rootless slot inventory is
+`3/0/0/3`: administrative Beautips remains in slot 1 and its separate exact
+WorkSession runtime remains in slot 4. These and every unrelated project are
+outside this promotion and must remain unchanged.
+
+Sanitized entry evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/promote-atenea-canonical-base-to-main/runs/task-0-entry`;
+the SHA-256 of its `SHA256SUMS` is
+`eca6d664cce819fbe6273afda3531673a85529570181d31f99b7684523aab8ec`.
+Task 0.4 is the exact resume point; no GitHub ref, project setting, worker
+registry, mirror, WorkSession or service has changed.
