@@ -1,6 +1,7 @@
 package com.atenea.remoteworker;
 
 import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.AgentRunProgressCategory;
@@ -10,6 +11,7 @@ import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.worksession.AgentRunNotFoundException;
 import com.atenea.service.worksession.AgentRunProgressService;
 import com.atenea.mobilepush.MobilePushDispatchService;
@@ -17,6 +19,8 @@ import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -139,7 +143,11 @@ public class RemoteAgentRunCoordinator {
                         cancelBeforeAdmission(runId);
                         return;
                     }
-                    markReconciling(runId, exception.getMessage());
+                    if (isCompatibleTransportFailure(exception)) {
+                        markReconciling(runId);
+                    } else {
+                        handleDeterministicFailure(runId, exception);
+                    }
                 }
             });
         }
@@ -231,11 +239,16 @@ public class RemoteAgentRunCoordinator {
                 apply(runId, response);
                 unavailableSince = null;
             } catch (RemoteWorkerException exception) {
-                unavailableSince = unavailableSince == null ? Instant.now() : unavailableSince;
-                markReconciling(runId, exception.getMessage());
-                if (unavailableSince.plus(properties.getReconciliationTimeout()).isBefore(Instant.now())) {
-                    failAfterReconciliationTimeout(runId);
-                    return;
+                if (isCompatibleTransportFailure(exception)) {
+                    unavailableSince = unavailableSince == null ? Instant.now() : unavailableSince;
+                    markReconciling(runId);
+                    if (unavailableSince.plus(properties.getReconciliationTimeout()).isBefore(Instant.now())) {
+                        failAfterReconciliationTimeout(runId);
+                        return;
+                    }
+                } else {
+                    unavailableSince = null;
+                    handleDeterministicFailure(runId, exception);
                 }
             }
 
@@ -400,7 +413,148 @@ public class RemoteAgentRunCoordinator {
         }
     }
 
-    private void markReconciling(Long runId, String reason) {
+    private boolean isCompatibleTransportFailure(RemoteWorkerException exception) {
+        if (!exception.hasTypedFailure()
+                || exception.getCategory() != RemoteWorkerFailureCategory.TRANSPORT
+                || !exception.isRetryable()
+                || exception.getNextAction() != AgentRunRecoveryNextAction.REQUEST_RECONCILIATION) {
+            return false;
+        }
+        return exception.getStatusCode() == 0 || exception.getStatusCode() >= 500;
+    }
+
+    private void handleDeterministicFailure(Long runId, RemoteWorkerException exception) {
+        if (isCapacityWait(exception)) {
+            handleCapacityFailure(runId, exception);
+            return;
+        }
+        String failureCode = exception.hasTypedFailure()
+                ? exception.getFailureCode() : "REMOTE_WORKER_PROTOCOL_FAILURE";
+        AgentRunRecoveryNextAction nextAction = exception.hasTypedFailure()
+                ? exception.getNextAction() : AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR;
+        if ("CLOSED_SESSION_OWNS_CAPACITY".equals(failureCode)) {
+            failureCode = "REMOTE_WORKER_PROTOCOL_FAILURE";
+            nextAction = AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR;
+        }
+        failDeterministically(runId, failureCode, nextAction,
+                "Remote worker rejected the persisted admission request");
+    }
+
+    private boolean isCapacityWait(RemoteWorkerException exception) {
+        return exception.hasTypedFailure()
+                && exception.getStatusCode() >= 400
+                && exception.getStatusCode() < 500
+                && exception.getCategory() == RemoteWorkerFailureCategory.CAPACITY
+                && exception.isRetryable()
+                && exception.getNextAction() == AgentRunRecoveryNextAction.WAIT;
+    }
+
+    private void handleCapacityFailure(Long runId, RemoteWorkerException exception) {
+        WorkSessionEntity blocker = exception.getBlockerSessionId() == null
+                ? null
+                : transaction.execute(status -> workSessionRepository
+                        .findByRemoteSessionId(exception.getBlockerSessionId()).orElse(null));
+        AgentRunEntity run = transaction.execute(status ->
+                agentRunRepository.findWithSessionById(runId).orElse(null));
+        if (run == null || run.getStatus().isTerminal()) {
+            return;
+        }
+        if (!isExactCapacityOwner(run, blocker, exception.getBlockerSessionId())) {
+            failDeterministically(runId, "CAPACITY_OWNER_UNVERIFIED",
+                    AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                    "Capacity ownership requires platform administrator review");
+            return;
+        }
+        if (blocker.getStatus() == WorkSessionStatus.OPEN
+                || blocker.getStatus() == WorkSessionStatus.CLOSING) {
+            waitForExactCapacityOwner(runId);
+            return;
+        }
+        if (blocker.getStatus() == WorkSessionStatus.CLOSED
+                && !agentRunRepository.existsBySessionIdAndStatusIn(
+                        blocker.getId(), AgentRunStatus.nonTerminalStatuses())) {
+            failDeterministically(runId, "CLOSED_SESSION_OWNS_CAPACITY",
+                    AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE,
+                    "A closed WorkSession retains required remote capacity");
+            return;
+        }
+        failDeterministically(runId, "CAPACITY_OWNER_UNVERIFIED",
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                "Capacity ownership requires platform administrator review");
+    }
+
+    private boolean isExactCapacityOwner(
+            AgentRunEntity run,
+            WorkSessionEntity blocker,
+            UUID blockerSessionId
+    ) {
+        if (blocker == null
+                || blockerSessionId == null
+                || blocker.getId() == null
+                || run.getSession() == null
+                || Objects.equals(blocker.getId(), run.getSession().getId())
+                || blocker.getProject() == null
+                || run.getSession().getProject() == null
+                || blocker.getProject().getId() == null
+                || !Objects.equals(blocker.getProject().getId(), run.getSession().getProject().getId())
+                || blocker.getExecutionTarget() != ExecutionTarget.REMOTE
+                || !Objects.equals(blockerSessionId, blocker.getRemoteSessionId())
+                || run.getSelectedWorkerId() == null
+                || run.getSelectedWorkerId().isBlank()
+                || !Objects.equals(run.getSelectedWorkerId(), blocker.getSelectedWorkerId())) {
+            return false;
+        }
+        String canonicalWorkspace = "remote:" + run.getSelectedWorkerId()
+                + ":work-session:" + blockerSessionId;
+        return Objects.equals(canonicalWorkspace, blocker.getWorkspaceIdentity());
+    }
+
+    private void waitForExactCapacityOwner(Long runId) {
+        transaction.executeWithoutResult(status -> {
+            AgentRunEntity run = agentRunRepository.findById(runId).orElse(null);
+            if (run == null || run.getStatus().isTerminal()) {
+                return;
+            }
+            boolean firstWait = run.getStatus() != AgentRunStatus.QUEUED
+                    || !"Waiting for exact active WorkSession capacity owner"
+                            .equals(run.getStatusReason());
+            run.setStatus(AgentRunStatus.QUEUED);
+            run.setReconciliationStartedAt(null);
+            run.setStatusReason("Waiting for exact active WorkSession capacity owner");
+            run.setFailureCode(null);
+            run.setRecoveryNextAction(null);
+            agentRunRepository.save(run);
+            if (firstWait) {
+                progressService.append(runId, AgentRunProgressCategory.QUEUED);
+            }
+        });
+    }
+
+    private void failDeterministically(
+            Long runId,
+            String failureCode,
+            AgentRunRecoveryNextAction nextAction,
+            String safeReason
+    ) {
+        transaction.executeWithoutResult(status -> {
+            AgentRunEntity run = agentRunRepository.findById(runId).orElse(null);
+            if (run == null || run.getStatus().isTerminal()) {
+                return;
+            }
+            run.setStatus(AgentRunStatus.FAILED);
+            run.setFinishedAt(Instant.now());
+            run.setOutputSummary(null);
+            run.setErrorSummary(safeReason);
+            run.setStatusReason(safeReason);
+            run.setFailureCode(failureCode);
+            run.setRecoveryNextAction(nextAction);
+            run = agentRunRepository.save(run);
+            progressService.append(runId, AgentRunProgressCategory.FAILED);
+            mobilePushDispatchService.notifyRunFailed(run);
+        });
+    }
+
+    private void markReconciling(Long runId) {
         transaction.executeWithoutResult(status -> {
             AgentRunEntity run = agentRunRepository.findById(runId).orElse(null);
             if (run == null || run.getStatus().isTerminal()) {
@@ -410,7 +564,7 @@ public class RemoteAgentRunCoordinator {
             run.setStatus(AgentRunStatus.RECONCILING);
             run.setReconciliationStartedAt(
                     run.getReconciliationStartedAt() == null ? Instant.now() : run.getReconciliationStartedAt());
-            run.setStatusReason("Remote worker unavailable; no replacement dispatched: " + safeReason(reason));
+            run.setStatusReason("Remote worker unavailable; no replacement dispatched");
             run = agentRunRepository.save(run);
             if (firstActionRequired) {
                 progressService.append(runId, AgentRunProgressCategory.RECONCILING);
@@ -465,14 +619,6 @@ public class RemoteAgentRunCoordinator {
             throw new IllegalArgumentException("AgentRun is not owned by a remote execution target");
         }
         return run;
-    }
-
-    private String safeReason(String reason) {
-        if (reason == null || reason.isBlank()) {
-            return "connection failed";
-        }
-        String normalized = reason.replaceAll("[\\r\\n\\t]+", " ").trim();
-        return normalized.substring(0, Math.min(normalized.length(), 300));
     }
 
     @PreDestroy
