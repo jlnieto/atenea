@@ -12196,3 +12196,63 @@ Sanitized final web acceptance evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.3-complete-web-acceptance`;
 the SHA-256 of its `SHA256SUMS` is
 `1adfa7fa8b3fb4066c8785938c6a5ea9345cd8e2313e0d36578c35b213eb4fc0`.
+
+Task 5.4 is complete. Change progress is `35/60`; task 5.5 is the exact
+resume point. Atenea candidate commit
+`7cec0490c7aa1663e9c7f012dfdc7ced245bf851` is published exactly in both the
+canonical repository and GitHub. Android now consumes the same bounded
+operator-state model as web in the WorkSession and conversation surfaces. It
+presents current state, safe blocker, required authority and one primary
+action without exposing infrastructure identity.
+
+The Android auth session now retains the server-provided Codex operations
+role. A routine operator cannot generate or confirm an administrator plan. A
+legacy closed owner first creates a read-only plan, then requires a separate
+explicit confirmation bound to that plan and ownership fingerprint. Plan and
+confirmation idempotency keys remain stable across transport or response loss.
+Normal close reconciliation repeats the persisted close operation.
+
+Generic AgentRun retry is suppressed while remote-close state owns the next
+action. Only exact `CAPACITY_RELEASED` with a target terminal run exposes the
+retry, and it still requires an explicit tap. No prompt or AgentRun was sent
+automatically. Deterministic policy, missing/stale state and validation errors
+have separate safe messages and never appear as worker unavailability.
+
+The complete core-console unit suite passes 34/34, including five new
+coordinator tests for authority, state/action pairing, response-loss
+idempotency, explicit retry and sanitized errors. Three Compose UI tests pass
+on a real isolated API 35 emulator. Final synthetic `390x844` screenshots were
+inspected separately from persistence and semantics: state, long safe blocker,
+primary action, retained-state confirmation and both confirmation controls are
+visible without clipping, overlap or horizontal overflow. The task emulator
+and AVD were removed afterward.
+
+One 59,896,815-byte canary APK was built from the exact candidate source using
+the opaque established debug-channel keystore. Its SHA-256 is
+`cfa88898bd0b3109b615741cf3b6dbb685178e80c2d4a34e2321acb56d262d8a`,
+and its certificate SHA-256 matches the retained channel certificate at
+`a1642a052853e9992da7ae8f8b6fe09e150533877776c009e7cca83e8b76559a`.
+Download and Firebase secret paths were explicitly absent and the manifest URL
+was synthetic. The canary was neither published nor installed; its temporary
+source and staging copy were removed after the evidence copy revalidated.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains terminal unretried `FAILED`, with no child and one retained attachment.
+WorkSession 17 retains one turn, one run, one attachment and one complete
+profile. Production, preview and Beautips return HTTP 200 and routing remains
+`ax42-01` enabled/healthy `4/2` at `0/0`.
+
+WorkSession 16 workspace/allocation/admission and WorkSession 17 workspace
+hashes remain exact; WorkSession 17 allocation/admission remain absent. Worker
+services remain active with zero restarts, rootless slots remain `3/0/0/3`,
+rootful Docker/containerd remain inactive, all three RAID arrays remain
+`[UU]`, and backup/check/health remain `success/0`. No migration, deployment,
+configuration, production, preview, Beautips, prompt, retry, runtime,
+ownership, foreign or unrelated resource changed.
+
+Sanitized Android evidence, two synthetic screenshots and the unpublished
+signed canary are beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.4-android-state-first-operation`;
+the SHA-256 of its `SHA256SUMS` is
+`b8eb6794be19771cae408f2df14a0d1fc81525dbcde3380d22e3e63bf597496f`.

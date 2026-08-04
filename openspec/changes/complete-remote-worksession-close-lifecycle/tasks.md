@@ -139,7 +139,7 @@ environment dumps.
   `1440x900` and `390x844`, including long safe messages, button authority,
   confirmation, refresh and no clipping/overlap/horizontal overflow; inspect
   and retain final screenshots
-- [ ] 5.4 Implement equivalent Android state, confirmation and next-action
+- [x] 5.4 Implement equivalent Android state, confirmation and next-action
   behavior without adding attachment or unrelated administration scope; add
   unit/UI tests and build one signed-channel canary APK without publishing it
 - [ ] 5.5 Prove web/Android authorization parity, stale-confirmation handling,
