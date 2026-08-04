@@ -65,6 +65,7 @@ internal fun WorkSessionScreen(
     }
 
     val state by repository.state.collectAsState()
+    val remoteCloseState by repository.remoteCloseState.collectAsState()
     val summary = state.summary
     val context = LocalContext.current
 
@@ -82,6 +83,17 @@ internal fun WorkSessionScreen(
             onOpenCore = onOpenCore,
             onBackToProjects = onBackToProjects
         )
+
+        summary?.operatorState?.let { operatorState ->
+            RemoteCloseOperatorPanel(
+                serverState = operatorState,
+                actionState = remoteCloseState,
+                operatorRole = apiClient.currentOperatorRole(),
+                onPrimaryAction = repository::runRemoteClosePrimaryAction,
+                onConfirm = repository::confirmLegacyRemoteClose,
+                onCancel = repository::cancelLegacyRemoteClose
+            )
+        }
 
         WorkSessionPreviewPanel(
             preview = state.preview,

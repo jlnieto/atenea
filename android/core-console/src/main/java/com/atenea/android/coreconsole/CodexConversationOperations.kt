@@ -149,6 +149,7 @@ internal fun CodexRunProgressCard(
     pending: Boolean,
     error: String?,
     notice: String?,
+    retryOverride: String? = null,
     onRecovery: (CodexRecoveryAction) -> Unit
 ) {
     if (detail == null) {
@@ -157,7 +158,7 @@ internal fun CodexRunProgressCard(
     }
     val state = progress?.currentState ?: detail.currentState ?: detail.status
     val nextAction = progress?.requiredNextAction ?: detail.requiredNextAction ?: "NONE"
-    val action = codexRecoveryAction(detail, nextAction, state)
+    val action = codexRecoveryAction(detail, nextAction, state, suppressRetry = retryOverride != null)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -177,7 +178,12 @@ internal fun CodexRunProgressCard(
         progress?.latestEvent?.let {
             Text("Último evento: ${it.message}", color = ConversationColors.primaryText, style = ConversationTypography.meta)
         }
-        Text("Siguiente acción: ${codexNextActionLabel(nextAction)}", color = ConversationColors.primaryText, fontWeight = FontWeight.Bold, style = ConversationTypography.meta)
+        Text(
+            "Siguiente acción: ${retryOverride ?: codexNextActionLabel(nextAction)}",
+            color = ConversationColors.primaryText,
+            fontWeight = FontWeight.Bold,
+            style = ConversationTypography.meta
+        )
         action?.let {
             ConversationPrimaryAction(if (pending) "Solicitando…" else codexRecoveryActionLabel(it), !pending) { onRecovery(it) }
         }
@@ -205,9 +211,14 @@ private fun ConversationPrimaryAction(text: String, enabled: Boolean, onClick: (
     )
 }
 
-internal fun codexRecoveryAction(detail: CodexRunDetail, nextAction: String, state: String): CodexRecoveryAction? = when {
+internal fun codexRecoveryAction(
+    detail: CodexRunDetail,
+    nextAction: String,
+    state: String,
+    suppressRetry: Boolean = false
+): CodexRecoveryAction? = when {
     nextAction == "REQUEST_RECONCILIATION" -> CodexRecoveryAction.RECONCILE
-    nextAction == "RETRY" -> CodexRecoveryAction.RETRY
+    nextAction == "RETRY" && !suppressRetry -> CodexRecoveryAction.RETRY
     state !in setOf("COMPLETED", "SUCCEEDED", "FAILED", "CANCELLED", "RECONCILING") &&
         detail.status !in setOf("SUCCEEDED", "FAILED", "CANCELLED") -> CodexRecoveryAction.CANCEL
     else -> null

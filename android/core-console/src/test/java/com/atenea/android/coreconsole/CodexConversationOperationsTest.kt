@@ -42,6 +42,7 @@ class CodexConversationOperationsTest {
     fun exposesExactlyOneContextualRecoveryAction() {
         assertEquals(CodexRecoveryAction.CANCEL, codexRecoveryAction(detail("RUNNING"), "WAIT", "CHECKING"))
         assertEquals(CodexRecoveryAction.RETRY, codexRecoveryAction(detail("FAILED"), "RETRY", "FAILED"))
+        assertEquals(null, codexRecoveryAction(detail("FAILED"), "RETRY", "FAILED", suppressRetry = true))
         assertEquals(CodexRecoveryAction.RECONCILE, codexRecoveryAction(detail("FAILED"), "REQUEST_RECONCILIATION", "FAILED"))
         assertEquals(null, codexRecoveryAction(detail("SUCCEEDED"), "NONE", "COMPLETED"))
     }

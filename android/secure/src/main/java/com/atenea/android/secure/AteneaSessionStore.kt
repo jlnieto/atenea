@@ -31,6 +31,7 @@ class AteneaSessionStore(context: Context) {
             .putLong("operatorId", session.operator.id)
             .putString("operatorEmail", session.operator.email)
             .putString("operatorDisplayName", session.operator.displayName)
+            .putString("operatorCodexOperationsRole", session.operator.codexOperationsRole)
             .apply()
     }
 
@@ -45,7 +46,8 @@ class AteneaSessionStore(context: Context) {
             operator = OperatorProfile(
                 id = preferences.getLong("operatorId", 0),
                 email = preferences.getString("operatorEmail", null).orEmpty(),
-                displayName = preferences.getString("operatorDisplayName", null).orEmpty()
+                displayName = preferences.getString("operatorDisplayName", null).orEmpty(),
+                codexOperationsRole = preferences.getString("operatorCodexOperationsRole", null)
             )
         )
     }

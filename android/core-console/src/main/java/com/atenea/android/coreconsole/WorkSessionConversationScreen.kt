@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +28,7 @@ import com.atenea.android.api.CodexProgressReplay
 import com.atenea.android.api.CodexRecoveryAction
 import com.atenea.android.api.CodexRunDetail
 import com.atenea.android.api.MobileWorkSessionConversation
+import com.atenea.android.api.MobileSessionOperatorState
 import com.atenea.android.voiceruntime.AteneaDiagnostics
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -43,7 +45,13 @@ internal fun WorkSessionConversationScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val promptRecorder = remember(context) { ConversationPromptRecorder(context.applicationContext) }
+    val remoteCloseCoordinator = remember(apiClient, sessionId) {
+        sessionId?.let { RemoteCloseOperatorCoordinator(apiClient, it) }
+    }
+    val remoteCloseActionState by remoteCloseCoordinator?.state?.collectAsState()
+        ?: remember { mutableStateOf(RemoteCloseActionUiState()) }
     var conversation by remember { mutableStateOf<MobileWorkSessionConversation?>(null) }
+    var operatorState by remember { mutableStateOf<MobileSessionOperatorState?>(null) }
     var input by remember { mutableStateOf("") }
     var pending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -124,7 +132,10 @@ internal fun WorkSessionConversationScreen(
             if (!silent) pending = true
             error = null
             try {
-                conversation = apiClient.fetchMobileWorkSessionConversation(id).also { loaded ->
+                val summary = apiClient.fetchMobileWorkSessionSummary(id)
+                operatorState = summary.operatorState
+                remoteCloseCoordinator?.accept(summary.operatorState)
+                conversation = summary.conversation.also { loaded ->
                     AteneaDiagnostics.info(
                         area = "conversation",
                         event = "loaded",
@@ -342,7 +353,10 @@ internal fun WorkSessionConversationScreen(
             error = null
             try {
                 activeCommand = apiClient.confirmCoreCommand(commandId, token)
-                conversation = apiClient.fetchMobileWorkSessionConversation(id)
+                val summary = apiClient.fetchMobileWorkSessionSummary(id)
+                operatorState = summary.operatorState
+                remoteCloseCoordinator?.accept(summary.operatorState)
+                conversation = summary.conversation
             } catch (confirmError: Exception) {
                 error = confirmError.message ?: "No se pudo confirmar el comando."
             } finally {
@@ -369,7 +383,10 @@ internal fun WorkSessionConversationScreen(
                     projectId = projectId,
                     workSessionId = id
                 )
-                conversation = apiClient.fetchMobileWorkSessionConversation(id)
+                val summary = apiClient.fetchMobileWorkSessionSummary(id)
+                operatorState = summary.operatorState
+                remoteCloseCoordinator?.accept(summary.operatorState)
+                conversation = summary.conversation
             } catch (clarificationError: Exception) {
                 error = clarificationError.message ?: "No se pudo resolver la aclaracion."
             } finally {
@@ -428,6 +445,7 @@ internal fun WorkSessionConversationScreen(
                         CodexRecoveryAction.RECONCILE -> "Reconciliación solicitada. Espera la actualización del estado."
                     }
                 }
+                refresh(silent = true, includeProfile = false)
             } catch (recoveryError: AteneaApiException) {
                 operationError = when (recoveryError.status) {
                     403 -> "No tienes permiso para esta acción. Solicítala a un operador autorizado."
@@ -439,6 +457,26 @@ internal fun WorkSessionConversationScreen(
                 operationError = "La acción no se pudo solicitar. Actualiza e inténtalo de nuevo."
             } finally {
                 operationPending = false
+            }
+        }
+    }
+
+    fun runRemoteClosePrimaryAction() {
+        val currentState = operatorState ?: return
+        val coordinator = remoteCloseCoordinator ?: return
+        scope.launch {
+            if (coordinator.runPrimaryAction(currentState)) {
+                refresh(silent = true, includeProfile = false)
+            }
+        }
+    }
+
+    fun confirmLegacyRemoteClose() {
+        val currentState = operatorState ?: return
+        val coordinator = remoteCloseCoordinator ?: return
+        scope.launch {
+            if (coordinator.confirmLegacyReconciliation(currentState)) {
+                refresh(silent = true, includeProfile = false)
             }
         }
     }
@@ -482,16 +520,33 @@ internal fun WorkSessionConversationScreen(
                 )
             }
         },
-        runContent = if (runDetail != null || operationError != null) {
+        runContent = if (operatorState?.surfaceEnabled == true || runDetail != null || operationError != null) {
             {
-                CodexRunProgressCard(
-                    detail = runDetail,
-                    progress = runProgress,
-                    pending = operationPending,
-                    error = operationError,
-                    notice = operationNotice,
-                    onRecovery = ::requestRecovery
-                )
+                operatorState?.let { currentState ->
+                    RemoteCloseOperatorPanel(
+                        serverState = currentState,
+                        actionState = remoteCloseActionState,
+                        operatorRole = apiClient.currentOperatorRole(),
+                        onPrimaryAction = ::runRemoteClosePrimaryAction,
+                        onConfirm = ::confirmLegacyRemoteClose,
+                        onCancel = { remoteCloseCoordinator?.cancelConfirmation() },
+                        dark = true
+                    )
+                }
+                if (runDetail != null || operationError != null) {
+                    CodexRunProgressCard(
+                        detail = runDetail,
+                        progress = runProgress,
+                        pending = operationPending,
+                        error = operationError,
+                        notice = operationNotice,
+                        retryOverride = operatorState?.takeIf { it.surfaceEnabled }?.let {
+                            if (it.state == "CAPACITY_RELEASED") null
+                            else "Espera a que Atenea confirme la liberación de capacidad"
+                        },
+                        onRecovery = ::requestRecovery
+                    )
+                }
             }
         } else null,
         profileContent = if (!profileUnavailable) {
