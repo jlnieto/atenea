@@ -378,6 +378,7 @@ class RemoteAgentRunCoordinatorTest {
     @Test
     void deterministicFourHundredFailureStopsWithoutWorkerUnavailableWindow() throws Exception {
         AgentRunEntity run = projectRun();
+        properties.setPollInterval(Duration.ofMillis(1));
         when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
         when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
         when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -398,9 +399,44 @@ class RemoteAgentRunCoordinatorTest {
         assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
                 run.getRecoveryNextAction());
         assertEquals("Remote worker rejected the persisted admission request", run.getStatusReason());
+        Thread.sleep(120);
+        assertNull(run.getRemoteExecutionId());
+        assertNull(run.getLeaseExpiresAt());
+        assertNull(run.getRetryOfRun());
+        verify(client, times(1)).ensureWorkspace(run);
         verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
         verify(mobilePushDispatchService, never()).notifyRunActionRequired(run);
         verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void malformedWorkerErrorRequiresAdministratorReviewWithoutPolling() throws Exception {
+        AgentRunEntity run = projectRun();
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.ensureWorkspace(run)).thenThrow(new RemoteWorkerException(
+                "invalid worker error response",
+                409,
+                "REMOTE_WORKER_PROTOCOL_FAILURE",
+                RemoteWorkerFailureCategory.PROTOCOL,
+                false,
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                null));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+        Thread.sleep(120);
+
+        assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                run.getRecoveryNextAction());
+        assertNull(run.getRemoteExecutionId());
+        assertNull(run.getLeaseExpiresAt());
+        assertNull(run.getRetryOfRun());
+        verify(client, times(1)).ensureWorkspace(run);
+        verify(client, never()).dispatch(any(), any());
+        verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
     }
 
     @Test
@@ -470,6 +506,68 @@ class RemoteAgentRunCoordinatorTest {
                 run.getRecoveryNextAction());
         verify(agentRunRepository, never()).existsBySessionIdAndStatusIn(any(), any());
         verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void unknownCapacityOwnerRequiresAdministratorReviewWithoutDispatch() throws Exception {
+        AgentRunEntity run = projectRun();
+        UUID unknown = UUID.fromString("fe5f567d-3f2b-4a88-9389-89fe113aba74");
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionRepository.findByRemoteSessionId(unknown)).thenReturn(Optional.empty());
+        when(client.ensureWorkspace(run)).thenThrow(capacityFailure(unknown));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals("CAPACITY_OWNER_UNVERIFIED", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                run.getRecoveryNextAction());
+        assertNull(run.getRemoteExecutionId());
+        assertNull(run.getLeaseExpiresAt());
+        assertNull(run.getRetryOfRun());
+        verify(client, times(1)).ensureWorkspace(run);
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void mismatchedWorkerOwnershipResponseFailsForAdministratorReview() throws Exception {
+        AgentRunEntity run = projectRun();
+        RemoteWorkerClient.Execution accepted = execution(run, "RUNNING", null);
+        RemoteWorkerClient.Execution mismatched = new RemoteWorkerClient.Execution(
+                accepted.dispatchId(),
+                accepted.executionId(),
+                accepted.sessionId(),
+                "remote:foreign:work-session:" + run.getRemoteSessionId(),
+                accepted.workloadClass(),
+                accepted.leaseGeneration(),
+                accepted.status(),
+                accepted.statusReason(),
+                accepted.revision(),
+                accepted.progress(),
+                accepted.createdAt(),
+                accepted.startedAt(),
+                accepted.finishedAt(),
+                accepted.updatedAt(),
+                accepted.result(),
+                accepted.progressEvents());
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.dispatch(run, "First managed turn")).thenReturn(mismatched);
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                run.getRecoveryNextAction());
+        assertNull(run.getRemoteExecutionId());
+        assertNull(run.getLeaseExpiresAt());
+        assertNull(run.getRetryOfRun());
+        verify(client, times(1)).dispatch(run, "First managed turn");
+        verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
     }
 
     private AgentRunEntity projectRun() {
