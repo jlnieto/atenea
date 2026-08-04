@@ -12256,3 +12256,63 @@ signed canary are beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.4-android-state-first-operation`;
 the SHA-256 of its `SHA256SUMS` is
 `b8eb6794be19771cae408f2df14a0d1fc81525dbcde3380d22e3e63bf597496f`.
+
+Task 5.5 is complete. Change progress is `36/60`; task 6.1 is the exact
+resume point. Atenea candidate commit
+`03534c4998eaf150aa0eda9d0096b00f403b1baa` is published exactly in the
+canonical repository and GitHub. Section 5 is complete; no task in section 6
+has started.
+
+Web and Android now enforce the same routine/privileged/administrator role
+hierarchy and the same closed state/action pairs. Missing or unknown authority,
+inconsistent actions and unavailable actions fail closed. No client-selected
+worker, endpoint, workspace, command, slot, port, label, credential or
+infrastructure resource is accepted or shown.
+
+An HTTP 409 from plan creation or confirmation now discards the stale local
+plan and both idempotency keys, blocks another plan until a fresh server
+projection is loaded and presents an actionable refresh message. Transport or
+response loss continues to reuse the stable key. Explicit refresh restores
+the current server-derived action; unchanged automatic polling does not
+discard a still-valid confirmation. Synthetic request recording proves zero
+release retry or prompt action in the stale path.
+
+Android's versioned notification parser now also requires the payload
+`deepLink` field to equal the exact validated URI. The shell consumes only its
+validated WorkSession ID and immutable request key, clears unrelated project
+navigation and opens that exact conversation. Mismatched identity, scheme,
+host, path, query or payload is rejected.
+
+The production web build and application/test TypeScript compilation pass.
+The complete Playwright suite passes 27/27: ten remote-close state/action/
+refresh cases and all 17 attachment/composer regressions. Real Chromium at
+`1440x900` and `390x844` shows the stale state, disabled action and required
+refresh without clipping, overlap or horizontal overflow. A deliberate
+same-state poll proves a valid replacement plan remains visible.
+
+Android core-console and app unit suites pass 37/37 and 4/4. Four Compose UI
+tests pass on a real isolated API 35 emulator, including the stale
+confirmation. Its final synthetic `390x844` render keeps state, blocker,
+disabled action and actionable error completely visible in the first
+viewport. The emulator, AVD, test package and downloaded system image were
+removed afterward. No APK was published or installed.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains terminal unretried `FAILED`, with no child, one retained attachment
+and a complete profile. WorkSession 17 retains one turn, one run and one
+attachment. Production, preview and Beautips return HTTP 200 and routing
+remains `ax42-01` enabled/healthy `4/2` at `0/0`.
+
+The registry, WorkSession 16 workspace/allocation/admission and WorkSession 17
+workspace hashes remain exact. WorkSession 17 allocation/admission remain
+absent. Worker services remain active with zero restarts, rootless slots remain
+`3/0/0/3`, rootful Docker/containerd remain inactive, all three RAID arrays
+remain `[UU]`, and backup/check/health remain `success/0`. No migration,
+deployment, configuration, prompt, retry, runtime, ownership, production,
+preview, Beautips, foreign or unrelated resource changed.
+
+Sanitized parity, diagnostics and final synthetic screenshots are beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.5-state-first-section-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`9e9b5978cc57b2548c7f27791a12dd1b0008620214647dd27b1756ed8268eaa7`.

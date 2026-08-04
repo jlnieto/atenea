@@ -142,7 +142,7 @@ environment dumps.
 - [x] 5.4 Implement equivalent Android state, confirmation and next-action
   behavior without adding attachment or unrelated administration scope; add
   unit/UI tests and build one signed-channel canary APK without publishing it
-- [ ] 5.5 Prove web/Android authorization parity, stale-confirmation handling,
+- [x] 5.5 Prove web/Android authorization parity, stale-confirmation handling,
   screen refresh and exact conversation deep-link behavior; seal evidence,
   update the ledger, strict-validate, mark section 5, commit and push
 
