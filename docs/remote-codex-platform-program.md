@@ -11884,3 +11884,44 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.4-legacy-close-planning`;
 the SHA-256 of its `SHA256SUMS` is
 `25363a9716108dda1172118ee2d34afdf305c24ff1c986d1e5c82efcf71dd985`.
+
+Task 4.5 is complete. Change progress is `29/60`; task 4.6 is the exact resume
+point. Safe legacy-operation error audit and AgentRun retry projection remain
+pending.
+
+Atenea commit `66c9990e3a71cd2136732d205b410459e45163c8` turns the
+confirmed exact legacy request into a durable release lifecycle. One
+`REQUIRES_NEW` transaction locks and revalidates the selected historical owner,
+proves its plan and unchanged ownership/Git/delivery fingerprint, requires zero
+non-terminal AgentRuns, persists one immutable operation UUID and advances only
+the remote-close projection to `REQUESTED`. The strict worker endpoint then
+performs its exact preflight before release. A second independent transaction
+accepts only the matching `RELEASED` receipt and advances the projection to
+`RELEASED`; historical `CLOSED`, `closedAt`, turns, runs, delivery and retained
+resources remain unchanged.
+
+Open, foreign, partially identified, stale, expired, wrong-role and
+non-terminal owners fail before worker I/O. A synthetic lost response leaves
+the single operation durable, and repeating the exact confirmation reuses that
+UUID, accepts the worker's idempotent receipt and closes the remote ownership
+projection once. No replacement operation, prompt retry or caller-selected
+resource is possible.
+
+The focused migration, legacy service/API, normal close, startup, strict client
+and default-gate matrix passes 89/89 with zero failures, errors or skips; the
+backend package passes. Task 4.7 remains the explicit complete-suite gate.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote and AgentRun
+96 remains terminal unretried `FAILED`. Production and preview remain `UP`,
+Beautips returns HTTP 200 and routing remains `ax42-01` enabled/healthy `4/2`
+at `0/0`. The five ownership hashes remain exact, rootless slots remain
+`3/0/0/3`, rootful daemons remain inactive, RAID remains `3/3 [UU]` and
+backup/check/health remain `success/0`. No release was invoked outside the
+synthetic mocked test boundary and no production, preview, Beautips, ownership,
+foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.5-confirmed-legacy-release`;
+the SHA-256 of its `SHA256SUMS` is
+`9b76b6d73b36cacd8663b172c8ee7781c671a0d4719d170507a8308650ed6b85`.

@@ -114,7 +114,7 @@ environment dumps.
 - [x] 4.4 Add read-only legacy ownership planning and a fixed
   `PLATFORM_ADMINISTRATOR` `RECONCILE_REMOTE_CLOSE` operation with single-use
   finite confirmation; never scan or release legacy rows automatically
-- [ ] 4.5 Require closed state, exact worker/project/workspace match, terminal
+- [x] 4.5 Require closed state, exact worker/project/workspace match, terminal
   runs, unchanged delivery/Git fingerprint and worker diagnosis before legacy
   release; reject stale confirmation, wrong role, open owner, foreign owner and
   ambiguous partial state before mutation
