@@ -621,6 +621,71 @@ print(json.dumps({
         self.assertEqual("WAIT", rejected.exception.safe_error["nextAction"])
         self.assertNotIn(marker, json.dumps(rejected.exception.safe_error))
 
+    def test_lifecycle_lock_serializes_ensure_and_release_participant(self):
+        request = self.request()
+        request.update({
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": TEST_COMMIT,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+        })
+        ensure_entered = threading.Event()
+        allow_ensure = threading.Event()
+        events = []
+
+        def blocked_refresh(_route):
+            events.append("ensure-owns-lifecycle")
+            ensure_entered.set()
+            self.assertTrue(allow_ensure.wait(2))
+
+        self.state._refresh_project_mirror = blocked_refresh
+        ensure_thread = threading.Thread(target=lambda: self.state.ensure_workspace(request))
+
+        def release_participant():
+            with self.state.workspace_lifecycle_lock():
+                events.append("release-owns-lifecycle")
+
+        release_thread = threading.Thread(target=release_participant)
+        ensure_thread.start()
+        self.assertTrue(ensure_entered.wait(1))
+        release_thread.start()
+        time.sleep(0.05)
+        self.assertEqual(["ensure-owns-lifecycle"], events)
+        allow_ensure.set()
+        ensure_thread.join(2)
+        release_thread.join(2)
+
+        self.assertFalse(ensure_thread.is_alive())
+        self.assertFalse(release_thread.is_alive())
+        self.assertEqual(
+            ["ensure-owns-lifecycle", "release-owns-lifecycle"], events
+        )
+        lock_stat = self.state.workspace_lifecycle_lock_file.stat()
+        self.assertEqual(0o600, lock_stat.st_mode & 0o777)
+
+    def test_lifecycle_lock_timeout_runs_no_activation(self):
+        self.state.workspace_lifecycle_timeout = 0.03
+        rejected = []
+
+        def competing_ensure():
+            try:
+                self.state.ensure_workspace(self.request())
+            except MODULE.ProtocolError as exception:
+                rejected.append(exception)
+
+        with self.state.workspace_lifecycle_lock():
+            contender = threading.Thread(target=competing_ensure)
+            contender.start()
+            contender.join(1)
+
+        self.assertFalse(contender.is_alive())
+        self.assertEqual(1, len(rejected))
+        self.assertEqual(MODULE.HTTPStatus.LOCKED, rejected[0].status)
+        self.assertEqual("WORKSPACE_LIFECYCLE_BUSY", rejected[0].safe_error["code"])
+        self.assertEqual("WAIT", rejected[0].safe_error["nextAction"])
+        self.assertFalse(self.calls.exists())
+
 
 class ProjectMirrorRefreshTest(unittest.TestCase):
     def setUp(self):

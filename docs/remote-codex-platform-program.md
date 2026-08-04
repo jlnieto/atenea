@@ -11331,3 +11331,39 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.1-closed-release-contract`;
 the SHA-256 of its `SHA256SUMS` is
 `c65cd6ee77da894310e8cb91c8a8f294e137f0728ebff805cf29a164e1a95eed`.
+
+Task 3.2 is complete. Change progress is `17/60`; task 3.3 is the exact
+resume point and no release preflight or mutation has started.
+
+One global persistent `workspace-lifecycle-v1.lock` now serializes the entire
+Atenea `ensure` operation and is the sole shared participant for future
+release. It is opened without following symlinks, must remain a regular file
+owned by the worker effective UID at mode `0600`, and uses an exclusive
+non-blocking `flock` with a finite monotonic deadline. Every path unlocks and
+closes its descriptor.
+
+A competing operation that exceeds the deadline returns only the closed safe
+projection `WORKSPACE_LIFECYCLE_BUSY/CAPACITY/retryable/WAIT`; it invokes no
+workspace activator. The concurrency proof holds ensure inside its registration
+and admission boundary while a release participant waits, then proves release
+enters only after ensure exits. Thus no two sessions can interleave those fixed
+ownership transitions. The HTTP release route remains absent and capability
+remains unavailable by default.
+
+All nine workspace activation/lifecycle-lock tests pass, including persistence
+mode, serialization and timeout. The complete AgentRun worker file passes
+68/68. The generated Python cache was removed before sealing; no worker source
+was installed.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 and AgentRun 96 remain
+`CLOSED`/`OPEN`/unretried `FAILED`. Production, preview and Beautips remain
+`UP`; routing remains `4/2` at `0/0`; exact ownership hashes, active
+zero-restart services, rootless `3/0/0/3`, inactive rootful daemons, three
+`[UU]` arrays and backup/check/health `success/0` all match entry. No ownership,
+runtime, foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.2-workspace-lifecycle-lock`;
+the SHA-256 of its `SHA256SUMS` is
+`a880a8f1bf2f7b75402b0ed30b96b0fcb3943e2b4849efc43f824fcd346c67ad`.

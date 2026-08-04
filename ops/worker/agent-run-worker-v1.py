@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import hmac
 import json
@@ -16,11 +17,12 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from urllib.parse import urlparse
 
 PROTOCOL = "agent-run-worker/v1"
@@ -549,9 +551,11 @@ class WorkerState:
         codex_update_registry: Path | None = None,
         codex_release_root: Path | None = None,
         reconcile_materializations_on_start: bool = False,
+        workspace_lifecycle_timeout: float = 10.0,
     ):
         self.state_dir = state_dir
         self.state_file = state_dir / "executions.json"
+        self.workspace_lifecycle_lock_file = state_dir / "workspace-lifecycle-v1.lock"
         self.worker_id = worker_id
         self.normal_capacity = normal_capacity
         self.heavy_capacity = heavy_capacity
@@ -573,6 +577,7 @@ class WorkerState:
         self.codex_update_registry = codex_update_registry
         self.codex_release_root = codex_release_root
         self.reconcile_materializations_on_start = reconcile_materializations_on_start
+        self.workspace_lifecycle_timeout = workspace_lifecycle_timeout
         self.lock = threading.RLock()
         self.wakeup = threading.Event()
         self.stop_event = threading.Event()
@@ -583,6 +588,56 @@ class WorkerState:
         self.scheduler: threading.Thread | None = None
         self.codex_update_in_progress = False
         self._load()
+
+    @contextmanager
+    def workspace_lifecycle_lock(self) -> Iterator[None]:
+        self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        flags = os.O_RDWR | os.O_CREAT | os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            descriptor = os.open(self.workspace_lifecycle_lock_file, flags, 0o600)
+        except OSError as exception:
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "workspace_lifecycle_lock_unsafe",
+                "workspace lifecycle lock is unavailable or unsafe",
+            ) from exception
+        acquired = False
+        try:
+            observed = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(observed.st_mode)
+                or observed.st_uid != os.geteuid()
+                or stat.S_IMODE(observed.st_mode) != 0o600
+            ):
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT,
+                    "workspace_lifecycle_lock_unsafe",
+                    "workspace lifecycle lock ownership is unsafe",
+                )
+            deadline = time.monotonic() + self.workspace_lifecycle_timeout
+            while True:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise ProtocolError(
+                            HTTPStatus.LOCKED,
+                            "workspace_lifecycle_lock_timeout",
+                            "workspace lifecycle operation is already in progress",
+                            worker_error_envelope(
+                                "WORKSPACE_LIFECYCLE_BUSY", "CAPACITY", True, "WAIT"
+                            ),
+                        ) from None
+                    time.sleep(0.01)
+            yield
+        finally:
+            if acquired:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
 
     def _load(self) -> None:
         self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -1175,6 +1230,10 @@ class WorkerState:
         return canonical_hash(request)
 
     def ensure_workspace(self, request: dict[str, Any]) -> dict[str, Any]:
+        with self.workspace_lifecycle_lock():
+            return self._ensure_workspace_locked(request)
+
+    def _ensure_workspace_locked(self, request: dict[str, Any]) -> dict[str, Any]:
         if set(request) != WORKSPACE_ENSURE_KEYS:
             raise ProtocolError(
                 HTTPStatus.BAD_REQUEST,
