@@ -11240,3 +11240,49 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.5-deterministic-retry-gate`;
 the SHA-256 of its `SHA256SUMS` is
 `09830dac18ca52c8b5007d65236579870ca823ca7923ddc653c4be25d5ec0c74`.
+
+Task 2.6 and typed worker failure/admission-decision section 2 are complete.
+Change progress is `15/60`; task 3.1 is the exact resume point and no worker
+workspace-release protocol work has started.
+
+Canonical Atenea candidate remains
+`2ac6267249ba0bd040f6d7c347c04341f5108fc8`, already published exactly in
+the canonical repository and GitHub; this closure task required no source
+correction. The exact candidate ran in a finite Maven 3.9.11 / JDK 21 container
+against PostgreSQL 16.13 on `tmpfs`, on an internal-only Docker network with no
+published database port. Flyway validated and applied all 63 migrations to the
+empty fixture.
+
+The strict client, coordinator, AgentRun service, recovery coordinator,
+AgentRun API, session-operations API, recovery persistence, backend restart and
+atomic image-turn suites pass 88/88 with zero failures, errors or skips. This
+includes compatible partition reconciliation, deterministic one-attempt
+rejection, exact cancellation, restart/resume continuity, blocked and linked
+retry, strict malformed response handling, and immutable turn/profile/
+attachment lineage. An expected negative atomic-persistence fixture logged its
+synthetic foreign-key rejection and passed 4/4.
+
+The first harness attempt stopped before compilation because its offline Maven
+cache mount named the parent rather than repository root and its `tmpfs` was
+non-executable for optional Jansi loading. It ran zero tests and changed no
+database state. That exact runner was removed before the corrected run. After
+success, the exact Maven runner, PostgreSQL `tmpfs` container and internal
+network were removed; task-labelled container/network/image counts are
+`0/0/0`.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 and AgentRun 96 remain
+`CLOSED`/`OPEN`/unretried `FAILED`. Production, preview and Beautips remain
+`UP`; routing remains `ax42-01` enabled/healthy `4/2` at `0/0`; exact incident
+ownership hashes, active zero-restart worker services, rootless `3/0/0/3`,
+inactive rootful daemons, three `[UU]` RAID arrays and backup/check/health
+`success/0` all match entry. No source was deployed, no new gate was enabled
+and no foreign or unrelated resource changed.
+
+The retained evidence contains summaries and hashes only and no prompt,
+response, attachment content, screenshot, credential, token, cookie,
+`auth.json`, raw worker payload, environment dump or Codex history. Sanitized
+evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.6-typed-failure-section-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`986c6514e6b3f0d14281ce387ff9dfec4b839ee12f093b637f75a7c9d4be9abe`.

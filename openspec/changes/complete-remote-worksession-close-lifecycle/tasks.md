@@ -61,7 +61,7 @@ environment dumps.
 - [x] 2.5 Prove safe retry remains blocked until the deterministic blocker is
   cleared and that the original turn, run, execution profile and attachment
   manifest remain immutable
-- [ ] 2.6 Run focused client/coordinator/API tests plus unchanged partition,
+- [x] 2.6 Run focused client/coordinator/API tests plus unchanged partition,
   restart, cancellation and retry regressions; seal evidence, update the
   ledger, strict-validate, mark section 2, commit and push
 
