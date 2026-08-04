@@ -12558,3 +12558,54 @@ Sanitized findings, diagnostics and test/state evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.5-independent-adversarial-review`;
 the SHA-256 of its `SHA256SUMS` is
 `550ad79a13e6fecdb92e46449ae2905e9ec7651f4224803bb2f9c81d0e1d5a8b`.
+
+Task 6.6 is complete. Change progress is `42/60`; task 6.7 is the exact
+resume point. The reviewed programme branch is published at
+`8fea093692f16095cd73df4dfa8bf6be0694802d`, tree
+`b88e8882c24c8c26b13901d6422a31127588d74e`. The reviewed Atenea branch is
+published at `989ec05b7ea325fd1921eb01eb06a4ca5d057ce6`, tree
+`096639f41c5f349933ea2a290c64192be532ffbf`. Local, internal where applicable
+and GitHub refs are exact.
+
+The checksum package retains exact source archives for the Atenea candidate
+and V63-compatible rollback source `27f9a7eb5e986f8cacffd0b169af931e03934d96`,
+tree `179a019bdb5d0f57594320f01c169395efb5db4a`; the programme AX42 install
+bundle; and the five-file installed AX42 static predecessor. Dynamic worker
+configuration, registry, admission, allocation, tokens and session state are
+excluded so rollback cannot reconstruct ownership already released.
+
+The retained, undeployed candidate backend image is
+`sha256:1c67ac36a6b45a4b0004e15ba79bcd6d50addfb4b09d8b7890b43c8ef092801a`
+with exact candidate JAR SHA-256
+`ecdad80bcd73736faffe5342a916788a35d3ca7e9062fcdcbe4139f9e4cc79ad`.
+It uses the exact deployed production image
+`sha256:fe5bb7a6b39dbcc2f9847dd05b68b9aabe72bf4d2775ad55f5624fcd99b1d96f`
+as its first 11 layers and changes only the application JAR; runtime config is
+byte-identical. No running container uses the candidate. The task 1.4 rollback
+seal remains exact and task 7.2 still requires a fresh rollback build/proof.
+The task 6.3 Android canary remains retained, unpublished and uninstalled.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains terminal unretried `FAILED`, with no parent or child retry and a
+complete profile. WorkSession 17 retains one turn, one run and one attachment.
+Production and preview return HTTP 200 on their unchanged exact images;
+Beautips remains clean/upstream-exact at
+`9e122bf024d29b9cda56b27f8a32c218e1f0d433` and its public root returns HTTP
+200. The prior unintended Beautips 403 is absent.
+
+Routing remains `ax42-01` enabled/healthy `4/2` at `0/0`. The registry,
+WorkSession 16 workspace/allocation/admission and WorkSession 17 workspace
+hashes remain exact; WorkSession 17 allocation/admission and the release
+successor remain absent. AgentRun, attachment and preview services remain
+active/enabled with zero restarts, backup/check/health remain `success/0`,
+rootless slots remain `3/0/0/3`, rootful Docker/containerd remain
+inactive/masked and all three RAID arrays remain `[UU]`. The unrelated local
+`atenea-activation-code_default` network remains present and untouched.
+
+No migration, deployment, installation, configuration, activation, release,
+prompt, retry, runtime, ownership, production, preview, Beautips, foreign or
+unrelated resource changed. Sanitized published-artifact evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.6-published-rollout-artifacts`;
+the SHA-256 of its `SHA256SUMS` is
+`034da1d2ba165556b52fe9ee3ed0d1b911424b7e69c7675dafa6f16e540d25fe`.

@@ -160,7 +160,7 @@ environment dumps.
   privilege boundaries, race/crash recovery, migration compatibility, UI
   actions, rollback and foreign-resource rejection; correct only in-scope
   blockers and repeat affected complete suites
-- [ ] 6.6 Publish reviewed Atenea and programme candidate branches, record exact
+- [x] 6.6 Publish reviewed Atenea and programme candidate branches, record exact
   commits/trees/manifests/images/install bundles and checksum-sealed rollback
   predecessors; verify production, preview, Beautips and unrelated resources
   remain unchanged
