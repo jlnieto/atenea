@@ -102,8 +102,8 @@ class WorkspaceReleasePreflightTest(unittest.TestCase):
                 "projectId": "atenea",
                 "repository": self.request["repository"],
                 "owner": "root",
-                "group": "atenea",
-                "mode": 640,
+                "group": "root",
+                "mode": 644,
                 "symlink": False,
             },
             "admission": {
@@ -1200,6 +1200,224 @@ class AllocationRetirerTest(unittest.TestCase):
             lambda: self.retirer.retire(self.session, self.fingerprint)
         )
         self.assertEqual(before, foreign.read_bytes())
+
+
+class FixedRootReleaseOperatorTest(unittest.TestCase):
+    session = WorkspaceReleasePreflightTest.session
+    commit = WorkspaceReleasePreflightTest.commit
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.session_root = (
+            self.root / "srv/atenea/workspaces/sessions" / self.session
+        )
+        self.worktree = self.session_root / "atenea"
+        self.worktree.mkdir(parents=True)
+        manifest = self.worktree / "ops/atenea-runtime.json"
+        manifest.parent.mkdir()
+        manifest.write_bytes(b"fixed synthetic manifest\n")
+        self.manifest_sha = MODULE.hashlib.sha256(manifest.read_bytes()).hexdigest()
+        self.request = {
+            "operationId": "706329f4-e9ea-46e4-b950-0afd09684e2d",
+            "idempotencyKey": "940e80b1-a7f5-4ff8-a5f2-bdd815a07a92",
+            "sessionId": self.session,
+            "workspaceIdentity": f"remote:ax42-01:work-session:{self.session}",
+            "projectId": "atenea",
+            "repository": MODULE.REPOSITORY,
+            "branch": MODULE.BRANCH,
+            "commit": self.commit,
+            "manifestSha256": self.manifest_sha,
+            "workspaceBranch": f"atenea/session-{self.session}",
+        }
+        workspace = {
+            "schemaVersion": 1,
+            "sessionId": self.session,
+            "projectId": "atenea",
+            "canonicalRemote": MODULE.REPOSITORY,
+            "baseBranch": "main",
+            "branch": self.request["workspaceBranch"],
+            "mirrorPath": "/srv/atenea/repositories/atenea.git",
+            "worktreePath": f"/srv/atenea/workspaces/sessions/{self.session}/atenea",
+            "workerHost": "codex-worker",
+            "state": "ready",
+            "expectedBaseCommit": self.commit,
+            "headCommit": self.commit,
+        }
+        self._write(self.session_root / "workspace-v1.json", workspace, 0o640)
+        allocation = {
+            "schemaVersion": 1,
+            "state": "allocated",
+            "sessionId": self.session,
+            "projectId": "atenea",
+            "branch": self.request["workspaceBranch"],
+            "mirrorPath": "/srv/atenea/repositories/atenea.git",
+            "runtimeId": f"ws-{self.session.replace('-', '')}",
+            "worktreePath": f"/srv/atenea/workspaces/sessions/{self.session}/atenea",
+            "manifestRelativePath": "ops/atenea-runtime.json",
+            "slot": "slot2",
+            "workloadClass": "heavy",
+            "heavyPermit": "heavy1",
+            "runtimeNames": {
+                "composeProject": f"ws-{self.session.replace('-', '')}-compose",
+                "network": f"ws-{self.session.replace('-', '')}-network",
+                "volumePrefix": f"ws-{self.session.replace('-', '')}-volume",
+                "processUnit": f"atenea-ws-{self.session.replace('-', '')}.service",
+                "tomcatBase": (
+                    f"/srv/atenea/workspaces/sessions/{self.session}/runtime/"
+                    f"ws-{self.session.replace('-', '')}/tomcat"
+                ),
+            },
+            "runtimeRoot": (
+                f"/srv/atenea/workspaces/sessions/{self.session}/runtime/"
+                f"ws-{self.session.replace('-', '')}"
+            ),
+            "logsPath": f"/srv/atenea/artifacts/sessions/{self.session}/runtime/logs",
+            "artifactsRoot": f"/srv/atenea/artifacts/sessions/{self.session}/runs",
+            "cacheRoot": f"/srv/atenea/caches/sessions/{self.session}",
+            "allocatedPorts": [{
+                "name": "web", "internalPort": 8081, "protocol": "http",
+                "bindAddress": "127.0.0.1", "loopbackPort": 21003,
+            }],
+        }
+        allocation_path = self.session_root / "runtime-allocation-v1.json"
+        self._write(allocation_path, allocation, 0o640)
+        allocation_sha = MODULE.hashlib.sha256(allocation_path.read_bytes()).hexdigest()
+        admission_path = (
+            self.root / "srv/atenea/worker/runtime-admission-v1/records"
+            / f"{self.session}.json"
+        )
+        admission_path.parent.mkdir(parents=True)
+        self._write(admission_path, {
+            "schemaVersion": 1,
+            "sessionId": self.session,
+            "normal": {"slot": "slot2", "state": "held"},
+            "heavy": {"permit": "heavy1", "state": "held"},
+        }, 0o640)
+        config_path = self.root / "etc/atenea-worker/project-codex-v1.json"
+        config_path.parent.mkdir(parents=True)
+        self._write(config_path, {
+            "schemaVersion": "project-codex-v1",
+            "projectId": "atenea",
+            "repository": MODULE.REPOSITORY,
+            "branch": "main",
+            "commit": self.commit,
+            "manifestSha256": self.manifest_sha,
+            "runner": "/usr/local/libexec/atenea/project-codex-runner-v1.py",
+            "selectionEnabled": True,
+            "executionEnabled": True,
+            "workspaces": {self.request["workspaceIdentity"]: {
+                "sessionId": self.session,
+                "worktree": f"/srv/atenea/workspaces/sessions/{self.session}/atenea",
+                "allocationSha256": allocation_sha,
+                "canonicalCommit": self.commit,
+            }},
+        }, 0o644)
+        self.journal_root = self.root / "journals"
+        self.journal_root.mkdir(mode=0o700)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    @staticmethod
+    def _write(path: Path, value: dict, mode: int) -> None:
+        path.write_text(
+            json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        path.chmod(mode)
+
+    def test_fixed_empty_projection_releases_once_and_repeats_identically(self) -> None:
+        with mock.patch.object(MODULE, "MANIFEST_SHA256", self.manifest_sha):
+            operator = MODULE.FixedRootReleaseOperator(self.root, test_mode=True)
+            projection = operator.build_projection(self.request)
+            self.assertEqual(
+                {category: [] for category in MODULE.EPHEMERAL_CATEGORIES},
+                {category: projection[category] for category in MODULE.EPHEMERAL_CATEGORIES},
+            )
+            store = MODULE.ReleaseJournalStore(
+                self.journal_root, test_mode=True
+            )
+            boundary = MODULE.ReviewedReleaseBoundary(
+                operator,
+                MODULE.AllocationRetirer(
+                    self.root / "srv/atenea/workspaces", test_mode=True
+                ),
+            )
+            finalizer = MODULE.WorkspaceReleaseFinalizer(store, boundary)
+            first = finalizer.release(self.request, projection)
+            second = finalizer.release(self.request, projection)
+
+        self.assertEqual(first, second)
+        self.assertEqual("RELEASED", first["state"])
+        self.assertEqual(6, first["revision"])
+        self.assertFalse((self.session_root / "runtime-allocation-v1.json").exists())
+        self.assertTrue(
+            (self.session_root / MODULE.RETIRED_ALLOCATION_NAME).is_file()
+        )
+        config = json.loads(
+            (self.root / "etc/atenea-worker/project-codex-v1.json").read_text()
+        )
+        self.assertEqual({}, config["workspaces"])
+        self.assertFalse(config["selectionEnabled"])
+        self.assertFalse(config["executionEnabled"])
+        admission = json.loads(
+            (self.root / "srv/atenea/worker/runtime-admission-v1/records"
+             / f"{self.session}.json").read_text()
+        )
+        self.assertEqual("released", admission["heavy"]["state"])
+        self.assertEqual("released", admission["normal"]["state"])
+
+    def test_exact_owned_preview_record_rejects_before_journal_or_mutation(self) -> None:
+        preview = (
+            self.root / "srv/atenea/worker/session-preview-v1/previews"
+            / "c5161f55-86d4-45b7-9e96-33ae99b908e8"
+        )
+        preview.mkdir(parents=True)
+        self._write(preview / "record.json", {
+            "workSessionId": self.session,
+            "runtimeSessionId": self.session,
+        }, 0o600)
+        config = self.root / "etc/atenea-worker/project-codex-v1.json"
+        admission = (
+            self.root / "srv/atenea/worker/runtime-admission-v1/records"
+            / f"{self.session}.json"
+        )
+        before = (config.read_bytes(), admission.read_bytes())
+        with mock.patch.object(MODULE, "MANIFEST_SHA256", self.manifest_sha):
+            operator = MODULE.FixedRootReleaseOperator(self.root, test_mode=True)
+            with self.assertRaises(MODULE.PreflightRejected):
+                operator.build_projection(self.request)
+        self.assertEqual(before, (config.read_bytes(), admission.read_bytes()))
+        self.assertFalse(any(self.journal_root.iterdir()))
+
+    def test_atomic_registry_writer_rejects_changed_source_without_overwrite(self) -> None:
+        config = self.root / "etc/atenea-worker/project-codex-v1.json"
+        before = config.read_bytes()
+        expected = MODULE.hashlib.sha256(before).hexdigest()
+        foreign = {"schemaVersion": "foreign-safe-fixture"}
+        self._write(config, foreign, 0o644)
+        foreign_bytes = config.read_bytes()
+        operator = MODULE.FixedRootReleaseOperator(self.root, test_mode=True)
+        with self.assertRaises(MODULE.PreflightRejected):
+            operator._atomic_json(
+                MODULE.FixedRootReleaseOperator.CONFIG,
+                {"schemaVersion": "must-not-overwrite"},
+                0o644,
+                os.geteuid(),
+                os.getegid(),
+                expected,
+            )
+        self.assertEqual(foreign_bytes, config.read_bytes())
+
+    def test_operational_worker_host_comes_from_the_local_kernel(self) -> None:
+        with (
+            mock.patch.object(MODULE.pwd, "getpwnam", return_value=mock.Mock(pw_uid=991)),
+            mock.patch.object(MODULE.grp, "getgrnam", return_value=mock.Mock(gr_gid=992)),
+            mock.patch.object(MODULE.socket, "gethostname", return_value="reviewed-worker-host"),
+        ):
+            operator = MODULE.FixedRootReleaseOperator()
+        self.assertEqual("reviewed-worker-host", operator.worker_host)
 
 
 if __name__ == "__main__":

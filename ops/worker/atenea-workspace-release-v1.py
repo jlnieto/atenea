@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Pure, fail-closed Atenea workspace-release preflight contract v1.
-
-This module deliberately exposes no command-line or HTTP entry point.  The
-installed finalizer will build the projection from fixed worker-owned roots;
-this stage only proves that the whole projection is exact before any journal
-or mutation can exist.
-"""
+"""Fail-closed Atenea workspace-release finalizer v1."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import grp
+import pwd
 import re
+import socket
 import stat
+import subprocess
+import sys
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -252,8 +251,8 @@ def _validate_authoritative_roots(
         "projectId": PROJECT_ID,
         "repository": REPOSITORY,
         "owner": "root",
-        "group": "atenea",
-        "mode": 640,
+        "group": "root",
+        "mode": 644,
         "symlink": False,
     }:
         _reject()
@@ -891,7 +890,12 @@ class AllocationRetirer:
 
     def __init__(self, workspace_root: Path = WORKSPACE_ROOT, *, test_mode: bool = False):
         self.workspace_root = Path(workspace_root)
-        self.expected_uid = os.geteuid()
+        try:
+            self.expected_uid = (
+                os.geteuid() if test_mode else pwd.getpwnam("atenea-worker").pw_uid
+            )
+        except KeyError:
+            _reject()
         if not test_mode and self.workspace_root != WORKSPACE_ROOT:
             _reject()
         self._require_root()
@@ -1017,6 +1021,9 @@ class ReviewedReleaseBoundary:
     def release_ephemeral(
         self, request: dict[str, str], projection: dict[str, Any]
     ) -> dict[str, Any]:
+        verifier = getattr(self.operator, "verify_ephemeral_projection", None)
+        if verifier is not None:
+            verifier(request, projection)
         removed = {category: 0 for category in EPHEMERAL_CATEGORIES}
         changed = {category: 0 for category in EPHEMERAL_CATEGORIES}
         for category in EPHEMERAL_RELEASE_ORDER:
@@ -1072,6 +1079,654 @@ class ReviewedReleaseBoundary:
         self, request: dict[str, str], projection: dict[str, Any]
     ) -> dict[str, Any]:
         return self.operator.verify_retained(request["sessionId"], projection)
+
+
+class FixedRootReleaseOperator:
+    """Operational adapter derived only from fixed worker-owned roots.
+
+    The first deployed revision accepts only an exact empty ephemeral
+    projection.  Any live, stopped, partial or ambiguous runtime candidate is
+    rejected before the journal is created; the pure reviewed boundary above
+    remains the only place capable of consuming a populated projection.
+    """
+
+    CONFIG = Path("/etc/atenea-worker/project-codex-v1.json")
+    ADMISSION_TOOL = Path(
+        "/srv/atenea/worker/workspace-v1/ops/worker/runtime-admission-v1.sh"
+    )
+    ADMISSION_ROOT = Path("/srv/atenea/worker/runtime-admission-v1/records")
+    PREVIEW_ROOT = Path("/srv/atenea/worker/session-preview-v1/previews")
+    MATERIALIZATION_ROOT = Path("/run/atenea/codex-images")
+
+    def __init__(self, root: Path = Path("/"), *, test_mode: bool = False):
+        self.root = Path(root)
+        self.test_mode = test_mode
+        if not test_mode and self.root != Path("/"):
+            _reject()
+        try:
+            self.worker_uid = (
+                os.geteuid() if test_mode else pwd.getpwnam("atenea-worker").pw_uid
+            )
+            self.worker_gid = (
+                os.getegid() if test_mode else grp.getgrnam("atenea").gr_gid
+            )
+        except KeyError:
+            _reject()
+        self.root_uid = os.geteuid() if test_mode else 0
+        self.root_gid = os.getegid() if test_mode else 0
+        self.worker_host = "codex-worker" if test_mode else socket.gethostname()
+
+    def _physical(self, canonical: Path) -> Path:
+        if not canonical.is_absolute():
+            _reject()
+        return self.root / canonical.relative_to("/")
+
+    def _json_file(
+        self,
+        canonical: Path,
+        *,
+        uid: int,
+        gid: int,
+        modes: set[int],
+    ) -> tuple[dict[str, Any], os.stat_result, bytes]:
+        path = self._physical(canonical)
+        descriptor = -1
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            observed = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(observed.st_mode)
+                or observed.st_nlink != 1
+                or observed.st_uid != uid
+                or observed.st_gid != gid
+                or stat.S_IMODE(observed.st_mode) not in modes
+                or observed.st_size < 2
+                or observed.st_size > 64 * 1024
+            ):
+                _reject()
+            content = b""
+            while len(content) <= 64 * 1024:
+                chunk = os.read(descriptor, 64 * 1024 - len(content) + 1)
+                if not chunk:
+                    break
+                content += chunk
+            if len(content) > 64 * 1024:
+                _reject()
+            parsed = json.loads(content)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            _reject()
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+        if not isinstance(parsed, dict):
+            _reject()
+        return parsed, observed, content
+
+    def build_projection(self, request: Any) -> dict[str, Any]:
+        exact = _request_identity(request)
+        session = exact["sessionId"]
+        session_root = Path(f"/srv/atenea/workspaces/sessions/{session}")
+        worktree = session_root / PROJECT_ID
+        workspace_path = session_root / "workspace-v1.json"
+        allocation_path = session_root / "runtime-allocation-v1.json"
+        admission_path = self.ADMISSION_ROOT / f"{session}.json"
+
+        workspace, workspace_stat, _workspace_bytes = self._json_file(
+            workspace_path,
+            uid=self.worker_uid,
+            gid=self.worker_gid,
+            modes={0o640},
+        )
+        allocation, allocation_stat, allocation_bytes = self._json_file(
+            allocation_path,
+            uid=self.worker_uid,
+            gid=self.worker_gid,
+            modes={0o600, 0o640},
+        )
+        admission, admission_stat, _admission_bytes = self._json_file(
+            admission_path,
+            uid=self.worker_uid,
+            gid=self.worker_gid,
+            modes={0o640},
+        )
+        registry, registry_stat, _registry_bytes = self._json_file(
+            self.CONFIG,
+            uid=self.root_uid,
+            gid=self.root_gid,
+            modes={0o644},
+        )
+        allocation_sha = hashlib.sha256(allocation_bytes).hexdigest()
+        record = registry.get("workspaces", {}).get(exact["workspaceIdentity"])
+        runtime = f"ws-{session.replace('-', '')}"
+        runtime_root = f"{session_root}/runtime/{runtime}"
+        workspace_keys = {
+            "schemaVersion", "sessionId", "projectId", "canonicalRemote",
+            "baseBranch", "branch", "mirrorPath", "worktreePath",
+            "workerHost", "state", "expectedBaseCommit", "headCommit",
+        }
+        registry_keys = {
+            "schemaVersion", "selectionEnabled", "executionEnabled",
+            "projectId", "repository", "branch", "commit", "manifestSha256",
+            "runner", "workspaces",
+        }
+        allocation_keys = {
+            "schemaVersion", "sessionId", "projectId", "branch", "mirrorPath",
+            "worktreePath", "runtimeId", "manifestRelativePath", "slot",
+            "workloadClass", "state", "runtimeNames", "runtimeRoot", "logsPath",
+            "artifactsRoot", "cacheRoot", "allocatedPorts", "heavyPermit",
+        }
+        if (
+            set(workspace) != workspace_keys
+            or workspace.get("schemaVersion") != 1
+            or workspace.get("sessionId") != session
+            or workspace.get("projectId") != PROJECT_ID
+            or workspace.get("canonicalRemote") != REPOSITORY
+            or workspace.get("baseBranch") != BRANCH
+            or workspace.get("branch") != exact["workspaceBranch"]
+            or workspace.get("mirrorPath") != "/srv/atenea/repositories/atenea.git"
+            or workspace.get("worktreePath") != str(worktree)
+            or workspace.get("workerHost") != self.worker_host
+            or workspace.get("state") != "ready"
+            or workspace.get("expectedBaseCommit") != exact["commit"]
+            or workspace.get("headCommit") != exact["commit"]
+            or not isinstance(record, dict)
+            or set(record) != {
+                "sessionId", "worktree", "allocationSha256", "canonicalCommit"
+            }
+            or record != {
+                "sessionId": session,
+                "worktree": str(worktree),
+                "allocationSha256": allocation_sha,
+                "canonicalCommit": exact["commit"],
+            }
+            or frozenset(registry) not in {
+                frozenset(registry_keys),
+                frozenset(registry_keys | {"attachmentRoot"}),
+            }
+            or registry.get("schemaVersion") != "project-codex-v1"
+            or registry.get("projectId") != PROJECT_ID
+            or registry.get("repository") != REPOSITORY
+            or registry.get("branch") != BRANCH
+            or registry.get("commit") != exact["commit"]
+            or registry.get("manifestSha256") != MANIFEST_SHA256
+            or registry.get("runner")
+            != "/usr/local/libexec/atenea/project-codex-runner-v1.py"
+            or (
+                "attachmentRoot" in registry
+                and registry.get("attachmentRoot") != "/srv/atenea/attachments-v1"
+            )
+            or registry.get("selectionEnabled") is not True
+            or registry.get("executionEnabled") is not True
+            or registry.get("workspaces") != {exact["workspaceIdentity"]: record}
+            or set(admission) != {"schemaVersion", "sessionId", "normal", "heavy"}
+            or admission.get("schemaVersion") != 1
+            or admission.get("sessionId") != session
+            or not isinstance(admission.get("normal"), dict)
+            or set(admission["normal"]) != {"slot", "state"}
+            or not isinstance(admission.get("heavy"), dict)
+            or set(admission["heavy"]) != {"permit", "state"}
+            or set(allocation) != allocation_keys
+            or allocation.get("schemaVersion") != 1
+            or allocation.get("sessionId") != session
+            or allocation.get("projectId") != PROJECT_ID
+            or allocation.get("branch") != exact["workspaceBranch"]
+            or allocation.get("mirrorPath") != "/srv/atenea/repositories/atenea.git"
+            or allocation.get("runtimeId") != runtime
+            or allocation.get("worktreePath") != str(worktree)
+            or allocation.get("manifestRelativePath") != "ops/atenea-runtime.json"
+            or allocation.get("workloadClass") != "heavy"
+            or allocation.get("state") != "allocated"
+            or allocation.get("runtimeNames") != {
+                "composeProject": f"{runtime}-compose",
+                "network": f"{runtime}-network",
+                "volumePrefix": f"{runtime}-volume",
+                "processUnit": f"atenea-{runtime}.service",
+                "tomcatBase": f"{runtime_root}/tomcat",
+            }
+            or allocation.get("runtimeRoot") != runtime_root
+            or allocation.get("logsPath")
+            != f"/srv/atenea/artifacts/sessions/{session}/runtime/logs"
+            or allocation.get("artifactsRoot")
+            != f"/srv/atenea/artifacts/sessions/{session}/runs"
+            or allocation.get("cacheRoot")
+            != f"/srv/atenea/caches/sessions/{session}"
+            or admission.get("normal")
+            != {"slot": allocation.get("slot"), "state": "held"}
+            or admission.get("heavy")
+            != {"permit": allocation.get("heavyPermit"), "state": "held"}
+        ):
+            _reject()
+        manifest = self._physical(worktree / "ops/atenea-runtime.json")
+        try:
+            if (
+                manifest.is_symlink()
+                or not manifest.is_file()
+                or hashlib.sha256(manifest.read_bytes()).hexdigest()
+                != MANIFEST_SHA256
+            ):
+                _reject()
+        except OSError:
+            _reject()
+        self._require_directory(self._physical(worktree), self.worker_uid)
+        if not self.test_mode:
+            physical_worktree = self._physical(worktree)
+            remote = self._run(
+                [
+                    "/usr/bin/git", "-c", f"safe.directory={physical_worktree}",
+                    "-C", str(physical_worktree), "remote", "get-url", "origin",
+                ],
+                15,
+            ).stdout.strip()
+            head = self._run(
+                [
+                    "/usr/bin/git", "-c", f"safe.directory={physical_worktree}",
+                    "-C", str(physical_worktree), "rev-parse", "--verify",
+                    "HEAD^{commit}",
+                ],
+                15,
+            ).stdout.strip()
+            if remote != REPOSITORY or head != exact["commit"]:
+                _reject()
+        self._assert_no_ephemeral(session, allocation)
+        ports = allocation.get("allocatedPorts")
+        if not isinstance(ports, list):
+            _reject()
+        projection = {
+            "schemaVersion": SCHEMA,
+            "requestFingerprintSha256": canonical_hash(exact),
+            "sessionId": session,
+            "workspaceIdentity": exact["workspaceIdentity"],
+            "projectId": PROJECT_ID,
+            "workerId": WORKER_ID,
+            "workspace": {
+                "recordPath": str(workspace_path),
+                "worktreePath": str(worktree),
+                "sessionId": session,
+                "projectId": PROJECT_ID,
+                "repository": REPOSITORY,
+                "baseBranch": BRANCH,
+                "workspaceBranch": exact["workspaceBranch"],
+                "canonicalCommit": exact["commit"],
+                "manifestSha256": MANIFEST_SHA256,
+                "state": "ready",
+                "owner": "atenea-worker",
+                "group": "atenea",
+                "mode": int(f"{stat.S_IMODE(workspace_stat.st_mode):o}"),
+                "symlink": False,
+            },
+            "registry": {
+                "configurationPath": str(self.CONFIG),
+                "selectionEnabled": True,
+                "executionEnabled": True,
+                "workspaceIdentity": exact["workspaceIdentity"],
+                "sessionId": session,
+                "worktreePath": str(worktree),
+                "allocationFingerprintSha256": allocation_sha,
+                "canonicalCommit": exact["commit"],
+                "projectId": PROJECT_ID,
+                "repository": REPOSITORY,
+                "owner": "root",
+                "group": "root",
+                "mode": int(f"{stat.S_IMODE(registry_stat.st_mode):o}"),
+                "symlink": False,
+            },
+            "admission": {
+                "recordPath": str(admission_path),
+                "sessionId": session,
+                "normal": admission["normal"],
+                "heavy": admission["heavy"],
+                "owner": "atenea-worker",
+                "group": "atenea",
+                "mode": int(f"{stat.S_IMODE(admission_stat.st_mode):o}"),
+                "symlink": False,
+            },
+            "allocation": {
+                "recordPath": str(allocation_path),
+                "fingerprintSha256": allocation_sha,
+                "sessionId": session,
+                "projectId": PROJECT_ID,
+                "runtimeId": allocation["runtimeId"],
+                "worktreePath": str(worktree),
+                "manifestRelativePath": "ops/atenea-runtime.json",
+                "slot": allocation.get("slot"),
+                "heavyPermit": allocation.get("heavyPermit"),
+                "state": "allocated",
+                "owner": "atenea-worker",
+                "group": "atenea",
+                "mode": int(f"{stat.S_IMODE(allocation_stat.st_mode):o}"),
+                "symlink": False,
+                "allocatedPorts": ports,
+            },
+            **{category: [] for category in EPHEMERAL_CATEGORIES},
+            "valuesExposed": False,
+        }
+        validate_release_preflight(exact, projection)
+        return projection
+
+    def _assert_no_ephemeral(
+        self, session: str, allocation: dict[str, Any]
+    ) -> None:
+        if self.test_mode:
+            marker = self.root / "synthetic-ephemeral-present"
+            if marker.exists() or marker.is_symlink():
+                _reject()
+            self._assert_no_owned_preview(session)
+            return
+        runtime = allocation["runtimeId"]
+        slot = allocation.get("slot")
+        if slot not in {"slot1", "slot2", "slot3", "slot4"}:
+            _reject()
+        docker = Path("/usr/bin/docker")
+        hosts = ["unix:///run/docker.sock"] + [
+            f"unix:///run/atenea-runtime/{observed_slot}/docker.sock"
+            for observed_slot in ("slot1", "slot2", "slot3", "slot4")
+        ]
+        for host in hosts:
+            socket_path = Path(host.removeprefix("unix://"))
+            if not socket_path.exists():
+                continue
+            for arguments in (
+                ("ps", "-aq", "--filter", f"label=com.atenea.session={session}"),
+                ("ps", "-aq", "--filter", f"name={runtime}"),
+                ("network", "ls", "-q", "--filter", f"label=com.atenea.session={session}"),
+                ("network", "ls", "-q", "--filter", f"name={runtime}"),
+                ("image", "ls", "-q", "--filter", f"label=com.atenea.session={session}"),
+                ("image", "ls", "-q", f"{runtime}*"),
+            ):
+                completed = self._run([str(docker), "--host", host, *arguments], 20)
+                if completed.stdout.strip():
+                    _reject()
+        allocated_ports = {
+            item.get("loopbackPort")
+            for item in allocation.get("allocatedPorts", [])
+            if isinstance(item, dict) and type(item.get("loopbackPort")) is int
+        }
+        completed = self._run(["/usr/bin/ss", "-H", "-lnt"], 10)
+        for line in completed.stdout.splitlines():
+            fields = line.split()
+            if len(fields) >= 4:
+                try:
+                    port = int(fields[3].rsplit(":", 1)[1])
+                except (ValueError, IndexError):
+                    continue
+                if port in allocated_ports:
+                    _reject()
+        self._assert_no_owned_preview(session)
+        materialization_root = self._physical(self.MATERIALIZATION_ROOT)
+        if materialization_root.exists():
+            try:
+                if any(materialization_root.iterdir()):
+                    _reject()
+            except OSError:
+                _reject()
+        units = self._run(
+            [
+                "/usr/bin/systemctl", "list-units", "--all", "--no-legend",
+                "--plain", "atenea-project-codex-*", "atenea-playwright-*",
+            ],
+            15,
+        )
+        if units.stdout.strip():
+            _reject()
+
+    def _assert_no_owned_preview(self, session: str) -> None:
+        preview_root = self._physical(self.PREVIEW_ROOT)
+        if preview_root.exists():
+            try:
+                records = sorted(preview_root.glob("*/record.json"))
+            except OSError:
+                _reject()
+            for record_path in records:
+                try:
+                    if record_path.is_symlink() or record_path.stat().st_size > 64 * 1024:
+                        _reject()
+                    record = json.loads(record_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    _reject()
+                if isinstance(record, dict) and (
+                    record.get("workSessionId") == session
+                    or record.get("runtimeSessionId") == session
+                ):
+                    _reject()
+
+    @staticmethod
+    def _run(command: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+        try:
+            completed = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            _reject()
+        if completed.returncode != 0 or len(completed.stdout.encode()) > 64 * 1024:
+            _reject()
+        return completed
+
+    @staticmethod
+    def _require_directory(path: Path, uid: int) -> None:
+        try:
+            observed = path.lstat()
+        except OSError:
+            _reject()
+        if not stat.S_ISDIR(observed.st_mode) or observed.st_uid != uid:
+            _reject()
+
+    def remove_ephemeral(
+        self, _category: str, _resource_id: str, _candidate: dict[str, Any]
+    ) -> dict[str, Any]:
+        raise PreflightRejected("WORKSPACE_RELEASE_BOUNDARY_UNAVAILABLE")
+
+    def verify_ephemeral_projection(
+        self, request: dict[str, str], projection: dict[str, Any]
+    ) -> None:
+        if any(projection[category] for category in EPHEMERAL_CATEGORIES):
+            raise PreflightRejected("WORKSPACE_RELEASE_BOUNDARY_UNAVAILABLE")
+        self._assert_no_ephemeral(request["sessionId"], projection["allocation"])
+
+    def unregister_workspace(
+        self, session: str, workspace_identity: str
+    ) -> dict[str, Any]:
+        config, _observed, content = self._json_file(
+            self.CONFIG,
+            uid=self.root_uid,
+            gid=self.root_gid,
+            modes={0o644},
+        )
+        workspaces = config.get("workspaces")
+        if not isinstance(workspaces, dict):
+            _reject()
+        changed = workspace_identity in workspaces
+        if changed:
+            record = workspaces.get(workspace_identity)
+            if not isinstance(record, dict) or record.get("sessionId") != session:
+                _reject()
+            if workspaces != {workspace_identity: record}:
+                _reject()
+            updated = dict(config)
+            updated["selectionEnabled"] = False
+            updated["executionEnabled"] = False
+            updated["workspaces"] = {}
+            self._atomic_json(
+                self.CONFIG,
+                updated,
+                0o644,
+                self.root_uid,
+                self.root_gid,
+                hashlib.sha256(content).hexdigest(),
+            )
+        elif (
+            workspaces != {}
+            or config.get("selectionEnabled") is not False
+            or config.get("executionEnabled") is not False
+        ):
+            _reject()
+        return {
+            "schemaVersion": "atenea-workspace-unregistration-v1",
+            "state": "UNREGISTERED",
+            "sessionId": session,
+            "workspaceIdentity": workspace_identity,
+            "registrationRemoved": changed,
+            "selectionEnabled": False,
+            "executionEnabled": False,
+            "remainingRegistrations": 0,
+            "valuesExposed": False,
+        }
+
+    def release_admission(self, session: str, kind: str) -> dict[str, Any]:
+        if kind not in {"heavy", "normal"}:
+            _reject()
+        record_path = self.ADMISSION_ROOT / f"{session}.json"
+        before, _observed, content = self._json_file(
+            record_path,
+            uid=self.worker_uid,
+            gid=self.worker_gid,
+            modes={0o640},
+        )
+        current = before.get(kind)
+        if not isinstance(current, dict) or current.get("state") not in {"held", "released"}:
+            _reject()
+        changed = current["state"] == "held"
+        if self.test_mode:
+            updated = json.loads(json.dumps(before))
+            updated[kind]["state"] = "released"
+            self._atomic_json(
+                record_path,
+                updated,
+                0o640,
+                self.worker_uid,
+                self.worker_gid,
+                hashlib.sha256(content).hexdigest(),
+            )
+        elif changed:
+            command = [
+                "/usr/sbin/runuser", "-u", "atenea-worker", "--",
+                str(self.ADMISSION_TOOL), "--json", f"release-{kind}", session,
+            ]
+            completed = self._run(command, 45)
+            if len(completed.stdout.encode()) > 4096:
+                _reject()
+        after, _after_stat, _after_content = self._json_file(
+            record_path,
+            uid=self.worker_uid,
+            gid=self.worker_gid,
+            modes={0o640},
+        )
+        if not isinstance(after.get(kind), dict) or after[kind].get("state") != "released":
+            _reject()
+        if kind == "normal" and (
+            not isinstance(after.get("heavy"), dict)
+            or after["heavy"].get("state") != "released"
+        ):
+            _reject()
+        return {
+            "schemaVersion": "atenea-admission-release-v1",
+            "state": "RELEASED",
+            "sessionId": session,
+            "kind": kind,
+            "changed": changed,
+            "valuesExposed": False,
+        }
+
+    def verify_retained(
+        self, session: str, projection: dict[str, Any]
+    ) -> dict[str, Any]:
+        session_root = Path(f"/srv/atenea/workspaces/sessions/{session}")
+        workspace_path = session_root / "workspace-v1.json"
+        self._json_file(
+            workspace_path,
+            uid=self.worker_uid,
+            gid=self.worker_gid,
+            modes={0o640},
+        )
+        self._require_directory(self._physical(session_root / PROJECT_ID), self.worker_uid)
+        config, _config_stat, _config_bytes = self._json_file(
+            self.CONFIG,
+            uid=self.root_uid,
+            gid=self.root_gid,
+            modes={0o644},
+        )
+        admission, _admission_stat, _admission_bytes = self._json_file(
+            self.ADMISSION_ROOT / f"{session}.json",
+            uid=self.worker_uid,
+            gid=self.worker_gid,
+            modes={0o640},
+        )
+        active = self._physical(session_root / "runtime-allocation-v1.json")
+        retired = self._physical(session_root / RETIRED_ALLOCATION_NAME)
+        if (
+            config.get("workspaces") != {}
+            or config.get("selectionEnabled") is not False
+            or config.get("executionEnabled") is not False
+            or admission.get("normal", {}).get("state") != "released"
+            or admission.get("heavy", {}).get("state") != "released"
+            or active.exists()
+            or active.is_symlink()
+            or not retired.is_file()
+            or retired.is_symlink()
+        ):
+            _reject()
+        self._assert_no_ephemeral(session, projection["allocation"])
+        return {
+            "schemaVersion": "atenea-workspace-release-proof-v1",
+            "state": "RELEASED",
+            "sessionId": session,
+            "ephemeralRemaining": 0,
+            "registrationPresent": False,
+            "normalAdmission": "released",
+            "heavyAdmission": "released",
+            "activeAllocationPresent": False,
+            "retiredAllocationPresent": True,
+            "retained": {key: True for key in sorted(RETAINED_KEYS)},
+            "valuesExposed": False,
+        }
+
+    def _atomic_json(
+        self,
+        canonical: Path,
+        payload: dict[str, Any],
+        mode: int,
+        uid: int,
+        gid: int,
+        expected_sha256: str,
+    ) -> None:
+        target = self._physical(canonical)
+        descriptor = -1
+        temporary = ""
+        try:
+            descriptor, temporary = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+            os.fchmod(descriptor, mode)
+            if not self.test_mode:
+                os.fchown(descriptor, uid, gid)
+            encoded = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            written = 0
+            while written < len(encoded):
+                written += os.write(descriptor, encoded[written:])
+            os.fsync(descriptor)
+            os.close(descriptor)
+            descriptor = -1
+            _current, _current_stat, current_content = self._json_file(
+                canonical, uid=uid, gid=gid, modes={mode}
+            )
+            if hashlib.sha256(current_content).hexdigest() != expected_sha256:
+                _reject()
+            os.replace(temporary, target)
+            temporary = ""
+            ReleaseJournalStore._fsync_directory(target.parent)
+        except OSError:
+            _reject()
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            if temporary:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
 
 
 class WorkspaceReleaseFinalizer:
@@ -1328,3 +1983,44 @@ class WorkspaceReleaseFinalizer:
         }
         receipt["receiptSha256"] = canonical_hash(receipt)
         return receipt
+
+
+def main() -> int:
+    if len(sys.argv) != 1:
+        print(json.dumps({"code": "WORKSPACE_RELEASE_PREFLIGHT_REJECTED"}), file=sys.stderr)
+        return 64
+    try:
+        encoded = sys.stdin.buffer.read(65_537)
+        if len(encoded) < 2 or len(encoded) > 65_536:
+            _reject()
+        request = json.loads(encoded)
+        exact = _request_identity(request)
+        store = ReleaseJournalStore()
+        journal_path = JOURNAL_ROOT / exact["sessionId"] / "journal-v1.json"
+        operator = FixedRootReleaseOperator()
+        if journal_path.exists() or journal_path.is_symlink():
+            projection = store.load(exact)["preflightProjection"]
+        else:
+            projection = operator.build_projection(exact)
+        finalizer = WorkspaceReleaseFinalizer(
+            store,
+            ReviewedReleaseBoundary(operator, AllocationRetirer()),
+        )
+        receipt = finalizer.release(exact, projection)
+        print(json.dumps(receipt, sort_keys=True, separators=(",", ":")))
+        return 0
+    except (json.JSONDecodeError, UnicodeDecodeError, PreflightRejected) as error:
+        code = (
+            error.code
+            if isinstance(error, PreflightRejected)
+            else "WORKSPACE_RELEASE_PREFLIGHT_REJECTED"
+        )
+        print(json.dumps({"code": code}, sort_keys=True, separators=(",", ":")), file=sys.stderr)
+        return 65
+    except Exception:
+        print(json.dumps({"code": "OPERATION_FAILED"}), file=sys.stderr)
+        return 70
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

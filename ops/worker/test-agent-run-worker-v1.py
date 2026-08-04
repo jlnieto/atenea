@@ -12,6 +12,7 @@ import os
 import subprocess
 import urllib.error
 import urllib.request
+from http import HTTPStatus
 from pathlib import Path
 
 from importlib.machinery import SourceFileLoader
@@ -241,6 +242,71 @@ class WorkspaceReleaseContractTest(unittest.TestCase):
             MODULE.assert_no_non_terminal_session_execution(executions, self.session_id)
         executions["dispatch"]["status"] = "CANCELLED"
         MODULE.assert_no_non_terminal_session_execution(executions, self.session_id)
+
+
+class WorkspaceReleaseWorkerExecutionTest(WorkspaceReleaseContractTest):
+    def setUp(self):
+        super().setUp()
+        self.temporary = tempfile.TemporaryDirectory()
+        self.releaser = Path(self.temporary.name) / "fixed-releaser"
+        self.releaser.write_text("reviewed fixed mediator\n", encoding="utf-8")
+        self.state = MODULE.WorkerState(
+            Path(self.temporary.name) / "state",
+            "ax42-01",
+            privilege_command=(),
+            project_workspace_releaser=self.releaser,
+        )
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_release_invokes_only_fixed_mediator_with_canonical_stdin(self):
+        receipt = self.receipt()
+        completed = subprocess.CompletedProcess(
+            [str(self.releaser)], 0, json.dumps(receipt), ""
+        )
+        with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
+            first = self.state.release_workspace(self.request)
+            second = self.state.release_workspace(dict(self.request))
+
+        self.assertEqual(receipt, first)
+        self.assertEqual(first, second)
+        self.assertEqual(2, run.call_count)
+        for invocation in run.call_args_list:
+            self.assertEqual([str(self.releaser)], invocation.args[0])
+            self.assertEqual(
+                json.dumps(self.request, sort_keys=True, separators=(",", ":")),
+                invocation.kwargs["input"],
+            )
+            self.assertEqual(300, invocation.kwargs["timeout"])
+
+    def test_non_terminal_execution_blocks_before_mediator(self):
+        self.state.executions["dispatch"] = {
+            "sessionId": self.session_id,
+            "status": "RECONCILING",
+        }
+        with mock.patch.object(MODULE.subprocess, "run") as run:
+            with self.assertRaisesRegex(MODULE.ProtocolError, "terminal"):
+                self.state.release_workspace(self.request)
+        run.assert_not_called()
+
+    def test_timeout_and_malformed_receipt_are_distinct_transport_failures(self):
+        with mock.patch.object(
+            MODULE.subprocess,
+            "run",
+            side_effect=MODULE.subprocess.TimeoutExpired([str(self.releaser)], 300),
+        ):
+            with self.assertRaises(MODULE.ProtocolError) as timeout:
+                self.state.release_workspace(self.request)
+        self.assertEqual(HTTPStatus.GATEWAY_TIMEOUT, timeout.exception.status)
+        with mock.patch.object(
+            MODULE.subprocess,
+            "run",
+            return_value=subprocess.CompletedProcess([str(self.releaser)], 0, "{}", ""),
+        ):
+            with self.assertRaises(MODULE.ProtocolError) as malformed:
+                self.state.release_workspace(self.request)
+        self.assertEqual(HTTPStatus.BAD_GATEWAY, malformed.exception.status)
 
 
 class WorkerStateTest(unittest.TestCase):
@@ -2038,6 +2104,36 @@ class WorkerHttpTest(unittest.TestCase):
             ),
             timeout=2,
         )
+
+    def test_workspace_release_route_dispatches_exact_authenticated_request(self):
+        session_id = "11111111-1111-4111-8111-111111111111"
+        request = {
+            "operationId": "22222222-2222-4222-8222-222222222222",
+            "idempotencyKey": "33333333-3333-4333-8333-333333333333",
+            "sessionId": session_id,
+            "workspaceIdentity": "remote:ax42-01:work-session:" + session_id,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": TEST_COMMIT,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+            "workspaceBranch": "atenea/session-" + session_id,
+        }
+        expected = WorkspaceReleaseContractTest()
+        expected.setUp()
+        receipt = expected.receipt()
+        observed = []
+
+        def release_workspace(body):
+            observed.append(body)
+            return receipt
+
+        self.state.release_workspace = release_workspace
+        with self.post(MODULE.WORKSPACE_RELEASE_PATH, request, "t" * 64) as response:
+            payload = json.load(response)
+
+        self.assertEqual([request], observed)
+        self.assertEqual(receipt, payload)
 
     def test_health_requires_authentication_and_exposes_capacity(self):
         with self.assertRaises(urllib.error.HTTPError) as denied:

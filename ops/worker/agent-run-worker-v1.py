@@ -71,6 +71,12 @@ REVIEWED_MEDIATOR_ERRORS = {
     "ATENEA_WORKSPACE_ACTIVATION_REJECTED": (
         "VALIDATION", False, "CONTACT_PLATFORM_ADMINISTRATOR",
     ),
+    "WORKSPACE_RELEASE_PREFLIGHT_REJECTED": (
+        "OWNERSHIP", False, "CONTACT_PLATFORM_ADMINISTRATOR",
+    ),
+    "WORKSPACE_RELEASE_BOUNDARY_UNAVAILABLE": (
+        "POLICY", False, "CONTACT_PLATFORM_ADMINISTRATOR",
+    ),
 }
 PROGRESS_CATEGORIES = {
     "ACCEPTED", "QUEUED", "PREPARING_WORKSPACE", "CODEX_STARTED",
@@ -540,6 +546,7 @@ class WorkerState:
         project_config_uid: int = 0,
         privilege_command: tuple[str, ...] = ("sudo",),
         project_workspace_activator: Path | None = None,
+        project_workspace_releaser: Path | None = None,
         beautips_project_config: Path | None = None,
         beautips_project_runner: Path | None = None,
         beautips_workspace_activator: Path | None = None,
@@ -566,6 +573,7 @@ class WorkerState:
         self.project_config_uid = project_config_uid
         self.privilege_command = privilege_command
         self.project_workspace_activator = project_workspace_activator
+        self.project_workspace_releaser = project_workspace_releaser
         self.beautips_project_config = beautips_project_config
         self.beautips_project_runner = beautips_project_runner
         self.beautips_workspace_activator = beautips_workspace_activator
@@ -1233,6 +1241,72 @@ class WorkerState:
     def ensure_workspace(self, request: dict[str, Any]) -> dict[str, Any]:
         with self.workspace_lifecycle_lock():
             return self._ensure_workspace_locked(request)
+
+    def release_workspace(self, request: dict[str, Any]) -> dict[str, Any]:
+        exact_request = validate_workspace_release_request(request)
+        with self.workspace_lifecycle_lock():
+            with self.lock:
+                assert_no_non_terminal_session_execution(
+                    self.executions, exact_request["sessionId"]
+                )
+            releaser = self.project_workspace_releaser
+            if releaser is None or not releaser.is_file():
+                raise ProtocolError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "workspace_release_unavailable",
+                    "workspace release is unavailable",
+                )
+            try:
+                completed = subprocess.run(
+                    [*self.privilege_command, str(releaser)],
+                    input=json.dumps(
+                        exact_request, sort_keys=True, separators=(",", ":")
+                    ),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=300,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                raise ProtocolError(
+                    HTTPStatus.GATEWAY_TIMEOUT,
+                    "workspace_release_timeout",
+                    "workspace release exceeded its finite timeout",
+                ) from None
+            except OSError:
+                raise ProtocolError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "workspace_release_unavailable",
+                    "workspace release mediator could not be started",
+                ) from None
+            if completed.returncode != 0:
+                try:
+                    safe_error = reviewed_mediator_stderr_envelope(completed.stderr)
+                except ValueError:
+                    safe_error = worker_error_envelope(
+                        "WORKSPACE_RELEASE_FAILED",
+                        "PROTOCOL",
+                        False,
+                        "CONTACT_PLATFORM_ADMINISTRATOR",
+                    )
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT,
+                    "workspace_release_failed",
+                    "workspace release failed closed",
+                    safe_error,
+                )
+            try:
+                receipt = json.loads(completed.stdout)
+            except json.JSONDecodeError:
+                raise ProtocolError(
+                    HTTPStatus.BAD_GATEWAY,
+                    "workspace_release_receipt_invalid",
+                    "workspace release returned an invalid response",
+                ) from None
+            return validate_workspace_release_receipt(
+                exact_request, self.worker_id, receipt
+            )
 
     def _ensure_workspace_locked(self, request: dict[str, Any]) -> dict[str, Any]:
         if set(request) != WORKSPACE_ENSURE_KEYS:
@@ -2924,6 +2998,9 @@ class AgentRunHandler(BaseHTTPRequestHandler):
             if path == "/v1/project-workspaces/ensure":
                 self._write(HTTPStatus.OK, self.server.state.ensure_workspace(body))
                 return
+            if path == WORKSPACE_RELEASE_PATH:
+                self._write(HTTPStatus.OK, self.server.state.release_workspace(body))
+                return
             if path == "/v1/project-workspaces/draft-fingerprint":
                 self._write(HTTPStatus.OK, self.server.state.fingerprint_retained_draft(body))
                 return
@@ -3029,6 +3106,11 @@ def main() -> int:
         type=Path,
         default=Path("/usr/local/libexec/atenea/atenea-workspace-activation-v1.sh"),
     )
+    parser.add_argument(
+        "--project-workspace-releaser",
+        type=Path,
+        default=Path("/usr/local/libexec/atenea/atenea-workspace-release-v1.py"),
+    )
     parser.add_argument("--beautips-project-config", type=Path)
     parser.add_argument("--beautips-project-runner", type=Path)
     parser.add_argument(
@@ -3094,6 +3176,7 @@ def main() -> int:
         args.project_runner,
         args.project_timeout,
         project_workspace_activator=args.project_workspace_activator,
+        project_workspace_releaser=args.project_workspace_releaser,
         beautips_project_config=args.beautips_project_config,
         beautips_project_runner=args.beautips_project_runner,
         beautips_workspace_activator=args.beautips_workspace_activator,

@@ -111,6 +111,21 @@ apply_install >/dev/null
   || fail_test 'idempotent apply changed a retained release operation'
 bundle_reset
 
+bundle_create_current
+printf 'reviewed release predecessor fixture\n' >"${RELEASE_PROGRAM}"
+chmod 0755 "${RELEASE_PROGRAM}"
+RELEASE_PROGRAM_PREDECESSOR_SHA256="$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)"
+[[ "$(activation_bundle_preflight)" == current ]] \
+  || fail_test 'reviewed release predecessor was not accepted for upgrade'
+if ( verify ) >/dev/null 2>&1; then
+  fail_test 'installed verifier accepted the release predecessor as current'
+fi
+apply_install >/dev/null
+[[ "$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)" == "${RELEASE_PROGRAM_SHA256}" ]] \
+  || fail_test 'release predecessor was not upgraded to the exact source'
+RELEASE_PROGRAM_PREDECESSOR_SHA256=6e721a7d166fae977d781a5d6341fd872e51cb0bdf349afd8d53da2ec08402c1
+bundle_reset
+
 mkdir -p "$(dirname -- "${PROGRAM}")"
 cp "${SOURCE_DIR}/atenea-workspace-activation-v1.sh" "${PROGRAM}"
 chmod 0755 "${PROGRAM}"
