@@ -1,5 +1,6 @@
 package com.atenea.service.worksession;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -13,9 +14,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.api.worksession.AgentRunResponse;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
+import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
@@ -29,10 +30,11 @@ import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
-import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.ExecutionProfileSource;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.SessionTurnAttachmentEntity;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
@@ -435,6 +437,43 @@ class AgentRunServiceTest {
     }
 
     @Test
+    void exactReleasedBlockerReceiptAllowsRetryEligibilityForLaterTerminalProof() {
+        AgentRunEntity source = closedOwnerBlockedRun();
+        WorkSessionEntity blocker = releasedBlocker();
+        when(workSessionRepository.findWithProjectById(16L))
+                .thenReturn(Optional.of(blocker));
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Boolean.class),
+                any(), any(), any())).thenReturn(true);
+
+        assertDoesNotThrow(() -> agentRunService.requireRemoteRetryEligible(source));
+    }
+
+    @Test
+    void missingMatchingReceiptKeepsClosedOwnerRetryUnavailable() {
+        AgentRunEntity source = closedOwnerBlockedRun();
+        WorkSessionEntity blocker = releasedBlocker();
+        blocker.setRemoteCloseReceiptSha256(null);
+        when(workSessionRepository.findWithProjectById(16L))
+                .thenReturn(Optional.of(blocker));
+
+        assertThrows(AgentRunRecoveryConflictException.class,
+                () -> agentRunService.requireRemoteRetryEligible(source));
+    }
+
+    @Test
+    void projectedReceiptWithoutExactReleasedOperationKeepsRetryUnavailable() {
+        AgentRunEntity source = closedOwnerBlockedRun();
+        WorkSessionEntity blocker = releasedBlocker();
+        when(workSessionRepository.findWithProjectById(16L))
+                .thenReturn(Optional.of(blocker));
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Boolean.class),
+                any(), any(), any())).thenReturn(false);
+
+        assertThrows(AgentRunRecoveryConflictException.class,
+                () -> agentRunService.requireRemoteRetryEligible(source));
+    }
+
+    @Test
     void createRemoteImageRetryFailsClosedWhenRetainedManifestChanges() {
         WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
         session.setExecutionTarget(ExecutionTarget.REMOTE);
@@ -805,5 +844,45 @@ class AgentRunServiceTest {
         run.setStartedAt(Instant.parse("2026-03-25T10:06:00Z"));
         run.setCreatedAt(Instant.parse("2026-03-25T10:06:00Z"));
         return run;
+    }
+
+    private static AgentRunEntity closedOwnerBlockedRun() {
+        WorkSessionEntity session = buildSession(
+                17L, 7L, ProjectCodexIdentity.REPO_PATH);
+        UUID sessionId = UUID.fromString("18c00753-6080-42f7-ac05-18c47b236cac");
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        session.setRemoteSessionId(sessionId);
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + sessionId);
+        AgentRunEntity source = buildRun(96L, AgentRunStatus.FAILED);
+        source.setSession(session);
+        source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        source.setRemoteSessionId(sessionId);
+        source.setFailureCode("CLOSED_SESSION_OWNS_CAPACITY");
+        source.setRecoveryNextAction(AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE);
+        source.setRecoveryBlockerWorkSessionId(16L);
+        return source;
+    }
+
+    private static WorkSessionEntity releasedBlocker() {
+        WorkSessionEntity blocker = buildSession(
+                16L, 7L, ProjectCodexIdentity.REPO_PATH);
+        UUID remoteId = UUID.fromString("7151dce0-69ab-4614-86e4-f93f1af825e4");
+        blocker.setStatus(WorkSessionStatus.CLOSED);
+        blocker.setExecutionTarget(ExecutionTarget.REMOTE);
+        blocker.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        blocker.setRemoteSessionId(remoteId);
+        blocker.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteId);
+        blocker.setCanonicalSourceRef("refs/heads/main");
+        blocker.setCanonicalSourceCommit("a".repeat(40));
+        blocker.setCanonicalSourceObservationSha256("b".repeat(64));
+        blocker.setCanonicalSourceObservedAt(Instant.parse("2026-08-03T10:00:00Z"));
+        blocker.setRemoteCloseState(RemoteCloseState.RELEASED);
+        blocker.setRemoteCloseOperationId(
+                UUID.fromString("12c9de9d-6079-4f47-978e-ff52a440ba40"));
+        blocker.setRemoteCloseReceiptSha256("c".repeat(64));
+        blocker.setRemoteCloseReleasedAt(Instant.parse("2026-08-03T11:00:00Z"));
+        return blocker;
     }
 }

@@ -170,6 +170,9 @@ public class AgentRunEntity {
     @Column(name = "recovery_next_action", length = 40)
     private AgentRunRecoveryNextAction recoveryNextAction;
 
+    @Column(name = "recovery_blocker_work_session_id")
+    private Long recoveryBlockerWorkSessionId;
+
     @Column(name = "progress_next_sequence", nullable = false)
     private long progressNextSequence = 1;
 
@@ -371,6 +374,8 @@ public class AgentRunEntity {
     public void setFailureCode(String value) { this.failureCode = value; }
     public AgentRunRecoveryNextAction getRecoveryNextAction() { return recoveryNextAction; }
     public void setRecoveryNextAction(AgentRunRecoveryNextAction value) { this.recoveryNextAction = value; }
+    public Long getRecoveryBlockerWorkSessionId() { return recoveryBlockerWorkSessionId; }
+    public void setRecoveryBlockerWorkSessionId(Long value) { this.recoveryBlockerWorkSessionId = value; }
     public long getProgressNextSequence() { return progressNextSequence; }
     public void setProgressNextSequence(long progressNextSequence) { this.progressNextSequence = progressNextSequence; }
     public long getWorkerProgressSequence() { return workerProgressSequence; }

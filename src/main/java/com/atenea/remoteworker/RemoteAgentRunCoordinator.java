@@ -475,7 +475,8 @@ public class RemoteAgentRunCoordinator {
                         blocker.getId(), AgentRunStatus.nonTerminalStatuses())) {
             failDeterministically(runId, "CLOSED_SESSION_OWNS_CAPACITY",
                     AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE,
-                    "A closed WorkSession retains required remote capacity");
+                    "A closed WorkSession retains required remote capacity",
+                    blocker.getId());
             return;
         }
         failDeterministically(runId, "CAPACITY_OWNER_UNVERIFIED",
@@ -523,6 +524,7 @@ public class RemoteAgentRunCoordinator {
             run.setStatusReason("Waiting for exact active WorkSession capacity owner");
             run.setFailureCode(null);
             run.setRecoveryNextAction(null);
+            run.setRecoveryBlockerWorkSessionId(null);
             agentRunRepository.save(run);
             if (firstWait) {
                 progressService.append(runId, AgentRunProgressCategory.QUEUED);
@@ -536,6 +538,16 @@ public class RemoteAgentRunCoordinator {
             AgentRunRecoveryNextAction nextAction,
             String safeReason
     ) {
+        failDeterministically(runId, failureCode, nextAction, safeReason, null);
+    }
+
+    private void failDeterministically(
+            Long runId,
+            String failureCode,
+            AgentRunRecoveryNextAction nextAction,
+            String safeReason,
+            Long blockerWorkSessionId
+    ) {
         transaction.executeWithoutResult(status -> {
             AgentRunEntity run = agentRunRepository.findById(runId).orElse(null);
             if (run == null || run.getStatus().isTerminal()) {
@@ -548,6 +560,7 @@ public class RemoteAgentRunCoordinator {
             run.setStatusReason(safeReason);
             run.setFailureCode(failureCode);
             run.setRecoveryNextAction(nextAction);
+            run.setRecoveryBlockerWorkSessionId(blockerWorkSessionId);
             run = agentRunRepository.save(run);
             progressService.append(runId, AgentRunProgressCategory.FAILED);
             mobilePushDispatchService.notifyRunFailed(run);

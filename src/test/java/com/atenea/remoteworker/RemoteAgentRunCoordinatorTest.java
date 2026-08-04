@@ -458,6 +458,7 @@ class RemoteAgentRunCoordinatorTest {
         assertNull(run.getFinishedAt());
         assertNull(run.getFailureCode());
         assertNull(run.getRecoveryNextAction());
+        assertNull(run.getRecoveryBlockerWorkSessionId());
         verify(progressService, times(1)).append(run.getId(), AgentRunProgressCategory.QUEUED);
         verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
         verify(client, never()).dispatch(any(), any());
@@ -482,6 +483,7 @@ class RemoteAgentRunCoordinatorTest {
         assertEquals("CLOSED_SESSION_OWNS_CAPACITY", run.getFailureCode());
         assertEquals(AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE,
                 run.getRecoveryNextAction());
+        assertEquals(blocker.getId(), run.getRecoveryBlockerWorkSessionId());
         verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
         verify(client, never()).dispatch(any(), any());
     }
@@ -504,6 +506,7 @@ class RemoteAgentRunCoordinatorTest {
         assertEquals("CAPACITY_OWNER_UNVERIFIED", run.getFailureCode());
         assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
                 run.getRecoveryNextAction());
+        assertNull(run.getRecoveryBlockerWorkSessionId());
         verify(agentRunRepository, never()).existsBySessionIdAndStatusIn(any(), any());
         verify(client, never()).dispatch(any(), any());
     }

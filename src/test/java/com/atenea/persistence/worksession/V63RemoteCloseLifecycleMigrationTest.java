@@ -46,16 +46,20 @@ class V63RemoteCloseLifecycleMigrationTest {
                         "work_session.remote_close_updated_at",
                         "work_session.remote_close_released_at",
                         "agent_run.failure_code",
-                        "agent_run.recovery_next_action"}) {
+                        "agent_run.recovery_next_action",
+                        "agent_run.recovery_blocker_work_session_id"}) {
                     String[] identity = column.split("\\.", 2);
                     assertTrue(columnExists(connection, identity[0], identity[1]), column);
                 }
                 assertTrue(indexExists(connection, "idx_work_session_remote_close_reconcile"));
                 assertTrue(indexExists(connection, "idx_agent_run_failure_recovery"));
+                assertTrue(indexExists(connection, "idx_agent_run_recovery_blocker"));
                 assertTrue(tableExists(connection, "remote_close_legacy_plan"));
                 assertTrue(tableExists(connection, "remote_close_legacy_operation"));
+                assertTrue(tableExists(connection, "remote_close_legacy_event"));
                 assertTrue(indexExists(connection, "idx_remote_close_legacy_plan_session"));
                 assertTrue(indexExists(connection, "idx_remote_close_legacy_operation_session"));
+                assertTrue(indexExists(connection, "idx_remote_close_legacy_event_operation"));
             }
         });
     }
@@ -219,13 +223,17 @@ class V63RemoteCloseLifecycleMigrationTest {
                 execute(connection, """
                         UPDATE agent_run
                         SET failure_code = 'CLOSED_SESSION_OWNS_CAPACITY',
-                            recovery_next_action = 'RECONCILE_REMOTE_CLOSE'
+                            recovery_next_action = 'RECONCILE_REMOTE_CLOSE',
+                            recovery_blocker_work_session_id = ?
                         WHERE id = ?
-                        """, rows.agentRunId());
+                        """, rows.closedRemoteSessionId(), rows.agentRunId());
                 assertEquals("CLOSED_SESSION_OWNS_CAPACITY", queryString(connection,
                         "SELECT failure_code FROM agent_run WHERE id = ?", rows.agentRunId()));
                 assertEquals("RECONCILE_REMOTE_CLOSE", queryString(connection,
                         "SELECT recovery_next_action FROM agent_run WHERE id = ?", rows.agentRunId()));
+                assertEquals(rows.closedRemoteSessionId(), queryLong(connection,
+                        "SELECT recovery_blocker_work_session_id FROM agent_run WHERE id = ?",
+                        rows.agentRunId()));
             }
         });
     }

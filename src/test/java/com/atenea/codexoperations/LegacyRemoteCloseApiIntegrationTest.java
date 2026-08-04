@@ -21,6 +21,7 @@ import com.atenea.persistence.auth.OperatorEntity;
 import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionAcceptanceState;
@@ -31,11 +32,12 @@ import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteWorkerClient;
 import com.atenea.remoteworker.RemoteWorkerException;
-import java.io.IOException;
+import com.atenea.remoteworker.RemoteWorkerFailureCategory;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,6 +70,7 @@ class LegacyRemoteCloseApiIntegrationTest {
 
     @BeforeEach
     void cleanSyntheticLegacyFixtures() {
+        jdbcTemplate.update("DELETE FROM remote_close_legacy_event");
         jdbcTemplate.update("DELETE FROM remote_close_legacy_operation");
         jdbcTemplate.update("DELETE FROM remote_close_legacy_plan");
         jdbcTemplate.update("""
@@ -86,6 +89,11 @@ class LegacyRemoteCloseApiIntegrationTest {
         jdbcTemplate.update("DELETE FROM project WHERE name LIKE 'Foreign legacy %'");
         jdbcTemplate.update(
                 "DELETE FROM operator_account WHERE email LIKE 'legacy-close-%@atenea.test'");
+    }
+
+    @AfterEach
+    void cleanSyntheticLegacyFixturesAfterTest() {
+        cleanSyntheticLegacyFixtures();
     }
 
     @Test
@@ -163,6 +171,9 @@ class LegacyRemoteCloseApiIntegrationTest {
                 .andExpect(jsonPath("$.workSessionId").value(session.getId()))
                 .andExpect(jsonPath("$.operation").value("RECONCILE_REMOTE_CLOSE"))
                 .andExpect(jsonPath("$.state").value("RELEASED"))
+                .andExpect(jsonPath("$.revision").value(2))
+                .andExpect(jsonPath("$.nextAction").value("NONE"))
+                .andExpect(jsonPath("$.retryable").value(false))
                 .andExpect(jsonPath("$.ownershipFingerprintSha256").value(fingerprint))
                 .andExpect(jsonPath("$.valuesExposed").value(false))
                 .andExpect(jsonPath("$.command").doesNotExist())
@@ -178,6 +189,7 @@ class LegacyRemoteCloseApiIntegrationTest {
         verify(remoteWorkerClient, times(1)).releaseWorkspace(any());
         assertEquals(1, count("remote_close_legacy_plan"));
         assertEquals(1, count("remote_close_legacy_operation"));
+        assertEquals(2, count("remote_close_legacy_event"));
         mockMvc.perform(get(
                         "/api/admin/work-sessions/remote-close-plans/{id}", planId)
                 .with(auth(administrator)))
@@ -367,19 +379,8 @@ class LegacyRemoteCloseApiIntegrationTest {
                 planId, fingerprint, UUID.randomUUID(), false);
         when(remoteWorkerClient.releaseWorkspace(any()))
                 .thenThrow(new RemoteWorkerException(
-                        "Synthetic lost response", new IOException("synthetic")))
+                        "Synthetic lost response", new java.io.IOException("synthetic")))
                 .thenAnswer(invocation -> releaseReceipt(invocation.getArgument(0)));
-
-        assertThrows(jakarta.servlet.ServletException.class, () -> mockMvc.perform(post(
-                                "/api/admin/work-sessions/{id}/remote-close-reconciliations",
-                                session.getId())
-                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
-                        .content(confirmation)));
-
-        WorkSessionEntity durable = sessionRepository.findById(session.getId()).orElseThrow();
-        assertEquals(RemoteCloseState.REQUESTED, durable.getRemoteCloseState());
-        assertNotNull(durable.getRemoteCloseOperationId());
-        assertEquals(1, count("remote_close_legacy_operation"));
 
         mockMvc.perform(post(
                         "/api/admin/work-sessions/{id}/remote-close-reconciliations",
@@ -387,12 +388,86 @@ class LegacyRemoteCloseApiIntegrationTest {
                         .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
                         .content(confirmation))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("RELEASED"));
+                .andExpect(jsonPath("$.state").value("RECONCILING"))
+                .andExpect(jsonPath("$.errorCode")
+                        .value("REMOTE_WORKER_TRANSPORT_FAILURE"))
+                .andExpect(jsonPath("$.errorCategory").value("TRANSPORT"))
+                .andExpect(jsonPath("$.nextAction").value("REQUEST_RECONCILIATION"))
+                .andExpect(jsonPath("$.retryable").value(true));
+
+        WorkSessionEntity durable = sessionRepository.findById(session.getId()).orElseThrow();
+        assertEquals(RemoteCloseState.RECONCILING, durable.getRemoteCloseState());
+        assertNotNull(durable.getRemoteCloseOperationId());
+        assertEquals(1, count("remote_close_legacy_operation"));
+        assertEquals(2, count("remote_close_legacy_event"));
+
+        mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmation))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("RELEASED"))
+                .andExpect(jsonPath("$.revision").value(3))
+                .andExpect(jsonPath("$.nextAction").value("NONE"));
 
         verify(remoteWorkerClient, times(2)).releaseWorkspace(any());
         WorkSessionEntity released = sessionRepository.findById(session.getId()).orElseThrow();
         assertEquals(RemoteCloseState.RELEASED, released.getRemoteCloseState());
         assertEquals(durable.getRemoteCloseOperationId(), released.getRemoteCloseOperationId());
+        assertEquals(3, count("remote_close_legacy_event"));
+    }
+
+    @Test
+    void deterministicWorkerOwnershipFailurePersistsOnlySafeAudit() throws Exception {
+        OperatorEntity administrator = operator(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        WorkSessionEntity session = legacySession();
+        String plan = createPlan(administrator, session, UUID.randomUUID());
+        UUID planId = UUID.fromString(com.jayway.jsonpath.JsonPath.read(plan, "$.planId"));
+        String fingerprint = com.jayway.jsonpath.JsonPath.read(
+                plan, "$.ownershipFingerprintSha256");
+        String confirmation = confirmationBody(
+                planId, fingerprint, UUID.randomUUID(), false);
+        when(remoteWorkerClient.releaseWorkspace(any())).thenThrow(
+                new RemoteWorkerException(
+                        "synthetic raw path /forbidden and token secret-value",
+                        409, "WORKSPACE_OWNERSHIP_AMBIGUOUS",
+                        RemoteWorkerFailureCategory.OWNERSHIP, false,
+                        AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                        null));
+
+        String response = mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmation))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("BLOCKED"))
+                .andExpect(jsonPath("$.errorCode")
+                        .value("WORKSPACE_OWNERSHIP_AMBIGUOUS"))
+                .andExpect(jsonPath("$.errorCategory").value("OWNERSHIP"))
+                .andExpect(jsonPath("$.nextAction")
+                        .value("CONTACT_PLATFORM_ADMINISTRATOR"))
+                .andExpect(jsonPath("$.retryable").value(false))
+                .andReturn().getResponse().getContentAsString();
+
+        String repeated = mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmation))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("BLOCKED"))
+                .andReturn().getResponse().getContentAsString();
+
+        assertEquals(response, repeated);
+        assertEquals(false, response.contains("/forbidden"));
+        assertEquals(false, response.contains("secret-value"));
+        assertEquals(2, count("remote_close_legacy_event"));
+        verify(remoteWorkerClient, times(1)).releaseWorkspace(any());
+        WorkSessionEntity blocked = sessionRepository.findById(session.getId()).orElseThrow();
+        assertEquals(RemoteCloseState.BLOCKED, blocked.getRemoteCloseState());
+        assertEquals("WORKSPACE_OWNERSHIP_AMBIGUOUS", blocked.getRemoteCloseErrorCode());
     }
 
     private String createPlan(
@@ -406,7 +481,8 @@ class LegacyRemoteCloseApiIntegrationTest {
     }
 
     private int count(String table) {
-        if (!List.of("remote_close_legacy_plan", "remote_close_legacy_operation")
+        if (!List.of("remote_close_legacy_plan", "remote_close_legacy_operation",
+                "remote_close_legacy_event")
                 .contains(table)) {
             throw new IllegalArgumentException("Unexpected table");
         }
