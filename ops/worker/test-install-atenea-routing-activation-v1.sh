@@ -98,9 +98,13 @@ bundle_reset() {
 verify_source_bundle
 
 mkdir -p "$(dirname -- "${SUDOERS}")"
+mkdir -p "$(dirname -- "${RELEASE_STATE_ROOT}")"
+chmod 2770 "$(dirname -- "${RELEASE_STATE_ROOT}")"
 applied="$(apply_install)"
 jq -e '.state == "verified" and .releaseEnabledByDefault == false' \
   <<<"${applied}" >/dev/null || fail_test 'sandbox apply did not return exact verification'
+[[ "$("${STAT_BIN}" -c %a "${RELEASE_STATE_ROOT}")" == 700 ]] \
+  || fail_test 'apply retained an inherited setgid bit on the journal root'
 [[ "$(activation_bundle_preflight)" == current ]] \
   || fail_test 'sandbox apply did not install the exact current bundle'
 printf 'retained after apply\n' >"${RELEASE_STATE_ROOT}/apply-operation.json"

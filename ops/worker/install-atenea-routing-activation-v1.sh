@@ -195,6 +195,12 @@ apply_install() {
     "${SCRIPT_DIR}/atenea-workspace-release-v1.py" "${RELEASE_PROGRAM}"
   if [[ ! -e "${RELEASE_STATE_ROOT}" && ! -L "${RELEASE_STATE_ROOT}" ]]; then
     install -d -o root -g root -m 0700 "${RELEASE_STATE_ROOT}"
+    # /srv/atenea/worker is setgid. GNU install can preserve the inherited
+    # special bit even with -m 0700, so normalize the new private leaf before
+    # verifying or writing a journal.
+    chown root:root "${RELEASE_STATE_ROOT}"
+    chmod 0700 "${RELEASE_STATE_ROOT}"
+    chmod u-s,g-s,o-t "${RELEASE_STATE_ROOT}"
   fi
   verify_release_state_root
   write_sudoers sudoers_content
