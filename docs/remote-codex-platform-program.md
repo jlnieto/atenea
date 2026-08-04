@@ -12011,3 +12011,31 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.7-backend-section-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `80ddd00d89bea246f1a013f4bdd7933c08b8f4726a797879f66f58bad2a76486`.
+
+Task 5.1 is blocked and remains the first pending task. Change progress remains
+`31/60`; no task 5 implementation has been committed or published.
+
+The current conversation, close and recovery UI was analyzed and a minimal
+shared operator-state read model was started locally. Before those changes
+could be tested, the repository-mandated `scripts/test.sh` stopped at Docker
+resource creation: fixed name `atenea-codex-app-server-dev` is already owned by
+foreign Compose project `atenea-activation-code` rooted at
+`/home/jose/atenea-activation-code`. Its matching `atenea-db-test` is also
+foreign-owned. The former remains exited and the latter remains running.
+
+Only content-free container identity and Compose ownership metadata were read.
+No environment, log, database content, volume, credential or application
+payload was inspected. Neither foreign container was adopted, restarted,
+renamed, removed or rebuilt, and no alternate test surface was substituted.
+The candidate read-model changes remain uncommitted and unpublished so they
+cannot be mistaken for a completed task.
+
+Production, preview, Beautips and AX42 were not mutated during this attempt.
+Resumption requires the owner of the foreign local stack to resolve the exact
+name conflict or separately authorize the exact disposition; task 5.1 must
+then resume with focused tests before any further implementation.
+
+Sanitized blocked evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.1-blocked-foreign-local-test-container`;
+the SHA-256 of its `SHA256SUMS` is
+`e46c9eca461db05f19f20eba4ce7e7cc28169cf9a20ec65f8b27f2a1f08e3e2e`.
