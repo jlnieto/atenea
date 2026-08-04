@@ -11,7 +11,7 @@ environment dumps.
 - [x] 0.1 Read every applicable `AGENTS.md`, the complete programme ledger,
   this proposal/design/all five deltas/tasks, and the current rollback, backup,
   continuity, attachment, runtime, ownership and security contracts
-- [ ] 0.2 Verify clean/upstream-exact programme and canonical Atenea Git; inspect
+- [x] 0.2 Verify clean/upstream-exact programme and canonical Atenea Git; inspect
   `atenea` and `codex-worker`; capture services, RAID, firewall, Tailscale,
   backups, rootless slots, rootful daemons, production, preview and Beautips
   fingerprints without mutation

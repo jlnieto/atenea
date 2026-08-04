@@ -10701,3 +10701,42 @@ Strict validation passes. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-0.1-document-contract`;
 the SHA-256 of its `SHA256SUMS` is
 `3106f6b283bc1bb4e6983f7fffcc53d1f72d28db0af6540ecb64af2c8ea86f8f`.
+
+Task 0.2 is complete. Change progress is `2/60`; task 0.3 is the exact resume
+point and has not started.
+
+Programme Git is clean and upstream-exact at
+`a3692b6a9da5367cc88daa292edf94cee08a4159`. Canonical Atenea, the AX42 bare
+mirror and both incident worktrees are clean and exact at main commit
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`, tree
+`3b8a5517bdc0845e3a2f52718173e6ef5307245a`; mirror fsck passes.
+
+Production remains at V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal AgentRuns. Content-free WorkSession, AgentRun and project
+projection SHA-256 values are respectively
+`d2d9c94858d3cabb5e3f34547e5cac53ddb87a067840578871f36bfd469d319a`,
+`52d570ef0b9f432aade2ab6c408d2112ebe9f45efe711fee26c1b27cd65dfa5a`
+and `65b9a8aac96e221eb4db7301f478aa4be9583665ce7a8602cbb05a6a41985776`.
+No turn text, result, attachment content or private identity was selected.
+
+Production, preview and Beautips return HTTP 200. SSH, Tailscale, UFW and
+control-plane Docker are active. AX42 SSH, Tailscale and UFW are active;
+rootful Docker/containerd remain inactive/masked; all three RAID1 arrays are
+`[UU]`. The AgentRun, attachment and preview services are active with zero
+restarts. Backup, backup-check and worker-health timers are enabled/active and
+their last services succeeded with exit 0.
+
+Rootless running counts remain `3/0/0/3`. The exact registry, WorkSession 16
+allocation/admission and WorkSession 17 workspace hashes remain
+`6dbb541e51d672236af660e01f83d9f89b0e3c0a5652757340170f2a70ca87e7`,
+`af69156b9a6935cb11c96e0b7bdd73b950ec97959281a97b870bdad0c691a80f`,
+`099e565f0df471685c24925ce02d69431639b024499fd91e4d47c08c6d946e11`
+and `97b41b63e425eb483175b96bce875ac3190300cedb089b176aa2fdaedd515cbb`.
+Both incident runtime namespaces have zero containers and no systemd unit.
+Existing retained/administrative resources were fingerprinted only by counts
+and hashes and were not adopted, repaired, stopped, removed or rebuilt.
+
+Strict validation passes. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-0.2-live-fingerprints`;
+the SHA-256 of its `SHA256SUMS` is
+`7bf216bd615502ac38dbc8b1e5d63f6296a136c04f4f676043af7b88d4561731`.
