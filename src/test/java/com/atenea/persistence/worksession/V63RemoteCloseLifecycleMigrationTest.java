@@ -177,6 +177,31 @@ class V63RemoteCloseLifecycleMigrationTest {
                         """, "a".repeat(64), rows.openRemoteSessionId());
 
                 assertSqlRejected(connection, """
+                        UPDATE work_session
+                        SET status = 'CLOSING', closed_at = NULL,
+                            remote_close_state = 'RECONCILING',
+                            remote_close_revision = 4,
+                            remote_close_receipt_sha256 = NULL,
+                            remote_close_released_at = NULL,
+                            remote_close_updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """, rows.openRemoteSessionId());
+                assertSqlRejected(connection, """
+                        UPDATE work_session
+                        SET remote_close_revision = 4,
+                            remote_close_receipt_sha256 = ?,
+                            remote_close_updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """, "b".repeat(64), rows.openRemoteSessionId());
+                assertSqlRejected(connection, """
+                        UPDATE work_session
+                        SET remote_close_revision = 4,
+                            remote_close_requested_at = remote_close_requested_at + INTERVAL '1 second',
+                            remote_close_updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """, rows.openRemoteSessionId());
+
+                assertSqlRejected(connection, """
                         UPDATE agent_run
                         SET failure_code = 'CLOSED_SESSION_OWNS_CAPACITY'
                         WHERE id = ?
