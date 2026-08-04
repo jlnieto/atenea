@@ -470,6 +470,42 @@ class LegacyRemoteCloseApiIntegrationTest {
         assertEquals("WORKSPACE_OWNERSHIP_AMBIGUOUS", blocked.getRemoteCloseErrorCode());
     }
 
+    @Test
+    void deterministicFourHundredCannotEnterLegacyWorkerUnavailableState() throws Exception {
+        OperatorEntity administrator = operator(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        WorkSessionEntity session = legacySession();
+        String plan = createPlan(administrator, session, UUID.randomUUID());
+        UUID planId = UUID.fromString(com.jayway.jsonpath.JsonPath.read(plan, "$.planId"));
+        String fingerprint = com.jayway.jsonpath.JsonPath.read(
+                plan, "$.ownershipFingerprintSha256");
+        when(remoteWorkerClient.releaseWorkspace(any())).thenThrow(
+                new RemoteWorkerException(
+                        "incompatible typed rejection",
+                        403, "WORKER_AUTHORIZATION_REJECTED",
+                        RemoteWorkerFailureCategory.TRANSPORT, true,
+                        AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,
+                        null));
+
+        mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmationBody(
+                                planId, fingerprint, UUID.randomUUID(), false)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("BLOCKED"))
+                .andExpect(jsonPath("$.errorCode")
+                        .value("REMOTE_CLOSE_PROTOCOL_FAILURE"))
+                .andExpect(jsonPath("$.errorCategory").value("PROTOCOL"))
+                .andExpect(jsonPath("$.nextAction")
+                        .value("CONTACT_PLATFORM_ADMINISTRATOR"))
+                .andExpect(jsonPath("$.retryable").value(false));
+
+        WorkSessionEntity blocked = sessionRepository.findById(session.getId()).orElseThrow();
+        assertEquals(RemoteCloseState.BLOCKED, blocked.getRemoteCloseState());
+        assertEquals("REMOTE_CLOSE_PROTOCOL_FAILURE", blocked.getRemoteCloseErrorCode());
+    }
+
     private String createPlan(
             OperatorEntity administrator, WorkSessionEntity session, UUID idempotencyKey)
             throws Exception {

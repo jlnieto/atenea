@@ -1,6 +1,7 @@
 package com.atenea.codexoperations;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,6 +17,8 @@ import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.remoteworker.RemoteAgentRunCoordinator;
 import com.atenea.remoteworker.CanonicalSourceAdmissionService;
+import com.atenea.remoteworker.RemoteWorkerException;
+import com.atenea.remoteworker.RemoteWorkerFailureCategory;
 import com.atenea.service.worksession.AgentRunRecoveryOperationService;
 import com.atenea.service.worksession.AgentRunRecoveryConflictException;
 import com.atenea.service.worksession.AgentRunService;
@@ -142,6 +145,29 @@ class AgentRunRecoveryCoordinatorTest {
         verify(remoteCoordinator, never()).proveTerminalOrAbsent(source.getId());
         verify(runService, never()).createRemoteRetryRun(source.getId());
         verify(remoteCoordinator, never()).dispatchAfterCommit(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void deterministicFourHundredRecoveryFailureIsNeverWorkerUnreachable() {
+        UUID operationId = UUID.randomUUID();
+        AgentRunEntity run = new AgentRunEntity();
+        run.setId(81L);
+        AgentRunRecoveryOperationEntity operation = operation(
+                operationId, run, AgentRunRecoveryAction.DIAGNOSTIC);
+        when(operationService.start(operationId)).thenReturn(operation);
+        doThrow(new RemoteWorkerException(
+                "incompatible typed rejection",
+                403,
+                "WORKER_AUTHORIZATION_REJECTED",
+                RemoteWorkerFailureCategory.TRANSPORT,
+                true,
+                AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,
+                null)).when(remoteCoordinator).requestDiagnostic(run.getId());
+
+        coordinator.executeOne(operationId);
+
+        verify(operationService).complete(
+                operationId, AgentRunRecoveryOutcome.POLICY_BLOCKED, null);
     }
 
     private static AgentRunRecoveryOperationEntity operation(

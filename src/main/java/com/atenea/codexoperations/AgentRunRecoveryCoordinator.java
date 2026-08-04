@@ -10,6 +10,7 @@ import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.remoteworker.RemoteAgentRunCoordinator;
 import com.atenea.remoteworker.RemoteWorkerException;
+import com.atenea.remoteworker.RemoteWorkerFailureCategory;
 import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.service.worksession.AgentRunRecoveryConflictException;
 import com.atenea.service.worksession.AgentRunRecoveryOperationService;
@@ -191,9 +192,14 @@ public class AgentRunRecoveryCoordinator {
     }
 
     private static AgentRunRecoveryOutcome remoteFailure(RemoteWorkerException exception) {
-        return exception.getStatusCode() == 409
-                ? AgentRunRecoveryOutcome.OWNERSHIP_MISMATCH
-                : AgentRunRecoveryOutcome.WORKER_UNREACHABLE;
+        if (exception.isCompatibleTransportFailure()) {
+            return AgentRunRecoveryOutcome.WORKER_UNREACHABLE;
+        }
+        if (exception.getCategory() == RemoteWorkerFailureCategory.OWNERSHIP
+                || (!exception.hasTypedFailure() && exception.getStatusCode() == 409)) {
+            return AgentRunRecoveryOutcome.OWNERSHIP_MISMATCH;
+        }
+        return AgentRunRecoveryOutcome.POLICY_BLOCKED;
     }
 
     @PreDestroy

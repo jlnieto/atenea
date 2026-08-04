@@ -628,6 +628,17 @@ class RemoteWorkerClientTest {
                     receipt.put("path", "/srv/foreign");
                     sealWorkspaceReleaseReceipt(receipt);
                 },
+                receipt -> {
+                    receipt.put("revision", 5);
+                    sealWorkspaceReleaseReceipt(receipt);
+                },
+                receipt -> {
+                    Map<String, Object> released = new java.util.LinkedHashMap<>(
+                            (Map<String, Object>) receipt.get("released"));
+                    released.put("allocation", false);
+                    receipt.put("released", released);
+                    sealWorkspaceReleaseReceipt(receipt);
+                },
                 receipt -> receipt.put("receiptSha256", "0".repeat(64)));
 
         for (Consumer<Map<String, Object>> mutation : mutations) {
@@ -828,6 +839,49 @@ class RemoteWorkerClientTest {
         assertEquals(blocker, exception.getBlockerSessionId());
         assertEquals(true, exception.hasTypedFailure());
         assertNull(exception.getCause());
+    }
+
+    @Test
+    void incompatibleStatusCategoryOrRetryProjectionBecomesProtocolFailure() throws Exception {
+        List<Map<String, Object>> incompatible = List.of(
+                Map.of(
+                        "status", 403,
+                        "category", "TRANSPORT",
+                        "retryable", true,
+                        "nextAction", "REQUEST_RECONCILIATION"),
+                Map.of(
+                        "status", 503,
+                        "category", "VALIDATION",
+                        "retryable", false,
+                        "nextAction", "NONE"),
+                Map.of(
+                        "status", 409,
+                        "category", "POLICY",
+                        "retryable", true,
+                        "nextAction", "WAIT"),
+                Map.of(
+                        "status", 600,
+                        "category", "VALIDATION",
+                        "retryable", false,
+                        "nextAction", "NONE"));
+
+        for (Map<String, Object> values : incompatible) {
+            workerErrorStatus.set((Integer) values.get("status"));
+            workerErrorResponse.set(objectMapper.writeValueAsBytes(Map.of(
+                    "schemaVersion", "worker-error-v1",
+                    "code", "INCOMPATIBLE_FAILURE_PROJECTION",
+                    "category", values.get("category"),
+                    "retryable", values.get("retryable"),
+                    "nextAction", values.get("nextAction"))));
+
+            RemoteWorkerException exception = assertThrows(
+                    RemoteWorkerException.class,
+                    () -> client.ensureWorkspace(workspaceRun()));
+
+            assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", exception.getFailureCode());
+            assertEquals(RemoteWorkerFailureCategory.PROTOCOL, exception.getCategory());
+            assertEquals(false, exception.isRetryable());
+        }
     }
 
     @Test

@@ -39,6 +39,7 @@ public class RemoteWorkerClient {
 
     private static final String WORKER_ERROR_SCHEMA = "worker-error-v1";
     private static final String WORKSPACE_RELEASE_SCHEMA = "project-workspace-release-v1";
+    private static final long WORKSPACE_RELEASE_REVISION = 6;
     private static final int MAX_WORKER_ERROR_BYTES = 1024;
     private static final String PROTOCOL_FAILURE_CODE = "REMOTE_WORKER_PROTOCOL_FAILURE";
     private static final Set<String> WORKSPACE_RELEASE_RECEIPT_FIELDS = Set.of(
@@ -239,7 +240,7 @@ public class RemoteWorkerClient {
                 || !requestOwnershipMatchesReceipt(request, receipt)
                 || !canonicalSha256(request).equals(
                         textValue(receipt, "requestFingerprintSha256"))
-                || !isPositiveRevision(receipt.get("revision"))
+                || !isFinalReleaseRevision(receipt.get("revision"))
                 || !receipt.get("valuesExposed").isBoolean()
                 || receipt.get("valuesExposed").booleanValue()
                 || !validRemovedProjection(receipt.get("removed"))
@@ -294,7 +295,8 @@ public class RemoteWorkerClient {
             return false;
         }
         return WORKSPACE_RELEASE_RELEASED_FIELDS.stream()
-                .allMatch(field -> value.get(field).isBoolean());
+                .allMatch(field -> value.get(field).isBoolean()
+                        && value.get(field).booleanValue());
     }
 
     private boolean validRetainedProjection(JsonNode value) {
@@ -319,11 +321,11 @@ public class RemoteWorkerClient {
         return child != null && child.isTextual() ? child.textValue() : null;
     }
 
-    private boolean isPositiveRevision(JsonNode value) {
+    private boolean isFinalReleaseRevision(JsonNode value) {
         return value != null
                 && value.isIntegralNumber()
                 && value.canConvertToLong()
-                && value.longValue() >= 1;
+                && value.longValue() == WORKSPACE_RELEASE_REVISION;
     }
 
     private boolean isSha256(String value) {
@@ -704,6 +706,10 @@ public class RemoteWorkerClient {
             if (envelope.blockerSessionId() != null && blockerSessionId == null) {
                 return protocolFailure(statusCode);
             }
+            if (!validFailureSemantics(
+                    statusCode, category, envelope.retryable(), nextAction, blockerSessionId)) {
+                return protocolFailure(statusCode);
+            }
             return new RemoteWorkerException(
                     "Remote worker rejected request with HTTP " + statusCode
                             + " (" + envelope.code() + ")",
@@ -718,6 +724,32 @@ public class RemoteWorkerClient {
         } finally {
             Arrays.fill(encoded, (byte) 0);
         }
+    }
+
+    private boolean validFailureSemantics(
+            int statusCode,
+            RemoteWorkerFailureCategory category,
+            boolean retryable,
+            AgentRunRecoveryNextAction nextAction,
+            UUID blockerSessionId
+    ) {
+        if (statusCode >= 500 && statusCode < 600) {
+            return category == RemoteWorkerFailureCategory.TRANSPORT
+                    && retryable
+                    && nextAction == AgentRunRecoveryNextAction.REQUEST_RECONCILIATION
+                    && blockerSessionId == null;
+        }
+        if (statusCode < 400 || statusCode >= 600
+                || category == RemoteWorkerFailureCategory.TRANSPORT) {
+            return false;
+        }
+        if (category == RemoteWorkerFailureCategory.CAPACITY) {
+            return retryable && nextAction == AgentRunRecoveryNextAction.WAIT;
+        }
+        return !retryable
+                && blockerSessionId == null
+                && (nextAction == AgentRunRecoveryNextAction.NONE
+                    || nextAction == AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR);
     }
 
     private UUID canonicalBlocker(

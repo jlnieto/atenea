@@ -656,13 +656,18 @@ public class LegacyRemoteCloseService {
     private LegacyFailure safeFailure(RemoteWorkerException exception) {
         RemoteWorkerFailureCategory category = exception.getCategory();
         String code = exception.getFailureCode();
-        if (category == null || code == null || !code.matches("^[A-Z][A-Z0-9_]{2,79}$")) {
-            category = RemoteWorkerFailureCategory.PROTOCOL;
-            code = "REMOTE_CLOSE_PROTOCOL_FAILURE";
+        boolean compatibleFailure = category != null
+                && code != null
+                && code.matches("^[A-Z][A-Z0-9_]{2,79}$")
+                && (exception.isCompatibleTransportFailure()
+                    || exception.isCompatibleDeterministicFailure());
+        if (!compatibleFailure) {
+            return new LegacyFailure(
+                    "BLOCKED", "REMOTE_CLOSE_PROTOCOL_FAILURE",
+                    RemoteWorkerFailureCategory.PROTOCOL.name(),
+                    AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR.name(), false);
         }
-        boolean reconciling = category == RemoteWorkerFailureCategory.TRANSPORT
-                || (exception.getStatusCode() >= 500
-                    && category != RemoteWorkerFailureCategory.PROTOCOL);
+        boolean reconciling = exception.isCompatibleTransportFailure();
         if (reconciling) {
             return new LegacyFailure(
                     "RECONCILING", code, category.name(),
@@ -678,7 +683,7 @@ public class LegacyRemoteCloseService {
         }
         return new LegacyFailure(
                 "BLOCKED", code, category.name(), action.name(),
-                exception.isRetryable());
+                exception.isCompatibleCapacityWaitFailure());
     }
 
     static String ownershipFingerprint(WorkSessionEntity session) {

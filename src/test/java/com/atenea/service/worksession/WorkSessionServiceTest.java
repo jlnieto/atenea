@@ -931,6 +931,81 @@ class WorkSessionServiceTest {
         order.verify(remoteWorkerClient).releaseWorkspace(session);
         order.verify(transactionManager).getTransaction(any(TransactionDefinition.class));
         order.verify(transactionManager).commit(any(TransactionStatus.class));
+
+        WorkSessionResponse repeated = workSessionService.closeSession(12L);
+
+        assertEquals(WorkSessionStatus.CLOSED, repeated.status());
+        assertEquals(RemoteCloseState.RELEASED, repeated.remoteCloseState());
+        assertEquals("9".repeat(64), session.getRemoteCloseReceiptSha256());
+        verify(remoteWorkerClient, times(1)).releaseWorkspace(session);
+    }
+
+    @Test
+    void remoteCloseRaceAfterPreparationReusesAlreadyReleasedOperation() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-close-race"));
+        WorkSessionEntity preparing = remoteSession(repoPath);
+        prepareSuccessfulCloseMocks(preparing, repoPath);
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+
+        UUID operationId = UUID.fromString("22222222-2222-4222-8222-222222222222");
+        WorkSessionEntity released = remoteSession(repoPath);
+        markReleased(released, operationId);
+        when(workSessionRepository.findLockedWithProjectById(12L))
+                .thenReturn(Optional.of(released));
+        when(remoteWorkerClient.releaseWorkspace(released)).thenReturn(releasedReceipt(released));
+
+        WorkSessionResponse response = workSessionService.closeSession(12L);
+
+        assertEquals(WorkSessionStatus.CLOSED, response.status());
+        assertEquals(RemoteCloseState.RELEASED, response.remoteCloseState());
+        assertEquals(operationId, released.getRemoteCloseOperationId());
+        assertEquals("9".repeat(64), released.getRemoteCloseReceiptSha256());
+        verify(remoteWorkerClient, times(1)).releaseWorkspace(released);
+    }
+
+    @Test
+    void malformedPersistedReleasedProjectionIsNotAcceptedAsIdempotentClose() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-malformed-release"));
+        WorkSessionEntity released = remoteSession(repoPath);
+        markReleased(released, UUID.fromString("22222222-2222-4222-8222-222222222222"));
+        released.setRemoteCloseRevision(5);
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(released));
+
+        assertThrows(WorkSessionNotOpenException.class,
+                () -> workSessionService.closeSession(12L));
+
+        verify(remoteWorkerClient, never()).releaseWorkspace(any());
+    }
+
+    @Test
+    void lateTransportFailureCannotDowngradeAlreadyReleasedClose() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-late-failure"));
+        UUID operationId = UUID.fromString("22222222-2222-4222-8222-222222222222");
+        WorkSessionEntity requested = remoteSession(repoPath);
+        requested.setStatus(WorkSessionStatus.CLOSING);
+        requested.setRemoteCloseState(RemoteCloseState.REQUESTED);
+        requested.setRemoteCloseOperationId(operationId);
+        requested.setRemoteCloseRevision(1);
+        requested.setRemoteCloseRequestedAt(Instant.parse("2026-08-03T10:00:00Z"));
+        requested.setRemoteCloseUpdatedAt(Instant.parse("2026-08-03T10:00:00Z"));
+        WorkSessionEntity released = remoteSession(repoPath);
+        markReleased(released, operationId);
+        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(workSessionRepository.findLockedWithProjectById(12L))
+                .thenReturn(Optional.of(requested), Optional.of(released));
+        when(workSessionRepository.saveAndFlush(requested)).thenReturn(requested);
+        when(remoteWorkerClient.releaseWorkspace(requested)).thenThrow(
+                new RemoteWorkerException("Remote worker I/O failed", new IOException("closed")));
+
+        WorkSessionResponse response = workSessionService.reconcileRemoteClose(12L);
+
+        assertEquals(WorkSessionStatus.CLOSED, response.status());
+        assertEquals(RemoteCloseState.RELEASED, response.remoteCloseState());
+        assertEquals(operationId, released.getRemoteCloseOperationId());
+        assertEquals("9".repeat(64), released.getRemoteCloseReceiptSha256());
+        assertNull(released.getRemoteCloseErrorCode());
     }
 
     @Test
@@ -1087,6 +1162,35 @@ class WorkSessionServiceTest {
         assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
         assertEquals(RemoteCloseState.BLOCKED, session.getRemoteCloseState());
         assertTrue(session.getRemoteCloseOperationId() != null);
+        assertNull(session.getRemoteCloseReceiptSha256());
+        assertNull(session.getClosedAt());
+    }
+
+    @Test
+    void deterministicFourHundredCannotMasqueradeAsTransportReconciliation()
+            throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-false-transport"));
+        WorkSessionEntity session = remoteSession(repoPath);
+        prepareSuccessfulCloseMocks(session, repoPath);
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerClient.releaseWorkspace(session)).thenThrow(new RemoteWorkerException(
+                "incompatible typed rejection",
+                403,
+                "WORKER_AUTHORIZATION_REJECTED",
+                RemoteWorkerFailureCategory.TRANSPORT,
+                true,
+                AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,
+                null));
+
+        WorkSessionCloseBlockedException exception = assertThrows(
+                WorkSessionCloseBlockedException.class,
+                () -> workSessionService.closeSession(12L));
+
+        assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", exception.getState());
+        assertFalse(exception.isRetryable());
+        assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
+        assertEquals(RemoteCloseState.BLOCKED, session.getRemoteCloseState());
         assertNull(session.getRemoteCloseReceiptSha256());
         assertNull(session.getClosedAt());
     }
@@ -1268,7 +1372,7 @@ class WorkSessionServiceTest {
         session.setCanonicalSourceObservationSha256("2".repeat(64));
         session.setCanonicalSourceObservedAt(Instant.parse("2026-08-03T09:00:00Z"));
         session.setRemoteCloseState(RemoteCloseState.NOT_STARTED);
-        doReturn(repoPath.toString()).when(validator)
+        lenient().doReturn(repoPath.toString()).when(validator)
                 .normalizeConfiguredRepoPath(ProjectCodexIdentity.REPO_PATH);
         return session;
     }
@@ -1339,6 +1443,21 @@ class WorkSessionServiceTest {
                 "4".repeat(64),
                 "9".repeat(64),
                 false);
+    }
+
+    private void markReleased(WorkSessionEntity session, UUID operationId) {
+        Instant requestedAt = Instant.parse("2026-08-03T10:00:00Z");
+        Instant releasedAt = Instant.parse("2026-08-03T10:01:00Z");
+        session.setStatus(WorkSessionStatus.CLOSED);
+        session.setClosedAt(releasedAt);
+        session.setRemoteCloseState(RemoteCloseState.RELEASED);
+        session.setRemoteCloseOperationId(operationId);
+        session.setRemoteCloseRevision(6);
+        session.setRemoteCloseReceiptSha256("9".repeat(64));
+        session.setRemoteCloseRequestedAt(requestedAt);
+        session.setRemoteCloseUpdatedAt(releasedAt);
+        session.setRemoteCloseReleasedAt(releasedAt);
+        session.setUpdatedAt(releasedAt);
     }
 
     private static ProjectEntity buildProject(Long projectId, Path repoPath) {

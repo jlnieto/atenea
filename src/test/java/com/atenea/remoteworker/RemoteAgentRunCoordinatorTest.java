@@ -410,6 +410,40 @@ class RemoteAgentRunCoordinatorTest {
     }
 
     @Test
+    void fourHundredTransportClaimFailsClosedWithoutWorkerUnavailableWindow() throws Exception {
+        AgentRunEntity run = projectRun();
+        properties.setPollInterval(Duration.ofMillis(1));
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.ensureWorkspace(run)).thenThrow(new RemoteWorkerException(
+                "incoherent deterministic transport claim",
+                403,
+                "WORKSPACE_ACTIVATION_UNAVAILABLE",
+                RemoteWorkerFailureCategory.TRANSPORT,
+                true,
+                AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,
+                null));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+        Thread.sleep(120);
+
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                run.getRecoveryNextAction());
+        assertEquals("Remote worker rejected the persisted admission request", run.getStatusReason());
+        assertNull(run.getRemoteExecutionId());
+        assertNull(run.getLeaseExpiresAt());
+        assertNull(run.getRetryOfRun());
+        verify(client, times(1)).ensureWorkspace(run);
+        verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
+        verify(mobilePushDispatchService, never()).notifyRunActionRequired(run);
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
     void malformedWorkerErrorRequiresAdministratorReviewWithoutPolling() throws Exception {
         AgentRunEntity run = projectRun();
         when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));

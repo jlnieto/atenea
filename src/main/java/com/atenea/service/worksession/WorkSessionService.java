@@ -34,7 +34,6 @@ import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteWorkerClient;
 import com.atenea.remoteworker.RemoteWorkerException;
-import com.atenea.remoteworker.RemoteWorkerFailureCategory;
 import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
@@ -54,6 +53,7 @@ import org.springframework.transaction.TransactionDefinition;
 public class WorkSessionService {
 
     private static final int RECENT_TURN_LIMIT = 20;
+    private static final long FINAL_REMOTE_CLOSE_REVISION = 6;
 
     private final ProjectRepository projectRepository;
     private final WorkSessionRepository workSessionRepository;
@@ -321,10 +321,13 @@ public class WorkSessionService {
         try {
             receipt = remoteWorkerClient.releaseWorkspace(invocation.session());
         } catch (RemoteWorkerException exception) {
-            WorkSessionCloseBlockedException failure = closeTransaction.execute(
+            CloseFailurePersistence persistence = closeTransaction.execute(
                     ignored -> persistRemoteCloseFailure(
                             sessionId, invocation.operationId(), exception));
-            throw failure;
+            if (persistence.releasedResponse() != null) {
+                return persistence.releasedResponse();
+            }
+            throw persistence.failure();
         }
         return closeTransaction.execute(
                 ignored -> persistReleasedClose(
@@ -340,6 +343,9 @@ public class WorkSessionService {
         WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
 
+        if (isPersistedReleasedClose(session)) {
+            return new ClosePreparation(toResponse(session), null);
+        }
         if (session.getStatus() != WorkSessionStatus.OPEN
                 && session.getStatus() != WorkSessionStatus.CLOSING) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
@@ -385,6 +391,9 @@ public class WorkSessionService {
     ) {
         WorkSessionEntity session = workSessionRepository.findLockedWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        if (isPersistedReleasedClose(session)) {
+            return new RemoteCloseInvocation(session.getRemoteCloseOperationId(), session);
+        }
         if (session.getStatus() != WorkSessionStatus.CLOSING
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !ProjectCodexIdentity.matches(session)) {
@@ -421,18 +430,24 @@ public class WorkSessionService {
                 persisted.getRemoteCloseOperationId(), persisted);
     }
 
-    private WorkSessionCloseBlockedException persistRemoteCloseFailure(
+    private CloseFailurePersistence persistRemoteCloseFailure(
             Long sessionId,
             UUID operationId,
             RemoteWorkerException workerFailure
     ) {
-        WorkSessionEntity session = exactRemoteCloseOwner(sessionId, operationId);
-        boolean reconciling = workerFailure.getCategory() == RemoteWorkerFailureCategory.TRANSPORT
-                || (workerFailure.getStatusCode() >= 500
-                    && workerFailure.getCategory() != RemoteWorkerFailureCategory.PROTOCOL);
-        String failureCode = workerFailure.getFailureCode() == null
-                ? "REMOTE_CLOSE_REJECTED"
-                : workerFailure.getFailureCode();
+        WorkSessionEntity session = workSessionRepository.findLockedWithProjectById(sessionId)
+                .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        if (isPersistedReleasedClose(session)
+                && operationId.equals(session.getRemoteCloseOperationId())) {
+            return new CloseFailurePersistence(toResponse(session), null);
+        }
+        requireExactRemoteCloseOwner(session, operationId);
+        boolean reconciling = workerFailure.isCompatibleTransportFailure();
+        boolean compatibleFailure = reconciling
+                || workerFailure.isCompatibleDeterministicFailure();
+        String failureCode = compatibleFailure
+                ? workerFailure.getFailureCode()
+                : "REMOTE_WORKER_PROTOCOL_FAILURE";
         String action = reconciling
                 ? "Retry reconciliation with the same remote-close operation"
                 : "Resolve the exact worker rejection before retrying remote close";
@@ -445,12 +460,13 @@ public class WorkSessionService {
         session.setCloseBlockedState(failureCode);
         session.setCloseBlockedReason("Remote workspace release did not return an accepted receipt");
         session.setCloseBlockedAction(action);
-        session.setCloseRetryable(reconciling || workerFailure.isRetryable());
+        session.setCloseRetryable(
+                reconciling || workerFailure.isCompatibleCapacityWaitFailure());
         session.setUpdatedAt(now);
         workSessionRepository.saveAndFlush(session);
         mobilePushDispatchService.notifyCloseBlocked(
                 session, failureCode, session.getCloseBlockedReason());
-        return new WorkSessionCloseBlockedException(
+        WorkSessionCloseBlockedException failure = new WorkSessionCloseBlockedException(
                 "WorkSession '%s' cannot finish closing: remote workspace release failed"
                         .formatted(sessionId),
                 failureCode,
@@ -461,6 +477,7 @@ public class WorkSessionService {
                         "state: " + failureCode,
                         "action: " + action,
                         "retryable: " + session.isCloseRetryable()));
+        return new CloseFailurePersistence(null, failure);
     }
 
     private WorkSessionResponse persistReleasedClose(
@@ -468,11 +485,20 @@ public class WorkSessionService {
             UUID operationId,
             RemoteWorkerClient.WorkspaceRelease receipt
     ) {
-        WorkSessionEntity session = exactRemoteCloseOwner(sessionId, operationId);
         if (!operationId.toString().equals(receipt.operationId())
                 || !"RELEASED".equals(receipt.state())) {
             throw new IllegalStateException("Remote close receipt identity changed before commit");
         }
+        WorkSessionEntity session = workSessionRepository.findLockedWithProjectById(sessionId)
+                .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        if (isPersistedReleasedClose(session)
+                && operationId.equals(session.getRemoteCloseOperationId())) {
+            if (!receipt.receiptSha256().equals(session.getRemoteCloseReceiptSha256())) {
+                throw new IllegalStateException("Remote close receipt changed after persistence");
+            }
+            return toResponse(session);
+        }
+        requireExactRemoteCloseOwner(session, operationId);
         Instant now = Instant.now();
         session.setRemoteCloseState(RemoteCloseState.RELEASED);
         session.setRemoteCloseRevision(Math.max(
@@ -491,17 +517,42 @@ public class WorkSessionService {
     private WorkSessionEntity exactRemoteCloseOwner(Long sessionId, UUID operationId) {
         WorkSessionEntity session = workSessionRepository.findLockedWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        requireExactRemoteCloseOwner(session, operationId);
+        return session;
+    }
+
+    private void requireExactRemoteCloseOwner(WorkSessionEntity session, UUID operationId) {
         if (session.getStatus() != WorkSessionStatus.CLOSING
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !operationId.equals(session.getRemoteCloseOperationId())
                 || !ProjectCodexIdentity.matches(session)) {
             throw new IllegalStateException("Persisted remote close ownership changed");
         }
-        return session;
+    }
+
+    private boolean isPersistedReleasedClose(WorkSessionEntity session) {
+        return session.getStatus() == WorkSessionStatus.CLOSED
+                && session.getExecutionTarget() == ExecutionTarget.REMOTE
+                && session.getRemoteCloseState() == RemoteCloseState.RELEASED
+                && session.getRemoteCloseOperationId() != null
+                && session.getRemoteCloseReceiptSha256() != null
+                && session.getRemoteCloseReceiptSha256().matches("^[0-9a-f]{64}$")
+                && session.getRemoteCloseRevision() >= FINAL_REMOTE_CLOSE_REVISION
+                && session.getRemoteCloseRequestedAt() != null
+                && session.getRemoteCloseUpdatedAt() != null
+                && session.getRemoteCloseReleasedAt() != null
+                && session.getClosedAt() != null
+                && ProjectCodexIdentity.matches(session);
     }
 
     private record ClosePreparation(
             WorkSessionResponse localResponse,
+            WorkSessionCloseBlockedException failure
+    ) {
+    }
+
+    private record CloseFailurePersistence(
+            WorkSessionResponse releasedResponse,
             WorkSessionCloseBlockedException failure
     ) {
     }

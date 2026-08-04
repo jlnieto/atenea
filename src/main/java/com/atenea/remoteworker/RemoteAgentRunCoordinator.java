@@ -414,13 +414,7 @@ public class RemoteAgentRunCoordinator {
     }
 
     private boolean isCompatibleTransportFailure(RemoteWorkerException exception) {
-        if (!exception.hasTypedFailure()
-                || exception.getCategory() != RemoteWorkerFailureCategory.TRANSPORT
-                || !exception.isRetryable()
-                || exception.getNextAction() != AgentRunRecoveryNextAction.REQUEST_RECONCILIATION) {
-            return false;
-        }
-        return exception.getStatusCode() == 0 || exception.getStatusCode() >= 500;
+        return exception.isCompatibleTransportFailure();
     }
 
     private void handleDeterministicFailure(Long runId, RemoteWorkerException exception) {
@@ -428,9 +422,9 @@ public class RemoteAgentRunCoordinator {
             handleCapacityFailure(runId, exception);
             return;
         }
-        String failureCode = exception.hasTypedFailure()
+        String failureCode = exception.isCompatibleDeterministicFailure()
                 ? exception.getFailureCode() : "REMOTE_WORKER_PROTOCOL_FAILURE";
-        AgentRunRecoveryNextAction nextAction = exception.hasTypedFailure()
+        AgentRunRecoveryNextAction nextAction = exception.isCompatibleDeterministicFailure()
                 ? exception.getNextAction() : AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR;
         if ("CLOSED_SESSION_OWNS_CAPACITY".equals(failureCode)) {
             failureCode = "REMOTE_WORKER_PROTOCOL_FAILURE";
@@ -441,12 +435,7 @@ public class RemoteAgentRunCoordinator {
     }
 
     private boolean isCapacityWait(RemoteWorkerException exception) {
-        return exception.hasTypedFailure()
-                && exception.getStatusCode() >= 400
-                && exception.getStatusCode() < 500
-                && exception.getCategory() == RemoteWorkerFailureCategory.CAPACITY
-                && exception.isRetryable()
-                && exception.getNextAction() == AgentRunRecoveryNextAction.WAIT;
+        return exception.isCompatibleCapacityWaitFailure();
     }
 
     private void handleCapacityFailure(Long runId, RemoteWorkerException exception) {

@@ -77,4 +77,35 @@ public class RemoteWorkerException extends RuntimeException {
     public boolean hasTypedFailure() {
         return failureCode != null && category != null;
     }
+
+    public boolean isCompatibleTransportFailure() {
+        return hasTypedFailure()
+                && category == RemoteWorkerFailureCategory.TRANSPORT
+                && retryable
+                && nextAction == AgentRunRecoveryNextAction.REQUEST_RECONCILIATION
+                && (statusCode == 0 || (statusCode >= 500 && statusCode < 600));
+    }
+
+    public boolean isCompatibleCapacityWaitFailure() {
+        return hasTypedFailure()
+                && statusCode >= 400
+                && statusCode < 500
+                && category == RemoteWorkerFailureCategory.CAPACITY
+                && retryable
+                && nextAction == AgentRunRecoveryNextAction.WAIT;
+    }
+
+    public boolean isCompatibleDeterministicFailure() {
+        if (!hasTypedFailure() || statusCode < 400 || statusCode >= 500) {
+            return false;
+        }
+        if (category == RemoteWorkerFailureCategory.CAPACITY) {
+            return isCompatibleCapacityWaitFailure();
+        }
+        return category != RemoteWorkerFailureCategory.TRANSPORT
+                && !retryable
+                && blockerSessionId == null
+                && (nextAction == AgentRunRecoveryNextAction.NONE
+                    || nextAction == AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR);
+    }
 }
