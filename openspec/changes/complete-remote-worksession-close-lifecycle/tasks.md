@@ -51,7 +51,7 @@ environment dumps.
 - [x] 2.2 Extend `RemoteWorkerException`/`RemoteWorkerClient` to parse only that
   schema and retain HTTP status, safe code, category, retryability and next
   action; discard raw bodies and preserve existing success decoding
-- [ ] 2.3 Split coordinator handling so I/O/timeouts/compatible 5xx reconcile,
+- [x] 2.3 Split coordinator handling so I/O/timeouts/compatible 5xx reconcile,
   exact open-owner capacity waits in `QUEUED`, deterministic 4xx failures stop
   immediately, and exact closed-owner capacity exposes
   `RECONCILE_REMOTE_CLOSE` without redispatch

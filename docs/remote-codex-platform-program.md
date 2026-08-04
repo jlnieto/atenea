@@ -11115,3 +11115,54 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.2-strict-worker-client-errors`;
 the SHA-256 of its `SHA256SUMS` is
 `f747c63023c762e6d3c555e775a7431e5db03d20b8adda0190a53e7f2163141a`.
+
+Task 2.3 is complete. Change progress is `12/60`; task 2.4 is the exact
+resume point and no malformed-response repetition or retry-gating task has
+started.
+
+Canonical Atenea candidate commit
+`317e93129ec7fd8992c9a12919920ec5ef8ae1ad` is published exactly in the
+canonical repository and GitHub. The coordinator admits only status-zero I/O
+failures or compatible typed, retryable transport 5xx responses to the finite
+same-dispatch reconciliation window. Its persisted unavailable reason is now
+fixed and never incorporates exception or response text. Every other rejection
+leaves that window immediately with one safe failure projection.
+
+Capacity handling accepts only a typed retryable 4xx `CAPACITY/WAIT` envelope,
+then resolves its optional canonical blocker UUID through Atenea's unique
+WorkSession identity. The reported owner must be a different remote session
+with the same persisted project ID and worker plus its internally derived
+canonical workspace identity. An exact `OPEN` or `CLOSING` owner leaves the
+new run `QUEUED`, with a fixed reason and no dispatch. An exact `CLOSED` owner
+with zero non-terminal runs becomes only
+`CLOSED_SESSION_OWNS_CAPACITY/RECONCILE_REMOTE_CLOSE`; unknown, same-session,
+foreign, partial, ambiguous or live-run ownership becomes
+`CAPACITY_OWNER_UNVERIFIED/CONTACT_PLATFORM_ADMINISTRATOR`. The reserved local
+closed-owner code cannot be selected by a worker rejection.
+
+All 16 coordinator tests pass, covering status-zero I/O and compatible 503
+reconciliation, immediate deterministic 409 failure, exact open-owner waiting,
+exact closed-owner action and foreign-owner rejection without dispatch. The
+related strict client, routing and attachment-manifest regression set passes
+37/37, for 53/53 aggregate with zero failures, errors or skips. No source was
+deployed and all new release/reconciliation gates remain false by default.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN`; AgentRun 96 remains
+terminal unretried `FAILED`. Production, preview and Beautips are `UP`, routing
+remains `ax42-01` enabled/healthy at `4/2` with `0/0` usage, worker services
+remain active with zero restarts, rootless slots remain `3/0/0/3`, rootful
+daemons remain inactive, all three RAID arrays remain `[UU]`, and
+backup/check/health results remain `success/0`. Registry, WorkSession 16
+workspace/allocation/admission and WorkSession 17 workspace SHA-256 values
+match task entry; WorkSession 17 allocation/admission remain absent. No
+production, preview, Beautips, routing, runtime, ownership or foreign resource
+was changed.
+
+The retained package contains summaries and hashes only: no prompt, response,
+attachment content, screenshot, credential, token, cookie, `auth.json`, raw
+HTTP body, mediator stderr, environment dump or Codex history. Sanitized
+evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.3-coordinator-admission-decisions`;
+the SHA-256 of its `SHA256SUMS` is
+`c5043eb66f92531383c0ba2e12ec223a73379c059e24916c5211283b6da87317`.
