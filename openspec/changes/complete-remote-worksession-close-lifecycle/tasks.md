@@ -164,7 +164,7 @@ environment dumps.
   commits/trees/manifests/images/install bundles and checksum-sealed rollback
   predecessors; verify production, preview, Beautips and unrelated resources
   remain unchanged
-- [ ] 6.7 Strict-validate the change, seal source-validation evidence, update the
+- [x] 6.7 Strict-validate the change, seal source-validation evidence, update the
   ledger, mark task 6.7, commit and push
 - [ ] 6.8 STOP before any production migration, deployment, worker install,
   configuration change, capability activation or legacy reconciliation until

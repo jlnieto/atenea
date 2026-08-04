@@ -12609,3 +12609,55 @@ unrelated resource changed. Sanitized published-artifact evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.6-published-rollout-artifacts`;
 the SHA-256 of its `SHA256SUMS` is
 `034da1d2ba165556b52fe9ee3ed0d1b911424b7e69c7675dafa6f16e540d25fe`.
+
+Task 6.7 is complete. Change progress is `43/60`; task 6.8 is the exact first
+pending task and mandatory human rollout gate. OpenSpec strict validation
+passes from published programme predecessor
+`d73be2616a183b437734cf93a59ae5556185910e`, tree
+`860bbbcd6ce429b8c9ae0d55c6402abd41e45e97`. The reviewed Atenea candidate
+remains published and exact at
+`989ec05b7ea325fd1921eb01eb06a4ca5d057ce6`, tree
+`096639f41c5f349933ea2a290c64192be532ffbf`.
+
+Every entry in the six task 6.1–6.6 checksum manifests was reverified: 48/48
+files are exact. The closure also seals exact hashes for the proposal, design,
+task plan and all five specification deltas. Complete backend/V63 migration,
+web build/audit/desktop-mobile Playwright, Android unit/instrumentation/static/
+canary, sorted programme/worker/runtime/security, adversarial review and
+published rollout artifact evidence remain valid without rerunning or mutating
+their retained artifacts.
+
+Production remains V62 on exact image
+`sha256:fe5bb7a6b39dbcc2f9847dd05b68b9aabe72bf4d2775ad55f5624fcd99b1d96f`;
+preview remains on exact image
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`.
+Both return HTTP 200 with zero restarts. Beautips remains clean,
+upstream-exact and HTTP 200 at
+`9e122bf024d29b9cda56b27f8a32c218e1f0d433`; its unintended 403 remains
+absent and its activation remains disabled.
+
+Production still has 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote. AgentRun 96
+remains terminal `FAILED`, unretried, without child and with its complete
+profile. WorkSession 17 retains exactly one turn, one run and one attachment.
+Routing remains `ax42-01` enabled/healthy `4/2` at `0/0`.
+
+The registry, WorkSession 16 workspace/allocation/admission and WorkSession 17
+workspace hashes remain exact; WorkSession 17 allocation/admission and the
+release successor remain absent. AX42 AgentRun, attachment and preview services
+remain enabled/active at zero restarts, backup/check/health remain `success/0`,
+rootless slots remain `3/0/0/3`, rootful Docker/containerd remain
+inactive/masked and RAID remains `3/3 [UU]`. The foreign local
+`atenea-activation-code_default` network remains present and untouched.
+
+No production migration, deployment, AX42 installation, configuration change,
+capability activation, Android publication/installation, legacy release,
+prompt, retry, ownership mutation or foreign-resource change occurred. Task
+6.8 may proceed only after the operator separately and explicitly authorizes
+the exact V63 rollout, reviewed AX42 successor, bounded rollback exercise and
+Atenea-only activation.
+
+Sanitized aggregate source-validation evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.7-source-validation-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`a05e04004c29fa806db77a5ae994216cd5d233431d475521f6477d296dc65c1b`.
