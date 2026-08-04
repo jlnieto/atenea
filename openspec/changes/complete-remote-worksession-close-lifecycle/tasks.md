@@ -180,7 +180,7 @@ environment dumps.
 - [x] 7.2 Create and check a fresh encrypted external backup, restore the exact
   database into an empty isolated target, apply V63 and re-prove the
   rollback-compatible image before production migration
-- [ ] 7.3 Deploy the exact V63-aware backend/web and reviewed AX42
+- [x] 7.3 Deploy the exact V63-aware backend/web and reviewed AX42
   worker/finalizer successor with all new gates disabled; restart only declared
   services, use finite readiness, verify installed hashes and retain exact
   rollback predecessors

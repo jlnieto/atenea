@@ -12988,3 +12988,79 @@ after a new separate authorization names commit
 `650d4867d621e91635433e7ebcb7dcc9fb7876ad`, archive SHA-256
 `d8d04186d1d22e988eceb3ea4e74607c133f07b72b614cbbb78ad8ba1ed181c6`
 and both evidence seals. Task 7.7 remains separately gated.
+
+Task 7.3 is complete. Change progress is `47/60`; task 7.4 is the exact next
+task but was not started. The operator separately authorized only the AX42
+remainder against programme HEAD
+`ab42ed298c6d1af2968d79cfb2ad954b0ebaa503`, correction commit
+`666810a55bdf91d60e04f0cd896474f1bbe6a060`, tree
+`650d4867d621e91635433e7ebcb7dcc9fb7876ad`, archive SHA-256
+`d8d04186d1d22e988eceb3ea4e74607c133f07b72b614cbbb78ad8ba1ed181c6`
+and the full control/AX42 predecessor evidence seals recorded above. The
+authorization excluded task 7.4 and every later task, gate activation,
+WorkSession 16 release, prompts, retries, Beautips activation and foreign
+resources.
+
+The corrected routing apply completed from that exact sealed archive. The
+installed finalizer SHA-256 is
+`dc8f4374f372127163df467c317a2f7fabff4af5e1667799a448173ac9546e15`;
+the installed worker, worker installer and service template remain exact at
+`e6f24a3265b1367ece444fcb1083d264e1024182884cbf5019560f81bd569193`,
+`aaea361d7a732d9fbc957b5c2d757fab44c0960a47a75c6fe64eb98159183613`
+and
+`90167677bcdacbc629f89f019b5a2c2ece56e46beaefcc91d84cf2646b1f4ff6`.
+Both installed verifiers pass. Routing reports
+`releaseEnabledByDefault:false` and `arbitraryAuthority:false`; the fixed
+release root is `0700 root:root`, has link count two and contains zero
+operation journals. An unauthenticated fixed release request returns HTTP
+401, proving that the installed dispatch is reachable without crossing its
+authentication boundary. No authorized release request was sent.
+
+The exact registry, WorkSession 16 workspace/allocation/admission hashes
+remain
+`6dbb541e51d672236af660e01f83d9f89b0e3c0a5652757340170f2a70ca87e7`,
+`6014606bb884c808a8f9603b9eb86aa7fc65c785fae59bd45a4caf468f0e065c`,
+`af69156b9a6935cb11c96e0b7bdd73b950ec97959281a97b870bdad0c691a80f`
+and
+`099e565f0df471685c24925ce02d69431639b024499fd91e4d47c08c6d946e11`.
+WorkSession 17 still has no allocation, admission or registration. AgentRun,
+attachment, preview and image services are active with zero restarts;
+backup/check/health timers are active with successful exit zero results;
+rootless slots remain `3/0/0/3`; rootful Docker/containerd remain
+inactive/masked; and all three RAID arrays remain `[UU]`. The exact
+task-owned extraction and verifier directories were removed. No foreign or
+ambiguous resource was adopted, repaired, removed or reconstructed.
+
+Production remains V63 on exact image
+`sha256:1c67ac36a6b45a4b0004e15ba79bcd6d50addfb4b09d8b7890b43c8ef092801a`
+and preview remains on
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`;
+both return HTTP 200 with zero restarts. The deployed compose SHA-256 is
+`69c97cf6c9595c613c17626703c4d090949bdbd44049a5e82c60e46f19e49df5`
+and the sealed V62 predecessor remains
+`6951a486535b19f348d305bd48a443fe93698f3aade2880f1bd1565babec5d40`.
+All three release gate environment names remain absent. Production retains 15
+WorkSessions, 96 terminal AgentRuns and zero non-terminal runs, with exact
+remote-close counts `NOT_REQUIRED:2`, `NOT_STARTED:3` and
+`UNVERIFIED_LEGACY:10`. WorkSession 16 remains
+`CLOSED/UNVERIFIED_LEGACY/revision 0`; WorkSession 17 remains
+`OPEN/NOT_STARTED/revision 0`; AgentRun 96 remains terminal failed with no
+retry or recovery mutation; and zero legacy plan or operation exists.
+
+Canonical Beautips remains clean and GitHub-exact at
+`9e122bf024d29b9cda56b27f8a32c218e1f0d433`, and its public root returns HTTP
+200. Its separate AX42 administrative runtime remains clean and unchanged.
+The local foreign `atenea-activation-code_default` network remains present
+with zero containers and untouched. No Android publication, configuration or
+capability activation, workspace release, prompt, retry, production/preview
+route change, Beautips change or unrelated mutation occurred.
+
+Final sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.3-v63-worker-rollout-final`
+on both hosts. The control-host SHA-256 of `SHA256SUMS` is
+`1ee5c02f066b414fd139eca3b55af3dd27f1e00d266c986b57750bd47f32be5a`;
+the AX42 value is
+`844f1af3617e093b221446693134a58a3e409aa9b29c38c8482518c28aa2d94c`.
+The preceding sealed directories were not modified. A separate authorization
+is required before task 7.4, and task 7.7 retains its independent mandatory
+in-product operator gate.
