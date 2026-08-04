@@ -9,6 +9,7 @@ public final class ProjectCodexIdentity {
     public static final String IMAGE_WORKLOAD_KIND = "project-codex-v3";
     public static final String PROJECT_NAME = "Atenea";
     public static final String PROJECT_IDENTITY = "atenea";
+    public static final String WORKER_ID = "ax42-01";
     public static final String REPOSITORY = "https://github.com/jlnieto/atenea.git";
     public static final String REPO_PATH = "/workspace/repos/internal/atenea";
     public static final String BRANCH = "main";

@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,9 +26,12 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +49,9 @@ class RemoteWorkerClientTest {
     private final AtomicReference<String> workerErrorContentType =
             new AtomicReference<>("application/json");
     private final AtomicInteger workerErrorStatus = new AtomicInteger(409);
+    private final AtomicReference<Consumer<Map<String, Object>>> releaseReceiptMutation =
+            new AtomicReference<>();
+    private final AtomicReference<String> releaseIdempotencyHeader = new AtomicReference<>();
     private HttpServer server;
     private RemoteWorkerProperties properties;
     private RemoteWorkerClient client;
@@ -118,6 +126,20 @@ class RemoteWorkerClientTest {
                     java.util.Map.entry("selectionEnabled", true),
                     java.util.Map.entry("executionEnabled", true),
                     java.util.Map.entry("valuesExposed", false)));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.createContext("/v1/project-workspaces/release", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            releaseIdempotencyHeader.set(
+                    exchange.getRequestHeaders().getFirst("Idempotency-Key"));
+            Map<String, Object> receipt = workspaceReleaseReceipt(requestBody.get());
+            Consumer<Map<String, Object>> mutation = releaseReceiptMutation.get();
+            if (mutation != null) {
+                mutation.accept(receipt);
+            }
+            byte[] response = objectMapper.writeValueAsBytes(receipt);
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
             exchange.close();
@@ -520,6 +542,107 @@ class RemoteWorkerClientTest {
         assertEquals(run.getWorkspaceIdentity(), workspace.workspaceIdentity());
         assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, workspace.projectId());
         assertEquals(TEST_CANONICAL_COMMIT, workspace.canonicalCommit());
+    }
+
+    @Test
+    void workspaceReleaseUsesOnlyPersistedExactAteneaIdentityAndValidatesReceipt() {
+        WorkSessionEntity session = releasableSession();
+
+        RemoteWorkerClient.WorkspaceRelease result = client.releaseWorkspace(session);
+
+        JsonNode body = requestBody.get();
+        String operationId = session.getRemoteCloseOperationId().toString();
+        assertEquals(Set.of(
+                        "operationId", "idempotencyKey", "sessionId", "workspaceIdentity",
+                        "projectId", "repository", "branch", "commit", "manifestSha256",
+                        "workspaceBranch"),
+                objectMapper.convertValue(body, Map.class).keySet());
+        assertEquals(operationId, body.get("operationId").asText());
+        assertEquals(operationId, body.get("idempotencyKey").asText());
+        assertEquals(operationId, releaseIdempotencyHeader.get());
+        assertEquals(session.getRemoteSessionId().toString(), body.get("sessionId").asText());
+        assertEquals(session.getWorkspaceIdentity(), body.get("workspaceIdentity").asText());
+        assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY, body.get("projectId").asText());
+        assertEquals(ProjectCodexIdentity.REPOSITORY, body.get("repository").asText());
+        assertEquals(ProjectCodexIdentity.BRANCH, body.get("branch").asText());
+        assertEquals(TEST_CANONICAL_COMMIT, body.get("commit").asText());
+        assertEquals(ProjectCodexIdentity.MANIFEST_SHA256,
+                body.get("manifestSha256").asText());
+        assertEquals(session.getWorkspaceBranch(), body.get("workspaceBranch").asText());
+        for (String forbidden : List.of(
+                "command", "path", "slot", "port", "service", "endpoint",
+                "resourceName", "label", "credential", "deletionTarget")) {
+            assertNull(body.get(forbidden));
+        }
+        assertEquals("project-workspace-release-v1", result.schemaVersion());
+        assertEquals("RELEASED", result.state());
+        assertEquals(operationId, result.operationId());
+        assertEquals("205ff648ddd1d736a40c92e695d395c565f006ec245ee0de291629bcb2b903b7",
+                result.requestFingerprintSha256());
+        assertEquals(6, result.revision());
+        assertEquals(true, result.retained().values().stream().allMatch(Boolean.TRUE::equals));
+        assertEquals(false, result.valuesExposed());
+    }
+
+    @Test
+    void workspaceReleaseRejectsIncompleteOrForeignPersistedOwnershipBeforeNetwork() {
+        List<Consumer<WorkSessionEntity>> invalidators = List.of(
+                value -> value.setExecutionTarget(ExecutionTarget.LOCAL),
+                value -> value.setSelectedWorkerId("foreign-worker"),
+                value -> value.setWorkspaceIdentity(
+                        "remote:foreign:work-session:" + value.getRemoteSessionId()),
+                value -> value.setWorkspaceBranch("atenea/session-foreign"),
+                value -> value.setRemoteCloseOperationId(null),
+                value -> value.setRemoteCloseState(RemoteCloseState.NOT_STARTED),
+                value -> value.getProject().setName(BeautipsProjectCodexIdentity.PROJECT_NAME));
+
+        for (Consumer<WorkSessionEntity> invalidator : invalidators) {
+            requestBody.set(null);
+            WorkSessionEntity session = releasableSession();
+            invalidator.accept(session);
+
+            RemoteWorkerException exception = assertThrows(
+                    RemoteWorkerException.class,
+                    () -> client.releaseWorkspace(session));
+
+            assertEquals(409, exception.getStatusCode());
+            assertNull(requestBody.get());
+        }
+    }
+
+    @Test
+    void workspaceReleaseRejectsUnsealedUnknownOrUnsafeReceiptProjection() {
+        List<Consumer<Map<String, Object>>> mutations = List.of(
+                receipt -> {
+                    receipt.put("workerId", "foreign-worker");
+                    sealWorkspaceReleaseReceipt(receipt);
+                },
+                receipt -> {
+                    Map<String, Object> retained = new java.util.LinkedHashMap<>(
+                            (Map<String, Object>) receipt.get("retained"));
+                    retained.put("git", false);
+                    receipt.put("retained", retained);
+                    sealWorkspaceReleaseReceipt(receipt);
+                },
+                receipt -> {
+                    receipt.put("path", "/srv/foreign");
+                    sealWorkspaceReleaseReceipt(receipt);
+                },
+                receipt -> receipt.put("receiptSha256", "0".repeat(64)));
+
+        for (Consumer<Map<String, Object>> mutation : mutations) {
+            releaseReceiptMutation.set(mutation);
+
+            RemoteWorkerException exception = assertThrows(
+                    RemoteWorkerException.class,
+                    () -> client.releaseWorkspace(releasableSession()));
+
+            assertEquals(502, exception.getStatusCode());
+            assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", exception.getFailureCode());
+            assertEquals(RemoteWorkerFailureCategory.PROTOCOL, exception.getCategory());
+            assertEquals(false, exception.isRetryable());
+        }
+        releaseReceiptMutation.set(null);
     }
 
     @Test
@@ -1011,6 +1134,86 @@ class RemoteWorkerClientTest {
                 java.util.Map.entry("reconcileRequired", false),
                 java.util.Map.entry("retainedProgressCount", 2),
                 java.util.Map.entry("valuesExposed", false));
+    }
+
+    private WorkSessionEntity releasableSession() {
+        WorkSessionEntity session = projectRun(null).getSession();
+        String sessionId = session.getRemoteSessionId().toString();
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        session.setWorkspaceIdentity(
+                "remote:" + ProjectCodexIdentity.WORKER_ID + ":work-session:" + sessionId);
+        session.setWorkspaceBranch("atenea/session-" + sessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setRemoteCloseState(RemoteCloseState.REQUESTED);
+        session.setRemoteCloseOperationId(
+                UUID.fromString("22222222-2222-4222-8222-222222222222"));
+        session.setRemoteCloseRevision(1);
+        session.setRemoteCloseRequestedAt(Instant.parse("2026-08-03T09:00:00Z"));
+        session.setRemoteCloseUpdatedAt(Instant.parse("2026-08-03T09:00:00Z"));
+        return session;
+    }
+
+    private Map<String, Object> workspaceReleaseReceipt(JsonNode request) {
+        Map<String, Object> receipt = new java.util.LinkedHashMap<>();
+        receipt.put("schemaVersion", "project-workspace-release-v1");
+        receipt.put("state", "RELEASED");
+        request.fields().forEachRemaining(entry -> receipt.put(entry.getKey(), entry.getValue().asText()));
+        receipt.put("workerId", ProjectCodexIdentity.WORKER_ID);
+        receipt.put("requestFingerprintSha256", canonicalSha256(request));
+        receipt.put("revision", 6);
+        receipt.put("removed", Map.of(
+                "runtimeContainers", 0,
+                "runtimeNetworks", 0,
+                "sessionImages", 0,
+                "previewResources", 0,
+                "brokerResources", 0,
+                "browserProcesses", 0));
+        receipt.put("released", Map.of(
+                "registration", true,
+                "normalAdmission", true,
+                "heavyAdmission", true,
+                "allocation", true));
+        receipt.put("retained", Map.of(
+                "workspaceRecord", true,
+                "worktree", true,
+                "git", true,
+                "turns", true,
+                "agentRuns", true,
+                "attachments", true,
+                "logs", true,
+                "artifacts", true,
+                "backups", true,
+                "policyVolumes", true));
+        receipt.put("ownershipFingerprintSha256", "4".repeat(64));
+        receipt.put("valuesExposed", false);
+        sealWorkspaceReleaseReceipt(receipt);
+        return receipt;
+    }
+
+    private void sealWorkspaceReleaseReceipt(Map<String, Object> receipt) {
+        receipt.remove("receiptSha256");
+        receipt.put("receiptSha256", canonicalSha256(objectMapper.valueToTree(receipt)));
+    }
+
+    private String canonicalSha256(JsonNode value) {
+        return sha256(canonicalize(value));
+    }
+
+    private JsonNode canonicalize(JsonNode value) {
+        if (value.isObject()) {
+            com.fasterxml.jackson.databind.node.ObjectNode result = objectMapper.createObjectNode();
+            Set<String> fields = new java.util.TreeSet<>();
+            value.fieldNames().forEachRemaining(fields::add);
+            fields.forEach(field -> result.set(field, canonicalize(value.get(field))));
+            return result;
+        }
+        if (value.isArray()) {
+            com.fasterxml.jackson.databind.node.ArrayNode result = objectMapper.createArrayNode();
+            value.forEach(child -> result.add(canonicalize(child)));
+            return result;
+        }
+        return value;
     }
 
     private AgentRunEntity projectRun(String threadId) {
