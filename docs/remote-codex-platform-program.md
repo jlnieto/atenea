@@ -12918,3 +12918,73 @@ name these corrected bytes. A new separate explicit authorization must name
 the corrected successor commit/tree and evidence seal before task 7.3 may
 resume. Task 7.7 remains a later independent in-product confirmation and must
 not be simulated or executed through SSH.
+
+Task 7.3 remains pending and change progress remains `46/60`. The operator's
+separate response immediately after the exact corrected handoff was normalized
+as authorization `rollout-corrected-v63-atenea-only-20260804`: tasks 7.3–7.6
+only, programme HEAD
+`96f7b5498f2df758724e226a6c8e2ad9c929710b`, worker successor
+`7c5d2e65b34d475e56ab53715661f37ff69472cb`, tree
+`497b6cc370392cd45e027abcd72dd0c80b81d401`, and artifact seal
+`8d5ee34a7d6c00130ac29751dc295ad406a48b476bfe09b82d9c5b6930a5d2bf`.
+It excluded Beautips activation, foreign resources, prompts, retries and the
+later task 7.7 WorkSession 16 confirmation.
+
+The authorized production half of task 7.3 completed. The exact V62 compose
+predecessor was retained, one image line was changed atomically after Compose
+validation, and only `atenea-backend-prod` was recreated. It reached HTTP 200
+on bounded attempt 8 with zero restarts on exact image
+`sha256:1c67ac36a6b45a4b0004e15ba79bcd6d50addfb4b09d8b7890b43c8ef092801a`.
+Flyway is now V63. The exact backfill remains `NOT_REQUIRED:2`,
+`NOT_STARTED:3`, `UNVERIFIED_LEGACY:10`; WorkSession 16 is
+`CLOSED/UNVERIFIED_LEGACY/revision 0`, WorkSession 17 is
+`OPEN/NOT_STARTED/revision 0`, and AgentRun 96 remains terminal failed and
+unretried. No legacy plan or operation exists. None of the three release gate
+environment names is present, so application defaults keep release,
+reconciliation and the project allowlist disabled. Preview remains on exact
+image
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`,
+HTTP 200 with zero restarts.
+
+The AX42 routing and AgentRun installer plans then passed against the exact
+predecessor. The first routing apply failed closed before the worker update:
+the new journal leaf inherited the setgid bit from
+`/srv/atenea/worker` and was mode `2700`, while the reviewed verifier correctly
+required private mode `0700`. The only partial resources were the exact new
+finalizer and an empty task-owned journal directory. After recording their
+owner, mode, link count and exact hash, both were removed. The five-file
+predecessor was restored from its sealed archive. The worker remains active at
+zero restarts; registry, WorkSession 16 allocation/admission and all unrelated
+ownership hashes remain exact. No release request, journal entry, registration
+change, admission release, allocation retirement, prompt or retry occurred.
+
+Programme commit
+`666810a55bdf91d60e04f0cd896474f1bbe6a060`, tree
+`650d4867d621e91635433e7ebcb7dcc9fb7876ad`, now explicitly clears inherited
+setuid, setgid and sticky bits after creating the exact root-owned journal
+leaf. Its regression creates a `2770` parent and proves apply normalizes the
+leaf to `0700`; affected installer/rollback suites pass. A final clean-copy
+run of all 33 top-level worker entrypoints passes `33/33`, including HTTP,
+finalizer, Playwright, runtime, ownership, backup, attachment and Beautips
+isolation contracts. Strict OpenSpec validation passes. The corrected routing
+installer SHA-256 is
+`7fb634aaf7327fef84924203d6433914728a196c4151d490c357abc538584cbc`;
+the new reproducible source archive SHA-256 is
+`d8d04186d1d22e988eceb3ea4e74607c133f07b72b614cbbb78ad8ba1ed181c6`.
+
+Production-side sanitized evidence, both compose identities and the corrected
+source archive are beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.3-v63-worker-rollout`
+on the control host; the SHA-256 of its `SHA256SUMS` is
+`6915bca4b970ed391fda4b2a2205c8b42f45e6b6b0464e9e6e8e8c1bb4915fbe`.
+The same path on AX42 retains the exact static predecessor, authorization,
+failure/recovery summary and corrected archive; its `SHA256SUMS` SHA-256 is
+`758a7395f10ffa8bc41a9f83a9348e158b1b360fe9d24bbf0e234a02b918b4d8`.
+
+The previous authorization was consumed by the exact production deployment
+and does not name the corrected installer bytes. Task 7.3 can resume only
+after a new separate authorization names commit
+`666810a55bdf91d60e04f0cd896474f1bbe6a060`, tree
+`650d4867d621e91635433e7ebcb7dcc9fb7876ad`, archive SHA-256
+`d8d04186d1d22e988eceb3ea4e74607c133f07b72b614cbbb78ad8ba1ed181c6`
+and both evidence seals. Task 7.7 remains separately gated.
