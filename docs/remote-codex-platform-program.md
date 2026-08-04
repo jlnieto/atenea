@@ -12410,3 +12410,58 @@ Sanitized build, audit, DOM and final screenshot evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.2-final-web-acceptance`;
 the SHA-256 of its `SHA256SUMS` is
 `7a3ef0d0e4da6eb7e9d2f165b43672880c9a5f68857aeb3e2a7ee1a9b8df4305`.
+
+Task 6.3 is complete. Change progress is `39/60`; task 6.4 is the exact
+resume point. The unchanged Atenea candidate
+`03534c4998eaf150aa0eda9d0096b00f403b1baa`, tree
+`d1a1e6ba2c1e1207f882c481428342a8f83a76ab`, ran from exact disposable
+source copies with finite test, emulator and build timeouts.
+
+The complete `core-console` and `app` unit suites pass 37/37 and 4/4 with zero
+failures, errors or skips. A single self-targeting instrumentation APK then ran
+all four remote-close Compose cases on a real isolated API 35 emulator. It
+covers visible retained-state confirmation, exact authorized primary action,
+stale confirmation requiring refresh and missing-authority disablement. The
+test package, emulator, AVD and task-downloaded system image were removed.
+
+The changed `core-console` module passes Android lint with zero errors. Full
+`--continue lintDebug` reports three findings in unchanged notification,
+theme and voice-diagnostics files. The exact canonical base
+`615e539d1f2622a4ac2568ba7697b876d49ae33e` reports the same three normalized
+findings, so the candidate adds zero static-analysis errors. No lint baseline,
+suppression or unrelated source correction was introduced.
+
+One 59,896,815-byte canary APK was built from the exact candidate tree using
+the opaque established debug-channel Android home. Its SHA-256 is
+`88a24b98ac064218919292052d26628056efae7b2df4562b45dbc30148e819cf`.
+APK Signature Scheme v2 verification passes and its certificate SHA-256
+matches the retained channel at
+`a1642a052853e9992da7ae8f8b6fe09e150533877776c009e7cca83e8b76559a`.
+APK-download and Firebase secret inputs were absent and the manifest URL was
+synthetic. Both established published APKs remain the prior 59,863,832-byte
+artifact with SHA-256
+`d9f2a3958d9d9ec137b08e78d4ba4139313edd903b51e1fdeb01fb62314e9ae9`
+and 2026-08-01 timestamps. The canary was neither published nor installed.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains terminal unretried `FAILED`, with no child and a complete profile.
+WorkSession 17 retains one turn, one run and one attachment. Production,
+preview and Beautips return HTTP 200; routing remains `ax42-01`
+enabled/healthy `4/2` at `0/0`.
+
+The registry, WorkSession 16 workspace/allocation/admission and WorkSession 17
+workspace hashes remain exact; WorkSession 17 allocation/admission remain
+absent. AgentRun, attachment and preview services remain active with zero
+restarts, rootless slots remain `3/0/0/3`, rootful Docker/containerd remain
+inactive/masked, all three RAID arrays remain `[UU]`, and backup/check/health
+remain `success/0`. All task-labelled containers, networks and volumes are
+absent. No migration, deployment, configuration, publication, installation,
+prompt, retry, runtime, ownership, production, preview, Beautips, foreign or
+unrelated resource changed.
+
+Sanitized unit, static-differential, instrumentation, signature and retained
+canary evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.3-complete-android-canary`;
+the SHA-256 of its `SHA256SUMS` is
+`440ab21d144b7c50eb3e29f51b74d4e106b011c91a4d56ac3775c01edf37a5a4`.

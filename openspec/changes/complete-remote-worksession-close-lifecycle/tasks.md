@@ -152,7 +152,7 @@ environment dumps.
   clean checkout, with zero failures and no synthetic worker/database residue
 - [x] 6.2 Run the production web build, dependency audit and final desktop/mobile
   Playwright acceptance against the exact candidate tree
-- [ ] 6.3 Run Android unit/instrumentation/static checks and produce the exact
+- [x] 6.3 Run Android unit/instrumentation/static checks and produce the exact
   canary artifact plus checksum without publishing or installing it
 - [ ] 6.4 Run the complete sorted programme/worker, runtime, preview, attachment,
   backup, installer, rollback and security suites from a clean immutable source
