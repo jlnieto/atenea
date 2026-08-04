@@ -11654,3 +11654,51 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.8-exact-release-installer-rollback`;
 the SHA-256 of its `SHA256SUMS` is
 `d29a1cd08c008f26db2e5648e5246c76c1d67719dfc43124bf45569298693b5e`.
+
+Task 3.9 and worker exact-release section 3 are complete. Change progress is
+`24/60`; task 4.1 is the exact resume point and no control-plane client or
+close-orchestration work has started.
+
+One detached clean programme worktree at
+`92bef8ab8bba4b99ac708887604e913ceabcdb5d` and a separate clean canonical
+Atenea input copy at `615e539d1f2622a4ac2568ba7697b876d49ae33e`
+ran all 33 top-level worker test entrypoints in bytewise lexical order. Every
+entrypoint had a 900-second outer timeout. All 33/33 passed in 492 aggregate
+entrypoint seconds with zero nonzero exits. The exact result table SHA-256 is
+`4abc7d16d3c946b53984f3543b4fadef90568a8ab3ae86011a574aa5340f664a`;
+its normalized index/name/exit SHA-256 is
+`79067a973bcc7055bf71ac516372de8defa5f9c3b10c5f98cb0068890f2772e6`.
+
+The pass contains 20 unittest reports totalling 239 tests, with zero failures
+or errors. One test is deliberately skipped: real encrypted Restic integration
+requires separate `RESTIC_REAL_INTEGRATION=1`; all six bounded backup contract
+tests pass and live backup/check/health remain `success/0`. The accepted suite
+includes the 34 release tests, both workspace lifecycle installer/rollback
+entrypoints, the AgentRun installer/rollback entrypoint, real synthetic
+Playwright validation, browser cleanup, ownership denial, runtime, admission,
+allocation, workspace, attachment, preview, database and backup contracts.
+
+After success, the registered programme worktree, Atenea input copy, logs,
+visual registry and explicit Playwright wrapper were removed only by their
+validated temporary identities. Known test roots, bytecode roots, screenshots,
+fixture containers, networks, images, listeners, brokers and
+Playwright/Chromium processes are all zero locally and on AX42. Rootless slot
+inventory remains `3/0/0/3`; no task-labelled resource or candidate unit
+exists.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote and AgentRun
+96 remains terminal unretried `FAILED`. Production and preview health remain
+`UP`; production, preview and Beautips containers remain running with zero
+restarts; routing stays `ax42-01` enabled/healthy `4/2` at `0/0`. All five
+incident ownership hashes remain exact and WorkSession 17 allocation/admission
+remain absent. Worker services remain active with zero restarts, rootful
+daemons remain inactive, RAID remains `3/3 [UU]`, and no release binary,
+journal root or release sudo rule is installed. No deployment, installation,
+activation, ownership, production, preview, Beautips, foreign or unrelated
+resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.9-worker-release-section-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`5a6e92ff3b2a17db98119926081fe19f69f21285a3da1c0f1236ed931e5107e1`.

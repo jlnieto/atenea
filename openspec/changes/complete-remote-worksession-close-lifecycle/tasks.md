@@ -94,7 +94,7 @@ environment dumps.
 - [x] 3.8 Update the dedicated installer, sudoers, dependency fingerprints and
   installed verifier for the exact release authority; add an exact predecessor
   rollback that cannot remove or broaden another operation
-- [ ] 3.9 Run every focused release/installer/rollback test and the complete
+- [x] 3.9 Run every focused release/installer/rollback test and the complete
   sorted worker suite with zero residual fixture containers, networks, images,
   listeners, brokers or Playwright/Chromium processes; seal evidence, update
   the ledger, strict-validate, mark section 3, commit and push
