@@ -30,7 +30,7 @@ environment dumps.
   states, immutable operation identity, monotonic revision, receipt/error
   consistency, legacy `UNVERIFIED_LEGACY` backfill and safe AgentRun failure
   code/next-action projection
-- [ ] 1.2 Implement additive V63 with exact constraints and indexes; do not
+- [x] 1.2 Implement additive V63 with exact constraints and indexes; do not
   rewrite historical session, run, turn, delivery or attachment data and do
   not infer released worker state for a legacy row
 - [ ] 1.3 Implement persistence/read-model mapping for remote close and

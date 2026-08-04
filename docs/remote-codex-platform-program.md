@@ -10851,3 +10851,44 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-1.1-v63-red-tests`;
 the SHA-256 of its `SHA256SUMS` is
 `7bc14b407f864b3ecb6ed6ab56e1bf391d89792fc0744d8718b11c1fe03f9395`.
+
+Task 1.2 is complete. Change progress is `6/60`; task 1.3 is the exact resume
+point.
+
+Canonical Atenea candidate commit
+`06c0c0704da30aec2a0144fd51e14e52f1cece0f` adds source-only migration V63
+and is published exactly in the canonical repository and GitHub. The migration
+adds the seven-state remote-close projection, one unique immutable operation
+UUID, monotonic revision, safe error and receipt fields, durable timestamps,
+closed consistency constraints, partial reconciliation indexes and a trigger
+that rejects backwards lifecycle transitions or changes to persisted
+operation/request/receipt/release facts. AgentRun receives a paired safe
+failure-code/recovery-action projection, including the exact
+`CLOSED_SESSION_OWNS_CAPACITY` to `RECONCILE_REMOTE_CLOSE` invariant; the
+existing recovery next-action constraint is expanded additively.
+
+The V63 backfill records local sessions as `NOT_REQUIRED`, non-closed remote
+sessions as `NOT_STARTED` and historical closed remote sessions as
+`UNVERIFIED_LEGACY`. It leaves operation, receipt, error and lifecycle
+timestamps null at revision zero and never infers historical release. No
+existing status, run, turn, delivery or attachment column is updated.
+
+In isolated PostgreSQL 16, the V63 contract passes 3/3, the V62 migration
+regression passes 3/3 and Codex operations migration integration passes 1/1.
+The task-1.1 domain/read-model contract intentionally remains RED 3/3 until
+task 1.3. All exact fixture containers were removed after finite runs.
+
+Canonical Atenea `main` remains clean at
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`; production remains at V62 with
+15 WorkSessions, 96 terminal AgentRuns and no non-terminal run. WorkSession 16,
+WorkSession 17 and AgentRun 96 remain respectively `CLOSED`, `OPEN` and
+terminal unretried `FAILED`. Production, preview and Beautips remain HTTP 200.
+Worker services/restarts, rootless `3/0/0/3`, rootful masking, RAID and the
+exact incident workspace/allocation/admission hashes remain unchanged. No
+production migration, deploy, routing/gate change, runtime action or foreign
+resource mutation occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-1.2-v63-additive-schema`;
+the SHA-256 of its `SHA256SUMS` is
+`ec6f321623fbe77b5fbe6741c9eff554fed38823e01560dfdc8065e89a39d024`.
