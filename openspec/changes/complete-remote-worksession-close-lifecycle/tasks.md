@@ -26,7 +26,7 @@ environment dumps.
 
 ## 1. Additive lifecycle persistence
 
-- [ ] 1.1 Add failing domain and migration tests for the V63 remote-close
+- [x] 1.1 Add failing domain and migration tests for the V63 remote-close
   states, immutable operation identity, monotonic revision, receipt/error
   consistency, legacy `UNVERIFIED_LEGACY` backfill and safe AgentRun failure
   code/next-action projection

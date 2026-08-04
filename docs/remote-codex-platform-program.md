@@ -10810,3 +10810,44 @@ Strict validation passes. Sanitized closure evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-0.4-entry-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `1da190af79c3e240255041604e72faf456347f661f8b69e5dd3d49a707033cc0`.
+
+Task 1.1 is complete. Change progress is `5/60`; task 1.2 is the exact resume
+point and no V63 implementation has started.
+
+The dedicated canonical Atenea candidate branch
+`codex/complete-remote-worksession-close-lifecycle-atenea-20260803` now fixes
+the RED persistence contract at commit
+`9a20854325b215ae1b9208d02999f8e573291e6c`, published exactly in both the
+canonical repository and GitHub. Canonical Atenea `main` remains clean and
+unchanged at `615e539d1f2622a4ac2568ba7697b876d49ae33e`.
+
+Three domain tests now require the closed seven-state remote-close vocabulary,
+durable WorkSession identity/revision/receipt/error/timestamp accessors and
+safe WorkSession/AgentRun next-action read projections. Their expected RED
+result is three errors caused only by absent V63 types and accessors. Three
+isolated PostgreSQL migration tests require migration 63, exact additive
+columns/indexes, local `NOT_REQUIRED`, open-remote `NOT_STARTED` and historical
+closed-remote `UNVERIFIED_LEGACY` backfill, immutable operation identity,
+monotonic revision and receipt/error plus failure/action consistency. Their
+expected RED result is three errors caused only by absent migration 63. The
+current V62 migration baseline remains green at 3/3. Both PostgreSQL 16 test
+containers used Docker-selected loopback ports and were removed after their
+finite runs.
+
+The post-task read-only guard confirms production remains at V62 with 15
+WorkSessions, 96 terminal AgentRuns and zero non-terminal AgentRuns.
+WorkSession 16 remains `CLOSED/REMOTE` with its exact workspace, allocation and
+admission hashes unchanged; WorkSession 17 remains `OPEN/REMOTE` with its
+workspace hash unchanged; AgentRun 96 remains terminal `FAILED`, pre-dispatch
+and unretried. Production, preview and Beautips remain HTTP 200 on their prior
+images. Worker services remain active with zero restarts, rootless running
+counts remain `3/0/0/3`, rootful daemons remain inactive/masked and RAID
+remains `3/3` healthy. No routing, capability, database, service, runtime,
+allocation, admission, registry or foreign resource was changed.
+
+No prompt, response, attachment content, screenshot, credential, token,
+cookie, `auth.json`, Codex history or environment dump was read or retained.
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-1.1-v63-red-tests`;
+the SHA-256 of its `SHA256SUMS` is
+`7bc14b407f864b3ecb6ed6ab56e1bf391d89792fc0744d8718b11c1fe03f9395`.
