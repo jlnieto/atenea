@@ -542,5 +542,399 @@ class ReleaseJournalStoreTest(unittest.TestCase):
         self.assertEqual("PREPARED", self.store.load(self.request)["state"])
 
 
+class FakeReleaseBoundary:
+    def __init__(self, projection: dict):
+        self.projection = projection
+        self.actions: list[str] = []
+        self.override: dict[str, dict] = {}
+
+    def release_ephemeral(self, _request: dict, _projection: dict) -> dict:
+        self.actions.append("ephemeral")
+        return self.override.get("ephemeral", {
+            "schemaVersion": "atenea-ephemeral-release-v1",
+            "state": "RELEASED",
+            "removed": {
+                category: len(self.projection[category])
+                for category in MODULE.EPHEMERAL_CATEGORIES
+            },
+            "policyVolumesRetained": True,
+            "valuesExposed": False,
+        })
+
+    def unregister_workspace(self, request: dict) -> dict:
+        self.actions.append("unregister")
+        return self.override.get("unregister", {
+            "schemaVersion": "atenea-workspace-unregistration-v1",
+            "state": "UNREGISTERED",
+            "sessionId": request["sessionId"],
+            "workspaceIdentity": request["workspaceIdentity"],
+            "registrationRemoved": True,
+            "selectionEnabled": False,
+            "executionEnabled": False,
+            "remainingRegistrations": 0,
+            "valuesExposed": False,
+        })
+
+    def release_heavy_admission(self, request: dict) -> dict:
+        self.actions.append("heavy")
+        return self._admission(request, "heavy")
+
+    def release_normal_admission(self, request: dict) -> dict:
+        self.actions.append("normal")
+        return self._admission(request, "normal")
+
+    def _admission(self, request: dict, kind: str) -> dict:
+        return self.override.get(kind, {
+            "schemaVersion": "atenea-admission-release-v1",
+            "state": "RELEASED",
+            "sessionId": request["sessionId"],
+            "kind": kind,
+            "changed": True,
+            "valuesExposed": False,
+        })
+
+    def retire_allocation(self, request: dict, fingerprint: str) -> dict:
+        self.actions.append("allocation")
+        return self.override.get("allocation", {
+            "schemaVersion": "atenea-allocation-retirement-v1",
+            "state": "RETIRED",
+            "sessionId": request["sessionId"],
+            "sourceName": "runtime-allocation-v1.json",
+            "retiredName": MODULE.RETIRED_ALLOCATION_NAME,
+            "fingerprintSha256": fingerprint,
+            "device": 1,
+            "inode": 2,
+            "uid": os.geteuid(),
+            "gid": os.getegid(),
+            "mode": 0o640,
+            "size": 100,
+            "mtimeNs": 10,
+            "atimeBeforeNs": 10,
+            "atimeAfterNs": 11,
+            "ctimeBeforeNs": 10,
+            "ctimeAfterNs": 11,
+            "valuesExposed": False,
+        })
+
+    def verify_retained(self, request: dict, _projection: dict) -> dict:
+        self.actions.append("verify")
+        return self.override.get("verify", {
+            "schemaVersion": "atenea-workspace-release-proof-v1",
+            "state": "RELEASED",
+            "sessionId": request["sessionId"],
+            "ephemeralRemaining": 0,
+            "registrationPresent": False,
+            "normalAdmission": "released",
+            "heavyAdmission": "released",
+            "activeAllocationPresent": False,
+            "retiredAllocationPresent": True,
+            "retained": {key: True for key in MODULE.RETAINED_KEYS},
+            "valuesExposed": False,
+        })
+
+
+class RecordingReleaseOperator:
+    def __init__(self, request: dict, projection: dict):
+        self.request = request
+        self.resources = {
+            (category, candidate["resourceId"])
+            for category in MODULE.EPHEMERAL_CATEGORIES
+            for candidate in projection[category]
+        }
+        self.removals: list[tuple[str, str]] = []
+        self.admissions: list[str] = []
+        self.registered = True
+        self.retained_volume = b"policy-retained"
+
+    def remove_ephemeral(self, category: str, resource_id: str, _candidate: dict) -> dict:
+        identity = (category, resource_id)
+        if identity not in self.resources:
+            raise MODULE.PreflightRejected()
+        self.resources.remove(identity)
+        self.removals.append(identity)
+        return {
+            "schemaVersion": "atenea-ephemeral-resource-release-v1",
+            "state": "REMOVED",
+            "category": category,
+            "resourceId": resource_id,
+            "sessionId": self.request["sessionId"],
+            "policyVolumeChanged": False,
+            "valuesExposed": False,
+        }
+
+    def unregister_workspace(self, session_id: str, workspace_identity: str) -> dict:
+        self.registered = False
+        return {
+            "schemaVersion": "atenea-workspace-unregistration-v1",
+            "state": "UNREGISTERED",
+            "sessionId": session_id,
+            "workspaceIdentity": workspace_identity,
+            "registrationRemoved": True,
+            "selectionEnabled": False,
+            "executionEnabled": False,
+            "remainingRegistrations": 0,
+            "valuesExposed": False,
+        }
+
+    def release_admission(self, session_id: str, kind: str) -> dict:
+        if kind == "normal" and self.admissions != ["heavy"]:
+            raise MODULE.PreflightRejected()
+        self.admissions.append(kind)
+        return {
+            "schemaVersion": "atenea-admission-release-v1",
+            "state": "RELEASED",
+            "sessionId": session_id,
+            "kind": kind,
+            "changed": True,
+            "valuesExposed": False,
+        }
+
+    def verify_retained(self, session_id: str, _projection: dict) -> dict:
+        if self.resources or self.registered or self.admissions != ["heavy", "normal"]:
+            raise MODULE.PreflightRejected()
+        return {
+            "schemaVersion": "atenea-workspace-release-proof-v1",
+            "state": "RELEASED",
+            "sessionId": session_id,
+            "ephemeralRemaining": 0,
+            "registrationPresent": False,
+            "normalAdmission": "released",
+            "heavyAdmission": "released",
+            "activeAllocationPresent": False,
+            "retiredAllocationPresent": True,
+            "retained": {key: True for key in MODULE.RETAINED_KEYS},
+            "valuesExposed": False,
+        }
+
+
+class RecordingAllocationRetirer:
+    def __init__(self):
+        self.calls: list[tuple[str, str]] = []
+
+    def retire(self, session_id: str, fingerprint: str) -> dict:
+        self.calls.append((session_id, fingerprint))
+        return {
+            "schemaVersion": "atenea-allocation-retirement-v1",
+            "state": "RETIRED",
+            "sessionId": session_id,
+            "sourceName": "runtime-allocation-v1.json",
+            "retiredName": MODULE.RETIRED_ALLOCATION_NAME,
+            "fingerprintSha256": fingerprint,
+            "device": 1,
+            "inode": 2,
+            "uid": os.geteuid(),
+            "gid": os.getegid(),
+            "mode": 0o640,
+            "size": 100,
+            "mtimeNs": 10,
+            "atimeBeforeNs": 10,
+            "atimeAfterNs": 11,
+            "ctimeBeforeNs": 10,
+            "ctimeAfterNs": 11,
+            "valuesExposed": False,
+        }
+
+
+class WorkspaceReleaseFinalizerTest(unittest.TestCase):
+    def setUp(self) -> None:
+        fixture = WorkspaceReleasePreflightTest(
+            "test_complete_projection_is_accepted_without_mutation"
+        )
+        fixture.setUp()
+        self.request = copy.deepcopy(fixture.request)
+        self.projection = copy.deepcopy(fixture.projection)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        os.chmod(self.root, 0o700)
+        self.store = MODULE.ReleaseJournalStore(self.root, test_mode=True)
+        self.boundary = FakeReleaseBoundary(self.projection)
+        self.finalizer = MODULE.WorkspaceReleaseFinalizer(
+            self.store, self.boundary
+        )
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def assert_rejected(self, operation) -> None:
+        with self.assertRaises(MODULE.PreflightRejected):
+            operation()
+
+    def test_release_orders_exact_mutations_and_returns_closed_projection(self) -> None:
+        result = self.finalizer.release(self.request, self.projection)
+        self.assertEqual(
+            ["ephemeral", "unregister", "heavy", "normal", "allocation", "verify"],
+            self.boundary.actions,
+        )
+        self.assertEqual("RELEASED", result["state"])
+        self.assertEqual(6, result["revision"])
+        self.assertEqual(1, result["removed"]["runtimeContainers"])
+        self.assertEqual(3, result["removed"]["previewResources"])
+        self.assertEqual(2, result["removed"]["browserProcesses"])
+        self.assertTrue(all(result["released"].values()))
+        self.assertTrue(all(result["retained"].values()))
+        self.assertFalse(result["valuesExposed"])
+        self.assertEqual("RELEASED", self.store.load(self.request)["state"])
+
+    def test_reviewed_boundary_removes_only_projected_ids_and_retains_volume(self) -> None:
+        operator = RecordingReleaseOperator(self.request, self.projection)
+        retirer = RecordingAllocationRetirer()
+        boundary = MODULE.ReviewedReleaseBoundary(operator, retirer)
+        finalizer = MODULE.WorkspaceReleaseFinalizer(self.store, boundary)
+        expected = [
+            (category, candidate["resourceId"])
+            for category in MODULE.EPHEMERAL_RELEASE_ORDER
+            for candidate in self.projection[category]
+        ]
+        before_projection = copy.deepcopy(self.projection)
+        retained_volume = operator.retained_volume
+        result = finalizer.release(self.request, self.projection)
+        self.assertEqual(expected, operator.removals)
+        self.assertEqual(set(), operator.resources)
+        self.assertEqual(["heavy", "normal"], operator.admissions)
+        self.assertEqual(retained_volume, operator.retained_volume)
+        self.assertEqual(before_projection, self.projection)
+        self.assertEqual(
+            [(self.request["sessionId"], self.projection["allocation"]["fingerprintSha256"])],
+            retirer.calls,
+        )
+        self.assertEqual("RELEASED", result["state"])
+
+    def test_default_boundary_is_unavailable_after_prepared_without_mutation(self) -> None:
+        finalizer = MODULE.WorkspaceReleaseFinalizer(self.store)
+        self.assert_rejected(lambda: finalizer.release(self.request, self.projection))
+        self.assertEqual("PREPARED", self.store.load(self.request)["state"])
+
+    def test_inexact_ephemeral_result_stops_before_unregistration(self) -> None:
+        invalid = self.boundary.release_ephemeral(self.request, self.projection)
+        self.boundary.actions.clear()
+        invalid["removed"]["runtimeContainers"] = 0
+        self.boundary.override["ephemeral"] = invalid
+        self.assert_rejected(
+            lambda: self.finalizer.release(self.request, self.projection)
+        )
+        self.assertEqual(["ephemeral"], self.boundary.actions)
+        self.assertEqual("PREPARED", self.store.load(self.request)["state"])
+
+    def test_inexact_unregistration_stops_before_admission(self) -> None:
+        invalid = self.boundary.unregister_workspace(self.request)
+        self.boundary.actions.clear()
+        invalid["remainingRegistrations"] = 1
+        self.boundary.override["unregister"] = invalid
+        self.assert_rejected(
+            lambda: self.finalizer.release(self.request, self.projection)
+        )
+        self.assertEqual(["ephemeral", "unregister"], self.boundary.actions)
+        self.assertEqual(
+            "EPHEMERAL_RELEASED", self.store.load(self.request)["state"]
+        )
+
+    def test_heavy_must_release_before_normal_and_allocation(self) -> None:
+        self.boundary.override["heavy"] = {
+            "schemaVersion": "atenea-admission-release-v1",
+            "state": "RELEASED",
+            "sessionId": self.request["sessionId"],
+            "kind": "normal",
+            "changed": True,
+            "valuesExposed": False,
+        }
+        self.assert_rejected(
+            lambda: self.finalizer.release(self.request, self.projection)
+        )
+        self.assertEqual(["ephemeral", "unregister", "heavy"], self.boundary.actions)
+        self.assertEqual("UNREGISTERED", self.store.load(self.request)["state"])
+
+    def test_inexact_allocation_proof_stops_before_retention_proof(self) -> None:
+        valid = self.boundary.retire_allocation(
+            self.request, self.projection["allocation"]["fingerprintSha256"]
+        )
+        self.boundary.actions.clear()
+        valid["retiredName"] = "foreign.json"
+        self.boundary.override["allocation"] = valid
+        self.assert_rejected(
+            lambda: self.finalizer.release(self.request, self.projection)
+        )
+        self.assertEqual(
+            ["ephemeral", "unregister", "heavy", "normal", "allocation"],
+            self.boundary.actions,
+        )
+        self.assertEqual(
+            "ADMISSION_RELEASED", self.store.load(self.request)["state"]
+        )
+
+    def test_missing_retained_state_never_reaches_released(self) -> None:
+        proof = self.boundary.verify_retained(self.request, self.projection)
+        self.boundary.actions.clear()
+        proof["retained"]["attachments"] = False
+        self.boundary.override["verify"] = proof
+        self.assert_rejected(
+            lambda: self.finalizer.release(self.request, self.projection)
+        )
+        self.assertEqual(
+            "ALLOCATION_RETIRED", self.store.load(self.request)["state"]
+        )
+
+
+class AllocationRetirerTest(unittest.TestCase):
+    session = WorkspaceReleasePreflightTest.session
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name) / "workspaces"
+        self.session_root = self.root / "sessions" / self.session
+        self.session_root.mkdir(parents=True, mode=0o700)
+        self.source = self.session_root / "runtime-allocation-v1.json"
+        self.content = b'{"schemaVersion":1,"state":"allocated"}\n'
+        self.source.write_bytes(self.content)
+        os.chmod(self.source, 0o640)
+        self.fingerprint = MODULE.hashlib.sha256(self.content).hexdigest()
+        self.retained = self.session_root / "workspace-v1.json"
+        self.retained.write_bytes(b"retained")
+        self.retirer = MODULE.AllocationRetirer(self.root, test_mode=True)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def assert_rejected(self, operation) -> None:
+        with self.assertRaises(MODULE.PreflightRejected):
+            operation()
+
+    def test_same_directory_rename_preserves_required_identity_and_retained_state(self) -> None:
+        before = self.source.stat()
+        retained_before = self.retained.read_bytes()
+        result = self.retirer.retire(self.session, self.fingerprint)
+        retired = self.session_root / MODULE.RETIRED_ALLOCATION_NAME
+        after = retired.stat()
+        self.assertFalse(self.source.exists())
+        self.assertEqual(self.content, retired.read_bytes())
+        for field in ("st_dev", "st_ino", "st_uid", "st_gid", "st_mode", "st_size", "st_mtime_ns"):
+            self.assertEqual(getattr(before, field), getattr(after, field))
+        self.assertEqual(before.st_ino, result["inode"])
+        self.assertEqual(self.fingerprint, result["fingerprintSha256"])
+        self.assertEqual(retained_before, self.retained.read_bytes())
+
+    def test_wrong_fingerprint_or_existing_retired_target_rejects_unchanged(self) -> None:
+        before = self.source.read_bytes()
+        self.assert_rejected(lambda: self.retirer.retire(self.session, "0" * 64))
+        self.assertEqual(before, self.source.read_bytes())
+        retired = self.session_root / MODULE.RETIRED_ALLOCATION_NAME
+        retired.write_bytes(b"foreign")
+        self.assert_rejected(
+            lambda: self.retirer.retire(self.session, self.fingerprint)
+        )
+        self.assertEqual(before, self.source.read_bytes())
+        self.assertEqual(b"foreign", retired.read_bytes())
+
+    def test_symlinked_active_allocation_is_rejected_without_following(self) -> None:
+        self.source.unlink()
+        foreign = self.session_root / "foreign.json"
+        foreign.write_bytes(self.content)
+        self.source.symlink_to(foreign)
+        before = foreign.read_bytes()
+        self.assert_rejected(
+            lambda: self.retirer.retire(self.session, self.fingerprint)
+        )
+        self.assertEqual(before, foreign.read_bytes())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

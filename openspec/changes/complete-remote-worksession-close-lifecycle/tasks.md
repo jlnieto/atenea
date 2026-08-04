@@ -79,7 +79,7 @@ environment dumps.
 - [x] 3.4 Implement the immutable release journal and monotonic
   `PREPARED`→`EPHEMERAL_RELEASED`→`UNREGISTERED`→`ADMISSION_RELEASED`→
   `ALLOCATION_RETIRED`→`RELEASED` transitions with exact stage validation
-- [ ] 3.5 Remove only exact-owned ephemeral resources, unregister only the
+- [x] 3.5 Remove only exact-owned ephemeral resources, unregister only the
   selected workspace, release heavy before normal admission and retire only
   its active allocation by same-filesystem rename; retain all declared source,
   conversation, attachment, log, artifact, backup and policy-retained volume

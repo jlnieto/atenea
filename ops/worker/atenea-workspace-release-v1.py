@@ -49,6 +49,21 @@ JOURNAL_KEYS = {
     "ownershipFingerprintSha256", "allocationFingerprintSha256", "state",
     "revision", "stageEvidence", "createdAt", "updatedAt", "journalSha256",
 }
+WORKSPACE_ROOT = Path("/srv/atenea/workspaces")
+RETIRED_ALLOCATION_NAME = "runtime-allocation-v1.retired.json"
+EPHEMERAL_CATEGORIES = (
+    "runtimeContainers", "runtimeNetworks", "sessionImages",
+    "previewResources", "listeners", "brokerResources", "materializations",
+    "browserProcesses",
+)
+EPHEMERAL_RELEASE_ORDER = (
+    "browserProcesses", "materializations", "previewResources", "listeners",
+    "brokerResources", "runtimeContainers", "runtimeNetworks", "sessionImages",
+)
+RETAINED_KEYS = {
+    "workspaceRecord", "worktree", "git", "turns", "agentRuns",
+    "attachments", "logs", "artifacts", "backups", "policyVolumes",
+}
 
 PROJECTION_KEYS = {
     "schemaVersion", "requestFingerprintSha256", "sessionId",
@@ -823,3 +838,402 @@ class ReleaseJournalStore:
                 os.close(descriptor)
         except OSError:
             _reject()
+
+
+class UnavailableReleaseBoundary:
+    """Default-deny boundary until the reviewed mediator is installed."""
+
+    @staticmethod
+    def _unavailable(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise PreflightRejected("WORKSPACE_RELEASE_BOUNDARY_UNAVAILABLE")
+
+    release_ephemeral = _unavailable
+    unregister_workspace = _unavailable
+    release_heavy_admission = _unavailable
+    release_normal_admission = _unavailable
+    retire_allocation = _unavailable
+    verify_retained = _unavailable
+
+
+class AllocationRetirer:
+    """Exact same-directory allocation rename with metadata proof."""
+
+    def __init__(self, workspace_root: Path = WORKSPACE_ROOT, *, test_mode: bool = False):
+        self.workspace_root = Path(workspace_root)
+        self.expected_uid = os.geteuid()
+        if not test_mode and self.workspace_root != WORKSPACE_ROOT:
+            _reject()
+        self._require_root()
+
+    def retire(self, session_id: str, allocation_fingerprint: str) -> dict[str, Any]:
+        session = _canonical_uuid(session_id)
+        if not isinstance(allocation_fingerprint, str) or SHA256.fullmatch(allocation_fingerprint) is None:
+            _reject()
+        session_root = self.workspace_root / "sessions" / session
+        source = session_root / "runtime-allocation-v1.json"
+        retired = session_root / RETIRED_ALLOCATION_NAME
+        self._require_directory(session_root)
+        if source.is_symlink() or retired.exists() or retired.is_symlink():
+            _reject()
+        before, content_hash = self._regular_identity(source)
+        if content_hash != allocation_fingerprint:
+            _reject()
+        try:
+            os.rename(source, retired)
+            self._fsync_directory(session_root)
+        except OSError:
+            _reject()
+        after, retired_hash = self._regular_identity(retired)
+        identity_fields = (
+            "st_dev", "st_ino", "st_uid", "st_gid", "st_mode", "st_size",
+            "st_mtime_ns",
+        )
+        if (
+            retired_hash != allocation_fingerprint
+            or any(getattr(before, key) != getattr(after, key) for key in identity_fields)
+            or source.exists()
+            or source.is_symlink()
+        ):
+            _reject()
+        return {
+            "schemaVersion": "atenea-allocation-retirement-v1",
+            "state": "RETIRED",
+            "sessionId": session,
+            "sourceName": "runtime-allocation-v1.json",
+            "retiredName": RETIRED_ALLOCATION_NAME,
+            "fingerprintSha256": allocation_fingerprint,
+            "device": before.st_dev,
+            "inode": before.st_ino,
+            "uid": before.st_uid,
+            "gid": before.st_gid,
+            "mode": stat.S_IMODE(before.st_mode),
+            "size": before.st_size,
+            "mtimeNs": before.st_mtime_ns,
+            "atimeBeforeNs": before.st_atime_ns,
+            "atimeAfterNs": after.st_atime_ns,
+            "ctimeBeforeNs": before.st_ctime_ns,
+            "ctimeAfterNs": after.st_ctime_ns,
+            "valuesExposed": False,
+        }
+
+    def _require_root(self) -> None:
+        self._require_directory(self.workspace_root)
+        self._require_directory(self.workspace_root / "sessions")
+
+    def _require_directory(self, path: Path) -> None:
+        try:
+            observed = path.lstat()
+        except OSError:
+            _reject()
+        if not stat.S_ISDIR(observed.st_mode) or observed.st_uid != self.expected_uid:
+            _reject()
+
+    def _regular_identity(self, path: Path) -> tuple[os.stat_result, str]:
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                observed = os.fstat(descriptor)
+                if (
+                    not stat.S_ISREG(observed.st_mode)
+                    or stat.S_IMODE(observed.st_mode) not in {0o600, 0o640}
+                    or observed.st_uid != self.expected_uid
+                    or observed.st_nlink != 1
+                ):
+                    _reject()
+                digest = hashlib.sha256()
+                while chunk := os.read(descriptor, 64 * 1024):
+                    digest.update(chunk)
+            finally:
+                os.close(descriptor)
+        except OSError:
+            _reject()
+        return observed, digest.hexdigest()
+
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        ReleaseJournalStore._fsync_directory(path)
+
+
+class ReviewedReleaseBoundary:
+    """Narrow mediator over internally projected exact resource identities."""
+
+    def __init__(self, operator: Any, allocation_retirer: Any):
+        self.operator = operator
+        self.allocation_retirer = allocation_retirer
+
+    def release_ephemeral(
+        self, request: dict[str, str], projection: dict[str, Any]
+    ) -> dict[str, Any]:
+        removed = {category: 0 for category in EPHEMERAL_CATEGORIES}
+        for category in EPHEMERAL_RELEASE_ORDER:
+            for candidate in projection[category]:
+                result = self.operator.remove_ephemeral(
+                    category, candidate["resourceId"], candidate
+                )
+                if result != {
+                    "schemaVersion": "atenea-ephemeral-resource-release-v1",
+                    "state": "REMOVED",
+                    "category": category,
+                    "resourceId": candidate["resourceId"],
+                    "sessionId": request["sessionId"],
+                    "policyVolumeChanged": False,
+                    "valuesExposed": False,
+                }:
+                    _reject()
+                removed[category] += 1
+        return {
+            "schemaVersion": "atenea-ephemeral-release-v1",
+            "state": "RELEASED",
+            "removed": removed,
+            "policyVolumesRetained": True,
+            "valuesExposed": False,
+        }
+
+    def unregister_workspace(self, request: dict[str, str]) -> dict[str, Any]:
+        return self.operator.unregister_workspace(
+            request["sessionId"], request["workspaceIdentity"]
+        )
+
+    def release_heavy_admission(self, request: dict[str, str]) -> dict[str, Any]:
+        return self.operator.release_admission(request["sessionId"], "heavy")
+
+    def release_normal_admission(self, request: dict[str, str]) -> dict[str, Any]:
+        return self.operator.release_admission(request["sessionId"], "normal")
+
+    def retire_allocation(
+        self, request: dict[str, str], fingerprint: str
+    ) -> dict[str, Any]:
+        return self.allocation_retirer.retire(request["sessionId"], fingerprint)
+
+    def verify_retained(
+        self, request: dict[str, str], projection: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self.operator.verify_retained(request["sessionId"], projection)
+
+
+class WorkspaceReleaseFinalizer:
+    """Ordered exact release orchestration over a reviewed internal boundary."""
+
+    def __init__(
+        self,
+        journal_store: ReleaseJournalStore,
+        boundary: Any | None = None,
+    ):
+        self.journal_store = journal_store
+        self.boundary = boundary or UnavailableReleaseBoundary()
+
+    def release(self, request: Any, projection: Any) -> dict[str, Any]:
+        exact_request = _request_identity(request)
+        preflight = validate_release_preflight(exact_request, projection)
+        journal = self.journal_store.prepare(exact_request, projection)
+
+        ephemeral = self.boundary.release_ephemeral(exact_request, projection)
+        ephemeral = self._validate_ephemeral(ephemeral, preflight)
+        journal = self.journal_store.advance(
+            exact_request,
+            "PREPARED",
+            "EPHEMERAL_RELEASED",
+            canonical_hash(ephemeral),
+        )
+
+        registration = self.boundary.unregister_workspace(exact_request)
+        registration = self._validate_registration(registration, exact_request)
+        journal = self.journal_store.advance(
+            exact_request,
+            "EPHEMERAL_RELEASED",
+            "UNREGISTERED",
+            canonical_hash(registration),
+        )
+
+        heavy = self.boundary.release_heavy_admission(exact_request)
+        heavy = self._validate_admission(heavy, exact_request, "heavy")
+        normal = self.boundary.release_normal_admission(exact_request)
+        normal = self._validate_admission(normal, exact_request, "normal")
+        journal = self.journal_store.advance(
+            exact_request,
+            "UNREGISTERED",
+            "ADMISSION_RELEASED",
+            canonical_hash({"heavy": heavy, "normal": normal}),
+        )
+
+        allocation = self.boundary.retire_allocation(
+            exact_request, preflight["allocationFingerprintSha256"]
+        )
+        allocation = self._validate_allocation(allocation, exact_request, preflight)
+        journal = self.journal_store.advance(
+            exact_request,
+            "ADMISSION_RELEASED",
+            "ALLOCATION_RETIRED",
+            canonical_hash(allocation),
+        )
+
+        retained = self.boundary.verify_retained(exact_request, projection)
+        retained = self._validate_retained(retained, exact_request)
+        journal = self.journal_store.advance(
+            exact_request,
+            "ALLOCATION_RETIRED",
+            "RELEASED",
+            canonical_hash(retained),
+        )
+        return self._result(exact_request, preflight, journal)
+
+    @staticmethod
+    def _validate_ephemeral(
+        result: Any, preflight: dict[str, Any]
+    ) -> dict[str, Any]:
+        result = _exact_dict(result, {
+            "schemaVersion", "state", "removed", "policyVolumesRetained",
+            "valuesExposed",
+        })
+        counts = preflight["candidateCounts"]
+        if (
+            result.get("schemaVersion") != "atenea-ephemeral-release-v1"
+            or result.get("state") != "RELEASED"
+            or result.get("removed") != {
+                category: counts[category] for category in EPHEMERAL_CATEGORIES
+            }
+            or result.get("policyVolumesRetained") is not True
+            or result.get("valuesExposed") is not False
+        ):
+            _reject()
+        return dict(result)
+
+    @staticmethod
+    def _validate_registration(
+        result: Any, request: dict[str, str]
+    ) -> dict[str, Any]:
+        result = _exact_dict(result, {
+            "schemaVersion", "state", "sessionId", "workspaceIdentity",
+            "registrationRemoved", "selectionEnabled", "executionEnabled",
+            "remainingRegistrations", "valuesExposed",
+        })
+        if result != {
+            "schemaVersion": "atenea-workspace-unregistration-v1",
+            "state": "UNREGISTERED",
+            "sessionId": request["sessionId"],
+            "workspaceIdentity": request["workspaceIdentity"],
+            "registrationRemoved": True,
+            "selectionEnabled": False,
+            "executionEnabled": False,
+            "remainingRegistrations": 0,
+            "valuesExposed": False,
+        }:
+            _reject()
+        return dict(result)
+
+    @staticmethod
+    def _validate_admission(
+        result: Any, request: dict[str, str], kind: str
+    ) -> dict[str, Any]:
+        result = _exact_dict(result, {
+            "schemaVersion", "state", "sessionId", "kind", "changed",
+            "valuesExposed",
+        })
+        if (
+            result.get("schemaVersion") != "atenea-admission-release-v1"
+            or result.get("state") != "RELEASED"
+            or result.get("sessionId") != request["sessionId"]
+            or result.get("kind") != kind
+            or type(result.get("changed")) is not bool
+            or result.get("valuesExposed") is not False
+        ):
+            _reject()
+        return dict(result)
+
+    @staticmethod
+    def _validate_allocation(
+        result: Any,
+        request: dict[str, str],
+        preflight: dict[str, Any],
+    ) -> dict[str, Any]:
+        result = _exact_dict(result, {
+            "schemaVersion", "state", "sessionId", "sourceName",
+            "retiredName", "fingerprintSha256", "device", "inode", "uid",
+            "gid", "mode", "size", "mtimeNs", "atimeBeforeNs",
+            "atimeAfterNs", "ctimeBeforeNs", "ctimeAfterNs", "valuesExposed",
+        })
+        numeric = (
+            "device", "inode", "uid", "gid", "mode", "size", "mtimeNs",
+            "atimeBeforeNs", "atimeAfterNs", "ctimeBeforeNs", "ctimeAfterNs",
+        )
+        if (
+            result.get("schemaVersion") != "atenea-allocation-retirement-v1"
+            or result.get("state") != "RETIRED"
+            or result.get("sessionId") != request["sessionId"]
+            or result.get("sourceName") != "runtime-allocation-v1.json"
+            or result.get("retiredName") != RETIRED_ALLOCATION_NAME
+            or result.get("fingerprintSha256")
+            != preflight["allocationFingerprintSha256"]
+            or any(type(result.get(key)) is not int or result[key] < 0 for key in numeric)
+            or result.get("mode") not in {0o600, 0o640}
+            or result.get("atimeAfterNs") < result.get("atimeBeforeNs")
+            or result.get("ctimeAfterNs") < result.get("ctimeBeforeNs")
+            or result.get("valuesExposed") is not False
+        ):
+            _reject()
+        return dict(result)
+
+    @staticmethod
+    def _validate_retained(
+        result: Any, request: dict[str, str]
+    ) -> dict[str, Any]:
+        result = _exact_dict(result, {
+            "schemaVersion", "state", "sessionId", "ephemeralRemaining",
+            "registrationPresent", "normalAdmission", "heavyAdmission",
+            "activeAllocationPresent", "retiredAllocationPresent", "retained",
+            "valuesExposed",
+        })
+        if (
+            result.get("schemaVersion") != "atenea-workspace-release-proof-v1"
+            or result.get("state") != "RELEASED"
+            or result.get("sessionId") != request["sessionId"]
+            or result.get("ephemeralRemaining") != 0
+            or result.get("registrationPresent") is not False
+            or result.get("normalAdmission") != "released"
+            or result.get("heavyAdmission") != "released"
+            or result.get("activeAllocationPresent") is not False
+            or result.get("retiredAllocationPresent") is not True
+            or not isinstance(result.get("retained"), dict)
+            or set(result["retained"]) != RETAINED_KEYS
+            or any(value is not True for value in result["retained"].values())
+            or result.get("valuesExposed") is not False
+        ):
+            _reject()
+        return dict(result)
+
+    @staticmethod
+    def _result(
+        request: dict[str, str],
+        preflight: dict[str, Any],
+        journal: dict[str, Any],
+    ) -> dict[str, Any]:
+        counts = preflight["candidateCounts"]
+        return {
+            "schemaVersion": "atenea-workspace-release-result-v1",
+            "state": "RELEASED",
+            "operationId": request["operationId"],
+            "idempotencyKey": request["idempotencyKey"],
+            "sessionId": request["sessionId"],
+            "workspaceIdentity": request["workspaceIdentity"],
+            "projectId": PROJECT_ID,
+            "workerId": WORKER_ID,
+            "revision": journal["revision"],
+            "requestFingerprintSha256": journal["requestFingerprintSha256"],
+            "ownershipFingerprintSha256": journal["ownershipFingerprintSha256"],
+            "removed": {
+                "runtimeContainers": counts["runtimeContainers"],
+                "runtimeNetworks": counts["runtimeNetworks"],
+                "sessionImages": counts["sessionImages"],
+                "previewResources": counts["previewResources"] + counts["listeners"],
+                "brokerResources": counts["brokerResources"],
+                "browserProcesses": counts["materializations"] + counts["browserProcesses"],
+            },
+            "released": {
+                "registration": True,
+                "normalAdmission": True,
+                "heavyAdmission": True,
+                "allocation": True,
+            },
+            "retained": {key: True for key in sorted(RETAINED_KEYS)},
+            "valuesExposed": False,
+        }

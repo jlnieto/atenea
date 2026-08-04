@@ -11465,3 +11465,56 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.4-immutable-release-journal`;
 the SHA-256 of its `SHA256SUMS` is
 `2b41bd0d36662e4136df2c1667c83a89e13a306a31f4ef125ea4ce5cb6eadb73`.
+
+Task 3.5 is complete. Change progress is `20/60`; task 3.6 is the exact
+resume point and interruption/restart idempotence proof has not started.
+
+The finalizer now binds each journal stage to one closed mutation result. It
+removes exact projected browser processes, attachment materializations,
+previews, listeners, rootless/Codex brokers, runtime containers, networks and
+session images in fixed order. The narrow reviewed boundary passes only the
+already preflighted category, exact resource ID and sealed candidate to its
+internal operator, requires one exact ownership-matching removal response and
+never exposes a caller-selected command, path, slot, port, endpoint, label or
+target. Policy-retained volumes are outside the removal interface.
+
+Only after exact ephemeral release does it unregister the selected session and
+workspace identity, require zero remaining registration with project selection
+and execution disabled, release heavy admission before normal admission, and
+retire the active allocation. A final exact proof must show zero ephemeral
+resources, absent registration, released heavy/normal admission, absent active
+allocation, present retired allocation and every declared retained class true
+before the journal can reach `RELEASED` revision 6.
+
+The allocation successor derives its source and canonical retired name solely
+from the session UUID under the fixed workspace root. It rejects symlinks,
+wrong fingerprints and any existing retired target, performs a same-directory
+rename plus directory fsync, then proves identical bytes, device, inode, UID,
+GID, mode, size and mtime. It observes atime/ctime without setting either.
+Workspace record, worktree, Git, turns, AgentRuns, attachments, logs, artifacts,
+backups and policy-retained volumes are never passed to a deletion primitive.
+
+All 30 release tests pass. They prove exact candidate IDs and order, unchanged
+input projection and retained volume, heavy-before-normal, closed stage result
+validation, blocked progression on wrong removal/unregistration/admission/
+allocation/retention evidence, default-unavailable production boundary, and a
+real temporary allocation rename with retained sentinel plus wrong-hash,
+existing-target and no-follow symlink negatives. The release plus complete
+AgentRun worker regression passes 98/98 with zero failures, errors or skips.
+No installed finalizer, route, service, configuration or runtime was invoked.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN`; AgentRun 96 remains
+terminal unretried `FAILED`, with origin turn, profile, linked attachment and
+exact attachment projection intact. Production, preview and Beautips remain up
+with zero restarts; routing remains `ax42-01` enabled/healthy `4/2` at `0/0`.
+All incident hashes remain exact, WorkSession 17 allocation/admission remain
+absent and both incident runtime candidate counts remain zero. Worker services
+remain active with zero restarts, rootless slots remain `3/0/0/3`, rootful
+daemons remain inactive, RAID remains `3/3 [UU]` and backup/check/health remain
+`success/0`. No ownership, runtime, foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.5-exact-ordered-release`;
+the SHA-256 of its `SHA256SUMS` is
+`414707a9b19a9fdcdf529772923f50b3dd9c9c4961a59217deac0e5fc33b7883`.
