@@ -2,6 +2,7 @@ package com.atenea.service.worksession;
 
 import com.atenea.api.worksession.AgentRunResponse;
 import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
@@ -187,6 +188,7 @@ public class AgentRunService {
             throw new AgentRunRecoveryConflictException(
                     "Only an exact failed remote AgentRun may be retried");
         }
+        requireRemoteRetryEligible(source);
         AgentRunEntity existing = agentRunRepository
                 .findFirstByRetryOfRunIdOrderByCreatedAtAsc(sourceRunId)
                 .orElse(null);
@@ -202,6 +204,21 @@ public class AgentRunService {
                 source.getWorkloadClass(),
                 source,
                 attachmentSelection);
+    }
+
+    public void requireRemoteRetryEligible(AgentRunEntity source) {
+        if (source == null) {
+            throw new AgentRunRecoveryConflictException("Retry source is required");
+        }
+        if (source.getFailureCode() == null && source.getRecoveryNextAction() == null) {
+            return;
+        }
+        if (source.getFailureCode() != null
+                && source.getRecoveryNextAction() == AgentRunRecoveryNextAction.RETRY) {
+            return;
+        }
+        throw new AgentRunRecoveryConflictException(
+                "The deterministic AgentRun blocker has not been cleared");
     }
 
     private TurnAttachmentSelectionValidator.ValidatedSelection retryAttachmentSelection(

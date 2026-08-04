@@ -149,6 +149,13 @@ public class AgentRunRecoveryCoordinator {
                     operationId, AgentRunRecoveryOutcome.NON_TERMINAL_RUN_EXISTS, null);
             return;
         }
+        try {
+            runService.requireRemoteRetryEligible(source);
+        } catch (AgentRunRecoveryConflictException exception) {
+            operationService.complete(
+                    operationId, AgentRunRecoveryOutcome.POLICY_BLOCKED, null);
+            return;
+        }
         canonicalSourceAdmissionService.admitBeforeWrite(source.getSession());
         RemoteAgentRunCoordinator.RetryProof proof = remoteCoordinator.proveTerminalOrAbsent(runId);
         if (proof == RemoteAgentRunCoordinator.RetryProof.STILL_LIVE) {

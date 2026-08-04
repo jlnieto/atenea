@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRecoveryAction;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunRecoveryOperationEntity;
 import com.atenea.persistence.worksession.AgentRunRecoveryOperationRepository;
 import com.atenea.persistence.worksession.AgentRunRecoveryOutcome;
@@ -16,6 +17,7 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.remoteworker.RemoteAgentRunCoordinator;
 import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.service.worksession.AgentRunRecoveryOperationService;
+import com.atenea.service.worksession.AgentRunRecoveryConflictException;
 import com.atenea.service.worksession.AgentRunService;
 import java.util.Optional;
 import java.util.UUID;
@@ -107,6 +109,37 @@ class AgentRunRecoveryCoordinatorTest {
         verify(operationService).complete(
                 operationId, AgentRunRecoveryOutcome.EXECUTION_STILL_LIVE, null);
         verify(canonicalSourceAdmissionService).admitBeforeWrite(session);
+        verify(runService, never()).createRemoteRetryRun(source.getId());
+        verify(remoteCoordinator, never()).dispatchAfterCommit(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void deterministicBlockerStopsBeforeAdmissionWorkerProofOrRetryCreation() {
+        UUID operationId = UUID.randomUUID();
+        WorkSessionEntity session = new WorkSessionEntity();
+        session.setId(9L);
+        AgentRunEntity source = new AgentRunEntity();
+        source.setId(81L);
+        source.setSession(session);
+        source.setStatus(AgentRunStatus.FAILED);
+        source.setFailureCode("CLOSED_SESSION_OWNS_CAPACITY");
+        source.setRecoveryNextAction(AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE);
+        AgentRunRecoveryOperationEntity operation = operation(
+                operationId, source, AgentRunRecoveryAction.RETRY);
+
+        when(operationService.start(operationId)).thenReturn(operation);
+        when(runRepository.findWithSessionById(source.getId())).thenReturn(Optional.of(source));
+        when(runRepository.existsBySessionIdAndStatusIn(
+                session.getId(), AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        org.mockito.Mockito.doThrow(new AgentRunRecoveryConflictException("blocker remains"))
+                .when(runService).requireRemoteRetryEligible(source);
+
+        coordinator.executeOne(operationId);
+
+        verify(operationService).complete(
+                operationId, AgentRunRecoveryOutcome.POLICY_BLOCKED, null);
+        verify(canonicalSourceAdmissionService, never()).admitBeforeWrite(session);
+        verify(remoteCoordinator, never()).proveTerminalOrAbsent(source.getId());
         verify(runService, never()).createRemoteRetryRun(source.getId());
         verify(remoteCoordinator, never()).dispatchAfterCommit(org.mockito.ArgumentMatchers.any());
     }
