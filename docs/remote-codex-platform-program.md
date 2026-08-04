@@ -11702,3 +11702,55 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.9-worker-release-section-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `5a6e92ff3b2a17db98119926081fe19f69f21285a3da1c0f1236ed931e5107e1`.
+
+Task 4.1 is complete. Change progress is `25/60`; task 4.2 is the exact resume
+point and normal close orchestration has not been changed.
+
+Atenea commit `4f735cc8646e7b90e91b06f110acd7582f1e052d` adds one
+`releaseWorkspace(WorkSessionEntity)` client boundary. Its ten-field request
+is derived only from the persisted immutable remote-close UUID, remote session,
+workspace and canonical source observation plus the fixed Atenea worker,
+project, repository, branch and manifest identities. The one persisted close
+UUID is also the idempotency boundary. No caller command, path, slot, port,
+service, endpoint, resource name, label, credential or deletion target can be
+supplied.
+
+The client rejects before network I/O unless the WorkSession is the exact
+remote Atenea owner, pinned to `ax42-01`, the canonical workspace identity and
+branch, a complete canonical source observation and a durable requested,
+reconciling or blocked close operation. A success must be the exact closed
+`project-workspace-release-v1` object. It validates request and worker
+ownership, `RELEASED`, positive revision, non-negative closed removal counts,
+closed release booleans, every retained class `true`, `valuesExposed=false`,
+both SHA-256 fields, the cross-language canonical request fingerprint and the
+receipt seal. Unknown, foreign, unsafe or unsealed success responses become a
+non-retryable protocol failure rather than worker unavailability.
+
+The focused `RemoteWorkerClient`, project-identity and default-gate matrix
+passes 30/30 with zero failures, errors or skips; the backend package also
+passes. The canonical Java request fingerprint equals Python's sorted compact
+JSON SHA-256,
+`205ff648ddd1d736a40c92e695d395c565f006ec245ee0de291629bcb2b903b7`.
+No feature gate was enabled, no release route was invoked and Beautips remains
+ineligible for this operation.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains terminal unretried `FAILED`, with its one origin turn, complete profile,
+one attachment binding and one retained attachment intact. Production and
+preview remain `UP`; Beautips returns HTTP 200; all six observed containers
+remain running with zero restarts. Routing remains `ax42-01` enabled/healthy
+`4/2` at `0/0`.
+
+The five exact incident ownership hashes remain unchanged, WorkSession 17
+allocation/admission remain absent, worker services remain active with zero
+restarts, rootless slots remain `3/0/0/3`, rootful daemons remain inactive,
+all three RAID arrays remain `[UU]` and backup/check/health remain `success/0`.
+The release binary and journal root remain absent. No deployment, schema,
+configuration, ownership, production, preview, Beautips, foreign or unrelated
+resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.1-strict-release-client`;
+the SHA-256 of its `SHA256SUMS` is
+`47ed2670eb57224483204b65b919afd4178ed10e1e4f00d8872c7bddb2b722c4`.

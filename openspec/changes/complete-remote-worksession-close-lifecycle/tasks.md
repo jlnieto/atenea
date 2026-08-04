@@ -101,7 +101,7 @@ environment dumps.
 
 ## 4. Durable control-plane close and legacy reconciliation
 
-- [ ] 4.1 Add strict `releaseWorkspace` request/receipt validation to the
+- [x] 4.1 Add strict `releaseWorkspace` request/receipt validation to the
   client, deriving every field from persisted WorkSession/project identity and
   accepting no caller path, slot, resource or service value
 - [ ] 4.2 Refactor normal close so delivery/Git reconcile first, one immutable
