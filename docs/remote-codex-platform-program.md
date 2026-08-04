@@ -12843,3 +12843,78 @@ Sanitized blocked-preflight evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.3-rollout-preflight-blocked-runtime-route`;
 the SHA-256 of its `SHA256SUMS` is
 `ee2254f20817f9fa7c7cefd66cf7e7c4b4c829931c1c19919151976c64fd02a0`.
+
+The task 7.3 remediation prerequisite is implemented, reviewed, tested and
+published, but task 7.3 itself remains pending and change progress remains
+`46/60`. Programme commit
+`7c5d2e65b34d475e56ab53715661f37ff69472cb`, tree
+`497b6cc370392cd45e027abcd72dd0c80b81d401`, adds the missing authenticated
+`POST /v1/project-workspaces/release` dispatch, serializes it with workspace
+activation, blocks any non-terminal exact-session execution, invokes only the
+fixed no-argument privileged mediator with canonical JSON stdin and validates
+the exact persisted `RELEASED` receipt. Transport timeout/unavailability,
+malformed receipt, deterministic validation, policy and ownership failures
+remain distinct and bounded; no deterministic HTTP 4xx enters worker-capacity
+handling.
+
+The fixed-root finalizer CLI accepts no arguments and derives no path, slot,
+port, endpoint, label, service, command or credential from the caller. It
+validates the exact live workspace, registry, admission, allocation, Git and
+manifest projection, including the kernel hostname recorded by the existing
+workspace activator. It journals the immutable request and each monotonic
+stage before continuing, resumes the same operation after response or process
+loss, unregisters only the exact identity, releases heavy before normal
+admission, retires only the exact allocation by a same-directory rename and
+requires retained-state proof before returning the same closed receipt.
+Changed, partial, symlinked, foreign, ambiguous or production-like state is
+rejected before mutation.
+
+The first operational successor deliberately accepts only an empty ephemeral
+projection. This matches the repeatedly observed WorkSession 16 inventory.
+Any exact or ambiguous container, network, image, listener, preview,
+materialization or browser candidate appearing before release blocks the
+operation for a separately reviewed cleanup successor; it is never adopted or
+deleted by this revision. The live read-only fixed-root projection for
+WorkSession 16 passed through the same root boundary used by the exact
+no-argument sudo rule. The temporary reviewed source used for that check was
+removed and no release operation or journal was created.
+
+Exact source SHA-256 values are worker
+`e6f24a3265b1367ece444fcb1083d264e1024182884cbf5019560f81bd569193`,
+finalizer
+`dc8f4374f372127163df467c317a2f7fabff4af5e1667799a448173ac9546e15`,
+worker installer
+`aaea361d7a732d9fbc957b5c2d757fab44c0960a47a75c6fe64eb98159183613`,
+routing installer
+`50b09a0fa67b3d43149afa0f58ff25dd015fc8e79ced20993a958f9c52b508f6`
+and service template
+`90167677bcdacbc629f89f019b5a2c2ece56e46beaefcc91d84cf2646b1f4ff6`.
+The routing installer accepts only the exact reviewed predecessor for upgrade
+or rollback, but its installed verifier requires the exact new successor.
+
+The finalizer and complete worker regressions pass `38/38` and `77/77`.
+Both affected installer/apply/verify/rollback suites pass. A final clean-copy
+run of all 33 top-level worker entrypoints passes `33/33`, including the real
+Playwright acceptance, desktop `1440x900`, mobile `390x844`, browser cleanup,
+runtime, ownership, slots, backup, attachments, Beautips isolation and
+adversarial rejection contracts. Strict OpenSpec validation passes. Temporary
+source copies, logs, browser wrappers, visual registry, screenshots and
+bytecode roots were removed after the pass.
+
+Reproducible Git archives are sealed as successor SHA-256
+`1eddad93c8f9784a9b7ab0fc0a8db26f6d7ba7e95886cc1527e0989be6706bc1`
+and predecessor SHA-256
+`6fdcf76146f841ab5f38160c554348909674afc16d9e4b955f5aa2ff843289a1`.
+Sanitized evidence and both archives are beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.3-corrected-successor-preauthorization`;
+the SHA-256 of its `SHA256SUMS` is
+`8d5ee34a7d6c00130ac29751dc295ad406a48b476bfe09b82d9c5b6930a5d2bf`.
+
+No production/preview deployment, V63 migration, AX42 installation, Android
+publication or installation, configuration change, capability activation,
+workspace release, prompt submission, AgentRun retry, Beautips change or
+foreign-resource mutation occurred. The prior rollout authorization does not
+name these corrected bytes. A new separate explicit authorization must name
+the corrected successor commit/tree and evidence seal before task 7.3 may
+resume. Task 7.7 remains a later independent in-product confirmation and must
+not be simulated or executed through SSH.
