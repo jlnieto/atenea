@@ -19,7 +19,7 @@ environment dumps.
   AgentRun 96: identities, statuses, source, failure code/timing, workspace,
   allocation, admission, registry, run/lease/resource counts and the 81
   activation attempts; do not inspect its prompt or attachment bytes
-- [ ] 0.4 Confirm WorkSession 16 is still the exact active owner, WorkSession 17
+- [x] 0.4 Confirm WorkSession 16 is still the exact active owner, WorkSession 17
   remains clean with no allocation/admission/runtime, the worker is healthy and
   no foreign resource changed; strict-validate, commit and publish the entry
   evidence and exact resume point

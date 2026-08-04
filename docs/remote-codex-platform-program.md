@@ -10778,3 +10778,35 @@ Strict validation passes. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-0.3-incident-projection`;
 the SHA-256 of its `SHA256SUMS` is
 `ab9718203f5993415c5e6ff9e34a9c6a1ca21c8eda6f24b0043d729eba590aa6`.
+
+Task 0.4 and the complete entry section are complete. Change progress is
+`4/60`; task 1.1 is the exact resume point and no V63 test or implementation
+has started.
+
+The repeated entry gate found no divergence. WorkSession 16 remains the sole
+registered Atenea workspace and exact owner of its accepted workspace,
+allocation and `slot2/heavy1` admission while its owned container, network,
+volume, listener, preview and runtime-unit counts remain zero. WorkSession 17
+remains open and clean at exact accepted main, with its registry, admission,
+allocation, preview and runtime absent. AgentRun 96 remains terminal,
+pre-dispatch and unretried with its retained turn, profile, attachment and
+binding projection unchanged.
+
+The AgentRun worker is active with zero restarts. Its tailnet listener returns
+the expected unauthenticated 401 boundary from the control host and the
+control-plane health row remains enabled/healthy at capacity `4/2`, usage
+`0/0`. The initial loopback connection failure is expected because the service
+is tailnet-only and caused no mutation.
+
+Programme/canonical/mirror/worktree Git, production lifecycle and container
+hashes, routing configuration, registry/admission/allocation aggregates,
+service/listener projection and all rootless container/network/volume/image
+hashes match task 0.2. Production, preview and Beautips remain HTTP 200;
+backups and worker-health last succeeded; rootful daemons remain
+inactive/masked and RAID remains `3/3 [UU]`. Every task 0.1–0.3 evidence seal
+revalidates.
+
+Strict validation passes. Sanitized closure evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-0.4-entry-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`1da190af79c3e240255041604e72faf456347f661f8b69e5dd3d49a707033cc0`.
