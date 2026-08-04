@@ -1085,6 +1085,7 @@ select:focus {
   gap: 5px;
   padding-top: 13px;
   border-top: 1px solid var(--border);
+  scroll-margin-bottom: 128px;
 }
 
 .remote-close-confirmation span,
@@ -1787,6 +1788,10 @@ select:focus {
   .remote-close-state__action .button,
   .remote-close-confirmation .button {
     width: 100%;
+  }
+
+  .remote-close-confirmation {
+    scroll-margin-bottom: 184px;
   }
 
   .codex-admin-step {

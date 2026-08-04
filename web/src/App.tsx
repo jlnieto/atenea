@@ -1321,6 +1321,7 @@ function RemoteCloseOperatorPanel({
   const [error, setError] = useState("");
   const planIdempotencyKey = useRef<string | null>(null);
   const confirmationIdempotencyKey = useRef<string | null>(null);
+  const confirmationRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setPlan(null);
@@ -1329,6 +1330,12 @@ function RemoteCloseOperatorPanel({
     planIdempotencyKey.current = null;
     confirmationIdempotencyKey.current = null;
   }, [currentWorkSessionId, state.targetWorkSessionId, state.state]);
+
+  useEffect(() => {
+    if (plan) {
+      confirmationRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [plan]);
 
   if (!state.surfaceEnabled) {
     return null;
@@ -1454,7 +1461,12 @@ function RemoteCloseOperatorPanel({
         {state.primaryAction === "WAIT" && <strong>Esperando confirmación segura</strong>}
       </div>
       {plan && (
-        <div className="remote-close-confirmation" role="group" aria-label="Confirmar reconciliación del cierre">
+        <div
+          className="remote-close-confirmation"
+          ref={confirmationRef}
+          role="group"
+          aria-label="Confirmar reconciliación del cierre"
+        >
           <strong>Confirma la liberación de esta sesión cerrada</strong>
           <span>Se retirará únicamente su ownership remoto activo. El historial, Git, runs y adjuntos permanecerán conservados.</span>
           <small>Confirmación disponible hasta {formatAbsoluteDate(plan.expiresAt)}.</small>

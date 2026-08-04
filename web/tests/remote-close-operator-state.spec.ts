@@ -223,6 +223,28 @@ async function retainScreenshot(page: Page, name: string) {
   }
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const widths = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    document: document.documentElement.scrollWidth,
+    panelClient: document.querySelector<HTMLElement>(".remote-close-state")?.clientWidth || 0,
+    panelScroll: document.querySelector<HTMLElement>(".remote-close-state")?.scrollWidth || 0
+  }));
+  expect(widths.document).toBeLessThanOrEqual(widths.viewport);
+  expect(widths.panelScroll).toBeLessThanOrEqual(widths.panelClient);
+}
+
+async function expectPrimaryActionInFirstViewport(page: Page, name: string) {
+  const button = page.getByRole("button", { name });
+  await expect(button).toBeVisible();
+  const box = await button.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+}
+
 test("closing state leads with same-operation reconciliation", async ({ page }) => {
   const apiState: SyntheticState = {
     operatorRole: "ROUTINE_OPERATOR",
@@ -299,6 +321,7 @@ test("legacy owner requires confirmation before release and retry", async ({ pag
     ownershipFingerprintSha256: "a".repeat(64)
   });
   expect(apiState.recoveryRequests).toHaveLength(0);
+  await retainScreenshot(page, "desktop-capacity-released.png");
 
   await page.getByRole("button", { name: "Reintentar tarea" }).click();
   await expect.poll(() => apiState.recoveryRequests.length).toBe(1);
@@ -378,5 +401,126 @@ test("reconciling and unverifiable ownership never expose retry", async ({ page 
   await expect(page.getByText("Cierre remoto bloqueado", { exact: true })).toBeVisible();
   await expect(page.getByText("La propiedad remota no pudo verificarse de forma segura.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Contactar con administración" })).toBeDisabled();
+  expect(apiState.recoveryRequests).toHaveLength(0);
+});
+
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 }
+] as const) {
+  test(`${viewport.name} long blocker and legacy confirmation remain usable`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const longBlocker = "Otra sesión cerrada conserva la capacidad necesaria. La propiedad remota canónica debe verificarse antes de permitir cualquier reintento; responsabilidad-remota-canónica-sin-coincidencia-inequívoca seguirá bloqueada hasta completar la confirmación administrativa.";
+    const apiState: SyntheticState = {
+      operatorRole: "PLATFORM_ADMINISTRATOR",
+      operatorState: {
+        surfaceEnabled: true,
+        state: "CLOSED_OWNER_BLOCKS_CAPACITY",
+        title: "Bloqueada por una sesión cerrada",
+        blocker: longBlocker,
+        primaryAction: "RECONCILE_REMOTE_CLOSE",
+        primaryActionLabel: "Reconciliar cierre",
+        primaryActionAvailable: true,
+        requiredRole: "PLATFORM_ADMINISTRATOR",
+        targetWorkSessionId: closedOwnerId,
+        targetAgentRunId: failedRunId
+      },
+      released: false,
+      closeRequests: 0,
+      planRequests: [],
+      confirmationRequests: [],
+      recoveryRequests: []
+    };
+    await openConversation(page, apiState, `${viewport.name}-long-confirmation`);
+
+    await expect(page.getByText(longBlocker, { exact: true })).toBeVisible();
+    await expectPrimaryActionInFirstViewport(page, "Reconciliar cierre");
+    await expectNoHorizontalOverflow(page);
+    await page.getByRole("button", { name: "Reconciliar cierre" }).click();
+
+    const confirmation = page.getByRole("group", { name: "Confirmar reconciliación del cierre" });
+    await expect(confirmation).toBeVisible();
+    await expect(confirmation).toContainText("El historial, Git, runs y adjuntos permanecerán conservados.");
+    const confirmButton = page.getByRole("button", { name: "Confirmar reconciliación" });
+    await expect(confirmButton).toBeEnabled();
+    const cancelButton = page.getByRole("button", { name: "Cancelar" });
+    await expect(cancelButton).toBeEnabled();
+    await expectNoHorizontalOverflow(page);
+    const confirmBox = await confirmButton.boundingBox();
+    const cancelBox = await cancelButton.boundingBox();
+    const composerBox = await page.locator(".conversation-composer").boundingBox();
+    const headerBox = await page.locator(".conversation-header").boundingBox();
+    const stateTitleBox = await page.getByText("Bloqueada por una sesión cerrada", { exact: true }).boundingBox();
+    expect(confirmBox).not.toBeNull();
+    expect(cancelBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(headerBox).not.toBeNull();
+    expect(stateTitleBox).not.toBeNull();
+    expect(confirmBox!.y + confirmBox!.height).toBeLessThanOrEqual(composerBox!.y);
+    expect(cancelBox!.y + cancelBox!.height).toBeLessThanOrEqual(composerBox!.y);
+    expect(stateTitleBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height);
+    await retainScreenshot(page, `${viewport.name}-legacy-confirmation.png`);
+
+    expect(apiState.planRequests).toHaveLength(1);
+    expect(apiState.confirmationRequests).toHaveLength(0);
+    expect(apiState.recoveryRequests).toHaveLength(0);
+  });
+}
+
+test("manual refresh projects released capacity without invoking an action", async ({ page }) => {
+  const apiState: SyntheticState = {
+    operatorRole: "PLATFORM_ADMINISTRATOR",
+    operatorState: {
+      surfaceEnabled: true,
+      state: "CLOSED_OWNER_RECONCILING",
+      title: "Cierre remoto en reconciliación",
+      blocker: "La liberación exacta sigue pendiente de confirmar.",
+      primaryAction: "WAIT",
+      primaryActionLabel: "Esperar actualización",
+      primaryActionAvailable: false,
+      requiredRole: null,
+      targetWorkSessionId: closedOwnerId,
+      targetAgentRunId: failedRunId
+    },
+    released: false,
+    closeRequests: 0,
+    planRequests: [],
+    confirmationRequests: [],
+    recoveryRequests: []
+  };
+  await openConversation(page, apiState, "manual-refresh");
+  await expect(page.getByText("Cierre remoto en reconciliación", { exact: true })).toBeVisible();
+
+  apiState.released = true;
+  await page.getByRole("button", { name: "Actualizar" }).click();
+
+  await expect(page.getByText("Capacidad liberada", { exact: true })).toBeVisible();
+  await expectPrimaryActionInFirstViewport(page, "Reintentar tarea");
+  expect(apiState.closeRequests).toBe(0);
+  expect(apiState.planRequests).toHaveLength(0);
+  expect(apiState.confirmationRequests).toHaveLength(0);
+  expect(apiState.recoveryRequests).toHaveLength(0);
+});
+
+test("mobile released capacity keeps the explicit retry in the first viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const apiState: SyntheticState = {
+    operatorRole: "ROUTINE_OPERATOR",
+    operatorState: releasedState(),
+    released: true,
+    closeRequests: 0,
+    planRequests: [],
+    confirmationRequests: [],
+    recoveryRequests: []
+  };
+  await openConversation(page, apiState, "mobile-capacity-released");
+
+  await expect(page.getByText("Capacidad liberada", { exact: true })).toBeVisible();
+  await expect(page.getByText("El reintento es una decisión explícita: no se ha vuelto a enviar ninguna instrucción.", { exact: true })).toBeVisible();
+  await expect(page.locator(".conversation-header")).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expectPrimaryActionInFirstViewport(page, "Reintentar tarea");
+  await expectNoHorizontalOverflow(page);
+  await retainScreenshot(page, "mobile-capacity-released.png");
   expect(apiState.recoveryRequests).toHaveLength(0);
 });
