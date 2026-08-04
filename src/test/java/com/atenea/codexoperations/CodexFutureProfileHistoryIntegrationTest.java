@@ -10,6 +10,7 @@ import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.CodexReasoningEffort;
 import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
@@ -59,6 +60,7 @@ class CodexFutureProfileHistoryIntegrationTest {
         session.setProject(project); session.setStatus(WorkSessionStatus.OPEN);
         session.setTitle("Profile history"); session.setBaseBranch("main");
         session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setRemoteCloseState(RemoteCloseState.NOT_STARTED);
         session.setSelectedWorkerId(workerId);
         session.setRemoteSessionId(UUID.fromString("00000000-0000-0000-0000-000000000045"));
         session.setRemoteWorkloadKind("synthetic-routing-v1");
