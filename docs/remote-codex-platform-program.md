@@ -11166,3 +11166,38 @@ evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.3-coordinator-admission-decisions`;
 the SHA-256 of its `SHA256SUMS` is
 `c5043eb66f92531383c0ba2e12ec223a73379c059e24916c5211283b6da87317`.
+
+Task 2.4 is complete. Change progress is `13/60`; task 2.5 is the exact
+resume point and safe-retry blocker clearance has not started.
+
+Canonical Atenea candidate commit
+`16b96b7656e80795de3fccb7906dc406366b1017` is published exactly in the
+canonical repository and GitHub. It adds proof only. The coordinator test set
+now verifies that the safe projection produced for malformed worker-error
+responses, an unknown capacity blocker, a foreign owner and an ownership-
+mismatched success response is terminal platform-administrator review rather
+than worker unavailability.
+
+The deterministic activation rejection is observed for more than 81 possible
+one-millisecond poll intervals. `ensureWorkspace` is still called exactly
+once, dispatch is never called, and the terminal run retains no remote
+execution identity, lease or `retryOfRun` replacement link. This directly
+regresses the incident's former 81 impossible activation attempts without
+reading or retrying its real prompt.
+
+All 19 coordinator tests and all 24 strict worker-client malformed-response
+tests pass: 43/43 total with zero failures, errors or skips. No application or
+worker source was deployed and no capability gate was enabled.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 and AgentRun 96 remain
+`CLOSED`/`OPEN`/unretried `FAILED`. Production, preview and Beautips remain
+`UP`; routing remains enabled/healthy `4/2` at `0/0`; exact incident ownership
+hashes, active zero-restart worker services, rootless `3/0/0/3`, inactive
+rootful daemons, three `[UU]` RAID arrays and backup/check/health `success/0`
+all match task entry. No foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.4-fail-closed-admission-proof`;
+the SHA-256 of its `SHA256SUMS` is
+`12001b29b68a41c25352478fe4be52b9563659226209cf461fab01a8e09d462c`.

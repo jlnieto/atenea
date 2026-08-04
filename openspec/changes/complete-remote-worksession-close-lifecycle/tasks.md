@@ -55,7 +55,7 @@ environment dumps.
   exact open-owner capacity waits in `QUEUED`, deterministic 4xx failures stop
   immediately, and exact closed-owner capacity exposes
   `RECONCILE_REMOTE_CLOSE` without redispatch
-- [ ] 2.4 Prove malformed responses, ownership mismatches and unknown blockers
+- [x] 2.4 Prove malformed responses, ownership mismatches and unknown blockers
   require platform review; prove repeated deterministic activation is not
   polled 81 times and creates no worker execution, lease or replacement run
 - [ ] 2.5 Prove safe retry remains blocked until the deterministic blocker is
