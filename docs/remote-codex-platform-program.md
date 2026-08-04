@@ -10740,3 +10740,41 @@ Strict validation passes. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-0.2-live-fingerprints`;
 the SHA-256 of its `SHA256SUMS` is
 `7bf216bd615502ac38dbc8b1e5d63f6296a136c04f4f676043af7b88d4561731`.
+
+Task 0.3 is complete. Change progress is `3/60`; task 0.4 is the exact resume
+point and has not started.
+
+The content-free incident projection confirms WorkSession 16 is `CLOSED` with
+zero turns, AgentRuns, attachments, bindings, previews or owned ephemeral
+resources, yet remains the sole registered Atenea workspace and exact owner of
+the active allocation plus `slot2/heavy1`. WorkSession 17 is `OPEN` and clean
+at accepted main with one immutable turn, one attachment, one binding and one
+AgentRun, but no registration, admission, allocation, preview or runtime.
+
+AgentRun 96 remains terminal `FAILED`, pre-dispatch and unretried. It has one
+immutable dispatch ID, no remote execution, no live lease, no result turn and
+no retry or replacement run. Its exact source is accepted Atenea main and its
+complete retained profile is `gpt-5.6-sol`/`medium` from worker defaults,
+catalog revision
+`125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187`
+and Codex `0.145.0`. The attachment manifest remains one item and 27,364 bytes.
+
+The run entered reconciliation at `2026-08-03T19:34:30.923915Z` and failed at
+`2026-08-03T19:36:31.517089Z`, a 121-second bounded window. V62 has no stable
+failure-code column; reviewed worker source names its discarded 409 code
+`workspace_activation_failed`, while the exact ownership projects to future
+`CLOSED_SESSION_OWNS_CAPACITY`/`RECONCILE_REMOTE_CLOSE`. The accepted planning
+artifacts retain the exact 81 activation attempts. The privacy-preserving
+worker journal has 85 total fixed request events in the encompassing interval
+but intentionally retains no route/status, so it was not used to invent
+per-request attribution.
+
+No turn message, response, original filename, private storage identity,
+attachment byte, screenshot, credential, token, cookie, environment or Codex
+history was selected or retained. No retry, dispatch, release, cleanup,
+adoption or operational mutation occurred.
+
+Strict validation passes. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-0.3-incident-projection`;
+the SHA-256 of its `SHA256SUMS` is
+`ab9718203f5993415c5e6ff9e34a9c6a1ca21c8eda6f24b0043d729eba590aa6`.

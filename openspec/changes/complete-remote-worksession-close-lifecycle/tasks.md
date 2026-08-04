@@ -15,7 +15,7 @@ environment dumps.
   `atenea` and `codex-worker`; capture services, RAID, firewall, Tailscale,
   backups, rootless slots, rootful daemons, production, preview and Beautips
   fingerprints without mutation
-- [ ] 0.3 Seal a content-free incident projection for WorkSessions 16 and 17 and
+- [x] 0.3 Seal a content-free incident projection for WorkSessions 16 and 17 and
   AgentRun 96: identities, statuses, source, failure code/timing, workspace,
   allocation, admission, registry, run/lease/resource counts and the 81
   activation attempts; do not inspect its prompt or attachment bytes
