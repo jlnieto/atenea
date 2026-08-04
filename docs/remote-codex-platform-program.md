@@ -12465,3 +12465,43 @@ canary evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.3-complete-android-canary`;
 the SHA-256 of its `SHA256SUMS` is
 `440ab21d144b7c50eb3e29f51b74d4e106b011c91a4d56ac3775c01edf37a5a4`.
+
+Task 6.4 is complete. Change progress is `40/60`; task 6.5 is the exact
+resume point. The complete 33-entry programme, worker, runtime, preview,
+attachment, backup, installer, rollback and security suite ran in lexical
+order from detached immutable source. Each entry had a finite 900-second
+process timeout. All 33 entries pass in 514 seconds; 20 unittest reports cover
+239 tests with zero failed reports. The exact suite-result SHA-256 is
+`aa06848a90a3a4a2df5f83b54bbf7cd8d0dc4a55da669434eee3fdf7f7d7356e`.
+
+The exact programme source was
+`0315787445c536a4cfa6062ce18cb8e8a053f77e`, the unchanged Atenea candidate
+was `03534c4998eaf150aa0eda9d0096b00f403b1baa`, and the Beautips contract used
+its explicitly pinned historical source
+`e9e0b3c319c518363d4135f5378ebbddced96dfb`. Beautips current source and
+production were not changed. One pre-existing real Restic integration case
+was deliberately skipped; its synthetic backup coverage passed and live
+backup/check results remain `success/0`.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains terminal unretried `FAILED`, with no child and a complete profile.
+WorkSession 17 retains one turn, one run and one attachment. Production,
+preview and Beautips return HTTP 200; routing remains `ax42-01`
+enabled/healthy `4/2` at `0/0`.
+
+The registry, WorkSession 16 workspace/allocation/admission and WorkSession 17
+workspace hashes remain exact; WorkSession 17 allocation/admission remain
+absent. AgentRun, attachment and preview services remain active with zero
+restarts, rootless slots remain `3/0/0/3`, rootful Docker/containerd remain
+inactive/masked, all three RAID arrays remain `[UU]`, and backup/check/health
+remain `success/0`. Disposable worktrees, Python bytecode, browser artifacts,
+raw logs and task-labelled containers, networks and volumes were removed.
+Older unrelated temporary roots were preserved. No migration, deployment,
+configuration, activation, prompt, retry, runtime, ownership, production,
+preview, Beautips, foreign or unrelated resource changed.
+
+Sanitized ordered-suite and retained-state evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.4-complete-sorted-source-suite`;
+the SHA-256 of its `SHA256SUMS` is
+`14411f1644af894d6f1cfcaafde08d2e0340b99d927d20d592f05d6e6f1ef952`.
