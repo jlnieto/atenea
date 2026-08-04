@@ -128,7 +128,7 @@ environment dumps.
 
 ## 5. State-first web and Android operation
 
-- [ ] 5.1 Analyze the current conversation/close/recovery UI and implement the
+- [x] 5.1 Analyze the current conversation/close/recovery UI and implement the
   minimal shared read model so current state, blocker and one primary action
   are understandable in under three seconds without exposing infrastructure
   detail

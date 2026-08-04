@@ -12039,3 +12039,55 @@ Sanitized blocked evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.1-blocked-foreign-local-test-container`;
 the SHA-256 of its `SHA256SUMS` is
 `e46c9eca461db05f19f20eba4ce7e7cc28169cf9a20ec65f8b27f2a1f08e3e2e`.
+
+Task 5.1 is complete. Change progress is `32/60`; task 5.2 is the exact resume
+point. Atenea commit `fa69cee2b45ff2884e637387333261116108d9dc`
+adds one shared, bounded operator-state read model to the existing mobile
+WorkSession summary and types it for both web and Android. It presents current
+state, a safe blocker and at most one primary action with availability, role
+and domain target. It exposes no worker endpoint, workspace path, operation
+identifier, slot, port, label, command or raw payload.
+
+The model keeps its surface and actions disabled by default and permits the
+remote-close reconciliation surface only for canonical Atenea. It separates
+closing, blocked ownership, legacy confirmation, released capacity and
+ambiguous ownership. Generic AgentRun retry becomes visible only for a
+terminal run whose exact blocking closed owner has both the persisted
+`RELEASED` projection and matching released receipt. Ambiguous ownership
+requires administrator review and never enters worker-unavailable handling.
+
+The previous local-resource block was resolved only after the operator's
+separate exact authorization. Revalidation proved the obsolete
+`atenea-activation-code` code already integrated into canonical main and no
+process or service depending on its path. Only its two exact containers were
+stopped/removed. Its clean upstream-exact repository, network, three
+development/test/cache volumes and images remain preserved. No database or
+volume content, environment or application payload was read.
+
+The focused shared-read-model/API/retry/conversation matrix passes 64/64 across
+six classes with zero failures, errors or skips. The production web build,
+Android API tests with explicit absent/synthetic external-secret inputs and
+backend package pass. The mandated runner's historical mounted-source path was
+supplied through a task-owned temporary copy after the default local path
+failed before tests; no application code or shared fixture changed. Task 5.1
+changes response and typed-client models only, so no visible web/Android output
+changed and Playwright is not applicable until tasks 5.2-5.3.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains `FAILED`, unretried and without a child. WorkSession 17 retains one
+turn, one run, one attachment and one complete profile. Production and preview
+remain `UP`, Beautips returns HTTP 200 and routing remains `ax42-01`
+enabled/healthy `4/2` at `0/0`.
+
+All four incident ownership hashes remain exact; WorkSession 17 allocation and
+admission remain absent. Worker services remain active with zero restarts,
+rootless slots remain `3/0/0/3`, rootful daemons remain inactive, RAID remains
+`3/3 [UU]` and backup/check/health remain `success/0`. No production migration,
+deployment, configuration, release, prompt, runtime, ownership, preview,
+Beautips, foreign or unrelated resource changed during implementation.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.1-shared-operator-read-model`;
+the SHA-256 of its `SHA256SUMS` is
+`7450ee749174dad0a04f627528829de5d4d82d0c293cbdaee450b1fd067f47b0`.
