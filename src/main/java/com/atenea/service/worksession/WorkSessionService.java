@@ -299,7 +299,24 @@ public class WorkSessionService {
         }
 
         RemoteCloseInvocation invocation = closeTransaction.execute(
-                ignored -> persistRemoteCloseRequest(sessionId));
+                ignored -> persistRemoteCloseRequest(sessionId, true));
+        return invokeRemoteClose(sessionId, invocation);
+    }
+
+    public WorkSessionResponse reconcileRemoteClose(Long sessionId) {
+        if (!remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)) {
+            throw new IllegalStateException("Remote close reconciliation is disabled");
+        }
+        RemoteCloseInvocation invocation = closeTransaction.execute(
+                ignored -> persistRemoteCloseRequest(sessionId, false));
+        return invokeRemoteClose(sessionId, invocation);
+    }
+
+    private WorkSessionResponse invokeRemoteClose(
+            Long sessionId,
+            RemoteCloseInvocation invocation
+    ) {
         RemoteWorkerClient.WorkspaceRelease receipt;
         try {
             receipt = remoteWorkerClient.releaseWorkspace(invocation.session());
@@ -362,7 +379,10 @@ public class WorkSessionService {
         }
     }
 
-    private RemoteCloseInvocation persistRemoteCloseRequest(Long sessionId) {
+    private RemoteCloseInvocation persistRemoteCloseRequest(
+            Long sessionId,
+            boolean allowNewOperation
+    ) {
         WorkSessionEntity session = workSessionRepository.findLockedWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
         if (session.getStatus() != WorkSessionStatus.CLOSING
@@ -372,6 +392,10 @@ public class WorkSessionService {
         }
         Instant now = Instant.now();
         if (session.getRemoteCloseState() == RemoteCloseState.NOT_STARTED) {
+            if (!allowNewOperation) {
+                throw new IllegalStateException(
+                        "Remote close reconciliation requires a persisted operation");
+            }
             session.setRemoteCloseOperationId(UUID.randomUUID());
             session.setRemoteCloseState(RemoteCloseState.REQUESTED);
             session.setRemoteCloseRevision(1);

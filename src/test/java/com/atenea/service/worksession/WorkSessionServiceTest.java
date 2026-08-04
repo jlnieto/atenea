@@ -11,6 +11,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -959,6 +960,8 @@ class WorkSessionServiceTest {
         prepareSuccessfulCloseMocks(session, repoPath);
         when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
                 ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
         when(remoteWorkerClient.releaseWorkspace(session)).thenThrow(
                 new RemoteWorkerException("Remote worker I/O failed", new IOException("closed")));
 
@@ -975,6 +978,88 @@ class WorkSessionServiceTest {
         assertNull(session.getRemoteCloseReceiptSha256());
         assertNull(session.getRemoteCloseReleasedAt());
         assertNull(session.getClosedAt());
+
+        UUID operationId = session.getRemoteCloseOperationId();
+        doReturn(releasedReceipt(session)).when(remoteWorkerClient).releaseWorkspace(session);
+
+        WorkSessionResponse reconciled = workSessionService.reconcileRemoteClose(12L);
+
+        assertEquals(operationId, session.getRemoteCloseOperationId());
+        assertEquals(WorkSessionStatus.CLOSED, reconciled.status());
+        assertEquals(RemoteCloseState.RELEASED, reconciled.remoteCloseState());
+        verify(remoteWorkerClient, times(2)).releaseWorkspace(session);
+    }
+
+    @Test
+    void crashAfterRequestCommitReusesOperationWithoutRepeatingDelivery() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-after-request"));
+        WorkSessionEntity session = remoteSession(repoPath);
+        prepareSuccessfulCloseMocks(session, repoPath);
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerClient.releaseWorkspace(session))
+                .thenThrow(new IllegalStateException("simulated process stop"));
+
+        assertThrows(IllegalStateException.class, () -> workSessionService.closeSession(12L));
+        UUID operationId = session.getRemoteCloseOperationId();
+        assertTrue(operationId != null);
+        assertEquals(RemoteCloseState.REQUESTED, session.getRemoteCloseState());
+        assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
+
+        doReturn(releasedReceipt(session)).when(remoteWorkerClient).releaseWorkspace(session);
+        WorkSessionResponse reconciled = workSessionService.reconcileRemoteClose(12L);
+
+        assertEquals(operationId, session.getRemoteCloseOperationId());
+        assertEquals(WorkSessionStatus.CLOSED, reconciled.status());
+        assertEquals(RemoteCloseState.RELEASED, reconciled.remoteCloseState());
+        verify(gitRepositoryService, times(1)).checkoutBranch(repoPath.toString(), "main");
+        verify(remoteWorkerClient, times(2)).releaseWorkspace(session);
+    }
+
+    @Test
+    void crashBeforeFinalCommitRepeatsReceiptWithSameOperationAndClosesOnce() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-before-commit"));
+        WorkSessionEntity session = remoteSession(repoPath);
+        prepareSuccessfulCloseMocks(session, repoPath);
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerClient.releaseWorkspace(session)).thenAnswer(
+                ignored -> releasedReceipt(session));
+        java.util.concurrent.atomic.AtomicBoolean failFinalCommit =
+                new java.util.concurrent.atomic.AtomicBoolean(true);
+        lenient().when(workSessionRepository.saveAndFlush(any(WorkSessionEntity.class)))
+                .thenAnswer(invocation -> {
+                    WorkSessionEntity value = invocation.getArgument(0);
+                    if (value.getRemoteCloseState() == RemoteCloseState.RELEASED
+                            && failFinalCommit.getAndSet(false)) {
+                        throw new IllegalStateException("simulated final commit loss");
+                    }
+                    return value;
+                });
+
+        assertThrows(IllegalStateException.class, () -> workSessionService.closeSession(12L));
+        UUID operationId = session.getRemoteCloseOperationId();
+        Instant requestedAt = session.getRemoteCloseRequestedAt();
+
+        session.setStatus(WorkSessionStatus.CLOSING);
+        session.setClosedAt(null);
+        session.setRemoteCloseState(RemoteCloseState.REQUESTED);
+        session.setRemoteCloseRevision(1);
+        session.setRemoteCloseReceiptSha256(null);
+        session.setRemoteCloseReleasedAt(null);
+        session.setRemoteCloseUpdatedAt(requestedAt);
+
+        WorkSessionResponse reconciled = workSessionService.reconcileRemoteClose(12L);
+
+        assertEquals(operationId, session.getRemoteCloseOperationId());
+        assertEquals(WorkSessionStatus.CLOSED, reconciled.status());
+        assertEquals(RemoteCloseState.RELEASED, reconciled.remoteCloseState());
+        assertEquals("9".repeat(64), session.getRemoteCloseReceiptSha256());
+        verify(remoteWorkerClient, times(2)).releaseWorkspace(session);
     }
 
     @Test
@@ -1192,7 +1277,7 @@ class WorkSessionServiceTest {
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
         lenient().when(workSessionRepository.findLockedWithProjectById(12L))
                 .thenReturn(Optional.of(session));
-        when(workSessionRepository.saveAndFlush(any(WorkSessionEntity.class)))
+        lenient().when(workSessionRepository.saveAndFlush(any(WorkSessionEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING))
                 .thenReturn(false);
