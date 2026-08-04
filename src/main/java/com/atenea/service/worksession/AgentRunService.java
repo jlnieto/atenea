@@ -229,6 +229,20 @@ public class AgentRunService {
                 "The deterministic AgentRun blocker has not been cleared");
     }
 
+    @Transactional(readOnly = true)
+    public boolean isRemoteRetryEligible(Long runId) {
+        AgentRunEntity source = agentRunRepository.findById(runId).orElse(null);
+        if (source == null || !source.getStatus().isTerminal()) {
+            return false;
+        }
+        try {
+            requireRemoteRetryEligible(source);
+            return true;
+        } catch (AgentRunRecoveryConflictException exception) {
+            return false;
+        }
+    }
+
     private boolean matchingBlockerHasReleasedReceipt(AgentRunEntity source) {
         if (source.getRecoveryBlockerWorkSessionId() == null
                 || source.getSession() == null

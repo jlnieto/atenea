@@ -1082,7 +1082,21 @@ data class MobileSessionSummary(
     val approvedDeliverables: SessionDeliverablesView,
     val approvedPriceEstimate: ApprovedPriceEstimateSummary?,
     val actions: MobileSessionActions,
-    val insights: MobileSessionInsights
+    val insights: MobileSessionInsights,
+    val operatorState: MobileSessionOperatorState
+)
+
+data class MobileSessionOperatorState(
+    val surfaceEnabled: Boolean,
+    val state: String,
+    val title: String,
+    val blocker: String?,
+    val primaryAction: String,
+    val primaryActionLabel: String?,
+    val primaryActionAvailable: Boolean,
+    val requiredRole: String?,
+    val targetWorkSessionId: Long?,
+    val targetAgentRunId: Long?
 )
 
 data class MobileSessionPreview(
@@ -1821,7 +1835,24 @@ private fun parseMobileSessionSummary(json: JSONObject): MobileSessionSummary =
         ),
         approvedPriceEstimate = json.optJSONObject("approvedPriceEstimate")?.let(::parseApprovedPriceEstimateSummary),
         actions = parseMobileSessionActions(json.optJSONObject("actions") ?: JSONObject()),
-        insights = parseMobileSessionInsights(json.optJSONObject("insights") ?: JSONObject())
+        insights = parseMobileSessionInsights(json.optJSONObject("insights") ?: JSONObject()),
+        operatorState = parseMobileSessionOperatorState(
+            json.optJSONObject("operatorState") ?: JSONObject()
+        )
+    )
+
+private fun parseMobileSessionOperatorState(json: JSONObject): MobileSessionOperatorState =
+    MobileSessionOperatorState(
+        surfaceEnabled = json.optBoolean("surfaceEnabled", false),
+        state = json.optString("state", "DEFAULT"),
+        title = json.optString("title", "Sesión lista"),
+        blocker = json.optNullableString("blocker"),
+        primaryAction = json.optString("primaryAction", "NONE"),
+        primaryActionLabel = json.optNullableString("primaryActionLabel"),
+        primaryActionAvailable = json.optBoolean("primaryActionAvailable", false),
+        requiredRole = json.optNullableString("requiredRole"),
+        targetWorkSessionId = json.optNullableLong("targetWorkSessionId"),
+        targetAgentRunId = json.optNullableLong("targetAgentRunId")
     )
 
 private fun parseMobileSessionPreview(json: JSONObject): MobileSessionPreview =

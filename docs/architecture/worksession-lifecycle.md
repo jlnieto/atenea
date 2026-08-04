@@ -167,6 +167,28 @@ ownership/Git/delivery. La operación conserva el estado histórico de la sesió
 turns, runs, attachments y recursos retenidos, y sólo acepta el recibo
 `RELEASED` correspondiente a su identidad inmutable.
 
+## Estado operativo compartido
+
+`MobileSessionSummaryResponse.operatorState` es el read model común para web y
+Android. Expone exclusivamente:
+
+- un estado operativo estable y un título breve;
+- un blocker seguro, cuando existe;
+- una sola acción primaria con su autoridad mínima y disponibilidad;
+- los identificadores de dominio de la WorkSession o AgentRun relacionados.
+
+No proyecta worker, workspace, operación remota, path, slot, puerto, label,
+comando ni payload de error. La precedencia es cierre remoto en curso o
+bloqueado, bloqueo de capacidad por una sesión cerrada, ownership ambiguo,
+ejecución activa y finalmente el estado ordinario de la sesión.
+
+`CAPACITY_RELEASED` y `RETRY_AGENT_RUN` sólo aparecen cuando la ejecución
+anterior es terminal y el blocker exacto conserva el recibo `RELEASED`
+persistido. Hasta entonces, el read model mantiene `RECONCILE_REMOTE_CLOSE`,
+espera o contacto administrativo. La superficie y la acción de reconciliación
+histórica permanecen deshabilitadas mientras el gate global y la allowlist del
+proyecto canónico Atenea estén apagados.
+
 Close puede bloquearse con diagnósticos:
 
 - `closeBlockedState`

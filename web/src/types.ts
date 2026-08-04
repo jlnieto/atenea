@@ -451,6 +451,25 @@ export interface MobileSessionSummary {
   approvedPriceEstimate?: ApprovedPriceEstimateSummary | null;
   actions: MobileSessionActions;
   insights: MobileSessionInsights;
+  operatorState: MobileSessionOperatorState;
+}
+
+export interface MobileSessionOperatorState {
+  surfaceEnabled: boolean;
+  state: "DEFAULT" | "RUNNING" | "CLOSING_REMOTE" | "REMOTE_CLOSE_BLOCKED" |
+    "LEGACY_CLOSE_REQUIRED" | "CLOSED_OWNER_BLOCKS_CAPACITY" |
+    "CLOSED_OWNER_RECONCILING" | "CAPACITY_RELEASED" |
+    "OWNERSHIP_REVIEW_REQUIRED" | "CLOSED";
+  title: string;
+  blocker?: string | null;
+  primaryAction: "NONE" | "WAIT" | "RECONCILE_REMOTE_CLOSE" |
+    "RETRY_AGENT_RUN" | "CONTACT_PLATFORM_ADMINISTRATOR";
+  primaryActionLabel?: string | null;
+  primaryActionAvailable: boolean;
+  requiredRole?: "ROUTINE_OPERATOR" | "PRIVILEGED_OPERATOR" |
+    "PLATFORM_ADMINISTRATOR" | null;
+  targetWorkSessionId?: number | null;
+  targetAgentRunId?: number | null;
 }
 
 export interface MobileSessionActions {

@@ -2,6 +2,7 @@ package com.atenea.service.worksession;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -446,6 +447,22 @@ class AgentRunServiceTest {
                 any(), any(), any())).thenReturn(true);
 
         assertDoesNotThrow(() -> agentRunService.requireRemoteRetryEligible(source));
+    }
+
+    @Test
+    void readModelEligibilityRequiresTerminalSourceAndExactReleasedReceipt() {
+        AgentRunEntity source = closedOwnerBlockedRun();
+        WorkSessionEntity blocker = releasedBlocker();
+        when(agentRunRepository.findById(81L)).thenReturn(Optional.of(source));
+        when(workSessionRepository.findWithProjectById(16L))
+                .thenReturn(Optional.of(blocker));
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Boolean.class),
+                any(), any(), any())).thenReturn(true);
+
+        assertTrue(agentRunService.isRemoteRetryEligible(81L));
+
+        source.setStatus(AgentRunStatus.RECONCILING);
+        assertFalse(agentRunService.isRemoteRetryEligible(81L));
     }
 
     @Test

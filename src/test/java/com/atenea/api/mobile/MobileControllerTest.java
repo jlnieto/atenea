@@ -196,7 +196,18 @@ class MobileControllerTest {
                 new MobileSessionInsightsResponse(
                         "Flujo de voz operativo",
                         new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),
-                        "Publicar la pull request de la sesión")));
+                        "Publicar la pull request de la sesión"),
+                new MobileSessionOperatorStateResponse(
+                        true,
+                        MobileSessionOperatorState.CLOSED_OWNER_BLOCKS_CAPACITY,
+                        "Bloqueada por una sesión cerrada",
+                        "Otra sesión cerrada conserva la capacidad necesaria.",
+                        MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE,
+                        "Reconciliar cierre",
+                        true,
+                        com.atenea.persistence.auth.CodexOperationsRole.PLATFORM_ADMINISTRATOR,
+                        16L,
+                        96L)));
 
         mockMvc.perform(get("/api/mobile/sessions/12/summary"))
                 .andExpect(status().isOk())
@@ -204,6 +215,14 @@ class MobileControllerTest {
                 .andExpect(jsonPath("$.actions.canPublish").value(true))
                 .andExpect(jsonPath("$.insights.latestProgress").value("Flujo de voz operativo"))
                 .andExpect(jsonPath("$.insights.currentBlocker.category").value("NONE"))
+                .andExpect(jsonPath("$.operatorState.state").value("CLOSED_OWNER_BLOCKS_CAPACITY"))
+                .andExpect(jsonPath("$.operatorState.title").value("Bloqueada por una sesión cerrada"))
+                .andExpect(jsonPath("$.operatorState.primaryAction").value("RECONCILE_REMOTE_CLOSE"))
+                .andExpect(jsonPath("$.operatorState.requiredRole").value("PLATFORM_ADMINISTRATOR"))
+                .andExpect(jsonPath("$.operatorState.targetWorkSessionId").value(16))
+                .andExpect(jsonPath("$.operatorState.workerId").doesNotExist())
+                .andExpect(jsonPath("$.operatorState.workspaceIdentity").doesNotExist())
+                .andExpect(jsonPath("$.operatorState.operationId").doesNotExist())
                 .andExpect(jsonPath("$.approvedPriceEstimate.billingStatus").value("READY"));
     }
 
