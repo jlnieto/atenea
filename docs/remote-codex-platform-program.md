@@ -11201,3 +11201,42 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.4-fail-closed-admission-proof`;
 the SHA-256 of its `SHA256SUMS` is
 `12001b29b68a41c25352478fe4be52b9563659226209cf461fab01a8e09d462c`.
+
+Task 2.5 is complete. Change progress is `14/60`; task 2.6 is the exact
+resume point and the section-wide regression/closure run has not started.
+
+Canonical Atenea candidate commit
+`2ac6267249ba0bd040f6d7c347c04341f5108fc8` is published exactly in the
+canonical repository and GitHub. Retry now has two fail-closed checks. The
+recovery coordinator rejects a deterministic blocker before canonical-source
+admission or worker proof; `AgentRunService` repeats the same pure policy after
+locking the source run and before looking up or creating a retry. V63 failures
+are eligible only when their persisted next action is already `RETRY`; legacy
+failures with no V63 projection retain existing compatibility. `WAIT`,
+reconciliation and administrator actions cannot create or dispatch a retry.
+
+The blocked proof performs zero admission calls, worker terminal/absence
+proofs, retry creates or dispatches. It does not save a run, turn or binding,
+does not validate attachment bytes and does not resnapshot the profile. The
+eligible proof creates one linked run while the original failed run, origin
+turn, model/effort/catalog/version snapshot and exact attachment count, bytes
+and manifest SHA-256 remain unchanged; no binding or turn is recreated.
+
+All 20 AgentRun service tests and all three recovery-coordinator tests pass:
+23/23 total with zero failures, errors or skips. No real recovery request,
+prompt, worker execution or source deployment occurred. AgentRun 96 was not
+retried or read for content.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs; WorkSessions 16/17 and AgentRun 96 remain
+`CLOSED`/`OPEN`/unretried `FAILED`. Production, preview and Beautips remain
+`UP`, routing remains `ax42-01` enabled/healthy `4/2` at `0/0`, all five exact
+ownership hashes match, worker services remain active with zero restarts,
+rootless slots remain `3/0/0/3`, rootful daemons remain inactive, all three
+RAID arrays remain `[UU]`, and backup/check/health remain `success/0`. No
+foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.5-deterministic-retry-gate`;
+the SHA-256 of its `SHA256SUMS` is
+`09830dac18ca52c8b5007d65236579870ca823ca7923ddc653c4be25d5ec0c74`.

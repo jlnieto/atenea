@@ -58,7 +58,7 @@ environment dumps.
 - [x] 2.4 Prove malformed responses, ownership mismatches and unknown blockers
   require platform review; prove repeated deterministic activation is not
   polled 81 times and creates no worker execution, lease or replacement run
-- [ ] 2.5 Prove safe retry remains blocked until the deterministic blocker is
+- [x] 2.5 Prove safe retry remains blocked until the deterministic blocker is
   cleared and that the original turn, run, execution profile and attachment
   manifest remain immutable
 - [ ] 2.6 Run focused client/coordinator/API tests plus unchanged partition,
