@@ -12091,3 +12091,59 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.1-shared-operator-read-model`;
 the SHA-256 of its `SHA256SUMS` is
 `7450ee749174dad0a04f627528829de5d4d82d0c293cbdaee450b1fd067f47b0`.
+
+Task 5.2 is complete. Change progress is `33/60`; task 5.3 is the exact resume
+point. Atenea commit `d521d95a969b63ffc6f8fb47adcecbd77eaa0945`
+adds the state-first web flow to both WorkSession and immersive conversation.
+When the shared surface is enabled, current close/capacity state and its safe
+blocker lead the first viewport with at most one primary action. Default and
+unrelated session states render no new surface.
+
+Normal close reconciliation repeats the existing close request and therefore
+the same persisted operation. A legacy closed owner requires an administrator
+plan followed by a separate finite explicit confirmation bound to the returned
+plan and ownership fingerprint. Both client idempotency keys remain stable
+across uncertain responses. No client-selected command, path, worker, slot,
+port, endpoint, label, credential or resource target is accepted or displayed.
+
+Generic retry is hidden while the remote-close surface owns the next action.
+The secondary run panel says to reconcile before retry rather than describing
+retry as safe. Only a persisted released-capacity projection presents
+`Reintentar tarea`, and the retry still requires a separate explicit click. A
+routine operator sees the administrator role requirement and cannot create a
+legacy plan; reconciling or unverifiable ownership exposes neither retry nor
+cleanup.
+
+The production web build and application/test TypeScript compilation pass.
+Four focused Playwright component flows pass for closing, exact legacy
+confirmation, authorization, reconciling, blocked ownership and released
+capacity. All 17 existing attachment/composer Playwright regressions also
+pass. Synthetic request recording proves zero confirmation or retry before
+release and the exact domain targets afterward.
+
+Real rendered smoke inspection passes at `1440x900` and `390x844`. Data/API
+state, DOM visibility and final pixels were checked separately. One initial
+visual ambiguity in the secondary retry copy was corrected before the final
+screenshots; the final state, blocker, permission and primary action are clear
+without visible clipping, overlap or horizontal overflow. Task 5.3 retains the
+full long-message, confirmation, refresh and responsive acceptance gate.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains `FAILED`, unretried and without a child. WorkSession 17 retains one
+turn, one run, one attachment and one complete profile. Production and preview
+remain `UP`, Beautips returns HTTP 200 and routing remains `ax42-01`
+enabled/healthy `4/2` at `0/0`.
+
+All four incident ownership hashes remain exact; WorkSession 17 allocation and
+admission remain absent. Worker services remain active with zero restarts,
+rootless slots remain `3/0/0/3`, rootful daemons remain inactive, RAID remains
+`3/3 [UU]` and backup/check/health remain `success/0`. Task-owned Docker
+resources are absent. No production migration, deployment, configuration,
+release, prompt, AgentRun retry, runtime, ownership, preview, Beautips, foreign
+or unrelated resource changed.
+
+Sanitized evidence, including synthetic desktop/mobile screenshots, is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.2-state-first-web`;
+the SHA-256 of its `SHA256SUMS` is
+`85ebde050fcd665fef9f6d5427a2d54032fcd959a8aa9e89f8f6fca37bba6405`.

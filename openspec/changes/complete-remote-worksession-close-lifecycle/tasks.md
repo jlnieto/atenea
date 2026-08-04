@@ -132,7 +132,7 @@ environment dumps.
   minimal shared read model so current state, blocker and one primary action
   are understandable in under three seconds without exposing infrastructure
   detail
-- [ ] 5.2 Implement web states for closing/reconciling, blocked ownership,
+- [x] 5.2 Implement web states for closing/reconciling, blocked ownership,
   confirmed legacy release and capacity released; hide or disable generic retry
   until it is safe and keep secondary actions visually subordinate
 - [ ] 5.3 Validate real rendered web data, DOM and visuals with Playwright at
