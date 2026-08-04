@@ -177,7 +177,7 @@ environment dumps.
   service, backup, RAID, firewall, Tailscale, slot, registry, admission,
   allocation, runtime, production, preview and Beautips fingerprints; stop on
   any divergence
-- [ ] 7.2 Create and check a fresh encrypted external backup, restore the exact
+- [x] 7.2 Create and check a fresh encrypted external backup, restore the exact
   database into an empty isolated target, apply V63 and re-prove the
   rollback-compatible image before production migration
 - [ ] 7.3 Deploy the exact V63-aware backend/web and reviewed AX42

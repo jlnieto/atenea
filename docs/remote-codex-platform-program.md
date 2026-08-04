@@ -12738,3 +12738,71 @@ pre-rollout evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.1-pre-rollout-fingerprints`;
 the SHA-256 of its `SHA256SUMS` is
 `0b91050e06bbd6fabf072558f18f808e7d2651d1d6cf449caf9a516814edef60`.
+
+Task 7.2 is complete. Change progress is `46/60`; task 7.3 is the exact resume
+point. The established AX42 backup service created and checked fresh encrypted
+snapshot
+`809f2b58498c75456916421391ae147a546bcd21b92439232e817e1091f3380b`.
+Its selected source manifest SHA-256 is
+`18c34b5dbcb5df54ce268b710508844c2d81cae0876d45580aa770e458d76013`,
+with 5,537 files and 155,817,597 bytes. Backup/check results remain
+`success/0`; protected metadata remains mode `0600`, root-owned.
+
+A fresh V62 production custom dump is retained at
+`/srv/atenea/backups/prod/atenea_prod_before_remote_close_v62_20260804T163514Z.dump`,
+SHA-256
+`2e1d110e46d69188bce916b1205ce4a7c1fcb14ca0ab8356e2a38de0cf51a748`,
+mode `0600`. Its catalog was checked, then it was restored into an empty
+PostgreSQL 16 fixture on a labelled internal-only network with tmpfs storage
+and no published ports. The restored V62 image contained 51 tables, 15
+WorkSessions and 96 AgentRuns.
+
+The exact reviewed candidate image
+`sha256:1c67ac36a6b45a4b0004e15ba79bcd6d50addfb4b09d8b7890b43c8ef092801a`
+started on the fixture, applied V63 once and repeated startup as a no-op. V63
+backfilled `NOT_REQUIRED:2`, `NOT_STARTED:3` and
+`UNVERIFIED_LEGACY:10`; it did not create any legacy plan, authorization or
+operation. WorkSession 16 projected `UNVERIFIED_LEGACY`, WorkSession 17
+projected `NOT_STARTED`, and AgentRun 96 gained no recovery failure, action or
+blocker. The Flyway history SHA-256 remained
+`4bd326d9abe3aeb8615d0ec9841dc5a09d1cefe28e1077a1979b4803b3a5871e`
+across repeat startup.
+
+The independently sealed rollback source
+`27f9a7eb5e986f8cacffd0b169af931e03934d96` correctly failed closed when its
+historical V63 checksum met the final candidate V63 history. No production
+state was involved or changed. A minimal separate rollback branch copies only
+the exact final V63 migration bytes: branch
+`codex/complete-remote-worksession-close-lifecycle-rollback-20260804`, commit
+`a0ac6326011f142006fdc24748cd9a69f8c93896`, tree
+`fcf84ac45eb5c73781bf5b3cbde6665d3f730e48`. Internal and GitHub refs are
+exact. Its retained rollback image is
+`sha256:f2f6d8aaefb1e511ea5d3468e1505902f5ab0a686b964d13d2578e77a4af1859`;
+it shares all 11 production base layers and normalized runtime configuration,
+then reads the migrated fixture at V63 without new gate environment and
+without another write. The incompatible diagnostic image was removed exactly.
+
+The two labelled fixture containers and their internal network were removed;
+zero task 7.2 container or network remains. Production is still V62 on exact
+image
+`sha256:fe5bb7a6b39dbcc2f9847dd05b68b9aabe72bf4d2775ad55f5624fcd99b1d96f`,
+and preview remains on
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`.
+Production, preview and Beautips return HTTP 200 with zero relevant restarts.
+The five accepted incident ownership hashes remain exact; WorkSession 17 has
+no allocation, admission or registration. Rootless slots remain `3/0/0/3`,
+rootful Docker/containerd remain inactive/masked and RAID remains `3/3 [UU]`.
+The foreign local `atenea-activation-code_default` network remains present
+with zero containers and untouched.
+
+Production retains 15 WorkSessions, 96 terminal AgentRuns and zero V63 rows.
+WorkSessions 16/17 remain `CLOSED/OPEN`; AgentRun 96 remains `FAILED`, without
+retry parent or child. WorkSession 17 retains one turn, one run, one attachment
+and one binding. No production migration, deployment, worker installation,
+Android publication, capability activation, legacy release, prompt, retry,
+Beautips change or foreign-resource mutation occurred.
+
+Sanitized task evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.2-fresh-backup-v63-rollback-proof`;
+the SHA-256 of its `SHA256SUMS` is
+`eaa0ffc606d335c9ad6943428fef40f61c764c770b789ff42c6bae6d04baf853`.
