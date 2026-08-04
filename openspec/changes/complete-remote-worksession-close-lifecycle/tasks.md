@@ -73,7 +73,7 @@ environment dumps.
 - [x] 3.2 Add one persistent finite lifecycle lock shared by Atenea workspace
   `ensure` and `release`; prove concurrent ensure/release serialization, lock
   timeout and no interleaved registration/admission state
-- [ ] 3.3 Implement complete no-write preflight over the exact workspace,
+- [x] 3.3 Implement complete no-write preflight over the exact workspace,
   registry, admission, allocation, runtime, preview, listener, proxy/broker,
   image/materialization and browser-process projection
 - [ ] 3.4 Implement the immutable release journal and monotonic

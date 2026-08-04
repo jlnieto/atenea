@@ -11367,3 +11367,55 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.2-workspace-lifecycle-lock`;
 the SHA-256 of its `SHA256SUMS` is
 `a880a8f1bf2f7b75402b0ed30b96b0fcb3943e2b4849efc43f824fcd346c67ad`.
+
+Task 3.3 is complete. Change progress is `18/60`; task 3.4 is the exact
+resume point and no release journal or mutation has started.
+
+The new internal Atenea finalizer contract performs one pure, complete,
+fail-closed preflight before a future journal may be created. It first requires
+the exact fixed workspace record, canonical worktree, project registry entry,
+held normal/heavy admission and active allocation, all bound to the immutable
+release request, deterministic session runtime and allocation SHA-256.
+
+It then validates every internally observed runtime container, network,
+session image, preview, listener, rootless/Codex proxy broker, attachment
+materialization and temporary Codex/Playwright browser candidate against the
+same session UUID, runtime ID, Atenea project, `ax42-01` worker, allocation
+fingerprint and complete existing runtime labels. Resource identities must be
+derived from the fixed contract; duplicate, partial, foreign, symlinked,
+ambiguous, Beautips, production-like, unallocated-port or cross-preview
+candidates reject the entire projection with one fixed safe code. Active
+previews require exactly one matching tailnet listener, and runtime listeners
+must correspond exactly to their rootless broker mappings.
+
+The validator performs no filesystem, registry, process, socket or runtime
+write. It exposes no CLI or HTTP route and has no journal or mutation method.
+Its accepted result contains only closed candidate counts and request,
+allocation and ownership SHA-256 fingerprints with `valuesExposed=false`.
+Release therefore remains unavailable by default.
+
+All ten complete preflight tests pass, including a byte-for-byte unchanged
+input proof, empty and populated ephemeral projections, every authoritative
+root, all eight ephemeral families, duplicate identities, foreign/session/
+project/production ambiguity, allocation-derived listeners and canonical
+materialization/browser operations. The preflight plus complete AgentRun
+worker regression passes 78/78 with zero failures, errors or skips. Generated
+Python bytecode was removed before sealing; no worker source was installed.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN`; AgentRun 96 remains
+terminal unretried `FAILED`, and its origin turn, execution profile, one linked
+attachment, exact count/bytes and attachment-manifest SHA-256 remain intact.
+Production, preview and Beautips remain up with zero backend/control restarts;
+routing remains `ax42-01` enabled/healthy `4/2` at `0/0`. Exact registry,
+WorkSession 16 workspace/allocation/admission and WorkSession 17 workspace
+hashes match entry, WorkSession 17 allocation/admission remain absent, and both
+incident runtime candidate counts remain zero. Worker services remain active
+with zero restarts, rootless slots remain `3/0/0/3`, rootful daemons remain
+inactive, all three RAID arrays remain `[UU]`, and backup/check/health remain
+`success/0`. No ownership, runtime, foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.3-complete-no-write-preflight`;
+the SHA-256 of its `SHA256SUMS` is
+`26a11cef3d203b427f792da5136a49451f06dffb8b9848627c12a2b56d05c39a`.
