@@ -36,7 +36,7 @@ environment dumps.
 - [x] 1.3 Implement persistence/read-model mapping for remote close and
   action-specific failures, preserving every legacy/local API projection and
   keeping all new capability gates disabled by default
-- [ ] 1.4 Restore the current PostgreSQL backup into a network-isolated empty
+- [x] 1.4 Restore the current PostgreSQL backup into a network-isolated empty
   fixture, apply all migrations through V63, prove repeat startup and prove an
   exact V63-aware rollback image can read the expanded schema with new writers
   disabled

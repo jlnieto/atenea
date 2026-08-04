@@ -10942,3 +10942,53 @@ service or foreign resource was mutated. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-1.3-remote-close-mapping`;
 the SHA-256 of its `SHA256SUMS` is
 `e05b5583e09cb6893cbbfce3c11a272e245b8ddbf0bc7b1cdf066814ce9d24ad`.
+
+Task 1.4 is complete. Change progress is `8/60`; task 1.5 is the exact resume
+point.
+
+The latest accepted custom-format production backup,
+`atenea_prod_before_real_attachments_v61_20260802T115453Z.dump`, remained mode
+`0600`, 1,830,268 bytes and SHA-256
+`02797fd448689316a7521c2976fc0e51a6d1eaa1e92442c7fb3ab7a29cc7a8f2`.
+Its 496-entry catalog was read by PostgreSQL 16.13 and the dump was restored
+into an empty task-owned database on tmpfs. Its Docker network was internal
+only, published no port and contained no persistent write mount.
+
+The rollback source is exact Atenea candidate commit
+`27f9a7eb5e986f8cacffd0b169af931e03934d96`, tree
+`179a019bdb5d0f57594320f01c169395efb5db4a`. This is the last published point
+that understands V63 persistence/read models but has no remote-close writer.
+The built image identity was
+`sha256:1f29ae0e903d76c1b9fd2e838a1c5617b415115d37eb97b55c294c46af1a50e6`.
+
+The restored snapshot began at V61/61 with 50 public tables, 10 WorkSessions
+and 91 AgentRuns. Its first normal application start applied V62 and V63 once,
+reached `UP`, exposed all eight WorkSession remote-close columns plus both
+AgentRun failure/action columns and retained the 10/91 row counts. Conservative
+backfill produced two `NOT_REQUIRED`, three `NOT_STARTED` and five
+`UNVERIFIED_LEGACY` sessions.
+
+A second normal start and an explicitly named rollback start both reached
+`UP`, reported Flyway up to date and initialized JPA. The complete successful
+Flyway-history SHA-256 remained
+`3b300188c4f3f2b544a56abf8061d57f11ba8e336f23dad5c443236dd18659e3`,
+with exactly one V63 row. Every new capability was explicitly false and both
+remote-close allowlists were empty. No down migration or Flyway repair was
+attempted.
+
+All labelled containers, the internal network, image tag and exact source
+export were removed by immutable task identity. Production remains V62 with
+the same 15 WorkSessions, 96 terminal AgentRuns and zero non-terminal runs;
+WorkSessions 16/17 and AgentRun 96 remain `CLOSED`/`OPEN`/unretried `FAILED`
+with their retained 1/1/1/1 turn, run, attachment and binding projection.
+Production, preview and Beautips remain HTTP 200. Worker ownership hashes,
+services/restarts, rootless `3/0/0/3`, rootful masking, RAID `3/3` and
+backup/health results remain unchanged.
+
+No prompt, response, attachment content, screenshot, credential, token,
+cookie, `auth.json`, environment dump or Codex history was read or retained.
+No production migration, deployment, route, gate, service, runtime, ownership
+or foreign resource was changed. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-1.4-v63-rollback-restore`;
+the SHA-256 of its `SHA256SUMS` is
+`9ae93d8d44613c5e288a655dd3f51cc6974e0f70401bf5035cd13763e7e11b6f`.
