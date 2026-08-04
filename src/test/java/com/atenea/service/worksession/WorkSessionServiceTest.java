@@ -9,6 +9,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,7 +40,13 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.RemoteCloseState;
+import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.RemoteWorkerClient;
+import com.atenea.remoteworker.RemoteWorkerException;
+import com.atenea.remoteworker.RemoteWorkerFailureCategory;
+import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
@@ -51,6 +59,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,6 +67,9 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
 
 @ExtendWith(MockitoExtension.class)
 class WorkSessionServiceTest {
@@ -92,15 +104,28 @@ class WorkSessionServiceTest {
     @Mock
     private RemoteRoutingSelector remoteRoutingSelector;
 
+    @Mock
+    private RemoteWorkerClient remoteWorkerClient;
+
+    @Mock
+    private RemoteWorkerProperties remoteWorkerProperties;
+
+    @Mock
+    private PlatformTransactionManager transactionManager;
+
     @TempDir
     Path tempDir;
 
     private WorkSessionService workSessionService;
+    private WorkspaceRepositoryPathValidator validator;
 
     @BeforeEach
     void setUp() throws IOException {
         Path workspaceRoot = Files.createDirectories(tempDir.resolve("repos"));
-        WorkspaceRepositoryPathValidator validator = new WorkspaceRepositoryPathValidator(workspaceRoot.toString());
+        validator = spy(new WorkspaceRepositoryPathValidator(workspaceRoot.toString()));
+        TransactionStatus transactionStatus = org.mockito.Mockito.mock(TransactionStatus.class);
+        lenient().when(transactionManager.getTransaction(any(TransactionDefinition.class)))
+                .thenReturn(transactionStatus);
         lenient().when(codexAppServerProperties.getStaleTimeout()).thenReturn(Duration.ofMinutes(5));
         AgentRunReconciliationService reconciliationService = new AgentRunReconciliationService(
                 agentRunRepository,
@@ -125,7 +150,10 @@ class WorkSessionServiceTest {
                 reconciliationService,
                 new SessionBranchService(gitRepositoryService),
                 gitHubClient,
-                attachmentPolicySnapshotter
+                attachmentPolicySnapshotter,
+                remoteWorkerClient,
+                remoteWorkerProperties,
+                transactionManager
         );
     }
 
@@ -863,10 +891,119 @@ class WorkSessionServiceTest {
         assertEquals(WorkSessionStatus.CLOSED, session.getStatus());
         assertEquals(response.closedAt(), session.getClosedAt());
         assertEquals(response.closedAt(), session.getUpdatedAt());
+        assertEquals(RemoteCloseState.NOT_REQUIRED, session.getRemoteCloseState());
+        verify(remoteWorkerClient, never()).releaseWorkspace(any());
         verify(gitRepositoryService).checkoutBranch(repoPath.toString(), "main");
         verify(gitRepositoryService, never()).fetchOrigin(repoPath.toString());
         verify(gitRepositoryService, never()).fastForwardCurrentBranchToOrigin(repoPath.toString(), "main");
         verify(gitRepositoryService).deleteLocalBranch(repoPath.toString(), "atenea/session-12");
+    }
+
+    @Test
+    void remoteCloseCommitsDeliveryThenOperationThenExactReleasedReceipt() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-remote-close"));
+        WorkSessionEntity session = remoteSession(repoPath);
+        prepareSuccessfulCloseMocks(session, repoPath);
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerClient.releaseWorkspace(session)).thenAnswer(
+                ignored -> releasedReceipt(session));
+
+        WorkSessionResponse response = workSessionService.closeSession(12L);
+
+        assertEquals(WorkSessionStatus.CLOSED, response.status());
+        assertEquals(RemoteCloseState.RELEASED, response.remoteCloseState());
+        assertEquals(WorkSessionStatus.CLOSED, session.getStatus());
+        assertEquals(RemoteCloseState.RELEASED, session.getRemoteCloseState());
+        assertTrue(session.getRemoteCloseOperationId() != null);
+        assertEquals("9".repeat(64), session.getRemoteCloseReceiptSha256());
+        assertEquals(6, session.getRemoteCloseRevision());
+        assertTrue(session.getRemoteCloseRequestedAt() != null);
+        assertTrue(session.getRemoteCloseReleasedAt() != null);
+        assertEquals(session.getRemoteCloseReleasedAt(), session.getClosedAt());
+
+        org.mockito.InOrder order = inOrder(transactionManager, remoteWorkerClient);
+        order.verify(transactionManager).getTransaction(any(TransactionDefinition.class));
+        order.verify(transactionManager).commit(any(TransactionStatus.class));
+        order.verify(transactionManager).getTransaction(any(TransactionDefinition.class));
+        order.verify(transactionManager).commit(any(TransactionStatus.class));
+        order.verify(remoteWorkerClient).releaseWorkspace(session);
+        order.verify(transactionManager).getTransaction(any(TransactionDefinition.class));
+        order.verify(transactionManager).commit(any(TransactionStatus.class));
+    }
+
+    @Test
+    void remoteCloseGateDisabledKeepsSessionClosingWithoutCreatingOperation() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-gate-off"));
+        WorkSessionEntity session = remoteSession(repoPath);
+        prepareSuccessfulCloseMocks(session, repoPath);
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(false);
+
+        WorkSessionCloseBlockedException exception = assertThrows(
+                WorkSessionCloseBlockedException.class,
+                () -> workSessionService.closeSession(12L));
+
+        assertEquals("remote_close_disabled", exception.getState());
+        assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
+        assertEquals(RemoteCloseState.NOT_STARTED, session.getRemoteCloseState());
+        assertNull(session.getRemoteCloseOperationId());
+        assertNull(session.getClosedAt());
+        verify(remoteWorkerClient, never()).releaseWorkspace(any());
+    }
+
+    @Test
+    void remoteCloseTransportFailureRetainsCommittedOperationForReconciliation() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-transport"));
+        WorkSessionEntity session = remoteSession(repoPath);
+        prepareSuccessfulCloseMocks(session, repoPath);
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerClient.releaseWorkspace(session)).thenThrow(
+                new RemoteWorkerException("Remote worker I/O failed", new IOException("closed")));
+
+        WorkSessionCloseBlockedException exception = assertThrows(
+                WorkSessionCloseBlockedException.class,
+                () -> workSessionService.closeSession(12L));
+
+        assertEquals("REMOTE_WORKER_TRANSPORT_FAILURE", exception.getState());
+        assertEquals(true, exception.isRetryable());
+        assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
+        assertEquals(RemoteCloseState.RECONCILING, session.getRemoteCloseState());
+        assertTrue(session.getRemoteCloseOperationId() != null);
+        assertEquals(2, session.getRemoteCloseRevision());
+        assertNull(session.getRemoteCloseReceiptSha256());
+        assertNull(session.getRemoteCloseReleasedAt());
+        assertNull(session.getClosedAt());
+    }
+
+    @Test
+    void deterministicRemoteCloseRejectionBlocksWithoutFalseClosure() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-rejected"));
+        WorkSessionEntity session = remoteSession(repoPath);
+        prepareSuccessfulCloseMocks(session, repoPath);
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerClient.releaseWorkspace(session)).thenThrow(new RemoteWorkerException(
+                "Remote worker rejected request with HTTP 409",
+                409,
+                "WORKSPACE_RELEASE_OWNERSHIP_CONFLICT",
+                RemoteWorkerFailureCategory.OWNERSHIP,
+                false,
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                null));
+
+        WorkSessionCloseBlockedException exception = assertThrows(
+                WorkSessionCloseBlockedException.class,
+                () -> workSessionService.closeSession(12L));
+
+        assertEquals("WORKSPACE_RELEASE_OWNERSHIP_CONFLICT", exception.getState());
+        assertEquals(false, exception.isRetryable());
+        assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
+        assertEquals(RemoteCloseState.BLOCKED, session.getRemoteCloseState());
+        assertTrue(session.getRemoteCloseOperationId() != null);
+        assertNull(session.getRemoteCloseReceiptSha256());
+        assertNull(session.getClosedAt());
     }
 
     @Test
@@ -1028,6 +1165,95 @@ class WorkSessionServiceTest {
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.empty());
 
         assertThrows(WorkSessionNotFoundException.class, () -> workSessionService.closeSession(12L));
+    }
+
+    private WorkSessionEntity remoteSession(Path repoPath) {
+        WorkSessionEntity session = buildSession(12L, 7L, repoPath, ProjectCodexIdentity.BRANCH);
+        UUID remoteSessionId = UUID.fromString("11111111-1111-4111-8111-111111111111");
+        session.getProject().setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        session.setWorkspaceBranch("atenea/session-" + remoteSessionId);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setWorkspaceIdentity(
+                "remote:" + ProjectCodexIdentity.WORKER_ID + ":work-session:" + remoteSessionId);
+        session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
+        session.setCanonicalSourceCommit("1".repeat(40));
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(Instant.parse("2026-08-03T09:00:00Z"));
+        session.setRemoteCloseState(RemoteCloseState.NOT_STARTED);
+        doReturn(repoPath.toString()).when(validator)
+                .normalizeConfiguredRepoPath(ProjectCodexIdentity.REPO_PATH);
+        return session;
+    }
+
+    private void prepareSuccessfulCloseMocks(WorkSessionEntity session, Path repoPath) {
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        lenient().when(workSessionRepository.findLockedWithProjectById(12L))
+                .thenReturn(Optional.of(session));
+        when(workSessionRepository.saveAndFlush(any(WorkSessionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING))
+                .thenReturn(false);
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                12L, AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString()))
+                .thenReturn(session.getWorkspaceBranch(), "main", "main");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString()))
+                .thenReturn(true, true, true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), session.getWorkspaceBranch()))
+                .thenReturn(true, false, false);
+        when(gitRepositoryService.remoteBranchExists(
+                repoPath.toString(), session.getWorkspaceBranch())).thenReturn(false, false);
+        when(gitRepositoryService.branchContainsCommitsBeyond(
+                repoPath.toString(), "main", session.getWorkspaceBranch())).thenReturn(false);
+    }
+
+    private RemoteWorkerClient.WorkspaceRelease releasedReceipt(WorkSessionEntity session) {
+        String operationId = session.getRemoteCloseOperationId().toString();
+        return new RemoteWorkerClient.WorkspaceRelease(
+                "project-workspace-release-v1",
+                "RELEASED",
+                operationId,
+                operationId,
+                session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(),
+                ProjectCodexIdentity.PROJECT_IDENTITY,
+                ProjectCodexIdentity.REPOSITORY,
+                ProjectCodexIdentity.BRANCH,
+                session.getCanonicalSourceCommit(),
+                ProjectCodexIdentity.MANIFEST_SHA256,
+                session.getWorkspaceBranch(),
+                ProjectCodexIdentity.WORKER_ID,
+                "3".repeat(64),
+                6,
+                java.util.Map.of(
+                        "runtimeContainers", 0,
+                        "runtimeNetworks", 0,
+                        "sessionImages", 0,
+                        "previewResources", 0,
+                        "brokerResources", 0,
+                        "browserProcesses", 0),
+                java.util.Map.of(
+                        "registration", true,
+                        "normalAdmission", true,
+                        "heavyAdmission", true,
+                        "allocation", true),
+                java.util.Map.of(
+                        "workspaceRecord", true,
+                        "worktree", true,
+                        "git", true,
+                        "turns", true,
+                        "agentRuns", true,
+                        "attachments", true,
+                        "logs", true,
+                        "artifacts", true,
+                        "backups", true,
+                        "policyVolumes", true),
+                "4".repeat(64),
+                "9".repeat(64),
+                false);
     }
 
     private static ProjectEntity buildProject(Long projectId, Path repoPath) {
