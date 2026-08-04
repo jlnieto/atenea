@@ -11973,3 +11973,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.6-safe-lifecycle-audit`;
 the SHA-256 of its `SHA256SUMS` is
 `be804b444c484ac52003d0af6d8629616cc0104f59b48a7c8ba91f11a786b9ce`.
+
+Task 4.7 and section 4 are complete. Change progress is `31/60`; task 5.1 is
+the exact resume point and no state-first UI work has started.
+
+Atenea commit `bdd6ea8a82167a6da18a83309e12bed03a9a3fcc` records the
+verified durable close lifecycle in the WorkSession architecture document.
+The complete backend unit, integration, concurrency and restart suite passes
+662/662 across 104 classes with zero failures, errors or skips. A separate
+39-class close, attachment, notification, recovery, restart, GitHub and pull
+request matrix passes 277/277, and the backend package passes.
+
+The first complete-suite runner omitted the synthetic workspace-root setting
+corresponding to its historical mounted repository path, so 25 Git fixtures
+failed deterministic path validation before assertions. No code or shared
+fixture changed. The task-owned database and result volume were recreated, the
+runner setting was corrected and the complete suite passed. Only aggregate XML
+results were retained; raw test logs and fixture messages were not read into
+the evidence.
+
+Production remains at V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote and AgentRun
+96 remains `FAILED`, unretried and without a child. WorkSession 17 retains one
+turn, one run, one attachment and one complete execution profile. Production
+and preview remain `UP`, Beautips returns HTTP 200, all observed related
+containers remain running, and routing remains `ax42-01` enabled/healthy `4/2`
+at `0/0`.
+
+The four incident ownership files retain their exact accepted SHA-256 values;
+WorkSession 17 allocation and admission remain absent. Worker services remain
+active with zero restarts, rootless slots remain `3/0/0/3`, rootful daemons
+remain inactive, RAID remains `3/3 [UU]` and backup/check/health remain
+`success/0`. No production migration, deployment, configuration, release,
+prompt, ownership, preview, Beautips, foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.7-backend-section-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`80ddd00d89bea246f1a013f4bdd7933c08b8f4726a797879f66f58bad2a76486`.

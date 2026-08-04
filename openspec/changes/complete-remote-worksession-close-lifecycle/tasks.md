@@ -121,7 +121,7 @@ environment dumps.
 - [x] 4.6 Persist safe lifecycle audit, error code and next action without raw
   worker payload; keep generic AgentRun retry unavailable until a matching
   released receipt exists and prior execution is terminal or absent
-- [ ] 4.7 Run focused and complete backend unit/integration/concurrency/restart
+- [x] 4.7 Run focused and complete backend unit/integration/concurrency/restart
   tests, including unchanged local close, PR close, attachments, notifications
   and recovery lineage; seal evidence, update the ledger, strict-validate, mark
   section 4, commit and push
