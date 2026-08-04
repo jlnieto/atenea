@@ -1,6 +1,7 @@
 package com.atenea.remoteworker;
 
 import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkerNodeEntity;
 import com.atenea.persistence.worksession.WorkerNodeRepository;
@@ -35,6 +36,7 @@ public class RemoteRoutingSelector {
         session.setWorkspaceIdentity("local:work-session:" + session.getId());
         session.setRemoteSessionId(null);
         session.setRemoteWorkloadKind(null);
+        session.setRemoteCloseState(RemoteCloseState.NOT_REQUIRED);
         String workloadKind = selectedWorkloadKind(session);
         if (workloadKind == null) {
             return;
@@ -59,6 +61,7 @@ public class RemoteRoutingSelector {
             UUID remoteSessionId = UUID.randomUUID();
             session.setRemoteSessionId(remoteSessionId);
             session.setRemoteWorkloadKind(workloadKind);
+            session.setRemoteCloseState(RemoteCloseState.NOT_STARTED);
             session.setWorkspaceIdentity(
                     "remote:" + health.workerId() + ":work-session:" + remoteSessionId);
         } catch (RemoteWorkerException exception) {

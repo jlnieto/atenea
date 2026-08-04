@@ -163,6 +163,13 @@ public class AgentRunEntity {
     @Column(name = "status_reason", length = 500)
     private String statusReason;
 
+    @Column(name = "failure_code", length = 80)
+    private String failureCode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "recovery_next_action", length = 40)
+    private AgentRunRecoveryNextAction recoveryNextAction;
+
     @Column(name = "progress_next_sequence", nullable = false)
     private long progressNextSequence = 1;
 
@@ -360,6 +367,10 @@ public class AgentRunEntity {
     public void setReconciliationStartedAt(Instant reconciliationStartedAt) { this.reconciliationStartedAt = reconciliationStartedAt; }
     public String getStatusReason() { return statusReason; }
     public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
+    public String getFailureCode() { return failureCode; }
+    public void setFailureCode(String value) { this.failureCode = value; }
+    public AgentRunRecoveryNextAction getRecoveryNextAction() { return recoveryNextAction; }
+    public void setRecoveryNextAction(AgentRunRecoveryNextAction value) { this.recoveryNextAction = value; }
     public long getProgressNextSequence() { return progressNextSequence; }
     public void setProgressNextSequence(long progressNextSequence) { this.progressNextSequence = progressNextSequence; }
     public long getWorkerProgressSequence() { return workerProgressSequence; }

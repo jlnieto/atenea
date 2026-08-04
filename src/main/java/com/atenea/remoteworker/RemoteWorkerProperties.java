@@ -19,6 +19,9 @@ public class RemoteWorkerProperties {
     private Set<String> syntheticProjectAllowlist = new LinkedHashSet<>();
     private boolean projectCodexEnabled;
     private boolean beautipsProjectCodexEnabled;
+    private boolean remoteCloseReleaseEnabled;
+    private boolean remoteCloseReconciliationEnabled;
+    private Set<String> remoteCloseProjectAllowlist = new LinkedHashSet<>();
     private Duration connectTimeout = Duration.ofSeconds(3);
     private Duration requestTimeout = Duration.ofSeconds(5);
     private Duration pollInterval = Duration.ofMillis(250);
@@ -48,6 +51,28 @@ public class RemoteWorkerProperties {
     public boolean isBeautipsProjectCodexEnabled() { return beautipsProjectCodexEnabled; }
     public void setBeautipsProjectCodexEnabled(boolean beautipsProjectCodexEnabled) {
         this.beautipsProjectCodexEnabled = beautipsProjectCodexEnabled;
+    }
+    public boolean isRemoteCloseReleaseEnabled() { return remoteCloseReleaseEnabled; }
+    public void setRemoteCloseReleaseEnabled(boolean value) { remoteCloseReleaseEnabled = value; }
+    public boolean isRemoteCloseReconciliationEnabled() { return remoteCloseReconciliationEnabled; }
+    public void setRemoteCloseReconciliationEnabled(boolean value) {
+        remoteCloseReconciliationEnabled = value;
+    }
+    public Set<String> getRemoteCloseProjectAllowlist() { return remoteCloseProjectAllowlist; }
+    public void setRemoteCloseProjectAllowlist(Set<String> values) {
+        remoteCloseProjectAllowlist = values == null
+                ? new LinkedHashSet<>()
+                : new LinkedHashSet<>(values);
+    }
+    public boolean isRemoteCloseReleaseEnabledFor(String projectIdentity) {
+        return remoteCloseReleaseEnabled
+                && ProjectCodexIdentity.PROJECT_IDENTITY.equals(projectIdentity)
+                && remoteCloseProjectAllowlist.contains(projectIdentity);
+    }
+    public boolean isRemoteCloseReconciliationEnabledFor(String projectIdentity) {
+        return remoteCloseReconciliationEnabled
+                && ProjectCodexIdentity.PROJECT_IDENTITY.equals(projectIdentity)
+                && remoteCloseProjectAllowlist.contains(projectIdentity);
     }
     public Duration getConnectTimeout() { return connectTimeout; }
     public void setConnectTimeout(Duration connectTimeout) { this.connectTimeout = connectTimeout; }

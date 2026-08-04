@@ -14,11 +14,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.api.worksession.AgentRunResponse;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunProcessOutcome;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.CodexReasoningEffort;
 import com.atenea.persistence.worksession.SessionTurnActor;
@@ -172,6 +174,21 @@ class AgentRunServiceTest {
         assertNull(updated.getOutputSummary());
         assertNotNull(updated.getFinishedAt());
         verify(mobilePushDispatchService).notifyRunFailed(updated);
+    }
+
+    @Test
+    void responseProjectsActionSpecificFailureWithoutChangingLegacySummary() {
+        AgentRunEntity run = buildRun(55L, AgentRunStatus.FAILED);
+        run.setProcessOutcome(AgentRunProcessOutcome.FAILED);
+        run.setErrorSummary("Remote close requires operator reconciliation");
+        run.setFailureCode("REMOTE_CLOSE_RELEASE_UNCONFIRMED");
+        run.setRecoveryNextAction(AgentRunRecoveryNextAction.REQUEST_RECONCILIATION);
+
+        AgentRunResponse response = agentRunService.toResponse(run);
+
+        assertEquals("Remote close requires operator reconciliation", response.errorSummary());
+        assertEquals("REMOTE_CLOSE_RELEASE_UNCONFIRMED", response.failureCode());
+        assertEquals(AgentRunRecoveryNextAction.REQUEST_RECONCILIATION, response.recoveryNextAction());
     }
 
     @Test

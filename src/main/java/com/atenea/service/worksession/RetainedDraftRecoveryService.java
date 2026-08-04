@@ -4,6 +4,7 @@ import com.atenea.api.worksession.RecoverDraftWorkSessionResponse;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
@@ -166,6 +167,7 @@ public class RetainedDraftRecoveryService {
         replacement.setWorkspaceIdentity("local:pending");
         replacement.setRemoteSessionId(null);
         replacement.setRemoteWorkloadKind(null);
+        replacement.setRemoteCloseState(RemoteCloseState.NOT_REQUIRED);
         replacement.setPullRequestUrl(null);
         replacement.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
         replacement.setFinalCommitSha(null);

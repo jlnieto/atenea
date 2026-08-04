@@ -23,7 +23,9 @@ import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
@@ -123,6 +125,7 @@ public class WorkSessionService {
         session.setWorkspaceIdentity("local:pending");
         session.setRemoteSessionId(null);
         session.setRemoteWorkloadKind(null);
+        session.setRemoteCloseState(RemoteCloseState.NOT_REQUIRED);
         session.setAttachmentPolicyRevision(null);
         session.setPullRequestUrl(null);
         session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
@@ -344,7 +347,10 @@ public class WorkSessionService {
                 session.getExecutionTarget(),
                 session.getSelectedWorkerId(),
                 session.getWorkspaceIdentity(),
-                snapshot
+                snapshot,
+                session.getRemoteCloseState(),
+                session.getRemoteCloseErrorCode(),
+                remoteCloseNextAction(session.getRemoteCloseState())
         );
     }
 
@@ -366,8 +372,19 @@ public class WorkSessionService {
                 run.getRemoteExecutionId(),
                 run.getWorkloadClass(),
                 run.getLifecycleRevision(),
-                run.getStatusReason()
+                run.getStatusReason(),
+                run.getFailureCode(),
+                run.getRecoveryNextAction()
         );
+    }
+
+    private AgentRunRecoveryNextAction remoteCloseNextAction(RemoteCloseState state) {
+        return switch (state) {
+            case NOT_REQUIRED, NOT_STARTED, RELEASED -> AgentRunRecoveryNextAction.NONE;
+            case REQUESTED, RECONCILING -> AgentRunRecoveryNextAction.REQUEST_RECONCILIATION;
+            case BLOCKED -> AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR;
+            case UNVERIFIED_LEGACY -> AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE;
+        };
     }
 
     private WorkSessionOperationalState resolveOperationalState(

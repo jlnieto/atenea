@@ -483,7 +483,9 @@ public class AgentRunService {
                 run.getLastHeartbeatAt(),
                 run.getLifecycleRevision(),
                 run.getStatusReason(),
-                run.getProcessOutcome()
+                run.getProcessOutcome(),
+                run.getFailureCode(),
+                run.getRecoveryNextAction()
         );
     }
 }

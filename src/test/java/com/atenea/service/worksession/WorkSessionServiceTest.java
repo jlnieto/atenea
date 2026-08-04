@@ -30,12 +30,14 @@ import com.atenea.github.GitHubRepositoryRef;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
@@ -162,11 +164,15 @@ class WorkSessionServiceTest {
         assertNull(response.closedAt());
         assertEquals(response.openedAt(), response.lastActivityAt());
         assertEquals(new SessionOperationalSnapshotResponse(true, true, "atenea/session-12", false), response.repoState());
+        assertEquals(RemoteCloseState.NOT_REQUIRED, response.remoteCloseState());
+        assertNull(response.remoteCloseErrorCode());
+        assertEquals(AgentRunRecoveryNextAction.NONE, response.remoteCloseNextAction());
 
         ArgumentCaptor<WorkSessionEntity> captor = ArgumentCaptor.forClass(WorkSessionEntity.class);
         verify(workSessionRepository, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
         assertEquals("release/2026-q1", captor.getValue().getBaseBranch());
         assertEquals("atenea/session-12", captor.getValue().getWorkspaceBranch());
+        assertEquals(RemoteCloseState.NOT_REQUIRED, captor.getValue().getRemoteCloseState());
         verify(gitRepositoryService).createAndCheckoutBranch(repoPath.toString(), "release/2026-q1", "atenea/session-12");
     }
 
@@ -661,6 +667,27 @@ class WorkSessionServiceTest {
         assertEquals("main", response.baseBranch());
         assertEquals(WorkSessionOperationalState.IDLE, response.operationalState());
         assertEquals(new SessionOperationalSnapshotResponse(true, true, "main", false), response.repoState());
+    }
+
+    @Test
+    void getSessionProjectsRemoteCloseStateErrorAndOperatorAction() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea"));
+        WorkSessionEntity session = buildSession(12L, 7L, repoPath, "main");
+        session.setRemoteCloseState(RemoteCloseState.BLOCKED);
+        session.setRemoteCloseErrorCode("REMOTE_CLOSE_OWNERSHIP_MISMATCH");
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn("main");
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+
+        WorkSessionResponse response = workSessionService.getSession(12L);
+
+        assertEquals(RemoteCloseState.BLOCKED, response.remoteCloseState());
+        assertEquals("REMOTE_CLOSE_OWNERSHIP_MISMATCH", response.remoteCloseErrorCode());
+        assertEquals(
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                response.remoteCloseNextAction());
     }
 
     @Test
