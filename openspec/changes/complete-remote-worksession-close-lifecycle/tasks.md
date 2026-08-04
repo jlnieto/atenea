@@ -166,7 +166,7 @@ environment dumps.
   remain unchanged
 - [x] 6.7 Strict-validate the change, seal source-validation evidence, update the
   ledger, mark task 6.7, commit and push
-- [ ] 6.8 STOP before any production migration, deployment, worker install,
+- [x] 6.8 STOP before any production migration, deployment, worker install,
   configuration change, capability activation or legacy reconciliation until
   the operator separately and explicitly authorizes the exact V63 rollout,
   AX42 successor, bounded rollback exercise and Atenea-only activation

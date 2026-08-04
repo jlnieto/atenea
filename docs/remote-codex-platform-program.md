@@ -12661,3 +12661,33 @@ Sanitized aggregate source-validation evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.7-source-validation-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `a05e04004c29fa806db77a5ae994216cd5d233431d475521f6477d296dc65c1b`.
+
+Task 6.8 is complete. Change progress is `44/60`; task 7.1 is the exact
+resume point. After task 6.7 was complete and published, the operator
+separately and explicitly selected the previously enumerated option 2.
+Normalized authorization
+`rollout-v63-atenea-only-20260804T161502Z` permits the exact tasks 7.1–7.6
+scope: fresh external backup and isolated restore proof, bounded rollback
+exercise, production V63 migration, exact reviewed backend/web deployment,
+reviewed AX42 successor installation, established-channel Android canary
+publication/installation, global prerequisite activation and then canonical
+Atenea-only activation.
+
+The authorization does not permit Beautips or another project, foreign
+resource mutation, prompt submission, automatic AgentRun retry or legacy
+WorkSession 16 release. Task 7.7 remains a separate mandatory in-product
+single-use operator confirmation. AgentRun 96 remains explicitly unretried.
+The original operator response is not retained; only this normalized bounded
+decision is sealed.
+
+No rollout action occurred while satisfying the gate. Production and preview
+remain on their exact V62-era images at HTTP 200 with zero restarts. Beautips
+remains clean, upstream-exact and HTTP 200 with activation disabled. AX42
+services, ownership and retained resources remain exact. No migration,
+deployment, installation, configuration, publication, activation, release,
+prompt, retry or foreign-resource mutation occurred.
+
+Sanitized authorization evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.8-rollout-authorization`;
+the SHA-256 of its `SHA256SUMS` is
+`ff9aa0a031ada1748a5ce9f53b4b9d54e476ffc876e36bb8b44aa6819cac5a1e`.
