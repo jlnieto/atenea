@@ -1,11 +1,13 @@
 package com.atenea.remoteworker;
 
 import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.ValidationOperationKind;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -14,14 +16,26 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
 public class RemoteWorkerClient {
+
+    private static final String WORKER_ERROR_SCHEMA = "worker-error-v1";
+    private static final int MAX_WORKER_ERROR_BYTES = 1024;
+    private static final String PROTOCOL_FAILURE_CODE = "REMOTE_WORKER_PROTOCOL_FAILURE";
+    private static final Set<AgentRunRecoveryNextAction> WORKER_ERROR_ACTIONS = Set.of(
+            AgentRunRecoveryNextAction.NONE,
+            AgentRunRecoveryNextAction.WAIT,
+            AgentRunRecoveryNextAction.RETRY,
+            AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,
+            AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR);
 
     private final RemoteWorkerProperties properties;
     private final ObjectMapper objectMapper;
@@ -413,15 +427,15 @@ public class RemoteWorkerClient {
                 builder.header("Content-Type", "application/json")
                         .method(method, HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(body)));
             }
-            HttpResponse<byte[]> response = httpClient.send(
+            HttpResponse<InputStream> response = httpClient.send(
                     builder.build(),
-                    HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new RemoteWorkerException(
-                        "Remote worker rejected request with HTTP " + response.statusCode(),
-                        response.statusCode());
+                    HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream responseBody = response.body()) {
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw decodeWorkerRejection(response, responseBody);
+                }
+                return objectMapper.readValue(responseBody, responseType);
             }
-            return objectMapper.readValue(response.body(), responseType);
         } catch (RemoteWorkerException exception) {
             throw exception;
         } catch (IOException exception) {
@@ -432,6 +446,89 @@ public class RemoteWorkerClient {
         } catch (RuntimeException exception) {
             throw new RemoteWorkerException("Remote worker request failed", exception);
         }
+    }
+
+    private RemoteWorkerException decodeWorkerRejection(
+            HttpResponse<InputStream> response,
+            InputStream responseBody
+    ) throws IOException {
+        int statusCode = response.statusCode();
+        String contentType = response.headers().firstValue("Content-Type").orElse("");
+        if (!contentType.equalsIgnoreCase("application/json")) {
+            return protocolFailure(statusCode);
+        }
+        byte[] encoded = responseBody.readNBytes(MAX_WORKER_ERROR_BYTES + 1);
+        if (encoded.length > MAX_WORKER_ERROR_BYTES) {
+            Arrays.fill(encoded, (byte) 0);
+            return protocolFailure(statusCode);
+        }
+        try {
+            WorkerErrorEnvelope envelope = objectMapper.readValue(encoded, WorkerErrorEnvelope.class);
+            if (!WORKER_ERROR_SCHEMA.equals(envelope.schemaVersion())
+                    || envelope.code() == null
+                    || !envelope.code().matches("^[A-Z][A-Z0-9_]{2,79}$")
+                    || envelope.category() == null
+                    || envelope.retryable() == null
+                    || envelope.nextAction() == null) {
+                return protocolFailure(statusCode);
+            }
+            RemoteWorkerFailureCategory category = RemoteWorkerFailureCategory.valueOf(
+                    envelope.category());
+            AgentRunRecoveryNextAction nextAction = AgentRunRecoveryNextAction.valueOf(
+                    envelope.nextAction());
+            if (!WORKER_ERROR_ACTIONS.contains(nextAction)) {
+                return protocolFailure(statusCode);
+            }
+            UUID blockerSessionId = canonicalBlocker(envelope.blockerSessionId(), category, nextAction);
+            if (envelope.blockerSessionId() != null && blockerSessionId == null) {
+                return protocolFailure(statusCode);
+            }
+            return new RemoteWorkerException(
+                    "Remote worker rejected request with HTTP " + statusCode
+                            + " (" + envelope.code() + ")",
+                    statusCode,
+                    envelope.code(),
+                    category,
+                    envelope.retryable(),
+                    nextAction,
+                    blockerSessionId);
+        } catch (IOException | IllegalArgumentException exception) {
+            return protocolFailure(statusCode);
+        } finally {
+            Arrays.fill(encoded, (byte) 0);
+        }
+    }
+
+    private UUID canonicalBlocker(
+            String value,
+            RemoteWorkerFailureCategory category,
+            AgentRunRecoveryNextAction nextAction
+    ) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            UUID parsed = UUID.fromString(value);
+            if (!parsed.toString().equals(value)
+                    || category != RemoteWorkerFailureCategory.CAPACITY
+                    || nextAction != AgentRunRecoveryNextAction.WAIT) {
+                return null;
+            }
+            return parsed;
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private RemoteWorkerException protocolFailure(int statusCode) {
+        return new RemoteWorkerException(
+                "Remote worker returned an invalid error response",
+                statusCode,
+                PROTOCOL_FAILURE_CODE,
+                RemoteWorkerFailureCategory.PROTOCOL,
+                false,
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                null);
     }
 
     private String readToken() throws IOException {
@@ -447,6 +544,17 @@ public class RemoteWorkerClient {
 
     private String stripTrailingSlash(String value) {
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private record WorkerErrorEnvelope(
+            String schemaVersion,
+            String code,
+            String category,
+            Boolean retryable,
+            String nextAction,
+            String blockerSessionId
+    ) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)

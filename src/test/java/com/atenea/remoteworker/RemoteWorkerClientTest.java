@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +40,10 @@ class RemoteWorkerClientTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final AtomicReference<JsonNode> requestBody = new AtomicReference<>();
+    private final AtomicReference<byte[]> workerErrorResponse = new AtomicReference<>();
+    private final AtomicReference<String> workerErrorContentType =
+            new AtomicReference<>("application/json");
+    private final AtomicInteger workerErrorStatus = new AtomicInteger(409);
     private HttpServer server;
     private RemoteWorkerProperties properties;
     private RemoteWorkerClient client;
@@ -93,6 +98,15 @@ class RemoteWorkerClientTest {
         server.createContext("/v1/project-workspaces/ensure", exchange -> {
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
             JsonNode request = requestBody.get();
+            byte[] forcedError = workerErrorResponse.get();
+            if (forcedError != null) {
+                exchange.getResponseHeaders().set(
+                        "Content-Type", workerErrorContentType.get());
+                exchange.sendResponseHeaders(workerErrorStatus.get(), forcedError.length);
+                exchange.getResponseBody().write(forcedError);
+                exchange.close();
+                return;
+            }
             byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
                     java.util.Map.entry("state", "ready"),
                     java.util.Map.entry("sessionId", request.get("sessionId").asText()),
@@ -667,6 +681,94 @@ class RemoteWorkerClientTest {
     }
 
     @Test
+    void typedWorkerRejectionPreservesOnlyValidatedSafeProjection() throws Exception {
+        UUID blocker = UUID.fromString("22222222-2222-4222-8222-222222222222");
+        workerErrorResponse.set(objectMapper.writeValueAsBytes(java.util.Map.of(
+                "schemaVersion", "worker-error-v1",
+                "code", "NORMAL_CAPACITY_EXHAUSTED",
+                "category", "CAPACITY",
+                "retryable", true,
+                "nextAction", "WAIT",
+                "blockerSessionId", blocker.toString())));
+
+        RemoteWorkerException exception = assertThrows(
+                RemoteWorkerException.class,
+                () -> client.ensureWorkspace(workspaceRun()));
+
+        assertEquals(409, exception.getStatusCode());
+        assertEquals("NORMAL_CAPACITY_EXHAUSTED", exception.getFailureCode());
+        assertEquals(RemoteWorkerFailureCategory.CAPACITY, exception.getCategory());
+        assertEquals(true, exception.isRetryable());
+        assertEquals(
+                com.atenea.persistence.worksession.AgentRunRecoveryNextAction.WAIT,
+                exception.getNextAction());
+        assertEquals(blocker, exception.getBlockerSessionId());
+        assertEquals(true, exception.hasTypedFailure());
+        assertNull(exception.getCause());
+    }
+
+    @Test
+    void malformedUnsafeOrOversizedWorkerRejectionBecomesGenericProtocolFailure()
+            throws Exception {
+        String marker = "unsafe-worker-body-marker";
+        java.util.List<byte[]> rejectedBodies = java.util.List.of(
+                objectMapper.writeValueAsBytes(java.util.Map.of(
+                        "schemaVersion", "worker-error-v1",
+                        "code", "NORMAL_CAPACITY_EXHAUSTED",
+                        "category", "CAPACITY",
+                        "retryable", true,
+                        "nextAction", "WAIT",
+                        "detail", marker)),
+                objectMapper.writeValueAsBytes(java.util.Map.of(
+                        "schemaVersion", "worker-error-v1",
+                        "code", "NORMAL_CAPACITY_EXHAUSTED",
+                        "category", "CAPACITY",
+                        "retryable", true,
+                        "nextAction", "WAIT",
+                        "blockerSessionId", "not-a-uuid")),
+                objectMapper.writeValueAsBytes(java.util.Map.of(
+                        "schemaVersion", "unknown-error-v1",
+                        "code", "NORMAL_CAPACITY_EXHAUSTED",
+                        "category", "CAPACITY",
+                        "retryable", true,
+                        "nextAction", "WAIT")),
+                objectMapper.writeValueAsBytes(java.util.Map.of(
+                        "schemaVersion", "worker-error-v1",
+                        "code", "NORMAL_CAPACITY_EXHAUSTED",
+                        "category", "CAPACITY",
+                        "retryable", true,
+                        "nextAction", "RECONCILE_REMOTE_CLOSE")),
+                "not-json".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                ("{" + marker.repeat(200) + "}")
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        for (byte[] rejectedBody : rejectedBodies) {
+            workerErrorResponse.set(rejectedBody);
+            RemoteWorkerException exception = assertThrows(
+                    RemoteWorkerException.class,
+                    () -> client.ensureWorkspace(workspaceRun()));
+            assertEquals(409, exception.getStatusCode());
+            assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", exception.getFailureCode());
+            assertEquals(RemoteWorkerFailureCategory.PROTOCOL, exception.getCategory());
+            assertEquals(false, exception.isRetryable());
+            assertEquals(
+                    com.atenea.persistence.worksession.AgentRunRecoveryNextAction
+                            .CONTACT_PLATFORM_ADMINISTRATOR,
+                    exception.getNextAction());
+            assertNull(exception.getBlockerSessionId());
+            assertEquals(false, exception.getMessage().contains(marker));
+        }
+
+        workerErrorContentType.set("text/plain");
+        workerErrorResponse.set(marker.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        RemoteWorkerException exception = assertThrows(
+                RemoteWorkerException.class,
+                () -> client.ensureWorkspace(workspaceRun()));
+        assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", exception.getFailureCode());
+        assertEquals(false, exception.getMessage().contains(marker));
+    }
+
+    @Test
     void firstProjectDispatchSendsExplicitNullThread() {
         client.dispatch(projectRun(null), "First turn.");
 
@@ -860,6 +962,12 @@ class RemoteWorkerClientTest {
                 "environment", "credential")) {
             assertNull(body.get(forbidden));
         }
+    }
+
+    private AgentRunEntity workspaceRun() {
+        AgentRunEntity run = projectRun(null);
+        run.getSession().setWorkspaceBranch("atenea/session-" + run.getRemoteSessionId());
+        return run;
     }
 
     private java.util.Map<String, Object> operationResponse(
