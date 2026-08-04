@@ -11841,3 +11841,46 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.3-close-reconciliation`;
 the SHA-256 of its `SHA256SUMS` is
 `f1b9e2f61aca5c5d0237fceef6258abba2baf8186493d2f5a04c8cbd24a5b42e`.
+
+Task 4.4 is complete. Change progress is `28/60`; task 4.5 is the exact resume
+point. No worker diagnosis or legacy release has been implemented.
+
+Atenea commit `fea34411b9c0c749fd6471744136c8ac7be354ba` adds a
+read-only plan for one explicitly selected `CLOSED/REMOTE` canonical Atenea
+legacy WorkSession and a fixed `RECONCILE_REMOTE_CLOSE` confirmation. Both
+operations are hidden while the existing reconciliation gate is off, accept
+only server-bounded fields and require an active `PLATFORM_ADMINISTRATOR`.
+The plan persists an exact server-derived ownership/Git/delivery SHA-256 and
+expires after ten minutes. Confirmation is single-use and idempotent, rejects
+stale ownership and persists only one `REQUESTED` operation. It performs no
+worker call, legacy scan, WorkSession transition or resource release.
+
+The focused migration, service, HTTP, normal-close, startup, strict-client and
+default-gate matrix passes 86/86 with zero failures, errors or skips; the
+backend package also passes. A complete-suite attempt observed 655 tests and
+27 environment or historical-fixture errors: 25 fixed `/workspace` Git
+fixtures stopped before assertions because that root is not writable by this
+user, and two mobile event contexts reached the isolated PostgreSQL fixture's
+default client limit after accumulated Hikari pools. No global permission,
+fixture path or database limit was changed; task 4.7 remains the explicit
+complete-suite gate.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote and AgentRun
+96 remains `FAILED`, unretried and without a child. WorkSession 17 retains one
+turn, one run, one attachment and one complete execution profile. Production
+and preview remain `UP`, Beautips returns HTTP 200, all observed containers
+remain running with zero restarts and routing remains `ax42-01`
+enabled/healthy `4/2` at `0/0`.
+
+The five incident ownership hashes remain exact; WorkSession 17 allocation
+and admission remain absent. Worker services remain active with zero restarts,
+rootless slots remain `3/0/0/3`, rootful daemons remain inactive, RAID remains
+`3/3 [UU]` and backup/check/health remain `success/0`. The release boundary
+remains absent. No deployment, schema, configuration, ownership, production,
+preview, Beautips, foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.4-legacy-close-planning`;
+the SHA-256 of its `SHA256SUMS` is
+`25363a9716108dda1172118ee2d34afdf305c24ff1c986d1e5c82efcf71dd985`.

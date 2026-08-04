@@ -111,7 +111,7 @@ environment dumps.
 - [x] 4.3 Add startup and operator reconciliation for `CLOSING` remote sessions
   using the same operation; prove crash after request, after worker receipt and
   before final database commit creates no duplicate mutation or false closure
-- [ ] 4.4 Add read-only legacy ownership planning and a fixed
+- [x] 4.4 Add read-only legacy ownership planning and a fixed
   `PLATFORM_ADMINISTRATOR` `RECONCILE_REMOTE_CLOSE` operation with single-use
   finite confirmation; never scan or release legacy rows automatically
 - [ ] 4.5 Require closed state, exact worker/project/workspace match, terminal
