@@ -87,7 +87,7 @@ environment dumps.
 - [x] 3.6 Prove interruption/restart at every stage resumes the same operation;
   prove a completed repetition removes nothing further and returns the same
   receipt/revision/fingerprint
-- [ ] 3.7 Create synthetic unlabelled, partially labelled, foreign-owned,
+- [x] 3.7 Create synthetic unlabelled, partially labelled, foreign-owned,
   wrong-session, wrong-project, symlinked and ambiguous fixtures; record their
   immutable IDs, prove each rejection leaves them intact, then remove only the
   exact fixtures by recorded identity

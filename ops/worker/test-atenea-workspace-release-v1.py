@@ -336,6 +336,118 @@ class WorkspaceReleasePreflightTest(unittest.TestCase):
         self.assert_rejected(changed)
 
 
+class AdversarialOwnershipFixtureTest(unittest.TestCase):
+    def setUp(self) -> None:
+        fixture = WorkspaceReleasePreflightTest(
+            "test_complete_projection_is_accepted_without_mutation"
+        )
+        fixture.setUp()
+        self.request = copy.deepcopy(fixture.request)
+        self.projection = copy.deepcopy(fixture.projection)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.unrelated = self.root / "unrelated-retained.fixture"
+        self.unrelated.write_bytes(b"unrelated-retained\n")
+        self.fixture_specs = {
+            "unlabelled": ("labels", {}),
+            "partially-labelled": (
+                "labels",
+                {"com.atenea.engine": "atenea-runtime-engine-v1"},
+            ),
+            "foreign-owned": ("workerId", "foreign-worker"),
+            "wrong-session": (
+                "sessionId", "95301be7-3b03-4ce7-91bd-38cebe8c4343",
+            ),
+            "wrong-project": ("projectId", "foreign-project"),
+            "ambiguous": ("ambiguous", True),
+        }
+        self.fixture_paths = {}
+        for name, (field, value) in self.fixture_specs.items():
+            path = self.root / f"{name}.fixture"
+            path.write_bytes(
+                json.dumps(
+                    {
+                        "fixture": name, "field": field,
+                        "synthetic": True, "value": value,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode() + b"\n"
+            )
+            self.fixture_paths[name] = path
+        target = self.root / "symlink-target.fixture"
+        target.write_bytes(b'{"fixture":"symlink-target","synthetic":true}\n')
+        symlink = self.root / "symlinked.fixture"
+        symlink.symlink_to(target.name)
+        self.fixture_paths["symlink-target"] = target
+        self.fixture_paths["symlinked"] = symlink
+        self.identities = {
+            name: self._identity(path)
+            for name, path in self.fixture_paths.items()
+        }
+        self.unrelated_identity = self._identity(self.unrelated)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    @staticmethod
+    def _identity(path: Path) -> dict:
+        observed = path.lstat()
+        if stat.S_ISLNK(observed.st_mode):
+            content = os.readlink(path).encode()
+        else:
+            content = path.read_bytes()
+        return {
+            "device": observed.st_dev,
+            "inode": observed.st_ino,
+            "mode": observed.st_mode,
+            "size": observed.st_size,
+            "contentSha256": MODULE.hashlib.sha256(content).hexdigest(),
+        }
+
+    def _remove_exact(self, name: str) -> None:
+        path = self.fixture_paths[name]
+        self.assertEqual(self.identities[name], self._identity(path))
+        path.unlink()
+
+    def test_all_inexact_fixtures_reject_unchanged_then_exact_cleanup(self) -> None:
+        recorded = copy.deepcopy(self.identities)
+        unrelated_before = copy.deepcopy(self.unrelated_identity)
+        for name, (key, value) in self.fixture_specs.items():
+            with self.subTest(fixture=name):
+                changed = copy.deepcopy(self.projection)
+                changed["runtimeContainers"][0]["ownership"][key] = value
+                projection_before = copy.deepcopy(changed)
+                with self.assertRaises(MODULE.PreflightRejected):
+                    MODULE.validate_release_preflight(self.request, changed)
+                self.assertEqual(projection_before, changed)
+                self.assertEqual(recorded, {
+                    fixture_name: self._identity(path)
+                    for fixture_name, path in self.fixture_paths.items()
+                })
+                self.assertEqual(unrelated_before, self._identity(self.unrelated))
+
+        symlinked = copy.deepcopy(self.projection)
+        symlinked["allocation"]["symlink"] = True
+        symlinked_before = copy.deepcopy(symlinked)
+        with self.assertRaises(MODULE.PreflightRejected):
+            MODULE.validate_release_preflight(self.request, symlinked)
+        self.assertEqual(symlinked_before, symlinked)
+        self.assertEqual(recorded, {
+            fixture_name: self._identity(path)
+            for fixture_name, path in self.fixture_paths.items()
+        })
+        self.assertEqual(unrelated_before, self._identity(self.unrelated))
+
+        for name in sorted(self.fixture_paths):
+            self._remove_exact(name)
+        self.assertTrue(all(
+            not path.exists() and not path.is_symlink()
+            for path in self.fixture_paths.values()
+        ))
+        self.assertEqual(unrelated_before, self._identity(self.unrelated))
+
+
 class ReleaseJournalStoreTest(unittest.TestCase):
     def setUp(self) -> None:
         fixture = WorkspaceReleasePreflightTest(

@@ -11565,3 +11565,39 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.6-crash-resume-stable-receipt`;
 the SHA-256 of its `SHA256SUMS` is
 `54f9a5ad4b89871222133ba7ed098bf23b7b698ee7c4d093991b9b6d068cf090`.
+
+Task 3.7 is complete. Change progress is `22/60`; task 3.8 is the exact
+resume point and installer/sudoers/rollback work has not started.
+
+One private synthetic fixture set covers unlabelled, partially labelled,
+foreign-owned, wrong-session, wrong-project, symlinked and ambiguous
+ownership. Before denial, the harness records each fixture's device, inode,
+mode, size and content SHA-256. Every deterministic preflight rejection leaves
+the complete recorded set and an unrelated sentinel byte-identical. The
+symlink case is inspected with `lstat` and never followed.
+
+After all rejections, cleanup unlinks only a fixture whose live complete
+`lstat` identity still equals its recorded identity. All eight exact fixture
+paths, including the symlink and its synthetic target, are absent afterward;
+the unrelated sentinel remains exact. The isolated adversarial test passes
+1/1, all focused release tests pass 34/34 and the focused plus complete
+AgentRun worker regression passes 102/102 with zero failures or errors. The
+fixtures existed only beneath bounded temporary test state; no real worker
+resource was created, adopted or removed.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote and AgentRun
+96 remains terminal unretried `FAILED`. Production and preview health remain
+`UP`; production, preview and Beautips containers remain running with zero
+restarts; routing remains `ax42-01` enabled/healthy `4/2` at `0/0`. All five
+incident ownership hashes remain exact, WorkSession 17 allocation/admission
+remain absent and both incident container candidate counts remain zero.
+Worker services remain active with zero restarts, rootless slots remain
+`3/0/0/3`, rootful daemons remain inactive, RAID remains `3/3 [UU]` and
+backup/check/health remain `success/0`. No source was installed and no route,
+deployment, configuration, ownership, foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.7-adversarial-ownership-fixtures`;
+the SHA-256 of its `SHA256SUMS` is
+`9fc86f79eb50cd64f1ddf34099a88c13229ba9d84121fc02ed4d9a9fe7986e18`.
