@@ -106,6 +106,141 @@ class WorkerErrorEnvelopeTest(unittest.TestCase):
             MODULE.reviewed_mediator_stderr_envelope(f"UNKNOWN_FAILURE: {marker}")
 
 
+class WorkspaceReleaseContractTest(unittest.TestCase):
+    def setUp(self):
+        self.session_id = "11111111-1111-4111-8111-111111111111"
+        self.request = {
+            "operationId": "22222222-2222-4222-8222-222222222222",
+            "idempotencyKey": "33333333-3333-4333-8333-333333333333",
+            "sessionId": self.session_id,
+            "workspaceIdentity": "remote:ax42-01:work-session:" + self.session_id,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": TEST_COMMIT,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+            "workspaceBranch": "atenea/session-" + self.session_id,
+        }
+
+    def receipt(self):
+        receipt = {
+            "schemaVersion": MODULE.WORKSPACE_RELEASE_SCHEMA,
+            "state": "RELEASED",
+            **self.request,
+            "workerId": "ax42-01",
+            "requestFingerprintSha256": MODULE.canonical_hash(self.request),
+            "revision": 6,
+            "removed": {
+                "runtimeContainers": 0,
+                "runtimeNetworks": 0,
+                "sessionImages": 0,
+                "previewResources": 0,
+                "brokerResources": 0,
+                "browserProcesses": 0,
+            },
+            "released": {
+                "registration": True,
+                "normalAdmission": True,
+                "heavyAdmission": True,
+                "allocation": True,
+            },
+            "retained": {
+                "workspaceRecord": True,
+                "worktree": True,
+                "git": True,
+                "turns": True,
+                "agentRuns": True,
+                "attachments": True,
+                "logs": True,
+                "artifacts": True,
+                "backups": True,
+                "policyVolumes": True,
+            },
+            "ownershipFingerprintSha256": "4" * 64,
+            "valuesExposed": False,
+        }
+        receipt["receiptSha256"] = MODULE.canonical_hash(receipt)
+        return receipt
+
+    def test_exact_request_and_receipt_are_closed_and_ownership_matching(self):
+        self.assertEqual(MODULE.WORKSPACE_RELEASE_PATH, "/v1/project-workspaces/release")
+        self.assertEqual(self.request, MODULE.validate_workspace_release_request(self.request))
+        receipt = self.receipt()
+        self.assertEqual(
+            receipt,
+            MODULE.validate_workspace_release_receipt(self.request, "ax42-01", receipt),
+        )
+
+    def test_request_fingerprint_is_immutable_and_changed_input_conflicts(self):
+        first = MODULE.workspace_release_request_fingerprint(self.request)
+        second = MODULE.workspace_release_request_fingerprint(dict(self.request))
+        changed_identity = {
+            **self.request,
+            "operationId": "55555555-5555-4555-8555-555555555555",
+            "idempotencyKey": "66666666-6666-4666-8666-666666666666",
+        }
+        changed_input = {**self.request, "commit": "7" * 40}
+
+        self.assertEqual(first, second)
+        self.assertEqual(
+            first,
+            MODULE.validate_workspace_release_repetition(self.request, dict(self.request)),
+        )
+        self.assertNotEqual(
+            first, MODULE.workspace_release_request_fingerprint(changed_identity)
+        )
+        with self.assertRaisesRegex(MODULE.ProtocolError, "immutable"):
+            MODULE.validate_workspace_release_repetition(self.request, changed_input)
+
+    def test_request_rejects_every_caller_authority_field(self):
+        for key, value in {
+            "command": "id",
+            "path": "/srv/foreign",
+            "slot": "slot2",
+            "port": 8080,
+            "service": "foreign.service",
+            "endpoint": "http://foreign",
+            "resourceName": "foreign",
+            "label": "foreign=true",
+            "credential": "not-accepted",
+            "deletionTarget": "foreign",
+        }.items():
+            with self.subTest(key=key), self.assertRaises(MODULE.ProtocolError):
+                MODULE.validate_workspace_release_request({**self.request, key: value})
+
+    def test_receipt_rejects_mismatched_ownership_or_open_projection(self):
+        for changed in (
+            {"workerId": "foreign-worker"},
+            {"workspaceIdentity": "remote:foreign:work-session:" + self.session_id},
+            {"revision": 0},
+            {"valuesExposed": True},
+            {"removed": {**self.receipt()["removed"], "runtimeContainers": "1"}},
+            {"retained": {**self.receipt()["retained"], "git": False}},
+        ):
+            receipt = {**self.receipt(), **changed}
+            receipt["receiptSha256"] = MODULE.canonical_hash(
+                {key: value for key, value in receipt.items() if key != "receiptSha256"}
+            )
+            with self.subTest(changed=set(changed)), self.assertRaises(MODULE.ProtocolError):
+                MODULE.validate_workspace_release_receipt(self.request, "ax42-01", receipt)
+
+    def test_non_terminal_exact_execution_blocks_before_release(self):
+        executions = {
+            "dispatch": {
+                "sessionId": self.session_id,
+                "status": "RECONCILING",
+            },
+            "terminal": {
+                "sessionId": self.session_id,
+                "status": "FAILED",
+            },
+        }
+        with self.assertRaisesRegex(MODULE.ProtocolError, "terminal"):
+            MODULE.assert_no_non_terminal_session_execution(executions, self.session_id)
+        executions["dispatch"]["status"] = "CANCELLED"
+        MODULE.assert_no_non_terminal_session_execution(executions, self.session_id)
+
+
 class WorkerStateTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

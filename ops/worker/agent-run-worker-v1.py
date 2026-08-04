@@ -108,6 +108,31 @@ WORKSPACE_ENSURE_KEYS = {
     "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
     "commit", "manifestSha256", "workspaceBranch",
 }
+WORKSPACE_RELEASE_PATH = "/v1/project-workspaces/release"
+WORKSPACE_RELEASE_SCHEMA = "project-workspace-release-v1"
+WORKSPACE_RELEASE_REQUEST_KEYS = {
+    "operationId", "idempotencyKey", "sessionId", "workspaceIdentity",
+    "projectId", "repository", "branch", "commit", "manifestSha256",
+    "workspaceBranch",
+}
+WORKSPACE_RELEASE_RECEIPT_KEYS = {
+    "schemaVersion", "state", "operationId", "idempotencyKey", "sessionId",
+    "workspaceIdentity", "projectId", "repository", "branch", "commit",
+    "manifestSha256", "workspaceBranch", "workerId", "requestFingerprintSha256",
+    "revision", "removed", "released", "retained",
+    "ownershipFingerprintSha256", "receiptSha256", "valuesExposed",
+}
+WORKSPACE_RELEASE_REMOVED_KEYS = {
+    "runtimeContainers", "runtimeNetworks", "sessionImages", "previewResources",
+    "brokerResources", "browserProcesses",
+}
+WORKSPACE_RELEASE_RELEASED_KEYS = {
+    "registration", "normalAdmission", "heavyAdmission", "allocation",
+}
+WORKSPACE_RELEASE_RETAINED_KEYS = {
+    "workspaceRecord", "worktree", "git", "turns", "agentRuns", "attachments",
+    "logs", "artifacts", "backups", "policyVolumes",
+}
 DRAFT_FINGERPRINT_KEYS = {
     "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
     "acceptedCommit", "manifestSha256",
@@ -197,6 +222,161 @@ def utc_now() -> str:
 def canonical_hash(value: Any) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def validate_workspace_release_request(request: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(request, dict) or set(request) != WORKSPACE_RELEASE_REQUEST_KEYS:
+        raise ProtocolError(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_workspace_release_request",
+            "workspace release request fields are invalid",
+        )
+    canonical: dict[str, str] = {}
+    for key in ("operationId", "idempotencyKey", "sessionId"):
+        try:
+            value = str(uuid.UUID(request.get(key)))
+        except (ValueError, TypeError, AttributeError):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_workspace_release_identity",
+                "workspace release identity must be a canonical UUID",
+            ) from None
+        if value != request.get(key):
+            raise ProtocolError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_workspace_release_identity",
+                "workspace release identity must be a canonical UUID",
+            )
+        canonical[key] = value
+    session_id = canonical["sessionId"]
+    exact = {
+        "workspaceIdentity": f"remote:ax42-01:work-session:{session_id}",
+        "projectId": PROJECT_ID,
+        "repository": PROJECT_REPOSITORY,
+        "branch": PROJECT_BRANCH,
+        "manifestSha256": PROJECT_MANIFEST_SHA256,
+        "workspaceBranch": f"atenea/session-{session_id}",
+    }
+    if any(request.get(key) != value for key, value in exact.items()):
+        raise ProtocolError(
+            HTTPStatus.FORBIDDEN,
+            "workspace_release_ownership_conflict",
+            "workspace release ownership is not exact",
+        )
+    commit = request.get("commit")
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise ProtocolError(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_workspace_release_commit",
+            "workspace release commit is invalid",
+        )
+    return dict(request)
+
+
+def workspace_release_request_fingerprint(request: dict[str, Any]) -> str:
+    return canonical_hash(validate_workspace_release_request(request))
+
+
+def validate_workspace_release_repetition(
+    existing_request: dict[str, Any],
+    repeated_request: dict[str, Any],
+) -> str:
+    existing = validate_workspace_release_request(existing_request)
+    repeated = validate_workspace_release_request(repeated_request)
+    existing_fingerprint = canonical_hash(existing)
+    repeated_fingerprint = canonical_hash(repeated)
+    shares_identity = (
+        existing["operationId"] == repeated["operationId"]
+        or existing["idempotencyKey"] == repeated["idempotencyKey"]
+    )
+    if shares_identity and existing_fingerprint != repeated_fingerprint:
+        raise ProtocolError(
+            HTTPStatus.CONFLICT,
+            "workspace_release_identity_conflict",
+            "workspace release identity already owns another immutable request",
+        )
+    return repeated_fingerprint
+
+
+def assert_no_non_terminal_session_execution(
+    executions: dict[str, dict[str, Any]],
+    session_id: str,
+) -> None:
+    if any(
+        item.get("sessionId") == session_id and item.get("status") in NON_TERMINAL
+        for item in executions.values()
+    ):
+        raise ProtocolError(
+            HTTPStatus.CONFLICT,
+            "workspace_release_execution_live",
+            "workspace release requires every exact execution to be terminal",
+        )
+
+
+def validate_workspace_release_receipt(
+    request: dict[str, Any],
+    worker_id: str,
+    receipt: dict[str, Any],
+) -> dict[str, Any]:
+    exact_request = validate_workspace_release_request(request)
+    if not isinstance(receipt, dict) or set(receipt) != WORKSPACE_RELEASE_RECEIPT_KEYS:
+        raise ProtocolError(
+            HTTPStatus.BAD_GATEWAY,
+            "workspace_release_receipt_invalid",
+            "workspace release receipt fields are invalid",
+        )
+    ownership_keys = WORKSPACE_RELEASE_REQUEST_KEYS - {"operationId", "idempotencyKey"}
+    if (
+        receipt.get("schemaVersion") != WORKSPACE_RELEASE_SCHEMA
+        or receipt.get("state") != "RELEASED"
+        or receipt.get("operationId") != exact_request["operationId"]
+        or receipt.get("idempotencyKey") != exact_request["idempotencyKey"]
+        or receipt.get("workerId") != worker_id
+        or any(receipt.get(key) != exact_request[key] for key in ownership_keys)
+        or receipt.get("requestFingerprintSha256") != canonical_hash(exact_request)
+        or type(receipt.get("revision")) is not int
+        or receipt["revision"] < 1
+        or receipt.get("valuesExposed") is not False
+    ):
+        raise ProtocolError(
+            HTTPStatus.BAD_GATEWAY,
+            "workspace_release_receipt_invalid",
+            "workspace release receipt ownership is invalid",
+        )
+    removed = receipt.get("removed")
+    released = receipt.get("released")
+    retained = receipt.get("retained")
+    if (
+        not isinstance(removed, dict)
+        or set(removed) != WORKSPACE_RELEASE_REMOVED_KEYS
+        or any(type(value) is not int or value < 0 for value in removed.values())
+        or not isinstance(released, dict)
+        or set(released) != WORKSPACE_RELEASE_RELEASED_KEYS
+        or any(type(value) is not bool for value in released.values())
+        or not isinstance(retained, dict)
+        or set(retained) != WORKSPACE_RELEASE_RETAINED_KEYS
+        or any(value is not True for value in retained.values())
+    ):
+        raise ProtocolError(
+            HTTPStatus.BAD_GATEWAY,
+            "workspace_release_receipt_invalid",
+            "workspace release receipt projection is invalid",
+        )
+    for key in ("ownershipFingerprintSha256", "receiptSha256"):
+        if not isinstance(receipt.get(key), str) or re.fullmatch(r"[0-9a-f]{64}", receipt[key]) is None:
+            raise ProtocolError(
+                HTTPStatus.BAD_GATEWAY,
+                "workspace_release_receipt_invalid",
+                "workspace release receipt fingerprint is invalid",
+            )
+    sealed = {key: value for key, value in receipt.items() if key != "receiptSha256"}
+    if canonical_hash(sealed) != receipt["receiptSha256"]:
+        raise ProtocolError(
+            HTTPStatus.BAD_GATEWAY,
+            "workspace_release_receipt_invalid",
+            "workspace release receipt seal is invalid",
+        )
+    return dict(receipt)
 
 
 def worker_error_envelope(

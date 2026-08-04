@@ -67,7 +67,7 @@ environment dumps.
 
 ## 3. Exact worker workspace release
 
-- [ ] 3.1 Add closed request/response fixtures and tests for
+- [x] 3.1 Add closed request/response fixtures and tests for
   `/v1/project-workspaces/release`, immutable idempotency, strict response
   ownership, no non-terminal execution and rejection of caller authority
 - [ ] 3.2 Add one persistent finite lifecycle lock shared by Atenea workspace

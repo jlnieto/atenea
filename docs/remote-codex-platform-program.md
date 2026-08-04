@@ -11286,3 +11286,48 @@ evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.6-typed-failure-section-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `986c6514e6b3f0d14281ce387ff9dfec4b839ee12f093b637f75a7c9d4be9abe`.
+
+Task 3.1 is complete. Change progress is `16/60`; task 3.2 is the exact
+resume point and no lifecycle lock, release preflight, journal or finalizer has
+started.
+
+The worker source now defines the closed request and
+`project-workspace-release-v1` receipt contract for fixed route
+`/v1/project-workspaces/release`. This task deliberately does not register that
+HTTP route or expose a callable release operation, so release remains
+unavailable by default. Beautips and every non-Atenea project remain
+ineligible.
+
+The request accepts exactly immutable operation, idempotency and WorkSession
+UUIDs plus persisted workspace, canonical Atenea project, repository, branch,
+40-hex commit, manifest and workspace-branch identity. Unknown fields reject
+commands, paths, slots, ports, services, endpoints, resource names, labels,
+credentials and deletion targets. Sharing either operation UUID or idempotency
+key requires the identical canonical request fingerprint; changed input fails
+with an immutable-identity conflict.
+
+The response validator accepts only exact operation/request/worker ownership,
+`RELEASED`, a positive monotonic revision, closed non-negative removal counts,
+closed release booleans, all required retention booleans true, safe 64-hex
+ownership fingerprint, `valuesExposed=false` and a matching receipt SHA-256.
+The terminality guard rejects any exact-session `QUEUED`, `STARTING`,
+`RUNNING`, `CANCELLING` or `RECONCILING` execution before a future release.
+
+All five new contract tests pass, covering exact fixtures, immutable
+repetition, caller-authority rejection, mismatched/open receipt rejection and
+non-terminal execution. The complete AgentRun worker file passes 66/66. The
+generated Python bytecode cache was removed before sealing. No worker source
+was installed and no service or configuration changed.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 and AgentRun 96 remain
+`CLOSED`/`OPEN`/unretried `FAILED`. Production, preview and Beautips remain
+`UP`; routing stays enabled/healthy `4/2` at `0/0`; exact ownership hashes,
+active zero-restart worker services, rootless `3/0/0/3`, inactive rootful
+daemons, three `[UU]` RAID arrays and backup/check/health `success/0` all match
+entry. No runtime, ownership, foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.1-closed-release-contract`;
+the SHA-256 of its `SHA256SUMS` is
+`c65cd6ee77da894310e8cb91c8a8f294e137f0728ebff805cf29a164e1a95eed`.
