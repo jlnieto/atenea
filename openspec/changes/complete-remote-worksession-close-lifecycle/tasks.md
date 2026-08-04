@@ -135,7 +135,7 @@ environment dumps.
 - [x] 5.2 Implement web states for closing/reconciling, blocked ownership,
   confirmed legacy release and capacity released; hide or disable generic retry
   until it is safe and keep secondary actions visually subordinate
-- [ ] 5.3 Validate real rendered web data, DOM and visuals with Playwright at
+- [x] 5.3 Validate real rendered web data, DOM and visuals with Playwright at
   `1440x900` and `390x844`, including long safe messages, button authority,
   confirmation, refresh and no clipping/overlap/horizontal overflow; inspect
   and retain final screenshots

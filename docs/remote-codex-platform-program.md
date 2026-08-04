@@ -12147,3 +12147,52 @@ Sanitized evidence, including synthetic desktop/mobile screenshots, is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.2-state-first-web`;
 the SHA-256 of its `SHA256SUMS` is
 `85ebde050fcd665fef9f6d5427a2d54032fcd959a8aa9e89f8f6fca37bba6405`.
+
+Task 5.3 is complete. Change progress is `34/60`; task 5.4 is the exact resume
+point. Atenea commit `8ea112abde9e81fe55637c1d9e54f6787629ff04`
+completes the real rendered web acceptance and corrects the one responsive
+defect it found. The complete project Playwright suite passes 25/25: eight
+remote-close state/action cases and all 17 existing attachment/composer
+regressions. The production web build and application/test TypeScript
+compilation pass.
+
+Data, DOM and pixels were checked separately. Synthetic request recording
+proves no legacy release at plan creation, exact confirmation binding and zero
+AgentRun retry until the released-capacity projection. DOM checks cover closing,
+reconciling, blocked and unverifiable ownership, long safe messages, role
+authority, separate confirmation, manual refresh, released capacity and the
+explicit retry action.
+
+Real Chromium rendered checks use exactly `1440x900` and `390x844`.
+Programmatic geometry proves initial state and primary action are inside the
+first viewport, document and state panel have no horizontal overflow, the
+state title remains below the sticky header and both confirmation actions
+remain above the fixed mobile composer. Six final synthetic screenshots were
+inspected and retained.
+
+The first long-message mobile render exposed the confirmation action partially
+behind the fixed composer. A bounded confirmation scroll target fixed that
+overlap; its initial responsive margin moved too far and hid part of the state
+title, so it was reduced. The final render and geometry now keep the complete
+title, confirmation, primary/secondary authority and composer clear. No
+framework, screen, backend contract or unrelated component was added.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains `FAILED`, unretried and without a child. WorkSession 17 retains one
+turn, one run, one attachment and one complete profile. Production and preview
+remain `UP`, Beautips returns HTTP 200 and routing remains `ax42-01`
+enabled/healthy `4/2` at `0/0`.
+
+All four incident ownership hashes remain exact; WorkSession 17 allocation and
+admission remain absent. Worker services remain active with zero restarts,
+rootless slots remain `3/0/0/3`, rootful daemons remain inactive, RAID remains
+`3/3 [UU]` and backup/check/health remain `success/0`. Task-owned Docker
+resources are absent. No production migration, deployment, configuration,
+release, prompt, AgentRun retry, runtime, ownership, preview, Beautips, foreign
+or unrelated resource changed.
+
+Sanitized final web acceptance evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.3-complete-web-acceptance`;
+the SHA-256 of its `SHA256SUMS` is
+`1adfa7fa8b3fb4066c8785938c6a5ea9345cd8e2313e0d36578c35b213eb4fc0`.
