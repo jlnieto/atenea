@@ -12316,3 +12316,52 @@ Sanitized parity, diagnostics and final synthetic screenshots are beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-5.5-state-first-section-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `9e9b5978cc57b2548c7f27791a12dd1b0008620214647dd27b1756ed8268eaa7`.
+
+Task 6.1 is complete. Change progress is `37/60`; task 6.2 is the exact
+resume point. The unchanged Atenea candidate
+`03534c4998eaf150aa0eda9d0096b00f403b1baa` ran from an exact detached clean
+checkout against a new isolated PostgreSQL 16 database. The complete backend
+suite passes 668/668 across 105 reports with zero failures, errors or skips.
+The empty public schema contains exactly 63 successful versioned Flyway rows,
+contiguous from V1 through V63, with no gap or failed history row.
+
+The first diagnostic run reached PostgreSQL's default 100-client capacity
+while loading the final Spring context and reported two capacity errors. It
+made no production call or mutation. Its complete fixture was destroyed and
+recreated empty, isolated database capacity was set to 300, and the unchanged
+canonical suite passed. All task checkout, report, database and Compose
+resources were removed after sanitized aggregation; final task-labelled
+container/network/volume/image counts are `0/0/0/0` and isolated context and
+Codex-home file counts are zero.
+
+The first external check used the Beautips public root and exposed HTTP 403,
+although its canonical deployment health endpoint remained HTTP 200. The
+operator separately confirmed that rejecting the root was unintended and
+explicitly authorized an isolated Beautips correction outside this OpenSpec
+task. Beautips commit
+`9e122bf024d29b9cda56b27f8a32c218e1f0d433` permits only safe reads of `/`
+and redirects them to its documented administrator login; `POST /` remains
+403. Its complete suite passes 31/31, the mandatory local redeploy passes, and
+real Playwright at `1440x900` and `390x844` proves the redirect, visible DOM,
+first-viewport primary action and absence of clipping or horizontal overflow.
+GitHub Actions run `30912012906` deployed that exact commit successfully.
+Beautips root now follows to HTTP 200 and its health endpoint remains 200.
+
+The separately authorized Beautips correction did not touch Atenea or AX42.
+Atenea production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and
+zero non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote;
+AgentRun 96 remains terminal unretried `FAILED` with no child. Production,
+preview and Beautips return HTTP 200; routing remains `ax42-01`
+enabled/healthy `4/2` at `0/0`.
+
+The registry, WorkSession 16 workspace/allocation/admission and WorkSession 17
+workspace hashes remain exact; WorkSession 17 allocation/admission remain
+absent. Worker services remain active with zero restarts, rootless slots remain
+`3/0/0/3`, rootful Docker/containerd remain inactive, all three RAID arrays
+remain `[UU]`, and backup/check/health remain `success/0`. No Atenea migration,
+deployment, configuration, release, prompt, retry, runtime or ownership changed.
+
+Sanitized backend, migration and final external-health evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.1-complete-backend-v63`;
+the SHA-256 of its `SHA256SUMS` is
+`e84c8ba62af00f411c1b0769c07b32ca251682dc413e5bd52f177fd10b38b30a`.

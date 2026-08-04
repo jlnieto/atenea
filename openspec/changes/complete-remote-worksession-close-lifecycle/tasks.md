@@ -148,7 +148,7 @@ environment dumps.
 
 ## 6. Complete source validation and rollout gate
 
-- [ ] 6.1 Run the complete Atenea backend suite and all 63 migrations from a
+- [x] 6.1 Run the complete Atenea backend suite and all 63 migrations from a
   clean checkout, with zero failures and no synthetic worker/database residue
 - [ ] 6.2 Run the production web build, dependency audit and final desktop/mobile
   Playwright acceptance against the exact candidate tree
