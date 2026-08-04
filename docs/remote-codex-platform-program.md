@@ -10892,3 +10892,53 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-1.2-v63-additive-schema`;
 the SHA-256 of its `SHA256SUMS` is
 `ec6f321623fbe77b5fbe6741c9eff554fed38823e01560dfdc8065e89a39d024`.
+
+Task 1.3 is complete. Change progress is `7/60`; task 1.4 is the exact resume
+point.
+
+Canonical Atenea candidate commit
+`27f9a7eb5e986f8cacffd0b169af931e03934d96` is published exactly in the
+canonical repository and GitHub. It maps every V63 WorkSession remote-close
+field and the paired AgentRun safe failure/action fields into JPA. The
+seven-state lifecycle, durable operation identity, monotonic revision,
+receipt, bounded error and timestamps are available to persistence without
+changing any legacy row.
+
+WorkSession and AgentRun API projections now expose only state, safe error
+code and enum next action while retaining every existing local/legacy
+constructor. Local sessions remain `NOT_REQUIRED`, newly routed remote
+sessions begin at `NOT_STARTED`, and the legacy constructor conservatively
+maps a historical closed remote session to `UNVERIFIED_LEGACY` without
+claiming a receipt. Action mapping distinguishes reconciliation from
+privileged platform review while retaining the prior summary fields.
+
+The release and reconciliation gates remain disabled by default with an empty
+server allowlist. Runtime evaluation requires the corresponding global flag,
+exact allowlist membership and the hard-coded canonical identity `atenea`;
+Beautips remains rejected even if accidentally added to that allowlist. No
+production or worker configuration was changed.
+
+The focused domain, default-gate, routing and read-model suite passes 76/76,
+including the former task-1.1 RED domain contract at 3/3 green, and the
+application package succeeds. In isolated PostgreSQL 16, the V63 migration
+contract remains green 3/3 and Spring/Hibernate migration integration passes
+1/1. The uniquely named fixture was removed after the finite run.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSession 16, WorkSession 17 and AgentRun 96 remain
+`CLOSED`, `OPEN` and terminal unretried `FAILED`; WorkSession 17 still has one
+turn, run, attachment and binding plus its execution profile. Production,
+preview and Beautips remain HTTP 200. Worker services are active with zero
+restarts, rootless counts remain `3/0/0/3`, rootful daemons remain
+inactive/masked, RAID is `3/3`, backup timers and last results are healthy,
+both incident worktrees are clean at accepted main and all exact incident
+ownership hashes are unchanged. Neither incident owns an ephemeral runtime
+resource.
+
+No prompt, response, attachment content, screenshot, credential, token,
+cookie, `auth.json`, Codex history or environment dump was read or retained.
+No migration, deploy, routing, runtime, admission, allocation, registry,
+service or foreign resource was mutated. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-1.3-remote-close-mapping`;
+the SHA-256 of its `SHA256SUMS` is
+`e05b5583e09cb6893cbbfce3c11a272e245b8ddbf0bc7b1cdf066814ce9d24ad`.

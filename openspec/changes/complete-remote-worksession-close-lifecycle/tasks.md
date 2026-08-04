@@ -33,7 +33,7 @@ environment dumps.
 - [x] 1.2 Implement additive V63 with exact constraints and indexes; do not
   rewrite historical session, run, turn, delivery or attachment data and do
   not infer released worker state for a legacy row
-- [ ] 1.3 Implement persistence/read-model mapping for remote close and
+- [x] 1.3 Implement persistence/read-model mapping for remote close and
   action-specific failures, preserving every legacy/local API projection and
   keeping all new capability gates disabled by default
 - [ ] 1.4 Restore the current PostgreSQL backup into a network-isolated empty
