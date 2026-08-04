@@ -24,6 +24,10 @@ import com.atenea.codexoperations.ManagedCodexUpdateService.RollbackAuthorizatio
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateRollbackRequest;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateRollbackResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.WorkerInventoryResponse;
+import com.atenea.codexoperations.LegacyRemoteCloseService.LegacyRemoteCloseConfirmationRequest;
+import com.atenea.codexoperations.LegacyRemoteCloseService.LegacyRemoteCloseOperationResponse;
+import com.atenea.codexoperations.LegacyRemoteCloseService.LegacyRemoteClosePlanRequest;
+import com.atenea.codexoperations.LegacyRemoteCloseService.LegacyRemoteClosePlanResponse;
 import java.util.List;
 import java.util.Set;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -44,14 +48,17 @@ public class CodexSessionOperationsController {
 
     private final CodexSessionOperationsService service;
     private final ManagedCodexUpdateService managedUpdateService;
+    private final LegacyRemoteCloseService legacyRemoteCloseService;
     private final ObjectMapper objectMapper;
 
     public CodexSessionOperationsController(
             CodexSessionOperationsService service,
             ManagedCodexUpdateService managedUpdateService,
+            LegacyRemoteCloseService legacyRemoteCloseService,
             ObjectMapper objectMapper) {
         this.service = service;
         this.managedUpdateService = managedUpdateService;
+        this.legacyRemoteCloseService = legacyRemoteCloseService;
         this.objectMapper = objectMapper;
     }
 
@@ -227,6 +234,41 @@ public class CodexSessionOperationsController {
             @AuthenticationPrincipal AuthenticatedOperator operator,
             @PathVariable java.util.UUID rollbackId) {
         return managedUpdateService.updateRollback(operator, rollbackId);
+    }
+
+    @PostMapping("/api/admin/work-sessions/{sessionId}/remote-close-plans")
+    public LegacyRemoteClosePlanResponse createLegacyRemoteClosePlan(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable Long sessionId,
+            @RequestBody JsonNode request) {
+        return legacyRemoteCloseService.createPlan(operator, sessionId,
+                closed(request, LegacyRemoteClosePlanRequest.class,
+                        Set.of("operation", "idempotencyKey")));
+    }
+
+    @GetMapping("/api/admin/work-sessions/remote-close-plans/{planId}")
+    public LegacyRemoteClosePlanResponse legacyRemoteClosePlan(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable java.util.UUID planId) {
+        return legacyRemoteCloseService.plan(operator, planId);
+    }
+
+    @PostMapping("/api/admin/work-sessions/{sessionId}/remote-close-reconciliations")
+    public LegacyRemoteCloseOperationResponse confirmLegacyRemoteClose(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable Long sessionId,
+            @RequestBody JsonNode request) {
+        return legacyRemoteCloseService.confirm(operator, sessionId,
+                closed(request, LegacyRemoteCloseConfirmationRequest.class,
+                        Set.of("operation", "planId", "ownershipFingerprintSha256",
+                                "idempotencyKey")));
+    }
+
+    @GetMapping("/api/admin/work-sessions/remote-close-reconciliations/{operationId}")
+    public LegacyRemoteCloseOperationResponse legacyRemoteCloseOperation(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable java.util.UUID operationId) {
+        return legacyRemoteCloseService.operation(operator, operationId);
     }
 
     private <T> T closed(JsonNode node, Class<T> type, Set<String> exactFields) {

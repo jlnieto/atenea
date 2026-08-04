@@ -52,6 +52,10 @@ class V63RemoteCloseLifecycleMigrationTest {
                 }
                 assertTrue(indexExists(connection, "idx_work_session_remote_close_reconcile"));
                 assertTrue(indexExists(connection, "idx_agent_run_failure_recovery"));
+                assertTrue(tableExists(connection, "remote_close_legacy_plan"));
+                assertTrue(tableExists(connection, "remote_close_legacy_operation"));
+                assertTrue(indexExists(connection, "idx_remote_close_legacy_plan_session"));
+                assertTrue(indexExists(connection, "idx_remote_close_legacy_operation_session"));
             }
         });
     }
@@ -367,6 +371,14 @@ class V63RemoteCloseLifecycleMigrationTest {
                 FROM information_schema.columns
                 WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?
                 """, table, column) == 1;
+    }
+
+    private boolean tableExists(Connection connection, String table) throws SQLException {
+        return queryLong(connection, """
+                SELECT count(*)
+                FROM information_schema.tables
+                WHERE table_schema = current_schema() AND table_name = ?
+                """, table) == 1;
     }
 
     private boolean indexExists(Connection connection, String index) throws SQLException {

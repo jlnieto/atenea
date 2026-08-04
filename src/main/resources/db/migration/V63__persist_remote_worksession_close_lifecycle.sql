@@ -245,3 +245,79 @@ ALTER TABLE agent_run_recovery_operation
             'RECONCILE_REMOTE_CLOSE', 'CONTACT_PRIVILEGED_OPERATOR',
             'CONTACT_PLATFORM_ADMINISTRATOR'
         ));
+
+CREATE TABLE remote_close_legacy_plan (
+    id BIGSERIAL PRIMARY KEY,
+    plan_id UUID NOT NULL,
+    work_session_id BIGINT NOT NULL,
+    requested_by BIGINT NOT NULL,
+    idempotency_key UUID NOT NULL,
+    operation VARCHAR(40) NOT NULL,
+    worker_id VARCHAR(80) NOT NULL,
+    project_identity VARCHAR(80) NOT NULL,
+    remote_session_id UUID NOT NULL,
+    workspace_identity VARCHAR(200) NOT NULL,
+    ownership_fingerprint_sha256 VARCHAR(64) NOT NULL,
+    request_fingerprint_sha256 VARCHAR(64) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT uk_remote_close_legacy_plan_id UNIQUE (plan_id),
+    CONSTRAINT uk_remote_close_legacy_plan_idempotency
+        UNIQUE (requested_by, idempotency_key),
+    CONSTRAINT uk_remote_close_legacy_plan_binding
+        UNIQUE (plan_id, work_session_id, ownership_fingerprint_sha256),
+    CONSTRAINT fk_remote_close_legacy_plan_session
+        FOREIGN KEY (work_session_id) REFERENCES work_session (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_remote_close_legacy_plan_operator
+        FOREIGN KEY (requested_by) REFERENCES operator_account (id) ON DELETE RESTRICT,
+    CONSTRAINT ck_remote_close_legacy_plan_operation
+        CHECK (operation = 'RECONCILE_REMOTE_CLOSE'),
+    CONSTRAINT ck_remote_close_legacy_plan_ownership_fingerprint
+        CHECK (ownership_fingerprint_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_remote_close_legacy_plan_request_fingerprint
+        CHECK (request_fingerprint_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_remote_close_legacy_plan_expiry
+        CHECK (expires_at > created_at)
+);
+
+CREATE TABLE remote_close_legacy_operation (
+    id BIGSERIAL PRIMARY KEY,
+    operation_id UUID NOT NULL,
+    plan_id UUID NOT NULL,
+    work_session_id BIGINT NOT NULL,
+    requested_by BIGINT NOT NULL,
+    idempotency_key UUID NOT NULL,
+    operation VARCHAR(40) NOT NULL,
+    ownership_fingerprint_sha256 VARCHAR(64) NOT NULL,
+    request_fingerprint_sha256 VARCHAR(64) NOT NULL,
+    state VARCHAR(24) NOT NULL,
+    requested_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT uk_remote_close_legacy_operation_id UNIQUE (operation_id),
+    CONSTRAINT uk_remote_close_legacy_operation_plan UNIQUE (plan_id),
+    CONSTRAINT uk_remote_close_legacy_operation_idempotency
+        UNIQUE (requested_by, idempotency_key),
+    CONSTRAINT fk_remote_close_legacy_operation_plan_binding
+        FOREIGN KEY (plan_id, work_session_id, ownership_fingerprint_sha256)
+        REFERENCES remote_close_legacy_plan (
+            plan_id, work_session_id, ownership_fingerprint_sha256
+        ) ON DELETE RESTRICT,
+    CONSTRAINT fk_remote_close_legacy_operation_operator
+        FOREIGN KEY (requested_by) REFERENCES operator_account (id) ON DELETE RESTRICT,
+    CONSTRAINT ck_remote_close_legacy_operation_name
+        CHECK (operation = 'RECONCILE_REMOTE_CLOSE'),
+    CONSTRAINT ck_remote_close_legacy_operation_ownership_fingerprint
+        CHECK (ownership_fingerprint_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_remote_close_legacy_operation_request_fingerprint
+        CHECK (request_fingerprint_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_remote_close_legacy_operation_state
+        CHECK (state = 'REQUESTED'),
+    CONSTRAINT ck_remote_close_legacy_operation_timestamps
+        CHECK (created_at = requested_at)
+);
+
+CREATE INDEX idx_remote_close_legacy_plan_session
+    ON remote_close_legacy_plan (work_session_id, created_at DESC);
+
+CREATE INDEX idx_remote_close_legacy_operation_session
+    ON remote_close_legacy_operation (work_session_id, created_at DESC);
