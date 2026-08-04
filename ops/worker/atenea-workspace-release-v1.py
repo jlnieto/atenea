@@ -48,6 +48,7 @@ JOURNAL_KEYS = {
     "workspaceIdentity", "projectId", "workerId", "requestFingerprintSha256",
     "ownershipFingerprintSha256", "allocationFingerprintSha256", "state",
     "revision", "stageEvidence", "createdAt", "updatedAt", "journalSha256",
+    "immutableRequest", "preflightProjection", "candidateCounts",
 }
 WORKSPACE_ROOT = Path("/srv/atenea/workspaces")
 RETIRED_ALLOCATION_NAME = "runtime-allocation-v1.retired.json"
@@ -579,8 +580,6 @@ class ReleaseJournalStore:
         if target.exists() or target.is_symlink():
             existing = self._read(target)
             self._require_identity(existing, exact_request, preflight)
-            if existing["state"] != "PREPARED":
-                _reject()
             return existing
         now = _timestamp(self.clock())
         journal = {
@@ -601,6 +600,9 @@ class ReleaseJournalStore:
             "stageEvidence": {
                 "PREPARED": preflight["ownershipFingerprintSha256"],
             },
+            "immutableRequest": json.loads(json.dumps(exact_request)),
+            "preflightProjection": json.loads(json.dumps(projection)),
+            "candidateCounts": dict(preflight["candidateCounts"]),
             "createdAt": now,
             "updatedAt": now,
         }
@@ -610,6 +612,18 @@ class ReleaseJournalStore:
             must_be_absent=True,
             expected_journal_sha256=None,
         )
+
+    def open_or_prepare(self, request: Any, projection: Any) -> dict[str, Any]:
+        exact_request = _request_identity(request)
+        session_root = self.root / exact_request["sessionId"]
+        if session_root.exists() or session_root.is_symlink():
+            self._require_directory(session_root)
+            target = session_root / "journal-v1.json"
+            if target.exists() or target.is_symlink():
+                journal = self._read(target)
+                self._require_request_identity(journal, exact_request)
+                return journal
+        return self.prepare(exact_request, projection)
 
     def load(self, request: Any) -> dict[str, Any]:
         exact_request = _request_identity(request)
@@ -786,6 +800,23 @@ class ReleaseJournalStore:
             or evidence.get("PREPARED") != journal["ownershipFingerprintSha256"]
         ):
             _reject()
+        immutable_request = _request_identity(journal.get("immutableRequest"))
+        preflight = validate_release_preflight(
+            immutable_request, journal.get("preflightProjection")
+        )
+        if (
+            immutable_request["operationId"] != journal["operationId"]
+            or immutable_request["idempotencyKey"] != journal["idempotencyKey"]
+            or immutable_request["sessionId"] != journal["sessionId"]
+            or preflight["requestFingerprintSha256"]
+            != journal["requestFingerprintSha256"]
+            or preflight["ownershipFingerprintSha256"]
+            != journal["ownershipFingerprintSha256"]
+            or preflight["allocationFingerprintSha256"]
+            != journal["allocationFingerprintSha256"]
+            or journal.get("candidateCounts") != preflight["candidateCounts"]
+        ):
+            _reject()
         for key in ("createdAt", "updatedAt"):
             value = journal.get(key)
             if not isinstance(value, str) or not value.endswith("Z"):
@@ -873,7 +904,16 @@ class AllocationRetirer:
         source = session_root / "runtime-allocation-v1.json"
         retired = session_root / RETIRED_ALLOCATION_NAME
         self._require_directory(session_root)
-        if source.is_symlink() or retired.exists() or retired.is_symlink():
+        if source.is_symlink() or retired.is_symlink():
+            _reject()
+        if not source.exists() and retired.exists():
+            observed, retired_hash = self._regular_identity(retired)
+            if retired_hash != allocation_fingerprint:
+                _reject()
+            return self._retirement_result(
+                session, allocation_fingerprint, observed, observed, False
+            )
+        if retired.exists():
             _reject()
         before, content_hash = self._regular_identity(source)
         if content_hash != allocation_fingerprint:
@@ -895,6 +935,18 @@ class AllocationRetirer:
             or source.is_symlink()
         ):
             _reject()
+        return self._retirement_result(
+            session, allocation_fingerprint, before, after, True
+        )
+
+    @staticmethod
+    def _retirement_result(
+        session: str,
+        allocation_fingerprint: str,
+        before: os.stat_result,
+        after: os.stat_result,
+        changed: bool,
+    ) -> dict[str, Any]:
         return {
             "schemaVersion": "atenea-allocation-retirement-v1",
             "state": "RETIRED",
@@ -913,6 +965,7 @@ class AllocationRetirer:
             "atimeAfterNs": after.st_atime_ns,
             "ctimeBeforeNs": before.st_ctime_ns,
             "ctimeAfterNs": after.st_ctime_ns,
+            "changed": changed,
             "valuesExposed": False,
         }
 
@@ -965,26 +1018,36 @@ class ReviewedReleaseBoundary:
         self, request: dict[str, str], projection: dict[str, Any]
     ) -> dict[str, Any]:
         removed = {category: 0 for category in EPHEMERAL_CATEGORIES}
+        changed = {category: 0 for category in EPHEMERAL_CATEGORIES}
         for category in EPHEMERAL_RELEASE_ORDER:
             for candidate in projection[category]:
                 result = self.operator.remove_ephemeral(
                     category, candidate["resourceId"], candidate
                 )
-                if result != {
-                    "schemaVersion": "atenea-ephemeral-resource-release-v1",
-                    "state": "REMOVED",
-                    "category": category,
-                    "resourceId": candidate["resourceId"],
-                    "sessionId": request["sessionId"],
-                    "policyVolumeChanged": False,
-                    "valuesExposed": False,
-                }:
+                result = _exact_dict(result, {
+                    "schemaVersion", "state", "category", "resourceId",
+                    "sessionId", "changed", "policyVolumeChanged",
+                    "valuesExposed",
+                })
+                if (
+                    result.get("schemaVersion")
+                    != "atenea-ephemeral-resource-release-v1"
+                    or result.get("state") != "RELEASED"
+                    or result.get("category") != category
+                    or result.get("resourceId") != candidate["resourceId"]
+                    or result.get("sessionId") != request["sessionId"]
+                    or type(result.get("changed")) is not bool
+                    or result.get("policyVolumeChanged") is not False
+                    or result.get("valuesExposed") is not False
+                ):
                     _reject()
                 removed[category] += 1
+                changed[category] += int(result["changed"])
         return {
             "schemaVersion": "atenea-ephemeral-release-v1",
             "state": "RELEASED",
             "removed": removed,
+            "changed": changed,
             "policyVolumesRetained": True,
             "valuesExposed": False,
         }
@@ -1024,57 +1087,69 @@ class WorkspaceReleaseFinalizer:
 
     def release(self, request: Any, projection: Any) -> dict[str, Any]:
         exact_request = _request_identity(request)
-        preflight = validate_release_preflight(exact_request, projection)
-        journal = self.journal_store.prepare(exact_request, projection)
+        journal = self.journal_store.open_or_prepare(exact_request, projection)
+        stored_projection = journal["preflightProjection"]
+        preflight = validate_release_preflight(exact_request, stored_projection)
 
-        ephemeral = self.boundary.release_ephemeral(exact_request, projection)
-        ephemeral = self._validate_ephemeral(ephemeral, preflight)
-        journal = self.journal_store.advance(
-            exact_request,
-            "PREPARED",
-            "EPHEMERAL_RELEASED",
-            canonical_hash(ephemeral),
-        )
+        if journal["state"] == "PREPARED":
+            ephemeral = self.boundary.release_ephemeral(
+                exact_request, stored_projection
+            )
+            ephemeral = self._validate_ephemeral(ephemeral, preflight)
+            journal = self.journal_store.advance(
+                exact_request,
+                "PREPARED",
+                "EPHEMERAL_RELEASED",
+                canonical_hash(ephemeral),
+            )
 
-        registration = self.boundary.unregister_workspace(exact_request)
-        registration = self._validate_registration(registration, exact_request)
-        journal = self.journal_store.advance(
-            exact_request,
-            "EPHEMERAL_RELEASED",
-            "UNREGISTERED",
-            canonical_hash(registration),
-        )
+        if journal["state"] == "EPHEMERAL_RELEASED":
+            registration = self.boundary.unregister_workspace(exact_request)
+            registration = self._validate_registration(registration, exact_request)
+            journal = self.journal_store.advance(
+                exact_request,
+                "EPHEMERAL_RELEASED",
+                "UNREGISTERED",
+                canonical_hash(registration),
+            )
 
-        heavy = self.boundary.release_heavy_admission(exact_request)
-        heavy = self._validate_admission(heavy, exact_request, "heavy")
-        normal = self.boundary.release_normal_admission(exact_request)
-        normal = self._validate_admission(normal, exact_request, "normal")
-        journal = self.journal_store.advance(
-            exact_request,
-            "UNREGISTERED",
-            "ADMISSION_RELEASED",
-            canonical_hash({"heavy": heavy, "normal": normal}),
-        )
+        if journal["state"] == "UNREGISTERED":
+            heavy = self.boundary.release_heavy_admission(exact_request)
+            heavy = self._validate_admission(heavy, exact_request, "heavy")
+            normal = self.boundary.release_normal_admission(exact_request)
+            normal = self._validate_admission(normal, exact_request, "normal")
+            journal = self.journal_store.advance(
+                exact_request,
+                "UNREGISTERED",
+                "ADMISSION_RELEASED",
+                canonical_hash({"heavy": heavy, "normal": normal}),
+            )
 
-        allocation = self.boundary.retire_allocation(
-            exact_request, preflight["allocationFingerprintSha256"]
-        )
-        allocation = self._validate_allocation(allocation, exact_request, preflight)
-        journal = self.journal_store.advance(
-            exact_request,
-            "ADMISSION_RELEASED",
-            "ALLOCATION_RETIRED",
-            canonical_hash(allocation),
-        )
+        if journal["state"] == "ADMISSION_RELEASED":
+            allocation = self.boundary.retire_allocation(
+                exact_request, preflight["allocationFingerprintSha256"]
+            )
+            allocation = self._validate_allocation(
+                allocation, exact_request, preflight
+            )
+            journal = self.journal_store.advance(
+                exact_request,
+                "ADMISSION_RELEASED",
+                "ALLOCATION_RETIRED",
+                canonical_hash(allocation),
+            )
 
-        retained = self.boundary.verify_retained(exact_request, projection)
-        retained = self._validate_retained(retained, exact_request)
-        journal = self.journal_store.advance(
-            exact_request,
-            "ALLOCATION_RETIRED",
-            "RELEASED",
-            canonical_hash(retained),
-        )
+        if journal["state"] == "ALLOCATION_RETIRED":
+            retained = self.boundary.verify_retained(
+                exact_request, stored_projection
+            )
+            retained = self._validate_retained(retained, exact_request)
+            journal = self.journal_store.advance(
+                exact_request,
+                "ALLOCATION_RETIRED",
+                "RELEASED",
+                canonical_hash(retained),
+            )
         return self._result(exact_request, preflight, journal)
 
     @staticmethod
@@ -1082,8 +1157,8 @@ class WorkspaceReleaseFinalizer:
         result: Any, preflight: dict[str, Any]
     ) -> dict[str, Any]:
         result = _exact_dict(result, {
-            "schemaVersion", "state", "removed", "policyVolumesRetained",
-            "valuesExposed",
+            "schemaVersion", "state", "removed", "changed",
+            "policyVolumesRetained", "valuesExposed",
         })
         counts = preflight["candidateCounts"]
         if (
@@ -1092,6 +1167,13 @@ class WorkspaceReleaseFinalizer:
             or result.get("removed") != {
                 category: counts[category] for category in EPHEMERAL_CATEGORIES
             }
+            or not isinstance(result.get("changed"), dict)
+            or set(result["changed"]) != set(EPHEMERAL_CATEGORIES)
+            or any(
+                type(result["changed"].get(category)) is not int
+                or not 0 <= result["changed"][category] <= counts[category]
+                for category in EPHEMERAL_CATEGORIES
+            )
             or result.get("policyVolumesRetained") is not True
             or result.get("valuesExposed") is not False
         ):
@@ -1107,17 +1189,17 @@ class WorkspaceReleaseFinalizer:
             "registrationRemoved", "selectionEnabled", "executionEnabled",
             "remainingRegistrations", "valuesExposed",
         })
-        if result != {
-            "schemaVersion": "atenea-workspace-unregistration-v1",
-            "state": "UNREGISTERED",
-            "sessionId": request["sessionId"],
-            "workspaceIdentity": request["workspaceIdentity"],
-            "registrationRemoved": True,
-            "selectionEnabled": False,
-            "executionEnabled": False,
-            "remainingRegistrations": 0,
-            "valuesExposed": False,
-        }:
+        if (
+            result.get("schemaVersion") != "atenea-workspace-unregistration-v1"
+            or result.get("state") != "UNREGISTERED"
+            or result.get("sessionId") != request["sessionId"]
+            or result.get("workspaceIdentity") != request["workspaceIdentity"]
+            or type(result.get("registrationRemoved")) is not bool
+            or result.get("selectionEnabled") is not False
+            or result.get("executionEnabled") is not False
+            or result.get("remainingRegistrations") != 0
+            or result.get("valuesExposed") is not False
+        ):
             _reject()
         return dict(result)
 
@@ -1150,7 +1232,8 @@ class WorkspaceReleaseFinalizer:
             "schemaVersion", "state", "sessionId", "sourceName",
             "retiredName", "fingerprintSha256", "device", "inode", "uid",
             "gid", "mode", "size", "mtimeNs", "atimeBeforeNs",
-            "atimeAfterNs", "ctimeBeforeNs", "ctimeAfterNs", "valuesExposed",
+            "atimeAfterNs", "ctimeBeforeNs", "ctimeAfterNs", "changed",
+            "valuesExposed",
         })
         numeric = (
             "device", "inode", "uid", "gid", "mode", "size", "mtimeNs",
@@ -1166,6 +1249,7 @@ class WorkspaceReleaseFinalizer:
             != preflight["allocationFingerprintSha256"]
             or any(type(result.get(key)) is not int or result[key] < 0 for key in numeric)
             or result.get("mode") not in {0o600, 0o640}
+            or type(result.get("changed")) is not bool
             or result.get("atimeAfterNs") < result.get("atimeBeforeNs")
             or result.get("ctimeAfterNs") < result.get("ctimeBeforeNs")
             or result.get("valuesExposed") is not False
@@ -1208,14 +1292,19 @@ class WorkspaceReleaseFinalizer:
         journal: dict[str, Any],
     ) -> dict[str, Any]:
         counts = preflight["candidateCounts"]
-        return {
-            "schemaVersion": "atenea-workspace-release-result-v1",
+        receipt = {
+            "schemaVersion": "project-workspace-release-v1",
             "state": "RELEASED",
             "operationId": request["operationId"],
             "idempotencyKey": request["idempotencyKey"],
             "sessionId": request["sessionId"],
             "workspaceIdentity": request["workspaceIdentity"],
             "projectId": PROJECT_ID,
+            "repository": request["repository"],
+            "branch": request["branch"],
+            "commit": request["commit"],
+            "manifestSha256": request["manifestSha256"],
+            "workspaceBranch": request["workspaceBranch"],
             "workerId": WORKER_ID,
             "revision": journal["revision"],
             "requestFingerprintSha256": journal["requestFingerprintSha256"],
@@ -1237,3 +1326,5 @@ class WorkspaceReleaseFinalizer:
             "retained": {key: True for key in sorted(RETAINED_KEYS)},
             "valuesExposed": False,
         }
+        receipt["receiptSha256"] = canonical_hash(receipt)
+        return receipt

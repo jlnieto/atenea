@@ -20,6 +20,12 @@ SPEC = importlib.util.spec_from_file_location("atenea_workspace_release_v1", MOD
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+AGENT_SPEC = importlib.util.spec_from_file_location(
+    "agent_run_worker_release_receipt", Path(__file__).with_name("agent-run-worker-v1.py")
+)
+assert AGENT_SPEC is not None and AGENT_SPEC.loader is not None
+AGENT_MODULE = importlib.util.module_from_spec(AGENT_SPEC)
+AGENT_SPEC.loader.exec_module(AGENT_MODULE)
 
 
 class WorkspaceReleasePreflightTest(unittest.TestCase):
@@ -557,6 +563,10 @@ class FakeReleaseBoundary:
                 category: len(self.projection[category])
                 for category in MODULE.EPHEMERAL_CATEGORIES
             },
+            "changed": {
+                category: len(self.projection[category])
+                for category in MODULE.EPHEMERAL_CATEGORIES
+            },
             "policyVolumesRetained": True,
             "valuesExposed": False,
         })
@@ -613,6 +623,7 @@ class FakeReleaseBoundary:
             "atimeAfterNs": 11,
             "ctimeBeforeNs": 10,
             "ctimeAfterNs": 11,
+            "changed": True,
             "valuesExposed": False,
         })
 
@@ -641,35 +652,42 @@ class RecordingReleaseOperator:
             for category in MODULE.EPHEMERAL_CATEGORIES
             for candidate in projection[category]
         }
+        self.known_resources = set(self.resources)
         self.removals: list[tuple[str, str]] = []
+        self.changed_removals: list[tuple[str, str]] = []
         self.admissions: list[str] = []
         self.registered = True
         self.retained_volume = b"policy-retained"
 
     def remove_ephemeral(self, category: str, resource_id: str, _candidate: dict) -> dict:
         identity = (category, resource_id)
-        if identity not in self.resources:
+        if identity not in self.known_resources:
             raise MODULE.PreflightRejected()
-        self.resources.remove(identity)
+        changed = identity in self.resources
+        self.resources.discard(identity)
         self.removals.append(identity)
+        if changed:
+            self.changed_removals.append(identity)
         return {
             "schemaVersion": "atenea-ephemeral-resource-release-v1",
-            "state": "REMOVED",
+            "state": "RELEASED",
             "category": category,
             "resourceId": resource_id,
             "sessionId": self.request["sessionId"],
+            "changed": changed,
             "policyVolumeChanged": False,
             "valuesExposed": False,
         }
 
     def unregister_workspace(self, session_id: str, workspace_identity: str) -> dict:
+        changed = self.registered
         self.registered = False
         return {
             "schemaVersion": "atenea-workspace-unregistration-v1",
             "state": "UNREGISTERED",
             "sessionId": session_id,
             "workspaceIdentity": workspace_identity,
-            "registrationRemoved": True,
+            "registrationRemoved": changed,
             "selectionEnabled": False,
             "executionEnabled": False,
             "remainingRegistrations": 0,
@@ -677,15 +695,17 @@ class RecordingReleaseOperator:
         }
 
     def release_admission(self, session_id: str, kind: str) -> dict:
-        if kind == "normal" and self.admissions != ["heavy"]:
+        if kind == "normal" and "heavy" not in self.admissions:
             raise MODULE.PreflightRejected()
-        self.admissions.append(kind)
+        changed = kind not in self.admissions
+        if changed:
+            self.admissions.append(kind)
         return {
             "schemaVersion": "atenea-admission-release-v1",
             "state": "RELEASED",
             "sessionId": session_id,
             "kind": kind,
-            "changed": True,
+            "changed": changed,
             "valuesExposed": False,
         }
 
@@ -710,9 +730,15 @@ class RecordingReleaseOperator:
 class RecordingAllocationRetirer:
     def __init__(self):
         self.calls: list[tuple[str, str]] = []
+        self.change_count = 0
+        self.retired = False
 
     def retire(self, session_id: str, fingerprint: str) -> dict:
         self.calls.append((session_id, fingerprint))
+        changed = not self.retired
+        if changed:
+            self.change_count += 1
+            self.retired = True
         return {
             "schemaVersion": "atenea-allocation-retirement-v1",
             "state": "RETIRED",
@@ -731,8 +757,32 @@ class RecordingAllocationRetirer:
             "atimeAfterNs": 11,
             "ctimeBeforeNs": 10,
             "ctimeAfterNs": 11,
+            "changed": changed,
             "valuesExposed": False,
         }
+
+
+class SyntheticInterruption(Exception):
+    pass
+
+
+class InterruptAfterBoundaryCall:
+    def __init__(self, delegate, method_name: str):
+        self.delegate = delegate
+        self.method_name = method_name
+        self.interrupted = False
+
+    def __getattr__(self, name: str):
+        method = getattr(self.delegate, name)
+
+        def call(*args, **kwargs):
+            result = method(*args, **kwargs)
+            if name == self.method_name and not self.interrupted:
+                self.interrupted = True
+                raise SyntheticInterruption(name)
+            return result
+
+        return call
 
 
 class WorkspaceReleaseFinalizerTest(unittest.TestCase):
@@ -758,6 +808,13 @@ class WorkspaceReleaseFinalizerTest(unittest.TestCase):
     def assert_rejected(self, operation) -> None:
         with self.assertRaises(MODULE.PreflightRejected):
             operation()
+
+    def reviewed_components(self, root: Path):
+        store = MODULE.ReleaseJournalStore(root, test_mode=True)
+        operator = RecordingReleaseOperator(self.request, self.projection)
+        retirer = RecordingAllocationRetirer()
+        boundary = MODULE.ReviewedReleaseBoundary(operator, retirer)
+        return store, operator, retirer, boundary
 
     def test_release_orders_exact_mutations_and_returns_closed_projection(self) -> None:
         result = self.finalizer.release(self.request, self.projection)
@@ -798,6 +855,98 @@ class WorkspaceReleaseFinalizerTest(unittest.TestCase):
             retirer.calls,
         )
         self.assertEqual("RELEASED", result["state"])
+
+    def test_completed_repetition_returns_identical_receipt_without_mutation(self) -> None:
+        store, operator, retirer, boundary = self.reviewed_components(self.root)
+        finalizer = MODULE.WorkspaceReleaseFinalizer(store, boundary)
+        first = finalizer.release(self.request, self.projection)
+        self.assertEqual(
+            first,
+            AGENT_MODULE.validate_workspace_release_receipt(
+                self.request, "ax42-01", first
+            ),
+        )
+        mutation_projection = (
+            list(operator.changed_removals), list(operator.admissions),
+            operator.registered, retirer.change_count,
+        )
+        repeated = MODULE.WorkspaceReleaseFinalizer(
+            MODULE.ReleaseJournalStore(self.root, test_mode=True), boundary
+        ).release(self.request, self.projection)
+        self.assertEqual(first, repeated)
+        self.assertEqual(6, repeated["revision"])
+        self.assertEqual(first["ownershipFingerprintSha256"], repeated["ownershipFingerprintSha256"])
+        self.assertEqual(first["receiptSha256"], repeated["receiptSha256"])
+        self.assertEqual(
+            mutation_projection,
+            (
+                list(operator.changed_removals), list(operator.admissions),
+                operator.registered, retirer.change_count,
+            ),
+        )
+
+    def test_restart_after_each_mutation_resumes_same_operation(self) -> None:
+        cases = (
+            ("release_ephemeral", "PREPARED"),
+            ("unregister_workspace", "EPHEMERAL_RELEASED"),
+            ("release_heavy_admission", "UNREGISTERED"),
+            ("release_normal_admission", "UNREGISTERED"),
+            ("retire_allocation", "ADMISSION_RELEASED"),
+            ("verify_retained", "ALLOCATION_RETIRED"),
+        )
+        for method_name, expected_state in cases:
+            with self.subTest(method=method_name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                os.chmod(root, 0o700)
+                store, operator, retirer, reviewed = self.reviewed_components(root)
+                interrupted = InterruptAfterBoundaryCall(reviewed, method_name)
+                finalizer = MODULE.WorkspaceReleaseFinalizer(store, interrupted)
+                with self.assertRaises(SyntheticInterruption):
+                    finalizer.release(self.request, self.projection)
+                self.assertEqual(expected_state, store.load(self.request)["state"])
+                resumed = MODULE.WorkspaceReleaseFinalizer(
+                    MODULE.ReleaseJournalStore(root, test_mode=True), interrupted
+                ).release(self.request, self.projection)
+                self.assertEqual("RELEASED", resumed["state"])
+                self.assertEqual(
+                    len(operator.known_resources), len(operator.changed_removals)
+                )
+                self.assertEqual(["heavy", "normal"], operator.admissions)
+                self.assertEqual(1, retirer.change_count)
+
+    def test_lost_response_after_each_journal_revision_never_repeats_stage(self) -> None:
+        for next_state in MODULE.JOURNAL_STAGES[1:]:
+            with self.subTest(state=next_state), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                os.chmod(root, 0o700)
+                store, operator, retirer, boundary = self.reviewed_components(root)
+                original_advance = store.advance
+                interrupted = False
+
+                def advance(request, expected, successor, evidence):
+                    nonlocal interrupted
+                    result = original_advance(request, expected, successor, evidence)
+                    if successor == next_state and not interrupted:
+                        interrupted = True
+                        raise SyntheticInterruption(successor)
+                    return result
+
+                with mock.patch.object(store, "advance", side_effect=advance):
+                    with self.assertRaises(SyntheticInterruption):
+                        MODULE.WorkspaceReleaseFinalizer(store, boundary).release(
+                            self.request, self.projection
+                        )
+                persisted = MODULE.ReleaseJournalStore(root, test_mode=True)
+                self.assertEqual(next_state, persisted.load(self.request)["state"])
+                receipt = MODULE.WorkspaceReleaseFinalizer(
+                    persisted, boundary
+                ).release(self.request, self.projection)
+                self.assertEqual("RELEASED", receipt["state"])
+                self.assertEqual(
+                    len(operator.known_resources), len(operator.changed_removals)
+                )
+                self.assertEqual(["heavy", "normal"], operator.admissions)
+                self.assertEqual(1, retirer.change_count)
 
     def test_default_boundary_is_unavailable_after_prepared_without_mutation(self) -> None:
         finalizer = MODULE.WorkspaceReleaseFinalizer(self.store)
@@ -911,6 +1060,11 @@ class AllocationRetirerTest(unittest.TestCase):
         self.assertEqual(before.st_ino, result["inode"])
         self.assertEqual(self.fingerprint, result["fingerprintSha256"])
         self.assertEqual(retained_before, self.retained.read_bytes())
+        repeated = self.retirer.retire(self.session, self.fingerprint)
+        self.assertFalse(repeated["changed"])
+        self.assertEqual(before.st_ino, repeated["inode"])
+        self.assertFalse(self.source.exists())
+        self.assertEqual(self.content, retired.read_bytes())
 
     def test_wrong_fingerprint_or_existing_retired_target_rejects_unchanged(self) -> None:
         before = self.source.read_bytes()

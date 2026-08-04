@@ -84,7 +84,7 @@ environment dumps.
   its active allocation by same-filesystem rename; retain all declared source,
   conversation, attachment, log, artifact, backup and policy-retained volume
   state
-- [ ] 3.6 Prove interruption/restart at every stage resumes the same operation;
+- [x] 3.6 Prove interruption/restart at every stage resumes the same operation;
   prove a completed repetition removes nothing further and returns the same
   receipt/revision/fingerprint
 - [ ] 3.7 Create synthetic unlabelled, partially labelled, foreign-owned,

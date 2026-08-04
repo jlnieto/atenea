@@ -11518,3 +11518,50 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.5-exact-ordered-release`;
 the SHA-256 of its `SHA256SUMS` is
 `414707a9b19a9fdcdf529772923f50b3dd9c9c4961a59217deac0e5fc33b7883`.
+
+Task 3.6 is complete. Change progress is `21/60`; task 3.7 is the exact
+resume point and foreign/partial fixture creation has not started.
+
+The private journal now retains the exact immutable request, complete accepted
+preflight projection and candidate counts beneath its existing self-seal. On
+restart, the finalizer opens that plan only by the same operation,
+idempotency, session and request fingerprint. It never recomputes already
+released ownership from an incomplete current host projection and never adopts
+a replacement operation.
+
+Each stage is reentrant for its sealed planned targets. Exact already-absent
+ephemeral resources, already-absent registration, already-released admission
+and the exact already-retired allocation return a closed unchanged result;
+they do not recreate or mutate ownership. The finalizer evaluates the current
+journal state before each boundary, so a persisted stage is skipped entirely.
+An allocation retry accepts only absent active plus matching regular retired
+record and returns its preserved identity with `changed=false`.
+
+All 33 focused tests pass. Six interruption cases stop immediately after each
+mutation boundary—ephemeral, unregister, heavy, normal, allocation and final
+retention proof—then instantiate a new journal store/finalizer and finish the
+same operation with every real state change counted once. Five lost-response
+cases stop after persisting each post-`PREPARED` revision and prove the resumed
+process does not call that completed stage again. A completed repetition calls
+no boundary and returns the identical strict
+`project-workspace-release-v1` receipt, revision 6, request/ownership
+fingerprints and receipt SHA-256; the existing worker receipt validator accepts
+it exactly. The focused plus complete AgentRun worker regression passes
+101/101 with zero failures, errors or skips.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN`; AgentRun 96 remains
+terminal unretried `FAILED`, with its origin turn, profile and linked
+attachment projection intact. Production, preview and Beautips remain up with
+zero restarts; routing remains `ax42-01` enabled/healthy `4/2` at `0/0`. All
+incident hashes remain exact, WorkSession 17 allocation/admission remain absent
+and both incident runtime candidate counts remain zero. Worker services remain
+active with zero restarts, rootless slots remain `3/0/0/3`, rootful daemons
+remain inactive, RAID remains `3/3 [UU]` and backup/check/health remain
+`success/0`. No installed release boundary exists and no ownership, runtime,
+foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.6-crash-resume-stable-receipt`;
+the SHA-256 of its `SHA256SUMS` is
+`54f9a5ad4b89871222133ba7ed098bf23b7b698ee7c4d093991b9b6d068cf090`.
