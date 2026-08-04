@@ -11803,3 +11803,41 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.2-durable-normal-close`;
 the SHA-256 of its `SHA256SUMS` is
 `d02bd416ddb2bfa64def5a180a21a96ce50ebbc91fdc0d86f588fa0e3cbd9e9d`.
+
+Task 4.3 is complete. Change progress is `27/60`; task 4.4 is the exact resume
+point and no legacy planning or administrator confirmation operation exists.
+
+Atenea commit `4aebd7e630adaf3c107b4191a66ce240427deafc` adds
+explicit reconciliation of a normal `CLOSING` remote WorkSession only when it
+already owns an immutable close operation. The operator path and startup path
+both reuse the task-4.2 transaction/receipt boundary. They cannot create a new
+operation from `NOT_STARTED`, repeat Git/delivery mutation, choose another
+worker or workspace, or retry an AgentRun or prompt.
+
+Startup is independently default-off. When enabled for canonical Atenea, it
+reads only `CLOSING` rows and attempts exact `REQUESTED` or `RECONCILING`
+owners. Local, foreign, incomplete and deterministically `BLOCKED` rows are
+ignored. One failed attempt leaves its durable projection authoritative and
+does not prevent a later eligible row from being attempted.
+
+The 78/78 focused tests pass with zero failures, errors or skips and the
+backend package passes. They simulate process loss after the request commit,
+loss of the worker response after release, and failure immediately before the
+final database commit. Every recovery repeats the same operation UUID, calls
+no Git reconciliation again, accepts the same strict receipt and reaches
+`CLOSED/RELEASED` once. Default-off startup performs no query or worker I/O.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote and AgentRun
+96 remains terminal unretried `FAILED`. Production and preview remain `UP`,
+Beautips returns HTTP 200 and routing remains `ax42-01` enabled/healthy `4/2`
+at `0/0`. The five incident ownership hashes remain exact, rootless slots
+remain `3/0/0/3`, rootful daemons remain inactive, RAID remains `3/3 [UU]` and
+backup/check/health remain `success/0`. The release boundary remains absent;
+no startup reconciliation ran against production and no deployment,
+configuration, ownership, foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.3-close-reconciliation`;
+the SHA-256 of its `SHA256SUMS` is
+`f1b9e2f61aca5c5d0237fceef6258abba2baf8186493d2f5a04c8cbd24a5b42e`.

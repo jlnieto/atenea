@@ -108,7 +108,7 @@ environment dumps.
   operation is committed, remote release follows, and `CLOSED/RELEASED` is
   written only after exact receipt validation; local-session behavior remains
   unchanged
-- [ ] 4.3 Add startup and operator reconciliation for `CLOSING` remote sessions
+- [x] 4.3 Add startup and operator reconciliation for `CLOSING` remote sessions
   using the same operation; prove crash after request, after worker receipt and
   before final database commit creates no duplicate mutation or false closure
 - [ ] 4.4 Add read-only legacy ownership planning and a fixed
