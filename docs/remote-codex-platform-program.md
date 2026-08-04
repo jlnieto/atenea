@@ -11754,3 +11754,52 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.1-strict-release-client`;
 the SHA-256 of its `SHA256SUMS` is
 `47ed2670eb57224483204b65b919afd4178ed10e1e4f00d8872c7bddb2b722c4`.
+
+Task 4.2 is complete. Change progress is `26/60`; task 4.3 is the exact resume
+point and startup reconciliation has not been implemented.
+
+Atenea commit `7a9f4035726e87ae335d395df458a1115862da6f` refactors
+normal WorkSession close into three independent `REQUIRES_NEW` commits. The
+first reconciles terminal AgentRuns, pull-request delivery and Git. For a
+remote session, the second creates or reuses one immutable close UUID and
+persists `CLOSING/REQUESTED` before any worker I/O. Only after the strict
+client returns an exact receipt does the third atomically persist the receipt
+SHA-256, monotonic revision, release time and `CLOSED/RELEASED`.
+
+Local WorkSessions retain the prior Git/delivery path and close in the first
+transaction with `NOT_REQUIRED` and no worker call. A remote close with its
+default-off gate disabled remains `CLOSING/NOT_STARTED`, creates no operation
+and performs no worker I/O. Transport failure retains the committed operation
+as `CLOSING/RECONCILING`; deterministic ownership rejection retains it as
+`CLOSING/BLOCKED`. Neither path records a receipt or `closedAt`. Re-entry from
+`BLOCKED` advances through `RECONCILING` with the same UUID rather than
+creating replacement ownership.
+
+The accepted service, client and default-gate matrix passes 74/74. A separate
+PostgreSQL 16 fixture migrated empty and V62 schemas through V63 and passed the
+3/3 monotonic persistence tests, for 77/77 accepted tests with zero failures,
+errors or skips. The backend package also passes. The application HTTP test
+context started and migrated through V63, but its historical Git fixtures are
+hard-coded below `/workspace/repos`; this user cannot create `/workspace`, so
+25 cases stopped uniformly with `AccessDenied /workspace` before assertions.
+Permissions and that global path were not changed. The exact task PostgreSQL
+container was removed.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote and AgentRun
+96 remains terminal unretried `FAILED`. Production and preview remain `UP`,
+Beautips returns HTTP 200 and routing remains `ax42-01` enabled/healthy `4/2`
+at `0/0`.
+
+All five incident ownership hashes remain exact; WorkSession 17 allocation and
+admission remain absent. Worker services remain active with zero restarts,
+rootless slots remain `3/0/0/3`, rootful Docker/containerd remain inactive,
+all three RAID arrays remain `[UU]` and backup/check/health remain `success/0`.
+The release program and journal root remain absent. No production migration,
+deployment, gate, route, release, ownership, foreign or unrelated resource was
+changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.2-durable-normal-close`;
+the SHA-256 of its `SHA256SUMS` is
+`d02bd416ddb2bfa64def5a180a21a96ce50ebbc91fdc0d86f588fa0e3cbd9e9d`.

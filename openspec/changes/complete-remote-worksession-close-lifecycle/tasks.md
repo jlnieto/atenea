@@ -104,7 +104,7 @@ environment dumps.
 - [x] 4.1 Add strict `releaseWorkspace` request/receipt validation to the
   client, deriving every field from persisted WorkSession/project identity and
   accepting no caller path, slot, resource or service value
-- [ ] 4.2 Refactor normal close so delivery/Git reconcile first, one immutable
+- [x] 4.2 Refactor normal close so delivery/Git reconcile first, one immutable
   operation is committed, remote release follows, and `CLOSED/RELEASED` is
   written only after exact receipt validation; local-session behavior remains
   unchanged
