@@ -11419,3 +11419,49 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.3-complete-no-write-preflight`;
 the SHA-256 of its `SHA256SUMS` is
 `26a11cef3d203b427f792da5136a49451f06dffb8b9848627c12a2b56d05c39a`.
+
+Task 3.4 is complete. Change progress is `19/60`; task 3.5 is the exact
+resume point and no ephemeral or ownership release mutation has started.
+
+The finalizer now has one private session journal beneath the fixed worker
+release root. `prepare` first repeats the complete task 3.3 preflight, then
+persists immutable operation, idempotency, session, workspace, project,
+worker, request, ownership and allocation identity at `PREPARED` revision 1.
+Each later stage appends one evidence SHA-256 and may advance only to its direct
+successor: `EPHEMERAL_RELEASED` revision 2, `UNREGISTERED` 3,
+`ADMISSION_RELEASED` 4, `ALLOCATION_RETIRED` 5 and `RELEASED` 6. Skips,
+retrogression and a wrong expected state reject unchanged.
+
+Every record is a regular single-link private `0600` JSON file in a private
+`0700` session directory. It carries a SHA-256 self-seal and an exact
+cumulative evidence prefix. Writes use a same-directory temporary file,
+complete write, file fsync, atomic replace and directory fsync. Before replace,
+the writer reopens without following symlinks and compares the current seal to
+the exact revision read at entry. A competing, forged, partial, wrong-mode,
+symlinked or identity-changed journal is therefore never overwritten.
+
+All 19 preflight/journal tests pass. They prove all six revisions, stable
+repeated `PREPARED`, changed request/preflight rejection, skip/backward/wrong-
+expected rejection, schema/revision/evidence/seal corruption, private mode and
+single link, no symlink following, bounded evidence, atomic replace failure and
+a valid competing-revision TOCTOU event. The journal plus complete AgentRun
+worker regression passes 87/87 with zero failures, errors or skips. Only
+private temporary fixtures were written; no installed journal root exists and
+the release route remains unavailable.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN`; AgentRun 96 remains
+terminal unretried `FAILED`, with its origin turn, execution profile, linked
+attachment and exact attachment projection intact. Production, preview and
+Beautips remain up with zero restarts; routing remains `ax42-01`
+enabled/healthy `4/2` at `0/0`. All five incident ownership hashes match
+entry, WorkSession 17 allocation/admission remain absent and both incident
+runtime candidate counts remain zero. Worker services remain active with zero
+restarts, rootless slots remain `3/0/0/3`, rootful daemons remain inactive,
+RAID remains `3/3 [UU]` and backup/check/health remain `success/0`. No runtime,
+ownership, foreign or unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.4-immutable-release-journal`;
+the SHA-256 of its `SHA256SUMS` is
+`2b41bd0d36662e4136df2c1667c83a89e13a306a31f4ef125ea4ce5cb6eadb73`.

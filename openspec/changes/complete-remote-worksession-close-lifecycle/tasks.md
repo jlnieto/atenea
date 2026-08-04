@@ -76,7 +76,7 @@ environment dumps.
 - [x] 3.3 Implement complete no-write preflight over the exact workspace,
   registry, admission, allocation, runtime, preview, listener, proxy/broker,
   image/materialization and browser-process projection
-- [ ] 3.4 Implement the immutable release journal and monotonic
+- [x] 3.4 Implement the immutable release journal and monotonic
   `PREPARED`→`EPHEMERAL_RELEASED`→`UNREGISTERED`→`ADMISSION_RELEASED`→
   `ALLOCATION_RETIRED`→`RELEASED` transitions with exact stage validation
 - [ ] 3.5 Remove only exact-owned ephemeral resources, unregister only the

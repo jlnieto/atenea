@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
+import os
+import stat
+import tempfile
 import unittest
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("atenea-workspace-release-v1.py")
@@ -322,6 +328,218 @@ class WorkspaceReleasePreflightTest(unittest.TestCase):
         changed = copy.deepcopy(self.projection)
         changed["unexpected"] = True
         self.assert_rejected(changed)
+
+
+class ReleaseJournalStoreTest(unittest.TestCase):
+    def setUp(self) -> None:
+        fixture = WorkspaceReleasePreflightTest(
+            "test_complete_projection_is_accepted_without_mutation"
+        )
+        fixture.setUp()
+        self.request = copy.deepcopy(fixture.request)
+        self.projection = copy.deepcopy(fixture.projection)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        os.chmod(self.root, 0o700)
+        self.now = datetime(2026, 8, 4, 4, 0, tzinfo=timezone.utc)
+
+        def clock() -> datetime:
+            observed = self.now
+            self.now += timedelta(seconds=1)
+            return observed
+
+        self.store = MODULE.ReleaseJournalStore(
+            self.root, test_mode=True, clock=clock
+        )
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def journal_path(self) -> Path:
+        return self.root / self.request["sessionId"] / "journal-v1.json"
+
+    def prepare(self) -> dict:
+        return self.store.prepare(self.request, self.projection)
+
+    def assert_rejected(self, operation) -> None:
+        with self.assertRaises(MODULE.PreflightRejected) as rejected:
+            operation()
+        self.assertEqual("WORKSPACE_RELEASE_PREFLIGHT_REJECTED", rejected.exception.code)
+
+    def test_prepare_persists_private_sealed_immutable_identity_once(self) -> None:
+        first = self.prepare()
+        path = self.journal_path()
+        observed = path.stat()
+        before = path.read_bytes()
+        before_mtime = observed.st_mtime_ns
+        second = self.prepare()
+        self.assertEqual(first, second)
+        self.assertEqual(before, path.read_bytes())
+        self.assertEqual(before_mtime, path.stat().st_mtime_ns)
+        self.assertEqual("PREPARED", first["state"])
+        self.assertEqual(1, first["revision"])
+        self.assertEqual(
+            first["ownershipFingerprintSha256"],
+            first["stageEvidence"]["PREPARED"],
+        )
+        self.assertEqual(0o600, stat.S_IMODE(observed.st_mode))
+        self.assertEqual(1, observed.st_nlink)
+        self.assertEqual(0o700, stat.S_IMODE(path.parent.stat().st_mode))
+
+    def test_all_stages_advance_once_in_exact_monotonic_order(self) -> None:
+        current = self.prepare()
+        for revision, (expected, successor) in enumerate(
+            zip(MODULE.JOURNAL_STAGES, MODULE.JOURNAL_STAGES[1:]), start=2
+        ):
+            evidence = f"{revision:x}" * 64
+            evidence = evidence[:64]
+            current = self.store.advance(
+                self.request, expected, successor, evidence
+            )
+            self.assertEqual(successor, current["state"])
+            self.assertEqual(revision, current["revision"])
+            self.assertEqual(evidence, current["stageEvidence"][successor])
+            self.assertEqual(
+                MODULE.canonical_hash({
+                    key: value
+                    for key, value in current.items()
+                    if key != "journalSha256"
+                }),
+                current["journalSha256"],
+            )
+        self.assertEqual("RELEASED", self.store.load(self.request)["state"])
+        self.assertEqual(set(MODULE.JOURNAL_STAGES), set(current["stageEvidence"]))
+
+    def test_skip_backward_and_wrong_expected_stage_leave_bytes_unchanged(self) -> None:
+        self.prepare()
+        path = self.journal_path()
+        before = path.read_bytes()
+        invalid = (
+            ("PREPARED", "UNREGISTERED"),
+            ("EPHEMERAL_RELEASED", "PREPARED"),
+            ("EPHEMERAL_RELEASED", "UNREGISTERED"),
+        )
+        for expected, successor in invalid:
+            with self.subTest(expected=expected, successor=successor):
+                self.assert_rejected(
+                    lambda expected=expected, successor=successor: self.store.advance(
+                        self.request, expected, successor, "1" * 64
+                    )
+                )
+                self.assertEqual(before, path.read_bytes())
+
+    def test_changed_request_or_preflight_cannot_reuse_journal(self) -> None:
+        self.prepare()
+        path = self.journal_path()
+        before = path.read_bytes()
+        changed_request = copy.deepcopy(self.request)
+        changed_request["idempotencyKey"] = str(uuid.uuid4())
+        self.assert_rejected(
+            lambda: self.store.prepare(changed_request, self.projection)
+        )
+        changed_projection = copy.deepcopy(self.projection)
+        changed_projection["runtimeContainers"] = []
+        self.assert_rejected(
+            lambda: self.store.prepare(self.request, changed_projection)
+        )
+        self.assertEqual(before, path.read_bytes())
+
+    def test_forged_schema_revision_evidence_or_seal_rejects_on_read(self) -> None:
+        self.prepare()
+        path = self.journal_path()
+        original = json.loads(path.read_text(encoding="utf-8"))
+        for key, value in (
+            ("schemaVersion", "foreign"),
+            ("revision", 6),
+            ("stageEvidence", {"PREPARED": "0" * 64, "UNREGISTERED": "1" * 64}),
+            ("journalSha256", "0" * 64),
+        ):
+            with self.subTest(key=key):
+                changed = copy.deepcopy(original)
+                changed[key] = value
+                path.write_text(json.dumps(changed), encoding="utf-8")
+                os.chmod(path, 0o600)
+                self.assert_rejected(lambda: self.store.load(self.request))
+        path.write_text(json.dumps(original), encoding="utf-8")
+        os.chmod(path, 0o600)
+        self.assertEqual("PREPARED", self.store.load(self.request)["state"])
+
+    def test_symlinked_or_non_private_journal_is_rejected_without_following(self) -> None:
+        session_root = self.root / self.request["sessionId"]
+        session_root.mkdir(mode=0o700)
+        foreign = self.root / "foreign.json"
+        foreign.write_text("foreign", encoding="utf-8")
+        path = session_root / "journal-v1.json"
+        path.symlink_to(foreign)
+        before = foreign.read_bytes()
+        self.assert_rejected(self.prepare)
+        self.assertEqual(before, foreign.read_bytes())
+        path.unlink()
+        path.write_text("{}", encoding="utf-8")
+        os.chmod(path, 0o644)
+        self.assert_rejected(lambda: self.store.load(self.request))
+
+    def test_invalid_stage_evidence_is_rejected_before_write(self) -> None:
+        self.prepare()
+        before = self.journal_path().read_bytes()
+        for evidence in ("", "f" * 63, "g" * 64):
+            with self.subTest(evidence=evidence):
+                self.assert_rejected(
+                    lambda evidence=evidence: self.store.advance(
+                        self.request, "PREPARED", "EPHEMERAL_RELEASED", evidence
+                    )
+                )
+                self.assertEqual(before, self.journal_path().read_bytes())
+
+    def test_atomic_replace_failure_preserves_previous_valid_revision(self) -> None:
+        self.prepare()
+        path = self.journal_path()
+        before = path.read_bytes()
+        with mock.patch.object(MODULE.os, "replace", side_effect=OSError("synthetic")):
+            self.assert_rejected(
+                lambda: self.store.advance(
+                    self.request, "PREPARED", "EPHEMERAL_RELEASED", "2" * 64
+                )
+            )
+        self.assertEqual(before, path.read_bytes())
+        self.assertEqual([], list(path.parent.glob(".journal-v1.*")))
+        self.assertEqual("PREPARED", self.store.load(self.request)["state"])
+
+    def test_changed_journal_between_read_and_replace_is_never_overwritten(self) -> None:
+        self.prepare()
+        path = self.journal_path()
+        original_read = self.store._read
+        raced_bytes = b""
+        calls = 0
+
+        def racing_read(target: Path) -> dict:
+            nonlocal calls, raced_bytes
+            observed = original_read(target)
+            calls += 1
+            if calls == 1:
+                changed = {
+                    key: value
+                    for key, value in observed.items()
+                    if key != "journalSha256"
+                }
+                changed["updatedAt"] = "2026-08-04T04:00:09Z"
+                changed = MODULE.ReleaseJournalStore._seal(changed)
+                raced_bytes = (
+                    json.dumps(changed, sort_keys=True, separators=(",", ":")) + "\n"
+                ).encode()
+                path.write_bytes(raced_bytes)
+                os.chmod(path, 0o600)
+            return observed
+
+        with mock.patch.object(self.store, "_read", side_effect=racing_read):
+            self.assert_rejected(
+                lambda: self.store.advance(
+                    self.request, "PREPARED", "EPHEMERAL_RELEASED", "3" * 64
+                )
+            )
+        self.assertEqual(raced_bytes, path.read_bytes())
+        self.assertEqual([], list(path.parent.glob(".journal-v1.*")))
+        self.assertEqual("PREPARED", self.store.load(self.request)["state"])
 
 
 if __name__ == "__main__":

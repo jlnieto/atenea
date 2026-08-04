@@ -11,8 +11,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import stat
+import tempfile
 import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 
@@ -28,6 +33,22 @@ UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
 FORBIDDEN_IDENTITY = re.compile(r"(?:^|[-_.:/])(beautips|prod|production)(?:$|[-_.:/])")
+JOURNAL_SCHEMA = "atenea-workspace-release-journal-v1"
+JOURNAL_ROOT = Path("/srv/atenea/worker/workspace-release-v1/sessions")
+JOURNAL_STAGES = (
+    "PREPARED",
+    "EPHEMERAL_RELEASED",
+    "UNREGISTERED",
+    "ADMISSION_RELEASED",
+    "ALLOCATION_RETIRED",
+    "RELEASED",
+)
+JOURNAL_KEYS = {
+    "schemaVersion", "operationId", "idempotencyKey", "sessionId",
+    "workspaceIdentity", "projectId", "workerId", "requestFingerprintSha256",
+    "ownershipFingerprintSha256", "allocationFingerprintSha256", "state",
+    "revision", "stageEvidence", "createdAt", "updatedAt", "journalSha256",
+}
 
 PROJECTION_KEYS = {
     "schemaVersion", "requestFingerprintSha256", "sessionId",
@@ -510,3 +531,295 @@ def validate_release_preflight(
         "candidateCounts": counts,
         "valuesExposed": False,
     }
+
+
+def _timestamp(value: datetime) -> str:
+    if value.tzinfo is None:
+        _reject()
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+class ReleaseJournalStore:
+    """Atomic private journal; callers must hold the lifecycle lock."""
+
+    def __init__(
+        self,
+        root: Path = JOURNAL_ROOT,
+        *,
+        test_mode: bool = False,
+        clock: Callable[[], datetime] | None = None,
+    ):
+        self.root = Path(root)
+        self.expected_uid = os.geteuid()
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        if not test_mode and self.root != JOURNAL_ROOT:
+            _reject()
+        self._require_directory(self.root)
+
+    def prepare(self, request: Any, projection: Any) -> dict[str, Any]:
+        exact_request = _request_identity(request)
+        preflight = validate_release_preflight(exact_request, projection)
+        session_root = self._session_root(exact_request["sessionId"], create=True)
+        target = session_root / "journal-v1.json"
+        if target.exists() or target.is_symlink():
+            existing = self._read(target)
+            self._require_identity(existing, exact_request, preflight)
+            if existing["state"] != "PREPARED":
+                _reject()
+            return existing
+        now = _timestamp(self.clock())
+        journal = {
+            "schemaVersion": JOURNAL_SCHEMA,
+            "operationId": exact_request["operationId"],
+            "idempotencyKey": exact_request["idempotencyKey"],
+            "sessionId": exact_request["sessionId"],
+            "workspaceIdentity": exact_request["workspaceIdentity"],
+            "projectId": PROJECT_ID,
+            "workerId": WORKER_ID,
+            "requestFingerprintSha256": preflight["requestFingerprintSha256"],
+            "ownershipFingerprintSha256": preflight["ownershipFingerprintSha256"],
+            "allocationFingerprintSha256": preflight[
+                "allocationFingerprintSha256"
+            ],
+            "state": "PREPARED",
+            "revision": 1,
+            "stageEvidence": {
+                "PREPARED": preflight["ownershipFingerprintSha256"],
+            },
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        return self._write(
+            target,
+            self._seal(journal),
+            must_be_absent=True,
+            expected_journal_sha256=None,
+        )
+
+    def load(self, request: Any) -> dict[str, Any]:
+        exact_request = _request_identity(request)
+        target = self._session_root(exact_request["sessionId"]) / "journal-v1.json"
+        journal = self._read(target)
+        self._require_request_identity(journal, exact_request)
+        return journal
+
+    def advance(
+        self,
+        request: Any,
+        expected_state: str,
+        next_state: str,
+        stage_evidence_sha256: str,
+    ) -> dict[str, Any]:
+        exact_request = _request_identity(request)
+        if (
+            expected_state not in JOURNAL_STAGES
+            or next_state not in JOURNAL_STAGES
+            or JOURNAL_STAGES.index(next_state) != JOURNAL_STAGES.index(expected_state) + 1
+            or not isinstance(stage_evidence_sha256, str)
+            or SHA256.fullmatch(stage_evidence_sha256) is None
+        ):
+            _reject()
+        target = self._session_root(exact_request["sessionId"]) / "journal-v1.json"
+        current = self._read(target)
+        self._require_request_identity(current, exact_request)
+        if current["state"] != expected_state:
+            _reject()
+        updated = {key: value for key, value in current.items() if key != "journalSha256"}
+        updated["state"] = next_state
+        updated["revision"] = current["revision"] + 1
+        updated["stageEvidence"] = dict(current["stageEvidence"])
+        updated["stageEvidence"][next_state] = stage_evidence_sha256
+        updated["updatedAt"] = _timestamp(self.clock())
+        return self._write(
+            target,
+            self._seal(updated),
+            must_be_absent=False,
+            expected_journal_sha256=current["journalSha256"],
+        )
+
+    def _session_root(self, session_id: str, create: bool = False) -> Path:
+        session_id = _canonical_uuid(session_id)
+        target = self.root / session_id
+        if create and not (target.exists() or target.is_symlink()):
+            try:
+                target.mkdir(mode=0o700)
+            except OSError:
+                _reject()
+            self._fsync_directory(self.root)
+        self._require_directory(target)
+        return target
+
+    def _require_directory(self, path: Path) -> None:
+        try:
+            observed = path.lstat()
+        except OSError:
+            _reject()
+        if (
+            not stat.S_ISDIR(observed.st_mode)
+            or stat.S_IMODE(observed.st_mode) != 0o700
+            or observed.st_uid != self.expected_uid
+        ):
+            _reject()
+
+    def _read(self, target: Path) -> dict[str, Any]:
+        try:
+            descriptor = os.open(target, os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                observed = os.fstat(descriptor)
+                if (
+                    not stat.S_ISREG(observed.st_mode)
+                    or stat.S_IMODE(observed.st_mode) != 0o600
+                    or observed.st_uid != self.expected_uid
+                    or observed.st_nlink != 1
+                    or observed.st_size > 64 * 1024
+                ):
+                    _reject()
+                with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+                    descriptor = -1
+                    parsed = json.load(handle)
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
+        except (OSError, ValueError, json.JSONDecodeError):
+            _reject()
+        return self._validate_journal(parsed)
+
+    def _write(
+        self,
+        target: Path,
+        journal: dict[str, Any],
+        *,
+        must_be_absent: bool,
+        expected_journal_sha256: str | None,
+    ) -> dict[str, Any]:
+        parent = target.parent
+        self._require_directory(parent)
+        if target.is_symlink() or (must_be_absent and target.exists()):
+            _reject()
+        descriptor = -1
+        temporary = ""
+        try:
+            descriptor, temporary = tempfile.mkstemp(prefix=".journal-v1.", dir=parent)
+            os.fchmod(descriptor, 0o600)
+            encoded = (
+                json.dumps(journal, sort_keys=True, separators=(",", ":")) + "\n"
+            ).encode()
+            written = 0
+            while written < len(encoded):
+                written += os.write(descriptor, encoded[written:])
+            os.fsync(descriptor)
+            os.close(descriptor)
+            descriptor = -1
+            if target.is_symlink() or (must_be_absent and target.exists()):
+                _reject()
+            if not must_be_absent:
+                observed = self._read(target)
+                if observed["journalSha256"] != expected_journal_sha256:
+                    _reject()
+            os.replace(temporary, target)
+            temporary = ""
+            self._fsync_directory(parent)
+        except (OSError, ValueError):
+            _reject()
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            if temporary:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+        return self._read(target)
+
+    @staticmethod
+    def _seal(journal: dict[str, Any]) -> dict[str, Any]:
+        if "journalSha256" in journal:
+            _reject()
+        sealed = dict(journal)
+        sealed["journalSha256"] = canonical_hash(journal)
+        return sealed
+
+    def _validate_journal(self, journal: Any) -> dict[str, Any]:
+        journal = _exact_dict(journal, JOURNAL_KEYS)
+        state = journal.get("state")
+        revision = journal.get("revision")
+        if (
+            journal.get("schemaVersion") != JOURNAL_SCHEMA
+            or state not in JOURNAL_STAGES
+            or type(revision) is not int
+            or revision != JOURNAL_STAGES.index(state) + 1
+            or _canonical_uuid(journal.get("operationId")) != journal["operationId"]
+            or _canonical_uuid(journal.get("idempotencyKey")) != journal["idempotencyKey"]
+            or _canonical_uuid(journal.get("sessionId")) != journal["sessionId"]
+            or journal.get("workspaceIdentity")
+            != f"remote:{WORKER_ID}:work-session:{journal['sessionId']}"
+            or journal.get("projectId") != PROJECT_ID
+            or journal.get("workerId") != WORKER_ID
+        ):
+            _reject()
+        for key in (
+            "requestFingerprintSha256", "ownershipFingerprintSha256",
+            "allocationFingerprintSha256", "journalSha256",
+        ):
+            if not isinstance(journal.get(key), str) or SHA256.fullmatch(journal[key]) is None:
+                _reject()
+        evidence = journal.get("stageEvidence")
+        if (
+            not isinstance(evidence, dict)
+            or set(evidence) != set(JOURNAL_STAGES[:revision])
+            or any(not isinstance(value, str) or SHA256.fullmatch(value) is None for value in evidence.values())
+            or evidence.get("PREPARED") != journal["ownershipFingerprintSha256"]
+        ):
+            _reject()
+        for key in ("createdAt", "updatedAt"):
+            value = journal.get(key)
+            if not isinstance(value, str) or not value.endswith("Z"):
+                _reject()
+            try:
+                datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                _reject()
+        if canonical_hash({key: value for key, value in journal.items() if key != "journalSha256"}) != journal["journalSha256"]:
+            _reject()
+        return dict(journal)
+
+    @staticmethod
+    def _require_request_identity(
+        journal: dict[str, Any], exact_request: dict[str, str]
+    ) -> None:
+        if (
+            journal["operationId"] != exact_request["operationId"]
+            or journal["idempotencyKey"] != exact_request["idempotencyKey"]
+            or journal["sessionId"] != exact_request["sessionId"]
+            or journal["workspaceIdentity"] != exact_request["workspaceIdentity"]
+            or journal["projectId"] != exact_request["projectId"]
+            or journal["workerId"] != WORKER_ID
+            or journal["requestFingerprintSha256"] != canonical_hash(exact_request)
+        ):
+            _reject()
+
+    def _require_identity(
+        self,
+        journal: dict[str, Any],
+        exact_request: dict[str, str],
+        preflight: dict[str, Any],
+    ) -> None:
+        self._require_request_identity(journal, exact_request)
+        if (
+            journal["ownershipFingerprintSha256"]
+            != preflight["ownershipFingerprintSha256"]
+            or journal["allocationFingerprintSha256"]
+            != preflight["allocationFingerprintSha256"]
+        ):
+            _reject()
+
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        except OSError:
+            _reject()
