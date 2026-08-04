@@ -12365,3 +12365,48 @@ Sanitized backend, migration and final external-health evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.1-complete-backend-v63`;
 the SHA-256 of its `SHA256SUMS` is
 `e84c8ba62af00f411c1b0769c07b32ca251682dc413e5bd52f177fd10b38b30a`.
+
+Task 6.2 is complete. Change progress is `38/60`; task 6.3 is the exact
+resume point. The unchanged Atenea candidate
+`03534c4998eaf150aa0eda9d0096b00f403b1baa`, tree
+`d1a1e6ba2c1e1207f882c481428342a8f83a76ab`, ran from a detached task-owned
+checkout with exact package-lock SHA-256
+`62ea4d444da58e7e27bd83cb53ebcf49bcc9bf27dd5641e3d12ed8dd86ff21bc`.
+
+`npm ci` and the separate live dependency audit pass. The audit covers 128
+dependency records and reports zero informational, low, moderate, high or
+critical vulnerabilities with exit 0. npm emitted only its advisory that the
+existing esbuild postinstall is not yet covered by an `allowScripts`
+declaration; no dependency approval, lockfile or configuration was changed.
+The production TypeScript/Vite build passes and transforms 1,583 modules.
+Generated index and bundle output remained confined to the disposable checkout.
+
+The complete real Chromium suite passes 27/27 with one worker, zero retries
+and finite timeouts: all 17 attachment/composer regressions and all ten remote
+close state/action/refresh cases. Synthetic request recording proves
+confirmation authority, explicit refresh and zero automatic release or
+AgentRun retry in blocked and stale paths. DOM assertions cover closing,
+blocked ownership, required administrator role, legacy confirmation, stale
+confirmation, released capacity and explicit retry.
+
+Eight final screenshots at exact `1440x900` and `390x844` were inspected.
+State and one primary action remain visually dominant, long safe messages wrap,
+permissions and stale errors remain legible, confirmation controls stay above
+the fixed composer and no clipping, overlap or horizontal overflow is present.
+The Playwright server exited, port 4175 is free and related Node/browser process
+count is zero. The exact checkout, dependencies, build output and result file
+were removed after evidence staging.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. AgentRun 96 remains unretried with no child. Production,
+preview and Beautips return HTTP 200; routing remains `ax42-01`
+enabled/healthy `4/2` at `0/0`. All five incident ownership hashes remain
+exact; worker services remain active with zero restarts, rootless slots remain
+`3/0/0/3`, rootful daemons remain inactive, RAID remains `3/3 [UU]` and
+backup/check/health remain `success/0`. No production, preview, Beautips,
+worker, ownership, prompt, retry, runtime or foreign resource changed.
+
+Sanitized build, audit, DOM and final screenshot evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.2-final-web-acceptance`;
+the SHA-256 of its `SHA256SUMS` is
+`7a3ef0d0e4da6eb7e9d2f165b43672880c9a5f68857aeb3e2a7ee1a9b8df4305`.
