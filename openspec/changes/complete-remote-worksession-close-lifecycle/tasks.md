@@ -91,7 +91,7 @@ environment dumps.
   wrong-session, wrong-project, symlinked and ambiguous fixtures; record their
   immutable IDs, prove each rejection leaves them intact, then remove only the
   exact fixtures by recorded identity
-- [ ] 3.8 Update the dedicated installer, sudoers, dependency fingerprints and
+- [x] 3.8 Update the dedicated installer, sudoers, dependency fingerprints and
   installed verifier for the exact release authority; add an exact predecessor
   rollback that cannot remove or broaden another operation
 - [ ] 3.9 Run every focused release/installer/rollback test and the complete

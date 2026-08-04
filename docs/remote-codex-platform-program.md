@@ -11601,3 +11601,56 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.7-adversarial-ownership-fixtures`;
 the SHA-256 of its `SHA256SUMS` is
 `9fc86f79eb50cd64f1ddf34099a88c13229ba9d84121fc02ed4d9a9fe7986e18`.
+
+Task 3.8 is complete. Change progress is `23/60`; task 3.9 is the exact
+resume point and the section-wide sorted worker closure run has not started.
+
+The dedicated Atenea workspace lifecycle installer now recognizes only an
+all-absent bundle, the exact activation-only predecessor, the exact successor
+or the one disable-first rollback intermediate. Fixed SHA-256 values cover the
+activation mediator, release mediator, session-workspace, admission,
+allocation and current AgentRun worker sources. Apply repeats whole-bundle
+preflight before writing, creates the private `0700 root:root` journal root,
+installs both exact mediators and then verifies owner, group, mode, hash and
+sudo syntax.
+
+The successor sudoers has exactly two rules: the retained fixed Atenea ensure
+form and the workspace-release program with no arguments. It contains no
+release wildcard, client path, slot, port, service, endpoint, label or resource
+authority. Both the dedicated installed verifier and the worker installer
+require this exact rule set, exact program hash and exact journal root. Their
+safe result explicitly reports `releaseEnabledByDefault=false`; no worker
+route, service or production gate was enabled.
+
+Rollback first atomically restores the activation-only sudoers predecessor,
+then removes only the still-exact successor release program. It retains the
+activation mediator, all three reviewed dependencies, journal root and every
+record beneath it. Repetition is unchanged/idempotent; the exact intermediate
+resumes. A foreign release program, broadened sudoers, partial bundle, symlink
+or changed dependency rejects without removal. Sandbox apply/reapply proves a
+retained operation remains byte-identical, and rollback proves both its journal
+and an unrelated operation remain exact.
+
+All four shell files pass syntax validation; both installer/rollback suites
+pass. The release finalizer and complete AgentRun worker regressions pass
+34/34 and 68/68 respectively, 102/102 aggregate, with zero failures or errors.
+The current AX42 installation remains the exact activation-only predecessor:
+the release binary, journal root and release sudo rule are absent, while the
+one existing ensure rule remains.
+
+Production remains V62 at 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote and AgentRun
+96 remains terminal unretried `FAILED`. Production and preview remain `UP`;
+production, preview and Beautips remain running with zero restarts; routing is
+still `ax42-01` enabled/healthy `4/2` at `0/0`. All five incident ownership
+hashes remain exact, WorkSession 17 allocation/admission remain absent and both
+incident container candidate counts remain zero. Worker services remain
+active with zero restarts, rootless slots remain `3/0/0/3`, rootful daemons
+remain inactive, RAID remains `3/3 [UU]` and backup/check/health remain
+`success/0`. No deployment, installation, activation, ownership or foreign
+resource mutation occurred.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-3.8-exact-release-installer-rollback`;
+the SHA-256 of its `SHA256SUMS` is
+`d29a1cd08c008f26db2e5648e5246c76c1d67719dfc43124bf45569298693b5e`.

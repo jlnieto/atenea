@@ -17,8 +17,10 @@ PLAYWRIGHT_VALIDATOR="/usr/local/libexec/atenea/atenea-playwright-validation-v1.
 PLAYWRIGHT_CHECK="/usr/local/libexec/atenea/atenea-playwright-validation-v1.js"
 ROLE_MEDIATOR="/usr/local/libexec/atenea/atenea-multi-repository-v1.sh"
 WORKSPACE_ACTIVATOR="/usr/local/libexec/atenea/atenea-workspace-activation-v1.sh"
+WORKSPACE_RELEASER="/usr/local/libexec/atenea/atenea-workspace-release-v1.py"
 WORKSPACE_ACTIVATION_SUDOERS="/etc/sudoers.d/92-atenea-routing-activation-v1"
 WORKSPACE_ACTIVATION_BUNDLE="/srv/atenea/worker/workspace-v1/ops/worker"
+WORKSPACE_RELEASE_ROOT="/srv/atenea/worker/workspace-release-v1/sessions"
 CODEX_UPDATE_MEDIATOR="/usr/local/libexec/atenea/codex-release-stage-v1.py"
 CODEX_ACTIVATE_MEDIATOR="/usr/local/libexec/atenea/codex-release-activate-v1.py"
 CODEX_RESTART_SCHEDULER="/usr/local/libexec/atenea/codex-release-restart-v1.sh"
@@ -46,12 +48,13 @@ PROJECT_REF="refs/remotes/origin/${PROJECT_BRANCH}"
 PROJECT_WORKSPACES_ROOT="/srv/atenea/workspaces/sessions"
 SERVICE_TEMPLATE_SHA256="0368f8769a6b4c505c0bb58f6cf88db1d5aa45437eb35602c4227f615a2650bc"
 MATERIALIZATION_SERVICE_TEMPLATE_SHA256="df3a3fa0d75472d8aaf6847c58b4bace6e7ed2f7d532f1f86c8c562cda2387a6"
-PROGRAM_SHA256="189654227b5550a5ac23823c7164608ef47c3f36dc51afc6fa1f2a73631da2f7"
+PROGRAM_SHA256="b43023e1aedd81e4369dbf40d339849c38cb08fa594897f51fa9ab1b92b11cf2"
 PROJECT_RUNNER_SHA256="2ca885104cda9a6e14b4c65ec96346b17844147c7fcb8c571c693248885c6a42"
 BEAUTIPS_PROJECT_RUNNER_SHA256="6234de1167cbcb32533398b9e421ada018e3097bf868bd627ddd712f20ad17cc"
 BEAUTIPS_PROJECT_RUNNER_PREDECESSOR_SHA256="60d54f1e6e6eaf1edea43e9bf3b0800226a413b4feee5a59ce8152954d97b983"
 PLATFORM_INSTRUCTIONS_SHA256="44c578a286eb50b35612be0b6c38d59a503e6fee1ecf6cd0339415af018cdf0d"
 WORKSPACE_ACTIVATOR_SHA256="5ef544c478c17a0ae6ae88586915185572721ca89dc48dbbf15b65ad417aa889"
+WORKSPACE_RELEASER_SHA256="6e721a7d166fae977d781a5d6341fd872e51cb0bdf349afd8d53da2ec08402c1"
 SESSION_WORKSPACE_SHA256="3e41ae7f218f360920bed7cd4b2d75cab5396bb07649635694db3271b12d2ffe"
 RUNTIME_ADMISSION_SHA256="a81366d3495bb2a7bf4702e9ea934a74e9b3edb30f728926e655a5c0a6a9f7ce"
 SESSION_ALLOCATION_SHA256="2efceeaaba78b349f1d6aa79bfba5d908d397a9e3a480cfa3b100bde52fb99d7"
@@ -140,6 +143,7 @@ verify_beautips_project_runner_upgrade() {
 
 workspace_activation_sudoers_content() {
   printf 'atenea-worker ALL=(root) NOPASSWD: %s ensure *\n' "$WORKSPACE_ACTIVATOR"
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s\n' "$WORKSPACE_RELEASER"
 }
 
 verify_workspace_activation_dependency() {
@@ -148,6 +152,14 @@ verify_workspace_activation_dependency() {
       && "$(sha256sum "$WORKSPACE_ACTIVATOR" | cut -d' ' -f1)" \
         == "$WORKSPACE_ACTIVATOR_SHA256" ]] \
     || fail "Atenea workspace activator differs from the reviewed source"
+  [[ -f "$WORKSPACE_RELEASER" && ! -L "$WORKSPACE_RELEASER" \
+      && "$(stat -c '%a:%U:%G' "$WORKSPACE_RELEASER")" == "755:root:root" \
+      && "$(sha256sum "$WORKSPACE_RELEASER" | cut -d' ' -f1)" \
+        == "$WORKSPACE_RELEASER_SHA256" ]] \
+    || fail "Atenea workspace releaser differs from the reviewed source"
+  [[ -d "$WORKSPACE_RELEASE_ROOT" && ! -L "$WORKSPACE_RELEASE_ROOT" \
+      && "$(stat -c '%a:%U:%G' "$WORKSPACE_RELEASE_ROOT")" == "700:root:root" ]] \
+    || fail "Atenea workspace release journal root is not exact"
   [[ -f "$WORKSPACE_ACTIVATION_SUDOERS" && ! -L "$WORKSPACE_ACTIVATION_SUDOERS" \
       && "$(stat -c '%a:%U:%G' "$WORKSPACE_ACTIVATION_SUDOERS")" == "440:root:root" \
       && "$(cat "$WORKSPACE_ACTIVATION_SUDOERS")" \
@@ -188,6 +200,7 @@ validate_inputs() {
   [[ -f "$SCRIPT_DIR/atenea-playwright-validation-v1.js" ]] || fail "Playwright check is missing"
   [[ -f "$SCRIPT_DIR/atenea-multi-repository-v1.sh" ]] || fail "repository role mediator is missing"
   [[ -f "$SCRIPT_DIR/atenea-workspace-activation-v1.sh" ]] || fail "workspace activator is missing"
+  [[ -f "$SCRIPT_DIR/atenea-workspace-release-v1.py" ]] || fail "workspace releaser is missing"
   [[ -f "$SCRIPT_DIR/codex-release-stage-v1.py" ]] || fail "Codex update stage mediator is missing"
   [[ -f "$SCRIPT_DIR/codex-release-activate-v1.py" ]] || fail "Codex update activation mediator is missing"
   [[ -f "$SCRIPT_DIR/codex-release-restart-v1.sh" ]] || fail "Codex update restart scheduler is missing"
@@ -205,6 +218,9 @@ validate_inputs() {
   [[ "$(sha256sum "$SCRIPT_DIR/atenea-workspace-activation-v1.sh" | cut -d' ' -f1)" \
       == "$WORKSPACE_ACTIVATOR_SHA256" ]] \
     || fail "workspace activator fingerprint is stale"
+  [[ "$(sha256sum "$SCRIPT_DIR/atenea-workspace-release-v1.py" | cut -d' ' -f1)" \
+      == "$WORKSPACE_RELEASER_SHA256" ]] \
+    || fail "workspace releaser fingerprint is stale"
 }
 
 plan() {
