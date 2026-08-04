@@ -48,7 +48,7 @@ environment dumps.
 - [x] 2.1 Extend the worker error envelope with a closed safe schema and an
   allowlisted mapping from reviewed mediator codes; reject unknown fields,
   unsafe detail, invalid blocker UUIDs and oversized output in focused tests
-- [ ] 2.2 Extend `RemoteWorkerException`/`RemoteWorkerClient` to parse only that
+- [x] 2.2 Extend `RemoteWorkerException`/`RemoteWorkerClient` to parse only that
   schema and retain HTTP status, safe code, category, retryability and next
   action; discard raw bodies and preserve existing success decoding
 - [ ] 2.3 Split coordinator handling so I/O/timeouts/compatible 5xx reconcile,

@@ -11075,3 +11075,43 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.1-typed-worker-errors`;
 the SHA-256 of its `SHA256SUMS` is
 `85d0e0385ad7b5969f129e1b5e3ea9b7105d6c3ae661aa2298b2f489511ea5ee`.
+
+Task 2.2 is complete. Change progress is `11/60`; task 2.3 is the exact resume
+point and coordinator admission decisions remain unchanged.
+
+Canonical Atenea candidate commit
+`17b53559718f7eb612a5e430057345acc6742c17` is published exactly in the
+canonical repository and GitHub. `RemoteWorkerException` now retains HTTP
+status, safe code, closed category, retryability, next action and optional
+blocker UUID while preserving both existing constructors.
+
+`RemoteWorkerClient` obtains response bodies as streams. Successful responses
+continue through the unchanged record decoder. For a non-success response it
+accepts only exact `application/json`, reads at most 1,025 bytes, rejects more
+than the 1,024-byte worker limit, parses only `worker-error-v1`, validates all
+fields and values, and zeroes its temporary byte buffer.
+
+Unknown fields, malformed JSON, missing values, unknown schema/category/action,
+worker-selected `RECONCILE_REMOTE_CLOSE`, invalid or misplaced blocker UUID,
+wrong content type and oversized bodies become only
+`REMOTE_WORKER_PROTOCOL_FAILURE` with platform review. Raw body bytes and
+parser exceptions are never attached to the application exception, log or
+persistence projection. A valid capacity envelope preserves only its safe
+projection and canonical blocker UUID.
+
+All 24 client tests pass, including unchanged success decoding and the complete
+malformed/unsafe/oversized matrix. The related client, coordinator, routing and
+attachment-manifest regression set passes 48/48. Maven report artifacts were
+cleaned after aggregation. No source was deployed.
+
+Production remains V62 with 15 WorkSessions and 96 terminal AgentRuns;
+WorkSessions 16/17 and AgentRun 96 remain `CLOSED`/`OPEN`/unretried `FAILED`.
+Production, preview and Beautips return HTTP 200. Worker services have zero
+restarts, rootless slots remain `3/0/0/3`, rootful daemons remain inactive,
+RAID remains `3/3 [UU]`, backup/check/health results remain successful and all
+exact incident ownership hashes match entry. No foreign resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.2-strict-worker-client-errors`;
+the SHA-256 of its `SHA256SUMS` is
+`f747c63023c762e6d3c555e775a7431e5db03d20b8adda0190a53e7f2163141a`.
