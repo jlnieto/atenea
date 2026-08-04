@@ -21,6 +21,7 @@ type SyntheticState = {
   planRequests: Record<string, unknown>[];
   confirmationRequests: Record<string, unknown>[];
   recoveryRequests: Record<string, unknown>[];
+  staleConfirmation?: boolean;
 };
 
 const currentSessionId = 641;
@@ -176,6 +177,9 @@ async function installSyntheticApi(page: Page, apiState: SyntheticState) {
     if (path === `/api/admin/work-sessions/${closedOwnerId}/remote-close-reconciliations`
         && request.method() === "POST") {
       apiState.confirmationRequests.push(request.postDataJSON());
+      if (apiState.staleConfirmation) {
+        return json(route, { code: "REMOTE_CLOSE_PLAN_STALE" }, 409);
+      }
       apiState.released = true;
       return json(route, {
         operationId: "20000000-0000-4000-8000-000000000001",
@@ -360,6 +364,63 @@ test("routine operator sees the required role and cannot create a legacy plan", 
   await retainScreenshot(page, "mobile-required-role.png");
   expect(apiState.planRequests).toHaveLength(0);
 });
+
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 }
+] as const) {
+test(`${viewport.name} stale confirmation is discarded until an explicit screen refresh`, async ({ page }) => {
+  await page.setViewportSize({ width: viewport.width, height: viewport.height });
+  const apiState: SyntheticState = {
+    operatorRole: "PLATFORM_ADMINISTRATOR",
+    operatorState: {
+      surfaceEnabled: true,
+      state: "CLOSED_OWNER_BLOCKS_CAPACITY",
+      title: "Bloqueada por una sesión cerrada",
+      blocker: "Otra sesión cerrada conserva la capacidad necesaria.",
+      primaryAction: "RECONCILE_REMOTE_CLOSE",
+      primaryActionLabel: "Reconciliar cierre",
+      primaryActionAvailable: true,
+      requiredRole: "PLATFORM_ADMINISTRATOR",
+      targetWorkSessionId: closedOwnerId,
+      targetAgentRunId: failedRunId
+    },
+    released: false,
+    closeRequests: 0,
+    planRequests: [],
+    confirmationRequests: [],
+    recoveryRequests: [],
+    staleConfirmation: true
+  };
+  await openConversation(page, apiState, "stale-confirmation");
+
+  await page.getByRole("button", { name: "Reconciliar cierre" }).click();
+  await page.getByRole("button", { name: "Confirmar reconciliación" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación."
+  );
+  await expect(page.getByRole("group", { name: "Confirmar reconciliación del cierre" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reconciliar cierre" })).toBeDisabled();
+  await expectNoHorizontalOverflow(page);
+  await retainScreenshot(page, `${viewport.name}-stale-confirmation.png`);
+  expect(apiState.planRequests).toHaveLength(1);
+  expect(apiState.confirmationRequests).toHaveLength(1);
+  expect(apiState.recoveryRequests).toHaveLength(0);
+
+  await page.getByRole("button", { name: "Actualizar" }).click();
+  await expect(page.getByRole("button", { name: "Reconciliar cierre" })).toBeEnabled();
+  await page.getByRole("button", { name: "Reconciliar cierre" }).click();
+  await expect(page.getByRole("group", { name: "Confirmar reconciliación del cierre" })).toBeVisible();
+  expect(apiState.planRequests).toHaveLength(2);
+  expect(apiState.confirmationRequests).toHaveLength(1);
+  expect(apiState.recoveryRequests).toHaveLength(0);
+
+  await page.waitForTimeout(8_500);
+  await expect(page.getByRole("group", { name: "Confirmar reconciliación del cierre" })).toBeVisible();
+  expect(apiState.planRequests).toHaveLength(2);
+});
+}
 
 test("reconciling and unverifiable ownership never expose retry", async ({ page }) => {
   const apiState: SyntheticState = {

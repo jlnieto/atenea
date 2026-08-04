@@ -22,6 +22,7 @@ object AteneaNotificationRouteParser {
             data["templateVersion"] != "agent-run-safe-v1" ||
             data["category"] !in categories ||
             data["type"] != data["category"] ||
+            data["deepLink"] != deepLink ||
             data["sessionId"]?.toLongOrNull() != parsedUri ||
             data["runId"]?.toLongOrNull()?.let { it > 0 } != true
         ) {

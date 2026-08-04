@@ -98,9 +98,10 @@ internal fun AteneaShell(
     }
     LaunchedEffect(requestedConversation?.requestKey) {
         requestedConversation ?: return@LaunchedEffect
+        val conversationNavigation = requestedConversation.toConversationNavigation()
         selectedProjectId = null
-        selectedSessionId = requestedConversation.sessionId
-        conversationRequestKey = requestedConversation.requestKey
+        selectedSessionId = conversationNavigation.sessionId
+        conversationRequestKey = conversationNavigation.requestKey
         selectedDestination = AteneaDestination.CONVERSATION
     }
 

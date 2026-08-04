@@ -80,6 +80,28 @@ class RemoteCloseOperatorPanelTest {
         compose.onNodeWithText("Cancelar").assertIsDisplayed()
     }
 
+    @Test
+    fun staleConfirmationRequiresRefreshBeforeAnotherPlan() {
+        compose.setContent {
+            MaterialTheme {
+                RemoteCloseOperatorPanel(
+                    serverState = blockedState(),
+                    actionState = RemoteCloseActionUiState(
+                        requiresRefresh = true,
+                        error = "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación."
+                    ),
+                    operatorRole = "PLATFORM_ADMINISTRATOR",
+                    onPrimaryAction = {},
+                    onConfirm = {},
+                    onCancel = {}
+                )
+            }
+        }
+
+        compose.onNodeWithText("El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación.").assertIsDisplayed()
+        compose.onNodeWithTag("remote-close-primary-action").assertIsNotEnabled()
+    }
+
     private fun blockedState() = MobileSessionOperatorState(
         surfaceEnabled = true,
         state = "CLOSED_OWNER_BLOCKS_CAPACITY",

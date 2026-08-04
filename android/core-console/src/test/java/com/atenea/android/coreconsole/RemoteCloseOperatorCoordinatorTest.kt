@@ -88,6 +88,40 @@ class RemoteCloseOperatorCoordinatorTest {
         assertFalse(transport.contains("socket", ignoreCase = true))
     }
 
+    @Test
+    fun staleConfirmationIsDiscardedAndRequiresFreshServerProjection() = runBlocking {
+        val gateway = FakeGateway(staleConfirmation = true)
+        val coordinator = coordinator(gateway, role = "PLATFORM_ADMINISTRATOR")
+        val state = blockedCapacityState()
+
+        coordinator.runPrimaryAction(state)
+        assertFalse(coordinator.confirmLegacyReconciliation(state))
+
+        assertNull(coordinator.state.value.plan)
+        assertTrue(coordinator.state.value.requiresRefresh)
+        assertEquals(
+            "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación.",
+            coordinator.state.value.error
+        )
+        assertFalse(coordinator.runPrimaryAction(state))
+        assertEquals(listOf("key-1"), gateway.planKeys)
+
+        coordinator.accept(state)
+        assertFalse(coordinator.state.value.requiresRefresh)
+        assertFalse(coordinator.runPrimaryAction(state))
+        assertEquals(listOf("key-1", "key-3"), gateway.planKeys)
+    }
+
+    @Test
+    fun authorizationHierarchyMatchesTheSharedOperatorRoles() {
+        assertTrue(operatorHasRequiredRole("ROUTINE_OPERATOR", "ROUTINE_OPERATOR"))
+        assertTrue(operatorHasRequiredRole("PRIVILEGED_OPERATOR", "ROUTINE_OPERATOR"))
+        assertTrue(operatorHasRequiredRole("PLATFORM_ADMINISTRATOR", "PRIVILEGED_OPERATOR"))
+        assertFalse(operatorHasRequiredRole("ROUTINE_OPERATOR", "PRIVILEGED_OPERATOR"))
+        assertFalse(operatorHasRequiredRole("PRIVILEGED_OPERATOR", "PLATFORM_ADMINISTRATOR"))
+        assertFalse(operatorHasRequiredRole(null, "ROUTINE_OPERATOR"))
+    }
+
     private fun coordinator(gateway: FakeGateway, role: String): RemoteCloseOperatorCoordinator {
         var key = 0
         return RemoteCloseOperatorCoordinator(
@@ -101,7 +135,8 @@ class RemoteCloseOperatorCoordinatorTest {
 
     private class FakeGateway(
         private val failFirstPlan: Boolean = false,
-        private val failFirstConfirmation: Boolean = false
+        private val failFirstConfirmation: Boolean = false,
+        private val staleConfirmation: Boolean = false
     ) : RemoteCloseGateway {
         val planKeys = mutableListOf<String>()
         val confirmationKeys = mutableListOf<String>()
@@ -121,6 +156,7 @@ class RemoteCloseOperatorCoordinatorTest {
             idempotencyKey: String
         ): LegacyRemoteCloseOperation {
             confirmationKeys += idempotencyKey
+            if (staleConfirmation) throw AteneaApiException(409, "stale")
             if (failFirstConfirmation && confirmationKeys.size == 1) {
                 throw AteneaApiException(503, "response lost")
             }

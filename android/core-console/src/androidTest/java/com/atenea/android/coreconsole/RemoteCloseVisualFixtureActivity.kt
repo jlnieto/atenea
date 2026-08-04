@@ -19,6 +19,7 @@ class RemoteCloseVisualFixtureActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val confirmation = intent.getBooleanExtra("confirmation", false)
+        val stale = intent.getBooleanExtra("stale", false)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -26,7 +27,10 @@ class RemoteCloseVisualFixtureActivity : ComponentActivity() {
                         RemoteCloseOperatorPanel(
                             serverState = syntheticState,
                             actionState = RemoteCloseActionUiState(
-                                plan = syntheticPlan.takeIf { confirmation }
+                                plan = syntheticPlan.takeIf { confirmation },
+                                requiresRefresh = stale,
+                                error = "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación."
+                                    .takeIf { stale }
                             ),
                             operatorRole = "PLATFORM_ADMINISTRATOR",
                             onPrimaryAction = {},

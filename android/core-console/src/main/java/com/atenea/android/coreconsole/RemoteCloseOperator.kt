@@ -29,6 +29,7 @@ import java.util.UUID
 internal data class RemoteCloseActionUiState(
     val plan: LegacyRemoteClosePlan? = null,
     val pending: Boolean = false,
+    val requiresRefresh: Boolean = false,
     val error: String? = null,
     val notice: String? = null
 )
@@ -81,7 +82,7 @@ internal class RemoteCloseOperatorCoordinator(
 
     fun accept(serverState: MobileSessionOperatorState) {
         val identity = RemoteCloseIdentity.from(serverState)
-        if (identity == acceptedIdentity) return
+        if (identity == acceptedIdentity && !mutableState.value.requiresRefresh) return
         acceptedIdentity = identity
         planIdempotencyKey = null
         confirmationIdempotencyKey = null
@@ -89,7 +90,9 @@ internal class RemoteCloseOperatorCoordinator(
     }
 
     suspend fun runPrimaryAction(serverState: MobileSessionOperatorState): Boolean {
-        if (!remoteCloseActionAllowed(serverState, operatorRoleProvider()) || mutableState.value.pending) {
+        if (!remoteCloseActionAllowed(serverState, operatorRoleProvider()) ||
+            mutableState.value.pending || mutableState.value.requiresRefresh
+        ) {
             return false
         }
         mutableState.value = mutableState.value.copy(pending = true, error = null, notice = null)
@@ -126,7 +129,11 @@ internal class RemoteCloseOperatorCoordinator(
                 else -> false
             }
         } catch (actionError: Exception) {
-            mutableState.value = mutableState.value.copy(error = remoteCloseActionError(actionError))
+            if (actionError is AteneaApiException && actionError.status == 409) {
+                invalidateStaleConfirmation(actionError)
+            } else {
+                mutableState.value = mutableState.value.copy(error = remoteCloseActionError(actionError))
+            }
             false
         } finally {
             mutableState.value = mutableState.value.copy(pending = false)
@@ -159,7 +166,11 @@ internal class RemoteCloseOperatorCoordinator(
             )
             true
         } catch (actionError: Exception) {
-            mutableState.value = mutableState.value.copy(error = remoteCloseActionError(actionError))
+            if (actionError is AteneaApiException && actionError.status == 409) {
+                invalidateStaleConfirmation(actionError)
+            } else {
+                mutableState.value = mutableState.value.copy(error = remoteCloseActionError(actionError))
+            }
             false
         } finally {
             mutableState.value = mutableState.value.copy(pending = false)
@@ -169,6 +180,15 @@ internal class RemoteCloseOperatorCoordinator(
     fun cancelConfirmation() {
         confirmationIdempotencyKey = null
         mutableState.value = mutableState.value.copy(plan = null, error = null)
+    }
+
+    private fun invalidateStaleConfirmation(error: AteneaApiException) {
+        planIdempotencyKey = null
+        confirmationIdempotencyKey = null
+        mutableState.value = RemoteCloseActionUiState(
+            requiresRefresh = true,
+            error = remoteCloseActionError(error)
+        )
     }
 
     private fun requireValidPlan(plan: LegacyRemoteClosePlan, targetSessionId: Long) {
@@ -254,7 +274,7 @@ internal fun RemoteCloseOperatorPanel(
     if (!serverState.surfaceEnabled) return
 
     val roleAllowed = operatorHasRequiredRole(operatorRole, serverState.requiredRole)
-    val actionAvailable = remoteCloseActionAllowed(serverState, operatorRole)
+    val actionAvailable = remoteCloseActionAllowed(serverState, operatorRole) && !actionState.requiresRefresh
     val foreground = if (dark) ConversationColors.primaryText else MaterialTheme.colorScheme.onSurface
     val secondary = if (dark) ConversationColors.secondaryText else MaterialTheme.colorScheme.onSurfaceVariant
     val accent = when (remoteCloseStateLevel(serverState.state)) {

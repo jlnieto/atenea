@@ -578,9 +578,10 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
   const [command, setCommand] = useState<CoreCommandResponse | null>(null);
   const [billingReference, setBillingReference] = useState("");
   const [loading, setLoading] = useState(false);
+  const [operatorRefreshGeneration, setOperatorRefreshGeneration] = useState(0);
   const [error, setError] = useState("");
 
-  async function load() {
+  async function load(explicitOperatorRefresh = false) {
     setLoading(true);
     setError("");
     try {
@@ -596,6 +597,9 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
         })
       ]);
       setSummary(nextSummary);
+      if (explicitOperatorRefresh) {
+        setOperatorRefreshGeneration((generation) => generation + 1);
+      }
       setDeliverables(nextDeliverables);
       setEvents(nextEvents.events || []);
       setPreview(nextPreview);
@@ -654,7 +658,7 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
       <Toolbar>
         <Button variant="ghost" icon={<ArrowLeft />} onClick={() => navigate({ name: "projects" })}>Proyectos</Button>
         <Button icon={<MessageSquare />} onClick={() => navigate({ name: "conversation", projectId, sessionId })}>Conversación</Button>
-        <Button icon={<RefreshCw />} disabled={loading} onClick={load}>{loading ? "Actualizando" : "Actualizar"}</Button>
+        <Button icon={<RefreshCw />} disabled={loading} onClick={() => load(true)}>{loading ? "Actualizando" : "Actualizar"}</Button>
       </Toolbar>
       {error && <InlineError>{error}</InlineError>}
       <section className="session-hero">
@@ -668,6 +672,7 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
       <RemoteCloseOperatorPanel
         state={summary.operatorState}
         currentWorkSessionId={sessionId}
+        refreshGeneration={operatorRefreshGeneration}
         onChanged={load}
       />
       <PreviewPanel preview={preview} onRefresh={load} />
@@ -886,6 +891,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   const [recoveryPending, setRecoveryPending] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
+  const [operatorRefreshGeneration, setOperatorRefreshGeneration] = useState(0);
   const uploadInProgress = useRef(false);
   const submitInProgress = useRef(false);
   const turnRequestIdRef = useRef<string | null>(null);
@@ -912,7 +918,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     }
   }
 
-  async function load() {
+  async function load(explicitOperatorRefresh = false) {
     setError("");
     setAttachmentError("");
     setAttachmentCapabilityLoading(true);
@@ -923,6 +929,9 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     if (summaryResult.status === "fulfilled") {
       setConversation(summaryResult.value.conversation);
       setOperatorState(summaryResult.value.operatorState);
+      if (explicitOperatorRefresh) {
+        setOperatorRefreshGeneration((generation) => generation + 1);
+      }
     } else {
       setError(errorMessage(summaryResult.reason));
     }
@@ -1242,13 +1251,14 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       title={conversation?.session.title || `WorkSession #${sessionId}`}
       subtitle="Conversación de sesión vía Atenea Core"
       back={() => navigate({ name: "session", projectId, sessionId })}
-      refresh={load}
+      refresh={() => load(true)}
     >
       {error && <InlineError>{error}</InlineError>}
       {operatorState && (
         <RemoteCloseOperatorPanel
           state={operatorState}
           currentWorkSessionId={sessionId}
+          refreshGeneration={operatorRefreshGeneration}
           onChanged={load}
           dark
         />
@@ -1307,16 +1317,19 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
 function RemoteCloseOperatorPanel({
   state,
   currentWorkSessionId,
+  refreshGeneration,
   onChanged,
   dark = false
 }: {
   state: MobileSessionOperatorState;
   currentWorkSessionId: number;
+  refreshGeneration: number;
   onChanged: () => void | Promise<void>;
   dark?: boolean;
 }) {
   const [plan, setPlan] = useState<LegacyRemoteClosePlan | null>(null);
   const [pending, setPending] = useState(false);
+  const [requiresRefresh, setRequiresRefresh] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const planIdempotencyKey = useRef<string | null>(null);
@@ -1325,11 +1338,12 @@ function RemoteCloseOperatorPanel({
 
   useEffect(() => {
     setPlan(null);
+    setRequiresRefresh(false);
     setNotice("");
     setError("");
     planIdempotencyKey.current = null;
     confirmationIdempotencyKey.current = null;
-  }, [currentWorkSessionId, state.targetWorkSessionId, state.state]);
+  }, [currentWorkSessionId, state.targetWorkSessionId, state.state, refreshGeneration]);
 
   useEffect(() => {
     if (plan) {
@@ -1342,7 +1356,8 @@ function RemoteCloseOperatorPanel({
   }
 
   const roleAllowed = operatorHasRole(state.requiredRole);
-  const actionAvailable = state.primaryActionAvailable && roleAllowed;
+  const actionAvailable = state.primaryActionAvailable && roleAllowed &&
+    remoteCloseActionMatchesState(state) && !requiresRefresh;
   const legacyConfirmationRequired = state.primaryAction === "RECONCILE_REMOTE_CLOSE"
     && ["LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY"].includes(state.state);
   const level = remoteCloseStateLevel(state.state);
@@ -1387,6 +1402,12 @@ function RemoteCloseOperatorPanel({
         await onChanged();
       }
     } catch (actionError) {
+      if (actionError instanceof ApiError && actionError.status === 409) {
+        setPlan(null);
+        setRequiresRefresh(true);
+        planIdempotencyKey.current = null;
+        confirmationIdempotencyKey.current = null;
+      }
       setError(remoteCloseActionError(actionError));
     } finally {
       setPending(false);
@@ -1416,6 +1437,12 @@ function RemoteCloseOperatorPanel({
         : "Reconciliación iniciada. Atenea confirmará la liberación sin repetir la operación.");
       await onChanged();
     } catch (actionError) {
+      if (actionError instanceof ApiError && actionError.status === 409) {
+        setPlan(null);
+        setRequiresRefresh(true);
+        planIdempotencyKey.current = null;
+        confirmationIdempotencyKey.current = null;
+      }
       setError(remoteCloseActionError(actionError));
     } finally {
       setPending(false);
@@ -1498,6 +1525,17 @@ function operatorHasRole(requiredRole?: MobileSessionOperatorState["requiredRole
     PLATFORM_ADMINISTRATOR: 3
   } as const;
   return rank[actualRole] >= rank[requiredRole];
+}
+
+function remoteCloseActionMatchesState(state: MobileSessionOperatorState) {
+  if (state.primaryAction === "RETRY_AGENT_RUN") {
+    return state.state === "CAPACITY_RELEASED" && Boolean(state.targetAgentRunId);
+  }
+  if (state.primaryAction === "RECONCILE_REMOTE_CLOSE") {
+    return ["CLOSING_REMOTE", "LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY"].includes(state.state)
+      && Boolean(state.targetWorkSessionId);
+  }
+  return false;
 }
 
 function operatorRoleLabel(role: NonNullable<MobileSessionOperatorState["requiredRole"]>) {
