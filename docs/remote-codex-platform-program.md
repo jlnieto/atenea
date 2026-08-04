@@ -11925,3 +11925,51 @@ Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.5-confirmed-legacy-release`;
 the SHA-256 of its `SHA256SUMS` is
 `9b76b6d73b36cacd8663b172c8ee7781c671a0d4719d170507a8308650ed6b85`.
+
+Task 4.6 is complete. Change progress is `30/60`; task 4.7 is the exact resume
+point. The complete backend regression and section-4 closure remain pending.
+
+Atenea commit `1c2ac3d2015522813773928b7eb3318dca1a761d` adds an
+append-only revision audit to each exact legacy close operation. The current
+projection and every audit event retain only bounded state, safe error code,
+typed category, next action, retryability, timestamps and the sealed release
+receipt; no raw worker body or exception message is persisted or returned.
+Transport loss remains `RECONCILING` with the immutable operation available
+for exact replay. A deterministic 4xx becomes monotonic `BLOCKED`; repeating
+the same confirmation returns the same projection without another worker
+call and never enters the worker-unavailable window.
+
+A deterministic AgentRun capacity failure now records the exact closed
+WorkSession that blocked it. Generic retry remains unavailable until that same
+canonical Atenea owner has a persisted `RELEASED` WorkSession projection and a
+matching released legacy-operation receipt. The recovery coordinator still
+requires the prior remote execution to be terminal or absent before creating
+any retry. AgentRun 96 was neither retried nor modified.
+
+The final migration, legacy close, normal close, startup, strict client,
+default-gate, AgentRun retry/recovery and persistence matrix passes 144/144
+with zero failures, errors or skips; the backend package passes. An earlier
+expanded run exposed synthetic fixture teardown ordering against the intended
+`RESTRICT` audit FK. Symmetric teardown fixed the fixture, the task-owned
+database was recreated, and the complete focused matrix passed afterward.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains `FAILED`, unretried and without a child. WorkSession 17 retains one
+turn, one run, one attachment and one complete profile. Production and preview
+remain `UP`, Beautips returns HTTP 200 and all observed related containers are
+running with zero restarts. Routing remains `ax42-01` enabled/healthy `4/2` at
+`0/0`.
+
+The four directly rechecked incident ownership files retain their exact
+accepted SHA-256 values; WorkSession 17 allocation and admission remain
+absent. Worker services remain active with zero restarts, rootless slots remain
+`3/0/0/3`, rootful daemons remain inactive, RAID remains `3/3 [UU]` and
+backup/check/health remain `success/0`. No production migration, deployment,
+configuration, release, prompt, ownership, preview, Beautips, foreign or
+unrelated resource changed.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-4.6-safe-lifecycle-audit`;
+the SHA-256 of its `SHA256SUMS` is
+`be804b444c484ac52003d0af6d8629616cc0104f59b48a7c8ba91f11a786b9ce`.

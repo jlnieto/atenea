@@ -118,7 +118,7 @@ environment dumps.
   runs, unchanged delivery/Git fingerprint and worker diagnosis before legacy
   release; reject stale confirmation, wrong role, open owner, foreign owner and
   ambiguous partial state before mutation
-- [ ] 4.6 Persist safe lifecycle audit, error code and next action without raw
+- [x] 4.6 Persist safe lifecycle audit, error code and next action without raw
   worker payload; keep generic AgentRun retry unavailable until a matching
   released receipt exists and prior execution is terminal or absent
 - [ ] 4.7 Run focused and complete backend unit/integration/concurrency/restart
