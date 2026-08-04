@@ -12691,3 +12691,50 @@ Sanitized authorization evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.8-rollout-authorization`;
 the SHA-256 of its `SHA256SUMS` is
 `ff9aa0a031ada1748a5ce9f53b4b9d54e476ffc876e36bb8b44aa6819cac5a1e`.
+
+Task 7.1 is complete. Change progress is `45/60`; task 7.2 is the exact
+resume point. Authorization
+`rollout-v63-atenea-only-20260804T161502Z` and its seal were reverified before
+the complete read-only recapture. Programme, Atenea candidate, canonical
+Atenea, AX42 mirror/worktrees and Beautips Git are clean and exact at their
+accepted commits. The AX42 mirror passes full fsck.
+
+Production remains Flyway V62 with 15 WorkSessions, 96 terminal AgentRuns,
+zero non-terminal runs and zero active leases. WorkSession 16 remains
+`CLOSED/DRAFT/main/REMOTE` with zero turns, runs, attachments and previews.
+WorkSession 17 remains `OPEN/DRAFT/main/REMOTE` with exact accepted source and
+one turn, one run, one attachment, one binding and zero previews. AgentRun 96
+remains terminal `FAILED`, unretried, without remote execution or child, with
+its exact immutable profile and attachment metadata. No attachment content or
+filename was selected.
+
+The five incident ownership hashes and aggregate allocation/admission hashes
+remain byte-exact. WorkSession 16 remains the sole Atenea registration and
+owns no runtime container, network, volume, listener or unit. WorkSession 17
+allocation/admission/registration remain absent. The release successor remains
+uninstalled. Routing remains `ax42-01` enabled/healthy `4/2` at `0/0`.
+
+Production and preview retain their exact compose and image identities, return
+HTTP 200 and have zero restarts; the candidate image remains retained but
+unused. Beautips remains clean/upstream-exact at
+`9e122bf024d29b9cda56b27f8a32c218e1f0d433`, returns HTTP 200 and remains
+disabled for activation. The foreign local `atenea-activation-code_default`
+network remains present with zero associated containers and was not touched.
+
+AX42 AgentRun, attachment, preview and image services remain healthy without
+restarts. Backup/check/health timers remain active/enabled with `success/0`;
+their unit and executable projections are sealed. The worker listener
+projection remains exact at
+`e27a62a17adbb01121476e9c9927ae7634fcd32007c2dc85cdbeceaed8488b3b`.
+SSH, Tailscale and UFW remain active on both hosts, rootful Docker/containerd
+remain inactive/masked on AX42, rootless container counts remain `3/0/0/3`
+and RAID remains `3/3 [UU]`. Slot container/network/volume/image projections
+are sealed without classifying or opening foreign content.
+
+No Git, ownership, RAID, backup, runtime, production, preview, Beautips or
+foreign-resource divergence was found. No migration, deployment, installation,
+configuration, activation, release, prompt or retry occurred. Sanitized
+pre-rollout evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.1-pre-rollout-fingerprints`;
+the SHA-256 of its `SHA256SUMS` is
+`0b91050e06bbd6fabf072558f18f808e7d2651d1d6cf449caf9a516814edef60`.

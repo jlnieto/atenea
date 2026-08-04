@@ -173,7 +173,7 @@ environment dumps.
 
 ## 7. Authorized rollout and retained-owner canary
 
-- [ ] 7.1 Record the separate authorization; recapture complete Git, database,
+- [x] 7.1 Record the separate authorization; recapture complete Git, database,
   service, backup, RAID, firewall, Tailscale, slot, registry, admission,
   allocation, runtime, production, preview and Beautips fingerprints; stop on
   any divergence
