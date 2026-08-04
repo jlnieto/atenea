@@ -10992,3 +10992,49 @@ or foreign resource was changed. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-1.4-v63-rollback-restore`;
 the SHA-256 of its `SHA256SUMS` is
 `9ae93d8d44613c5e288a655dd3f51cc6974e0f70401bf5035cd13763e7e11b6f`.
+
+Task 1.5 and additive lifecycle persistence section 1 are complete. Change
+progress is `9/60`; task 2.1 is the exact resume point and no section 2 work
+has started.
+
+Canonical Atenea candidate commit
+`49e6cd9a6c11c1680837b92526fd422e4fceed7c` is published exactly in the
+canonical repository and GitHub. The complete suite exposed four synthetic
+REMOTE integration fixtures that still used the entity default
+`NOT_REQUIRED`; the commit changes only those fixtures to declare V63
+`NOT_STARTED`. The affected groups pass 14/14.
+
+The final focused migration, persistence, routing and read-model suite passes
+83/83. The complete Maven suite passes 627/627 with zero errors, failures or
+skips from the exact candidate source in a finite isolated runner with Git, a
+writable `/workspace/repos` test boundary and PostgreSQL 16.13 on tmpfs. The
+database had no published port and its Docker network was internal only.
+
+Rejected harness attempts were classified and excluded: four initial fixture
+violations led to the source correction; the local host could not write the
+suite's fixed `/workspace` boundary; and the minimal runner initially lacked
+Maven provider artifacts, Git and the documented test workspace-root setting.
+One discarded diagnostic over-selected generated integration authentication
+responses. It did not involve production credentials; no value was copied to
+evidence, and every report-bearing container/image was destroyed immediately.
+All test containers, images, the tmpfs database, network and harness-only
+Dockerfile are absent.
+
+Production remains at V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSession 16 remains `CLOSED`, WorkSession 17 remains
+`OPEN`, and AgentRun 96 remains terminal unretried `FAILED`. Exact registry,
+WorkSession 16 workspace/allocation/admission and WorkSession 17 workspace
+hashes match entry; WorkSession 17 still has no allocation or admission.
+Production, preview and Beautips each return HTTP 200 from their exact internal
+health surface. Worker services remain active with zero restarts, rootless
+counts remain `3/0/0/3`, rootful daemons remain inactive/masked, RAID remains
+`3/3 [UU]`, and backup/check/health results remain successful. No production
+migration, deployment, configuration, routing, runtime, ownership or foreign
+resource changed.
+
+The retained package contains no report body, generated credential value,
+prompt, response, attachment content, screenshot, cookie, `auth.json`,
+environment dump or Codex history. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-1.5-additive-persistence-closure`;
+the SHA-256 of its `SHA256SUMS` is
+`ca4a433793b66f8c82cec754fe6eeff394217710c02369869e3991a9c50b1973`.

@@ -40,7 +40,7 @@ environment dumps.
   fixture, apply all migrations through V63, prove repeat startup and prove an
   exact V63-aware rollback image can read the expanded schema with new writers
   disabled
-- [ ] 1.5 Run focused and complete migration/persistence tests, seal evidence,
+- [x] 1.5 Run focused and complete migration/persistence tests, seal evidence,
   update the ledger, strict-validate, mark section 1, commit and push
 
 ## 2. Typed worker failure preservation and admission decisions
