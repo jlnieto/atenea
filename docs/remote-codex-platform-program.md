@@ -12806,3 +12806,40 @@ Sanitized task evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.2-fresh-backup-v63-rollback-proof`;
 the SHA-256 of its `SHA256SUMS` is
 `eaa0ffc606d335c9ad6943428fef40f61c764c770b789ff42c6bae6d04baf853`.
+
+Task 7.3 remains pending and change progress remains `46/60`. Its mandatory
+pre-install runtime preflight found that the exact reviewed AX42 successor is
+not operational for workspace release. The reviewed Atenea backend contains
+one call to `POST /v1/project-workspaces/release`, while the exact reviewed
+worker source defines the route constant but contains zero HTTP dispatches for
+it and zero `WorkerState` release methods. The installed finalizer source also
+contains zero executable entry points and explicitly documents that it exposes
+no CLI or HTTP entry point.
+
+An isolated in-memory worker server on a kernel-selected loopback port proved
+the exact reviewed route returns HTTP 404. The server and temporary state were
+closed and removed. No AX42 service, worker state, control-plane state or
+foreign resource participated in the diagnostic.
+
+Deploying the task 6.6 bundle would therefore install an HTTP worker that
+cannot execute the backend's required release operation. The rollout stopped
+before production mutation under the runtime-divergence rule. The exact five
+installed AX42 predecessor files still verify against their sealed manifest;
+the AgentRun worker remains active at zero restarts and the release successor
+remains absent. Production remains V62 on
+`sha256:fe5bb7a6b39dbcc2f9847dd05b68b9aabe72bf4d2775ad55f5624fcd99b1d96f`;
+production, preview and Beautips remain HTTP 200. No compose edit, migration,
+deployment, installation, configuration change, activation, release, prompt,
+retry or ownership mutation occurred.
+
+Task 7.3 can resume only after implementing the real closed worker dispatch,
+fixed-authority finalizer entry point and live exact projection/boundary,
+adding an actual HTTP acceptance test, repeating affected complete worker,
+installer, security and adversarial review, publishing new exact artifacts,
+and obtaining authorization for that corrected exact successor. The existing
+rollout authorization was not consumed for deployment.
+
+Sanitized blocked-preflight evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.3-rollout-preflight-blocked-runtime-route`;
+the SHA-256 of its `SHA256SUMS` is
+`ee2254f20817f9fa7c7cefd66cf7e7c4b4c829931c1c19919151976c64fd02a0`.
