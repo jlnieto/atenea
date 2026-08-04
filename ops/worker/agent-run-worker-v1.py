@@ -112,6 +112,7 @@ WORKSPACE_ENSURE_KEYS = {
 }
 WORKSPACE_RELEASE_PATH = "/v1/project-workspaces/release"
 WORKSPACE_RELEASE_SCHEMA = "project-workspace-release-v1"
+WORKSPACE_RELEASE_REVISION = 6
 WORKSPACE_RELEASE_REQUEST_KEYS = {
     "operationId", "idempotencyKey", "sessionId", "workspaceIdentity",
     "projectId", "repository", "branch", "commit", "manifestSha256",
@@ -337,7 +338,7 @@ def validate_workspace_release_receipt(
         or any(receipt.get(key) != exact_request[key] for key in ownership_keys)
         or receipt.get("requestFingerprintSha256") != canonical_hash(exact_request)
         or type(receipt.get("revision")) is not int
-        or receipt["revision"] < 1
+        or receipt["revision"] != WORKSPACE_RELEASE_REVISION
         or receipt.get("valuesExposed") is not False
     ):
         raise ProtocolError(
@@ -354,7 +355,7 @@ def validate_workspace_release_receipt(
         or any(type(value) is not int or value < 0 for value in removed.values())
         or not isinstance(released, dict)
         or set(released) != WORKSPACE_RELEASE_RELEASED_KEYS
-        or any(type(value) is not bool for value in released.values())
+        or any(value is not True for value in released.values())
         or not isinstance(retained, dict)
         or set(retained) != WORKSPACE_RELEASE_RETAINED_KEYS
         or any(value is not True for value in retained.values())

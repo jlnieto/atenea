@@ -213,8 +213,10 @@ class WorkspaceReleaseContractTest(unittest.TestCase):
             {"workerId": "foreign-worker"},
             {"workspaceIdentity": "remote:foreign:work-session:" + self.session_id},
             {"revision": 0},
+            {"revision": 5},
             {"valuesExposed": True},
             {"removed": {**self.receipt()["removed"], "runtimeContainers": "1"}},
+            {"released": {**self.receipt()["released"], "allocation": False}},
             {"retained": {**self.receipt()["retained"], "git": False}},
         ):
             receipt = {**self.receipt(), **changed}

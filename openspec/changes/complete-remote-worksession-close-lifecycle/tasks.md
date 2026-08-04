@@ -156,7 +156,7 @@ environment dumps.
   canary artifact plus checksum without publishing or installing it
 - [x] 6.4 Run the complete sorted programme/worker, runtime, preview, attachment,
   backup, installer, rollback and security suites from a clean immutable source
-- [ ] 6.5 Perform an independent adversarial review of protocol closure,
+- [x] 6.5 Perform an independent adversarial review of protocol closure,
   privilege boundaries, race/crash recovery, migration compatibility, UI
   actions, rollback and foreign-resource rejection; correct only in-scope
   blockers and repeat affected complete suites

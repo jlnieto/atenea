@@ -12505,3 +12505,56 @@ Sanitized ordered-suite and retained-state evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.4-complete-sorted-source-suite`;
 the SHA-256 of its `SHA256SUMS` is
 `14411f1644af894d6f1cfcaafde08d2e0340b99d927d20d592f05d6e6f1ef952`.
+
+Task 6.5 is complete. Change progress is `41/60`; task 6.6 is the exact
+resume point. The independent adversarial review found and corrected five
+in-scope blockers in the candidate and worker boundary. An HTTP 4xx can no
+longer self-declare `TRANSPORT`, request reconciliation or become worker
+unavailability: status, category, retryability, next action and blocker
+identity must form one compatible projection, and every incompatible envelope
+fails closed as a safe, non-retryable protocol error. Legacy close now applies
+the same atomic fallback instead of retaining a contradictory reconciliation
+action.
+
+Normal remote close is now idempotent across a completed repeated request and
+the transaction race between preparation and final persistence. A late
+transport failure cannot downgrade or contradict an already durable exact
+`CLOSED/RELEASED` result. The persisted final projection must include canonical
+Atenea ownership, the same operation, a valid receipt SHA-256, revision at
+least 6 and every required timestamp. Worker and client receipt validation now
+require exact final revision 6 and every released and retained value true.
+
+The reviewed Atenea candidate is
+`989ec05b7ea325fd1921eb01eb06a4ca5d057ce6`, tree
+`096639f41c5f349933ea2a290c64192be532ffbf`. Its complete backend suite ran in
+the project development image against a new isolated PostgreSQL 16 database
+and empty task-owned workspace root: 676/676 tests pass across 105 reports
+with zero failures, errors or skips, and all 63 migrations applied only to the
+disposable database. The complete affected worker suites pass: 68 agent worker
+tests, 34 workspace finalizer tests, the installer/rollback contract and the
+Beautips cross-contract against its pinned historical source. Current Beautips
+source and production remained untouched. No web-visible source changed, so
+the sealed task 6.2 Playwright result remains applicable.
+
+Production remains V62 with 15 WorkSessions, 96 terminal AgentRuns and zero
+non-terminal runs. WorkSessions 16/17 remain `CLOSED/OPEN` remote; AgentRun 96
+remains terminal unretried `FAILED`, with no child and a complete profile.
+WorkSession 17 retains one turn, one run and one attachment. Production,
+preview and Beautips return HTTP 200; routing remains `ax42-01`
+enabled/healthy `4/2` at `0/0`.
+
+The registry, WorkSession 16 workspace/allocation/admission and WorkSession 17
+workspace hashes remain exact; WorkSession 17 allocation/admission remain
+absent. AgentRun, attachment and preview services remain active with zero
+restarts, rootless slots remain `3/0/0/3`, rootful Docker/containerd remain
+inactive/masked, all three RAID arrays remain `[UU]`, and backup/check/health
+remain `success/0`. Exact task containers, database volumes, generated reports,
+workspaces, bytecode and historical worktree were removed. No production
+migration, deployment, installation, configuration, activation, release,
+prompt, retry, runtime, ownership, preview, Beautips, foreign or unrelated
+resource changed.
+
+Sanitized findings, diagnostics and test/state evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-6.5-independent-adversarial-review`;
+the SHA-256 of its `SHA256SUMS` is
+`550ad79a13e6fecdb92e46449ae2905e9ec7651f4224803bb2f9c81d0e1d5a8b`.
