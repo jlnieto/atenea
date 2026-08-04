@@ -10677,3 +10677,27 @@ modified. Canonical Atenea remains clean at
 `615e539d1f2622a4ac2568ba7697b876d49ae33e`; the worker services, SSH,
 Tailscale and firewall are active; production, preview and Beautips containers
 remain up. Strict validation passes for the active change.
+
+Task 0.1 is complete. Change progress is `1/60`; task 0.2 is the exact resume
+point and has not started.
+
+All three applicable `AGENTS.md` instruction sets, the complete 10,679-line
+programme ledger, the phase dependency contract, proposal, design, all five
+deltas, task plan, repository OpenSpec apply workflow, current canonical
+continuity/worker-control/worker-safety/attachment/runtime/database/preview/
+parity/onboarding/Codex-operation specifications and both runtime-contract
+documents were read before implementation. OpenSpec reported the
+`spec-driven` schema, complete planning artifacts and state `ready`.
+
+A read-only guardrail pass found no Git, ownership, RAID, backup, runtime,
+production, preview, Beautips or foreign-resource divergence before this
+documentary task was recorded. It does not mark task 0.2; that task will retain
+its own complete operational fingerprints after this commit is published. No
+prompt, response, attachment content, screenshot, credential, token, cookie,
+`auth.json`, Codex history or environment dump was read or retained, and no
+production or worker operational state changed.
+
+Strict validation passes. Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-0.1-document-contract`;
+the SHA-256 of its `SHA256SUMS` is
+`3106f6b283bc1bb4e6983f7fffcc53d1f72d28db0af6540ecb64af2c8ea86f8f`.

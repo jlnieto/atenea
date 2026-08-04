@@ -8,7 +8,7 @@ environment dumps.
 
 ## 0. Entry contract and incident preservation
 
-- [ ] 0.1 Read every applicable `AGENTS.md`, the complete programme ledger,
+- [x] 0.1 Read every applicable `AGENTS.md`, the complete programme ledger,
   this proposal/design/all five deltas/tasks, and the current rollback, backup,
   continuity, attachment, runtime, ownership and security contracts
 - [ ] 0.2 Verify clean/upstream-exact programme and canonical Atenea Git; inspect
