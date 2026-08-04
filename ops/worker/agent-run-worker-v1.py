@@ -44,6 +44,32 @@ CODEX_MODELS = [
     }
 ]
 PROGRESS_LIMIT = 200
+WORKER_ERROR_SCHEMA = "worker-error-v1"
+WORKER_ERROR_MAX_BYTES = 1024
+MEDIATOR_ERROR_MAX_BYTES = 4096
+WORKER_ERROR_CATEGORIES = {
+    "VALIDATION", "POLICY", "OWNERSHIP", "CAPACITY", "PROTOCOL", "TRANSPORT",
+}
+WORKER_ERROR_NEXT_ACTIONS = {
+    "NONE", "WAIT", "RETRY", "REQUEST_RECONCILIATION",
+    "CONTACT_PLATFORM_ADMINISTRATOR",
+}
+WORKER_ERROR_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{2,79}$")
+MEDIATOR_ERROR_KEYS = {"code", "blockerSessionId"}
+REVIEWED_MEDIATOR_ERRORS = {
+    "NORMAL_CAPACITY_EXHAUSTED": ("CAPACITY", True, "WAIT"),
+    "HEAVY_CAPACITY_EXHAUSTED": ("CAPACITY", True, "WAIT"),
+    "RUNTIME_OWNERSHIP_CONFLICT": (
+        "OWNERSHIP", False, "CONTACT_PLATFORM_ADMINISTRATOR",
+    ),
+    "RECONCILIATION_REQUIRED": (
+        "OWNERSHIP", False, "CONTACT_PLATFORM_ADMINISTRATOR",
+    ),
+    "OPERATION_FAILED": ("POLICY", False, "CONTACT_PLATFORM_ADMINISTRATOR"),
+    "ATENEA_WORKSPACE_ACTIVATION_REJECTED": (
+        "VALIDATION", False, "CONTACT_PLATFORM_ADMINISTRATOR",
+    ),
+}
 PROGRESS_CATEGORIES = {
     "ACCEPTED", "QUEUED", "PREPARING_WORKSPACE", "CODEX_STARTED",
     "INSPECTING_PROJECT", "RUNNING_COMMAND", "CHECKING", "WAITING",
@@ -173,6 +199,127 @@ def canonical_hash(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def worker_error_envelope(
+    code: str,
+    category: str,
+    retryable: bool,
+    next_action: str,
+    blocker_session_id: str | None = None,
+) -> dict[str, Any]:
+    if (
+        not isinstance(code, str)
+        or WORKER_ERROR_CODE_PATTERN.fullmatch(code) is None
+        or category not in WORKER_ERROR_CATEGORIES
+        or type(retryable) is not bool
+        or next_action not in WORKER_ERROR_NEXT_ACTIONS
+    ):
+        raise ValueError("worker error envelope values are invalid")
+    payload: dict[str, Any] = {
+        "schemaVersion": WORKER_ERROR_SCHEMA,
+        "code": code,
+        "category": category,
+        "retryable": retryable,
+        "nextAction": next_action,
+    }
+    if blocker_session_id is not None:
+        try:
+            canonical = str(uuid.UUID(blocker_session_id))
+        except (ValueError, AttributeError, TypeError):
+            raise ValueError("blockerSessionId must be a canonical UUID") from None
+        if canonical != blocker_session_id or category != "CAPACITY":
+            raise ValueError("blockerSessionId must be a canonical capacity owner")
+        payload["blockerSessionId"] = blocker_session_id
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    if len(encoded) > WORKER_ERROR_MAX_BYTES:
+        raise ValueError("worker error envelope is oversized")
+    return payload
+
+
+def validate_worker_error_envelope(payload: dict[str, Any]) -> dict[str, Any]:
+    allowed = {
+        "schemaVersion", "code", "category", "retryable", "nextAction",
+        "blockerSessionId",
+    }
+    if (
+        not isinstance(payload, dict)
+        or not set(payload).issubset(allowed)
+        or set(payload) - {"blockerSessionId"}
+        != {"schemaVersion", "code", "category", "retryable", "nextAction"}
+        or payload.get("schemaVersion") != WORKER_ERROR_SCHEMA
+    ):
+        raise ValueError("worker error envelope fields are invalid")
+    expected = worker_error_envelope(
+        payload.get("code"),
+        payload.get("category"),
+        payload.get("retryable"),
+        payload.get("nextAction"),
+        payload.get("blockerSessionId"),
+    )
+    if payload != expected:
+        raise ValueError("worker error envelope is not canonical")
+    return dict(expected)
+
+
+def reviewed_mediator_error_envelope(raw: str | bytes) -> dict[str, Any]:
+    if isinstance(raw, str):
+        encoded = raw.encode("utf-8")
+    elif isinstance(raw, bytes):
+        encoded = raw
+    else:
+        raise ValueError("mediator error output must be bytes or text")
+    if len(encoded) < 2 or len(encoded) > MEDIATOR_ERROR_MAX_BYTES:
+        raise ValueError("mediator error output size is invalid")
+    try:
+        parsed = json.loads(encoded)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise ValueError("mediator error output is not valid JSON") from None
+    if (
+        not isinstance(parsed, dict)
+        or not set(parsed).issubset(MEDIATOR_ERROR_KEYS)
+        or "code" not in parsed
+    ):
+        raise ValueError("mediator error fields are invalid")
+    code = parsed["code"]
+    if not isinstance(code, str) or code not in REVIEWED_MEDIATOR_ERRORS:
+        raise ValueError("mediator error code is not reviewed")
+    category, retryable, next_action = REVIEWED_MEDIATOR_ERRORS[code]
+    blocker = parsed.get("blockerSessionId")
+    return worker_error_envelope(code, category, retryable, next_action, blocker)
+
+
+def reviewed_mediator_stderr_envelope(raw: str) -> dict[str, Any]:
+    encoded = raw.encode("utf-8")
+    if not encoded or len(encoded) > MEDIATOR_ERROR_MAX_BYTES:
+        raise ValueError("mediator stderr size is invalid")
+    stripped = raw.strip()
+    if stripped.startswith("{"):
+        return reviewed_mediator_error_envelope(stripped)
+    first_line = stripped.splitlines()[0]
+    match = re.match(r"^([A-Z][A-Z0-9_]{2,79}):(?: |$)", first_line)
+    if match is None or match.group(1) not in REVIEWED_MEDIATOR_ERRORS:
+        raise ValueError("mediator stderr code is not reviewed")
+    code = match.group(1)
+    category, retryable, next_action = REVIEWED_MEDIATOR_ERRORS[code]
+    return worker_error_envelope(code, category, retryable, next_action)
+
+
+def protocol_error_envelope(status: int, code: str) -> dict[str, Any]:
+    safe_code = code.upper() if isinstance(code, str) else "PROTOCOL_ERROR"
+    if WORKER_ERROR_CODE_PATTERN.fullmatch(safe_code) is None:
+        safe_code = "PROTOCOL_ERROR"
+    if status in {HTTPStatus.BAD_REQUEST, HTTPStatus.NOT_FOUND}:
+        values = ("VALIDATION", False, "NONE")
+    elif status in {HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN}:
+        values = ("POLICY", False, "NONE")
+    elif status == HTTPStatus.CONFLICT:
+        values = ("OWNERSHIP", False, "CONTACT_PLATFORM_ADMINISTRATOR")
+    elif status >= HTTPStatus.INTERNAL_SERVER_ERROR:
+        values = ("TRANSPORT", True, "REQUEST_RECONCILIATION")
+    else:
+        values = ("PROTOCOL", False, "NONE")
+    return worker_error_envelope(safe_code, *values)
+
+
 def codex_catalog_revision() -> str:
     return canonical_hash({
         "schemaVersion": CODEX_CATALOG_SCHEMA,
@@ -182,10 +329,19 @@ def codex_catalog_revision() -> str:
 
 
 class ProtocolError(Exception):
-    def __init__(self, status: int, code: str, message: str):
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        message: str,
+        safe_error: dict[str, Any] | None = None,
+    ):
         super().__init__(message)
         self.status = status
         self.code = code
+        self.safe_error = validate_worker_error_envelope(
+            safe_error or protocol_error_envelope(status, code)
+        )
 
 
 class WorkerState:
@@ -947,12 +1103,20 @@ class WorkerState:
                 "workspace activation exceeded its finite timeout",
             )
         if completed.returncode != 0:
-            detail = completed.stderr.strip().splitlines()
-            message = detail[-1][:300] if detail else "workspace activation failed closed"
+            try:
+                safe_error = reviewed_mediator_stderr_envelope(completed.stderr)
+            except ValueError:
+                safe_error = worker_error_envelope(
+                    "WORKSPACE_ACTIVATION_FAILED",
+                    "PROTOCOL",
+                    False,
+                    "CONTACT_PLATFORM_ADMINISTRATOR",
+                )
             raise ProtocolError(
                 HTTPStatus.CONFLICT,
                 "workspace_activation_failed",
-                message,
+                "workspace activation failed closed",
+                safe_error,
             )
         try:
             result = json.loads(completed.stdout)
@@ -2587,7 +2751,7 @@ class AgentRunHandler(BaseHTTPRequestHandler):
         return parsed
 
     def _write_error(self, error: ProtocolError) -> None:
-        self._write(error.status, {"error": error.code, "message": str(error)})
+        self._write(error.status, error.safe_error)
 
     def _write(self, status: int, payload: dict[str, Any]) -> None:
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()

@@ -45,7 +45,7 @@ environment dumps.
 
 ## 2. Typed worker failure preservation and admission decisions
 
-- [ ] 2.1 Extend the worker error envelope with a closed safe schema and an
+- [x] 2.1 Extend the worker error envelope with a closed safe schema and an
   allowlisted mapping from reviewed mediator codes; reject unknown fields,
   unsafe detail, invalid blocker UUIDs and oversized output in focused tests
 - [ ] 2.2 Extend `RemoteWorkerException`/`RemoteWorkerClient` to parse only that

@@ -11038,3 +11038,40 @@ environment dump or Codex history. Sanitized evidence is beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-1.5-additive-persistence-closure`;
 the SHA-256 of its `SHA256SUMS` is
 `ca4a433793b66f8c82cec754fe6eeff394217710c02369869e3991a9c50b1973`.
+
+Task 2.1 is complete. Change progress is `10/60`; task 2.2 is the exact resume
+point and no client/coordinator handling has started.
+
+The source-only worker now returns the closed `worker-error-v1` envelope for
+HTTP rejection: schema version, uppercase safe code, closed category, boolean
+retryability, closed next action and an optional canonical blocker WorkSession
+UUID. Blocker identity is accepted only for capacity, encoded output is bounded
+to 1,024 bytes and no free-form message is serialized.
+
+Reviewed mediator input is bounded to 4,096 bytes and six allowlisted codes.
+Structured input accepts only code plus optional blocker UUID; unknown fields,
+unsafe detail/command/path authority, invalid or misplaced blocker UUID,
+unknown code, invalid JSON and oversized output fail closed. Legacy reviewed
+stderr contributes only its allowlisted leading code, and all remaining detail
+is discarded. Unknown mediator failure becomes fixed
+`WORKSPACE_ACTIVATION_FAILED` with platform review rather than copied stderr.
+
+Eighteen focused envelope, activation and HTTP tests pass. The complete
+AgentRun worker file passes 61/61, and the worker installer, sandbox and
+rollback contract passes against program SHA-256
+`189654227b5550a5ac23823c7164608ef47c3f36dc51afc6fa1f2a73631da2f7`.
+No worker installation, service restart, configuration change or capability
+activation occurred.
+
+Production remains V62 with 15 WorkSessions and 96 terminal AgentRuns;
+WorkSessions 16/17 and AgentRun 96 remain `CLOSED`/`OPEN`/unretried `FAILED`.
+Production, preview and Beautips return HTTP 200. Worker services have zero
+restarts, rootless slots remain `3/0/0/3`, rootful daemons remain inactive,
+RAID remains `3/3 [UU]`, backup/check/health last results remain successful and
+every exact incident ownership hash matches entry. No foreign resource was
+adopted, repaired or mutated.
+
+Sanitized evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-2.1-typed-worker-errors`;
+the SHA-256 of its `SHA256SUMS` is
+`85d0e0385ad7b5969f129e1b5e3ea9b7105d6c3ae661aa2298b2f489511ea5ee`.

@@ -23,6 +23,89 @@ MODULE = SourceFileLoader(
 TEST_COMMIT = "1" * 40
 
 
+class WorkerErrorEnvelopeTest(unittest.TestCase):
+    def test_closed_envelope_has_only_safe_bounded_fields(self):
+        payload = MODULE.worker_error_envelope(
+            "NORMAL_CAPACITY_EXHAUSTED",
+            "CAPACITY",
+            True,
+            "WAIT",
+            "11111111-1111-4111-8111-111111111111",
+        )
+
+        self.assertEqual(
+            {
+                "schemaVersion", "code", "category", "retryable",
+                "nextAction", "blockerSessionId",
+            },
+            set(payload),
+        )
+        self.assertEqual(MODULE.WORKER_ERROR_SCHEMA, payload["schemaVersion"])
+        self.assertLessEqual(
+            len(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()),
+            MODULE.WORKER_ERROR_MAX_BYTES,
+        )
+        self.assertEqual(payload, MODULE.validate_worker_error_envelope(payload))
+        with self.assertRaises(ValueError):
+            MODULE.validate_worker_error_envelope({**payload, "detail": "unsafe"})
+
+    def test_reviewed_mediator_codes_map_to_fixed_safe_decisions(self):
+        expected = {
+            "NORMAL_CAPACITY_EXHAUSTED": ("CAPACITY", True, "WAIT"),
+            "HEAVY_CAPACITY_EXHAUSTED": ("CAPACITY", True, "WAIT"),
+            "RUNTIME_OWNERSHIP_CONFLICT": (
+                "OWNERSHIP", False, "CONTACT_PLATFORM_ADMINISTRATOR",
+            ),
+            "RECONCILIATION_REQUIRED": (
+                "OWNERSHIP", False, "CONTACT_PLATFORM_ADMINISTRATOR",
+            ),
+            "OPERATION_FAILED": (
+                "POLICY", False, "CONTACT_PLATFORM_ADMINISTRATOR",
+            ),
+            "ATENEA_WORKSPACE_ACTIVATION_REJECTED": (
+                "VALIDATION", False, "CONTACT_PLATFORM_ADMINISTRATOR",
+            ),
+        }
+
+        for code, values in expected.items():
+            with self.subTest(code=code):
+                payload = MODULE.reviewed_mediator_error_envelope(json.dumps({"code": code}))
+                self.assertEqual(code, payload["code"])
+                self.assertEqual(values, (
+                    payload["category"], payload["retryable"], payload["nextAction"],
+                ))
+
+    def test_mediator_envelope_rejects_unknown_unsafe_or_ambiguous_input(self):
+        rejected = (
+            {"code": "UNKNOWN_MEDIATOR_CODE"},
+            {"code": "NORMAL_CAPACITY_EXHAUSTED", "detail": "/srv/foreign"},
+            {"code": "NORMAL_CAPACITY_EXHAUSTED", "command": "id"},
+            {"code": "NORMAL_CAPACITY_EXHAUSTED", "blockerSessionId": "not-a-uuid"},
+            {
+                "code": "RUNTIME_OWNERSHIP_CONFLICT",
+                "blockerSessionId": "11111111-1111-4111-8111-111111111111",
+            },
+        )
+        for payload in rejected:
+            with self.subTest(payload=set(payload)), self.assertRaises(ValueError):
+                MODULE.reviewed_mediator_error_envelope(json.dumps(payload))
+
+        oversized = " " * (MODULE.MEDIATOR_ERROR_MAX_BYTES + 1)
+        with self.assertRaisesRegex(ValueError, "size"):
+            MODULE.reviewed_mediator_error_envelope(oversized)
+
+    def test_reviewed_stderr_maps_code_without_copying_detail(self):
+        marker = "unsafe-command-and-path-detail"
+        payload = MODULE.reviewed_mediator_stderr_envelope(
+            f"NORMAL_CAPACITY_EXHAUSTED: {marker}\nNext action: ignored"
+        )
+
+        self.assertEqual("NORMAL_CAPACITY_EXHAUSTED", payload["code"])
+        self.assertNotIn(marker, json.dumps(payload))
+        with self.assertRaises(ValueError):
+            MODULE.reviewed_mediator_stderr_envelope(f"UNKNOWN_FAILURE: {marker}")
+
+
 class WorkerStateTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -383,6 +466,25 @@ print(json.dumps({
         with self.assertRaisesRegex(MODULE.ProtocolError, "persisted WorkSession"):
             self.state.ensure_workspace(request)
         self.assertFalse(self.calls.exists())
+
+    def test_activation_failure_maps_reviewed_code_and_discards_stderr_detail(self):
+        marker = "unsafe-mediator-command-and-path"
+        self.activator.write_text(
+            "#!/bin/sh\n"
+            f"printf 'NORMAL_CAPACITY_EXHAUSTED: {marker}\\n' >&2\n"
+            "exit 65\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(MODULE.ProtocolError) as rejected:
+            self.state.ensure_workspace(self.request())
+
+        self.assertEqual(409, rejected.exception.status)
+        self.assertEqual("NORMAL_CAPACITY_EXHAUSTED", rejected.exception.safe_error["code"])
+        self.assertEqual("CAPACITY", rejected.exception.safe_error["category"])
+        self.assertTrue(rejected.exception.safe_error["retryable"])
+        self.assertEqual("WAIT", rejected.exception.safe_error["nextAction"])
+        self.assertNotIn(marker, json.dumps(rejected.exception.safe_error))
 
 
 class ProjectMirrorRefreshTest(unittest.TestCase):
@@ -1739,6 +1841,15 @@ class WorkerHttpTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as denied:
             self.request("/v1/health")
         self.assertEqual(401, denied.exception.code)
+        error = json.load(denied.exception)
+        self.assertEqual(
+            {"schemaVersion", "code", "category", "retryable", "nextAction"},
+            set(error),
+        )
+        self.assertEqual("UNAUTHORIZED", error["code"])
+        self.assertEqual("POLICY", error["category"])
+        self.assertFalse(error["retryable"])
+        self.assertNotIn("credential", json.dumps(error))
         with self.request("/v1/health", "t" * 64) as accepted:
             health = json.load(accepted)
         self.assertEqual("agent-run-worker/v1", health["protocolVersion"])
