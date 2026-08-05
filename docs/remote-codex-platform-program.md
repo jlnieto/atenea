@@ -13129,3 +13129,40 @@ Sanitized evidence and the exact APK are beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.4-android-canary-publication-pending-confirmation`
 on the control host. The SHA-256 of `SHA256SUMS` is
 `30ab6aa4c22ce2fa0e144bf5d6e9ea0b45733b96591c3c1b29180cf263e1a609`.
+
+Task 7.4 is complete. Change progress is `48/60`; task 7.5 is the exact next
+task but was not started. The operator explicitly confirmed that canary
+`0.5.98 (131)` was installed and that web plus Android behavior remained
+unchanged while release was disabled. The original response is not retained;
+only that bounded confirmation is sealed. Production independently records
+both active Android registrations at `0.5.98`, replacing the two prior
+`0.5.97` projections and proving that the installed client reopened and
+registered the published version.
+
+The final read-only recapture found all three release gate environment names
+still absent. Production remains on exact V63 image
+`sha256:1c67ac36a6b45a4b0004e15ba79bcd6d50addfb4b09d8b7890b43c8ef092801a`
+and preview remains on
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`;
+both return HTTP 200 with zero restarts. WorkSession 16 remains
+`CLOSED/UNVERIFIED_LEGACY/revision 0`, WorkSession 17 remains
+`OPEN/NOT_STARTED/revision 0`, AgentRun 96 remains terminal failed without
+retry or recovery action, and zero legacy plan or operation exists.
+
+The exact registry and WorkSession 16 workspace/allocation/admission hashes
+remain unchanged. The release journal is empty; all four declared AX42
+services are active with zero restarts; rootless slots remain `3/0/0/3`;
+backup/check/health timers remain active; and all three RAID arrays remain
+`[UU]`. Canonical Beautips remains clean at
+`9e122bf024d29b9cda56b27f8a32c218e1f0d433` and HTTP 200. The foreign local
+`atenea-activation-code_default` network remains present with zero containers
+and untouched. No release, gate activation, prompt, retry or unrelated
+mutation occurred during installation confirmation.
+
+Final sanitized confirmation evidence is beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.4-android-canary-confirmed-final`
+on the control host. The SHA-256 of its `SHA256SUMS` is
+`6100de717234337272e18c599d8746506a2a857e16208ad874ea47d2271de5c5`.
+The preceding publication evidence and APK remain sealed and unmodified under
+their prior SHA-256. A separate authorization is required before task 7.5;
+task 7.7 retains its independent mandatory in-product operator gate.

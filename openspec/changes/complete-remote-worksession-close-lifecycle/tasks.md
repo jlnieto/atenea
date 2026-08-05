@@ -184,7 +184,7 @@ environment dumps.
   worker/finalizer successor with all new gates disabled; restart only declared
   services, use finite readiness, verify installed hashes and retain exact
   rollback predecessors
-- [ ] 7.4 Publish and install the exact Android canary through the established
+- [x] 7.4 Publish and install the exact Android canary through the established
   update channel, then obtain the operator's confirmation that web and Android
   show unchanged behavior while release remains disabled
 - [ ] 7.5 Enable the global prerequisite and then only canonical Atenea; prove
