@@ -13064,3 +13064,68 @@ the AX42 value is
 The preceding sealed directories were not modified. A separate authorization
 is required before task 7.4, and task 7.7 retains its independent mandatory
 in-product operator gate.
+
+Task 7.4 is in progress and change progress remains `47/60`. The operator's
+separate `Adelante` response immediately after the exact task 7.3 handoff was
+normalized as authorization for task 7.4 only, bound to programme commit
+`19b4707c58f8ee1dfa92830c3695c6b9528943be` and tree
+`ade0124919ba0a28b0b074d009a3fa8ed3cc8ecb`. It did not authorize task 7.5,
+release-gate activation, WorkSession 16 release, prompts, retries, Beautips
+activation or foreign resources.
+
+The publication preflight found that the task 6.3 sealed canary and the
+established published APK both identified themselves as `0.5.97 (130)` while
+having distinct SHA-256 values. Both active Android registrations already
+reported `0.5.97`, the update client treats any `versionCode` less than or
+equal to the installed code as up to date, and the immutable release archive
+already owns version 130. Replacing those bytes would therefore have made the
+canary undiscoverable through the established updater and reused an immutable
+identity. No publication occurred with that colliding identity.
+
+The minimal packaging-only correction advances the unchanged validated
+Android source to `0.5.98 (131)`. Atenea branch
+`codex/complete-remote-worksession-close-lifecycle-atenea-20260803`, commit
+`85e0dafc206c36637deea65ba356fe5a952b1c3f`, tree
+`bb53a2379c76aac9c74673f41db17823fcff6c67`, changes only the two version
+fields from parent
+`989ec05b7ea325fd1921eb01eb06a4ca5d057ce6`. Internal copies and GitHub are
+exact. The complete `core-console` plus `app` unit set passes `41/41` before
+one production-configured build with the opaque established Android home.
+No credential, token or environment value was printed or retained.
+
+The resulting 59,896,815-byte APK has SHA-256
+`5c32ef4a1f4c017a19f2d970ceb78de525f34026c374a1c9069c5c6b51afe3ee`,
+verifies with APK Signature Scheme v2 and retains exact channel certificate
+SHA-256
+`a1642a052853e9992da7ae8f8b6fe09e150533877776c009e7cca83e8b76559a`.
+The established publication script installed identical bytes to the public,
+protected-current and immutable `releases/131` paths. Bounded protected
+manifest and APK requests return HTTP 200 without exposing their URL token.
+The manifest names 131/current and retains exact predecessor 130 with SHA-256
+`d9f2a3958d9d9ec137b08e78d4ba4139313edd903b51e1fdeb01fb62314e9ae9`.
+
+Installation and the required operator confirmation remain pending. There is
+no authorized ADB device, and both active registrations still report
+`0.5.97`; task 7.4 therefore cannot be marked complete until the operator
+installs `0.5.98 (131)` from Atenea's update screen and explicitly confirms
+that web and Android behavior remain unchanged while release is disabled. No
+claim of real-device or authenticated production-screen visual acceptance is
+made before that intervention.
+
+Post-publication checks keep all three release gate environment names absent.
+Production and preview remain on their exact images at HTTP 200 with zero
+restarts. WorkSession 16 remains `CLOSED/UNVERIFIED_LEGACY/revision 0`,
+WorkSession 17 remains `OPEN/NOT_STARTED/revision 0`, AgentRun 96 remains
+terminal failed and unretried, and zero legacy plan or operation exists. AX42
+ownership hashes, empty release journal, active zero-restart services,
+rootless slots `3/0/0/3`, successful backup/check, and all three `[UU]` RAID
+arrays remain exact. Beautips remains clean and HTTP 200. The foreign local
+`atenea-activation-code_default` network remains present with zero containers
+and untouched. The exact build worktree and downloaded verification copies
+were removed after retaining the immutable APK; no prompt, retry, release,
+gate activation or unrelated mutation occurred.
+
+Sanitized evidence and the exact APK are beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.4-android-canary-publication-pending-confirmation`
+on the control host. The SHA-256 of `SHA256SUMS` is
+`30ab6aa4c22ce2fa0e144bf5d6e9ea0b45733b96591c3c1b29180cf263e1a609`.
