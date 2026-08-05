@@ -13166,3 +13166,73 @@ on the control host. The SHA-256 of its `SHA256SUMS` is
 The preceding publication evidence and APK remain sealed and unmodified under
 their prior SHA-256. A separate authorization is required before task 7.5;
 task 7.7 retains its independent mandatory in-product operator gate.
+
+Task 7.5 is complete. Change progress is `49/60`; task 7.6 is the exact next
+task but was not started. The operator separately authorized only task 7.5
+from programme commit
+`f5f5172e5f465944898d4b8c763ff6d266a336ac` and tree
+`ceb9b62c218a257af18c70d7314f4402cfc3f3d9`. The normalized decision permits
+the ordered global prerequisites and canonical Atenea allowlist; it excludes
+task 7.6, legacy planning/release, prompts, retries, Beautips activation,
+other projects and foreign resources.
+
+Activation ran in two fail-closed phases against the unchanged exact V63
+image. Phase one changed compose SHA-256 from the retained disabled
+predecessor
+`69c97cf6c9595c613c17626703c4d090949bdbd44049a5e82c60e46f19e49df5`
+to global-only
+`b326ddd7c61bddcbb794689f0c4d33df61723a9b44415cb40e674ac0825b216f`:
+release and reconciliation were true while the project allowlist remained
+empty. Only `atenea-backend-prod` was recreated; it returned HTTP 200 on
+bounded attempt 8 with zero restarts, and no project was eligible. Zero
+legacy plan, operation or worker journal appeared.
+
+Phase two changed only the empty allowlist to exact `atenea`, producing final
+compose SHA-256
+`b96e5721e558460ae67b799da8e526dbf0c3668c8f267cef004d711d764323b8`.
+Again only `atenea-backend-prod` was recreated and reached HTTP 200 on bounded
+attempt 8 with zero restarts. Installed environment now projects release
+`true`, reconciliation `true` and the singleton allowlist `atenea`. The
+reviewed property boundary additionally requires the hard-coded canonical
+project identity, so Beautips and every other identity remain ineligible.
+No plan, operation, release request or journal was created.
+
+The fingerprint of all 21 non-recreated containers remains exact at
+`8c868730cab1c42b0833fe6ca5ac04ad79ade8690577d356e3f23ad00cd4b74a`.
+All 10 networks remain exact at
+`99bd956a55fea248080e8cde7af8e6c493ca841e90f7f5d5359b56b321b6fed7`
+and all 26 volumes at
+`026401b1597989cb49e1e6f690b7d25d12ca666175e589c8c5b27877e426ca45`.
+Production and preview remain on their exact images at HTTP 200 with zero
+restarts. Production retains 15 WorkSessions, 96 terminal AgentRuns and exact
+remote-close counts `NOT_REQUIRED:2`, `NOT_STARTED:3` and
+`UNVERIFIED_LEGACY:10`. WorkSession 16 remains
+`CLOSED/UNVERIFIED_LEGACY/revision 0`; WorkSession 17 remains
+`OPEN/NOT_STARTED/revision 0`; AgentRun 96 remains failed and unretried; and
+both active Android devices remain on `0.5.98`.
+
+Registry and WorkSession 16 workspace/allocation/admission hashes remain
+exact. WorkSession 17 still has no allocation, admission or registration.
+All four AX42 services remain active with zero restarts, the release journal
+is empty, rootless slots remain `3/0/0/3`, rootful Docker/containerd remain
+inactive/masked, backup/check/health remain successful and all three RAID
+arrays remain `[UU]`. Canonical Beautips remains clean at
+`9e122bf024d29b9cda56b27f8a32c218e1f0d433`, HTTP 200 and remote-close
+ineligible. The foreign local `atenea-activation-code_default` network remains
+present with zero containers and untouched.
+
+Task 7.5 changes only server-side capability configuration; it introduces no
+new web implementation. The previously validated state/action rendering is
+unchanged, while authenticated real-plan visual acceptance remains
+deliberately deferred to the mandatory in-product task 7.7 intervention. No
+prompt, retry, release, legacy plan or unrelated mutation occurred. The exact
+temporary Compose candidates were removed after their three identities were
+retained.
+
+Sanitized evidence and disabled/global-only/Atenea-only compose predecessors
+are beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.5-atenea-only-activation`
+on the control host. The SHA-256 of `SHA256SUMS` is
+`d782f7029879b391b7b25bf22d1756ba3e35604cf94e399e2c161ba31546bae3`.
+A separate authorization is required before task 7.6; task 7.7 retains its
+independent single-use in-product operator gate.

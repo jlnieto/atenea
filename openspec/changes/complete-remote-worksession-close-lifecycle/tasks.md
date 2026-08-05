@@ -187,7 +187,7 @@ environment dumps.
 - [x] 7.4 Publish and install the exact Android canary through the established
   update channel, then obtain the operator's confirmation that web and Android
   show unchanged behavior while release remains disabled
-- [ ] 7.5 Enable the global prerequisite and then only canonical Atenea; prove
+- [x] 7.5 Enable the global prerequisite and then only canonical Atenea; prove
   Beautips and all other project gates remain disabled and every unrelated
   route/resource fingerprint is unchanged
 - [ ] 7.6 Run an isolated/synthetic exact release plus repeated release and all
