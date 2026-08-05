@@ -13236,3 +13236,88 @@ on the control host. The SHA-256 of `SHA256SUMS` is
 `d782f7029879b391b7b25bf22d1756ba3e35604cf94e399e2c161ba31546bae3`.
 A separate authorization is required before task 7.6; task 7.7 retains its
 independent single-use in-product operator gate.
+
+Task 7.6 is complete. Change progress is `50/60`; task 7.7 is the exact next
+task but was not started. The operator's separate authorization was normalized
+only for isolated AX42 release acceptance from programme commit
+`1f3dee6282bf8f34db98cff04bb3240b827b307a` and tree
+`acd99e94b87ee1d97cac931f058c85d125d471ff`. It excludes the mandatory
+in-product task 7.7 confirmation, real WorkSession 16 release, prompts,
+AgentRun retries, runtime start, Beautips, other projects and foreign
+resources.
+
+The private AX42 sandbox imported the exact installed finalizer and worker
+receipt validator at SHA-256
+`dc8f4374f372127163df467c317a2f7fabff4af5e1667799a448173ac9546e15`
+and
+`e6f24a3265b1367ece444fcb1083d264e1024182884cbf5019560f81bd569193`.
+The exact published test source SHA-256 was
+`384d3c0b602d59fed1d7b02348270821ff945e51888efa4c5becb1e9a788c377`.
+Under one finite 300-second bound, all 38 tests passed in 2.037 seconds with
+zero failures, errors or skips.
+
+The accepted real-filesystem synthetic release advanced exact fixed ownership
+through `RELEASED` revision 6, retired only its derived allocation, released
+heavy before normal admission, disabled only its synthetic registration and
+retained its workspace and declared retained classes. Immediate repetition
+returned the identical request/ownership fingerprints and receipt SHA-256 with
+zero repeated mutation. Interruption after every mutation boundary and loss of
+response after every persisted journal successor resumed the same operation
+without reconstructing or repeating already released ownership.
+
+The same installed-byte run rejected unlabelled, partially labelled,
+foreign-owned, wrong-session, wrong-project, symlinked and ambiguous fixtures
+unchanged. Additional duplicate, unknown, production-like, incomplete,
+foreign-worker, foreign-project, foreign-session and noncanonical-operation
+cases also failed closed before mutation. The harness compared every recorded
+fixture identity, exact-cleaned only those still identical paths and preserved
+the unrelated sentinel. No real HTTP release request was sent and the
+installed release journal remained empty.
+
+The first outer wrapper expected the historical suite count `34` after the
+successful process had already reported `38/38`; that stale assertion made
+only the wrapper exit before its own summary. The complete log proved `OK`, no
+test process remained and the suite was deliberately not rerun. The four
+staging files were individually re-hashed, explicitly removed by recorded
+path, and their now-empty directory was removed. Zero synthetic fixture,
+process, journal or real worker resource remains.
+
+Before and after acceptance, the registry, WorkSession 16 workspace,
+allocation and admission hashes remained exactly
+`6dbb541e51d672236af660e01f83d9f89b0e3c0a5652757340170f2a70ca87e7`,
+`6014606bb884c808a8f9603b9eb86aa7fc65c785fae59bd45a4caf468f0e065c`,
+`af69156b9a6935cb11c96e0b7bdd73b950ec97959281a97b870bdad0c691a80f`
+and
+`099e565f0df471685c24925ce02d69431639b024499fd91e4d47c08c6d946e11`.
+All four AX42 services remain active with zero restarts; rootless slots remain
+`3/0/0/3`; backup/check/health are active with successful exit zero results;
+rootful Docker/containerd remain inactive/masked; and all three RAID arrays
+remain `[UU]`.
+
+All unrelated control-plane container, network and volume fingerprints are
+identical before and after. Production remains on exact image
+`sha256:1c67ac36a6b45a4b0004e15ba79bcd6d50addfb4b09d8b7890b43c8ef092801a`
+and preview on
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`;
+both are running with zero restarts and return HTTP 200. Beautips remains
+clean and upstream-exact at
+`9e122bf024d29b9cda56b27f8a32c218e1f0d433`, returns HTTP 200 and stays
+remote-close ineligible. The foreign local `atenea-activation-code_default`
+network remains present with zero containers and untouched.
+
+Production still has 15 WorkSessions, 96 terminal AgentRuns and remote-close
+counts `NOT_REQUIRED:2`, `NOT_STARTED:3`, `UNVERIFIED_LEGACY:10`.
+WorkSession 16 remains `CLOSED/UNVERIFIED_LEGACY/revision 0`; WorkSession 17
+remains `OPEN/NOT_STARTED/revision 0` with exactly one turn, run, attachment
+and binding; AgentRun 96 remains failed without retry or recovery failure; and
+legacy plan/operation counts remain zero. No prompt, response, attachment
+content, screenshot, credential, token, cookie, `auth.json`, Codex history or
+environment dump was read or retained.
+
+Task 7.6 introduces no visible product change, so no new Playwright run is
+required. Sanitized evidence is present beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.6-isolated-release-acceptance`
+on both the control host and AX42. The SHA-256 of each `SHA256SUMS` is
+`f8e0154658d5f08224277f47492fd6a7e27667424024c8d334c6560a04ee471f`.
+Task 7.7 remains stopped for the operator's real in-product, single-use
+confirmation and cannot be simulated or executed through SSH.

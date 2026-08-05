@@ -190,7 +190,7 @@ environment dumps.
 - [x] 7.5 Enable the global prerequisite and then only canonical Atenea; prove
   Beautips and all other project gates remain disabled and every unrelated
   route/resource fingerprint is unchanged
-- [ ] 7.6 Run an isolated/synthetic exact release plus repeated release and all
+- [x] 7.6 Run an isolated/synthetic exact release plus repeated release and all
   foreign/ambiguous rejection fixtures on AX42; exact-clean only recorded
   fixtures and confirm zero residual processes or resources
 - [ ] 7.7 Produce an in-product read-only plan for legacy WorkSession 16 and
