@@ -65,6 +65,99 @@ class V63RemoteCloseLifecycleMigrationTest {
     }
 
     @Test
+    void v64AddsDurableSingleUseRecoveryAuthorizationBinding() throws Exception {
+        withIsolatedSchema(schema -> {
+            assertEquals(62, flyway(schema, "62").migrate().migrationsExecuted);
+            LegacyRows rows;
+            UUID planId = UUID.randomUUID();
+            UUID operationId = UUID.randomUUID();
+            UUID confirmationKey = UUID.randomUUID();
+            try (Connection connection = connection(schema)) {
+                rows = seedRepresentativeV62Rows(connection);
+            }
+            assertEquals(1, flyway(schema, "63").migrate().migrationsExecuted);
+            try (Connection connection = connection(schema)) {
+                long operatorId = queryLong(connection, """
+                        INSERT INTO operator_account (
+                            email, display_name, password_hash, active,
+                            codex_operations_role, created_at, updated_at)
+                        VALUES (
+                            ?, 'V64 operator', 'synthetic-hash', TRUE,
+                            'PLATFORM_ADMINISTRATOR', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING id
+                        """, "v64-" + UUID.randomUUID() + "@atenea.test");
+                UUID remoteSessionId = (UUID) queryObject(connection,
+                        "SELECT remote_session_id FROM work_session WHERE id = ?",
+                        rows.closedRemoteSessionId());
+                String workspace = queryString(connection,
+                        "SELECT workspace_identity FROM work_session WHERE id = ?",
+                        rows.closedRemoteSessionId());
+                execute(connection, """
+                        INSERT INTO remote_close_legacy_plan (
+                            plan_id, work_session_id, requested_by, idempotency_key,
+                            operation, worker_id, project_identity, remote_session_id,
+                            workspace_identity, ownership_fingerprint_sha256,
+                            request_fingerprint_sha256, expires_at, created_at)
+                        VALUES (?, ?, ?, ?, 'RECONCILE_REMOTE_CLOSE',
+                            'ax42-v63-fixture', 'atenea', ?, ?, ?, ?,
+                            CURRENT_TIMESTAMP + INTERVAL '10 minutes',
+                            CURRENT_TIMESTAMP - INTERVAL '1 minute')
+                        """, planId, rows.closedRemoteSessionId(), operatorId,
+                        UUID.randomUUID(), remoteSessionId, workspace,
+                        "a".repeat(64), "b".repeat(64));
+                execute(connection, """
+                        INSERT INTO remote_close_legacy_operation (
+                            operation_id, plan_id, work_session_id, requested_by,
+                            idempotency_key, operation, ownership_fingerprint_sha256,
+                            request_fingerprint_sha256, state, revision,
+                            error_code, error_category, next_action, retryable,
+                            requested_at, updated_at, created_at)
+                        VALUES (?, ?, ?, ?, ?, 'RECONCILE_REMOTE_CLOSE', ?, ?,
+                            'BLOCKED', 2, 'WORKSPACE_RELEASE_PREFLIGHT_REJECTED',
+                            'OWNERSHIP', 'CONTACT_PLATFORM_ADMINISTRATOR', FALSE,
+                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """, operationId, planId, rows.closedRemoteSessionId(), operatorId,
+                        confirmationKey, "a".repeat(64), "c".repeat(64));
+            }
+            assertEquals(1, flyway(schema, "64").migrate().migrationsExecuted);
+            assertEquals(0, flyway(schema, "64").migrate().migrationsExecuted);
+
+            try (Connection connection = connection(schema)) {
+                assertEquals("64", queryString(connection, """
+                        SELECT version
+                        FROM flyway_schema_history
+                        WHERE success = TRUE
+                        ORDER BY installed_rank DESC
+                        LIMIT 1
+                        """));
+                assertTrue(columnExists(connection,
+                        "remote_close_legacy_plan", "consumed_at"));
+                assertTrue(columnExists(connection,
+                        "remote_close_legacy_plan", "consumed_by_operation_id"));
+                assertTrue(columnExists(connection,
+                        "remote_close_legacy_plan", "confirmation_idempotency_key"));
+                assertTrue(indexExists(connection,
+                        "idx_remote_close_legacy_plan_consumed_operation"));
+                assertEquals(operationId, queryObject(connection, """
+                        SELECT consumed_by_operation_id
+                          FROM remote_close_legacy_plan
+                         WHERE plan_id = ?
+                        """, planId));
+                assertEquals(confirmationKey, queryObject(connection, """
+                        SELECT confirmation_idempotency_key
+                          FROM remote_close_legacy_plan
+                         WHERE plan_id = ?
+                        """, planId));
+                assertTrue(queryObject(connection, """
+                        SELECT consumed_at IS NOT NULL
+                          FROM remote_close_legacy_plan
+                         WHERE plan_id = ?
+                        """, planId).equals(Boolean.TRUE));
+            }
+        });
+    }
+
+    @Test
     void backfillsLegacyRowsWithoutClaimingHistoricalRemoteRelease() throws Exception {
         withIsolatedSchema(schema -> {
             assertEquals(62, flyway(schema, "62").migrate().migrationsExecuted);

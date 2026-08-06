@@ -1359,7 +1359,7 @@ function RemoteCloseOperatorPanel({
   const actionAvailable = state.primaryActionAvailable && roleAllowed &&
     remoteCloseActionMatchesState(state) && !requiresRefresh;
   const legacyConfirmationRequired = state.primaryAction === "RECONCILE_REMOTE_CLOSE"
-    && ["LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY"].includes(state.state);
+    && ["LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY", "REMOTE_CLOSE_BLOCKED"].includes(state.state);
   const level = remoteCloseStateLevel(state.state);
   const actionLabel = state.primaryActionLabel || remoteCloseFallbackActionLabel(state.primaryAction);
 
@@ -1429,6 +1429,10 @@ function RemoteCloseOperatorPanel({
         confirmationIdempotencyKey.current
       );
       if (operation.state === "BLOCKED") {
+        setPlan(null);
+        setRequiresRefresh(true);
+        planIdempotencyKey.current = null;
+        confirmationIdempotencyKey.current = null;
         throw new Error("blocked");
       }
       setPlan(null);
@@ -1532,7 +1536,7 @@ function remoteCloseActionMatchesState(state: MobileSessionOperatorState) {
     return state.state === "CAPACITY_RELEASED" && Boolean(state.targetAgentRunId);
   }
   if (state.primaryAction === "RECONCILE_REMOTE_CLOSE") {
-    return ["CLOSING_REMOTE", "LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY"].includes(state.state)
+    return ["CLOSING_REMOTE", "LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY", "REMOTE_CLOSE_BLOCKED"].includes(state.state)
       && Boolean(state.targetWorkSessionId);
   }
   return false;

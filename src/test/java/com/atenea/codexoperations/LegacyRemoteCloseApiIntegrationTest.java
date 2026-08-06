@@ -1,13 +1,17 @@
 package com.atenea.codexoperations;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -69,10 +73,17 @@ class LegacyRemoteCloseApiIntegrationTest {
     @Autowired private OperatorRepository operatorRepository;
     @Autowired private ProjectRepository projectRepository;
     @Autowired private WorkSessionRepository sessionRepository;
+    @Autowired private LegacyRemoteCloseService legacyRemoteCloseService;
     @MockBean private RemoteWorkerClient remoteWorkerClient;
 
     @BeforeEach
     void cleanSyntheticLegacyFixtures() {
+        jdbcTemplate.update("""
+                UPDATE remote_close_legacy_plan
+                   SET consumed_at = NULL,
+                       consumed_by_operation_id = NULL,
+                       confirmation_idempotency_key = NULL
+                """);
         jdbcTemplate.update("DELETE FROM remote_close_legacy_event");
         jdbcTemplate.update("DELETE FROM remote_close_legacy_operation");
         jdbcTemplate.update("DELETE FROM remote_close_legacy_plan");
@@ -606,6 +617,167 @@ class LegacyRemoteCloseApiIntegrationTest {
         WorkSessionEntity blocked = sessionRepository.findById(session.getId()).orElseThrow();
         assertEquals(RemoteCloseState.BLOCKED, blocked.getRemoteCloseState());
         assertEquals("WORKSPACE_OWNERSHIP_AMBIGUOUS", blocked.getRemoteCloseErrorCode());
+    }
+
+    @Test
+    void exactPreflightBlockUsesFreshAuthorizationAndSameImmutableOperation()
+            throws Exception {
+        OperatorEntity administrator = operator(
+                CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        WorkSessionEntity session = legacySession();
+        String firstPlan = createPlan(administrator, session, UUID.randomUUID());
+        UUID firstPlanId = UUID.fromString(
+                com.jayway.jsonpath.JsonPath.read(firstPlan, "$.planId"));
+        String fingerprint = com.jayway.jsonpath.JsonPath.read(
+                firstPlan, "$.ownershipFingerprintSha256");
+        when(remoteWorkerClient.releaseWorkspace(any(), any()))
+                .thenThrow(new RemoteWorkerException(
+                        "synthetic exact preflight rejection",
+                        409, "WORKSPACE_RELEASE_PREFLIGHT_REJECTED",
+                        RemoteWorkerFailureCategory.OWNERSHIP, false,
+                        AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                        null))
+                .thenAnswer(invocation -> releaseReceipt(
+                        invocation.getArgument(0), invocation.getArgument(1)));
+
+        String blockedResponse = mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmationBody(firstPlanId, fingerprint,
+                                UUID.randomUUID(), false)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("BLOCKED"))
+                .andExpect(jsonPath("$.revision").value(2))
+                .andExpect(jsonPath("$.errorCode")
+                        .value("WORKSPACE_RELEASE_PREFLIGHT_REJECTED"))
+                .andReturn().getResponse().getContentAsString();
+        String operationId = com.jayway.jsonpath.JsonPath.read(
+                blockedResponse, "$.operationId");
+        assertTrue(legacyRemoteCloseService.isExactBlockedRecoveryAvailable(
+                session.getId()));
+
+        String recoveryPlan = createPlan(
+                administrator, session, UUID.randomUUID());
+        UUID recoveryPlanId = UUID.fromString(
+                com.jayway.jsonpath.JsonPath.read(recoveryPlan, "$.planId"));
+        assertEquals(fingerprint, com.jayway.jsonpath.JsonPath.read(
+                recoveryPlan, "$.ownershipFingerprintSha256"));
+        UUID recoveryKey = UUID.randomUUID();
+        String recoveryConfirmation = confirmationBody(
+                recoveryPlanId, fingerprint, recoveryKey, false);
+
+        String releasedResponse = mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(recoveryConfirmation))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.operationId").value(operationId))
+                .andExpect(jsonPath("$.planId").value(recoveryPlanId.toString()))
+                .andExpect(jsonPath("$.state").value("RELEASED"))
+                .andExpect(jsonPath("$.revision").value(4))
+                .andExpect(jsonPath("$.nextAction").value("NONE"))
+                .andReturn().getResponse().getContentAsString();
+        String repeatedResponse = mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(recoveryConfirmation))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertEquals(releasedResponse, repeatedResponse);
+        assertEquals(2, count("remote_close_legacy_plan"));
+        assertEquals(1, count("remote_close_legacy_operation"));
+        assertEquals(4, count("remote_close_legacy_event"));
+        assertEquals(2, jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM remote_close_legacy_plan
+                 WHERE consumed_by_operation_id = ?
+                """, Integer.class, UUID.fromString(operationId)));
+        verify(remoteWorkerClient, times(2))
+                .diagnoseWorkspaceCapacityOwner(any(), any());
+        verify(remoteWorkerClient, times(2)).releaseWorkspace(any(), any());
+        WorkSessionEntity released = sessionRepository.findById(session.getId())
+                .orElseThrow();
+        assertEquals(RemoteCloseState.RELEASED, released.getRemoteCloseState());
+        assertEquals(UUID.fromString(operationId), released.getRemoteCloseOperationId());
+        assertNotNull(released.getRemoteCloseReceiptSha256());
+        assertFalse(legacyRemoteCloseService.isExactBlockedRecoveryAvailable(
+                session.getId()));
+    }
+
+    @Test
+    void startupReconciliationResumesRequestedOperationButNeverBlockedOperation()
+            throws Exception {
+        OperatorEntity administrator = operator(
+                CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        WorkSessionEntity session = legacySession();
+        String plan = createPlan(administrator, session, UUID.randomUUID());
+        UUID planId = UUID.fromString(
+                com.jayway.jsonpath.JsonPath.read(plan, "$.planId"));
+        String fingerprint = com.jayway.jsonpath.JsonPath.read(
+                plan, "$.ownershipFingerprintSha256");
+        when(remoteWorkerClient.releaseWorkspace(any(), any()))
+                .thenThrow(new RemoteWorkerException(
+                        "synthetic lost response", new java.io.IOException("synthetic")))
+                .thenAnswer(invocation -> releaseReceipt(
+                        invocation.getArgument(0), invocation.getArgument(1)));
+
+        mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmationBody(planId, fingerprint,
+                                UUID.randomUUID(), false)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("RECONCILING"));
+
+        legacyRemoteCloseService.reconcilePersistedLegacyOperations();
+
+        assertEquals(RemoteCloseState.RELEASED,
+                sessionRepository.findById(session.getId()).orElseThrow()
+                        .getRemoteCloseState());
+        verify(remoteWorkerClient, times(2)).releaseWorkspace(any(), any());
+
+        reset(remoteWorkerClient);
+        doAnswer(invocation -> capacityOwner(invocation.getArgument(0)))
+                .when(remoteWorkerClient).diagnoseWorkspaceCapacityOwner(any(), any());
+        WorkSessionEntity blockedSession = legacySession();
+        String blockedPlan = createPlan(
+                administrator, blockedSession, UUID.randomUUID());
+        UUID blockedPlanId = UUID.fromString(
+                com.jayway.jsonpath.JsonPath.read(blockedPlan, "$.planId"));
+        String blockedFingerprint = com.jayway.jsonpath.JsonPath.read(
+                blockedPlan, "$.ownershipFingerprintSha256");
+        when(remoteWorkerClient.releaseWorkspace(any(), any())).thenThrow(
+                new RemoteWorkerException(
+                        "synthetic exact preflight rejection",
+                        409, "WORKSPACE_RELEASE_PREFLIGHT_REJECTED",
+                        RemoteWorkerFailureCategory.OWNERSHIP, false,
+                        AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                        null));
+        mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        blockedSession.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmationBody(blockedPlanId, blockedFingerprint,
+                                UUID.randomUUID(), false)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("BLOCKED"));
+        clearInvocations(remoteWorkerClient);
+
+        legacyRemoteCloseService.reconcilePersistedLegacyOperations();
+
+        assertEquals(RemoteCloseState.BLOCKED,
+                sessionRepository.findById(blockedSession.getId()).orElseThrow()
+                        .getRemoteCloseState());
+        verify(remoteWorkerClient, never()).releaseWorkspace(any(), any());
     }
 
     @Test

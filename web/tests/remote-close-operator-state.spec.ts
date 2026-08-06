@@ -22,6 +22,7 @@ type SyntheticState = {
   confirmationRequests: Record<string, unknown>[];
   recoveryRequests: Record<string, unknown>[];
   staleConfirmation?: boolean;
+  blockedConfirmation?: boolean;
 };
 
 const currentSessionId = 641;
@@ -179,6 +180,26 @@ async function installSyntheticApi(page: Page, apiState: SyntheticState) {
       apiState.confirmationRequests.push(request.postDataJSON());
       if (apiState.staleConfirmation) {
         return json(route, { code: "REMOTE_CLOSE_PLAN_STALE" }, 409);
+      }
+      if (apiState.blockedConfirmation) {
+        return json(route, {
+          operationId: "20000000-0000-4000-8000-000000000001",
+          planId: "10000000-0000-4000-8000-000000000001",
+          workSessionId: closedOwnerId,
+          operation: "RECONCILE_REMOTE_CLOSE",
+          state: "BLOCKED",
+          revision: 2,
+          ownershipFingerprintSha256: "a".repeat(64),
+          errorCode: "WORKSPACE_RELEASE_PREFLIGHT_REJECTED",
+          errorCategory: "OWNERSHIP",
+          nextAction: "CONTACT_PLATFORM_ADMINISTRATOR",
+          retryable: false,
+          receiptSha256: null,
+          requestedAt: "2099-01-01T00:01:00Z",
+          updatedAt: "2099-01-01T00:01:01Z",
+          releasedAt: null,
+          valuesExposed: false
+        });
       }
       apiState.released = true;
       return json(route, {
@@ -369,6 +390,49 @@ for (const viewport of [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 }
 ] as const) {
+test(`${viewport.name} exact preflight block exposes one fresh safe confirmation`, async ({ page }) => {
+  await page.setViewportSize({ width: viewport.width, height: viewport.height });
+  const apiState: SyntheticState = {
+    operatorRole: "PLATFORM_ADMINISTRATOR",
+    operatorState: {
+      surfaceEnabled: true,
+      state: "REMOTE_CLOSE_BLOCKED",
+      title: "Cierre remoto bloqueado",
+      blocker: "No se liberó ningún recurso. Genera una nueva confirmación administrativa.",
+      primaryAction: "RECONCILE_REMOTE_CLOSE",
+      primaryActionLabel: "Volver a validar cierre",
+      primaryActionAvailable: true,
+      requiredRole: "PLATFORM_ADMINISTRATOR",
+      targetWorkSessionId: closedOwnerId,
+      targetAgentRunId: null
+    },
+    released: false,
+    closeRequests: 0,
+    planRequests: [],
+    confirmationRequests: [],
+    recoveryRequests: []
+  };
+  await openConversation(page, apiState, `${viewport.name}-preflight-recovery`);
+
+  await expect(page.getByText("Cierre remoto bloqueado", { exact: true })).toBeVisible();
+  await expect(page.getByText(
+    "No se liberó ningún recurso. Genera una nueva confirmación administrativa.",
+    { exact: true }
+  )).toBeVisible();
+  await expectPrimaryActionInFirstViewport(page, "Volver a validar cierre");
+  await expectNoHorizontalOverflow(page);
+  await retainScreenshot(page, `${viewport.name}-preflight-recovery.png`);
+
+  await page.getByRole("button", { name: "Volver a validar cierre" }).click();
+  await expect(page.getByRole("group", { name: "Confirmar reconciliación del cierre" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Confirmar reconciliación" })).toBeEnabled();
+  await expectNoHorizontalOverflow(page);
+  await retainScreenshot(page, `${viewport.name}-preflight-recovery-confirmation.png`);
+  expect(apiState.planRequests).toHaveLength(1);
+  expect(apiState.confirmationRequests).toHaveLength(0);
+  expect(apiState.recoveryRequests).toHaveLength(0);
+});
+
 test(`${viewport.name} stale confirmation is discarded until an explicit screen refresh`, async ({ page }) => {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   const apiState: SyntheticState = {
@@ -421,6 +485,48 @@ test(`${viewport.name} stale confirmation is discarded until an explicit screen 
   expect(apiState.planRequests).toHaveLength(2);
 });
 }
+
+test("blocked confirmation requires refresh and a new single-use plan", async ({ page }) => {
+  const apiState: SyntheticState = {
+    operatorRole: "PLATFORM_ADMINISTRATOR",
+    operatorState: {
+      surfaceEnabled: true,
+      state: "REMOTE_CLOSE_BLOCKED",
+      title: "Cierre remoto bloqueado",
+      blocker: "No se liberó ningún recurso. Genera una nueva confirmación administrativa.",
+      primaryAction: "RECONCILE_REMOTE_CLOSE",
+      primaryActionLabel: "Volver a validar cierre",
+      primaryActionAvailable: true,
+      requiredRole: "PLATFORM_ADMINISTRATOR",
+      targetWorkSessionId: closedOwnerId,
+      targetAgentRunId: null
+    },
+    released: false,
+    closeRequests: 0,
+    planRequests: [],
+    confirmationRequests: [],
+    recoveryRequests: [],
+    blockedConfirmation: true
+  };
+  await openConversation(page, apiState, "blocked-confirmation");
+
+  await page.getByRole("button", { name: "Volver a validar cierre" }).click();
+  await page.getByRole("button", { name: "Confirmar reconciliación" }).click();
+
+  await expect(page.getByRole("group", { name: "Confirmar reconciliación del cierre" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Volver a validar cierre" })).toBeDisabled();
+  await expect(page.getByRole("alert")).toHaveText(
+    "La acción no pudo confirmarse. El estado se conserva; actualiza antes de volver a intentarlo."
+  );
+  expect(apiState.planRequests).toHaveLength(1);
+  expect(apiState.confirmationRequests).toHaveLength(1);
+
+  await page.getByRole("button", { name: "Actualizar" }).click();
+  await expect(page.getByRole("button", { name: "Volver a validar cierre" })).toBeEnabled();
+  await page.getByRole("button", { name: "Volver a validar cierre" }).click();
+  await expect(page.getByRole("group", { name: "Confirmar reconciliación del cierre" })).toBeVisible();
+  expect(apiState.planRequests).toHaveLength(2);
+});
 
 test("reconciling and unverifiable ownership never expose retry", async ({ page }) => {
   const apiState: SyntheticState = {

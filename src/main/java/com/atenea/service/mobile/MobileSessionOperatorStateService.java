@@ -4,6 +4,7 @@ import com.atenea.api.mobile.MobileSessionOperatorState;
 import com.atenea.api.mobile.MobileSessionOperatorStateResponse;
 import com.atenea.api.mobile.MobileSessionPrimaryAction;
 import com.atenea.api.worksession.WorkSessionConversationViewResponse;
+import com.atenea.codexoperations.LegacyRemoteCloseService;
 import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
@@ -28,19 +29,22 @@ public class MobileSessionOperatorStateService {
     private final AgentRunService agentRunService;
     private final RemoteWorkerProperties remoteWorkerProperties;
     private final RemoteWorkerClient remoteWorkerClient;
+    private final LegacyRemoteCloseService legacyRemoteCloseService;
 
     public MobileSessionOperatorStateService(
             AgentRunRepository agentRunRepository,
             WorkSessionRepository workSessionRepository,
             AgentRunService agentRunService,
             RemoteWorkerProperties remoteWorkerProperties,
-            RemoteWorkerClient remoteWorkerClient
+            RemoteWorkerClient remoteWorkerClient,
+            LegacyRemoteCloseService legacyRemoteCloseService
     ) {
         this.agentRunRepository = agentRunRepository;
         this.workSessionRepository = workSessionRepository;
         this.agentRunService = agentRunService;
         this.remoteWorkerProperties = remoteWorkerProperties;
         this.remoteWorkerClient = remoteWorkerClient;
+        this.legacyRemoteCloseService = legacyRemoteCloseService;
     }
 
     public MobileSessionOperatorStateResponse build(
@@ -71,14 +75,25 @@ public class MobileSessionOperatorStateService {
         }
 
         if (closeState == RemoteCloseState.BLOCKED) {
+            boolean recoveryAvailable =
+                    "WORKSPACE_RELEASE_PREFLIGHT_REJECTED".equals(
+                            session.remoteCloseErrorCode())
+                    && legacyRemoteCloseService.isExactBlockedRecoveryAvailable(
+                            session.id());
             return state(
                     true,
                     MobileSessionOperatorState.REMOTE_CLOSE_BLOCKED,
                     "Cierre remoto bloqueado",
-                    "La propiedad remota no pudo verificarse de forma segura.",
-                    MobileSessionPrimaryAction.CONTACT_PLATFORM_ADMINISTRATOR,
-                    "Contactar con administración",
-                    false,
+                    recoveryAvailable
+                            ? "No se liberó ningún recurso. Genera una nueva confirmación administrativa."
+                            : "La propiedad remota no pudo verificarse de forma segura.",
+                    recoveryAvailable
+                            ? MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE
+                            : MobileSessionPrimaryAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                    recoveryAvailable
+                            ? "Volver a validar cierre"
+                            : "Contactar con administración",
+                    recoveryAvailable,
                     CodexOperationsRole.PLATFORM_ADMINISTRATOR,
                     session.id(),
                     null);

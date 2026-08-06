@@ -48,6 +48,25 @@ class RemoteCloseOperatorCoordinatorTest {
     }
 
     @Test
+    fun exactPreflightBlockRequiresAFreshAdministrativePlan() = runBlocking {
+        val gateway = FakeGateway()
+        val coordinator = coordinator(gateway, role = "PLATFORM_ADMINISTRATOR")
+        val state = blockedCapacityState().copy(
+            state = "REMOTE_CLOSE_BLOCKED",
+            title = "Cierre remoto bloqueado",
+            blocker = "No se liberó ningún recurso. Genera una nueva confirmación administrativa.",
+            primaryActionLabel = "Volver a validar cierre",
+            targetAgentRunId = null
+        )
+
+        assertFalse(coordinator.runPrimaryAction(state))
+
+        assertEquals(listOf("key-1"), gateway.planKeys)
+        assertEquals(plan(), coordinator.state.value.plan)
+        assertTrue(gateway.confirmationKeys.isEmpty())
+    }
+
+    @Test
     fun reusesConfirmationKeyAfterLostResponseAndKeepsPlanRecoverable() = runBlocking {
         val gateway = FakeGateway(failFirstConfirmation = true)
         val coordinator = coordinator(gateway, role = "PLATFORM_ADMINISTRATOR")
@@ -113,6 +132,28 @@ class RemoteCloseOperatorCoordinatorTest {
     }
 
     @Test
+    fun blockedConfirmationCannotReuseItsConsumedPlan() = runBlocking {
+        val gateway = FakeGateway(blockedConfirmation = true)
+        val coordinator = coordinator(gateway, role = "PLATFORM_ADMINISTRATOR")
+        val state = blockedCapacityState()
+
+        coordinator.runPrimaryAction(state)
+        assertFalse(coordinator.confirmLegacyReconciliation(state))
+
+        assertNull(coordinator.state.value.plan)
+        assertTrue(coordinator.state.value.requiresRefresh)
+        assertEquals(
+            "La comprobación no liberó recursos. Actualiza y genera una nueva confirmación.",
+            coordinator.state.value.error
+        )
+        assertFalse(coordinator.runPrimaryAction(state))
+
+        coordinator.accept(state)
+        assertFalse(coordinator.runPrimaryAction(state))
+        assertEquals(listOf("key-1", "key-3"), gateway.planKeys)
+    }
+
+    @Test
     fun authorizationHierarchyMatchesTheSharedOperatorRoles() {
         assertTrue(operatorHasRequiredRole("ROUTINE_OPERATOR", "ROUTINE_OPERATOR"))
         assertTrue(operatorHasRequiredRole("PRIVILEGED_OPERATOR", "ROUTINE_OPERATOR"))
@@ -136,7 +177,8 @@ class RemoteCloseOperatorCoordinatorTest {
     private class FakeGateway(
         private val failFirstPlan: Boolean = false,
         private val failFirstConfirmation: Boolean = false,
-        private val staleConfirmation: Boolean = false
+        private val staleConfirmation: Boolean = false,
+        private val blockedConfirmation: Boolean = false
     ) : RemoteCloseGateway {
         val planKeys = mutableListOf<String>()
         val confirmationKeys = mutableListOf<String>()
@@ -157,6 +199,7 @@ class RemoteCloseOperatorCoordinatorTest {
         ): LegacyRemoteCloseOperation {
             confirmationKeys += idempotencyKey
             if (staleConfirmation) throw AteneaApiException(409, "stale")
+            if (blockedConfirmation) return operation().copy(state = "BLOCKED")
             if (failFirstConfirmation && confirmationKeys.size == 1) {
                 throw AteneaApiException(503, "response lost")
             }

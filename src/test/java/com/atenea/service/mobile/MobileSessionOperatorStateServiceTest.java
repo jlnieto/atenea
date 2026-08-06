@@ -15,6 +15,7 @@ import com.atenea.api.worksession.WorkSessionOperationalState;
 import com.atenea.api.worksession.WorkSessionResponse;
 import com.atenea.api.worksession.WorkSessionViewLatestRunResponse;
 import com.atenea.api.worksession.WorkSessionViewResponse;
+import com.atenea.codexoperations.LegacyRemoteCloseService;
 import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
@@ -61,6 +62,9 @@ class MobileSessionOperatorStateServiceTest {
     @Mock
     private RemoteWorkerClient remoteWorkerClient;
 
+    @Mock
+    private LegacyRemoteCloseService legacyRemoteCloseService;
+
     private MobileSessionOperatorStateService service;
 
     @BeforeEach
@@ -70,7 +74,8 @@ class MobileSessionOperatorStateServiceTest {
                 workSessionRepository,
                 agentRunService,
                 remoteWorkerProperties,
-                remoteWorkerClient);
+                remoteWorkerClient,
+                legacyRemoteCloseService);
     }
 
     @Test
@@ -111,6 +116,64 @@ class MobileSessionOperatorStateServiceTest {
         assertFalse(response.primaryActionAvailable());
         assertEquals(CodexOperationsRole.PLATFORM_ADMINISTRATOR,
                 response.requiredRole());
+    }
+
+    @Test
+    void exactPreflightBlockOffersOneFreshAdministrativeConfirmation() {
+        when(legacyRemoteCloseService.isExactBlockedRecoveryAvailable(17L))
+                .thenReturn(true);
+
+        MobileSessionOperatorStateResponse response = service.build(conversation(
+                WorkSessionStatus.CLOSED,
+                RemoteCloseState.BLOCKED,
+                "WORKSPACE_RELEASE_PREFLIGHT_REJECTED",
+                null,
+                false));
+
+        assertTrue(response.surfaceEnabled());
+        assertEquals(MobileSessionOperatorState.REMOTE_CLOSE_BLOCKED,
+                response.state());
+        assertEquals("No se liberó ningún recurso. Genera una nueva confirmación administrativa.",
+                response.blocker());
+        assertEquals(MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE,
+                response.primaryAction());
+        assertEquals("Volver a validar cierre", response.primaryActionLabel());
+        assertTrue(response.primaryActionAvailable());
+        assertEquals(CodexOperationsRole.PLATFORM_ADMINISTRATOR,
+                response.requiredRole());
+    }
+
+    @Test
+    void preflightCodeWithoutExactPersistedEligibilityOffersNoMutation() {
+        MobileSessionOperatorStateResponse response = service.build(conversation(
+                WorkSessionStatus.CLOSED,
+                RemoteCloseState.BLOCKED,
+                "WORKSPACE_RELEASE_PREFLIGHT_REJECTED",
+                null,
+                false));
+
+        assertEquals(MobileSessionOperatorState.REMOTE_CLOSE_BLOCKED,
+                response.state());
+        assertEquals(MobileSessionPrimaryAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                response.primaryAction());
+        assertFalse(response.primaryActionAvailable());
+    }
+
+    @Test
+    void otherBlockedOwnershipNeverOffersRecoveryMutation() {
+        MobileSessionOperatorStateResponse response = service.build(conversation(
+                WorkSessionStatus.CLOSED,
+                RemoteCloseState.BLOCKED,
+                "WORKSPACE_OWNERSHIP_AMBIGUOUS",
+                null,
+                false));
+
+        assertEquals(MobileSessionOperatorState.REMOTE_CLOSE_BLOCKED,
+                response.state());
+        assertEquals(MobileSessionPrimaryAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                response.primaryAction());
+        assertFalse(response.primaryActionAvailable());
+        verifyNoInteractions(remoteWorkerProperties);
     }
 
     @Test
@@ -403,6 +466,22 @@ class MobileSessionOperatorStateServiceTest {
             WorkSessionViewLatestRunResponse latestRun,
             boolean runInProgress
     ) {
+        return conversation(
+                status,
+                closeState,
+                closeState == RemoteCloseState.BLOCKED
+                        ? "REMOTE_CLOSE_OWNERSHIP_BLOCKED" : null,
+                latestRun,
+                runInProgress);
+    }
+
+    private static WorkSessionConversationViewResponse conversation(
+            WorkSessionStatus status,
+            RemoteCloseState closeState,
+            String remoteCloseErrorCode,
+            WorkSessionViewLatestRunResponse latestRun,
+            boolean runInProgress
+    ) {
         WorkSessionResponse session = new WorkSessionResponse(
                 17L,
                 7L,
@@ -430,8 +509,7 @@ class MobileSessionOperatorStateServiceTest {
                 "remote:ax42-01:work-session:18c00753-6080-42f7-ac05-18c47b236cac",
                 new SessionOperationalSnapshotResponse(true, true, "main", runInProgress),
                 closeState,
-                closeState == RemoteCloseState.BLOCKED
-                        ? "REMOTE_CLOSE_OWNERSHIP_BLOCKED" : null,
+                remoteCloseErrorCode,
                 AgentRunRecoveryNextAction.NONE);
         return new WorkSessionConversationViewResponse(
                 new WorkSessionViewResponse(

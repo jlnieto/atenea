@@ -151,9 +151,12 @@ internal class RemoteCloseOperatorCoordinator(
             requireValidPlan(plan, targetSessionId)
             val key = confirmationIdempotencyKey ?: idFactory().also { confirmationIdempotencyKey = it }
             val operation = gateway.confirmPlan(targetSessionId, plan, key)
+            if (operation.state == "BLOCKED") {
+                invalidateBlockedOperation()
+                return false
+            }
             if (operation.workSessionId != targetSessionId || operation.planId != plan.planId ||
-                operation.operation != "RECONCILE_REMOTE_CLOSE" || operation.valuesExposed ||
-                operation.state == "BLOCKED") {
+                operation.operation != "RECONCILE_REMOTE_CLOSE" || operation.valuesExposed) {
                 throw IllegalStateException("blocked-or-mismatched-operation")
             }
             mutableState.value = mutableState.value.copy(
@@ -188,6 +191,15 @@ internal class RemoteCloseOperatorCoordinator(
         mutableState.value = RemoteCloseActionUiState(
             requiresRefresh = true,
             error = remoteCloseActionError(error)
+        )
+    }
+
+    private fun invalidateBlockedOperation() {
+        planIdempotencyKey = null
+        confirmationIdempotencyKey = null
+        mutableState.value = RemoteCloseActionUiState(
+            requiresRefresh = true,
+            error = "La comprobación no liberó recursos. Actualiza y genera una nueva confirmación."
         )
     }
 
@@ -228,7 +240,8 @@ private fun remoteCloseActionMatchesState(state: MobileSessionOperatorState): Bo
     "RECONCILE_REMOTE_CLOSE" -> state.state in setOf(
         "CLOSING_REMOTE",
         "LEGACY_CLOSE_REQUIRED",
-        "CLOSED_OWNER_BLOCKS_CAPACITY"
+        "CLOSED_OWNER_BLOCKS_CAPACITY",
+        "REMOTE_CLOSE_BLOCKED"
     ) && state.targetWorkSessionId != null
     else -> false
 }
@@ -245,7 +258,11 @@ internal fun operatorHasRequiredRole(actualRole: String?, requiredRole: String?)
 
 internal fun remoteCloseNeedsLegacyConfirmation(state: MobileSessionOperatorState): Boolean =
     state.primaryAction == "RECONCILE_REMOTE_CLOSE" &&
-        state.state in setOf("LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY")
+        state.state in setOf(
+            "LEGACY_CLOSE_REQUIRED",
+            "CLOSED_OWNER_BLOCKS_CAPACITY",
+            "REMOTE_CLOSE_BLOCKED"
+        )
 
 internal fun remoteCloseActionError(error: Exception): String = when {
     error is AteneaApiException && error.status == 403 ->
