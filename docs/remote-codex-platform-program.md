@@ -13519,3 +13519,74 @@ OpenSpec progress remains `50/60`; task 7.7 remains the first pending task.
 The rollout authorization is consumed. Task 7.7 still requires the operator to
 perform the real in-product intervention; confirmation may not be simulated or
 invoked through SSH, and no prompt or AgentRun retry is authorized.
+
+The subsequent operator check proved that the prerequisite rollout still did
+not render `Reconciliar cierre`. Read-only production inspection identified the
+exact cause: WorkSession 16 predates canonical source-observation persistence
+and all four of its observation fields are null, while the immediate successor
+WorkSession 17 contains the exact persisted canonical observation. The first
+compatibility correction deliberately required the historical owner itself to
+carry that observation and therefore continued to fail closed. No task 7.7
+plan or release was created and no retained state was changed.
+
+The published Atenea successor correction is commit
+`a0fcde629eac76db1a11559e94401a1db566d33b`, tree
+`2a3d4020dd75759d99d76706ab264fa8620276f7`. It permits only the exact,
+distinct, later, same-project, immediate-next WorkSession to serve as the
+historical owner's canonical-source witness. That witness is bound through
+projection, diagnosis, plan, locked confirmation, release, idempotent replay
+and restart recovery. Missing, partial, foreign and non-immediate witnesses
+fail closed before worker I/O. WorkSession 16 remains the owner, its historical
+fields are not backfilled, and neither WorkSession 17 nor AgentRun 96 is
+mutated or executed.
+
+Main compilation passes. The focused backend suite passes 53/53 and the full
+backend suite passes 688/688 on a fresh isolated Docker database. The exact
+candidate JAR SHA-256 is
+`dbe33e4f7c46ac506a064917b8cefc52933c7711b0609a9b1d6aeba6c940d1bc`.
+The retained backend image
+`atenea-remote-close-v63-candidate:a0fcde629eac76db1a11559e94401a1db566d33b`
+has ID
+`sha256:d4ecec27bd1b7cd0ba5dca095a2524ee33ab342b99e6d0c774f0b2ddbbc568d2`.
+It preserves the running image's exact 13-layer prefix, adds only the packaged
+JAR layer and verifies the same JAR SHA-256 inside an isolated
+`--network none` ephemeral container. Zero container uses the candidate.
+
+Production remains on exact image
+`sha256:2e9b4075d180d07d645289f8dae57d79f4f11f7d52beab58e2dd172d940c4112`
+and preview on
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`;
+both are running with zero restarts and return HTTP 200. Beautips returns HTTP
+200 and remains clean/upstream-exact at
+`9e122bf024d29b9cda56b27f8a32c218e1f0d433`. AX42 bytes and configuration
+remain unchanged: all four services are active with zero restarts, slots are
+`3/0/0/3`, backup/check/health remain successful, rootful Docker/containerd
+remain inactive and all three RAID arrays remain `[UU]`.
+
+WorkSessions 16/17 remain respectively
+`CLOSED/REMOTE/UNVERIFIED_LEGACY/revision 0` and
+`OPEN/REMOTE/NOT_STARTED/revision 0`; AgentRun 96 remains terminal failed and
+unretried; WorkSession 17 retains one turn, run, attachment and binding; and
+plan, operation and release-journal counts remain zero. All five ownership
+fingerprints remain exact and WorkSession 17 still has no registration,
+allocation or admission. No prompt, response, attachment content, screenshot,
+credential, token, cookie, `auth.json`, Codex history or environment dump was
+read or retained.
+
+Sanitized evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-historical-witness-correction`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-historical-witness-correction`.
+Both copies verify 7/7 files; the SHA-256 of each `SHA256SUMS` is
+`3cdebb962850034c7c69fa13c70bdc78e007df75b411c7477d3dc697e941c2b2`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains the first pending task and
+has not started. The new image is not deployed. Task 6.8 requires a fresh,
+separate, exact authorization before replacing only the canonical Atenea
+production backend with image
+`sha256:d4ecec27bd1b7cd0ba5dca095a2524ee33ab342b99e6d0c774f0b2ddbbc568d2`.
+No AX42 installation is required or requested. After rollout and real
+Playwright validation at `1440x900` and `390x844`, task 7.7 retains its own
+independent in-product single-use operator confirmation. Neither gate
+authorizes WorkSession 16 release through SSH, prompts, AgentRun retry,
+runtime, APK/Android, Beautips, another project or foreign resources.
