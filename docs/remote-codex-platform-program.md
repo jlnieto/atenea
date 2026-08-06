@@ -13590,3 +13590,82 @@ Playwright validation at `1440x900` and `390x844`, task 7.7 retains its own
 independent in-product single-use operator confirmation. Neither gate
 authorizes WorkSession 16 release through SSH, prompts, AgentRun retry,
 runtime, APK/Android, Beautips, another project or foreign resources.
+
+The operator subsequently authorized only that exact pre-7.7 backend rollout
+from manifest seal
+`3cdebb962850034c7c69fa13c70bdc78e007df75b411c7477d3dc697e941c2b2`,
+image
+`sha256:d4ecec27bd1b7cd0ba5dca095a2524ee33ab342b99e6d0c774f0b2ddbbc568d2`
+and candidate commit `a0fcde629eac76db1a11559e94401a1db566d33b`. The
+authorization explicitly excluded task 7.7 confirmation, WorkSession 16
+release, prompts, retries, runtime, AX42 changes, APK, Beautips and other
+projects.
+
+The complete preflight reverified the manifest, local/internal/GitHub Git,
+candidate JAR and image, production predecessor, preview, Compose, WorkSessions
+16/17, AgentRun 96, zero plans/operations, all five ownership hashes, AX42
+services and RAID. An initial ownership hash command used obsolete numeric
+session-directory names and failed before hashing any target. The canonical
+installed registry plus persisted remote session identities resolved the exact
+server-owned UUID paths; the repeated check proved all five expected hashes
+without accepting a caller path or invoking diagnosis/release.
+
+The running predecessor was retained as
+`atenea-remote-close-v63-rollback:pre-a0fcde62-2e9b4075` at exact image
+`sha256:2e9b4075d180d07d645289f8dae57d79f4f11f7d52beab58e2dd172d940c4112`.
+Only the existing production service tag was pointed at the authorized image
+and only `atenea-backend-prod` was recreated. It reached HTTP 200 on bounded
+attempt 8 and now runs the exact successor with zero restarts. Compose remains
+byte-exact at SHA-256
+`b96e5721e558460ae67b799da8e526dbf0c3668c8f267cef004d711d764323b8`.
+Unrelated container, network and volume fingerprints are identical before and
+after.
+
+The live persistence postflight found WorkSession 16 unchanged at
+`CLOSED/REMOTE/UNVERIFIED_LEGACY/revision 0`, WorkSession 17 unchanged at
+`OPEN/REMOTE/NOT_STARTED/revision 0`, and AgentRun 96 terminal failed,
+pre-dispatch, unretried and complete in its six execution-profile fields.
+WorkSession 17 retains exactly one turn, run, attachment and binding. Retry
+children, legacy plans, legacy operations and non-terminal runs remain zero;
+worker `ax42-01` remains enabled/healthy at capacity `4/2`, use `0/0`.
+
+All five ownership SHA-256 values remain exact and WorkSession 17 allocation
+and admission remain absent. AX42 release journals remain zero; its four
+services are active with zero restarts; slots remain `3/0/0/3`;
+backup/check/health remain `success/0`; rootful Docker/containerd remain
+inactive; and RAID remains `3/3 [UU]`. No AX42 byte or configuration changed.
+The unrelated local `atenea-activation-code_default` network remains present
+with zero containers.
+
+The unchanged web implementation passes 10/10 focused Playwright checks at
+`1440x900` and `390x844`. Sanitized synthetic-data screenshots and DOM
+assertions prove state hierarchy, first-viewport primary action, role
+permissions, long-message wrapping, confirmation controls, clipping and
+overflow. No real plan or confirmation was created. The authenticated WS17
+DOM/visual check remains an operator-only intervention because no credential,
+token or cookie may be read or reused.
+
+Production and preview actuator endpoints return HTTP 200, Atenea and preview
+public roots return their expected authentication-boundary HTTP 401, and
+Beautips returns HTTP 200. A separate postflight probe found that
+`ateneaapp.yudri.es` returns HTTP 502: unchanged Caddy routes it to
+`expo-prod:8084`, while the unchanged current container network has no such
+alias. No pre-rollout response baseline exists for that root. Exact unchanged
+Caddy/Compose bytes plus unrelated container/network fingerprints prove the
+authorized backend rollout did not introduce this routing state. It was not
+adopted, repaired or reconfigured because it is outside the authorization and
+its ownership/status is ambiguous.
+
+Sanitized rollout evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-historical-witness-rollout-execution`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-historical-witness-rollout-execution`.
+Both copies verify 5/5 files; the SHA-256 of each `SHA256SUMS` is
+`f23c1963e14855f4e99d3d425dd2e125a2b205a186be856f554b94f50e76d3f2`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains the first pending task and
+has not been confirmed. The rollout authorization is consumed. Progress stops
+before the operator's real in-product check because of the mandatory 7.7 gate
+and the separately observed ambiguous `ateneaapp.yudri.es` routing state. No
+release, prompt, response, retry, runtime, AX42, APK/Android, Beautips,
+other-project, ownership or retained-state mutation occurred.
