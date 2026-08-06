@@ -13436,3 +13436,86 @@ Both copies verify 4/4 files; the SHA-256 of each `SHA256SUMS` is
 No production deployment, AX42 installation, configuration change, release,
 prompt, retry, runtime, Android/APK, Beautips, ownership or foreign-resource
 mutation is authorized or performed by preparing this retained candidate.
+
+The operator separately authorized only the prerequisite rollout identified by
+manifest seal
+`25bc7258e7e3e42727e419ca2649b2175173eb97a9adcc543584f5e0f7c8afc2`,
+backend image
+`sha256:2e9b4075d180d07d645289f8dae57d79f4f11f7d52beab58e2dd172d940c4112`,
+candidate commit `b4c6f88879fb396b39b3cb0364f6577c4c30362a` and AX42
+bundle SHA-256
+`76c6a190c9fe9960ef425b28f52eb89002dcb38661130ca68b72f95ff634f171`.
+The authorization explicitly excluded task 7.7 confirmation, WorkSession 16
+release, prompts, retries, APK/Android, Beautips, other projects and foreign or
+ambiguous resources.
+
+The complete preflight reverified local, internal and GitHub Git identities,
+both evidence copies, running/retained images, Compose, all five ownership
+hashes, WorkSessions 16/17, AgentRun 96, zero plans/operations/journals,
+services, slots, backup/check/health and RAID. A first unprivileged journal
+read was inconclusive and its properly privileged repetition first met an SSH
+transport timeout; the finite retry proved zero journals before mutation.
+
+An exact static AX42 predecessor was retained without token, dynamic
+configuration, registry, ownership or session state. Its SHA-256 is
+`ed79ee777cc092503429dba972784e2364feed9e55e237dd6c4a961db4d96a59`.
+The first worker-installer apply failed closed because the release mediator was
+still its accepted predecessor. Immediate inspection proved all five static
+files, registry, service, ownership and journals remained exact. The same
+authorized bundle's reviewed routing installer then performed its designed
+prerequisite: exact release/diagnosis mediator plus exact no-wildcard sudo
+authority, with default routing false and no service restart. The worker
+installer then completed and verified.
+
+Installed AX42 successor SHA-256 values are worker
+`101a3c784b5a371837c45d99110f5181939bc2908faf509a84ffdded1afd4945`,
+release/diagnosis mediator
+`df3515f92a99b568840e2cd77798171e8fc3207e7bb88ad61ec992ed07610c54`
+and worker installer
+`77e1c09de79c38195b16310567f829e73efcba32987b7ac37291d35aa7e61266`.
+The diagnosis route rejects an unauthenticated request with HTTP 401. No token
+was read and no authenticated release or diagnosis was invoked through SSH.
+
+The exact backend predecessor remains tagged as
+`atenea-remote-close-v63-rollback:pre-b4c6f888-1c67ac36`. Only the existing
+production image reference was pointed at the authorized successor; Compose
+bytes and release-gate configuration did not change. Only
+`atenea-backend-prod` was recreated. It reached HTTP 200 on bounded attempt 8
+with zero restarts and now runs exact image
+`sha256:2e9b4075d180d07d645289f8dae57d79f4f11f7d52beab58e2dd172d940c4112`.
+Preview remains on exact image
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`.
+Production, preview and Beautips return HTTP 200 with zero relevant restarts;
+all unrelated container, network and volume fingerprints remain exact.
+
+Flyway V63 remains successful. WorkSession 16 remains
+`CLOSED/REMOTE/UNVERIFIED_LEGACY/revision 0`; WorkSession 17 remains
+`OPEN/REMOTE/NOT_STARTED/revision 0`; and AgentRun 96 remains terminal failed,
+pre-dispatch, unretried and complete in all six execution-profile fields.
+WorkSession 17 retains exactly one turn, run, attachment and turn binding.
+Retry-child, legacy-plan and legacy-operation counts remain zero. Routing
+remains `ax42-01` enabled/healthy with capacity `4/2`, use `0/0`, zero
+non-terminal runs and zero active leases.
+
+All five ownership hashes remain exact and WorkSession 17 allocation/admission
+remain absent. The release journal remains empty; all four AX42 services and
+all three backup/check/health timers remain active; last jobs remain
+`success/0`; slots remain `3/0/0/3`; rootful Docker/containerd remain inactive;
+and all three RAID arrays remain `[UU]`. The unrelated local
+`atenea-activation-code_default` network remains present with zero containers
+and untouched.
+
+No plan, release, prompt, response, retry, runtime start, Android/APK,
+Beautips, foreign-resource or retention mutation occurred. Sanitized evidence
+and the static predecessor are present locally, on the control host and on
+AX42 beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-prerequisite-rollout-execution`
+with the corresponding local copy beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-prerequisite-rollout-execution`.
+All three copies verify 3/3 files; the SHA-256 of each `SHA256SUMS` is
+`b862cbd7b9eaf178e3bed469a8ed6369edc4ddd74f8312e2dced329555221ccc`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains the first pending task.
+The rollout authorization is consumed. Task 7.7 still requires the operator to
+perform the real in-product intervention; confirmation may not be simulated or
+invoked through SSH, and no prompt or AgentRun retry is authorized.
