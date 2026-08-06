@@ -84,6 +84,17 @@ raw infrastructure identities or error payloads MUST NOT be exposed.
 - **THEN** an authorized surface makes `Reconciliar cierre` the primary action
   and explains that retry will become available only afterwards
 
+#### Scenario: Preserved run predates typed capacity recovery
+
+- **WHEN** a remote terminal pre-dispatch AgentRun has no V63 failure or
+  next-action fields and its immediate older same-project WorkSession is an
+  exact canonical `CLOSED/UNVERIFIED_LEGACY` owner
+- **THEN** Atenea SHALL preserve the AgentRun unchanged, obtain a read-only
+  diagnosis for only that predecessor and project `Reconciliar cierre` only
+  after exact worker ownership succeeds
+- **AND** an unavailable, partial, foreign or ambiguous diagnosis SHALL disable
+  retry and SHALL NOT discover, adopt or release another owner
+
 #### Scenario: Capacity was released
 
 - **WHEN** the exact release receipt is persisted and the failed dispatch is

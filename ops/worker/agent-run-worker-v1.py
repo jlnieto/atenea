@@ -117,6 +117,14 @@ WORKSPACE_ENSURE_KEYS = {
     "commit", "manifestSha256", "workspaceBranch",
 }
 WORKSPACE_RELEASE_PATH = "/v1/project-workspaces/release"
+WORKSPACE_CAPACITY_OWNER_PATH = "/v1/project-workspaces/capacity-owner"
+WORKSPACE_CAPACITY_OWNER_SCHEMA = "project-workspace-capacity-owner-v1"
+WORKSPACE_CAPACITY_OWNER_KEYS = WORKSPACE_ENSURE_KEYS
+WORKSPACE_CAPACITY_OWNER_RESPONSE_KEYS = {
+    "schemaVersion", "state", "sessionId", "workspaceIdentity", "projectId",
+    "workerId", "requestFingerprintSha256", "ownershipFingerprintSha256",
+    "valuesExposed",
+}
 WORKSPACE_RELEASE_SCHEMA = "project-workspace-release-v1"
 WORKSPACE_RELEASE_REVISION = 6
 WORKSPACE_RELEASE_REQUEST_KEYS = {
@@ -280,6 +288,78 @@ def validate_workspace_release_request(request: dict[str, Any]) -> dict[str, Any
             "workspace release commit is invalid",
         )
     return dict(request)
+
+
+def validate_workspace_capacity_owner_request(
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(request, dict) or set(request) != WORKSPACE_CAPACITY_OWNER_KEYS:
+        raise ProtocolError(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_workspace_capacity_owner_request",
+            "workspace capacity-owner request fields are invalid",
+        )
+    session_id = request.get("sessionId")
+    try:
+        canonical_session = str(uuid.UUID(session_id))
+    except (ValueError, TypeError, AttributeError):
+        raise ProtocolError(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_workspace_capacity_owner_identity",
+            "workspace capacity-owner identity must be canonical",
+        ) from None
+    exact = {
+        "sessionId": canonical_session,
+        "workspaceIdentity": f"remote:ax42-01:work-session:{canonical_session}",
+        "projectId": PROJECT_ID,
+        "repository": PROJECT_REPOSITORY,
+        "branch": PROJECT_BRANCH,
+        "manifestSha256": PROJECT_MANIFEST_SHA256,
+        "workspaceBranch": f"atenea/session-{canonical_session}",
+    }
+    if session_id != canonical_session or any(
+        request.get(key) != value for key, value in exact.items()
+    ):
+        raise ProtocolError(
+            HTTPStatus.FORBIDDEN,
+            "workspace_capacity_owner_conflict",
+            "workspace capacity-owner identity is not exact",
+        )
+    commit = request.get("commit")
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise ProtocolError(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_workspace_capacity_owner_commit",
+            "workspace capacity-owner commit is invalid",
+        )
+    return dict(request)
+
+
+def validate_workspace_capacity_owner_response(
+    request: dict[str, Any], worker_id: str, response: dict[str, Any]
+) -> dict[str, Any]:
+    exact = validate_workspace_capacity_owner_request(request)
+    if (
+        not isinstance(response, dict)
+        or set(response) != WORKSPACE_CAPACITY_OWNER_RESPONSE_KEYS
+        or response.get("schemaVersion") != WORKSPACE_CAPACITY_OWNER_SCHEMA
+        or response.get("state") != "OWNED"
+        or response.get("sessionId") != exact["sessionId"]
+        or response.get("workspaceIdentity") != exact["workspaceIdentity"]
+        or response.get("projectId") != PROJECT_ID
+        or response.get("workerId") != worker_id
+        or response.get("requestFingerprintSha256") != canonical_hash(exact)
+        or response.get("valuesExposed") is not False
+        or not isinstance(response.get("ownershipFingerprintSha256"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", response["ownershipFingerprintSha256"])
+        is None
+    ):
+        raise ProtocolError(
+            HTTPStatus.BAD_GATEWAY,
+            "workspace_capacity_owner_response_invalid",
+            "workspace capacity-owner response is invalid",
+        )
+    return dict(response)
 
 
 def workspace_release_request_fingerprint(request: dict[str, Any]) -> str:
@@ -1306,6 +1386,64 @@ class WorkerState:
                 ) from None
             return validate_workspace_release_receipt(
                 exact_request, self.worker_id, receipt
+            )
+
+    def diagnose_workspace_capacity_owner(
+        self, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        exact_request = validate_workspace_capacity_owner_request(request)
+        with self.workspace_lifecycle_lock():
+            releaser = self.project_workspace_releaser
+            if releaser is None or not releaser.is_file():
+                raise ProtocolError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "workspace_capacity_owner_unavailable",
+                    "workspace capacity-owner diagnosis is unavailable",
+                )
+            try:
+                completed = subprocess.run(
+                    [
+                        *self.privilege_command,
+                        str(releaser),
+                        "--diagnose-capacity-owner",
+                    ],
+                    input=json.dumps(
+                        exact_request, sort_keys=True, separators=(",", ":")
+                    ),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                raise ProtocolError(
+                    HTTPStatus.GATEWAY_TIMEOUT,
+                    "workspace_capacity_owner_timeout",
+                    "workspace capacity-owner diagnosis exceeded its finite timeout",
+                ) from None
+            except OSError:
+                raise ProtocolError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "workspace_capacity_owner_unavailable",
+                    "workspace capacity-owner mediator could not be started",
+                ) from None
+            if completed.returncode != 0:
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT,
+                    "workspace_capacity_owner_not_exact",
+                    "workspace capacity owner is absent or not exact",
+                )
+            try:
+                response = json.loads(completed.stdout)
+            except json.JSONDecodeError:
+                raise ProtocolError(
+                    HTTPStatus.BAD_GATEWAY,
+                    "workspace_capacity_owner_response_invalid",
+                    "workspace capacity-owner diagnosis returned invalid JSON",
+                ) from None
+            return validate_workspace_capacity_owner_response(
+                exact_request, self.worker_id, response
             )
 
     def _ensure_workspace_locked(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -3000,6 +3138,12 @@ class AgentRunHandler(BaseHTTPRequestHandler):
                 return
             if path == WORKSPACE_RELEASE_PATH:
                 self._write(HTTPStatus.OK, self.server.state.release_workspace(body))
+                return
+            if path == WORKSPACE_CAPACITY_OWNER_PATH:
+                self._write(
+                    HTTPStatus.OK,
+                    self.server.state.diagnose_workspace_capacity_owner(body),
+                )
                 return
             if path == "/v1/project-workspaces/draft-fingerprint":
                 self._write(HTTPStatus.OK, self.server.state.fingerprint_retained_draft(body))

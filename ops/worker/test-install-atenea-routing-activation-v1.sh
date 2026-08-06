@@ -250,11 +250,14 @@ rollback_install >/dev/null
 [[ "$(activation_bundle_preflight)" == predecessor ]] \
   || fail_test 'interrupted rollback did not resume to the predecessor'
 
-[[ "$(sudoers_content | wc -l)" -eq 2 ]] || fail_test 'sudoers rule count is not exact'
+[[ "$(sudoers_content | wc -l)" -eq 3 ]] || fail_test 'sudoers rule count is not exact'
 [[ "$(sudoers_content | grep -Fxc \
   "atenea-worker ALL=(root) NOPASSWD: ${RELEASE_PROGRAM}")" -eq 1 ]] \
-  || fail_test 'release sudo authority accepts arguments or is missing'
-! sudoers_content | grep -F "${RELEASE_PROGRAM} " >/dev/null \
+  || fail_test 'release sudo authority without arguments is missing'
+[[ "$(sudoers_content | grep -Fxc \
+  "atenea-worker ALL=(root) NOPASSWD: ${RELEASE_PROGRAM} --diagnose-capacity-owner")" \
+  -eq 1 ]] || fail_test 'capacity diagnosis sudo authority is not exact'
+! sudoers_content | grep -F "${RELEASE_PROGRAM} *" >/dev/null \
   || fail_test 'release sudo authority is broadened'
 grep -Fq 'installed activation bundle changed after preflight' \
   "${SOURCE_DIR}/install-atenea-routing-activation-v1.sh" \

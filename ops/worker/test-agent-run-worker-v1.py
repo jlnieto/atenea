@@ -308,6 +308,46 @@ class WorkspaceReleaseWorkerExecutionTest(WorkspaceReleaseContractTest):
                 self.state.release_workspace(self.request)
         self.assertEqual(HTTPStatus.BAD_GATEWAY, malformed.exception.status)
 
+    def test_capacity_owner_diagnosis_invokes_only_fixed_read_only_mode(self):
+        request = {
+            key: value for key, value in self.request.items()
+            if key not in {"operationId", "idempotencyKey"}
+        }
+        response = {
+            "schemaVersion": MODULE.WORKSPACE_CAPACITY_OWNER_SCHEMA,
+            "state": "OWNED",
+            "sessionId": request["sessionId"],
+            "workspaceIdentity": request["workspaceIdentity"],
+            "projectId": MODULE.PROJECT_ID,
+            "workerId": "ax42-01",
+            "requestFingerprintSha256": MODULE.canonical_hash(request),
+            "ownershipFingerprintSha256": "7" * 64,
+            "valuesExposed": False,
+        }
+        completed = subprocess.CompletedProcess(
+            [str(self.releaser), "--diagnose-capacity-owner"],
+            0,
+            json.dumps(response),
+            "",
+        )
+        with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
+            observed = self.state.diagnose_workspace_capacity_owner(request)
+
+        self.assertEqual(response, observed)
+        self.assertEqual(
+            [str(self.releaser), "--diagnose-capacity-owner"],
+            run.call_args.args[0],
+        )
+        self.assertEqual(60, run.call_args.kwargs["timeout"])
+        for forbidden in (
+            "command", "path", "slot", "port", "service", "endpoint",
+            "resourceName", "label", "credential", "deletionTarget",
+        ):
+            with self.subTest(field=forbidden), self.assertRaises(MODULE.ProtocolError):
+                MODULE.validate_workspace_capacity_owner_request(
+                    {**request, forbidden: "caller-value"}
+                )
+
 
 class WorkerStateTest(unittest.TestCase):
     def setUp(self):
@@ -2134,6 +2174,42 @@ class WorkerHttpTest(unittest.TestCase):
 
         self.assertEqual([request], observed)
         self.assertEqual(receipt, payload)
+
+    def test_capacity_owner_route_dispatches_exact_authenticated_request(self):
+        session_id = "11111111-1111-4111-8111-111111111111"
+        request = {
+            "sessionId": session_id,
+            "workspaceIdentity": "remote:ax42-01:work-session:" + session_id,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": TEST_COMMIT,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+            "workspaceBranch": "atenea/session-" + session_id,
+        }
+        result = {
+            "schemaVersion": MODULE.WORKSPACE_CAPACITY_OWNER_SCHEMA,
+            "state": "OWNED",
+            "sessionId": session_id,
+            "workspaceIdentity": request["workspaceIdentity"],
+            "projectId": MODULE.PROJECT_ID,
+            "workerId": "test-worker",
+            "requestFingerprintSha256": MODULE.canonical_hash(request),
+            "ownershipFingerprintSha256": "8" * 64,
+            "valuesExposed": False,
+        }
+        observed = []
+
+        def diagnose(body):
+            observed.append(body)
+            return result
+
+        self.state.diagnose_workspace_capacity_owner = diagnose
+        with self.post(MODULE.WORKSPACE_CAPACITY_OWNER_PATH, request, "t" * 64) as response:
+            payload = json.load(response)
+
+        self.assertEqual([request], observed)
+        self.assertEqual(result, payload)
 
     def test_health_requires_authentication_and_exposes_capacity(self):
         with self.assertRaises(urllib.error.HTTPError) as denied:

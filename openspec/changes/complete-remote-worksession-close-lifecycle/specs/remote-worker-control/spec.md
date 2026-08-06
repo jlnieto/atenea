@@ -29,6 +29,16 @@ commands, paths, labels, credentials or foreign ownership details.
   worker/project/session records before choosing wait, closed-session
   reconciliation or administrator review
 
+#### Scenario: Historical owner is diagnosed without mutation
+
+- **WHEN** Atenea supplies the exact canonical identity of one historical
+  Atenea owner to the authenticated capacity-owner diagnosis endpoint
+- **THEN** the worker reads only its fixed registry, workspace, allocation and
+  admission roots, validates complete exact ownership and Git identity, changes
+  no state and returns only sealed sanitized fingerprints
+- **AND** the endpoint rejects all partial or foreign state without accepting or
+  exposing caller-selected infrastructure resources
+
 #### Scenario: Worker error body is malformed or unsafe
 
 - **WHEN** a non-success response is oversized, unknown, invalid JSON or

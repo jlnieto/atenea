@@ -198,6 +198,25 @@ AgentRun 96 are not altered. After release, an idempotent no-run ensure may
 prove WorkSession 17 ready; the operator must separately choose whether to
 retry the preserved prompt.
 
+AgentRun 96 predates the V63 typed capacity failure fields, so its immutable
+null failure projection is not rewritten. While the Atenea-only reconciliation
+gate is enabled, the shared read model may instead consider only the immediate
+older `CLOSED` WorkSession in the same canonical project. It must prove the
+current run is remote, terminal and pre-dispatch, prove both sessions carry the
+exact canonical Atenea/AX42 identity, and obtain a read-only diagnosis for that
+specific predecessor before projecting `CLOSED_OWNER_BLOCKS_CAPACITY`. A
+missing, partial, foreign or ambiguous diagnosis disables retry and requires
+administrative review; it never searches for a different owner.
+
+The diagnosis endpoint accepts no operator-chosen command, path, slot, port,
+service, endpoint, label, credential or resource. The authenticated worker
+mediator reads only fixed Atenea registry, workspace, allocation and admission
+roots, validates their complete exact identity plus Git origin/HEAD, performs
+no mutation and returns only sealed fingerprints with `valuesExposed=false`.
+The legacy plan repeats that diagnosis before persisting its finite
+confirmation. Transport, protocol and deterministic ownership failures retain
+distinct response categories.
+
 ### Put the real state and one next action first
 
 Web and Android consume the same read model. The first viewport shows one of:

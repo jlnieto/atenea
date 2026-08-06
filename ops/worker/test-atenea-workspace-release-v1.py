@@ -1368,6 +1368,72 @@ class FixedRootReleaseOperatorTest(unittest.TestCase):
         self.assertEqual("released", admission["heavy"]["state"])
         self.assertEqual("released", admission["normal"]["state"])
 
+    def test_capacity_owner_diagnosis_is_exact_sanitized_and_read_only(self) -> None:
+        request = {
+            key: value for key, value in self.request.items()
+            if key not in {"operationId", "idempotencyKey"}
+        }
+        protected = [
+            self.session_root / "workspace-v1.json",
+            self.session_root / "runtime-allocation-v1.json",
+            self.root / "srv/atenea/worker/runtime-admission-v1/records"
+            / f"{self.session}.json",
+            self.root / "etc/atenea-worker/project-codex-v1.json",
+        ]
+        before = [path.read_bytes() for path in protected]
+        with mock.patch.object(MODULE, "MANIFEST_SHA256", self.manifest_sha):
+            result = MODULE.FixedRootReleaseOperator(
+                self.root, test_mode=True
+            ).diagnose_capacity_owner(request)
+        self.assertEqual("project-workspace-capacity-owner-v1", result["schemaVersion"])
+        self.assertEqual("OWNED", result["state"])
+        self.assertEqual(self.session, result["sessionId"])
+        self.assertFalse(result["valuesExposed"])
+        self.assertEqual(before, [path.read_bytes() for path in protected])
+        encoded = json.dumps(result)
+        for forbidden in ("slot2", "heavy1", "/srv/", "21003"):
+            self.assertNotIn(forbidden, encoded)
+
+    def test_capacity_owner_diagnosis_rejects_partial_or_foreign_state(self) -> None:
+        request = {
+            key: value for key, value in self.request.items()
+            if key not in {"operationId", "idempotencyKey"}
+        }
+        admission_path = (
+            self.root / "srv/atenea/worker/runtime-admission-v1/records"
+            / f"{self.session}.json"
+        )
+        admission = json.loads(admission_path.read_text())
+        admission["normal"]["state"] = "released"
+        self._write(admission_path, admission, 0o640)
+        with mock.patch.object(MODULE, "MANIFEST_SHA256", self.manifest_sha):
+            with self.assertRaises(MODULE.PreflightRejected):
+                MODULE.FixedRootReleaseOperator(
+                    self.root, test_mode=True
+                ).diagnose_capacity_owner(request)
+
+    def test_capacity_owner_diagnosis_rejects_tampered_fixed_root(self) -> None:
+        request = {
+            key: value for key, value in self.request.items()
+            if key not in {"operationId", "idempotencyKey"}
+        }
+        allocation_path = self.session_root / "runtime-allocation-v1.json"
+        allocation = json.loads(allocation_path.read_text())
+        allocation["runtimeRoot"] = "/srv/atenea/workspaces/sessions/foreign/runtime"
+        self._write(allocation_path, allocation, 0o640)
+        registry_path = self.root / "etc/atenea-worker/project-codex-v1.json"
+        registry = json.loads(registry_path.read_text())
+        identity = request["workspaceIdentity"]
+        registry["workspaces"][identity]["allocationSha256"] = (
+            MODULE.hashlib.sha256(allocation_path.read_bytes()).hexdigest()
+        )
+        self._write(registry_path, registry, 0o644)
+        with mock.patch.object(MODULE, "MANIFEST_SHA256", self.manifest_sha):
+            with self.assertRaises(MODULE.PreflightRejected):
+                MODULE.FixedRootReleaseOperator(
+                    self.root, test_mode=True
+                ).diagnose_capacity_owner(request)
+
     def test_exact_owned_preview_record_rejects_before_journal_or_mutation(self) -> None:
         preview = (
             self.root / "srv/atenea/worker/session-preview-v1/previews"

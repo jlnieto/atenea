@@ -21,6 +21,7 @@ from typing import Any, Callable
 
 
 SCHEMA = "atenea-workspace-release-preflight-v1"
+CAPACITY_OWNER_SCHEMA = "project-workspace-capacity-owner-v1"
 PROJECT_ID = "atenea"
 WORKER_ID = "ax42-01"
 REPOSITORY = "https://github.com/jlnieto/atenea.git"
@@ -133,6 +134,28 @@ def _request_identity(request: Any) -> dict[str, str]:
     session = _canonical_uuid(request.get("sessionId"))
     _canonical_uuid(request.get("operationId"))
     _canonical_uuid(request.get("idempotencyKey"))
+    exact = {
+        "workspaceIdentity": f"remote:{WORKER_ID}:work-session:{session}",
+        "projectId": PROJECT_ID,
+        "repository": REPOSITORY,
+        "branch": BRANCH,
+        "manifestSha256": MANIFEST_SHA256,
+        "workspaceBranch": f"atenea/session-{session}",
+    }
+    if any(request.get(key) != value for key, value in exact.items()):
+        _reject()
+    if not isinstance(request.get("commit"), str) or COMMIT.fullmatch(request["commit"]) is None:
+        _reject()
+    return dict(request)
+
+
+def _capacity_owner_request_identity(request: Any) -> dict[str, str]:
+    expected_keys = {
+        "sessionId", "workspaceIdentity", "projectId", "repository",
+        "branch", "commit", "manifestSha256", "workspaceBranch",
+    }
+    request = _exact_dict(request, expected_keys)
+    session = _canonical_uuid(request.get("sessionId"))
     exact = {
         "workspaceIdentity": f"remote:{WORKER_ID}:work-session:{session}",
         "projectId": PROJECT_ID,
@@ -1403,6 +1426,207 @@ class FixedRootReleaseOperator:
         validate_release_preflight(exact, projection)
         return projection
 
+    def diagnose_capacity_owner(self, request: Any) -> dict[str, Any]:
+        """Prove one caller-identified canonical owner without mutating state.
+
+        Only the fixed Atenea registry, workspace, admission and allocation
+        roots are read.  Paths, slots, ports and record contents never cross
+        the mediator boundary.
+        """
+
+        exact = _capacity_owner_request_identity(request)
+        session = exact["sessionId"]
+        session_root = Path(f"/srv/atenea/workspaces/sessions/{session}")
+        workspace_path = session_root / "workspace-v1.json"
+        allocation_path = session_root / "runtime-allocation-v1.json"
+        admission_path = self.ADMISSION_ROOT / f"{session}.json"
+        worktree = session_root / PROJECT_ID
+
+        workspace, _workspace_stat, _workspace_bytes = self._json_file(
+            workspace_path, uid=self.worker_uid, gid=self.worker_gid, modes={0o640}
+        )
+        allocation, _allocation_stat, allocation_bytes = self._json_file(
+            allocation_path, uid=self.worker_uid, gid=self.worker_gid,
+            modes={0o600, 0o640}
+        )
+        admission, _admission_stat, _admission_bytes = self._json_file(
+            admission_path, uid=self.worker_uid, gid=self.worker_gid, modes={0o640}
+        )
+        registry, _registry_stat, _registry_bytes = self._json_file(
+            self.CONFIG, uid=self.root_uid, gid=self.root_gid, modes={0o644}
+        )
+
+        allocation_sha = hashlib.sha256(allocation_bytes).hexdigest()
+        record = registry.get("workspaces", {}).get(exact["workspaceIdentity"])
+        runtime = f"ws-{session.replace('-', '')}"
+        runtime_root = f"{session_root}/runtime/{runtime}"
+        workspace_keys = {
+            "schemaVersion", "sessionId", "projectId", "canonicalRemote",
+            "baseBranch", "branch", "mirrorPath", "worktreePath",
+            "workerHost", "state", "expectedBaseCommit", "headCommit",
+        }
+        allocation_keys = {
+            "schemaVersion", "sessionId", "projectId", "branch", "mirrorPath",
+            "worktreePath", "runtimeId", "manifestRelativePath", "slot",
+            "workloadClass", "state", "runtimeNames", "runtimeRoot", "logsPath",
+            "artifactsRoot", "cacheRoot", "allocatedPorts", "heavyPermit",
+        }
+        registry_keys = {
+            "schemaVersion", "selectionEnabled", "executionEnabled",
+            "projectId", "repository", "branch", "commit", "manifestSha256",
+            "runner", "workspaces",
+        }
+        if (
+            set(workspace) != workspace_keys
+            or workspace.get("schemaVersion") != 1
+            or workspace.get("sessionId") != session
+            or workspace.get("projectId") != PROJECT_ID
+            or workspace.get("canonicalRemote") != REPOSITORY
+            or workspace.get("baseBranch") != BRANCH
+            or workspace.get("branch") != exact["workspaceBranch"]
+            or workspace.get("mirrorPath") != "/srv/atenea/repositories/atenea.git"
+            or workspace.get("worktreePath") != str(worktree)
+            or workspace.get("workerHost") != self.worker_host
+            or workspace.get("state") != "ready"
+            or workspace.get("expectedBaseCommit") != exact["commit"]
+            or workspace.get("headCommit") != exact["commit"]
+            or not isinstance(record, dict)
+            or set(record) != {
+                "sessionId", "worktree", "allocationSha256", "canonicalCommit"
+            }
+            or record != {
+                "sessionId": session,
+                "worktree": str(worktree),
+                "allocationSha256": allocation_sha,
+                "canonicalCommit": exact["commit"],
+            }
+            or frozenset(registry) not in {
+                frozenset(registry_keys), frozenset(registry_keys | {"attachmentRoot"})
+            }
+            or registry.get("schemaVersion") != "project-codex-v1"
+            or registry.get("selectionEnabled") is not True
+            or registry.get("executionEnabled") is not True
+            or registry.get("projectId") != PROJECT_ID
+            or registry.get("repository") != REPOSITORY
+            or registry.get("branch") != BRANCH
+            or registry.get("commit") != exact["commit"]
+            or registry.get("manifestSha256") != MANIFEST_SHA256
+            or registry.get("runner")
+            != "/usr/local/libexec/atenea/project-codex-runner-v1.py"
+            or (
+                "attachmentRoot" in registry
+                and registry.get("attachmentRoot") != "/srv/atenea/attachments-v1"
+            )
+            or registry.get("workspaces") != {exact["workspaceIdentity"]: record}
+            or set(admission) != {"schemaVersion", "sessionId", "normal", "heavy"}
+            or admission.get("schemaVersion") != 1
+            or admission.get("sessionId") != session
+            or not isinstance(admission.get("normal"), dict)
+            or not isinstance(admission.get("heavy"), dict)
+            or set(admission["normal"]) != {"slot", "state"}
+            or set(admission["heavy"]) != {"permit", "state"}
+            or set(allocation) != allocation_keys
+            or allocation.get("schemaVersion") != 1
+            or allocation.get("sessionId") != session
+            or allocation.get("projectId") != PROJECT_ID
+            or allocation.get("branch") != exact["workspaceBranch"]
+            or allocation.get("mirrorPath") != "/srv/atenea/repositories/atenea.git"
+            or allocation.get("worktreePath") != str(worktree)
+            or allocation.get("runtimeId") != runtime
+            or allocation.get("manifestRelativePath") != "ops/atenea-runtime.json"
+            or allocation.get("workloadClass") != "heavy"
+            or allocation.get("state") != "allocated"
+            or allocation.get("runtimeNames") != {
+                "composeProject": f"{runtime}-compose",
+                "network": f"{runtime}-network",
+                "volumePrefix": f"{runtime}-volume",
+                "processUnit": f"atenea-{runtime}.service",
+                "tomcatBase": f"{runtime_root}/tomcat",
+            }
+            or allocation.get("runtimeRoot") != runtime_root
+            or allocation.get("logsPath")
+            != f"/srv/atenea/artifacts/sessions/{session}/runtime/logs"
+            or allocation.get("artifactsRoot")
+            != f"/srv/atenea/artifacts/sessions/{session}/runs"
+            or allocation.get("cacheRoot")
+            != f"/srv/atenea/caches/sessions/{session}"
+            or allocation.get("slot") not in {"slot1", "slot2", "slot3", "slot4"}
+            or allocation.get("heavyPermit") not in {"heavy1", "heavy2"}
+            or admission["normal"] != {
+                "slot": allocation.get("slot"), "state": "held"
+            }
+            or admission["heavy"] != {
+                "permit": allocation.get("heavyPermit"), "state": "held"
+            }
+        ):
+            _reject()
+
+        ports = allocation.get("allocatedPorts")
+        if not isinstance(ports, list) or not ports:
+            _reject()
+        port_names: set[str] = set()
+        loopback_ports: set[int] = set()
+        for port in ports:
+            port = _exact_dict(port, {
+                "name", "internalPort", "protocol", "bindAddress", "loopbackPort",
+            })
+            if (
+                not isinstance(port.get("name"), str)
+                or re.fullmatch(r"[a-z][a-z0-9-]{1,62}", port["name"]) is None
+                or port["name"] in port_names
+                or type(port.get("internalPort")) is not int
+                or not 1 <= port["internalPort"] <= 65535
+                or port.get("protocol") not in {"http", "tcp"}
+                or port.get("bindAddress") != "127.0.0.1"
+                or type(port.get("loopbackPort")) is not int
+                or not 1024 <= port["loopbackPort"] <= 65535
+                or port["loopbackPort"] in loopback_ports
+            ):
+                _reject()
+            port_names.add(port["name"])
+            loopback_ports.add(port["loopbackPort"])
+
+        self._require_directory(self._physical(worktree), self.worker_uid)
+        if not self.test_mode:
+            physical_worktree = self._physical(worktree)
+            remote = self._run(
+                [
+                    "/usr/bin/git", "-c", f"safe.directory={physical_worktree}",
+                    "-C", str(physical_worktree), "remote", "get-url", "origin",
+                ],
+                15,
+            ).stdout.strip()
+            head = self._run(
+                [
+                    "/usr/bin/git", "-c", f"safe.directory={physical_worktree}",
+                    "-C", str(physical_worktree), "rev-parse", "--verify",
+                    "HEAD^{commit}",
+                ],
+                15,
+            ).stdout.strip()
+            if remote != REPOSITORY or head != exact["commit"]:
+                _reject()
+
+        sealed = {
+            "schemaVersion": CAPACITY_OWNER_SCHEMA,
+            "state": "OWNED",
+            "sessionId": session,
+            "workspaceIdentity": exact["workspaceIdentity"],
+            "projectId": PROJECT_ID,
+            "workerId": WORKER_ID,
+            "requestFingerprintSha256": canonical_hash(exact),
+            "ownershipFingerprintSha256": canonical_hash({
+                "sessionId": session,
+                "workspaceIdentity": exact["workspaceIdentity"],
+                "projectId": PROJECT_ID,
+                "workerId": WORKER_ID,
+                "canonicalCommit": exact["commit"],
+                "allocationFingerprintSha256": allocation_sha,
+            }),
+            "valuesExposed": False,
+        }
+        return sealed
+
     def _assert_no_ephemeral(
         self, session: str, allocation: dict[str, Any]
     ) -> None:
@@ -1986,7 +2210,8 @@ class WorkspaceReleaseFinalizer:
 
 
 def main() -> int:
-    if len(sys.argv) != 1:
+    diagnose = sys.argv[1:] == ["--diagnose-capacity-owner"]
+    if len(sys.argv) != 1 and not diagnose:
         print(json.dumps({"code": "WORKSPACE_RELEASE_PREFLIGHT_REJECTED"}), file=sys.stderr)
         return 64
     try:
@@ -1994,6 +2219,10 @@ def main() -> int:
         if len(encoded) < 2 or len(encoded) > 65_536:
             _reject()
         request = json.loads(encoded)
+        if diagnose:
+            diagnosis = FixedRootReleaseOperator().diagnose_capacity_owner(request)
+            print(json.dumps(diagnosis, sort_keys=True, separators=(",", ":")))
+            return 0
         exact = _request_identity(request)
         store = ReleaseJournalStore()
         journal_path = JOURNAL_ROOT / exact["sessionId"] / "journal-v1.json"

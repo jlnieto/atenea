@@ -13321,3 +13321,66 @@ on both the control host and AX42. The SHA-256 of each `SHA256SUMS` is
 `f8e0154658d5f08224277f47492fd6a7e27667424024c8d334c6560a04ee471f`.
 Task 7.7 remains stopped for the operator's real in-product, single-use
 confirmation and cannot be simulated or executed through SSH.
+
+The task 7.7 preflight identified a historical compatibility gap without
+starting task 7.7: AgentRun 96 correctly remains immutable with null pre-V63
+typed capacity fields, so the existing shared operator projection could not
+prove that WorkSession 16 still owns the blocked capacity. The correction is
+default-disabled and canonical-Atenea-only. It considers only the immediate
+older closed WorkSession, requires exact remote/pre-dispatch/project/worker
+identity and obtains a read-only fixed-root AX42 ownership diagnosis. Missing,
+partial, foreign, ambiguous, protocol and transport results fail closed in
+their distinct categories; no alternative owner is discovered or adopted.
+
+The published Atenea candidate correction is
+`b4c6f88879fb396b39b3cb0364f6577c4c30362a`, tree
+`62c026dc7a664009b5f37c39c6c40ac59b4000fa`. Its complete backend suite passes
+682/682 with all 63 migrations on an empty isolated database. The unchanged
+web implementation passes its production build and 10/10 focused Playwright
+checks at `1440x900` and `390x844`, separating fixture/persistence, DOM and
+visual acceptance. Android unit/build validation passes without Android source
+changes, publication or installation. The programme worker suites pass 120
+focused tests and 238 expanded tests with one deliberate skip; both installer
+suites pass. Strict OpenSpec validation passes.
+
+The reviewed worker successor SHA-256 values are
+`101a3c784b5a371837c45d99110f5181939bc2908faf509a84ffdded1afd4945` for
+the authenticated worker,
+`df3515f92a99b568840e2cd77798171e8fc3207e7bb88ad61ec992ed07610c54` for
+the fixed-root releaser/diagnoser,
+`77e1c09de79c38195b16310567f829e73efcba32987b7ac37291d35aa7e61266` for
+the worker installer and
+`c80e1234aeca10a8762825904055f2a608154adee4e1c8aa96c867dd0a80f87a` for
+the routing installer. No wildcard sudo authority or caller-selected
+infrastructure value is introduced.
+
+The final read-only recapture found production, preview and Beautips healthy
+with zero relevant restarts. Canonical Beautips remains clean/upstream-exact at
+`9e122bf024d29b9cda56b27f8a32c218e1f0d433`; its separate AX42
+administrative checkout remains clean and unchanged at documented historical
+commit `5044a3b07b3db82895e9c8ff47bc4bc9b0e97130`. WorkSessions 16/17 remain
+`CLOSED/UNVERIFIED_LEGACY/revision 0` and `OPEN/NOT_STARTED/revision 0`;
+AgentRun 96 remains terminal failed, unretried and unmodified; WorkSession 17
+retains one turn, run, attachment and binding; and legacy plan/operation counts
+remain zero.
+
+All exact ownership fingerprints remain unchanged; WorkSession 17 still has
+no allocation or admission. AX42 services remain active with zero restarts,
+rootless slots remain `3/0/0/3`, rootful Docker/containerd remain inactive,
+backup/check/health remain successful and all three RAID arrays remain `[UU]`.
+No deployment, installation, configuration, release, prompt, retry, ownership,
+production, preview, Beautips, foreign or unrelated mutation occurred.
+
+Sanitized evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-prerequisite-correction`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-prerequisite-correction`.
+Both copies verify 9/9 files; the SHA-256 of each `SHA256SUMS` is
+`9aa5171e9b5b78bf96d4f975dfd02876e6b88d1f90b088105e6f836e08d4f76f`.
+
+OpenSpec progress remains `50/60`; task 7.7 is still the first pending task.
+The correction is not active in production. Before task 7.7 can present the
+real plan, task 6.8 requires a new separate exact authorization for the new
+backend image and reviewed AX42 successor. Task 7.7 then retains its own
+mandatory in-product single-use operator confirmation; neither gate authorizes
+a prompt, AgentRun retry, Beautips, another project or a foreign resource.

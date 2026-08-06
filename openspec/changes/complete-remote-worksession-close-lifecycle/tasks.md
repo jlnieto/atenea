@@ -193,9 +193,10 @@ environment dumps.
 - [x] 7.6 Run an isolated/synthetic exact release plus repeated release and all
   foreign/ambiguous rejection fixtures on AX42; exact-clean only recorded
   fixtures and confirm zero residual processes or resources
-- [ ] 7.7 Produce an in-product read-only plan for legacy WorkSession 16 and
-  stop for the operator's explicit single-use confirmation; do not simulate the
-  confirmation or invoke release through SSH
+- [ ] 7.7 Prove the preserved pre-V63 AgentRun 96 projects WorkSession 16's
+  exact diagnosed capacity ownership in-product, produce its read-only legacy
+  plan and stop for the operator's explicit single-use confirmation; do not
+  mutate AgentRun 96, simulate the confirmation or invoke release through SSH
 - [ ] 7.8 After confirmation, reconcile only remote session
   `7151dce0-69ab-4614-86e4-f93f1af825e4`; prove registration/admission release,
   exact allocation retirement, receipt idempotence, zero owned ephemeral
