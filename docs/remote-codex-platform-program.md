@@ -13384,3 +13384,55 @@ real plan, task 6.8 requires a new separate exact authorization for the new
 backend image and reviewed AX42 successor. Task 7.7 then retains its own
 mandatory in-product single-use operator confirmation; neither gate authorizes
 a prompt, AgentRun retry, Beautips, another project or a foreign resource.
+
+The exact correction rollout candidate is now prepared but remains unused.
+The candidate JAR SHA-256 is
+`efc39da85a5e1528245ab106aa3d6bc4847dd35e2dff5abda193f5b62381dda1`.
+Retained image
+`atenea-remote-close-v63-candidate:b4c6f88879fb396b39b3cb0364f6577c4c30362a`
+has ID
+`sha256:2e9b4075d180d07d645289f8dae57d79f4f11f7d52beab58e2dd172d940c4112`.
+It retains the running predecessor's exact 12-layer prefix, adds only the
+application JAR layer, has an exact matching non-secret runtime-configuration
+projection and verifies the same JAR SHA-256 from inside an isolated
+`--network none` ephemeral check. Zero container uses it and the check left
+zero residual containers.
+
+The exact programme worker archive for commit
+`2a3936bdfde7581b88de7923d40e411557ae4f16`, tree
+`8beb3e2e29a787f0fd17ace50036bb41a28c76d5`, has SHA-256
+`76c6a190c9fe9960ef425b28f52eb89002dcb38661130ca68b72f95ff634f171`.
+The currently installed AX42 predecessor remains byte-exact at worker
+`e6f24a3265b1367ece444fcb1083d264e1024182884cbf5019560f81bd569193`,
+release mediator
+`dc8f4374f372127163df467c317a2f7fabff4af5e1667799a448173ac9546e15`
+and installer
+`aaea361d7a732d9fbc957b5c2d757fab44c0960a47a75c6fe64eb98159183613`.
+
+The first build attempt used the local image ID directly in `FROM`; BuildKit
+rejected it before creating any layer or image because it treated the ID as an
+external repository. The corrected build used the exact local predecessor tag
+with `--pull=false --network=none`. Production remained on predecessor image
+`sha256:1c67ac36a6b45a4b0004e15ba79bcd6d50addfb4b09d8b7890b43c8ef092801a`
+with zero restarts and unchanged Compose SHA-256
+`b96e5721e558460ae67b799da8e526dbf0c3668c8f267cef004d711d764323b8`.
+
+Final health checks return HTTP 200 for production, preview and Beautips with
+zero relevant restarts. The candidate has zero consumers. All four AX42
+services and all three backup/check/health timers remain active; their last
+jobs report `success/0`; slots remain `3/0/0/3`; rootful Docker/containerd
+remain inactive; and all three RAID arrays remain `[UU]`. The unrelated local
+`atenea-activation-code_default` network remains present with zero containers
+and untouched. The previously captured exact WorkSession/AgentRun/ownership
+projection remains unchanged because no candidate code was executed against
+production.
+
+The exact rollout manifest and artifacts are beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-rollout-candidate`
+and
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-rollout-candidate`.
+Both copies verify 4/4 files; the SHA-256 of each `SHA256SUMS` is
+`25bc7258e7e3e42727e419ca2649b2175173eb97a9adcc543584f5e0f7c8afc2`.
+No production deployment, AX42 installation, configuration change, release,
+prompt, retry, runtime, Android/APK, Beautips, ownership or foreign-resource
+mutation is authorized or performed by preparing this retained candidate.
