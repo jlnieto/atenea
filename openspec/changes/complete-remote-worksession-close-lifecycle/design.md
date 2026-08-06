@@ -217,6 +217,17 @@ The legacy plan repeats that diagnosis before persisting its finite
 confirmation. Transport, protocol and deterministic ownership failures retain
 distinct response categories.
 
+An exact worker release-preflight rejection is not retried as transport and
+does not make the first single-use plan reusable. Atenea persists the original
+operation as `BLOCKED` without a receipt. Recovery requires a new read-only
+diagnosis, a fresh finite plan and another explicit platform-administrator
+confirmation bound to the unchanged ownership fingerprint. That confirmation
+may advance only the same operation through `RECONCILING`; startup never
+retries `BLOCKED` on its own, while `REQUESTED` and `RECONCILING` remain
+restart-recoverable. Web and Android expose the recovery action only when the
+complete persisted predicate is exact and discard every consumed or newly
+blocked plan until explicit refresh.
+
 ### Put the real state and one next action first
 
 Web and Android consume the same read model. The first viewport shows one of:

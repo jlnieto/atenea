@@ -13669,3 +13669,79 @@ before the operator's real in-product check because of the mandatory 7.7 gate
 and the separately observed ambiguous `ateneaapp.yudri.es` routing state. No
 release, prompt, response, retry, runtime, AX42, APK/Android, Beautips,
 other-project, ownership or retained-state mutation occurred.
+
+The operator subsequently retired both obsolete Expo routes, accepted the
+permanent absence of the empty `atenea-activation-code_default` network and
+promoted the sole active account to `PLATFORM_ADMINISTRATOR` with its prior
+sessions revoked. The accepted current source checkout is clean at `main`
+commit `e4287dbc9a6a3545e6e1d0eda3b488e4a8e8edd5`; production still runs exact
+backend image
+`sha256:d4ecec27bd1b7cd0ba5dca095a2524ee33ab342b99e6d0c774f0b2ddbbc568d2`
+with zero restarts. These separately authorized changes did not authorize or
+invoke WorkSession release, prompt retry, runtime, AX42 or Beautips mutation.
+
+The operator then performed the mandatory real task 7.7 intervention from
+Atenea. The finite plan matched WorkSession 16, canonical Atenea, worker
+`ax42-01`, the active platform administrator and the accepted ownership
+fingerprint. Its single-use confirmation created one immutable operation and
+two events, then failed closed before the first worker mutation. The operation
+is durably `BLOCKED` revision 2 with
+`WORKSPACE_RELEASE_PREFLIGHT_REJECTED/OWNERSHIP`, next action
+`CONTACT_PLATFORM_ADMINISTRATOR`, `retryable=false` and no receipt. WorkSession
+16 is `CLOSED/BLOCKED/revision 2`; no release journal exists.
+
+Registration, admission and allocation remain active and byte-exact. All five
+accepted ownership hashes remain unchanged. WorkSession 17 remains
+`OPEN/REMOTE/NOT_STARTED/revision 0` with one turn, run, attachment and binding;
+AgentRun 96 remains terminal failed with zero retry children. All 96 AgentRuns
+are terminal. AX42 has zero WorkSession 16/17-labelled containers, slots remain
+`3/0/0/3`, all four services remain active with zero restarts, backup/check/
+health remain `success/0`, rootful Docker/containerd remain inactive and all
+three RAID arrays remain `[UU]`. Production, preview and isolated Beautips
+return HTTP 200. No ownership was reconstructed or retried.
+
+The published correction is Atenea commit
+`5b3a08344bdc0821e75fe7c37ff1bbd3c22ff838`, tree
+`0918252a78a9e63d825eedcbacf4e2fb19fcc25e`; functional commit
+`37f46012fadfc8511bb1e77fd19d199fa331fcd9`. Additive V64 binds every consumed
+single-use plan to an operation independently from the operation's immutable
+original plan. Only the complete exact blocked predicate may obtain a fresh
+read-only diagnosis and plan; confirmation moves the same operation to
+`RECONCILING`. Lost response and restart reuse that identity. Startup resumes
+only `REQUESTED/RECONCILING` and never a `BLOCKED` operation without explicit
+confirmation. Every other blocked, foreign, partial or ambiguous state remains
+unavailable.
+
+Web and Android show `Volver a validar cierre` only when the backend proves
+that exact predicate and the current role is `PLATFORM_ADMINISTRATOR`. A stale,
+consumed or newly blocked plan is discarded until explicit refresh. The final
+backend suite passes 694/694 on a fresh isolated PostgreSQL database with all
+64 migrations. Focused backend/migration/state tests pass 31/31. Android unit
+and build validation passes without configured secret files; the new canary is
+0.5.99/code 132. Web build and 13/13 real Playwright checks pass at `1440x900`
+and `390x844`, proving fixture/data, DOM and visible hierarchy, first-viewport
+action, permissions, long messages, clipping and overflow.
+
+The exact rollout image is
+`sha256:ae98003faf568d461dd092d5299c6b18ebd9c825754d76a0800efdb98ebb941b`.
+It preserves the running production predecessor's 14-layer prefix, adds one
+networkless JAR layer and contains JAR SHA-256
+`dbe33e4f7c46ac506a064917b8cefc52933c7711b0609a9b1d6aeba6c940d1bc`.
+The optional Android debug canary SHA-256 is
+`3557a154ac9d6bf61aa78a09d377d11a723c42ce9b74d89a6465d354905f22a0`.
+Neither artifact is deployed, installed or published.
+
+Sanitized evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-blocked-recovery-candidate-20260806`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-blocked-recovery-candidate-20260806`.
+Both copies verify 11/11 files; the SHA-256 of each `SHA256SUMS` is
+`a3a5fc41fad0b25ebdaa3496b9fef570cdf27c3ea8ea4c7493eac9a1006d2a26`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains the first pending task.
+Progress stops before V64 production migration, backend deployment, Android
+publication/installation and a second real confirmation. A separate explicit
+rollout authorization must name the exact backend image and any exact Android
+artifact. After rollout and real visual verification, the operator must
+generate and confirm a new single-use plan from Atenea. No SSH release, prompt,
+AgentRun 96 retry, runtime, AX42 change, Beautips or other project is authorized.

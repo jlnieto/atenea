@@ -57,6 +57,23 @@ resource target.
 - **THEN** reconciliation fails before worker mutation and requires a fresh
   read-only plan
 
+#### Scenario: Exact release preflight blocks the first confirmation
+
+- **WHEN** the immutable operation is durably `BLOCKED` with exact
+  `WORKSPACE_RELEASE_PREFLIGHT_REJECTED/OWNERSHIP`, administrative next action,
+  `retryable=false`, no receipt and no worker mutation
+- **THEN** only a fresh read-only plan and a new explicit single-use platform
+  administrator confirmation MAY move that same operation to `RECONCILING`
+- **AND** Atenea SHALL NOT create a replacement operation, automatically retry
+  release, reconstruct ownership or accept a different fingerprint
+
+#### Scenario: Reauthorized blocked operation completes
+
+- **WHEN** the fresh confirmation still matches the exact owner and the worker
+  returns the release receipt for the original operation identity
+- **THEN** Atenea persists `RELEASED` and the receipt monotonically, while
+  repeated confirmation returns the same result without another mutation
+
 #### Scenario: Routine operator requests legacy release
 
 - **WHEN** an operator without platform-administrator authority invokes the
@@ -101,3 +118,12 @@ raw infrastructure identities or error payloads MUST NOT be exposed.
   proven absent or terminal
 - **THEN** both surfaces show `Capacidad liberada` and offer an explicit retry
   without executing it automatically
+
+#### Scenario: Exact blocked confirmation can be validated again
+
+- **WHEN** the backend proves the complete exact blocked-operation recovery
+  predicate and the operator has platform-administrator authority
+- **THEN** both surfaces show `Volver a validar cierre` as the single primary
+  action and require a fresh finite plan
+- **AND** a stale, consumed or newly blocked confirmation disables the action
+  until explicit refresh obtains another plan

@@ -29,6 +29,15 @@ worker, workspace and operation identities on every reconciliation.
 - **THEN** the WorkSession remains `CLOSING/BLOCKED`, no further resource is
   modified and the operator receives the exact safe next action
 
+#### Scenario: Backend restarts with a blocked legacy operation
+
+- **WHEN** startup observes a persisted legacy operation in `BLOCKED` without
+  a receipt
+- **THEN** it leaves the operation unchanged and performs no worker release
+  until a fresh read-only plan is explicitly confirmed
+- **AND** after that confirmation restart recovery reuses only the original
+  operation, session, ownership fingerprint and worker identity
+
 #### Scenario: Historical remote session predates the close contract
 
 - **WHEN** V63 observes a remote WorkSession already marked `CLOSED`
