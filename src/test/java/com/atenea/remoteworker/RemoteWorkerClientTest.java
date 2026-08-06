@@ -861,6 +861,63 @@ class RemoteWorkerClientTest {
     }
 
     @Test
+    void historicalOwnerUsesExactLaterCanonicalWitnessWithoutChangingAuthority() {
+        WorkSessionEntity owner = releasableSession();
+        owner.setId(16L);
+        owner.setCreatedAt(Instant.parse("2026-08-03T10:00:00Z"));
+        clearCanonicalSourceObservation(owner);
+        WorkSessionEntity witness = releasableSession();
+        UUID witnessRemoteId = UUID.fromString(
+                "18c00753-6080-42f7-ac05-18c47b236cac");
+        witness.setId(17L);
+        witness.setRemoteSessionId(witnessRemoteId);
+        witness.setWorkspaceIdentity(
+                "remote:ax42-01:work-session:" + witnessRemoteId);
+        witness.setWorkspaceBranch("atenea/session-" + witnessRemoteId);
+        witness.setCanonicalSourceCommit("c".repeat(40));
+        witness.setCreatedAt(Instant.parse("2026-08-03T10:03:00Z"));
+
+        RemoteWorkerClient.WorkspaceCapacityOwner diagnosis =
+                client.diagnoseWorkspaceCapacityOwner(owner, witness);
+
+        JsonNode body = requestBody.get();
+        assertEquals(owner.getRemoteSessionId().toString(),
+                body.get("sessionId").asText());
+        assertEquals(owner.getWorkspaceIdentity(),
+                body.get("workspaceIdentity").asText());
+        assertEquals(witness.getCanonicalSourceCommit(),
+                body.get("commit").asText());
+        assertEquals("OWNED", diagnosis.state());
+
+        RemoteWorkerClient.WorkspaceRelease release =
+                client.releaseWorkspace(owner, witness);
+
+        assertEquals(witness.getCanonicalSourceCommit(),
+                requestBody.get().get("commit").asText());
+        assertEquals("RELEASED", release.state());
+    }
+
+    @Test
+    void historicalOwnerRejectsPartialCanonicalHistoryBeforeNetwork() {
+        WorkSessionEntity owner = releasableSession();
+        owner.setId(16L);
+        owner.setCreatedAt(Instant.parse("2026-08-03T10:00:00Z"));
+        clearCanonicalSourceObservation(owner);
+        owner.setCanonicalSourceRef("refs/heads/main");
+        WorkSessionEntity witness = releasableSession();
+        witness.setId(17L);
+        witness.setCreatedAt(Instant.parse("2026-08-03T10:03:00Z"));
+        requestBody.set(null);
+
+        RemoteWorkerException exception = assertThrows(
+                RemoteWorkerException.class,
+                () -> client.diagnoseWorkspaceCapacityOwner(owner, witness));
+
+        assertEquals(409, exception.getStatusCode());
+        assertNull(requestBody.get());
+    }
+
+    @Test
     void typedWorkerRejectionPreservesOnlyValidatedSafeProjection() throws Exception {
         UUID blocker = UUID.fromString("22222222-2222-4222-8222-222222222222");
         workerErrorResponse.set(objectMapper.writeValueAsBytes(java.util.Map.of(
@@ -1254,6 +1311,13 @@ class RemoteWorkerClientTest {
         return session;
     }
 
+    private void clearCanonicalSourceObservation(WorkSessionEntity session) {
+        session.setCanonicalSourceRef(null);
+        session.setCanonicalSourceCommit(null);
+        session.setCanonicalSourceObservationSha256(null);
+        session.setCanonicalSourceObservedAt(null);
+    }
+
     private Map<String, Object> workspaceReleaseReceipt(JsonNode request) {
         Map<String, Object> receipt = new java.util.LinkedHashMap<>();
         receipt.put("schemaVersion", "project-workspace-release-v1");
@@ -1319,6 +1383,7 @@ class RemoteWorkerClientTest {
     private AgentRunEntity projectRun(String threadId) {
         UUID remoteSessionId = UUID.fromString("4bb26a65-0a0a-4ae0-b8e0-b41e03a695bf");
         ProjectEntity project = new ProjectEntity();
+        project.setId(1L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
         WorkSessionEntity session = new WorkSessionEntity();

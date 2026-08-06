@@ -311,8 +311,12 @@ public class MobileSessionOperatorStateService {
             return null;
         }
         try {
+            WorkSessionEntity sourceWitness =
+                    ProjectCodexIdentity.hasCanonicalSourceObservation(predecessor)
+                            ? predecessor : current;
             RemoteWorkerClient.WorkspaceCapacityOwner diagnosis =
-                    remoteWorkerClient.diagnoseWorkspaceCapacityOwner(predecessor);
+                    remoteWorkerClient.diagnoseWorkspaceCapacityOwner(
+                            predecessor, sourceWitness);
             if (!predecessor.getRemoteSessionId().toString().equals(diagnosis.sessionId())
                     || !predecessor.getWorkspaceIdentity().equals(
                             diagnosis.workspaceIdentity())) {
@@ -342,19 +346,49 @@ public class MobileSessionOperatorStateService {
                 || predecessor.getProject() == null
                 || current.getProject() == null
                 || !current.getProject().getId().equals(predecessor.getProject().getId())
+                || !ProjectCodexIdentity.hasCanonicalSourceObservation(current)
+                || current.getExecutionTarget() != ExecutionTarget.REMOTE
+                || !ProjectCodexIdentity.WORKER_ID.equals(current.getSelectedWorkerId())
+                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(
+                        current.getRemoteWorkloadKind())
+                || current.getRemoteSessionId() == null
                 || predecessor.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !ProjectCodexIdentity.WORKER_ID.equals(
                         predecessor.getSelectedWorkerId())
-                || !ProjectCodexIdentity.hasCanonicalSourceObservation(predecessor)
-                || predecessor.getRemoteSessionId() == null) {
+                || !ProjectCodexIdentity.matches(predecessor)
+                || predecessor.getRemoteSessionId() == null
+                || predecessor.getRemoteSessionId().equals(current.getRemoteSessionId())
+                || predecessor.getCreatedAt() == null
+                || current.getCreatedAt() == null
+                || !predecessor.getCreatedAt().isBefore(current.getCreatedAt())
+                || (!ProjectCodexIdentity.hasCanonicalSourceObservation(predecessor)
+                    && !hasNoCanonicalSourceObservation(predecessor))) {
             return false;
         }
         String remoteId = predecessor.getRemoteSessionId().toString();
-        return ("remote:" + ProjectCodexIdentity.WORKER_ID
+        boolean exactRemoteIdentity = ("remote:" + ProjectCodexIdentity.WORKER_ID
                     + ":work-session:" + remoteId)
                         .equals(predecessor.getWorkspaceIdentity())
                 && ("atenea/session-" + remoteId)
                         .equals(predecessor.getWorkspaceBranch());
+        if (!exactRemoteIdentity
+                || ProjectCodexIdentity.hasCanonicalSourceObservation(predecessor)) {
+            return exactRemoteIdentity;
+        }
+        WorkSessionEntity immediateWitness = workSessionRepository
+                .findFirstByProjectIdAndCreatedAtAfterOrderByCreatedAtAscIdAsc(
+                        predecessor.getProject().getId(), predecessor.getCreatedAt())
+                .orElse(null);
+        return immediateWitness != null
+                && current.getId() != null
+                && current.getId().equals(immediateWitness.getId());
+    }
+
+    private boolean hasNoCanonicalSourceObservation(WorkSessionEntity session) {
+        return session.getCanonicalSourceRef() == null
+                && session.getCanonicalSourceCommit() == null
+                && session.getCanonicalSourceObservationSha256() == null
+                && session.getCanonicalSourceObservedAt() == null;
     }
 
     private boolean hasExactReleasedReceipt(WorkSessionEntity predecessor) {

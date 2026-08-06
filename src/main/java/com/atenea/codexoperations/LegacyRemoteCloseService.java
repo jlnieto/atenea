@@ -136,10 +136,12 @@ public class LegacyRemoteCloseService {
             return planForAdministrator(plan.planId());
         }
 
-        WorkSessionEntity session = exactLegacySession(sessionId);
+        LegacyOwner owner = exactLegacyOwner(sessionId);
+        WorkSessionEntity session = owner.session();
         try {
             RemoteWorkerClient.WorkspaceCapacityOwner diagnosis =
-                    remoteWorkerClient.diagnoseWorkspaceCapacityOwner(session);
+                    remoteWorkerClient.diagnoseWorkspaceCapacityOwner(
+                            session, owner.canonicalSourceWitness());
             if (diagnosis == null
                     || !session.getRemoteSessionId().toString().equals(
                             diagnosis.sessionId())
@@ -150,7 +152,8 @@ public class LegacyRemoteCloseService {
         } catch (RemoteWorkerException exception) {
             throw capacityOwnerDiagnosisFailure(exception);
         }
-        String ownershipFingerprint = ownershipFingerprint(session);
+        String ownershipFingerprint = ownershipFingerprint(
+                session, owner.canonicalSourceWitness());
         String requestFingerprint = sha256(String.join("\n",
                 "legacy-remote-close-plan-v1",
                 operator.operatorId().toString(),
@@ -218,7 +221,8 @@ public class LegacyRemoteCloseService {
         }
         RemoteWorkerClient.WorkspaceRelease receipt;
         try {
-            receipt = remoteWorkerClient.releaseWorkspace(invocation.session());
+            receipt = remoteWorkerClient.releaseWorkspace(
+                    invocation.session(), invocation.canonicalSourceWitness());
         } catch (RemoteWorkerException exception) {
             return Objects.requireNonNull(
                     transactionTemplate.execute(ignored -> persistLegacyReleaseFailure(
@@ -258,8 +262,10 @@ public class LegacyRemoteCloseService {
         if (!clock.instant().isBefore(plan.expiresAt())) {
             throw conflict("Legacy close confirmation expired; create a fresh read-only plan");
         }
-        WorkSessionEntity session = exactLegacySessionLocked(sessionId);
-        if (!plan.ownershipFingerprint().equals(ownershipFingerprint(session))) {
+        LegacyOwner owner = exactLegacyOwnerLocked(sessionId);
+        WorkSessionEntity session = owner.session();
+        if (!plan.ownershipFingerprint().equals(ownershipFingerprint(
+                session, owner.canonicalSourceWitness()))) {
             throw conflict("Legacy close ownership changed; create a fresh read-only plan");
         }
         requireTerminalRuns(sessionId);
@@ -314,7 +320,8 @@ public class LegacyRemoteCloseService {
         WorkSessionEntity persistedSession = sessionRepository.saveAndFlush(session);
         return new LegacyReleaseInvocation(
                 operation.operationId(), request.planId(),
-                request.ownershipFingerprintSha256(), persistedSession, null);
+                request.ownershipFingerprintSha256(), persistedSession,
+                owner.canonicalSourceWitness(), null);
     }
 
     private LegacyReleaseInvocation resumeExistingOperation(
@@ -328,9 +335,11 @@ public class LegacyRemoteCloseService {
             throw conflict("Idempotency key belongs to a different legacy close operation");
         }
         LegacyPlanBinding plan = lockedPlan(existing.planId());
-        WorkSessionEntity session = exactRequestedLegacySession(
+        LegacyOwner owner = exactRequestedLegacyOwner(
                 sessionId, existing.operationId());
-        if (!plan.ownershipFingerprint().equals(ownershipFingerprint(session))) {
+        WorkSessionEntity session = owner.session();
+        if (!plan.ownershipFingerprint().equals(ownershipFingerprint(
+                session, owner.canonicalSourceWitness()))) {
             throw conflict("Legacy close ownership changed; create a fresh read-only plan");
         }
         requireTerminalRuns(sessionId);
@@ -338,23 +347,26 @@ public class LegacyRemoteCloseService {
             return new LegacyReleaseInvocation(
                     existing.operationId(), existing.planId(),
                     existing.ownershipFingerprint(), session,
+                    owner.canonicalSourceWitness(),
                     operationForAdministrator(existing.operationId()));
         }
         if (session.getRemoteCloseState() == RemoteCloseState.BLOCKED) {
             return new LegacyReleaseInvocation(
                     existing.operationId(), existing.planId(),
                     existing.ownershipFingerprint(), session,
+                    owner.canonicalSourceWitness(),
                     operationForAdministrator(existing.operationId()));
         }
         return new LegacyReleaseInvocation(
                 existing.operationId(), existing.planId(),
-                existing.ownershipFingerprint(), session, null);
+                existing.ownershipFingerprint(), session,
+                owner.canonicalSourceWitness(), null);
     }
 
     private LegacyRemoteCloseOperationResponse persistLegacyReleaseFailure(
             UUID operationId, RemoteWorkerException exception) {
-        WorkSessionEntity session = exactRequestedLegacySession(
-                workSessionIdForOperation(operationId), operationId);
+        WorkSessionEntity session = exactRequestedLegacyOwner(
+                workSessionIdForOperation(operationId), operationId).session();
         if (session.getRemoteCloseState() == RemoteCloseState.RELEASED) {
             return operationForAdministrator(operationId);
         }
@@ -391,12 +403,14 @@ public class LegacyRemoteCloseService {
             UUID planId,
             String ownershipFingerprint,
             RemoteWorkerClient.WorkspaceRelease receipt) {
-        WorkSessionEntity session = exactRequestedLegacySession(
+        LegacyOwner owner = exactRequestedLegacyOwner(
                 workSessionIdForOperation(operationId), operationId);
+        WorkSessionEntity session = owner.session();
         LegacyPlanBinding plan = lockedPlan(planId);
         if (!plan.workSessionId().equals(session.getId())
                 || !plan.ownershipFingerprint().equals(ownershipFingerprint)
-                || !ownershipFingerprint.equals(ownershipFingerprint(session))) {
+                || !ownershipFingerprint.equals(ownershipFingerprint(
+                        session, owner.canonicalSourceWitness()))) {
             throw conflict("Legacy close ownership changed before receipt persistence");
         }
         requireTerminalRuns(session.getId());
@@ -561,27 +575,27 @@ public class LegacyRemoteCloseService {
                         "Legacy remote-close plan not found"));
     }
 
-    private WorkSessionEntity exactLegacySession(Long sessionId) {
+    private LegacyOwner exactLegacyOwner(Long sessionId) {
         WorkSessionEntity session = sessionRepository.findWithProjectById(sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "WorkSession not found"));
-        return requireExactLegacySession(session);
+        return requireExactLegacyOwner(session);
     }
 
-    private WorkSessionEntity exactLegacySessionLocked(Long sessionId) {
+    private LegacyOwner exactLegacyOwnerLocked(Long sessionId) {
         WorkSessionEntity session = sessionRepository.findLockedWithProjectById(sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "WorkSession not found"));
-        return requireExactLegacySession(session);
+        return requireExactLegacyOwner(session);
     }
 
-    private WorkSessionEntity requireExactLegacySession(WorkSessionEntity session) {
+    private LegacyOwner requireExactLegacyOwner(WorkSessionEntity session) {
         String remoteId = session.getRemoteSessionId() == null
                 ? null : session.getRemoteSessionId().toString();
         if (session.getStatus() != WorkSessionStatus.CLOSED
                 || session.getRemoteCloseState() != RemoteCloseState.UNVERIFIED_LEGACY
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
-                || !ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+                || !ProjectCodexIdentity.matches(session)
                 || !ProjectCodexIdentity.WORKER_ID.equals(session.getSelectedWorkerId())
                 || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
                 || remoteId == null
@@ -590,10 +604,10 @@ public class LegacyRemoteCloseService {
                 || !("atenea/session-" + remoteId).equals(session.getWorkspaceBranch())) {
             throw conflict("Selected WorkSession is not an exact legacy Atenea remote owner");
         }
-        return session;
+        return new LegacyOwner(session, exactCanonicalSourceWitness(session));
     }
 
-    private WorkSessionEntity exactRequestedLegacySession(
+    private LegacyOwner exactRequestedLegacyOwner(
             Long sessionId, UUID operationId) {
         WorkSessionEntity session = sessionRepository.findLockedWithProjectById(sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -609,7 +623,7 @@ public class LegacyRemoteCloseService {
                 || session.getRemoteCloseRequestedAt() == null
                 || session.getRemoteCloseUpdatedAt() == null
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
-                || !ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+                || !ProjectCodexIdentity.matches(session)
                 || !ProjectCodexIdentity.WORKER_ID.equals(session.getSelectedWorkerId())
                 || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
                 || remoteId == null
@@ -618,7 +632,67 @@ public class LegacyRemoteCloseService {
                 || !("atenea/session-" + remoteId).equals(session.getWorkspaceBranch())) {
             throw conflict("Selected WorkSession is not an exact requested legacy Atenea owner");
         }
-        return session;
+        return new LegacyOwner(session, exactCanonicalSourceWitness(session));
+    }
+
+    private WorkSessionEntity exactCanonicalSourceWitness(WorkSessionEntity owner) {
+        if (ProjectCodexIdentity.hasCanonicalSourceObservation(owner)) {
+            return owner;
+        }
+        if (!hasNoCanonicalSourceObservation(owner)
+                || owner.getProject() == null
+                || owner.getProject().getId() == null
+                || owner.getCreatedAt() == null) {
+            throw conflict("Legacy owner canonical source history is partial or ambiguous");
+        }
+        WorkSessionEntity witness = sessionRepository
+                .findFirstByProjectIdAndCreatedAtAfterOrderByCreatedAtAscIdAsc(
+                        owner.getProject().getId(), owner.getCreatedAt())
+                .orElseThrow(() -> conflict(
+                        "Immediate canonical source witness is absent"));
+        if (!isExactCanonicalSourceWitness(owner, witness)) {
+            throw conflict("Immediate canonical source witness is not exact");
+        }
+        return witness;
+    }
+
+    private boolean isExactCanonicalSourceWitness(
+            WorkSessionEntity owner,
+            WorkSessionEntity witness
+    ) {
+        if (witness == null
+                || witness.getId() == null
+                || owner.getId() == null
+                || owner.getId().equals(witness.getId())
+                || witness.getProject() == null
+                || owner.getProject() == null
+                || !owner.getProject().getId().equals(witness.getProject().getId())
+                || !ProjectCodexIdentity.hasCanonicalSourceObservation(witness)
+                || witness.getExecutionTarget() != ExecutionTarget.REMOTE
+                || !ProjectCodexIdentity.WORKER_ID.equals(witness.getSelectedWorkerId())
+                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(
+                        witness.getRemoteWorkloadKind())
+                || witness.getRemoteSessionId() == null
+                || owner.getRemoteSessionId() == null
+                || owner.getRemoteSessionId().equals(witness.getRemoteSessionId())
+                || owner.getCreatedAt() == null
+                || witness.getCreatedAt() == null
+                || !owner.getCreatedAt().isBefore(witness.getCreatedAt())) {
+            return false;
+        }
+        String witnessRemoteId = witness.getRemoteSessionId().toString();
+        return ("remote:" + ProjectCodexIdentity.WORKER_ID
+                    + ":work-session:" + witnessRemoteId)
+                        .equals(witness.getWorkspaceIdentity())
+                && ("atenea/session-" + witnessRemoteId)
+                        .equals(witness.getWorkspaceBranch());
+    }
+
+    private static boolean hasNoCanonicalSourceObservation(WorkSessionEntity session) {
+        return session.getCanonicalSourceRef() == null
+                && session.getCanonicalSourceCommit() == null
+                && session.getCanonicalSourceObservationSha256() == null
+                && session.getCanonicalSourceObservedAt() == null;
     }
 
     private void requireTerminalRuns(Long sessionId) {
@@ -700,6 +774,13 @@ public class LegacyRemoteCloseService {
     }
 
     static String ownershipFingerprint(WorkSessionEntity session) {
+        return ownershipFingerprint(session, session);
+    }
+
+    static String ownershipFingerprint(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
         return sha256(String.join("\n",
                 field("schema", "legacy-remote-close-ownership-v1"),
                 field("workSessionId", session.getId()),
@@ -726,7 +807,17 @@ public class LegacyRemoteCloseService {
                 field("pullRequestStatus", session.getPullRequestStatus()),
                 field("pullRequestUrl", session.getPullRequestUrl()),
                 field("finalCommitSha", session.getFinalCommitSha()),
-                field("closedAt", session.getClosedAt())));
+                field("closedAt", session.getClosedAt()),
+                field("canonicalSourceWitnessWorkSessionId",
+                        canonicalSourceWitness.getId()),
+                field("canonicalSourceWitnessRef",
+                        canonicalSourceWitness.getCanonicalSourceRef()),
+                field("canonicalSourceWitnessCommit",
+                        canonicalSourceWitness.getCanonicalSourceCommit()),
+                field("canonicalSourceWitnessObservationSha256",
+                        canonicalSourceWitness.getCanonicalSourceObservationSha256()),
+                field("canonicalSourceWitnessObservedAt",
+                        canonicalSourceWitness.getCanonicalSourceObservedAt())));
     }
 
     private static String field(String name, Object value) {
@@ -811,7 +902,11 @@ public class LegacyRemoteCloseService {
             UUID planId,
             String ownershipFingerprint,
             WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness,
             LegacyRemoteCloseOperationResponse releasedResponse) {}
+    private record LegacyOwner(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness) {}
 
     public record LegacyRemoteClosePlanRequest(String operation, UUID idempotencyKey) {}
 

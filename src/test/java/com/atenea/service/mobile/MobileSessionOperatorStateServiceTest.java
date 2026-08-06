@@ -207,6 +207,7 @@ class MobileSessionOperatorStateServiceTest {
                 WorkSessionStatus.CLOSED,
                 RemoteCloseState.UNVERIFIED_LEGACY,
                 Instant.parse("2026-08-03T10:00:00Z"));
+        clearCanonicalSourceObservation(predecessor);
         AgentRunEntity run = historicalRun(current);
         when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
         when(workSessionRepository.findWithProjectById(17L))
@@ -215,7 +216,11 @@ class MobileSessionOperatorStateServiceTest {
                 .findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
                         1L, WorkSessionStatus.CLOSED, current.getCreatedAt()))
                 .thenReturn(Optional.of(predecessor));
-        when(remoteWorkerClient.diagnoseWorkspaceCapacityOwner(predecessor))
+        when(workSessionRepository
+                .findFirstByProjectIdAndCreatedAtAfterOrderByCreatedAtAscIdAsc(
+                        1L, predecessor.getCreatedAt()))
+                .thenReturn(Optional.of(current));
+        when(remoteWorkerClient.diagnoseWorkspaceCapacityOwner(predecessor, current))
                 .thenReturn(new RemoteWorkerClient.WorkspaceCapacityOwner(
                         "project-workspace-capacity-owner-v1",
                         "OWNED",
@@ -241,6 +246,90 @@ class MobileSessionOperatorStateServiceTest {
                 response.primaryAction());
         assertEquals(16L, response.targetWorkSessionId());
         assertEquals(96L, response.targetAgentRunId());
+    }
+
+    @Test
+    void historicalCanonicalWitnessMustBeTheImmediateNextSession() {
+        WorkSessionEntity current = exactRemoteSession(
+                17L,
+                "18c00753-6080-42f7-ac05-18c47b236cac",
+                WorkSessionStatus.OPEN,
+                RemoteCloseState.NOT_STARTED,
+                Instant.parse("2026-08-03T10:03:00Z"));
+        WorkSessionEntity predecessor = exactRemoteSession(
+                16L,
+                "7151dce0-69ab-4614-86e4-f93f1af825e4",
+                WorkSessionStatus.CLOSED,
+                RemoteCloseState.UNVERIFIED_LEGACY,
+                Instant.parse("2026-08-03T10:00:00Z"));
+        clearCanonicalSourceObservation(predecessor);
+        WorkSessionEntity intermediate = exactRemoteSession(
+                99L,
+                "0db6b59e-63d3-44c5-8635-2b74353e93b3",
+                WorkSessionStatus.OPEN,
+                RemoteCloseState.NOT_STARTED,
+                Instant.parse("2026-08-03T10:01:00Z"));
+        AgentRunEntity run = historicalRun(current);
+        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
+        when(workSessionRepository.findWithProjectById(17L))
+                .thenReturn(Optional.of(current));
+        when(workSessionRepository
+                .findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
+                        1L, WorkSessionStatus.CLOSED, current.getCreatedAt()))
+                .thenReturn(Optional.of(predecessor));
+        when(workSessionRepository
+                .findFirstByProjectIdAndCreatedAtAfterOrderByCreatedAtAscIdAsc(
+                        1L, predecessor.getCreatedAt()))
+                .thenReturn(Optional.of(intermediate));
+        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor("atenea"))
+                .thenReturn(true);
+
+        MobileSessionOperatorStateResponse response = service.build(conversation(
+                WorkSessionStatus.OPEN,
+                RemoteCloseState.NOT_STARTED,
+                latestRun(null, null),
+                false));
+
+        assertEquals(MobileSessionOperatorState.DEFAULT, response.state());
+        assertFalse(response.primaryActionAvailable());
+        verifyNoInteractions(remoteWorkerClient);
+    }
+
+    @Test
+    void historicalCompatibilityRejectsPartialCanonicalHistoryWithoutWorkerIo() {
+        WorkSessionEntity current = exactRemoteSession(
+                17L,
+                "18c00753-6080-42f7-ac05-18c47b236cac",
+                WorkSessionStatus.OPEN,
+                RemoteCloseState.NOT_STARTED,
+                Instant.parse("2026-08-03T10:03:00Z"));
+        WorkSessionEntity predecessor = exactRemoteSession(
+                16L,
+                "7151dce0-69ab-4614-86e4-f93f1af825e4",
+                WorkSessionStatus.CLOSED,
+                RemoteCloseState.UNVERIFIED_LEGACY,
+                Instant.parse("2026-08-03T10:00:00Z"));
+        predecessor.setCanonicalSourceObservationSha256(null);
+        AgentRunEntity run = historicalRun(current);
+        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
+        when(workSessionRepository.findWithProjectById(17L))
+                .thenReturn(Optional.of(current));
+        when(workSessionRepository
+                .findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
+                        1L, WorkSessionStatus.CLOSED, current.getCreatedAt()))
+                .thenReturn(Optional.of(predecessor));
+        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor("atenea"))
+                .thenReturn(true);
+
+        MobileSessionOperatorStateResponse response = service.build(conversation(
+                WorkSessionStatus.OPEN,
+                RemoteCloseState.NOT_STARTED,
+                latestRun(null, null),
+                false));
+
+        assertEquals(MobileSessionOperatorState.DEFAULT, response.state());
+        assertFalse(response.primaryActionAvailable());
+        verifyNoInteractions(remoteWorkerClient);
     }
 
     @Test
@@ -437,6 +526,13 @@ class MobileSessionOperatorStateServiceTest {
         session.setRemoteCloseState(closeState);
         session.setCreatedAt(createdAt);
         return session;
+    }
+
+    private static void clearCanonicalSourceObservation(WorkSessionEntity session) {
+        session.setCanonicalSourceRef(null);
+        session.setCanonicalSourceCommit(null);
+        session.setCanonicalSourceObservationSha256(null);
+        session.setCanonicalSourceObservedAt(null);
     }
 
     private static AgentRunEntity historicalRun(WorkSessionEntity current) {

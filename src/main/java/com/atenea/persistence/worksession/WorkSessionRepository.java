@@ -43,6 +43,12 @@ public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, 
                     java.time.Instant createdAt
             );
 
+    @EntityGraph(attributePaths = "project")
+    Optional<WorkSessionEntity> findFirstByProjectIdAndCreatedAtAfterOrderByCreatedAtAscIdAsc(
+            Long projectId,
+            java.time.Instant createdAt
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = "project")
     @Query("select session from WorkSessionEntity session where session.id = :id")

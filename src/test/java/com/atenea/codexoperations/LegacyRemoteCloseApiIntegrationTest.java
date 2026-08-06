@@ -93,7 +93,7 @@ class LegacyRemoteCloseApiIntegrationTest {
         jdbcTemplate.update(
                 "DELETE FROM operator_account WHERE email LIKE 'legacy-close-%@atenea.test'");
         doAnswer(invocation -> capacityOwner(invocation.getArgument(0)))
-                .when(remoteWorkerClient).diagnoseWorkspaceCapacityOwner(any());
+                .when(remoteWorkerClient).diagnoseWorkspaceCapacityOwner(any(), any());
     }
 
     @AfterEach
@@ -155,6 +155,83 @@ class LegacyRemoteCloseApiIntegrationTest {
     }
 
     @Test
+    void exactImmediateWitnessSupportsHistoricalPlanAndIdempotentRelease()
+            throws Exception {
+        OperatorEntity administrator = operator(
+                CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        HistoricalLegacyFixture fixture = historicalLegacyFixture();
+        WorkSessionEntity session = fixture.owner();
+        String plan = createPlan(administrator, session, UUID.randomUUID());
+        UUID planId = UUID.fromString(
+                com.jayway.jsonpath.JsonPath.read(plan, "$.planId"));
+        String fingerprint = com.jayway.jsonpath.JsonPath.read(
+                plan, "$.ownershipFingerprintSha256");
+        UUID operationKey = UUID.randomUUID();
+        String confirmation = confirmationBody(
+                planId, fingerprint, operationKey, false);
+        when(remoteWorkerClient.releaseWorkspace(any(), any()))
+                .thenAnswer(invocation -> releaseReceipt(
+                        invocation.getArgument(0), invocation.getArgument(1)));
+
+        String first = mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmation))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("RELEASED"))
+                .andReturn().getResponse().getContentAsString();
+        String second = mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmation))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertEquals(first, second);
+        verify(remoteWorkerClient, times(1))
+                .diagnoseWorkspaceCapacityOwner(any(), any());
+        verify(remoteWorkerClient, times(1)).releaseWorkspace(any(), any());
+        WorkSessionEntity released = sessionRepository.findById(session.getId())
+                .orElseThrow();
+        assertEquals(RemoteCloseState.RELEASED, released.getRemoteCloseState());
+        assertNull(released.getCanonicalSourceRef());
+        assertNull(released.getCanonicalSourceCommit());
+        assertNull(released.getCanonicalSourceObservationSha256());
+        assertNull(released.getCanonicalSourceObservedAt());
+        WorkSessionEntity unchangedWitness = sessionRepository.findById(
+                fixture.witness().getId()).orElseThrow();
+        assertEquals(WorkSessionStatus.OPEN, unchangedWitness.getStatus());
+        assertEquals("a".repeat(40), unchangedWitness.getCanonicalSourceCommit());
+    }
+
+    @Test
+    void absentHistoricalCanonicalWitnessFailsClosedBeforeWorkerIo() throws Exception {
+        OperatorEntity administrator = operator(
+                CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        HistoricalLegacyFixture fixture = historicalLegacyFixture();
+        sessionRepository.deleteById(fixture.witness().getId());
+        sessionRepository.flush();
+
+        mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-plans",
+                        fixture.owner().getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(planBody(UUID.randomUUID(), false)))
+                .andExpect(status().isConflict());
+
+        assertEquals(0, count("remote_close_legacy_plan"));
+        assertEquals(RemoteCloseState.UNVERIFIED_LEGACY,
+                sessionRepository.findById(fixture.owner().getId()).orElseThrow()
+                        .getRemoteCloseState());
+        verifyNoInteractions(remoteWorkerClient);
+    }
+
+    @Test
     void readOnlyPlanRejectsAbsentOrInexactWorkerOwnership() throws Exception {
         OperatorEntity administrator = operator(
                 CodexOperationsRole.PLATFORM_ADMINISTRATOR);
@@ -162,7 +239,7 @@ class LegacyRemoteCloseApiIntegrationTest {
         doThrow(new RemoteWorkerException(
                 "Remote worker rejected request with HTTP 409", 409))
                 .when(remoteWorkerClient)
-                .diagnoseWorkspaceCapacityOwner(any());
+                .diagnoseWorkspaceCapacityOwner(any(), any());
 
         mockMvc.perform(post(
                         "/api/admin/work-sessions/{id}/remote-close-plans",
@@ -192,7 +269,7 @@ class LegacyRemoteCloseApiIntegrationTest {
                 AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,
                 null))
                 .when(remoteWorkerClient)
-                .diagnoseWorkspaceCapacityOwner(any());
+                .diagnoseWorkspaceCapacityOwner(any(), any());
 
         mockMvc.perform(post(
                         "/api/admin/work-sessions/{id}/remote-close-plans",
@@ -219,8 +296,9 @@ class LegacyRemoteCloseApiIntegrationTest {
         UUID operationKey = UUID.randomUUID();
         String confirmation = confirmationBody(planId, fingerprint, operationKey, false);
         Instant historicalClosedAt = session.getClosedAt();
-        when(remoteWorkerClient.releaseWorkspace(any()))
-                .thenAnswer(invocation -> releaseReceipt(invocation.getArgument(0)));
+        when(remoteWorkerClient.releaseWorkspace(any(), any()))
+                .thenAnswer(invocation -> releaseReceipt(
+                        invocation.getArgument(0), invocation.getArgument(1)));
 
         String first = mockMvc.perform(post(
                         "/api/admin/work-sessions/{id}/remote-close-reconciliations", session.getId())
@@ -245,7 +323,7 @@ class LegacyRemoteCloseApiIntegrationTest {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
         assertEquals(first, second);
-        verify(remoteWorkerClient, times(1)).releaseWorkspace(any());
+        verify(remoteWorkerClient, times(1)).releaseWorkspace(any(), any());
         assertEquals(1, count("remote_close_legacy_plan"));
         assertEquals(1, count("remote_close_legacy_operation"));
         assertEquals(2, count("remote_close_legacy_event"));
@@ -328,7 +406,7 @@ class LegacyRemoteCloseApiIntegrationTest {
                                 UUID.randomUUID(), false)))
                 .andExpect(status().isConflict());
         assertEquals(0, count("remote_close_legacy_operation"));
-        verify(remoteWorkerClient, never()).releaseWorkspace(any());
+        verify(remoteWorkerClient, never()).releaseWorkspace(any(), any());
     }
 
     @Test
@@ -378,7 +456,7 @@ class LegacyRemoteCloseApiIntegrationTest {
         WorkSessionEntity unchanged = sessionRepository.findById(session.getId()).orElseThrow();
         assertEquals(RemoteCloseState.UNVERIFIED_LEGACY, unchanged.getRemoteCloseState());
         assertNull(unchanged.getRemoteCloseOperationId());
-        verify(remoteWorkerClient, never()).releaseWorkspace(any());
+        verify(remoteWorkerClient, never()).releaseWorkspace(any(), any());
     }
 
     @Test
@@ -436,10 +514,11 @@ class LegacyRemoteCloseApiIntegrationTest {
                 plan, "$.ownershipFingerprintSha256");
         String confirmation = confirmationBody(
                 planId, fingerprint, UUID.randomUUID(), false);
-        when(remoteWorkerClient.releaseWorkspace(any()))
+        when(remoteWorkerClient.releaseWorkspace(any(), any()))
                 .thenThrow(new RemoteWorkerException(
                         "Synthetic lost response", new java.io.IOException("synthetic")))
-                .thenAnswer(invocation -> releaseReceipt(invocation.getArgument(0)));
+                .thenAnswer(invocation -> releaseReceipt(
+                        invocation.getArgument(0), invocation.getArgument(1)));
 
         mockMvc.perform(post(
                         "/api/admin/work-sessions/{id}/remote-close-reconciliations",
@@ -470,7 +549,7 @@ class LegacyRemoteCloseApiIntegrationTest {
                 .andExpect(jsonPath("$.revision").value(3))
                 .andExpect(jsonPath("$.nextAction").value("NONE"));
 
-        verify(remoteWorkerClient, times(2)).releaseWorkspace(any());
+        verify(remoteWorkerClient, times(2)).releaseWorkspace(any(), any());
         WorkSessionEntity released = sessionRepository.findById(session.getId()).orElseThrow();
         assertEquals(RemoteCloseState.RELEASED, released.getRemoteCloseState());
         assertEquals(durable.getRemoteCloseOperationId(), released.getRemoteCloseOperationId());
@@ -487,7 +566,7 @@ class LegacyRemoteCloseApiIntegrationTest {
                 plan, "$.ownershipFingerprintSha256");
         String confirmation = confirmationBody(
                 planId, fingerprint, UUID.randomUUID(), false);
-        when(remoteWorkerClient.releaseWorkspace(any())).thenThrow(
+        when(remoteWorkerClient.releaseWorkspace(any(), any())).thenThrow(
                 new RemoteWorkerException(
                         "synthetic raw path /forbidden and token secret-value",
                         409, "WORKSPACE_OWNERSHIP_AMBIGUOUS",
@@ -523,7 +602,7 @@ class LegacyRemoteCloseApiIntegrationTest {
         assertEquals(false, response.contains("/forbidden"));
         assertEquals(false, response.contains("secret-value"));
         assertEquals(2, count("remote_close_legacy_event"));
-        verify(remoteWorkerClient, times(1)).releaseWorkspace(any());
+        verify(remoteWorkerClient, times(1)).releaseWorkspace(any(), any());
         WorkSessionEntity blocked = sessionRepository.findById(session.getId()).orElseThrow();
         assertEquals(RemoteCloseState.BLOCKED, blocked.getRemoteCloseState());
         assertEquals("WORKSPACE_OWNERSHIP_AMBIGUOUS", blocked.getRemoteCloseErrorCode());
@@ -537,7 +616,7 @@ class LegacyRemoteCloseApiIntegrationTest {
         UUID planId = UUID.fromString(com.jayway.jsonpath.JsonPath.read(plan, "$.planId"));
         String fingerprint = com.jayway.jsonpath.JsonPath.read(
                 plan, "$.ownershipFingerprintSha256");
-        when(remoteWorkerClient.releaseWorkspace(any())).thenThrow(
+        when(remoteWorkerClient.releaseWorkspace(any(), any())).thenThrow(
                 new RemoteWorkerException(
                         "incompatible typed rejection",
                         403, "WORKER_AUTHORIZATION_REJECTED",
@@ -603,6 +682,29 @@ class LegacyRemoteCloseApiIntegrationTest {
         Instant now = Instant.parse("2026-08-03T11:00:00Z").plusSeconds(value);
         return remoteSession(canonicalProject(now), WorkSessionStatus.CLOSED,
                 RemoteCloseState.UNVERIFIED_LEGACY, now);
+    }
+
+    private HistoricalLegacyFixture historicalLegacyFixture() {
+        long value = SEQUENCE.incrementAndGet();
+        Instant ownerTime = Instant.parse("2099-08-03T11:00:00Z")
+                .plusSeconds(value * 10);
+        ProjectEntity project = canonicalProject(ownerTime);
+        WorkSessionEntity owner = remoteSession(
+                project,
+                WorkSessionStatus.CLOSED,
+                RemoteCloseState.UNVERIFIED_LEGACY,
+                ownerTime);
+        owner.setCanonicalSourceRef(null);
+        owner.setCanonicalSourceCommit(null);
+        owner.setCanonicalSourceObservationSha256(null);
+        owner.setCanonicalSourceObservedAt(null);
+        owner = sessionRepository.saveAndFlush(owner);
+        WorkSessionEntity witness = remoteSession(
+                project,
+                WorkSessionStatus.OPEN,
+                RemoteCloseState.NOT_STARTED,
+                ownerTime.plusSeconds(120));
+        return new HistoricalLegacyFixture(owner, witness);
     }
 
     private ProjectEntity canonicalProject(Instant now) {
@@ -683,13 +785,16 @@ class LegacyRemoteCloseApiIntegrationTest {
                 extra ? ",\"resource\":\"caller-selected\"" : "");
     }
 
-    private RemoteWorkerClient.WorkspaceRelease releaseReceipt(WorkSessionEntity session) {
+    private RemoteWorkerClient.WorkspaceRelease releaseReceipt(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness) {
         String operationId = session.getRemoteCloseOperationId().toString();
         return new RemoteWorkerClient.WorkspaceRelease(
                 "project-workspace-release-v1", "RELEASED", operationId, operationId,
                 session.getRemoteSessionId().toString(), session.getWorkspaceIdentity(),
                 ProjectCodexIdentity.PROJECT_IDENTITY, ProjectCodexIdentity.REPOSITORY,
-                ProjectCodexIdentity.BRANCH, session.getCanonicalSourceCommit(),
+                ProjectCodexIdentity.BRANCH,
+                canonicalSourceWitness.getCanonicalSourceCommit(),
                 ProjectCodexIdentity.MANIFEST_SHA256, session.getWorkspaceBranch(),
                 ProjectCodexIdentity.WORKER_ID, "1".repeat(64), 2,
                 java.util.Map.of(), java.util.Map.of(), java.util.Map.of(),
@@ -710,4 +815,8 @@ class LegacyRemoteCloseApiIntegrationTest {
                 "9".repeat(64),
                 false);
     }
+
+    private record HistoricalLegacyFixture(
+            WorkSessionEntity owner,
+            WorkSessionEntity witness) {}
 }

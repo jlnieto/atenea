@@ -177,7 +177,15 @@ public class RemoteWorkerClient {
     }
 
     public WorkspaceRelease releaseWorkspace(WorkSessionEntity session) {
-        if (!isExactReleaseOwner(session)) {
+        return releaseWorkspace(session, session);
+    }
+
+    public WorkspaceRelease releaseWorkspace(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
+        String canonicalCommit = exactOwnerCommit(session, canonicalSourceWitness);
+        if (canonicalCommit == null || !hasExactReleaseLifecycle(session)) {
             throw new RemoteWorkerException(
                     "Persisted remote workspace release identity is incomplete or incompatible",
                     409);
@@ -191,7 +199,7 @@ public class RemoteWorkerClient {
                 Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
                 Map.entry("repository", ProjectCodexIdentity.REPOSITORY),
                 Map.entry("branch", ProjectCodexIdentity.BRANCH),
-                Map.entry("commit", session.getCanonicalSourceCommit()),
+                Map.entry("commit", canonicalCommit),
                 Map.entry("manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256),
                 Map.entry("workspaceBranch", session.getWorkspaceBranch()));
         JsonNode receipt = exchange(
@@ -207,7 +215,15 @@ public class RemoteWorkerClient {
     public WorkspaceCapacityOwner diagnoseWorkspaceCapacityOwner(
             WorkSessionEntity session
     ) {
-        if (!isExactCapacityOwnerCandidate(session)) {
+        return diagnoseWorkspaceCapacityOwner(session, session);
+    }
+
+    public WorkspaceCapacityOwner diagnoseWorkspaceCapacityOwner(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
+        String canonicalCommit = exactOwnerCommit(session, canonicalSourceWitness);
+        if (canonicalCommit == null) {
             throw new RemoteWorkerException(
                     "Persisted capacity-owner identity is incomplete or incompatible",
                     409);
@@ -218,7 +234,7 @@ public class RemoteWorkerClient {
                 Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
                 Map.entry("repository", ProjectCodexIdentity.REPOSITORY),
                 Map.entry("branch", ProjectCodexIdentity.BRANCH),
-                Map.entry("commit", session.getCanonicalSourceCommit()),
+                Map.entry("commit", canonicalCommit),
                 Map.entry("manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256),
                 Map.entry("workspaceBranch", session.getWorkspaceBranch()));
         WorkspaceCapacityOwner response = exchange(
@@ -250,8 +266,43 @@ public class RemoteWorkerClient {
         return response;
     }
 
-    private boolean isExactCapacityOwnerCandidate(WorkSessionEntity session) {
-        if (!ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+    private String exactOwnerCommit(
+            WorkSessionEntity owner,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
+        if (!isExactRemoteOwnerIdentity(owner)
+                || !isExactRemoteOwnerIdentity(canonicalSourceWitness)
+                || !ProjectCodexIdentity.hasCanonicalSourceObservation(
+                        canonicalSourceWitness)
+                || owner.getProject() == null
+                || canonicalSourceWitness.getProject() == null
+                || owner.getProject().getId() == null
+                || canonicalSourceWitness.getProject().getId() == null
+                || !owner.getProject().getId().equals(
+                        canonicalSourceWitness.getProject().getId())) {
+            return null;
+        }
+        if (ProjectCodexIdentity.hasCanonicalSourceObservation(owner)) {
+            return owner.getId() != null
+                            && owner.getId().equals(canonicalSourceWitness.getId())
+                    ? owner.getCanonicalSourceCommit() : null;
+        }
+        if (!hasNoCanonicalSourceObservation(owner)
+                || owner.getId() == null
+                || canonicalSourceWitness.getId() == null
+                || owner.getId().equals(canonicalSourceWitness.getId())
+                || owner.getRemoteSessionId().equals(
+                        canonicalSourceWitness.getRemoteSessionId())
+                || owner.getCreatedAt() == null
+                || canonicalSourceWitness.getCreatedAt() == null
+                || !owner.getCreatedAt().isBefore(canonicalSourceWitness.getCreatedAt())) {
+            return null;
+        }
+        return canonicalSourceWitness.getCanonicalSourceCommit();
+    }
+
+    private boolean isExactRemoteOwnerIdentity(WorkSessionEntity session) {
+        if (!ProjectCodexIdentity.matches(session)
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !ProjectCodexIdentity.WORKER_ID.equals(session.getSelectedWorkerId())
                 || !ProjectCodexIdentity.WORKER_ID.equals(properties.getWorkerId())
@@ -265,27 +316,22 @@ public class RemoteWorkerClient {
                 && ("atenea/session-" + sessionId).equals(session.getWorkspaceBranch());
     }
 
-    private boolean isExactReleaseOwner(WorkSessionEntity session) {
-        if (!ProjectCodexIdentity.hasCanonicalSourceObservation(session)
-                || session.getExecutionTarget() != ExecutionTarget.REMOTE
-                || !ProjectCodexIdentity.WORKER_ID.equals(session.getSelectedWorkerId())
-                || !ProjectCodexIdentity.WORKER_ID.equals(properties.getWorkerId())
-                || session.getRemoteSessionId() == null
-                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
-                || session.getRemoteCloseOperationId() == null
-                || session.getRemoteCloseRevision() < 1
-                || session.getRemoteCloseRequestedAt() == null
-                || session.getRemoteCloseUpdatedAt() == null
-                || !Set.of(
+    private boolean hasExactReleaseLifecycle(WorkSessionEntity session) {
+        return session.getRemoteCloseOperationId() != null
+                && session.getRemoteCloseRevision() >= 1
+                && session.getRemoteCloseRequestedAt() != null
+                && session.getRemoteCloseUpdatedAt() != null
+                && Set.of(
                         RemoteCloseState.REQUESTED,
                         RemoteCloseState.RECONCILING,
-                        RemoteCloseState.BLOCKED).contains(session.getRemoteCloseState())) {
-            return false;
-        }
-        String sessionId = session.getRemoteSessionId().toString();
-        return ("remote:" + ProjectCodexIdentity.WORKER_ID + ":work-session:" + sessionId)
-                        .equals(session.getWorkspaceIdentity())
-                && ("atenea/session-" + sessionId).equals(session.getWorkspaceBranch());
+                        RemoteCloseState.BLOCKED).contains(session.getRemoteCloseState());
+    }
+
+    private static boolean hasNoCanonicalSourceObservation(WorkSessionEntity session) {
+        return session.getCanonicalSourceRef() == null
+                && session.getCanonicalSourceCommit() == null
+                && session.getCanonicalSourceObservationSha256() == null
+                && session.getCanonicalSourceObservedAt() == null;
     }
 
     private WorkspaceRelease validateWorkspaceReleaseReceipt(
