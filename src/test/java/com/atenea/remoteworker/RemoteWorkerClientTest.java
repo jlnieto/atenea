@@ -144,6 +144,23 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/project-workspaces/capacity-owner", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            byte[] response = objectMapper.writeValueAsBytes(Map.of(
+                    "schemaVersion", "project-workspace-capacity-owner-v1",
+                    "state", "OWNED",
+                    "sessionId", request.get("sessionId").asText(),
+                    "workspaceIdentity", request.get("workspaceIdentity").asText(),
+                    "projectId", ProjectCodexIdentity.PROJECT_IDENTITY,
+                    "workerId", ProjectCodexIdentity.WORKER_ID,
+                    "requestFingerprintSha256", canonicalSha256(request),
+                    "ownershipFingerprintSha256", "7".repeat(64),
+                    "valuesExposed", false));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.createContext("/v1/project-workspaces/draft-fingerprint", exchange -> {
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
             JsonNode request = requestBody.get();
@@ -812,6 +829,35 @@ class RemoteWorkerClientTest {
         assertEquals(ProjectCodexIdentity.MANIFEST_SHA256, body.get("manifestSha256").asText());
         assertEquals("ready", workspace.state());
         assertEquals(false, workspace.valuesExposed());
+    }
+
+    @Test
+    void capacityOwnerDiagnosisUsesOnlyPersistedCandidateIdentity() {
+        WorkSessionEntity session = releasableSession();
+
+        RemoteWorkerClient.WorkspaceCapacityOwner diagnosis =
+                client.diagnoseWorkspaceCapacityOwner(session);
+
+        JsonNode body = requestBody.get();
+        assertEquals(session.getRemoteSessionId().toString(),
+                body.get("sessionId").asText());
+        assertEquals(session.getWorkspaceIdentity(),
+                body.get("workspaceIdentity").asText());
+        assertEquals(ProjectCodexIdentity.PROJECT_IDENTITY,
+                body.get("projectId").asText());
+        assertEquals(ProjectCodexIdentity.REPOSITORY,
+                body.get("repository").asText());
+        assertEquals(ProjectCodexIdentity.BRANCH,
+                body.get("branch").asText());
+        assertEquals(session.getCanonicalSourceCommit(),
+                body.get("commit").asText());
+        for (String forbidden : List.of(
+                "command", "path", "slot", "port", "service", "endpoint",
+                "label", "credential", "resource")) {
+            assertNull(body.get(forbidden));
+        }
+        assertEquals("OWNED", diagnosis.state());
+        assertEquals(false, diagnosis.valuesExposed());
     }
 
     @Test

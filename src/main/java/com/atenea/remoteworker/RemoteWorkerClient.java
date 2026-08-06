@@ -39,6 +39,8 @@ public class RemoteWorkerClient {
 
     private static final String WORKER_ERROR_SCHEMA = "worker-error-v1";
     private static final String WORKSPACE_RELEASE_SCHEMA = "project-workspace-release-v1";
+    private static final String WORKSPACE_CAPACITY_OWNER_SCHEMA =
+            "project-workspace-capacity-owner-v1";
     private static final long WORKSPACE_RELEASE_REVISION = 6;
     private static final int MAX_WORKER_ERROR_BYTES = 1024;
     private static final String PROTOCOL_FAILURE_CODE = "REMOTE_WORKER_PROTOCOL_FAILURE";
@@ -200,6 +202,67 @@ public class RemoteWorkerClient {
                 operationId,
                 properties.getWorkspaceProvisionTimeout());
         return validateWorkspaceReleaseReceipt(session, objectMapper.valueToTree(body), receipt);
+    }
+
+    public WorkspaceCapacityOwner diagnoseWorkspaceCapacityOwner(
+            WorkSessionEntity session
+    ) {
+        if (!isExactCapacityOwnerCandidate(session)) {
+            throw new RemoteWorkerException(
+                    "Persisted capacity-owner identity is incomplete or incompatible",
+                    409);
+        }
+        Map<String, Object> body = Map.ofEntries(
+                Map.entry("sessionId", session.getRemoteSessionId().toString()),
+                Map.entry("workspaceIdentity", session.getWorkspaceIdentity()),
+                Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
+                Map.entry("repository", ProjectCodexIdentity.REPOSITORY),
+                Map.entry("branch", ProjectCodexIdentity.BRANCH),
+                Map.entry("commit", session.getCanonicalSourceCommit()),
+                Map.entry("manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256),
+                Map.entry("workspaceBranch", session.getWorkspaceBranch()));
+        WorkspaceCapacityOwner response = exchange(
+                "POST",
+                "/v1/project-workspaces/capacity-owner",
+                body,
+                WorkspaceCapacityOwner.class,
+                null,
+                properties.getWorkspaceProvisionTimeout());
+        String requestFingerprint = canonicalSha256(objectMapper.valueToTree(body));
+        if (!WORKSPACE_CAPACITY_OWNER_SCHEMA.equals(response.schemaVersion())
+                || !"OWNED".equals(response.state())
+                || !session.getRemoteSessionId().toString().equals(response.sessionId())
+                || !session.getWorkspaceIdentity().equals(response.workspaceIdentity())
+                || !ProjectCodexIdentity.PROJECT_IDENTITY.equals(response.projectId())
+                || !ProjectCodexIdentity.WORKER_ID.equals(response.workerId())
+                || !requestFingerprint.equals(response.requestFingerprintSha256())
+                || !isSha256(response.ownershipFingerprintSha256())
+                || response.valuesExposed()) {
+            throw new RemoteWorkerException(
+                    "Remote worker capacity-owner diagnosis was invalid",
+                    502,
+                    PROTOCOL_FAILURE_CODE,
+                    RemoteWorkerFailureCategory.PROTOCOL,
+                    false,
+                    AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                    null);
+        }
+        return response;
+    }
+
+    private boolean isExactCapacityOwnerCandidate(WorkSessionEntity session) {
+        if (!ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+                || session.getExecutionTarget() != ExecutionTarget.REMOTE
+                || !ProjectCodexIdentity.WORKER_ID.equals(session.getSelectedWorkerId())
+                || !ProjectCodexIdentity.WORKER_ID.equals(properties.getWorkerId())
+                || session.getRemoteSessionId() == null
+                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())) {
+            return false;
+        }
+        String sessionId = session.getRemoteSessionId().toString();
+        return ("remote:" + ProjectCodexIdentity.WORKER_ID + ":work-session:" + sessionId)
+                        .equals(session.getWorkspaceIdentity())
+                && ("atenea/session-" + sessionId).equals(session.getWorkspaceBranch());
     }
 
     private boolean isExactReleaseOwner(WorkSessionEntity session) {
@@ -935,6 +998,20 @@ public class RemoteWorkerClient {
             Map<String, Boolean> retained,
             String ownershipFingerprintSha256,
             String receiptSha256,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record WorkspaceCapacityOwner(
+            String schemaVersion,
+            String state,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String workerId,
+            String requestFingerprintSha256,
+            String ownershipFingerprintSha256,
             boolean valuesExposed
     ) {
     }

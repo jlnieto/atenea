@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -89,6 +92,8 @@ class LegacyRemoteCloseApiIntegrationTest {
         jdbcTemplate.update("DELETE FROM project WHERE name LIKE 'Foreign legacy %'");
         jdbcTemplate.update(
                 "DELETE FROM operator_account WHERE email LIKE 'legacy-close-%@atenea.test'");
+        doAnswer(invocation -> capacityOwner(invocation.getArgument(0)))
+                .when(remoteWorkerClient).diagnoseWorkspaceCapacityOwner(any());
     }
 
     @AfterEach
@@ -147,6 +152,60 @@ class LegacyRemoteCloseApiIntegrationTest {
                         .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
                         .content(planBody(UUID.randomUUID(), true)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void readOnlyPlanRejectsAbsentOrInexactWorkerOwnership() throws Exception {
+        OperatorEntity administrator = operator(
+                CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        WorkSessionEntity session = legacySession();
+        doThrow(new RemoteWorkerException(
+                "Remote worker rejected request with HTTP 409", 409))
+                .when(remoteWorkerClient)
+                .diagnoseWorkspaceCapacityOwner(any());
+
+        mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-plans",
+                        session.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(planBody(UUID.randomUUID(), false)))
+                .andExpect(status().isConflict());
+
+        assertEquals(0, count("remote_close_legacy_plan"));
+        assertEquals(RemoteCloseState.UNVERIFIED_LEGACY,
+                sessionRepository.findById(session.getId()).orElseThrow()
+                        .getRemoteCloseState());
+    }
+
+    @Test
+    void readOnlyPlanKeepsTransportFailureOutOfOwnershipConflict() throws Exception {
+        OperatorEntity administrator = operator(
+                CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        WorkSessionEntity session = legacySession();
+        doThrow(new RemoteWorkerException(
+                "Remote worker transport failed",
+                503,
+                "WORKSPACE_CAPACITY_OWNER_UNAVAILABLE",
+                RemoteWorkerFailureCategory.TRANSPORT,
+                true,
+                AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,
+                null))
+                .when(remoteWorkerClient)
+                .diagnoseWorkspaceCapacityOwner(any());
+
+        mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-plans",
+                        session.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(planBody(UUID.randomUUID(), false)))
+                .andExpect(status().isServiceUnavailable());
+
+        assertEquals(0, count("remote_close_legacy_plan"));
+        assertEquals(RemoteCloseState.UNVERIFIED_LEGACY,
+                sessionRepository.findById(session.getId()).orElseThrow()
+                        .getRemoteCloseState());
     }
 
     @Test
@@ -269,7 +328,7 @@ class LegacyRemoteCloseApiIntegrationTest {
                                 UUID.randomUUID(), false)))
                 .andExpect(status().isConflict());
         assertEquals(0, count("remote_close_legacy_operation"));
-        verifyNoInteractions(remoteWorkerClient);
+        verify(remoteWorkerClient, never()).releaseWorkspace(any());
     }
 
     @Test
@@ -319,7 +378,7 @@ class LegacyRemoteCloseApiIntegrationTest {
         WorkSessionEntity unchanged = sessionRepository.findById(session.getId()).orElseThrow();
         assertEquals(RemoteCloseState.UNVERIFIED_LEGACY, unchanged.getRemoteCloseState());
         assertNull(unchanged.getRemoteCloseOperationId());
-        verifyNoInteractions(remoteWorkerClient);
+        verify(remoteWorkerClient, never()).releaseWorkspace(any());
     }
 
     @Test
@@ -635,5 +694,20 @@ class LegacyRemoteCloseApiIntegrationTest {
                 ProjectCodexIdentity.WORKER_ID, "1".repeat(64), 2,
                 java.util.Map.of(), java.util.Map.of(), java.util.Map.of(),
                 "2".repeat(64), "3".repeat(64), false);
+    }
+
+    private RemoteWorkerClient.WorkspaceCapacityOwner capacityOwner(
+            WorkSessionEntity session
+    ) {
+        return new RemoteWorkerClient.WorkspaceCapacityOwner(
+                "project-workspace-capacity-owner-v1",
+                "OWNED",
+                session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(),
+                ProjectCodexIdentity.PROJECT_IDENTITY,
+                ProjectCodexIdentity.WORKER_ID,
+                "8".repeat(64),
+                "9".repeat(64),
+                false);
     }
 }

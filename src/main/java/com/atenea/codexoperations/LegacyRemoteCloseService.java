@@ -137,6 +137,19 @@ public class LegacyRemoteCloseService {
         }
 
         WorkSessionEntity session = exactLegacySession(sessionId);
+        try {
+            RemoteWorkerClient.WorkspaceCapacityOwner diagnosis =
+                    remoteWorkerClient.diagnoseWorkspaceCapacityOwner(session);
+            if (diagnosis == null
+                    || !session.getRemoteSessionId().toString().equals(
+                            diagnosis.sessionId())
+                    || !session.getWorkspaceIdentity().equals(
+                            diagnosis.workspaceIdentity())) {
+                throw conflict("Legacy close ownership diagnosis did not match");
+            }
+        } catch (RemoteWorkerException exception) {
+            throw capacityOwnerDiagnosisFailure(exception);
+        }
         String ownershipFingerprint = ownershipFingerprint(session);
         String requestFingerprint = sha256(String.join("\n",
                 "legacy-remote-close-plan-v1",
@@ -756,6 +769,24 @@ public class LegacyRemoteCloseService {
 
     private static ResponseStatusException conflict(String reason) {
         return new ResponseStatusException(HttpStatus.CONFLICT, reason);
+    }
+
+    private static ResponseStatusException capacityOwnerDiagnosisFailure(
+            RemoteWorkerException exception
+    ) {
+        if (exception.isCompatibleTransportFailure()) {
+            return new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Legacy close ownership diagnosis is temporarily unavailable");
+        }
+        if (exception.getCategory() == RemoteWorkerFailureCategory.PROTOCOL
+                || (!exception.hasTypedFailure()
+                    && exception.getStatusCode() != 409)) {
+            return new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Legacy close ownership diagnosis was not trustworthy");
+        }
+        return conflict("Legacy close ownership is absent or not exact");
     }
 
     private static ResponseStatusException unprocessable(String reason) {

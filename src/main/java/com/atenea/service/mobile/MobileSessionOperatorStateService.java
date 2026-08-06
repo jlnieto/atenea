@@ -8,11 +8,14 @@ import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunRepository;
+import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.RemoteWorkerClient;
+import com.atenea.remoteworker.RemoteWorkerException;
 import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.service.worksession.AgentRunService;
 import org.springframework.stereotype.Service;
@@ -24,17 +27,20 @@ public class MobileSessionOperatorStateService {
     private final WorkSessionRepository workSessionRepository;
     private final AgentRunService agentRunService;
     private final RemoteWorkerProperties remoteWorkerProperties;
+    private final RemoteWorkerClient remoteWorkerClient;
 
     public MobileSessionOperatorStateService(
             AgentRunRepository agentRunRepository,
             WorkSessionRepository workSessionRepository,
             AgentRunService agentRunService,
-            RemoteWorkerProperties remoteWorkerProperties
+            RemoteWorkerProperties remoteWorkerProperties,
+            RemoteWorkerClient remoteWorkerClient
     ) {
         this.agentRunRepository = agentRunRepository;
         this.workSessionRepository = workSessionRepository;
         this.agentRunService = agentRunService;
         this.remoteWorkerProperties = remoteWorkerProperties;
+        this.remoteWorkerClient = remoteWorkerClient;
     }
 
     public MobileSessionOperatorStateResponse build(
@@ -84,6 +90,11 @@ public class MobileSessionOperatorStateService {
         MobileSessionOperatorStateResponse capacityState = capacityState(latestRun);
         if (capacityState != null) {
             return capacityState;
+        }
+        MobileSessionOperatorStateResponse historicalCapacityState =
+                historicalCapacityState(latestRun, session.id());
+        if (historicalCapacityState != null) {
+            return historicalCapacityState;
         }
 
         if (closeState == RemoteCloseState.UNVERIFIED_LEGACY) {
@@ -227,6 +238,147 @@ public class MobileSessionOperatorStateService {
                 CodexOperationsRole.PLATFORM_ADMINISTRATOR,
                 blockerId,
                 run.getId());
+    }
+
+    private MobileSessionOperatorStateResponse historicalCapacityState(
+            AgentRunEntity run,
+            Long currentSessionId
+    ) {
+        if (!remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
+                    ProjectCodexIdentity.PROJECT_IDENTITY)
+                || run == null
+                || run.getFailureCode() != null
+                || run.getRecoveryNextAction() != null
+                || run.getStatus() == null
+                || !run.getStatus().isTerminal()
+                || run.getRemoteExecutionId() != null
+                || !ProjectCodexIdentity.matches(run)) {
+            return null;
+        }
+        WorkSessionEntity current = workSessionRepository.findWithProjectById(
+                currentSessionId).orElse(null);
+        if (current == null || current.getProject() == null
+                || current.getCreatedAt() == null
+                || current.getStatus() == WorkSessionStatus.CLOSED
+                || !ProjectCodexIdentity.WORKER_ID.equals(current.getSelectedWorkerId())) {
+            return null;
+        }
+        WorkSessionEntity predecessor = workSessionRepository
+                .findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
+                        current.getProject().getId(),
+                        WorkSessionStatus.CLOSED,
+                        current.getCreatedAt())
+                .orElse(null);
+        if (!isExactHistoricalPredecessor(current, predecessor)) {
+            return null;
+        }
+        Long predecessorId = predecessor.getId();
+        if (predecessor.getRemoteCloseState() == RemoteCloseState.RELEASED) {
+            if (!hasExactReleasedReceipt(predecessor)
+                    || !agentRunService.isRemoteRetryEligible(run.getId())) {
+                return ownershipReview(predecessorId, run.getId());
+            }
+            return state(
+                    true,
+                    MobileSessionOperatorState.CAPACITY_RELEASED,
+                    "Capacidad liberada",
+                    null,
+                    MobileSessionPrimaryAction.RETRY_AGENT_RUN,
+                    "Reintentar tarea",
+                    true,
+                    CodexOperationsRole.ROUTINE_OPERATOR,
+                    predecessorId,
+                    run.getId());
+        }
+        if (predecessor.getRemoteCloseState() == RemoteCloseState.REQUESTED
+                || predecessor.getRemoteCloseState() == RemoteCloseState.RECONCILING) {
+            return state(
+                    true,
+                    MobileSessionOperatorState.CLOSED_OWNER_RECONCILING,
+                    "Cierre remoto en reconciliación",
+                    "La sesión cerrada que retenía capacidad aún está confirmando su liberación.",
+                    MobileSessionPrimaryAction.WAIT,
+                    "Esperar actualización",
+                    false,
+                    null,
+                    predecessorId,
+                    run.getId());
+        }
+        if (predecessor.getRemoteCloseState() == RemoteCloseState.BLOCKED) {
+            return ownershipReview(predecessorId, run.getId());
+        }
+        if (predecessor.getRemoteCloseState() != RemoteCloseState.UNVERIFIED_LEGACY) {
+            return null;
+        }
+        try {
+            RemoteWorkerClient.WorkspaceCapacityOwner diagnosis =
+                    remoteWorkerClient.diagnoseWorkspaceCapacityOwner(predecessor);
+            if (!predecessor.getRemoteSessionId().toString().equals(diagnosis.sessionId())
+                    || !predecessor.getWorkspaceIdentity().equals(
+                            diagnosis.workspaceIdentity())) {
+                return ownershipReview(predecessorId, run.getId());
+            }
+        } catch (RemoteWorkerException exception) {
+            return ownershipReview(predecessorId, run.getId());
+        }
+        return state(
+                true,
+                MobileSessionOperatorState.CLOSED_OWNER_BLOCKS_CAPACITY,
+                "Bloqueada por una sesión cerrada",
+                "Otra sesión cerrada conserva la capacidad necesaria. El reintento estará disponible después de reconciliar su cierre.",
+                MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE,
+                "Reconciliar cierre",
+                true,
+                CodexOperationsRole.PLATFORM_ADMINISTRATOR,
+                predecessorId,
+                run.getId());
+    }
+
+    private boolean isExactHistoricalPredecessor(
+            WorkSessionEntity current,
+            WorkSessionEntity predecessor
+    ) {
+        if (predecessor == null
+                || predecessor.getProject() == null
+                || current.getProject() == null
+                || !current.getProject().getId().equals(predecessor.getProject().getId())
+                || predecessor.getExecutionTarget() != ExecutionTarget.REMOTE
+                || !ProjectCodexIdentity.WORKER_ID.equals(
+                        predecessor.getSelectedWorkerId())
+                || !ProjectCodexIdentity.hasCanonicalSourceObservation(predecessor)
+                || predecessor.getRemoteSessionId() == null) {
+            return false;
+        }
+        String remoteId = predecessor.getRemoteSessionId().toString();
+        return ("remote:" + ProjectCodexIdentity.WORKER_ID
+                    + ":work-session:" + remoteId)
+                        .equals(predecessor.getWorkspaceIdentity())
+                && ("atenea/session-" + remoteId)
+                        .equals(predecessor.getWorkspaceBranch());
+    }
+
+    private boolean hasExactReleasedReceipt(WorkSessionEntity predecessor) {
+        return predecessor.getRemoteCloseOperationId() != null
+                && predecessor.getRemoteCloseReceiptSha256() != null
+                && predecessor.getRemoteCloseReceiptSha256().matches("^[0-9a-f]{64}$")
+                && predecessor.getRemoteCloseReleasedAt() != null;
+    }
+
+    private MobileSessionOperatorStateResponse ownershipReview(
+            Long predecessorId,
+            Long runId
+    ) {
+        return state(
+                true,
+                MobileSessionOperatorState.OWNERSHIP_REVIEW_REQUIRED,
+                "Revisión administrativa necesaria",
+                "La propiedad remota no coincide de forma inequívoca.",
+                MobileSessionPrimaryAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                "Contactar con administración",
+                false,
+                CodexOperationsRole.PLATFORM_ADMINISTRATOR,
+                predecessorId,
+                runId);
     }
 
     private MobileSessionOperatorStateResponse state(
