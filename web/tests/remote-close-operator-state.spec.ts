@@ -23,11 +23,12 @@ type SyntheticState = {
   recoveryRequests: Record<string, unknown>[];
   staleConfirmation?: boolean;
   blockedConfirmation?: boolean;
+  planTargetWorkSessionId?: number;
 };
 
-const currentSessionId = 641;
-const closedOwnerId = 640;
-const failedRunId = 9961;
+const currentSessionId = 17;
+const closedOwnerId = 16;
+const failedRunId = 96;
 
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({
@@ -163,7 +164,7 @@ async function installSyntheticApi(page: Page, apiState: SyntheticState) {
       apiState.planRequests.push(request.postDataJSON());
       return json(route, {
         planId: "10000000-0000-4000-8000-000000000001",
-        workSessionId: closedOwnerId,
+        workSessionId: apiState.planTargetWorkSessionId ?? closedOwnerId,
         operation: "RECONCILE_REMOTE_CLOSE",
         state: "READY_FOR_CONFIRMATION",
         requiredRole: "PLATFORM_ADMINISTRATOR",
@@ -331,11 +332,13 @@ test("legacy owner requires confirmation before release and retry", async ({ pag
   await expect(page.getByText("Reintentar de forma segura", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Reconciliar cierre" }).click();
   await expect(page.getByRole("group", { name: "Confirmar reconciliación del cierre" })).toBeVisible();
+  await expect(page.getByText(`Objetivo: WorkSession ${closedOwnerId}`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`Sesión abierta: WorkSession ${currentSessionId}. Solo se liberará el ownership remoto activo del objetivo; historial, Git, runs y adjuntos se conservan.`, { exact: true })).toBeVisible();
   expect(apiState.planRequests).toHaveLength(1);
   expect(apiState.confirmationRequests).toHaveLength(0);
   expect(apiState.recoveryRequests).toHaveLength(0);
 
-  await page.getByRole("button", { name: "Confirmar reconciliación" }).click();
+  await page.getByRole("button", { name: `Confirmar WorkSession ${closedOwnerId}` }).click();
   await expect(page.getByText("Capacidad liberada", { exact: true })).toBeVisible();
   await expect(page.getByText("El reintento es una decisión explícita: no se ha vuelto a enviar ninguna instrucción.", { exact: true })).toBeVisible();
   await expect(page.getByText("Usa «Reintentar tarea» en el estado operativo", { exact: true })).toBeVisible();
@@ -386,6 +389,39 @@ test("routine operator sees the required role and cannot create a legacy plan", 
   expect(apiState.planRequests).toHaveLength(0);
 });
 
+test("mismatched plan target is rejected until an explicit refresh", async ({ page }) => {
+  const apiState: SyntheticState = {
+    operatorRole: "PLATFORM_ADMINISTRATOR",
+    operatorState: {
+      surfaceEnabled: true,
+      state: "CLOSED_OWNER_BLOCKS_CAPACITY",
+      title: "Bloqueada por una sesión cerrada",
+      blocker: "Otra sesión cerrada conserva la capacidad necesaria.",
+      primaryAction: "RECONCILE_REMOTE_CLOSE",
+      primaryActionLabel: "Reconciliar cierre",
+      primaryActionAvailable: true,
+      requiredRole: "PLATFORM_ADMINISTRATOR",
+      targetWorkSessionId: closedOwnerId,
+      targetAgentRunId: failedRunId
+    },
+    released: false,
+    closeRequests: 0,
+    planRequests: [],
+    confirmationRequests: [],
+    recoveryRequests: [],
+    planTargetWorkSessionId: closedOwnerId - 1
+  };
+  await openConversation(page, apiState, "mismatched-plan-target");
+
+  await page.getByRole("button", { name: "Reconciliar cierre" }).click();
+
+  await expect(page.getByRole("group", { name: "Confirmar reconciliación del cierre" })).toHaveCount(0);
+  await expect(page.getByRole("alert")).toContainText("El estado se conserva");
+  await expect(page.getByRole("button", { name: "Reconciliar cierre" })).toBeDisabled();
+  expect(apiState.planRequests).toHaveLength(1);
+  expect(apiState.confirmationRequests).toHaveLength(0);
+});
+
 for (const viewport of [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 }
@@ -425,7 +461,9 @@ test(`${viewport.name} exact preflight block exposes one fresh safe confirmation
 
   await page.getByRole("button", { name: "Volver a validar cierre" }).click();
   await expect(page.getByRole("group", { name: "Confirmar reconciliación del cierre" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Confirmar reconciliación" })).toBeEnabled();
+  await expect(page.getByText(`Objetivo: WorkSession ${closedOwnerId}`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`Sesión abierta: WorkSession ${currentSessionId}. Solo se liberará el ownership remoto activo del objetivo; historial, Git, runs y adjuntos se conservan.`, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Confirmar WorkSession ${closedOwnerId}` })).toBeEnabled();
   await expectNoHorizontalOverflow(page);
   await retainScreenshot(page, `${viewport.name}-preflight-recovery-confirmation.png`);
   expect(apiState.planRequests).toHaveLength(1);
@@ -459,7 +497,7 @@ test(`${viewport.name} stale confirmation is discarded until an explicit screen 
   await openConversation(page, apiState, "stale-confirmation");
 
   await page.getByRole("button", { name: "Reconciliar cierre" }).click();
-  await page.getByRole("button", { name: "Confirmar reconciliación" }).click();
+  await page.getByRole("button", { name: `Confirmar WorkSession ${closedOwnerId}` }).click();
 
   await expect(page.getByRole("alert")).toHaveText(
     "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación."
@@ -511,7 +549,7 @@ test("blocked confirmation requires refresh and a new single-use plan", async ({
   await openConversation(page, apiState, "blocked-confirmation");
 
   await page.getByRole("button", { name: "Volver a validar cierre" }).click();
-  await page.getByRole("button", { name: "Confirmar reconciliación" }).click();
+  await page.getByRole("button", { name: `Confirmar WorkSession ${closedOwnerId}` }).click();
 
   await expect(page.getByRole("group", { name: "Confirmar reconciliación del cierre" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Volver a validar cierre" })).toBeDisabled();
@@ -607,8 +645,10 @@ for (const viewport of [
 
     const confirmation = page.getByRole("group", { name: "Confirmar reconciliación del cierre" });
     await expect(confirmation).toBeVisible();
-    await expect(confirmation).toContainText("El historial, Git, runs y adjuntos permanecerán conservados.");
-    const confirmButton = page.getByRole("button", { name: "Confirmar reconciliación" });
+    await expect(confirmation).toContainText("historial, Git, runs y adjuntos se conservan.");
+    await expect(confirmation.getByText(`Objetivo: WorkSession ${closedOwnerId}`, { exact: true })).toBeVisible();
+    await expect(confirmation.getByText(`Sesión abierta: WorkSession ${currentSessionId}. Solo se liberará el ownership remoto activo del objetivo; historial, Git, runs y adjuntos se conservan.`, { exact: true })).toBeVisible();
+    const confirmButton = page.getByRole("button", { name: `Confirmar WorkSession ${closedOwnerId}` });
     await expect(confirmButton).toBeEnabled();
     const cancelButton = page.getByRole("button", { name: "Cancelar" });
     await expect(cancelButton).toBeEnabled();

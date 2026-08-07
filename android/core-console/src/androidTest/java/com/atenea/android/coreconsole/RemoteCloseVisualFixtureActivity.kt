@@ -32,6 +32,7 @@ class RemoteCloseVisualFixtureActivity : ComponentActivity() {
                                 error = "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación."
                                     .takeIf { stale }
                             ),
+                            currentWorkSessionId = 17,
                             operatorRole = "PLATFORM_ADMINISTRATOR",
                             onPrimaryAction = {},
                             onConfirm = {},
@@ -53,13 +54,13 @@ class RemoteCloseVisualFixtureActivity : ComponentActivity() {
             primaryActionLabel = "Reconciliar cierre",
             primaryActionAvailable = true,
             requiredRole = "PLATFORM_ADMINISTRATOR",
-            targetWorkSessionId = 9001,
-            targetAgentRunId = 9002
+            targetWorkSessionId = 16,
+            targetAgentRunId = 96
         )
 
         val syntheticPlan = LegacyRemoteClosePlan(
-            planId = "00000000-0000-0000-0000-000000009001",
-            workSessionId = 9001,
+            planId = "00000000-0000-0000-0000-000000000016",
+            workSessionId = 16,
             operation = "RECONCILE_REMOTE_CLOSE",
             state = "READY_FOR_CONFIRMATION",
             requiredRole = "PLATFORM_ADMINISTRATOR",

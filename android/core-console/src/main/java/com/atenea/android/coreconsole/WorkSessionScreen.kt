@@ -88,6 +88,7 @@ internal fun WorkSessionScreen(
             RemoteCloseOperatorPanel(
                 serverState = operatorState,
                 actionState = remoteCloseState,
+                currentWorkSessionId = sessionId,
                 operatorRole = apiClient.currentOperatorRole(),
                 onPrimaryAction = repository::runRemoteClosePrimaryAction,
                 onConfirm = repository::confirmLegacyRemoteClose,

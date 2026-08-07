@@ -526,6 +526,7 @@ internal fun WorkSessionConversationScreen(
                     RemoteCloseOperatorPanel(
                         serverState = currentState,
                         actionState = remoteCloseActionState,
+                        currentWorkSessionId = sessionId,
                         operatorRole = apiClient.currentOperatorRole(),
                         onPrimaryAction = ::runRemoteClosePrimaryAction,
                         onConfirm = ::confirmLegacyRemoteClose,

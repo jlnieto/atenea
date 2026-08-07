@@ -26,6 +26,7 @@ class RemoteCloseOperatorPanelTest {
                 RemoteCloseOperatorPanel(
                     serverState = blockedState(),
                     actionState = RemoteCloseActionUiState(),
+                    currentWorkSessionId = 17,
                     operatorRole = "PLATFORM_ADMINISTRATOR",
                     onPrimaryAction = { clicks += 1 },
                     onConfirm = {},
@@ -47,6 +48,7 @@ class RemoteCloseOperatorPanelTest {
                 RemoteCloseOperatorPanel(
                     serverState = blockedState(),
                     actionState = RemoteCloseActionUiState(),
+                    currentWorkSessionId = 17,
                     operatorRole = "ROUTINE_OPERATOR",
                     onPrimaryAction = {},
                     onConfirm = {},
@@ -66,6 +68,7 @@ class RemoteCloseOperatorPanelTest {
                 RemoteCloseOperatorPanel(
                     serverState = blockedState(),
                     actionState = RemoteCloseActionUiState(plan = plan()),
+                    currentWorkSessionId = 17,
                     operatorRole = "PLATFORM_ADMINISTRATOR",
                     onPrimaryAction = {},
                     onConfirm = {},
@@ -75,8 +78,10 @@ class RemoteCloseOperatorPanelTest {
         }
 
         compose.onNodeWithTag("remote-close-confirmation").assertIsDisplayed()
-        compose.onNodeWithText("Se retirará únicamente su ownership remoto activo. El historial, Git, runs y adjuntos permanecerán conservados.").assertIsDisplayed()
+        compose.onNodeWithText("Objetivo: WorkSession 16").assertIsDisplayed()
+        compose.onNodeWithText("Sesión abierta: WorkSession 17. Solo se liberará el ownership remoto activo del objetivo; historial, Git, runs y adjuntos se conservan.").assertIsDisplayed()
         compose.onNodeWithTag("remote-close-confirm-action").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithText("Confirmar WorkSession 16").assertIsDisplayed()
         compose.onNodeWithText("Cancelar").assertIsDisplayed()
     }
 
@@ -90,6 +95,7 @@ class RemoteCloseOperatorPanelTest {
                         requiresRefresh = true,
                         error = "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación."
                     ),
+                    currentWorkSessionId = 17,
                     operatorRole = "PLATFORM_ADMINISTRATOR",
                     onPrimaryAction = {},
                     onConfirm = {},

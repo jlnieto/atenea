@@ -281,6 +281,7 @@ internal fun remoteCloseActionError(error: Exception): String = when {
 internal fun RemoteCloseOperatorPanel(
     serverState: MobileSessionOperatorState,
     actionState: RemoteCloseActionUiState,
+    currentWorkSessionId: Long,
     operatorRole: String?,
     onPrimaryAction: () -> Unit,
     onConfirm: () -> Unit,
@@ -356,19 +357,20 @@ internal fun RemoteCloseOperatorPanel(
             Text("Esperando confirmación segura", color = foreground, fontWeight = FontWeight.Bold)
         }
         actionState.plan?.let { plan ->
+            val targetWorkSessionId = plan.workSessionId
             Column(
                 modifier = Modifier.fillMaxWidth().testTag("remote-close-confirmation"),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Confirma la liberación de esta sesión cerrada", color = foreground, fontWeight = FontWeight.Bold)
+                Text("Objetivo: WorkSession $targetWorkSessionId", color = foreground, fontWeight = FontWeight.Bold)
                 Text(
-                    "Se retirará únicamente su ownership remoto activo. El historial, Git, runs y adjuntos permanecerán conservados.",
+                    "Sesión abierta: WorkSession $currentWorkSessionId. Solo se liberará el ownership remoto activo del objetivo; historial, Git, runs y adjuntos se conservan.",
                     color = secondary,
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text("Confirmación disponible hasta ${plan.expiresAt.formatDateTimeForDisplay()}.", color = secondary, style = MaterialTheme.typography.labelSmall)
                 AteneaButton(
-                    text = if (actionState.pending) "Confirmando…" else "Confirmar reconciliación",
+                    text = if (actionState.pending) "Confirmando…" else "Confirmar WorkSession $targetWorkSessionId",
                     modifier = Modifier.fillMaxWidth().testTag("remote-close-confirm-action"),
                     enabled = !actionState.pending,
                     onClick = onConfirm

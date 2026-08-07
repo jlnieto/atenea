@@ -1391,7 +1391,11 @@ function RemoteCloseOperatorPanel({
             state.targetWorkSessionId,
             planIdempotencyKey.current
           );
-          if (nextPlan.state !== "READY_FOR_CONFIRMATION" || nextPlan.consumed) {
+          if (nextPlan.state !== "READY_FOR_CONFIRMATION"
+              || nextPlan.consumed
+              || nextPlan.workSessionId !== state.targetWorkSessionId) {
+            setRequiresRefresh(true);
+            planIdempotencyKey.current = null;
             throw new Error("stale-plan");
           }
           setPlan(nextPlan);
@@ -1498,12 +1502,14 @@ function RemoteCloseOperatorPanel({
           role="group"
           aria-label="Confirmar reconciliación del cierre"
         >
-          <strong>Confirma la liberación de esta sesión cerrada</strong>
-          <span>Se retirará únicamente su ownership remoto activo. El historial, Git, runs y adjuntos permanecerán conservados.</span>
+          <strong>Objetivo: WorkSession {state.targetWorkSessionId}</strong>
+          <span>
+            Sesión abierta: WorkSession {currentWorkSessionId}. Solo se liberará el ownership remoto activo del objetivo; historial, Git, runs y adjuntos se conservan.
+          </span>
           <small>Confirmación disponible hasta {formatAbsoluteDate(plan.expiresAt)}.</small>
           <div className="button-row">
             <Button variant="primary" disabled={pending} onClick={confirmLegacyReconciliation}>
-              {pending ? "Confirmando…" : "Confirmar reconciliación"}
+              {pending ? "Confirmando…" : `Confirmar WorkSession ${state.targetWorkSessionId}`}
             </Button>
             <Button variant="ghost" disabled={pending} onClick={cancelConfirmation}>Cancelar</Button>
           </div>
