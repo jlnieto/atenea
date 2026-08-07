@@ -14058,3 +14058,85 @@ and backend image
 After that backend-only rollout, the operator should remain in WS17 and refresh
 it for authenticated data/DOM/visual verification. Generating and confirming
 the fresh single-use plan remains a later, independent human gate.
+
+The operator subsequently reported that the application was refreshed and a
+new plan was generated. Read-only persistence inspection after the third
+failed confirmation found WorkSession 16 at
+`CLOSED/BLOCKED/revision 6` with exact
+`WORKSPACE_RELEASE_PREFLIGHT_REJECTED`, no release receipt and the immutable
+operation at
+`BLOCKED/revision 6/OWNERSHIP/CONTACT_PLATFORM_ADMINISTRATOR/non-retryable`.
+WorkSession 17 remains `OPEN/NOT_STARTED/revision 0`; AgentRun 96 remains
+`FAILED` with zero retry children. WorkSession 16 has five historical plans,
+three consumed and zero currently unconsumed and unexpired. The regenerated
+plan is therefore no longer actionable and was not reused.
+
+The repeat demonstrated a diagnostic gap rather than an operator-navigation
+problem: the blocked-recovery gate proved the retained capacity owner, but it
+did not pass the exact complete release request through the same lifecycle
+lock, fixed mediator, journal and ownership boundary as real release. Another
+human plan could consequently be persisted and consumed before the same
+deterministic release rejection surfaced.
+
+Programme commit `9eacd058c51860d30fb526acd7340ec4e233b4bc`, tree
+`e4b87e1a5fb72d10c5ad9fb1f970d86573850a9f`, adds the fixed authenticated
+`/v1/project-workspaces/release-preflight` worker route and the mediator's
+strict read-only diagnosis. It validates the exact full server-built request,
+fixed roots, existing journal, lifecycle lock and resource projection without
+creating a journal or releasing ownership. The exact sudo grant is limited to
+that fixed diagnostic command. Atenea commit
+`5ddfee555db442c66aae576a46db5e0798705fe7`, tree
+`8764a1311f80cb8fdaf5799dc143f64074d21a2a`, requires this full preflight to
+pass before persisting another blocked legacy plan and keeps transport,
+protocol, validation/policy and ownership failures distinct.
+
+Programme validation passes the installer contract, 81 worker tests, 43
+release-mediator tests, Python compilation and shell syntax. Atenea passes 47
+focused tests and all 698 isolated backend tests. Strict OpenSpec validation
+passes. A real candidate-image smoke against fresh isolated PostgreSQL reaches
+health `UP` with zero restarts and all remote worker, release,
+reconciliation and authentication-bootstrap gates explicitly disabled.
+
+The backend candidate is
+`sha256:592577c4ca8919363390d88c7017f53a5c24d3e72403b996a68a421849d7d784`,
+with exact parent
+`sha256:d296f29cedb70bdb81bc375c5a33760e84e534bb6f3344ca0cbece709e5cf0a0`.
+It retains the parent's 31 history entries and adds one JAR entry. The exact
+JAR SHA-256 is
+`fa5ad0ba76b478a5d35dd787b46e367461a34be9e6169ebcc5b5b89788c5ef5a`
+and embedded V64 remains exact at
+`8996f41539079c1d0b7fdd2325230cfebf7b802c358ef1a8657f1119325cb77d`.
+The programme bundle SHA-256 is
+`fe30acd565ea02f77e660afee8ecd2b5302c0d90c2b8526cacd26e51cbed82ea`;
+its worker and release-mediator hashes are respectively
+`4d102a4b02e7e0389d5bbae6e8fc0a45275101dda5b4e7577a7fa71555ef6749`
+and
+`baccb3c7c7053e5d09eb05148f1c2e368faf90d5e2706a537ac3473429dfada0`.
+
+Post-preparation production remains on the exact parent with zero restarts.
+Preview remains on
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`
+and Beautips on
+`sha256:ff9d2a0ab2620f0ea198daa029a6c92e9063a5b7369c9c0b3d49e3fab58385f3`,
+both running with zero restarts. AX42's worker and attachment services remain
+active with zero restarts; backup/check/health last results remain successful;
+rootful Docker/containerd remain inactive; all three RAID arrays remain
+`[UU]`; and release journals remain zero. The new worker bytes are not
+installed. No release, prompt, retry, runtime, APK, AX42, production, preview,
+Beautips, other-project or ownership mutation occurred.
+
+Sanitized candidate evidence is retained beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-release-preflight-candidate-20260807`.
+All 8 sealed files verify; the SHA-256 of `SHA256SUMS` is
+`b3aae7ed4e6d807f32adfe7b4fa6a442a6cbcf24ee30fdd8bff1d5294c9eeffa`.
+The exact rollout manifest SHA-256 is
+`7f7797339fa011bf26972adde96aa2862dcf78d3827408e9d84745b2c54142ae`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains the first pending task.
+Progress stops before programme checkout fast-forward, AX42 installation,
+production deployment and the later in-product confirmation. A new exact
+pre-7.7 rollout authorization must name the final programme commit, programme
+bundle SHA-256, Atenea commit, backend image and sealed manifest. That rollout
+authorization must not be interpreted as the separate task 7.7 confirmation
+or as permission for WorkSession release, prompts, retries, runtime, APK,
+Beautips or other projects.
