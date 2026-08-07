@@ -13989,7 +13989,71 @@ Both copies verify 3/3 files; the SHA-256 of each `SHA256SUMS` is
 
 OpenSpec progress remains `50/60`; task 7.7 remains first pending. Progress
 stops before physical Android installation and authenticated production visual
-verification. The operator must install `0.5.99 (132)` from Atenea's update
-screen, reopen the app and provide the resulting WS16 screen without invoking
-`Volver a validar cierre`. A later, separate authorization remains mandatory
-before the real single-use task 7.7 confirmation.
+verification. A later, separate authorization remains mandatory before the
+real single-use task 7.7 confirmation.
+
+The operator subsequently installed `0.5.99 (132)`. Two real-device
+screenshots proved that Atenea correctly opens only the active WorkSession 17;
+the Android project resolver exposes no route to closed WorkSession 16. They
+also proved a backend projection gap: the open session displayed
+`OWNERSHIP_REVIEW_REQUIRED` and the disabled `Contactar con administración`
+action even though WorkSession 16 now satisfies the exact persisted blocked
+recovery predicate. Asking the operator to open a resulting WS16 screen was
+therefore incorrect; the recovery must be projected into WS17 while retaining
+WS16 as the immutable target.
+
+Atenea commit `d8419cbf653f6062344d1d21fd7dead368610e18`, tree
+`f13c9fc3a2a54ac4bd91085dadbea6b399f7609a`, applies that minimal backend-only
+correction. Historical blocked predecessors now expose
+`Volver a validar cierre` in the active session only when the exact preflight
+error is present and `LegacyRemoteCloseService` independently accepts the
+complete server-side eligibility predicate. A failed eligibility check keeps
+the existing non-mutating ownership review. No client navigation, Android,
+web, schema, release or retry contract changed; installed Android `0.5.99`
+already supports the resulting server state.
+
+The focused operator-state suite passes 15/15 and adds exact recoverable and
+ineligible predecessor regressions. A clean detached source on an isolated
+internal-only PostgreSQL 16 network passes all 696 backend tests and all 64
+migrations. The production web build compiles 1,583 modules; all 13 remote
+close Playwright checks pass, with fresh 1440x900 and 390x844 evidence proving
+state hierarchy, first-viewport action, confirmation, permissions and absence
+of clipping or horizontal overflow.
+
+The backend-only candidate is
+`sha256:d296f29cedb70bdb81bc375c5a33760e84e534bb6f3344ca0cbece709e5cf0a0`,
+with exact parent
+`sha256:9e492fb567211e27cbc02ddcd4290cd55ed136b78e00a5625675023e193a8f95`.
+It preserves all 15 parent layers and adds one JAR layer. The independently
+extracted JAR SHA-256 is
+`a4c4d66b12f8745bf192f61fdfeb3ae483ca146da556671573dff9563b57e267`;
+its embedded V64 exactly matches source SHA-256
+`8996f41539079c1d0b7fdd2325230cfebf7b802c358ef1a8657f1119325cb77d`.
+An isolated real-image smoke returns health `UP` with zero restarts and
+successful V64. All temporary containers, networks and worktrees were removed.
+
+Production remains on the exact parent image with HTTP 200 and zero restarts.
+WorkSession 16 remains `CLOSED/BLOCKED/revision 2` with its exact preflight
+error and no receipt; WorkSession 17 remains `OPEN/NOT_STARTED/revision 0`;
+AgentRun 96 remains `FAILED` and unretried; plan/operation/event counts remain
+`3/1/2`. Preview and Beautips remain healthy with zero restarts. AX42 worker
+and proxy services remain active with zero restarts, backup/check/health remain
+`success/0`, all three RAID arrays remain `[UU]` and rootful Docker/containerd
+remain inactive.
+
+Sanitized evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-active-session-projection-candidate-20260807`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-active-session-projection-candidate-20260807`.
+Both copies verify 7/7 files; the SHA-256 of each `SHA256SUMS` is
+`1be9f5ef22e4e8b16caf7fddd44948e56fecd44d7508013e6bc3a69929fa74fa`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains first pending. No
+production deployment or task 7.7 action occurred. A separate exact rollout
+authorization must name manifest SHA-256
+`830488ba8593afb7a3784e6c57010f2c7e03a60529860b17dc7c90c31fc7d92d`
+and backend image
+`sha256:d296f29cedb70bdb81bc375c5a33760e84e534bb6f3344ca0cbece709e5cf0a0`.
+After that backend-only rollout, the operator should remain in WS17 and refresh
+it for authenticated data/DOM/visual verification. Generating and confirming
+the fresh single-use plan remains a later, independent human gate.
