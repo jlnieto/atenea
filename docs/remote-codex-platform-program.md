@@ -13933,3 +13933,63 @@ backend image
 `sha256:9e492fb567211e27cbc02ddcd4290cd55ed136b78e00a5625675023e193a8f95`
 and APK SHA-256
 `8f37ceec4f68faaa6ae5fe7218628aea5e6ca6beeb30a9f79d65423738ffd546`.
+
+The operator then supplied that exact authorization and again explicitly
+excluded task 7.7 confirmation, WorkSession 16 release, prompts, retries,
+runtime, AX42, Beautips and other projects. Final preflight matched the sealed
+manifest, both exact artifacts, clean/upstream-exact Git, production V63,
+WS16/WS17/AgentRun 96, counts `3/1/2`, AX42 services, backup, RAID, preview and
+Beautips.
+
+Corrected image
+`sha256:9e492fb567211e27cbc02ddcd4290cd55ed136b78e00a5625675023e193a8f95`
+was transferred and matched independently on the control host. The exact V63
+predecessor remained retained under a rollback tag. Only
+`atenea-backend-prod` was recreated. Production returns HTTP 200 with zero
+restarts, Flyway reports successful V64 exactly once and all three V64
+plan-consumption columns exist.
+
+WorkSession 16 remains `CLOSED/BLOCKED/revision 2` with exact
+`WORKSPACE_RELEASE_PREFLIGHT_REJECTED`, no receipt and the same immutable
+blocked operation. WorkSession 17 remains `OPEN/NOT_STARTED/revision 0`.
+AgentRun 96 remains failed and unretried. Plan/operation/event counts remain
+`3/1/2`; startup performed no release or retry.
+
+The established publication script published exact signed APK `0.5.99 (132)`,
+SHA-256
+`8f37ceec4f68faaa6ae5fe7218628aea5e6ca6beeb30a9f79d65423738ffd546`,
+to public, protected-current and immutable release 132 paths. All hashes,
+Signature Scheme v2 and established signer
+`a1642a052853e9992da7ae8f8b6fe09e150533877776c009e7cca83e8b76559a`
+verify. The manifest retains exact predecessor `0.5.98 (131)` at SHA-256
+`5c32ef4a1f4c017a19f2d970ceb78de525f34026c374a1c9069c5c6b51afe3ee`;
+bounded protected manifest/APK probes return HTTP 200 without exposing their
+token.
+
+No authorized ADB device exists on the workstation or control host. Both
+active Android registrations still report `0.5.98`; physical installation and
+authenticated production data/DOM/visual verification therefore remain an
+operator intervention. No installation or real-device visual acceptance is
+claimed yet.
+
+Preview remains exact at HTTP 200 with zero restarts. Beautips remains running
+with zero restarts and canonical health HTTP 200. AX42 remains unchanged: four
+services active with zero restarts, backup/check/health `success/0`, inactive
+rootful Docker/containerd, three `[UU]` arrays and zero release journals. The
+accepted absent target `atenea-activation-code_default` network was not
+recreated. No 7.7 confirmation, release, prompt, retry, runtime, AX42,
+Beautips or other-project mutation occurred.
+
+Sanitized partial-rollout evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-v64-corrected-rollout-pending-android-install-20260807`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-v64-corrected-rollout-pending-android-install-20260807`.
+Both copies verify 3/3 files; the SHA-256 of each `SHA256SUMS` is
+`9c40ae50519bafb2a2087f70ee5090f1e7ba6bfa27f581a3edb0203e315bded4`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains first pending. Progress
+stops before physical Android installation and authenticated production visual
+verification. The operator must install `0.5.99 (132)` from Atenea's update
+screen, reopen the app and provide the resulting WS16 screen without invoking
+`Volver a validar cierre`. A later, separate authorization remains mandatory
+before the real single-use task 7.7 confirmation.
