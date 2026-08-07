@@ -13745,3 +13745,64 @@ rollout authorization must name the exact backend image and any exact Android
 artifact. After rollout and real visual verification, the operator must
 generate and confirm a new single-use plan from Atenea. No SSH release, prompt,
 AgentRun 96 retry, runtime, AX42 change, Beautips or other project is authorized.
+
+On 2026-08-07 the operator separately authorized the three blocked-candidate
+remediations only: reconcile the apparent Git publication divergence,
+investigate the Beautips TLS observation and generate a correctly signed
+Android candidate. No deployment, publication, installation, second task 7.7
+confirmation, release, prompt, retry, runtime or AX42 mutation was authorized.
+
+The canonical local worktrees publish directly into the internal repositories
+on `atenea`. Their branch refs are exact at programme
+`e754980589f58e66b00b9a58e4966f8e6cb82b19` / tree
+`a0eb079382751e5a6069eaac9851609a217f3b37` and Atenea
+`5b3a08344bdc0821e75fe7c37ff1bbd3c22ff838` / tree
+`0918252a78a9e63d825eedcbacf4e2fb19fcc25e`. The older values observed from
+inside those repositories belong to their secondary GitHub origins, not the
+internal publication channel. No GitHub ref was overwritten, adopted or
+reconfigured; both internal repositories remain clean.
+
+The reported TLS mismatch was also positively attributed without mutation.
+`beautips.yudri.es` is neither present in Atenea's active Caddy configuration
+nor the canonical Beautips endpoint; it resolves to an unrelated endpoint.
+Canonical `beautips.app` serves a valid same-name certificate, returns HTTP 200
+from its health endpoint and preserves the expected HTTP 302 root response.
+The isolated Beautips control remains running with zero restarts. No DNS,
+certificate, route, resource or Beautips byte changed.
+
+One clean production-configured Android build from exact Atenea commit
+`5b3a08344bdc0821e75fe7c37ff1bbd3c22ff838` ran the `core-console` and `app`
+unit suites at 43/43 with zero skips, failures or errors, then assembled
+`0.5.99` / versionCode `132`. The 59,896,815-byte candidate SHA-256 is
+`8f37ceec4f68faaa6ae5fe7218628aea5e6ca6beeb30a9f79d65423738ffd546`.
+APK Signature Scheme v2 verifies and its certificate SHA-256 is exact to the
+established installed channel:
+`a1642a052853e9992da7ae8f8b6fe09e150533877776c009e7cca83e8b76559a`.
+No secret or environment value was printed or retained. The temporary build
+worktree was removed after the exact APK was retained and independently
+verified. The earlier APK
+`3557a154ac9d6bf61aa78a09d377d11a723c42ce9b74d89a6465d354905f22a0`
+has a different signer and must not be published or installed.
+
+Post-remediation production and preview return HTTP 200 on their unchanged
+exact images with zero restarts. AX42's four worker services remain active
+with zero restarts, rootful Docker/containerd remain inactive, all three RAID
+arrays remain `[UU]`, release journals remain zero and backup/check/health
+timers remain active with last result `success/0`. The accepted absent target
+`atenea-activation-code_default` network was not recreated.
+
+The sealed exact rollout manifest and signed APK are retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-signed-apk-candidate-20260807`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-signed-apk-candidate-20260807`.
+Both copies verify 5/5 files; the SHA-256 of each `SHA256SUMS` is
+`20a72db1925fab2caafc38509a8396a53e9b48da33a9c59d8f2e0b9b87367939`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains the first pending task.
+The next gate requires a new exact authorization naming backend image
+`sha256:ae98003faf568d461dd092d5299c6b18ebd9c825754d76a0800efdb98ebb941b`
+and signed APK SHA-256
+`8f37ceec4f68faaa6ae5fe7218628aea5e6ca6beeb30a9f79d65423738ffd546`.
+Only after deployment, publication/installation and real web/Android visual
+verification may the operator generate and confirm a fresh single-use task
+7.7 plan from Atenea.
