@@ -13806,3 +13806,65 @@ and signed APK SHA-256
 Only after deployment, publication/installation and real web/Android visual
 verification may the operator generate and confirm a fresh single-use task
 7.7 plan from Atenea.
+
+The operator then gave the exact pre-7.7 rollout authorization bound to
+manifest SHA-256
+`9c8195d408c7af34b598bdd3531ab8f0657aeb39b6deffaeed3336fc133be331`,
+backend image
+`sha256:ae98003faf568d461dd092d5299c6b18ebd9c825754d76a0800efdb98ebb941b`
+and signed APK SHA-256
+`8f37ceec4f68faaa6ae5fe7218628aea5e6ca6beeb30a9f79d65423738ffd546`.
+The authorization excluded task 7.7 confirmation, WorkSession 16 release,
+prompts, retries, runtime, AX42, Beautips and every other project.
+
+The final preflight matched the manifest, evidence, clean/upstream-exact Git,
+Flyway V63, production/preview images, WS16 `CLOSED/BLOCKED/revision 2` without
+receipt, its immutable `BLOCKED/OWNERSHIP/CONTACT_PLATFORM_ADMINISTRATOR`
+operation, WS17 `OPEN/NOT_STARTED/revision 0`, unretried failed AgentRun 96 and
+legacy counts `3/1/2`. The exact candidate image was loaded on the control host
+and the predecessor was retained under an exact rollback tag. Only
+`atenea-backend-prod` was recreated. The candidate returned HTTP 200 with zero
+restarts.
+
+The mandatory migration gate rejected the rollout: production Flyway remained
+at successful V63, V64 count was zero and the V64 plan-consumption columns were
+absent. No startup release, retry or state mutation occurred. Read-only
+artifact inspection identified the exact cause: sealed JAR
+`dbe33e4f7c46ac506a064917b8cefc52933c7711b0609a9b1d6aeba6c940d1bc`
+contains migrations only through V63 and omits
+`V64__authorize_blocked_remote_close_recovery.sql`, although the exact source
+tree contains that file with SHA-256
+`8996f41539079c1d0b7fdd2325230cfebf7b802c358ef1a8657f1119325cb77d`.
+The image therefore cannot satisfy its sealed V64 claim.
+
+The exact predecessor
+`sha256:d4ecec27bd1b7cd0ba5dca095a2524ee33ab342b99e6d0c774f0b2ddbbc568d2`
+was restored immediately by retagging the retained rollback and recreating
+only the production backend. Final production returns HTTP 200 with zero
+restarts, the Compose tag resolves to that predecessor and the rejected image
+has zero running consumers. Flyway remains successful V63. WS16, its immutable
+operation, WS17, AgentRun 96 and counts `3/1/2` remain exact.
+
+Preview remains on
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`
+at HTTP 200 with zero restarts. Beautips remains running with zero restarts and
+canonical health HTTP 200. AX42 was not mutated: all four services remain
+active with zero restarts, backup/check/health remain `success/0`, rootful
+Docker/containerd remain inactive, all three RAID arrays remain `[UU]` and
+release journals remain zero. The signed APK was not published or installed;
+the established published APK remains
+`5c32ef4a1f4c017a19f2d970ceb78de525f34026c374a1c9069c5c6b51afe3ee`.
+
+Sanitized evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-v64-rollout-rejected-rollback-20260807`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-v64-rollout-rejected-rollback-20260807`.
+Both copies verify 4/4 files; the SHA-256 of each `SHA256SUMS` is
+`866335b435f9eb73ba9aa8e746ba122d5e0d4cfef254821387a0e3736384732c`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains the first pending task.
+The rollout authorization is consumed by the rejected attempt. Progress stops
+before APK publication and before the second real in-product confirmation. A
+corrected JAR and image must be built from the exact source tree, completely
+retested, independently inspected for V64, sealed under new hashes and receive
+a new separate exact rollout authorization.
