@@ -138,3 +138,12 @@ raw infrastructure identities or error payloads MUST NOT be exposed.
   action and require a fresh finite plan
 - **AND** a stale, consumed or newly blocked confirmation disables the action
   until explicit refresh obtains another plan
+
+#### Scenario: Confirmation target differs from the open session
+
+- **WHEN** an operator opens a current WorkSession while a finite legacy plan
+  targets a different exact closed WorkSession
+- **THEN** web and Android identify both the open WorkSession and the exact
+  target in the confirmation copy, identify the target again in the primary
+  confirmation action and reject a plan whose target differs from the server
+  state

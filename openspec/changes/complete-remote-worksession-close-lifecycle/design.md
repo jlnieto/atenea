@@ -238,7 +238,11 @@ may advance only the same operation through `RECONCILING`; startup never
 retries `BLOCKED` on its own, while `REQUESTED` and `RECONCILING` remain
 restart-recoverable. Web and Android expose the recovery action only when the
 complete persisted predicate is exact and discard every consumed or newly
-blocked plan until explicit refresh.
+blocked plan until explicit refresh. When that plan belongs to a closed
+predecessor rather than the WorkSession currently open in the client, both
+surfaces name the open session and the exact target separately, repeat the
+target in the confirmation action and reject any plan-to-state target
+mismatch.
 
 ### Put the real state and one next action first
 
