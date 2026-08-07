@@ -14140,3 +14140,75 @@ bundle SHA-256, Atenea commit, backend image and sealed manifest. That rollout
 authorization must not be interpreted as the separate task 7.7 confirmation
 or as permission for WorkSession release, prompts, retries, runtime, APK,
 Beautips or other projects.
+
+The operator then authorized the exact pre-7.7 rollout bound to programme
+checkout `be52f6407974d0a0d9bf7058d67f2bc359cade4c`, programme bundle
+`fe30acd565ea02f77e660afee8ecd2b5302c0d90c2b8526cacd26e51cbed82ea`,
+Atenea image
+`sha256:592577c4ca8919363390d88c7017f53a5c24d3e72403b996a68a421849d7d784`
+and manifest
+`7f7797339fa011bf26972adde96aa2862dcf78d3827408e9d84745b2c54142ae`.
+Task 7.7 confirmation, WorkSession 16 release, prompts, retries, runtime, APK,
+Beautips, preview and other projects remained explicitly excluded.
+
+The programme checkout passed exact predecessor, branch, clean-index and
+clean-worktree gates and advanced by fast-forward only from
+`1b945cb545e0fdb8b3051e4f5d8970ef4580100a` to the authorized commit, tree
+`4c34fe31a94cc7d13bb1883dfb13264fd2934512`. No other ref changed and the
+transfer bundle was removed from both endpoints.
+
+The canonical AX42 installation then rejected before its service-stop and
+file-copy boundary with sanitized deterministic result
+`Atenea workspace releaser differs from the reviewed source`. The installed
+worker and mediator remained exact at predecessor hashes
+`101a3c784b5a371837c45d99110f5181939bc2908faf509a84ffdded1afd4945`
+and
+`df3515f92a99b568840e2cd77798171e8fc3207e7bb88ad61ec992ed07610c54`;
+the worker stayed active with zero restarts. No sudoers, journal, ownership or
+runtime changed. The transferred bundle and extracted directory were removed.
+The backend image was not transferred or deployed, so production, preview and
+Beautips remained exact.
+
+The rejection exposed a sealed installer-order defect. The worker installer
+correctly required the new mediator, but the separate canonical routing
+installer still sealed the live capacity-diagnosis mediator as its target and
+had no representation of the fourth exact `--diagnose-release-preflight`
+sudoers rule. The authorized bundle could therefore never upgrade the exact
+known predecessor through its canonical entrypoint. Its authorization is
+consumed and will not be reused.
+
+Programme correction commit `5db81fdc31070a875e676a85fe362618b6fc1094`, tree
+`3d2b8c2fc6f74852bbd9f515b573e39b36c00c15`, advances only that routing
+installer. It accepts the exact installed mediator hash and exact three-rule
+sudoers predecessor, rejects partial or foreign combinations, installs the
+exact successor mediator and adds only the fixed fourth diagnostic rule. The
+normal worker installer then verifies the successor. Rollback continues to
+retain journals and remove release authority without reconstructing released
+ownership.
+
+Shell syntax, routing installer/rollback, worker installer/rollback and strict
+OpenSpec validation pass. The worker and release-mediator Python suites pass
+124 tests and 141 subtests. The new regression exercises the exact three-rule
+predecessor-to-four-rule successor transition; all foreign, partial, symlink,
+broad-authority, interruption and retained-journal cases continue to pass.
+
+The corrected programme bundle SHA-256 is
+`525b53b8b552c310090d16294546c6cb5c8222054d0eef3bde37be5131a52c72`.
+The Atenea source commit, image and JAR remain unchanged at
+`5ddfee555db442c66aae576a46db5e0798705fe7`,
+`sha256:592577c4ca8919363390d88c7017f53a5c24d3e72403b996a68a421849d7d784`
+and
+`fa5ad0ba76b478a5d35dd787b46e367461a34be9e6169ebcc5b5b89788c5ef5a`.
+
+Sanitized incident and corrected-candidate evidence is retained beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-release-preflight-installer-correction-20260807`.
+All 6 sealed files verify. The corrected manifest SHA-256 is
+`22de6c6f66d1452becaa6da5a02e920518f698e47381254a6da200a3b57f6827`
+and the SHA-256 of `SHA256SUMS` is
+`fec708f03377380d6e1e513775e57f8565d4dc2a7f4d9ff28a45769d3a429cc5`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains the first pending task.
+Progress stops before the new programme fast-forward, AX42 retry and backend
+rollout. A new exact authorization must name the final programme commit, the
+corrected bundle, the unchanged backend image and the corrected manifest. It
+must remain separate from the later in-product task 7.7 confirmation.
