@@ -13868,3 +13868,68 @@ before APK publication and before the second real in-product confirmation. A
 corrected JAR and image must be built from the exact source tree, completely
 retested, independently inspected for V64, sealed under new hashes and receive
 a new separate exact rollout authorization.
+
+The operator subsequently authorized only that corrected-candidate preparation
+with `Adelante`; no deployment, APK publication/installation, task 7.7
+confirmation, WorkSession release, prompt, retry, runtime, AX42, Beautips or
+other-project mutation was authorized.
+
+A clean detached worktree at exact Atenea commit
+`5b3a08344bdc0821e75fe7c37ff1bbd3c22ff838`, tree
+`0918252a78a9e63d825eedcbacf4e2fb19fcc25e`, ran offline Maven `clean verify`
+inside a Docker-internal JDK/Git runner connected only to a fresh PostgreSQL 16
+database. All 694 backend tests pass with zero failures, errors or skips. The
+accepted run declared the fixture's `/workspace/repos` root and used finite
+PostgreSQL capacity; three earlier environment-only attempts without the full
+database/runner/root contract produced no selected artifact.
+
+The fresh 56,456,650-byte JAR SHA-256 is
+`f976353d79ae767cf3023b76b634d62f979c3ad4ec5fe5ce02b0ed9b51bc6392`.
+Its highest and single V64 entry is
+`V64__authorize_blocked_remote_close_recovery.sql`, and the embedded migration
+hash is exact at
+`8996f41539079c1d0b7fdd2325230cfebf7b802c358ef1a8657f1119325cb77d`.
+
+Corrected image
+`sha256:9e492fb567211e27cbc02ddcd4290cd55ed136b78e00a5625675023e193a8f95`
+has exact parent
+`sha256:d4ecec27bd1b7cd0ba5dca095a2524ee33ab342b99e6d0c774f0b2ddbbc568d2`,
+preserves all 14 predecessor layers and adds exactly one JAR layer. Independent
+extraction from the finished image reproduces the exact JAR and V64 hashes.
+An isolated real-image smoke returns HTTP 200 with zero restarts, applies
+successful Flyway V64 exactly once and exposes all three V64 plan-consumption
+columns. All test/smoke containers, networks, worktrees, contexts and runner
+images were removed; the corrected rollout image remains retained locally.
+
+The signed Android candidate remains exact at `0.5.99 (132)`, SHA-256
+`8f37ceec4f68faaa6ae5fe7218628aea5e6ca6beeb30a9f79d65423738ffd546`
+and established channel signer
+`a1642a052853e9992da7ae8f8b6fe09e150533877776c009e7cca83e8b76559a`.
+It remains unpublished and uninstalled.
+
+Post-preparation production remains restored on predecessor
+`sha256:d4ecec27bd1b7cd0ba5dca095a2524ee33ab342b99e6d0c774f0b2ddbbc568d2`
+at HTTP 200 with zero restarts. Preview remains on
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`
+at HTTP 200 with zero restarts. Beautips remains running with zero restarts and
+canonical health HTTP 200. The established published APK remains
+`5c32ef4a1f4c017a19f2d970ceb78de525f34026c374a1c9069c5c6b51afe3ee`.
+Canonical source, programme and internal worktrees remain clean. No live
+database, WorkSession, AgentRun, ownership, service, slot, backup, RAID,
+routing or unrelated resource changed.
+
+Corrected evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-v64-corrected-rollout-candidate-20260807`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-v64-corrected-rollout-candidate-20260807`.
+Both copies verify 6/6 files; the SHA-256 of each `SHA256SUMS` is
+`dff1dadd07a3010dfe399a5cff4e3fabe1969a953afce74ff1939c462e4469ed`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains first pending. Progress
+stops before the corrected rollout. A new separate exact authorization must
+name corrected manifest SHA-256
+`ab210244eeea6177dc9c38e0136f473ae84ab786321ba5d38075d8483af843d2`,
+backend image
+`sha256:9e492fb567211e27cbc02ddcd4290cd55ed136b78e00a5625675023e193a8f95`
+and APK SHA-256
+`8f37ceec4f68faaa6ae5fe7218628aea5e6ca6beeb30a9f79d65423738ffd546`.
