@@ -1394,6 +1394,43 @@ class FixedRootReleaseOperatorTest(unittest.TestCase):
         for forbidden in ("slot2", "heavy1", "/srv/", "21003"):
             self.assertNotIn(forbidden, encoded)
 
+    def test_release_preflight_diagnosis_uses_full_request_without_writing(self) -> None:
+        protected = [
+            self.session_root / "workspace-v1.json",
+            self.session_root / "runtime-allocation-v1.json",
+            self.root / "srv/atenea/worker/runtime-admission-v1/records"
+            / f"{self.session}.json",
+            self.root / "etc/atenea-worker/project-codex-v1.json",
+        ]
+        before = [path.read_bytes() for path in protected]
+        store = MODULE.ReleaseJournalStore(self.journal_root, test_mode=True)
+        with mock.patch.object(MODULE, "MANIFEST_SHA256", self.manifest_sha):
+            result = MODULE.FixedRootReleaseOperator(
+                self.root, test_mode=True
+            ).diagnose_release_preflight(self.request, store)
+
+        self.assertEqual(MODULE.RELEASE_PREFLIGHT_SCHEMA, result["schemaVersion"])
+        self.assertEqual("PREFLIGHT_ACCEPTED", result["state"])
+        self.assertEqual(self.request["operationId"], result["operationId"])
+        self.assertEqual(self.session, result["sessionId"])
+        self.assertFalse(result["valuesExposed"])
+        self.assertEqual(before, [path.read_bytes() for path in protected])
+        self.assertFalse(any(self.journal_root.iterdir()))
+        encoded = json.dumps(result)
+        for forbidden in ("slot2", "heavy1", "/srv/", "21003"):
+            self.assertNotIn(forbidden, encoded)
+
+    def test_release_preflight_diagnosis_rejects_foreign_field_without_writing(self) -> None:
+        store = MODULE.ReleaseJournalStore(self.journal_root, test_mode=True)
+        with mock.patch.object(MODULE, "MANIFEST_SHA256", self.manifest_sha):
+            with self.assertRaises(MODULE.PreflightRejected):
+                MODULE.FixedRootReleaseOperator(
+                    self.root, test_mode=True
+                ).diagnose_release_preflight(
+                    {**self.request, "path": "/srv/foreign"}, store
+                )
+        self.assertFalse(any(self.journal_root.iterdir()))
+
     def test_capacity_owner_diagnosis_rejects_partial_or_foreign_state(self) -> None:
         request = {
             key: value for key, value in self.request.items()

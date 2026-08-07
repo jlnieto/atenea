@@ -198,8 +198,9 @@ environment dumps.
   plan and stop for the operator's explicit single-use confirmation; do not
   mutate AgentRun 96, simulate the confirmation or invoke release through SSH;
   if exact preflight blocks the confirmation, retain the same immutable
-  operation and require a fresh rolled-out plan plus a new single-use
-  confirmation rather than retrying automatically
+  operation and require its complete release request to pass a non-mutating
+  worker preflight before persisting a fresh rolled-out plan; require a new
+  single-use confirmation rather than retrying automatically
 - [ ] 7.8 After confirmation, reconcile only remote session
   `7151dce0-69ab-4614-86e4-f93f1af825e4`; prove registration/admission release,
   exact allocation retirement, receipt idempotence, zero owned ephemeral

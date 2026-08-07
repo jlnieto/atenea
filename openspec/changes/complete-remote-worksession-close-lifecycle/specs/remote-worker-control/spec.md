@@ -84,3 +84,14 @@ removed/released/retained projections.
   reconciling worker execution for the session
 - **THEN** it fails before resource mutation and requires that exact execution
   to reach a proven terminal outcome
+
+#### Scenario: Complete release boundary is diagnosed without mutation
+
+- **WHEN** Atenea submits the exact persisted release request to the
+  authenticated release-preflight endpoint while no execution is non-terminal
+- **THEN** the worker serializes on the release lifecycle lock, validates the
+  fixed journal root and complete fixed-root release projection, creates no
+  journal and changes no resource
+- **AND** it returns only the exact operation/session/workspace identities and
+  sealed request, ownership and allocation fingerprints with
+  `valuesExposed=false`

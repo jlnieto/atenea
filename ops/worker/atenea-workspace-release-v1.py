@@ -22,6 +22,7 @@ from typing import Any, Callable
 
 SCHEMA = "atenea-workspace-release-preflight-v1"
 CAPACITY_OWNER_SCHEMA = "project-workspace-capacity-owner-v1"
+RELEASE_PREFLIGHT_SCHEMA = "project-workspace-release-diagnosis-v1"
 PROJECT_ID = "atenea"
 WORKER_ID = "ax42-01"
 REPOSITORY = "https://github.com/jlnieto/atenea.git"
@@ -1627,6 +1628,50 @@ class FixedRootReleaseOperator:
         }
         return sealed
 
+    def diagnose_release_preflight(
+        self,
+        request: Any,
+        journal_store: ReleaseJournalStore | None = None,
+    ) -> dict[str, Any]:
+        """Validate the complete release boundary without creating a journal.
+
+        This deliberately accepts the closed release request rather than the
+        smaller capacity-owner request.  It exercises the exact persisted
+        operation identity, fixed roots and release projection while stopping
+        before the first namespace or file mutation.
+        """
+
+        exact = _request_identity(request)
+        store = journal_store or ReleaseJournalStore()
+        session_root = store.root / exact["sessionId"]
+        if session_root.exists() or session_root.is_symlink():
+            store._require_directory(session_root)
+            journal_path = session_root / "journal-v1.json"
+            if journal_path.exists() or journal_path.is_symlink():
+                projection = store.load(exact)["preflightProjection"]
+            else:
+                projection = self.build_projection(exact)
+        else:
+            projection = self.build_projection(exact)
+        preflight = validate_release_preflight(exact, projection)
+        return {
+            "schemaVersion": RELEASE_PREFLIGHT_SCHEMA,
+            "state": "PREFLIGHT_ACCEPTED",
+            "operationId": exact["operationId"],
+            "sessionId": exact["sessionId"],
+            "workspaceIdentity": exact["workspaceIdentity"],
+            "projectId": PROJECT_ID,
+            "workerId": WORKER_ID,
+            "requestFingerprintSha256": preflight["requestFingerprintSha256"],
+            "ownershipFingerprintSha256": preflight[
+                "ownershipFingerprintSha256"
+            ],
+            "allocationFingerprintSha256": preflight[
+                "allocationFingerprintSha256"
+            ],
+            "valuesExposed": False,
+        }
+
     def _assert_no_ephemeral(
         self, session: str, allocation: dict[str, Any]
     ) -> None:
@@ -2211,7 +2256,8 @@ class WorkspaceReleaseFinalizer:
 
 def main() -> int:
     diagnose = sys.argv[1:] == ["--diagnose-capacity-owner"]
-    if len(sys.argv) != 1 and not diagnose:
+    diagnose_release = sys.argv[1:] == ["--diagnose-release-preflight"]
+    if len(sys.argv) != 1 and not diagnose and not diagnose_release:
         print(json.dumps({"code": "WORKSPACE_RELEASE_PREFLIGHT_REJECTED"}), file=sys.stderr)
         return 64
     try:
@@ -2221,6 +2267,10 @@ def main() -> int:
         request = json.loads(encoded)
         if diagnose:
             diagnosis = FixedRootReleaseOperator().diagnose_capacity_owner(request)
+            print(json.dumps(diagnosis, sort_keys=True, separators=(",", ":")))
+            return 0
+        if diagnose_release:
+            diagnosis = FixedRootReleaseOperator().diagnose_release_preflight(request)
             print(json.dumps(diagnosis, sort_keys=True, separators=(",", ":")))
             return 0
         exact = _request_identity(request)

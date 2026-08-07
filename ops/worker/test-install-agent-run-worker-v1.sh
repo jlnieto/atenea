@@ -49,7 +49,7 @@ install_exact_directory "$(id -un)" "$(id -gn)" 0750 "${MODE_FIXTURE}/release"
 [[ "$(sha256sum "${SCRIPT_DIR}/atenea-workspace-release-v1.py" | cut -d' ' -f1)" \
     == "${WORKSPACE_RELEASER_SHA256}" ]] \
   || fail "Atenea workspace releaser fingerprint is stale"
-[[ "$(workspace_activation_sudoers_content | wc -l)" -eq 3 ]] \
+[[ "$(workspace_activation_sudoers_content | wc -l)" -eq 4 ]] \
   || fail "workspace lifecycle sudo authority count is not exact"
 [[ "$(workspace_activation_sudoers_content | grep -Fxc \
     "atenea-worker ALL=(root) NOPASSWD: ${WORKSPACE_RELEASER}")" -eq 1 ]] \
@@ -57,6 +57,9 @@ install_exact_directory "$(id -un)" "$(id -gn)" 0750 "${MODE_FIXTURE}/release"
 [[ "$(workspace_activation_sudoers_content | grep -Fxc \
     "atenea-worker ALL=(root) NOPASSWD: ${WORKSPACE_RELEASER} --diagnose-capacity-owner")" \
     -eq 1 ]] || fail "read-only capacity diagnosis sudo authority is not exact"
+[[ "$(workspace_activation_sudoers_content | grep -Fxc \
+    "atenea-worker ALL=(root) NOPASSWD: ${WORKSPACE_RELEASER} --diagnose-release-preflight")" \
+    -eq 1 ]] || fail "read-only release preflight sudo authority is not exact"
 ! workspace_activation_sudoers_content | grep -F "${WORKSPACE_RELEASER} *" >/dev/null \
   || fail "workspace release sudo authority is broadened"
 [[ "$(sha256sum "${SCRIPT_DIR}/session-workspace-v1.sh" | cut -d' ' -f1)" \

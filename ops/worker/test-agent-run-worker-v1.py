@@ -348,6 +348,50 @@ class WorkspaceReleaseWorkerExecutionTest(WorkspaceReleaseContractTest):
                     {**request, forbidden: "caller-value"}
                 )
 
+    def test_release_preflight_invokes_only_fixed_non_mutating_mode(self):
+        response = {
+            "schemaVersion": MODULE.WORKSPACE_RELEASE_PREFLIGHT_SCHEMA,
+            "state": "PREFLIGHT_ACCEPTED",
+            "operationId": self.request["operationId"],
+            "sessionId": self.request["sessionId"],
+            "workspaceIdentity": self.request["workspaceIdentity"],
+            "projectId": MODULE.PROJECT_ID,
+            "workerId": "ax42-01",
+            "requestFingerprintSha256": MODULE.canonical_hash(self.request),
+            "ownershipFingerprintSha256": "7" * 64,
+            "allocationFingerprintSha256": "8" * 64,
+            "valuesExposed": False,
+        }
+        completed = subprocess.CompletedProcess(
+            [str(self.releaser), "--diagnose-release-preflight"],
+            0,
+            json.dumps(response),
+            "",
+        )
+        with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
+            observed = self.state.diagnose_workspace_release_preflight(
+                self.request
+            )
+
+        self.assertEqual(response, observed)
+        self.assertEqual(
+            [str(self.releaser), "--diagnose-release-preflight"],
+            run.call_args.args[0],
+        )
+        self.assertEqual(60, run.call_args.kwargs["timeout"])
+        self.assertEqual(
+            json.dumps(self.request, sort_keys=True, separators=(",", ":")),
+            run.call_args.kwargs["input"],
+        )
+        for forbidden in (
+            "command", "path", "slot", "port", "service", "endpoint",
+            "resourceName", "label", "credential", "deletionTarget",
+        ):
+            with self.subTest(field=forbidden), self.assertRaises(MODULE.ProtocolError):
+                MODULE.validate_workspace_release_request(
+                    {**self.request, forbidden: "caller-value"}
+                )
+
 
 class WorkerStateTest(unittest.TestCase):
     def setUp(self):
@@ -2206,6 +2250,48 @@ class WorkerHttpTest(unittest.TestCase):
 
         self.state.diagnose_workspace_capacity_owner = diagnose
         with self.post(MODULE.WORKSPACE_CAPACITY_OWNER_PATH, request, "t" * 64) as response:
+            payload = json.load(response)
+
+        self.assertEqual([request], observed)
+        self.assertEqual(result, payload)
+
+    def test_release_preflight_route_dispatches_exact_authenticated_request(self):
+        session_id = "11111111-1111-4111-8111-111111111111"
+        request = {
+            "operationId": "22222222-2222-4222-8222-222222222222",
+            "idempotencyKey": "22222222-2222-4222-8222-222222222222",
+            "sessionId": session_id,
+            "workspaceIdentity": "remote:ax42-01:work-session:" + session_id,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": TEST_COMMIT,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+            "workspaceBranch": "atenea/session-" + session_id,
+        }
+        result = {
+            "schemaVersion": MODULE.WORKSPACE_RELEASE_PREFLIGHT_SCHEMA,
+            "state": "PREFLIGHT_ACCEPTED",
+            "operationId": request["operationId"],
+            "sessionId": session_id,
+            "workspaceIdentity": request["workspaceIdentity"],
+            "projectId": MODULE.PROJECT_ID,
+            "workerId": "test-worker",
+            "requestFingerprintSha256": MODULE.canonical_hash(request),
+            "ownershipFingerprintSha256": "8" * 64,
+            "allocationFingerprintSha256": "9" * 64,
+            "valuesExposed": False,
+        }
+        observed = []
+
+        def diagnose(body):
+            observed.append(body)
+            return result
+
+        self.state.diagnose_workspace_release_preflight = diagnose
+        with self.post(
+            MODULE.WORKSPACE_RELEASE_PREFLIGHT_PATH, request, "t" * 64
+        ) as response:
             payload = json.load(response)
 
         self.assertEqual([request], observed)

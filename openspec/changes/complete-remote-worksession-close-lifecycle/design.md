@@ -217,6 +217,18 @@ The legacy plan repeats that diagnosis before persisting its finite
 confirmation. Transport, protocol and deterministic ownership failures retain
 distinct response categories.
 
+After an immutable operation is already `BLOCKED`, a replacement plan also
+requires `POST /v1/project-workspaces/release-preflight` to accept the complete
+server-derived release request, including the original operation identity. The
+worker holds the same lifecycle lock, invokes the same fixed-root mediator and
+validates the same Git, registry, workspace, admission, allocation and
+ephemeral projection used by release, but stops before journal creation or any
+resource mutation. Its closed response contains only the request, ownership
+and allocation fingerprints with `valuesExposed=false`. A deterministic
+failure prevents creation of the fresh human-confirmation plan; transport and
+protocol failures keep their distinct status and never enter a worker-
+unavailable retry window for a deterministic 4xx.
+
 An exact worker release-preflight rejection is not retried as transport and
 does not make the first single-use plan reusable. Atenea persists the original
 operation as `BLOCKED` without a receipt. Recovery requires a new read-only

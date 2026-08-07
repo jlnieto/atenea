@@ -117,7 +117,9 @@ WORKSPACE_ENSURE_KEYS = {
     "commit", "manifestSha256", "workspaceBranch",
 }
 WORKSPACE_RELEASE_PATH = "/v1/project-workspaces/release"
+WORKSPACE_RELEASE_PREFLIGHT_PATH = "/v1/project-workspaces/release-preflight"
 WORKSPACE_CAPACITY_OWNER_PATH = "/v1/project-workspaces/capacity-owner"
+WORKSPACE_RELEASE_PREFLIGHT_SCHEMA = "project-workspace-release-diagnosis-v1"
 WORKSPACE_CAPACITY_OWNER_SCHEMA = "project-workspace-capacity-owner-v1"
 WORKSPACE_CAPACITY_OWNER_KEYS = WORKSPACE_ENSURE_KEYS
 WORKSPACE_CAPACITY_OWNER_RESPONSE_KEYS = {
@@ -131,6 +133,12 @@ WORKSPACE_RELEASE_REQUEST_KEYS = {
     "operationId", "idempotencyKey", "sessionId", "workspaceIdentity",
     "projectId", "repository", "branch", "commit", "manifestSha256",
     "workspaceBranch",
+}
+WORKSPACE_RELEASE_PREFLIGHT_RESPONSE_KEYS = {
+    "schemaVersion", "state", "operationId", "sessionId",
+    "workspaceIdentity", "projectId", "workerId",
+    "requestFingerprintSha256", "ownershipFingerprintSha256",
+    "allocationFingerprintSha256", "valuesExposed",
 }
 WORKSPACE_RELEASE_RECEIPT_KEYS = {
     "schemaVersion", "state", "operationId", "idempotencyKey", "sessionId",
@@ -359,6 +367,41 @@ def validate_workspace_capacity_owner_response(
             "workspace_capacity_owner_response_invalid",
             "workspace capacity-owner response is invalid",
         )
+    return dict(response)
+
+
+def validate_workspace_release_preflight_response(
+    request: dict[str, Any], worker_id: str, response: dict[str, Any]
+) -> dict[str, Any]:
+    exact = validate_workspace_release_request(request)
+    if (
+        not isinstance(response, dict)
+        or set(response) != WORKSPACE_RELEASE_PREFLIGHT_RESPONSE_KEYS
+        or response.get("schemaVersion") != WORKSPACE_RELEASE_PREFLIGHT_SCHEMA
+        or response.get("state") != "PREFLIGHT_ACCEPTED"
+        or response.get("operationId") != exact["operationId"]
+        or response.get("sessionId") != exact["sessionId"]
+        or response.get("workspaceIdentity") != exact["workspaceIdentity"]
+        or response.get("projectId") != PROJECT_ID
+        or response.get("workerId") != worker_id
+        or response.get("requestFingerprintSha256") != canonical_hash(exact)
+        or response.get("valuesExposed") is not False
+    ):
+        raise ProtocolError(
+            HTTPStatus.BAD_GATEWAY,
+            "workspace_release_preflight_response_invalid",
+            "workspace release preflight response is invalid",
+        )
+    for key in ("ownershipFingerprintSha256", "allocationFingerprintSha256"):
+        if (
+            not isinstance(response.get(key), str)
+            or re.fullmatch(r"[0-9a-f]{64}", response[key]) is None
+        ):
+            raise ProtocolError(
+                HTTPStatus.BAD_GATEWAY,
+                "workspace_release_preflight_response_invalid",
+                "workspace release preflight fingerprint is invalid",
+            )
     return dict(response)
 
 
@@ -1386,6 +1429,78 @@ class WorkerState:
                 ) from None
             return validate_workspace_release_receipt(
                 exact_request, self.worker_id, receipt
+            )
+
+    def diagnose_workspace_release_preflight(
+        self, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        exact_request = validate_workspace_release_request(request)
+        with self.workspace_lifecycle_lock():
+            with self.lock:
+                assert_no_non_terminal_session_execution(
+                    self.executions, exact_request["sessionId"]
+                )
+            releaser = self.project_workspace_releaser
+            if releaser is None or not releaser.is_file():
+                raise ProtocolError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "workspace_release_preflight_unavailable",
+                    "workspace release preflight is unavailable",
+                )
+            try:
+                completed = subprocess.run(
+                    [
+                        *self.privilege_command,
+                        str(releaser),
+                        "--diagnose-release-preflight",
+                    ],
+                    input=json.dumps(
+                        exact_request, sort_keys=True, separators=(",", ":")
+                    ),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                raise ProtocolError(
+                    HTTPStatus.GATEWAY_TIMEOUT,
+                    "workspace_release_preflight_timeout",
+                    "workspace release preflight exceeded its finite timeout",
+                ) from None
+            except OSError:
+                raise ProtocolError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "workspace_release_preflight_unavailable",
+                    "workspace release preflight mediator could not be started",
+                ) from None
+            if completed.returncode != 0:
+                try:
+                    safe_error = reviewed_mediator_stderr_envelope(completed.stderr)
+                except ValueError:
+                    safe_error = worker_error_envelope(
+                        "WORKSPACE_RELEASE_PREFLIGHT_REJECTED",
+                        "OWNERSHIP",
+                        False,
+                        "CONTACT_PLATFORM_ADMINISTRATOR",
+                    )
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT,
+                    "workspace_release_preflight_failed",
+                    "workspace release preflight failed closed",
+                    safe_error,
+                )
+            try:
+                response = json.loads(completed.stdout)
+            except json.JSONDecodeError:
+                raise ProtocolError(
+                    HTTPStatus.BAD_GATEWAY,
+                    "workspace_release_preflight_response_invalid",
+                    "workspace release preflight returned invalid JSON",
+                ) from None
+            return validate_workspace_release_preflight_response(
+                exact_request, self.worker_id, response
             )
 
     def diagnose_workspace_capacity_owner(
@@ -3138,6 +3253,12 @@ class AgentRunHandler(BaseHTTPRequestHandler):
                 return
             if path == WORKSPACE_RELEASE_PATH:
                 self._write(HTTPStatus.OK, self.server.state.release_workspace(body))
+                return
+            if path == WORKSPACE_RELEASE_PREFLIGHT_PATH:
+                self._write(
+                    HTTPStatus.OK,
+                    self.server.state.diagnose_workspace_release_preflight(body),
+                )
                 return
             if path == WORKSPACE_CAPACITY_OWNER_PATH:
                 self._write(

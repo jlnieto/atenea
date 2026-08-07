@@ -74,6 +74,17 @@ resource target.
 - **THEN** Atenea persists `RELEASED` and the receipt monotonically, while
   repeated confirmation returns the same result without another mutation
 
+#### Scenario: Fresh blocked-recovery plan requires complete release preflight
+
+- **WHEN** the immutable operation is already `BLOCKED` and the administrator
+  requests another finite plan
+- **THEN** Atenea first sends the complete server-derived release request for
+  the original operation to the worker's non-mutating release-preflight
+  endpoint and persists the plan only after the exact sanitized fingerprints
+  match
+- **AND** any deterministic, transport or protocol failure prevents plan
+  creation with its own category and performs no release or automatic retry
+
 #### Scenario: Routine operator requests legacy release
 
 - **WHEN** an operator without platform-administrator authority invokes the
