@@ -80,23 +80,7 @@ public class MobileSessionOperatorStateService {
                             session.remoteCloseErrorCode())
                     && legacyRemoteCloseService.isExactBlockedRecoveryAvailable(
                             session.id());
-            return state(
-                    true,
-                    MobileSessionOperatorState.REMOTE_CLOSE_BLOCKED,
-                    "Cierre remoto bloqueado",
-                    recoveryAvailable
-                            ? "No se liberó ningún recurso. Genera una nueva confirmación administrativa."
-                            : "La propiedad remota no pudo verificarse de forma segura.",
-                    recoveryAvailable
-                            ? MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE
-                            : MobileSessionPrimaryAction.CONTACT_PLATFORM_ADMINISTRATOR,
-                    recoveryAvailable
-                            ? "Volver a validar cierre"
-                            : "Contactar con administración",
-                    recoveryAvailable,
-                    CodexOperationsRole.PLATFORM_ADMINISTRATOR,
-                    session.id(),
-                    null);
+            return blockedState(session.id(), null, recoveryAvailable);
         }
 
         AgentRunEntity latestRun = view.latestRun() == null
@@ -320,7 +304,14 @@ public class MobileSessionOperatorStateService {
                     run.getId());
         }
         if (predecessor.getRemoteCloseState() == RemoteCloseState.BLOCKED) {
-            return ownershipReview(predecessorId, run.getId());
+            boolean recoveryAvailable =
+                    "WORKSPACE_RELEASE_PREFLIGHT_REJECTED".equals(
+                            predecessor.getRemoteCloseErrorCode())
+                    && legacyRemoteCloseService.isExactBlockedRecoveryAvailable(
+                            predecessorId);
+            return recoveryAvailable
+                    ? blockedState(predecessorId, run.getId(), true)
+                    : ownershipReview(predecessorId, run.getId());
         }
         if (predecessor.getRemoteCloseState() != RemoteCloseState.UNVERIFIED_LEGACY) {
             return null;
@@ -427,6 +418,30 @@ public class MobileSessionOperatorStateService {
                 false,
                 CodexOperationsRole.PLATFORM_ADMINISTRATOR,
                 predecessorId,
+                runId);
+    }
+
+    private MobileSessionOperatorStateResponse blockedState(
+            Long targetSessionId,
+            Long runId,
+            boolean recoveryAvailable
+    ) {
+        return state(
+                true,
+                MobileSessionOperatorState.REMOTE_CLOSE_BLOCKED,
+                "Cierre remoto bloqueado",
+                recoveryAvailable
+                        ? "No se liberó ningún recurso. Genera una nueva confirmación administrativa."
+                        : "La propiedad remota no pudo verificarse de forma segura.",
+                recoveryAvailable
+                        ? MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE
+                        : MobileSessionPrimaryAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                recoveryAvailable
+                        ? "Volver a validar cierre"
+                        : "Contactar con administración",
+                recoveryAvailable,
+                CodexOperationsRole.PLATFORM_ADMINISTRATOR,
+                targetSessionId,
                 runId);
     }
 
