@@ -17,8 +17,8 @@ DEPENDENCIES=(
 )
 PROGRAM_PREDECESSOR_SHA256=61fc03da468f2f9fa1fb101dc42129a773f02acaacbc40fd46e18d7a06724df2
 PROGRAM_SHA256=5ef544c478c17a0ae6ae88586915185572721ca89dc48dbbf15b65ad417aa889
-RELEASE_PROGRAM_PREDECESSOR_SHA256=dc8f4374f372127163df467c317a2f7fabff4af5e1667799a448173ac9546e15
-RELEASE_PROGRAM_SHA256=df3515f92a99b568840e2cd77798171e8fc3207e7bb88ad61ec992ed07610c54
+RELEASE_PROGRAM_PREDECESSOR_SHA256=df3515f92a99b568840e2cd77798171e8fc3207e7bb88ad61ec992ed07610c54
+RELEASE_PROGRAM_SHA256=baccb3c7c7053e5d09eb05148f1c2e368faf90d5e2706a537ac3473429dfada0
 SESSION_WORKSPACE_SHA256=3e41ae7f218f360920bed7cd4b2d75cab5396bb07649635694db3271b12d2ffe
 RUNTIME_ADMISSION_SHA256=a81366d3495bb2a7bf4702e9ea934a74e9b3edb30f728926e655a5c0a6a9f7ce
 SESSION_ALLOCATION_SHA256=2efceeaaba78b349f1d6aa79bfba5d908d397a9e3a480cfa3b100bde52fb99d7
@@ -41,6 +41,13 @@ release_source_hash() {
 }
 
 sudoers_content() {
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s ensure *\n' "${PROGRAM}"
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s\n' "${RELEASE_PROGRAM}"
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s --diagnose-capacity-owner\n' "${RELEASE_PROGRAM}"
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s --diagnose-release-preflight\n' "${RELEASE_PROGRAM}"
+}
+
+capacity_diagnosis_sudoers_content() {
   printf 'atenea-worker ALL=(root) NOPASSWD: %s ensure *\n' "${PROGRAM}"
   printf 'atenea-worker ALL=(root) NOPASSWD: %s\n' "${RELEASE_PROGRAM}"
   printf 'atenea-worker ALL=(root) NOPASSWD: %s --diagnose-capacity-owner\n' "${RELEASE_PROGRAM}"
@@ -151,6 +158,14 @@ activation_bundle_preflight() {
     verify_release_program_upgrade
     verify_release_state_root
     printf 'current\n'
+    return 0
+  fi
+  if [[ "${sudoers_value}" == "$(capacity_diagnosis_sudoers_content)" ]]; then
+    [[ "${present}" -eq "${total}" && "${digest}" == "${PROGRAM_SHA256}" ]] ||
+      fail 'installed release-preflight predecessor is partial'
+    verify_release_program_upgrade
+    verify_release_state_root
+    printf 'upgrade\n'
     return 0
   fi
   if [[ "${sudoers_value}" == "$(successor_predecessor_sudoers_content)" ]]; then

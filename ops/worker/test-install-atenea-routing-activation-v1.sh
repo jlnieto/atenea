@@ -83,6 +83,16 @@ bundle_create_current() {
   chmod 0440 "${SUDOERS}"
 }
 
+bundle_create_capacity_diagnosis_predecessor() {
+  bundle_common
+  printf 'reviewed release predecessor fixture\n' >"${RELEASE_PROGRAM}"
+  chmod 0755 "${RELEASE_PROGRAM}"
+  mkdir -p "${RELEASE_STATE_ROOT}"
+  chmod 0700 "${RELEASE_STATE_ROOT}"
+  capacity_diagnosis_sudoers_content >"${SUDOERS}"
+  chmod 0440 "${SUDOERS}"
+}
+
 bundle_create_predecessor() {
   bundle_common
   predecessor_sudoers_content >"${SUDOERS}"
@@ -115,6 +125,18 @@ apply_install >/dev/null
   || fail_test 'idempotent apply changed a retained release operation'
 bundle_reset
 
+bundle_create_capacity_diagnosis_predecessor
+RELEASE_PROGRAM_PREDECESSOR_SHA256="$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)"
+[[ "$(activation_bundle_preflight)" == upgrade ]] \
+  || fail_test 'capacity-diagnosis predecessor was not accepted for upgrade'
+apply_install >/dev/null
+[[ "$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)" == "${RELEASE_PROGRAM_SHA256}" ]] \
+  || fail_test 'capacity-diagnosis predecessor was not upgraded exactly'
+[[ "$(cat "${SUDOERS}")" == "$(sudoers_content)" ]] \
+  || fail_test 'release-preflight sudo authority was not installed exactly'
+RELEASE_PROGRAM_PREDECESSOR_SHA256=df3515f92a99b568840e2cd77798171e8fc3207e7bb88ad61ec992ed07610c54
+bundle_reset
+
 bundle_create_current
 printf 'reviewed release predecessor fixture\n' >"${RELEASE_PROGRAM}"
 chmod 0755 "${RELEASE_PROGRAM}"
@@ -127,7 +149,7 @@ fi
 apply_install >/dev/null
 [[ "$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)" == "${RELEASE_PROGRAM_SHA256}" ]] \
   || fail_test 'release predecessor was not upgraded to the exact source'
-RELEASE_PROGRAM_PREDECESSOR_SHA256=6e721a7d166fae977d781a5d6341fd872e51cb0bdf349afd8d53da2ec08402c1
+RELEASE_PROGRAM_PREDECESSOR_SHA256=df3515f92a99b568840e2cd77798171e8fc3207e7bb88ad61ec992ed07610c54
 bundle_reset
 
 mkdir -p "$(dirname -- "${PROGRAM}")"
@@ -250,13 +272,16 @@ rollback_install >/dev/null
 [[ "$(activation_bundle_preflight)" == predecessor ]] \
   || fail_test 'interrupted rollback did not resume to the predecessor'
 
-[[ "$(sudoers_content | wc -l)" -eq 3 ]] || fail_test 'sudoers rule count is not exact'
+[[ "$(sudoers_content | wc -l)" -eq 4 ]] || fail_test 'sudoers rule count is not exact'
 [[ "$(sudoers_content | grep -Fxc \
   "atenea-worker ALL=(root) NOPASSWD: ${RELEASE_PROGRAM}")" -eq 1 ]] \
   || fail_test 'release sudo authority without arguments is missing'
 [[ "$(sudoers_content | grep -Fxc \
   "atenea-worker ALL=(root) NOPASSWD: ${RELEASE_PROGRAM} --diagnose-capacity-owner")" \
   -eq 1 ]] || fail_test 'capacity diagnosis sudo authority is not exact'
+[[ "$(sudoers_content | grep -Fxc \
+  "atenea-worker ALL=(root) NOPASSWD: ${RELEASE_PROGRAM} --diagnose-release-preflight")" \
+  -eq 1 ]] || fail_test 'release-preflight sudo authority is not exact'
 ! sudoers_content | grep -F "${RELEASE_PROGRAM} *" >/dev/null \
   || fail_test 'release sudo authority is broadened'
 grep -Fq 'installed activation bundle changed after preflight' \
