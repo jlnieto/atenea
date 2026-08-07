@@ -161,6 +161,27 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/project-workspaces/release-preflight", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            releaseIdempotencyHeader.set(
+                    exchange.getRequestHeaders().getFirst("Idempotency-Key"));
+            JsonNode request = requestBody.get();
+            byte[] response = objectMapper.writeValueAsBytes(Map.ofEntries(
+                    Map.entry("schemaVersion", "project-workspace-release-diagnosis-v1"),
+                    Map.entry("state", "PREFLIGHT_ACCEPTED"),
+                    Map.entry("operationId", request.get("operationId").asText()),
+                    Map.entry("sessionId", request.get("sessionId").asText()),
+                    Map.entry("workspaceIdentity", request.get("workspaceIdentity").asText()),
+                    Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
+                    Map.entry("workerId", ProjectCodexIdentity.WORKER_ID),
+                    Map.entry("requestFingerprintSha256", canonicalSha256(request)),
+                    Map.entry("ownershipFingerprintSha256", "8".repeat(64)),
+                    Map.entry("allocationFingerprintSha256", "9".repeat(64)),
+                    Map.entry("valuesExposed", false)));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.createContext("/v1/project-workspaces/draft-fingerprint", exchange -> {
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
             JsonNode request = requestBody.get();
@@ -895,6 +916,34 @@ class RemoteWorkerClientTest {
         assertEquals(witness.getCanonicalSourceCommit(),
                 requestBody.get().get("commit").asText());
         assertEquals("RELEASED", release.state());
+    }
+
+    @Test
+    void releasePreflightUsesTheExactReleaseRequestWithoutMutationAuthority() {
+        WorkSessionEntity session = releasableSession();
+
+        RemoteWorkerClient.WorkspaceReleasePreflight diagnosis =
+                client.diagnoseWorkspaceReleasePreflight(session, session);
+
+        JsonNode body = requestBody.get();
+        String operationId = session.getRemoteCloseOperationId().toString();
+        assertEquals(operationId, body.get("operationId").asText());
+        assertEquals(operationId, body.get("idempotencyKey").asText());
+        assertEquals(operationId, releaseIdempotencyHeader.get());
+        assertEquals(session.getRemoteSessionId().toString(),
+                body.get("sessionId").asText());
+        assertEquals(session.getWorkspaceIdentity(),
+                body.get("workspaceIdentity").asText());
+        assertEquals(session.getCanonicalSourceCommit(),
+                body.get("commit").asText());
+        for (String forbidden : List.of(
+                "command", "path", "slot", "port", "service", "endpoint",
+                "label", "credential", "resource")) {
+            assertNull(body.get(forbidden));
+        }
+        assertEquals("PREFLIGHT_ACCEPTED", diagnosis.state());
+        assertEquals(operationId, diagnosis.operationId());
+        assertEquals(false, diagnosis.valuesExposed());
     }
 
     @Test

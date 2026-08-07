@@ -105,6 +105,8 @@ class LegacyRemoteCloseApiIntegrationTest {
                 "DELETE FROM operator_account WHERE email LIKE 'legacy-close-%@atenea.test'");
         doAnswer(invocation -> capacityOwner(invocation.getArgument(0)))
                 .when(remoteWorkerClient).diagnoseWorkspaceCapacityOwner(any(), any());
+        doAnswer(invocation -> releasePreflight(invocation.getArgument(0)))
+                .when(remoteWorkerClient).diagnoseWorkspaceReleasePreflight(any(), any());
     }
 
     @AfterEach
@@ -700,6 +702,8 @@ class LegacyRemoteCloseApiIntegrationTest {
                 """, Integer.class, UUID.fromString(operationId)));
         verify(remoteWorkerClient, times(2))
                 .diagnoseWorkspaceCapacityOwner(any(), any());
+        verify(remoteWorkerClient, times(1))
+                .diagnoseWorkspaceReleasePreflight(any(), any());
         verify(remoteWorkerClient, times(2)).releaseWorkspace(any(), any());
         WorkSessionEntity released = sessionRepository.findById(session.getId())
                 .orElseThrow();
@@ -708,6 +712,63 @@ class LegacyRemoteCloseApiIntegrationTest {
         assertNotNull(released.getRemoteCloseReceiptSha256());
         assertFalse(legacyRemoteCloseService.isExactBlockedRecoveryAvailable(
                 session.getId()));
+    }
+
+    @Test
+    void blockedRecoveryPlanRequiresFullReleasePreflightBeforeHumanConfirmation()
+            throws Exception {
+        OperatorEntity administrator = operator(
+                CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        WorkSessionEntity session = legacySession();
+        String firstPlan = createPlan(administrator, session, UUID.randomUUID());
+        UUID firstPlanId = UUID.fromString(
+                com.jayway.jsonpath.JsonPath.read(firstPlan, "$.planId"));
+        String fingerprint = com.jayway.jsonpath.JsonPath.read(
+                firstPlan, "$.ownershipFingerprintSha256");
+        when(remoteWorkerClient.releaseWorkspace(any(), any()))
+                .thenThrow(new RemoteWorkerException(
+                        "synthetic exact preflight rejection",
+                        409, "WORKSPACE_RELEASE_PREFLIGHT_REJECTED",
+                        RemoteWorkerFailureCategory.OWNERSHIP, false,
+                        AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                        null));
+
+        mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-reconciliations",
+                        session.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmationBody(firstPlanId, fingerprint,
+                                UUID.randomUUID(), false)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("BLOCKED"));
+
+        doThrow(new RemoteWorkerException(
+                "synthetic full release preflight rejection",
+                409, "WORKSPACE_RELEASE_PREFLIGHT_REJECTED",
+                RemoteWorkerFailureCategory.OWNERSHIP, false,
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                null))
+                .when(remoteWorkerClient)
+                .diagnoseWorkspaceReleasePreflight(any(), any());
+
+        mockMvc.perform(post(
+                        "/api/admin/work-sessions/{id}/remote-close-plans",
+                        session.getId())
+                        .with(auth(administrator))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(planBody(UUID.randomUUID(), false)))
+                .andExpect(status().isConflict());
+
+        assertEquals(1, count("remote_close_legacy_plan"));
+        assertEquals(1, count("remote_close_legacy_operation"));
+        assertEquals(2, count("remote_close_legacy_event"));
+        WorkSessionEntity blocked = sessionRepository.findById(session.getId())
+                .orElseThrow();
+        assertEquals(RemoteCloseState.BLOCKED, blocked.getRemoteCloseState());
+        assertEquals(2, blocked.getRemoteCloseRevision());
+        assertNull(blocked.getRemoteCloseReceiptSha256());
+        verify(remoteWorkerClient, times(1)).releaseWorkspace(any(), any());
     }
 
     @Test
@@ -983,6 +1044,23 @@ class LegacyRemoteCloseApiIntegrationTest {
                 session.getWorkspaceIdentity(),
                 ProjectCodexIdentity.PROJECT_IDENTITY,
                 ProjectCodexIdentity.WORKER_ID,
+                "8".repeat(64),
+                "9".repeat(64),
+                false);
+    }
+
+    private RemoteWorkerClient.WorkspaceReleasePreflight releasePreflight(
+            WorkSessionEntity session
+    ) {
+        return new RemoteWorkerClient.WorkspaceReleasePreflight(
+                "project-workspace-release-diagnosis-v1",
+                "PREFLIGHT_ACCEPTED",
+                session.getRemoteCloseOperationId().toString(),
+                session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(),
+                ProjectCodexIdentity.PROJECT_IDENTITY,
+                ProjectCodexIdentity.WORKER_ID,
+                "7".repeat(64),
                 "8".repeat(64),
                 "9".repeat(64),
                 false);

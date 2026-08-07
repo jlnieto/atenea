@@ -41,6 +41,8 @@ public class RemoteWorkerClient {
     private static final String WORKSPACE_RELEASE_SCHEMA = "project-workspace-release-v1";
     private static final String WORKSPACE_CAPACITY_OWNER_SCHEMA =
             "project-workspace-capacity-owner-v1";
+    private static final String WORKSPACE_RELEASE_PREFLIGHT_SCHEMA =
+            "project-workspace-release-diagnosis-v1";
     private static final long WORKSPACE_RELEASE_REVISION = 6;
     private static final int MAX_WORKER_ERROR_BYTES = 1024;
     private static final String PROTOCOL_FAILURE_CODE = "REMOTE_WORKER_PROTOCOL_FAILURE";
@@ -184,6 +186,61 @@ public class RemoteWorkerClient {
             WorkSessionEntity session,
             WorkSessionEntity canonicalSourceWitness
     ) {
+        Map<String, Object> body = workspaceReleaseRequest(
+                session, canonicalSourceWitness);
+        String operationId = session.getRemoteCloseOperationId().toString();
+        JsonNode receipt = exchange(
+                "POST",
+                "/v1/project-workspaces/release",
+                body,
+                JsonNode.class,
+                operationId,
+                properties.getWorkspaceProvisionTimeout());
+        return validateWorkspaceReleaseReceipt(session, objectMapper.valueToTree(body), receipt);
+    }
+
+    public WorkspaceReleasePreflight diagnoseWorkspaceReleasePreflight(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
+        Map<String, Object> body = workspaceReleaseRequest(
+                session, canonicalSourceWitness);
+        String operationId = session.getRemoteCloseOperationId().toString();
+        WorkspaceReleasePreflight response = exchange(
+                "POST",
+                "/v1/project-workspaces/release-preflight",
+                body,
+                WorkspaceReleasePreflight.class,
+                operationId,
+                properties.getWorkspaceProvisionTimeout());
+        String requestFingerprint = canonicalSha256(objectMapper.valueToTree(body));
+        if (!WORKSPACE_RELEASE_PREFLIGHT_SCHEMA.equals(response.schemaVersion())
+                || !"PREFLIGHT_ACCEPTED".equals(response.state())
+                || !operationId.equals(response.operationId())
+                || !session.getRemoteSessionId().toString().equals(response.sessionId())
+                || !session.getWorkspaceIdentity().equals(response.workspaceIdentity())
+                || !ProjectCodexIdentity.PROJECT_IDENTITY.equals(response.projectId())
+                || !ProjectCodexIdentity.WORKER_ID.equals(response.workerId())
+                || !requestFingerprint.equals(response.requestFingerprintSha256())
+                || !isSha256(response.ownershipFingerprintSha256())
+                || !isSha256(response.allocationFingerprintSha256())
+                || response.valuesExposed()) {
+            throw new RemoteWorkerException(
+                    "Remote worker release preflight diagnosis was invalid",
+                    502,
+                    PROTOCOL_FAILURE_CODE,
+                    RemoteWorkerFailureCategory.PROTOCOL,
+                    false,
+                    AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                    null);
+        }
+        return response;
+    }
+
+    private Map<String, Object> workspaceReleaseRequest(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
         String canonicalCommit = exactOwnerCommit(session, canonicalSourceWitness);
         if (canonicalCommit == null || !hasExactReleaseLifecycle(session)) {
             throw new RemoteWorkerException(
@@ -191,7 +248,7 @@ public class RemoteWorkerClient {
                     409);
         }
         String operationId = session.getRemoteCloseOperationId().toString();
-        Map<String, Object> body = Map.ofEntries(
+        return Map.ofEntries(
                 Map.entry("operationId", operationId),
                 Map.entry("idempotencyKey", operationId),
                 Map.entry("sessionId", session.getRemoteSessionId().toString()),
@@ -202,14 +259,6 @@ public class RemoteWorkerClient {
                 Map.entry("commit", canonicalCommit),
                 Map.entry("manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256),
                 Map.entry("workspaceBranch", session.getWorkspaceBranch()));
-        JsonNode receipt = exchange(
-                "POST",
-                "/v1/project-workspaces/release",
-                body,
-                JsonNode.class,
-                operationId,
-                properties.getWorkspaceProvisionTimeout());
-        return validateWorkspaceReleaseReceipt(session, objectMapper.valueToTree(body), receipt);
     }
 
     public WorkspaceCapacityOwner diagnoseWorkspaceCapacityOwner(
@@ -1058,6 +1107,22 @@ public class RemoteWorkerClient {
             String workerId,
             String requestFingerprintSha256,
             String ownershipFingerprintSha256,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record WorkspaceReleasePreflight(
+            String schemaVersion,
+            String state,
+            String operationId,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String workerId,
+            String requestFingerprintSha256,
+            String ownershipFingerprintSha256,
+            String allocationFingerprintSha256,
             boolean valuesExposed
     ) {
     }

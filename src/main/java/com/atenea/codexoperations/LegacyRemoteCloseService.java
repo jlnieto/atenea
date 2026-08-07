@@ -154,6 +154,24 @@ public class LegacyRemoteCloseService {
         } catch (RemoteWorkerException exception) {
             throw capacityOwnerDiagnosisFailure(exception);
         }
+        if (session.getRemoteCloseState() == RemoteCloseState.BLOCKED) {
+            try {
+                RemoteWorkerClient.WorkspaceReleasePreflight preflight =
+                        remoteWorkerClient.diagnoseWorkspaceReleasePreflight(
+                                session, owner.canonicalSourceWitness());
+                if (preflight == null
+                        || !session.getRemoteCloseOperationId().toString().equals(
+                                preflight.operationId())
+                        || !session.getRemoteSessionId().toString().equals(
+                                preflight.sessionId())
+                        || !session.getWorkspaceIdentity().equals(
+                                preflight.workspaceIdentity())) {
+                    throw conflict("Legacy close release preflight did not match");
+                }
+            } catch (RemoteWorkerException exception) {
+                throw releasePreflightDiagnosisFailure(exception);
+            }
+        }
         String ownershipFingerprint = ownershipFingerprint(
                 session, owner.canonicalSourceWitness());
         String requestFingerprint = sha256(String.join("\n",
@@ -1126,6 +1144,24 @@ public class LegacyRemoteCloseService {
                     "Legacy close ownership diagnosis was not trustworthy");
         }
         return conflict("Legacy close ownership is absent or not exact");
+    }
+
+    private static ResponseStatusException releasePreflightDiagnosisFailure(
+            RemoteWorkerException exception
+    ) {
+        if (exception.isCompatibleTransportFailure()) {
+            return new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Legacy close release preflight is temporarily unavailable");
+        }
+        if (exception.getCategory() == RemoteWorkerFailureCategory.PROTOCOL
+                || (!exception.hasTypedFailure()
+                    && exception.getStatusCode() != 409)) {
+            return new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Legacy close release preflight was not trustworthy");
+        }
+        return conflict("Legacy close release preflight was rejected");
     }
 
     private static ResponseStatusException unprocessable(String reason) {
