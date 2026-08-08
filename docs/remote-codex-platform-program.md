@@ -14278,3 +14278,74 @@ exact AX42 bundle and restart only the worker service. That rollout must remain
 separate from generating another plan and from the later single-use operator
 confirmation. It does not authorize WorkSession 16 release, prompts, AgentRun
 96 retries, runtime, backend/web, APK, preview, Beautips or other projects.
+
+The operator then authorized exclusively manifest
+`1dc6ab2ea756ee853b6e941607411d6405d4fab2dbc7f0c101180f3dd54128bf`
+and programme bundle
+`82bd783b6d9bf692488bd11cc63a4e6b87dbd05f14be1e821b501e606dd2725a`
+for the pre-7.7 AX42 worker rollout. A new plan, confirmation, WorkSession 16
+release, prompts, retries, runtime, backend, APK, preview, Beautips and other
+projects remained explicitly excluded.
+
+The candidate and installed-predecessor archives passed exact local and remote
+hash checks, fixed-prefix member validation and extracted-file validation. The
+canonical installer completed its read-only plan and bounded apply, restarted
+only the AgentRun worker and passed its established verification. Rollback was
+staged but not required. All transferred archives, extracted trees and the
+bounded orchestration script were removed.
+
+The installed worker service is now exact at
+`21064a91421914588bab464022c55599fe78a9ee4eba25e9c1b9164068eb5f18`;
+its installer is
+`46ad8b692d78ecd1565e87c22035f0fa93081d42a74742e42c0d7bc7f62b6418`.
+Effective `ProtectSystem` remains `strict` and effective `ReadWritePaths`
+contains exactly one
+`/srv/atenea/worker/workspace-release-v1` entry. Worker and release-mediator
+bytes remain unchanged at
+`4d102a4b02e7e0389d5bbae6e8fc0a45275101dda5b4e7577a7fa71555ef6749`
+and
+`baccb3c7c7053e5d09eb05148f1c2e368faf90d5e2706a537ac3473429dfada0`.
+The worker is active with zero automatic restarts.
+
+All five retained ownership fingerprints remain exact: registry
+`6dbb541e51d672236af660e01f83d9f89b0e3c0a5652757340170f2a70ca87e7`,
+WS16 workspace
+`6014606bb884c808a8f9603b9eb86aa7fc65c785fae59bd45a4caf468f0e065c`,
+WS16 allocation
+`af69156b9a6935cb11c96e0b7bdd73b950ec97959281a97b870bdad0c691a80f`,
+WS16 admission
+`099e565f0df471685c24925ce02d69431639b024499fd91e4d47c08c6d946e11`
+and WS17 workspace
+`97b41b63e425eb483175b96bce875ac3190300cedb089b176aa2fdaedd515cbb`.
+
+WorkSession 16 remains `CLOSED/BLOCKED/revision 8` with exact preflight error
+and no receipt; its immutable operation remains
+`BLOCKED/revision 8/OWNERSHIP/CONTACT_PLATFORM_ADMINISTRATOR`, non-retryable
+and without a receipt. WorkSession 17 remains
+`OPEN/NOT_STARTED/revision 0`. AgentRun 96 remains `FAILED` with zero retry
+children. WS16 plan/consumed/live counts remain `7/4/0` and its event count
+remains 8. No plan, operation revision, event, journal or release was created
+by the rollout.
+
+The release journal remains empty, matching transient Codex/Playwright units
+remain zero and rootless slots remain `3/0/0/3`. Worker, attachment, preview,
+image-root and all four proxy services are active with zero automatic
+restarts. Backup/check/health retain `success/0`, rootful Docker/containerd
+remain inactive and all three RAID arrays remain `[UU]`.
+
+Production, preview and Beautips retain their exact prior image and container
+identities, return local health HTTP 200 and have zero restarts.
+`atenea-activation-code_default` remains absent. No backend, APK, runtime,
+preview, Beautips or other-project mutation occurred.
+
+Sanitized evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-release-journal-sandbox-rollout-20260807`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-release-journal-sandbox-rollout-20260807`.
+Both copies verify 4/4 files; the SHA-256 of `SHA256SUMS` is
+`9212d32fb9ccd9b89130df1e0a54c9558c6102e2ddc7bfad73526c842b95b307`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains first pending. Progress
+stops before generating another read-only plan. That action and the later
+single-use operator confirmation remain separate human gates; this completed
+rollout authorizes neither.
