@@ -14212,3 +14212,69 @@ Progress stops before the new programme fast-forward, AX42 retry and backend
 rollout. A new exact authorization must name the final programme commit, the
 corrected bundle, the unchanged backend image and the corrected manifest. It
 must remain separate from the later in-product task 7.7 confirmation.
+
+The operator later completed the exact in-product target check and issued one
+real confirmation for WorkSession 16 while WorkSession 17 remained the open
+client context. The worker rejected fail-closed before the first persistent
+mutation: WorkSession 16 retained
+`WORKSPACE_RELEASE_PREFLIGHT_REJECTED`, the operation remained blocked without
+a receipt, and the fixed AX42 release-journal root still contained zero session
+directories. WorkSession 17, AgentRun 96 and every retained owner remained
+unchanged.
+
+Read-only comparison of the successful diagnostic path with the real release
+found one deterministic service-sandbox defect. The installed worker unit has
+`ProtectSystem=strict`, but its effective `ReadWritePaths` did not include
+`/srv/atenea/worker/workspace-release-v1`. The host root was still exact
+`0700 root:root`; only the worker service mount namespace made it read-only.
+The diagnostic could therefore validate the complete request without writing,
+while `ReleaseJournalStore.prepare()` could not create the mandatory first
+session journal. This also explains the observed absence of any journal leaf
+or ownership mutation and rules out Git, RAID, backup, capacity and foreign
+resource divergence as the cause.
+
+Programme correction commit
+`82e26e118ff156b9398b08ab73b79aa4adb1e860`, tree
+`81540f65e118bf4845869345fcd7daca5c3b699c`, adds only that fixed journal
+parent to the hardened worker unit's write boundary, advances the sealed unit
+hash and adds an installer regression. Attachments remain read-only. Worker
+and release-mediator bytes remain unchanged at
+`4d102a4b02e7e0389d5bbae6e8fc0a45275101dda5b4e7577a7fa71555ef6749`
+and
+`baccb3c7c7053e5d09eb05148f1c2e368faf90d5e2706a537ac3473429dfada0`.
+
+The installer/sandbox/rollback suite passes from source and from the extracted
+candidate. The release mediator passes 43/43 from source and extracted bundle;
+the AgentRun worker passes 81/81. Shell syntax, `git diff --check` and strict
+OpenSpec validation pass. The exact bundle SHA-256 is
+`82bd783b6d9bf692488bd11cc63a4e6b87dbd05f14be1e821b501e606dd2725a`.
+
+Production remains on
+`sha256:2037a4a52c6596b4b7fff201837e55bc87ca2646565cac690cbece709e5cf0a0`;
+preview remains on
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`;
+and Beautips remains on
+`sha256:ff9d2a0ab2620f0ea198daa029a6c92e9063a5b7369c9c0b3d49e3fab58385f3`.
+All three return local health HTTP 200 with zero restarts. AX42's worker and
+four proxy services remain active, backup/check/health retain successful
+results, rootful Docker/containerd remain inactive, all three RAID arrays
+remain `[UU]`, matching transient Codex/Playwright units remain zero and the
+release journal remains empty. No new plan, confirmation, release, prompt,
+retry, runtime, APK, AX42 installation, production, preview, Beautips or
+other-project mutation occurred during correction preparation.
+
+Sanitized evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-release-journal-sandbox-correction-20260807`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-release-journal-sandbox-correction-20260807`.
+Both copies verify 6/6 files. The SHA-256 of `SHA256SUMS` is
+`63f833e931eb7168291baeec78db65fb8ce7a7479c701d474ce16d31e52a543a`;
+the rollout-manifest SHA-256 is
+`1dc6ab2ea756ee853b6e941607411d6405d4fab2dbc7f0c101180f3dd54128bf`.
+
+OpenSpec progress remains `50/60`; task 7.7 remains the first pending task.
+Progress stops before the mandatory separate authorization to install this
+exact AX42 bundle and restart only the worker service. That rollout must remain
+separate from generating another plan and from the later single-use operator
+confirmation. It does not authorize WorkSession 16 release, prompts, AgentRun
+96 retries, runtime, backend/web, APK, preview, Beautips or other projects.
