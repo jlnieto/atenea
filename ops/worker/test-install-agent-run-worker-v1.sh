@@ -98,6 +98,8 @@ SERVICE_TEMPLATE="${SCRIPT_DIR}/templates/atenea-agent-run-worker-v1.service"
   || fail "service does not expose only the fixed retained root read-only"
 [[ "$(grep -Fc '/run/atenea/codex-images' "${SERVICE_TEMPLATE}")" -eq 1 ]] \
   || fail "service materialization write boundary is not exact"
+[[ "$(grep -Fc '/srv/atenea/worker/workspace-release-v1' "${SERVICE_TEMPLATE}")" -eq 1 ]] \
+  || fail "service release journal write boundary is not exact"
 ! grep -E '^ReadWritePaths=.*attachments-v1' "${SERVICE_TEMPLATE}" >/dev/null \
   || fail "service grants attachment write access"
 

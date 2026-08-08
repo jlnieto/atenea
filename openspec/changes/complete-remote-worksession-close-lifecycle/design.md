@@ -136,6 +136,11 @@ operation unchanged.
 
 ### Make release monotonic and crash-resumable
 
+The hardened AgentRun worker service grants its privileged fixed mediator
+write access only to `/srv/atenea/worker/workspace-release-v1` for this journal;
+the diagnostic route remains write-free. This boundary must be present in the
+service mount namespace as well as on the host filesystem.
+
 After preflight, a private session-owned journal records the immutable request
 fingerprint and advances monotonically through:
 
