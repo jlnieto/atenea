@@ -374,6 +374,41 @@ verify_project_config_content() {
   fi
 }
 
+verify_project_config_source_advance_content() {
+  jq -e \
+    --arg repository "$PROJECT_REPOSITORY" \
+    --arg branch "$PROJECT_BRANCH" \
+    --arg manifest_sha256 "$PROJECT_MANIFEST_SHA256" \
+    --arg runner "$PROJECT_RUNNER" \
+    --arg attachment_root "$ATTACHMENT_ROOT" '
+    (keys | sort) == ["attachmentRoot", "branch", "commit",
+      "executionEnabled", "manifestSha256", "projectId", "repository",
+      "runner", "schemaVersion", "selectionEnabled", "workspaces"] and
+    .schemaVersion == "project-codex-v1" and
+    .selectionEnabled == false and
+    .executionEnabled == false and
+    .projectId == "atenea" and
+    .repository == $repository and
+    .branch == $branch and
+    .manifestSha256 == $manifest_sha256 and
+    .runner == $runner and
+    .attachmentRoot == $attachment_root and
+    (.commit | test("^[0-9a-f]{40}$")) and
+    .workspaces == {}
+  ' "$PROJECT_CONFIG" >/dev/null \
+    || fail "source-advanced project configuration is not exact"
+
+  local retained_commit canonical_commit
+  retained_commit="$(jq -r '.commit' "$PROJECT_CONFIG")"
+  canonical_commit="$(observe_project_commit)"
+  [[ "$retained_commit" != "$canonical_commit" ]] \
+    || fail "project configuration source did not advance"
+  git --git-dir="$PROJECT_MIRROR" merge-base --is-ancestor \
+    "$retained_commit" "$canonical_commit" \
+    || fail "project configuration commit is not an ancestor of canonical source"
+  printf '%s:%s\n' "$retained_commit" "$canonical_commit"
+}
+
 verify_project_config_file_identity() {
   [[ -f "$PROJECT_CONFIG" && ! -L "$PROJECT_CONFIG" \
       && "$(stat -c '%a:%U:%G' "$PROJECT_CONFIG")" == "644:root:root" ]] \
@@ -417,6 +452,11 @@ project_config_install_preflight() {
     printf 'transition:%s\n' "$retained_sha256"
     return 0
   fi
+  local source_advance
+  if source_advance="$(verify_project_config_source_advance_content 2>/dev/null)"; then
+    printf 'source-advance:%s:%s\n' "$retained_sha256" "$source_advance"
+    return 0
+  fi
   verify_project_config_content
   printf 'retain:%s\n' "$retained_sha256"
 }
@@ -427,13 +467,24 @@ project_config_install_finalize() {
     write_project_config false false '{}' "$(observe_project_commit)"
     return 0
   fi
-  local operation retained_sha256
-  operation="${retained_identity%%:*}"
-  retained_sha256="${retained_identity#*:}"
-  [[ "$operation" == "retain" || "$operation" == "transition" ]] \
+  local operation retained_sha256 retained_commit canonical_commit surplus
+  IFS=: read -r operation retained_sha256 retained_commit canonical_commit surplus \
+    <<<"$retained_identity"
+  [[ "$operation" == "retain" || "$operation" == "transition" \
+      || "$operation" == "source-advance" ]] \
     || fail "existing project configuration transition identity is invalid"
   [[ "$retained_sha256" =~ ^[0-9a-f]{64}$ ]] \
     || fail "existing project configuration fingerprint is invalid"
+  [[ -z "$surplus" ]] \
+    || fail "existing project configuration transition identity is ambiguous"
+  if [[ "$operation" == "source-advance" ]]; then
+    [[ "$retained_commit" =~ ^[0-9a-f]{40}$ \
+        && "$canonical_commit" =~ ^[0-9a-f]{40}$ ]] \
+      || fail "source advance transition commits are invalid"
+  else
+    [[ -z "$retained_commit" && -z "$canonical_commit" ]] \
+      || fail "existing project configuration transition identity is ambiguous"
+  fi
   verify_project_config_file_identity
   [[ "$(sha256sum "$PROJECT_CONFIG" | cut -d' ' -f1)" == "$retained_sha256" ]] \
     || fail "existing project configuration changed during installation"
@@ -443,6 +494,14 @@ project_config_install_finalize() {
     canonical_commit="$(observe_project_commit)"
     [[ "$canonical_commit" == "$PROJECT_TRANSITION_TARGET_COMMIT" ]] \
       || fail "canonical main commit is not the reviewed transition target"
+    write_project_config false false '{}' "$canonical_commit"
+    verify_project_config_content
+    return 0
+  fi
+  if [[ "$operation" == "source-advance" ]]; then
+    [[ "$(verify_project_config_source_advance_content)" \
+        == "${retained_commit}:${canonical_commit}" ]] \
+      || fail "canonical source advance changed during installation"
     write_project_config false false '{}' "$canonical_commit"
     verify_project_config_content
     return 0

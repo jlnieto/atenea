@@ -293,6 +293,16 @@ remain byte-identical and ineligible. The current legacy repair requires a
 second explicit confirmation in the product and must be visually observed by
 the operator; its result cannot be simulated.
 
+An installer rollout after canonical source advancement treats the fixed AX42
+project registry as ownership state, not as a value to overwrite generally.
+It may advance the registry commit only when the root-owned document is the
+complete modern canonical Atenea shape, contains zero workspaces, has both
+selection and execution disabled, and its retained commit is an exact ancestor
+of the fixed mirror ref. The preflight binds the original file digest and both
+commits, then finalization rechecks all three before writing the disabled empty
+successor. Enabled, non-empty, legacy-incomplete, unrelated or foreign state
+fails before the worker is stopped.
+
 ## Failure Matrix
 
 | Observation | Persisted run/session state | Primary action | Automatic mutation |

@@ -67,3 +67,14 @@ registration, admission, allocation, runtime, preview or retained ownership.
   canonical ref
 - **THEN** the worker returns `SOURCE_ADVANCED` with no resource mutation and
   no resource locator in the response
+
+#### Scenario: Installer observes an empty disabled registry behind main
+
+- **WHEN** the exact root-owned canonical Atenea registry has zero workspaces,
+  selection and execution are both disabled, and its commit is an exact
+  ancestor of the fixed canonical mirror ref
+- **THEN** the reviewed installer MAY advance only the registry commit while
+  preserving the empty disabled state and all retained WorkSession data
+- **AND** it SHALL reject before stopping the worker when either gate is
+  enabled, a workspace exists, modern fixed authority is incomplete, or the
+  retained commit is unrelated, missing, foreign or ambiguous

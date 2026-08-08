@@ -447,6 +447,13 @@ sudo ./install-agent-run-worker-v1.sh disable
 The activation installer must run first. The AgentRun installer fails closed
 before stopping or writing if the installed activation program, sudoers
 boundary or three fixed workspace dependencies are absent, stale or foreign.
+If canonical Atenea source advanced while its root-owned project registry was
+completely empty and both selection and execution remained disabled, the
+installer may advance only that registry commit after proving the retained
+commit is an exact ancestor of the fixed canonical mirror. It rejects the
+transition if a workspace exists, either gate is enabled, the modern fixed
+authority fields are incomplete, or the commits are unrelated; the transition
+never enables selection or execution.
 
 Selection may be enabled with zero registered workspaces solely so Atenea can
 open a new WorkSession and persist its worker-generated UUID. Dispatch remains

@@ -14530,3 +14530,49 @@ rewrite AgentRun 96, move canonical `main`, or activate resources implicitly.
 Continuation requires a separately reviewed and explicitly authorized design
 decision that preserves the retained source snapshot, followed by a fresh
 clean-state audit.
+
+## Task 7.9 pre-rollout registry/source gate correction
+
+The operator authorized the exact pre-task-7.9 rollout sealed by manifest
+`b63db605b6f8dce1d24c1f11ed0d1e479a71c7ff3205ac2f5ed95aa6a158d73d`.
+The mandatory entry audit found that AX42's exact disabled, empty canonical
+Atenea registry still recorded `615e539d1f2622a4ac2568ba7697b876d49ae33e`,
+while its fixed mirror had advanced one direct descendant to
+`e4287dbc9a6a3545e6e1d0eda3b488e4a8e8edd5`. The authorized worker installer
+would reject this state before stopping the service, while the routing
+installer could advance independently. The rollout therefore stopped before
+any fast-forward, transfer, installer, restart, configuration, image load,
+deployment, APK publication or APK installation rather than creating a partial
+successor.
+
+The stopped preflight preserved WorkSession 16 at `CLOSED/RELEASED/revision
+10`, WorkSession 17 at `OPEN/NOT_STARTED/revision 0`, AgentRun 96 at terminal
+`FAILED` without retries, the exact empty disabled registry, absent WS16/WS17
+active admission/allocation and rootless inventory `3/0/0/3`. Worker services,
+backup/check/health, all three `[UU]` RAID arrays, production, preview,
+Beautips and Caddy remained healthy and unchanged. The two fresh-session
+production environment values and `atenea-activation-code_default` remained
+absent.
+
+Sanitized stopped-rollout evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.9-rollout-blocked-registry-source-divergence-20260808`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.9-rollout-blocked-registry-source-divergence-20260808`.
+Both copies verify 4/4 payloads; the SHA-256 of `SHA256SUMS` is
+`98bec4113a8f637c9aa487b9f4716472dfdf7ddb738509ca76ef681ea2864e40`.
+
+The reviewed correction now recognizes only the complete modern root-owned
+canonical Atenea registry with zero workspaces, selection/execution both false
+and a retained commit that is an exact ancestor of the fixed mirror ref. Its
+preflight binds the registry digest plus retained and canonical commits;
+finalization rechecks all three and writes only the disabled empty successor.
+Enabled, non-empty, legacy-incomplete, unrelated, foreign, ambiguous and
+post-preflight-changed fixtures reject. Repetition retains byte identity and
+does not rewrite the canonical disabled registry. The installer sandbox,
+routing installer, authenticated worker 88/88 and release mediator 45/45 suites
+pass, and OpenSpec strict validation remains valid.
+
+OpenSpec remains `52/60`; task 7.9 remains first pending. The correction must
+be committed, sealed into a new exact programme/AX42 candidate and pass a fresh
+clean-state audit. Production, AX42 installation, configuration, APK and the
+later `START_FRESH_SESSION` action remain separate authorization gates.

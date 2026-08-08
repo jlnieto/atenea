@@ -78,9 +78,15 @@ dependency_preflight_line="$(grep -n -m1 '^  verify_workspace_activation_depende
   "${SCRIPT_DIR}/install-agent-run-worker-v1.sh" | cut -d: -f1)"
 service_stop_line="$(grep -n -m1 '^  systemctl stop "\$SERVICE"$' \
   "${SCRIPT_DIR}/install-agent-run-worker-v1.sh" | cut -d: -f1)"
+project_config_preflight_line="$(grep -n -m1 \
+  'retained_project_config_sha256="\$(project_config_install_preflight)"' \
+  "${SCRIPT_DIR}/install-agent-run-worker-v1.sh" | cut -d: -f1)"
 [[ -n "${dependency_preflight_line}" && -n "${service_stop_line}" \
     && "${dependency_preflight_line}" -lt "${service_stop_line}" ]] \
   || fail "activation dependency is not checked before the worker stops"
+[[ -n "${project_config_preflight_line}" \
+    && "${project_config_preflight_line}" -lt "${service_stop_line}" ]] \
+  || fail "project configuration is not checked before the worker stops"
 [[ "$(grep -Fc '  verify_workspace_activation_dependency' \
   "${SCRIPT_DIR}/install-agent-run-worker-v1.sh")" -eq 2 ]] \
   || fail "activation dependency is not checked by both apply and verify"
@@ -193,6 +199,56 @@ LEGACY_PREFLIGHT_SHA256="$(project_config_install_preflight)"
 project_config_install_finalize "${LEGACY_PREFLIGHT_SHA256}"
 [[ "$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)" == "${LEGACY_CONFIG_SHA256}" ]] \
   || fail "installer finalize rewrote the exact legacy configuration"
+
+write_project_config false false '{}' "${RETAINED_COMMIT}"
+SOURCE_ADVANCE_CONFIG_SHA256="$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)"
+SOURCE_ADVANCE_PREFLIGHT="$(project_config_install_preflight)"
+[[ "${SOURCE_ADVANCE_PREFLIGHT}" \
+    == "source-advance:${SOURCE_ADVANCE_CONFIG_SHA256}:${RETAINED_COMMIT}:${CANONICAL_COMMIT}" ]] \
+  || fail "installer did not recognize the exact disabled empty source advance"
+project_config_install_finalize "${SOURCE_ADVANCE_PREFLIGHT}"
+jq -e \
+  --arg canonical "${CANONICAL_COMMIT}" '
+    .commit == $canonical and
+    .selectionEnabled == false and
+    .executionEnabled == false and
+    .workspaces == {}
+  ' "${PROJECT_CONFIG}" >/dev/null \
+  || fail "installer did not advance the empty registry while keeping it disabled"
+ADVANCED_CONFIG_SHA256="$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)"
+ADVANCED_REPEAT_PREFLIGHT="$(project_config_install_preflight)"
+[[ "${ADVANCED_REPEAT_PREFLIGHT}" == "retain:${ADVANCED_CONFIG_SHA256}" ]] \
+  || fail "repeated source advance did not become an exact retained configuration"
+project_config_install_finalize "${ADVANCED_REPEAT_PREFLIGHT}"
+[[ "$(sha256sum "${PROJECT_CONFIG}" | cut -d' ' -f1)" == "${ADVANCED_CONFIG_SHA256}" ]] \
+  || fail "repeated source advance rewrote the canonical disabled registry"
+
+write_project_config false false '{}' "${RETAINED_COMMIT}"
+SOURCE_ADVANCE_CHANGED_PREFLIGHT="$(project_config_install_preflight)"
+cp "${PROJECT_CONFIG}" "${PROJECT_CONFIG}.before-change"
+printf '\n' >>"${PROJECT_CONFIG}"
+if ( project_config_install_finalize "${SOURCE_ADVANCE_CHANGED_PREFLIGHT}" ) \
+    >/dev/null 2>&1; then
+  fail "installer advanced a registry that changed after preflight"
+fi
+mv "${PROJECT_CONFIG}.before-change" "${PROJECT_CONFIG}"
+
+for mutation in selection execution workspace legacy foreign_commit; do
+  write_project_config false false '{}' "${RETAINED_COMMIT}"
+  case "${mutation}" in
+    selection) jq '.selectionEnabled = true' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.rejected" ;;
+    execution) jq '.executionEnabled = true' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.rejected" ;;
+    workspace) jq '.workspaces.foreign = {}' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.rejected" ;;
+    legacy) jq 'del(.attachmentRoot)' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.rejected" ;;
+    foreign_commit) jq '.commit = "1111111111111111111111111111111111111111"' \
+      "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.rejected" ;;
+  esac
+  mv "${PROJECT_CONFIG}.rejected" "${PROJECT_CONFIG}"
+  if ( project_config_install_preflight ) >/dev/null 2>&1; then
+    fail "installer accepted an unsafe source advance transition: ${mutation}"
+  fi
+done
+write_project_config false false '{}' "${CANONICAL_COMMIT}"
 
 if jq '.foreignAuthority = true' "${PROJECT_CONFIG}" >"${PROJECT_CONFIG}.ambiguous" \
     && mv "${PROJECT_CONFIG}.ambiguous" "${PROJECT_CONFIG}" \

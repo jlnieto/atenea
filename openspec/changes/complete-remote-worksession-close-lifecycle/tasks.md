@@ -215,7 +215,10 @@ environment dumps.
   idempotence across response/backend loss, exact normal close before successor
   creation, no copied prompt/turn/attachment, no worker activation, and web and
   Android state/action clarity while AgentRun 96 and all retained state remain
-  unchanged
+  unchanged; before rollout, prove the worker installer advances only an exact
+  empty disabled canonical Atenea registry whose retained commit is an ancestor
+  of the fixed mirror, while rejecting enabled, non-empty, incomplete or
+  unrelated registry state before service stop
 - [ ] 7.10 Prove production, preview, Beautips, backups, RAID, four rootless
   slots, rootful daemons, listeners, leases, routing and unrelated sessions are
   healthy and unchanged; seal evidence, update the ledger, strict-validate,
