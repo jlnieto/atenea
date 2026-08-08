@@ -14349,3 +14349,63 @@ OpenSpec progress remains `50/60`; task 7.7 remains first pending. Progress
 stops before generating another read-only plan. That action and the later
 single-use operator confirmation remain separate human gates; this completed
 rollout authorizes neither.
+
+The operator then separately authorized only generation of one new WS16 plan
+from Atenea. The resulting real Android screen showed
+`Objetivo: WorkSession 16`, `Sesión abierta: WorkSession 17` and one primary
+`Confirmar WorkSession 16` action without clipping, overlap or an ambiguous
+competing action. Read-only persistence confirmed exactly one unconsumed,
+unexpired plan bound to canonical Atenea, `ax42-01` and remote session
+`7151dce0-69ab-4614-86e4-f93f1af825e4`. WS16 remained blocked, WS17 remained
+open and AgentRun 96 remained failed without retries.
+
+After that exact target check, the operator gave a separate confirmation gate
+and pressed the visible action once. The post-confirmation Android screen
+showed `Capacidad liberada`, explicitly stated that no instruction was resent
+and left `Reintentar tarea` as a future explicit decision. The action hierarchy
+was visible in the first mobile viewport with no clipping, overlap or
+horizontal overflow. The user-owned screenshots were inspected in place but
+not copied into programme evidence, avoiding unnecessary retention of session
+copy.
+
+Atenea now persists WorkSession 16 as
+`CLOSED/RELEASED/revision 10`, without an error and with exact receipt and
+release timestamp. Its immutable operation is
+`RELEASED/revision 10`, non-retryable, without error/category/next action and
+with its receipt and release timestamp. The latest exact plan is consumed and
+bound once. WorkSession 17 remains `OPEN/NOT_STARTED/revision 0` without a
+receipt. AgentRun 96 remains `FAILED` with zero retry children; WS17 retains
+one turn, one AgentRun, one attachment and one turn binding. Non-terminal
+AgentRuns remain zero.
+
+The first post-release ownership projection is exact: registration is disabled
+with zero workspaces, admission is `released/released`, the active allocation
+is absent and canonical `runtime-allocation-v1.retired.json` retains SHA-256
+`af69156b9a6935cb11c96e0b7bdd73b950ec97959281a97b870bdad0c691a80f`
+with `0640 atenea-worker:atenea` identity and one link. WS16 and WS17 workspace
+hashes remain
+`6014606bb884c808a8f9603b9eb86aa7fc65c785fae59bd45a4caf468f0e065c`
+and
+`97b41b63e425eb483175b96bce875ac3190300cedb089b176aa2fdaedd515cbb`.
+No direct SSH release, preflight repetition or private-journal authority was
+used.
+
+Matching transient Codex/Playwright units remain zero and rootless slots remain
+`3/0/0/3`. All declared worker services are active with zero automatic
+restarts; backup/check/health remain `success/0`; rootful Docker/containerd
+remain inactive; and all three RAID arrays remain `[UU]`. Production, preview
+and Beautips retain their exact image and container identities, return local
+HTTP 200 and have zero restarts. `atenea-activation-code_default` remains
+absent.
+
+Sanitized evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.7-real-confirmation-released-20260807`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.7-real-confirmation-released-20260807`.
+Both copies verify 5/5 files; the SHA-256 of `SHA256SUMS` is
+`549a5d5e55df91db1bd906b34b74925293925acf026b3b4daf1d6523a3f7c2d9`.
+
+Task 7.7 is complete and OpenSpec progress advances to `51/60`; task 7.8 is
+first pending. No idempotence repetition is claimed here. Task 7.8 must prove
+the repeated exact receipt plus complete zero-residual and retained inventory
+without reconstructing released ownership.
