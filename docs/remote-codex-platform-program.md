@@ -14474,3 +14474,59 @@ Task 7.8 is complete and OpenSpec progress advances to `52/60`; task 7.9 is
 first pending. Task 7.9 must prepare only WorkSession 17 readiness and expose
 the operator's explicit retry choice without sending a prompt, retrying
 AgentRun 96, or starting Codex/runtime.
+
+## Task 7.9 stopped — canonical source advanced after retained dispatch
+
+The operator authorized task 7.9 only for a no-workload WorkSession 17
+readiness ensure. Preflight proved WorkSession 17 clean and pinned to
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`, with no registration, admission
+or active allocation. AgentRun 96 remained terminal failed, pre-dispatch and
+unretried with its exact turn, attachment and profile snapshot. The declared
+Beautips WorkSession remained the only held admission in its unrelated
+`slot4`; it was identified from the programme ledger and not touched.
+
+Exactly one request was reconstructed from the eight persisted workspace
+identity fields and sent through the configured authenticated worker boundary
+with finite timeouts. Request SHA-256 is
+`b9863be686ba0e90c2bbefda9d5fcd66712b6985d62b6301fc5826e4aba9d0ce`.
+It contained no workload and accepted no client-selected command, endpoint,
+path, slot, port, service, label, credential or resource.
+
+The worker returned deterministic HTTP 403, which was not retried and did not
+enter the worker-unavailable window. The single request refreshed the worker's
+canonical mirror from retained `615e539d...` to current `main`
+`e4287dbc9a6a3545e6e1d0eda3b488e4a8e8edd5`. The latter is one direct
+descendant (`0/1` ahead/behind from the retained commit), tree
+`46a36bf3b10c0f3556a024bb936a8c9103ccd64d`, with sanitized subject
+`ops: retire obsolete Expo routes`. Because the worker compares the complete
+request against refreshed canonical source before invoking its activation
+mediator, the request failed closed on canonical ownership and created no
+workspace readiness resources.
+
+Post-checks prove WorkSession 16 remains exact `RELEASED/revision 10`;
+WorkSession 17 remains `OPEN/NOT_STARTED/revision 0`; and AgentRun 96 remains
+unchanged with zero retry children or recovery operations. Its retained counts
+remain one turn, one run, one attachment and one binding. WorkSession 17
+registration, admission and active allocation remain absent, its workspace
+record hash and clean `615e539d...` worktree are unchanged, and temporary raw
+request/response residue is zero.
+
+Atenea and Beautips configuration hashes remain unchanged. Worker services are
+active with zero restarts. Production, preview, Beautips and Caddy retain their
+exact container/image identities, remain running with zero restarts, and
+`atenea-activation-code_default` remains absent. No prompt, retry, Codex,
+runtime, deployment, APK, preview action, routing change or Beautips mutation
+occurred.
+
+Sanitized evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.9-blocked-canonical-source-divergence-20260808`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.9-blocked-canonical-source-divergence-20260808`.
+Both copies verify 5/5 payload files; the SHA-256 of `SHA256SUMS` is
+`504c91c4c8371a99820a50131662d929f753033c121306f121ede6d2dc6426af`.
+
+OpenSpec remains `52/60`; task 7.9 remains first pending. Do not repeat ensure,
+rewrite AgentRun 96, move canonical `main`, or activate resources implicitly.
+Continuation requires a separately reviewed and explicitly authorized design
+decision that preserves the retained source snapshot, followed by a fresh
+clean-state audit.
