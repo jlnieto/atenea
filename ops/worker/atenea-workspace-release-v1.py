@@ -23,6 +23,7 @@ from typing import Any, Callable
 SCHEMA = "atenea-workspace-release-preflight-v1"
 CAPACITY_OWNER_SCHEMA = "project-workspace-capacity-owner-v1"
 RELEASE_PREFLIGHT_SCHEMA = "project-workspace-release-diagnosis-v1"
+UNACTIVATED_DIAGNOSIS_SCHEMA = "project-workspace-unactivated-diagnosis-v1"
 PROJECT_ID = "atenea"
 WORKER_ID = "ax42-01"
 REPOSITORY = "https://github.com/jlnieto/atenea.git"
@@ -1628,6 +1629,164 @@ class FixedRootReleaseOperator:
         }
         return sealed
 
+    def diagnose_unactivated(self, request: Any) -> dict[str, Any]:
+        """Attest exact absence for a session that never acquired ownership."""
+
+        exact = _request_identity(request)
+        session = exact["sessionId"]
+        session_root = Path(f"/srv/atenea/workspaces/sessions/{session}")
+        workspace_path = session_root / "workspace-v1.json"
+        worktree = session_root / PROJECT_ID
+        allocation = session_root / "runtime-allocation-v1.json"
+        retired = session_root / RETIRED_ALLOCATION_NAME
+        admission = self.ADMISSION_ROOT / f"{session}.json"
+        registry, _registry_stat, _registry_bytes = self._json_file(
+            self.CONFIG, uid=self.root_uid, gid=self.root_gid, modes={0o644}
+        )
+        required_registry = {
+            "schemaVersion", "selectionEnabled", "executionEnabled",
+            "projectId", "repository", "branch", "commit", "manifestSha256",
+            "runner", "workspaces",
+        }
+        if (
+            frozenset(registry) not in {
+                frozenset(required_registry),
+                frozenset(required_registry | {"attachmentRoot"}),
+            }
+            or registry.get("schemaVersion") != "project-codex-v1"
+            or registry.get("projectId") != PROJECT_ID
+            or registry.get("repository") != REPOSITORY
+            or registry.get("branch") != BRANCH
+            or not isinstance(registry.get("commit"), str)
+            or COMMIT.fullmatch(registry["commit"]) is None
+            or registry.get("manifestSha256") != MANIFEST_SHA256
+            or registry.get("runner")
+            != "/usr/local/libexec/atenea/project-codex-runner-v1.py"
+            or not isinstance(registry.get("selectionEnabled"), bool)
+            or not isinstance(registry.get("executionEnabled"), bool)
+            or not isinstance(registry.get("workspaces"), dict)
+            or (
+                "attachmentRoot" in registry
+                and registry.get("attachmentRoot") != "/srv/atenea/attachments-v1"
+            )
+        ):
+            _reject()
+        for identity, record in registry["workspaces"].items():
+            if (
+                identity == exact["workspaceIdentity"]
+                or not isinstance(record, dict)
+                or record.get("sessionId") == session
+                or record.get("worktree") == str(worktree)
+            ):
+                _reject()
+        for forbidden in (allocation, retired, admission):
+            physical = self._physical(forbidden)
+            if physical.exists() or physical.is_symlink():
+                _reject()
+
+        physical_root = self._physical(session_root)
+        workspace_retained = physical_root.exists() or physical_root.is_symlink()
+        workspace_fingerprint = hashlib.sha256(b"absent").hexdigest()
+        if workspace_retained:
+            self._require_directory(physical_root, self.worker_uid)
+            workspace, _workspace_stat, workspace_bytes = self._json_file(
+                workspace_path,
+                uid=self.worker_uid,
+                gid=self.worker_gid,
+                modes={0o640},
+            )
+            expected_workspace = {
+                "schemaVersion", "sessionId", "projectId", "canonicalRemote",
+                "baseBranch", "branch", "mirrorPath", "worktreePath",
+                "workerHost", "state", "expectedBaseCommit", "headCommit",
+            }
+            if (
+                set(workspace) != expected_workspace
+                or workspace.get("schemaVersion") != 1
+                or workspace.get("sessionId") != session
+                or workspace.get("projectId") != PROJECT_ID
+                or workspace.get("canonicalRemote") != REPOSITORY
+                or workspace.get("baseBranch") != BRANCH
+                or workspace.get("branch") != exact["workspaceBranch"]
+                or workspace.get("mirrorPath")
+                != "/srv/atenea/repositories/atenea.git"
+                or workspace.get("worktreePath") != str(worktree)
+                or workspace.get("workerHost") != self.worker_host
+                or workspace.get("state") != "ready"
+                or workspace.get("expectedBaseCommit") != exact["commit"]
+                or workspace.get("headCommit") != exact["commit"]
+            ):
+                _reject()
+            self._require_directory(self._physical(worktree), self.worker_uid)
+            if not self.test_mode:
+                physical_worktree = self._physical(worktree)
+                remote = self._run([
+                    "/usr/bin/git", "-c", f"safe.directory={physical_worktree}",
+                    "-C", str(physical_worktree), "remote", "get-url", "origin",
+                ], 15).stdout.strip()
+                head = self._run([
+                    "/usr/bin/git", "-c", f"safe.directory={physical_worktree}",
+                    "-C", str(physical_worktree), "rev-parse", "--verify",
+                    "HEAD^{commit}",
+                ], 15).stdout.strip()
+                if remote != REPOSITORY or head != exact["commit"]:
+                    _reject()
+            workspace_fingerprint = hashlib.sha256(workspace_bytes).hexdigest()
+
+        self._assert_unactivated_ephemeral_absent(session)
+        absence = {
+            "sessionId": session,
+            "workspaceIdentity": exact["workspaceIdentity"],
+            "projectId": PROJECT_ID,
+            "workerId": WORKER_ID,
+            "registrationPresent": False,
+            "admissionPresent": False,
+            "activeAllocationPresent": False,
+            "retiredAllocationPresent": False,
+            "ephemeralPresent": False,
+            "workspaceRetained": workspace_retained,
+            "workspaceFingerprintSha256": workspace_fingerprint,
+        }
+        return {
+            "schemaVersion": UNACTIVATED_DIAGNOSIS_SCHEMA,
+            "state": "UNACTIVATED_ABSENCE_CONFIRMED",
+            "sessionId": session,
+            "workspaceIdentity": exact["workspaceIdentity"],
+            "projectId": PROJECT_ID,
+            "workerId": WORKER_ID,
+            "requestFingerprintSha256": canonical_hash(exact),
+            "absenceFingerprintSha256": canonical_hash(absence),
+            "valuesExposed": False,
+        }
+
+    def _assert_unactivated_ephemeral_absent(self, session: str) -> None:
+        if self.test_mode:
+            marker = self.root / "synthetic-ephemeral-present"
+            if marker.exists() or marker.is_symlink():
+                _reject()
+            self._assert_no_owned_preview(session)
+            return
+        runtime = f"ws-{session.replace('-', '')}"
+        docker = Path("/usr/bin/docker")
+        hosts = ["unix:///run/docker.sock"] + [
+            f"unix:///run/atenea-runtime/{slot}/docker.sock"
+            for slot in ("slot1", "slot2", "slot3", "slot4")
+        ]
+        for host in hosts:
+            if not Path(host.removeprefix("unix://")).exists():
+                continue
+            for arguments in (
+                ("ps", "-aq", "--filter", f"label=com.atenea.session={session}"),
+                ("ps", "-aq", "--filter", f"name={runtime}"),
+                ("network", "ls", "-q", "--filter", f"label=com.atenea.session={session}"),
+                ("network", "ls", "-q", "--filter", f"name={runtime}"),
+                ("image", "ls", "-q", "--filter", f"label=com.atenea.session={session}"),
+                ("image", "ls", "-q", f"{runtime}*"),
+            ):
+                if self._run([str(docker), "--host", host, *arguments], 20).stdout.strip():
+                    _reject()
+        self._assert_no_owned_preview(session)
+
     def diagnose_release_preflight(
         self,
         request: Any,
@@ -2257,7 +2416,8 @@ class WorkspaceReleaseFinalizer:
 def main() -> int:
     diagnose = sys.argv[1:] == ["--diagnose-capacity-owner"]
     diagnose_release = sys.argv[1:] == ["--diagnose-release-preflight"]
-    if len(sys.argv) != 1 and not diagnose and not diagnose_release:
+    diagnose_unactivated = sys.argv[1:] == ["--diagnose-unactivated"]
+    if len(sys.argv) != 1 and not diagnose and not diagnose_release and not diagnose_unactivated:
         print(json.dumps({"code": "WORKSPACE_RELEASE_PREFLIGHT_REJECTED"}), file=sys.stderr)
         return 64
     try:
@@ -2271,6 +2431,10 @@ def main() -> int:
             return 0
         if diagnose_release:
             diagnosis = FixedRootReleaseOperator().diagnose_release_preflight(request)
+            print(json.dumps(diagnosis, sort_keys=True, separators=(",", ":")))
+            return 0
+        if diagnose_unactivated:
+            diagnosis = FixedRootReleaseOperator().diagnose_unactivated(request)
             print(json.dumps(diagnosis, sort_keys=True, separators=(",", ":")))
             return 0
         exact = _request_identity(request)

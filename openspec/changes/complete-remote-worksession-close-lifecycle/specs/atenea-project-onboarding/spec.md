@@ -23,6 +23,16 @@ project acceptance exists.
 - **THEN** it obtains the canonical Atenea workspace, allocation, admission and
   registration without a host-side repair or foreign resource change
 
+#### Scenario: Next Atenea session replaces stale pre-dispatch source
+
+- **WHEN** the open session's failed pre-dispatch run is pinned behind current
+  canonical `main` and the operator explicitly starts fresh
+- **THEN** Atenea SHALL close that session normally and open exactly one clean
+  successor whose source is admitted only when the operator later sends a new
+  turn
+- **AND** it SHALL NOT copy or resend the stale turn, prompt, AgentRun or
+  attachment binding
+
 #### Scenario: Retained legacy Atenea owner is reconciled
 
 - **WHEN** a platform administrator separately confirms the exact closed

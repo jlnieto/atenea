@@ -49,3 +49,18 @@ worker, workspace and operation identities on every reconciliation.
 - **WHEN** Git/delivery and the exact worker release receipt both pass
 - **THEN** Atenea atomically records `CLOSED/RELEASED` and retains conversation,
   Git, attachment and audit history
+
+### Requirement: Current-code successor creation is monotonic and recoverable
+
+Atenea SHALL persist one exact fresh-start operation before closing the source
+WorkSession when a retained failed run cannot be retried because canonical
+source advanced. It SHALL persist the source's exact `RELEASED` receipt before
+creating or returning one successor and SHALL resume the same operation after
+response or backend loss.
+
+#### Scenario: Backend stops after source release
+
+- **WHEN** the source WorkSession is durably `CLOSED/RELEASED` but successor
+  creation did not complete before restart
+- **THEN** repeating the same operation SHALL create or return exactly one
+  successor and SHALL NOT reconstruct released ownership

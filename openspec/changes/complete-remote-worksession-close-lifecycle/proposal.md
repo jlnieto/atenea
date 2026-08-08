@@ -44,7 +44,10 @@ used professionally for consecutive real WorkSessions.
   outage and generic retry is unavailable while the blocker remains.
 - Roll out disabled by default, enable only canonical Atenea after a separate
   production authorization, reconcile the retained closed Atenea owner, and
-  leave the failed real task preserved for an explicit operator retry.
+  leave the failed real task preserved for an explicit operator decision. If
+  canonical `main` advanced after the failed pre-dispatch run, retry remains
+  forbidden and Atenea offers an idempotent fresh WorkSession on current code
+  without replaying the retained prompt.
 
 ## Capabilities
 

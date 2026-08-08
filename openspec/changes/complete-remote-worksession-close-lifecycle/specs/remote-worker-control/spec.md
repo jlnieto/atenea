@@ -46,6 +46,27 @@ commands, paths, labels, credentials or foreign ownership details.
 - **THEN** Atenea records only a generic protocol failure and discards the raw
   body without inferring retryability or ownership
 
+### Requirement: Read-only canonical-source readiness
+
+The worker SHALL compare only the exact persisted canonical Atenea identity
+with its fixed refreshed mirror. It SHALL accept no caller-selected operational
+authority and SHALL not activate a workspace.
+
+#### Scenario: Readiness detects newer canonical source
+
+- **WHEN** the requested commit equals current canonical `main` or is its exact
+  ancestor
+- **THEN** the worker SHALL return only `READY_FOR_RETRY` for equality or
+  `SOURCE_ADVANCED` for the ancestor relationship
+- **AND** it SHALL NOT change workspace registration, admission, allocation,
+  runtime, preview or retained ownership
+
+#### Scenario: Source relationship is not exact
+
+- **WHEN** the commit is missing, unrelated, foreign or ambiguous
+- **THEN** the worker SHALL reject deterministically without entering the
+  worker-unavailable window or invoking activation
+
 ### Requirement: Idempotent exact workspace release
 
 The worker SHALL expose one authenticated closed-schema operation to release a
@@ -63,6 +84,16 @@ removed/released/retained projections.
   proves it has no non-terminal execution
 - **THEN** the reviewed finalizer releases only that session's exact ephemeral
   ownership and returns a persisted `RELEASED` receipt
+
+#### Scenario: Pre-dispatch WorkSession never activated ownership
+
+- **WHEN** Atenea requests normal close for a WorkSession with retained run
+  history, no remote execution identity and exact worker proof that no
+  execution, registration, admission, allocation or ephemeral resource exists
+- **THEN** the worker SHALL persist and return the same standard `RELEASED`
+  receipt without reconstructing ownership or mutating retained workspace state
+- **AND** partial, foreign or ambiguous state SHALL reject deterministically
+  without entering the worker-unavailable window
 
 #### Scenario: Release response is lost
 

@@ -54,3 +54,16 @@ artifacts, release receipt, backups and policy-retained data volumes.
 - **WHEN** the same request reaches a matching `RELEASED` journal and receipt
 - **THEN** no container, network, image, listener, process, registration,
   admission or allocation is changed again
+
+### Requirement: Readiness diagnosis never acquires resources
+
+The canonical-source readiness operation SHALL be read-only apart from the
+fixed mirror refresh and SHALL never call workspace activation or change
+registration, admission, allocation, runtime, preview or retained ownership.
+
+#### Scenario: Pinned source is behind current main
+
+- **WHEN** the requested commit is an exact ancestor of the refreshed fixed
+  canonical ref
+- **THEN** the worker returns `SOURCE_ADVANCED` with no resource mutation and
+  no resource locator in the response

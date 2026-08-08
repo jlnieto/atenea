@@ -130,6 +130,23 @@ raw infrastructure identities or error payloads MUST NOT be exposed.
 - **THEN** both surfaces show `Capacidad liberada` and offer an explicit retry
   without executing it automatically
 
+#### Scenario: Canonical source advanced before retry
+
+- **WHEN** the failed pre-dispatch AgentRun is otherwise retry-eligible but its
+  pinned commit is an exact ancestor of current canonical `main`
+- **THEN** Atenea SHALL show `Código actualizado`, SHALL NOT offer or execute
+  retry, and SHALL offer one `START_FRESH_SESSION` primary action only to a
+  `PLATFORM_ADMINISTRATOR`
+- **AND** the retained AgentRun, turn, profile and attachment binding SHALL
+  remain unchanged
+
+#### Scenario: Fresh start is repeated after response or backend loss
+
+- **WHEN** the same operator repeats `START_FRESH_SESSION` with the same
+  idempotency key
+- **THEN** Atenea SHALL resume or return the same durable operation and the same
+  successor WorkSession without closing or opening any additional session
+
 #### Scenario: Exact blocked confirmation can be validated again
 
 - **WHEN** the backend proves the complete exact blocked-operation recovery

@@ -255,6 +255,7 @@ class WorkspaceReleaseWorkerExecutionTest(WorkspaceReleaseContractTest):
             "ax42-01",
             privilege_command=(),
             project_workspace_releaser=self.releaser,
+            unactivated_release_enabled=True,
         )
 
     def tearDown(self):
@@ -308,6 +309,80 @@ class WorkspaceReleaseWorkerExecutionTest(WorkspaceReleaseContractTest):
                 self.state.release_workspace(self.request)
         self.assertEqual(HTTPStatus.BAD_GATEWAY, malformed.exception.status)
 
+    def test_unactivated_release_is_default_off_durable_and_idempotent(self):
+        disabled = MODULE.WorkerState(
+            Path(self.temporary.name) / "disabled",
+            "ax42-01",
+            privilege_command=(),
+            project_workspace_releaser=self.releaser,
+        )
+        with mock.patch.object(MODULE.subprocess, "run") as run:
+            with self.assertRaises(MODULE.ProtocolError) as rejected:
+                disabled.release_unactivated_workspace(self.request)
+        self.assertEqual(HTTPStatus.FORBIDDEN, rejected.exception.status)
+        run.assert_not_called()
+
+        diagnosis = {
+            "schemaVersion": MODULE.WORKSPACE_UNACTIVATED_DIAGNOSIS_SCHEMA,
+            "state": "UNACTIVATED_ABSENCE_CONFIRMED",
+            "sessionId": self.request["sessionId"],
+            "workspaceIdentity": self.request["workspaceIdentity"],
+            "projectId": MODULE.PROJECT_ID,
+            "workerId": "ax42-01",
+            "requestFingerprintSha256": MODULE.canonical_hash(self.request),
+            "absenceFingerprintSha256": "9" * 64,
+            "valuesExposed": False,
+        }
+        completed = subprocess.CompletedProcess(
+            [str(self.releaser), "--diagnose-unactivated"],
+            0,
+            json.dumps(diagnosis),
+            "",
+        )
+        with mock.patch.object(
+            MODULE.subprocess, "run", return_value=completed
+        ) as run:
+            first = self.state.release_unactivated_workspace(self.request)
+            second = self.state.release_unactivated_workspace(dict(self.request))
+
+        self.assertEqual(first, second)
+        self.assertEqual("RELEASED", first["state"])
+        self.assertEqual(6, first["revision"])
+        self.assertEqual(
+            {key: 0 for key in MODULE.WORKSPACE_RELEASE_REMOVED_KEYS},
+            first["removed"],
+        )
+        self.assertEqual(1, run.call_count)
+        self.assertEqual(
+            [str(self.releaser), "--diagnose-unactivated"],
+            run.call_args.args[0],
+        )
+        self.assertEqual(60, run.call_args.kwargs["timeout"])
+
+        restarted = MODULE.WorkerState(
+            Path(self.temporary.name) / "state",
+            "ax42-01",
+            privilege_command=(),
+            project_workspace_releaser=self.releaser,
+            unactivated_release_enabled=True,
+        )
+        with mock.patch.object(MODULE.subprocess, "run") as repeated:
+            self.assertEqual(
+                first,
+                restarted.release_unactivated_workspace(dict(self.request)),
+            )
+        repeated.assert_not_called()
+
+    def test_unactivated_release_rejects_any_prior_execution_before_mediator(self):
+        self.state.executions["terminal"] = {
+            "sessionId": self.session_id,
+            "status": "FAILED",
+        }
+        with mock.patch.object(MODULE.subprocess, "run") as run:
+            with self.assertRaisesRegex(MODULE.ProtocolError, "no worker execution"):
+                self.state.release_unactivated_workspace(self.request)
+        run.assert_not_called()
+
     def test_capacity_owner_diagnosis_invokes_only_fixed_read_only_mode(self):
         request = {
             key: value for key, value in self.request.items()
@@ -347,7 +422,6 @@ class WorkspaceReleaseWorkerExecutionTest(WorkspaceReleaseContractTest):
                 MODULE.validate_workspace_capacity_owner_request(
                     {**request, forbidden: "caller-value"}
                 )
-
     def test_release_preflight_invokes_only_fixed_non_mutating_mode(self):
         response = {
             "schemaVersion": MODULE.WORKSPACE_RELEASE_PREFLIGHT_SCHEMA,
@@ -389,6 +463,88 @@ class WorkspaceReleaseWorkerExecutionTest(WorkspaceReleaseContractTest):
         ):
             with self.subTest(field=forbidden), self.assertRaises(MODULE.ProtocolError):
                 MODULE.validate_workspace_release_request(
+                    {**self.request, forbidden: "caller-value"}
+                )
+
+
+class WorkspaceReadinessTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.session_id = "11111111-1111-4111-8111-111111111111"
+        self.request = {
+            "sessionId": self.session_id,
+            "workspaceIdentity": "remote:ax42-01:work-session:" + self.session_id,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": TEST_COMMIT,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+            "workspaceBranch": "atenea/session-" + self.session_id,
+        }
+        self.state = MODULE.WorkerState(
+            Path(self.temporary.name) / "state",
+            "ax42-01",
+            project_readiness_enabled=True,
+        )
+        self.refreshes = []
+        self.state._refresh_project_mirror = lambda route: self.refreshes.append(
+            route["identity"]["projectId"]
+        )
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_default_off_rejects_before_refresh(self):
+        disabled = MODULE.WorkerState(
+            Path(self.temporary.name) / "disabled",
+            "ax42-01",
+        )
+        with mock.patch.object(disabled, "_refresh_project_mirror") as refresh:
+            with self.assertRaises(MODULE.ProtocolError) as rejected:
+                disabled.diagnose_workspace_readiness(self.request)
+        self.assertEqual(HTTPStatus.FORBIDDEN, rejected.exception.status)
+        refresh.assert_not_called()
+
+    def test_equal_commit_is_retryable_without_activation(self):
+        self.state._observe_project_commit = lambda _route: TEST_COMMIT
+        with mock.patch.object(self.state, "_is_project_commit_ancestor") as ancestor:
+            response = self.state.diagnose_workspace_readiness(self.request)
+
+        self.assertEqual("READY_FOR_RETRY", response["state"])
+        self.assertTrue(response["retryAllowed"])
+        self.assertEqual("RETRY_AGENT_RUN", response["nextAction"])
+        self.assertEqual(["atenea"], self.refreshes)
+        ancestor.assert_not_called()
+
+    def test_exact_ancestor_requires_fresh_session_without_activation(self):
+        current = "2" * 40
+        self.state._observe_project_commit = lambda _route: current
+        self.state._is_project_commit_ancestor = lambda _route, old, new: (
+            old == TEST_COMMIT and new == current
+        )
+
+        response = self.state.diagnose_workspace_readiness(self.request)
+
+        self.assertEqual("SOURCE_ADVANCED", response["state"])
+        self.assertFalse(response["retryAllowed"])
+        self.assertEqual("START_FRESH_SESSION", response["nextAction"])
+        self.assertEqual(TEST_COMMIT, response["requestedCommit"])
+        self.assertEqual(current, response["canonicalCommit"])
+        self.assertFalse(response["valuesExposed"])
+
+    def test_unrelated_or_foreign_source_fails_deterministically(self):
+        self.state._observe_project_commit = lambda _route: "2" * 40
+        self.state._is_project_commit_ancestor = lambda *_args: False
+        with self.assertRaises(MODULE.ProtocolError) as rejected:
+            self.state.diagnose_workspace_readiness(self.request)
+        self.assertEqual(HTTPStatus.CONFLICT, rejected.exception.status)
+        self.assertEqual("OWNERSHIP", rejected.exception.safe_error["category"])
+        for forbidden in (
+            "command", "path", "slot", "port", "service", "endpoint",
+            "resourceName", "label", "credential", "deletionTarget",
+        ):
+            with self.subTest(field=forbidden), self.assertRaises(MODULE.ProtocolError):
+                MODULE.validate_workspace_readiness_request(
                     {**self.request, forbidden: "caller-value"}
                 )
 
@@ -2218,6 +2374,68 @@ class WorkerHttpTest(unittest.TestCase):
 
         self.assertEqual([request], observed)
         self.assertEqual(receipt, payload)
+
+    def test_readiness_and_unactivated_release_routes_are_exact_and_authenticated(self):
+        session_id = "11111111-1111-4111-8111-111111111111"
+        readiness_request = {
+            "sessionId": session_id,
+            "workspaceIdentity": "remote:ax42-01:work-session:" + session_id,
+            "projectId": MODULE.PROJECT_ID,
+            "repository": MODULE.PROJECT_REPOSITORY,
+            "branch": MODULE.PROJECT_BRANCH,
+            "commit": TEST_COMMIT,
+            "manifestSha256": MODULE.PROJECT_MANIFEST_SHA256,
+            "workspaceBranch": "atenea/session-" + session_id,
+        }
+        release_request = {
+            "operationId": "22222222-2222-4222-8222-222222222222",
+            "idempotencyKey": "33333333-3333-4333-8333-333333333333",
+            **readiness_request,
+        }
+        readiness = {
+            "schemaVersion": MODULE.WORKSPACE_READINESS_SCHEMA,
+            "state": "SOURCE_ADVANCED",
+            "sessionId": session_id,
+            "workspaceIdentity": readiness_request["workspaceIdentity"],
+            "projectId": MODULE.PROJECT_ID,
+            "workerId": "http-worker",
+            "requestedCommit": TEST_COMMIT,
+            "canonicalCommit": "2" * 40,
+            "retryAllowed": False,
+            "nextAction": "START_FRESH_SESSION",
+            "requestFingerprintSha256": MODULE.canonical_hash(readiness_request),
+            "relationshipFingerprintSha256": "4" * 64,
+            "valuesExposed": False,
+        }
+        receipt_fixture = WorkspaceReleaseContractTest()
+        receipt_fixture.setUp()
+        receipt = receipt_fixture.receipt()
+        observed = []
+        self.state.diagnose_workspace_readiness = lambda body: (
+            observed.append(("readiness", body)) or readiness
+        )
+        self.state.release_unactivated_workspace = lambda body: (
+            observed.append(("release", body)) or receipt
+        )
+
+        with self.assertRaises(urllib.error.HTTPError) as denied:
+            self.post(MODULE.WORKSPACE_READINESS_PATH, readiness_request)
+        self.assertEqual(401, denied.exception.code)
+        with self.post(
+            MODULE.WORKSPACE_READINESS_PATH, readiness_request, "t" * 64
+        ) as response:
+            self.assertEqual(readiness, json.load(response))
+        with self.post(
+            MODULE.WORKSPACE_UNACTIVATED_RELEASE_PATH,
+            release_request,
+            "t" * 64,
+        ) as response:
+            self.assertEqual(receipt, json.load(response))
+
+        self.assertEqual([
+            ("readiness", readiness_request),
+            ("release", release_request),
+        ], observed)
 
     def test_capacity_owner_route_dispatches_exact_authenticated_request(self):
         session_id = "11111111-1111-4111-8111-111111111111"

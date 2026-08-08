@@ -199,9 +199,22 @@ unchanged. Foreign, partial or ambiguous ownership yields
 `CONTACT_PLATFORM_ADMINISTRATOR` and never invokes cleanup.
 
 The current WorkSession 16 repair follows this path. WorkSession 17 and failed
-AgentRun 96 are not altered. After release, an idempotent no-run ensure may
-prove WorkSession 17 ready; the operator must separately choose whether to
-retry the preserved prompt.
+AgentRun 96 are not altered. After release, a read-only readiness diagnosis
+refreshes the exact canonical mirror and compares WorkSession 17's pinned
+commit with current `main` before any ensure. Equal commits permit the existing
+explicit retry path. An exact ancestor relationship instead produces
+`SOURCE_ADVANCED`: retry stays forbidden and the only primary action is
+`START_FRESH_SESSION`.
+
+`START_FRESH_SESSION` is a durable, administrator-only, idempotent operation.
+It accepts only an idempotency key; project, source session, failed run and all
+worker ownership are server-derived. It first completes the normal remote
+close of WorkSession 17, including the exact persisted `RELEASED` receipt, and
+then opens or returns its single persisted successor on current canonical code.
+Response loss or backend restart resumes the same operation. The successor has
+no copied turn, prompt or attachment and starts no worker ensure, Codex process
+or runtime. WorkSession 17, AgentRun 96 and their retained history remain
+immutable.
 
 AgentRun 96 predates the V63 typed capacity failure fields, so its immutable
 null failure projection is not rewritten. While the Atenea-only reconciliation
@@ -259,7 +272,8 @@ Web and Android consume the same read model. The first viewport shows one of:
   authorized administrator;
 - `Capacidad liberada` with `Reintentar tarea` only after the blocker is gone.
 
-Generic retry is hidden or disabled while a deterministic blocker remains.
+Generic retry is hidden or disabled while a deterministic blocker remains or
+while the run's pinned commit is an ancestor of newer canonical source.
 The screen does not expose host paths, UUIDs, raw HTTP text, labels or command
 output. Web acceptance uses real rendered Playwright checks at `1440x900` and
 `390x844`; Android receives equivalent state/action tests and a separately

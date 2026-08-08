@@ -49,7 +49,7 @@ install_exact_directory "$(id -un)" "$(id -gn)" 0750 "${MODE_FIXTURE}/release"
 [[ "$(sha256sum "${SCRIPT_DIR}/atenea-workspace-release-v1.py" | cut -d' ' -f1)" \
     == "${WORKSPACE_RELEASER_SHA256}" ]] \
   || fail "Atenea workspace releaser fingerprint is stale"
-[[ "$(workspace_activation_sudoers_content | wc -l)" -eq 4 ]] \
+[[ "$(workspace_activation_sudoers_content | wc -l)" -eq 5 ]] \
   || fail "workspace lifecycle sudo authority count is not exact"
 [[ "$(workspace_activation_sudoers_content | grep -Fxc \
     "atenea-worker ALL=(root) NOPASSWD: ${WORKSPACE_RELEASER}")" -eq 1 ]] \
@@ -60,6 +60,9 @@ install_exact_directory "$(id -un)" "$(id -gn)" 0750 "${MODE_FIXTURE}/release"
 [[ "$(workspace_activation_sudoers_content | grep -Fxc \
     "atenea-worker ALL=(root) NOPASSWD: ${WORKSPACE_RELEASER} --diagnose-release-preflight")" \
     -eq 1 ]] || fail "read-only release preflight sudo authority is not exact"
+[[ "$(workspace_activation_sudoers_content | grep -Fxc \
+    "atenea-worker ALL=(root) NOPASSWD: ${WORKSPACE_RELEASER} --diagnose-unactivated")" \
+    -eq 1 ]] || fail "unactivated absence diagnosis sudo authority is not exact"
 ! workspace_activation_sudoers_content | grep -F "${WORKSPACE_RELEASER} *" >/dev/null \
   || fail "workspace release sudo authority is broadened"
 [[ "$(sha256sum "${SCRIPT_DIR}/session-workspace-v1.sh" | cut -d' ' -f1)" \
@@ -102,6 +105,9 @@ SERVICE_TEMPLATE="${SCRIPT_DIR}/templates/atenea-agent-run-worker-v1.service"
   || fail "service release journal write boundary is not exact"
 ! grep -E '^ReadWritePaths=.*attachments-v1' "${SERVICE_TEMPLATE}" >/dev/null \
   || fail "service grants attachment write access"
+grep -F -- '--project-readiness-enabled --unactivated-release-enabled' \
+  "${SERVICE_TEMPLATE}" >/dev/null \
+  || fail "fresh-session worker gates are not both explicit"
 
 SESSION_ID=11111111-1111-4111-8111-111111111111
 WORKSPACE_IDENTITY="remote:ax42-01:work-session:${SESSION_ID}"

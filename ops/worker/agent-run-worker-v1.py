@@ -119,12 +119,28 @@ WORKSPACE_ENSURE_KEYS = {
 WORKSPACE_RELEASE_PATH = "/v1/project-workspaces/release"
 WORKSPACE_RELEASE_PREFLIGHT_PATH = "/v1/project-workspaces/release-preflight"
 WORKSPACE_CAPACITY_OWNER_PATH = "/v1/project-workspaces/capacity-owner"
+WORKSPACE_READINESS_PATH = "/v1/project-workspaces/readiness"
+WORKSPACE_UNACTIVATED_RELEASE_PATH = "/v1/project-workspaces/release-unactivated"
 WORKSPACE_RELEASE_PREFLIGHT_SCHEMA = "project-workspace-release-diagnosis-v1"
 WORKSPACE_CAPACITY_OWNER_SCHEMA = "project-workspace-capacity-owner-v1"
+WORKSPACE_READINESS_SCHEMA = "project-workspace-readiness-v1"
+WORKSPACE_UNACTIVATED_DIAGNOSIS_SCHEMA = "project-workspace-unactivated-diagnosis-v1"
 WORKSPACE_CAPACITY_OWNER_KEYS = WORKSPACE_ENSURE_KEYS
 WORKSPACE_CAPACITY_OWNER_RESPONSE_KEYS = {
     "schemaVersion", "state", "sessionId", "workspaceIdentity", "projectId",
     "workerId", "requestFingerprintSha256", "ownershipFingerprintSha256",
+    "valuesExposed",
+}
+WORKSPACE_READINESS_KEYS = WORKSPACE_ENSURE_KEYS
+WORKSPACE_READINESS_RESPONSE_KEYS = {
+    "schemaVersion", "state", "sessionId", "workspaceIdentity", "projectId",
+    "workerId", "requestedCommit", "canonicalCommit", "retryAllowed",
+    "nextAction", "requestFingerprintSha256", "relationshipFingerprintSha256",
+    "valuesExposed",
+}
+WORKSPACE_UNACTIVATED_DIAGNOSIS_KEYS = {
+    "schemaVersion", "state", "sessionId", "workspaceIdentity", "projectId",
+    "workerId", "requestFingerprintSha256", "absenceFingerprintSha256",
     "valuesExposed",
 }
 WORKSPACE_RELEASE_SCHEMA = "project-workspace-release-v1"
@@ -366,6 +382,57 @@ def validate_workspace_capacity_owner_response(
             HTTPStatus.BAD_GATEWAY,
             "workspace_capacity_owner_response_invalid",
             "workspace capacity-owner response is invalid",
+        )
+    return dict(response)
+
+
+def validate_workspace_readiness_request(request: dict[str, Any]) -> dict[str, Any]:
+    exact = validate_workspace_capacity_owner_request(request)
+    if exact["projectId"] != PROJECT_ID:
+        raise ProtocolError(
+            HTTPStatus.FORBIDDEN,
+            "workspace_readiness_project_conflict",
+            "workspace readiness is restricted to canonical Atenea",
+        )
+    return exact
+
+
+def validate_workspace_readiness_response(
+    request: dict[str, Any], worker_id: str, response: dict[str, Any]
+) -> dict[str, Any]:
+    exact = validate_workspace_readiness_request(request)
+    state = response.get("state") if isinstance(response, dict) else None
+    expected_action = {
+        "READY_FOR_RETRY": "RETRY_AGENT_RUN",
+        "SOURCE_ADVANCED": "START_FRESH_SESSION",
+    }.get(state)
+    relationship = {
+        "requestedCommit": exact["commit"],
+        "canonicalCommit": response.get("canonicalCommit")
+            if isinstance(response, dict) else None,
+        "state": state,
+    }
+    if (
+        not isinstance(response, dict)
+        or set(response) != WORKSPACE_READINESS_RESPONSE_KEYS
+        or response.get("schemaVersion") != WORKSPACE_READINESS_SCHEMA
+        or expected_action is None
+        or response.get("sessionId") != exact["sessionId"]
+        or response.get("workspaceIdentity") != exact["workspaceIdentity"]
+        or response.get("projectId") != PROJECT_ID
+        or response.get("workerId") != worker_id
+        or response.get("requestedCommit") != exact["commit"]
+        or COMMIT_PATTERN.fullmatch(str(response.get("canonicalCommit"))) is None
+        or response.get("retryAllowed") is not (state == "READY_FOR_RETRY")
+        or response.get("nextAction") != expected_action
+        or response.get("requestFingerprintSha256") != canonical_hash(exact)
+        or response.get("relationshipFingerprintSha256") != canonical_hash(relationship)
+        or response.get("valuesExposed") is not False
+    ):
+        raise ProtocolError(
+            HTTPStatus.BAD_GATEWAY,
+            "workspace_readiness_response_invalid",
+            "workspace readiness response is invalid",
         )
     return dict(response)
 
@@ -683,6 +750,8 @@ class WorkerState:
         codex_release_root: Path | None = None,
         reconcile_materializations_on_start: bool = False,
         workspace_lifecycle_timeout: float = 10.0,
+        project_readiness_enabled: bool = False,
+        unactivated_release_enabled: bool = False,
     ):
         self.state_dir = state_dir
         self.state_file = state_dir / "executions.json"
@@ -710,11 +779,14 @@ class WorkerState:
         self.codex_release_root = codex_release_root
         self.reconcile_materializations_on_start = reconcile_materializations_on_start
         self.workspace_lifecycle_timeout = workspace_lifecycle_timeout
+        self.project_readiness_enabled = project_readiness_enabled
+        self.unactivated_release_enabled = unactivated_release_enabled
         self.lock = threading.RLock()
         self.wakeup = threading.Event()
         self.stop_event = threading.Event()
         self.executions: dict[str, dict[str, Any]] = {}
         self.validations: dict[str, dict[str, Any]] = {}
+        self.unactivated_workspace_releases: dict[str, dict[str, Any]] = {}
         self.threads: dict[str, threading.Thread] = {}
         self.processes: dict[str, subprocess.Popen[str]] = {}
         self.scheduler: threading.Thread | None = None
@@ -783,6 +855,15 @@ class WorkerState:
         if not isinstance(parsed.get("validations", {}), dict):
             raise RuntimeError("durable worker validation state has an unsupported schema")
         self.validations = parsed.get("validations", {})
+        if not isinstance(parsed.get("unactivatedWorkspaceReleases", {}), dict):
+            raise RuntimeError("durable unactivated release state has an unsupported schema")
+        self.unactivated_workspace_releases = parsed.get(
+            "unactivatedWorkspaceReleases", {}
+        )
+        for value in self.unactivated_workspace_releases.values():
+            validate_workspace_release_receipt(
+                value.get("request"), self.worker_id, value.get("receipt")
+            )
         for validation in self.validations.values():
             if validation.get("status") == "RUNNING":
                 validation["status"] = "BLOCKED"
@@ -822,6 +903,7 @@ class WorkerState:
             "workerId": self.worker_id,
             "executions": self.executions,
             "validations": self.validations,
+            "unactivatedWorkspaceReleases": self.unactivated_workspace_releases,
         }
         fd, temporary = tempfile.mkstemp(prefix=".executions-", dir=self.state_dir)
         try:
@@ -1431,6 +1513,125 @@ class WorkerState:
                 exact_request, self.worker_id, receipt
             )
 
+    def release_unactivated_workspace(self, request: dict[str, Any]) -> dict[str, Any]:
+        if not self.unactivated_release_enabled:
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "workspace_unactivated_release_disabled",
+                "unactivated workspace release is disabled",
+            )
+        exact = validate_workspace_release_request(request)
+        with self.workspace_lifecycle_lock():
+            with self.lock:
+                assert_no_non_terminal_session_execution(
+                    self.executions, exact["sessionId"]
+                )
+                if any(
+                    item.get("sessionId") == exact["sessionId"]
+                    for item in self.executions.values()
+                ):
+                    raise ProtocolError(
+                        HTTPStatus.CONFLICT,
+                        "workspace_unactivated_execution_conflict",
+                        "unactivated release requires no worker execution",
+                    )
+                existing = self.unactivated_workspace_releases.get(
+                    exact["operationId"]
+                )
+                if existing is None:
+                    existing = next((
+                        value
+                        for value in self.unactivated_workspace_releases.values()
+                        if value["request"]["idempotencyKey"] == exact["idempotencyKey"]
+                    ), None)
+                if existing is not None:
+                    validate_workspace_release_repetition(existing["request"], exact)
+                    return validate_workspace_release_receipt(
+                        exact, self.worker_id, existing["receipt"]
+                    )
+            mediator = self.project_workspace_releaser
+            if mediator is None or not mediator.is_file():
+                raise ProtocolError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "workspace_unactivated_release_unavailable",
+                    "unactivated workspace release is unavailable",
+                )
+            try:
+                completed = subprocess.run(
+                    [*self.privilege_command, str(mediator), "--diagnose-unactivated"],
+                    input=json.dumps(exact, sort_keys=True, separators=(",", ":")),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                raise ProtocolError(
+                    HTTPStatus.GATEWAY_TIMEOUT,
+                    "workspace_unactivated_release_timeout",
+                    "unactivated workspace release exceeded its finite timeout",
+                ) from None
+            except OSError:
+                raise ProtocolError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "workspace_unactivated_release_unavailable",
+                    "unactivated workspace release mediator could not be started",
+                ) from None
+            if completed.returncode != 0:
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT,
+                    "workspace_unactivated_release_not_exact",
+                    "unactivated workspace absence is not exact",
+                )
+            try:
+                diagnosis = json.loads(completed.stdout)
+            except json.JSONDecodeError:
+                diagnosis = None
+            if (
+                not isinstance(diagnosis, dict)
+                or set(diagnosis) != WORKSPACE_UNACTIVATED_DIAGNOSIS_KEYS
+                or diagnosis.get("schemaVersion")
+                    != WORKSPACE_UNACTIVATED_DIAGNOSIS_SCHEMA
+                or diagnosis.get("state") != "UNACTIVATED_ABSENCE_CONFIRMED"
+                or diagnosis.get("sessionId") != exact["sessionId"]
+                or diagnosis.get("workspaceIdentity") != exact["workspaceIdentity"]
+                or diagnosis.get("projectId") != PROJECT_ID
+                or diagnosis.get("workerId") != self.worker_id
+                or diagnosis.get("requestFingerprintSha256") != canonical_hash(exact)
+                or re.fullmatch(
+                    r"[0-9a-f]{64}", str(diagnosis.get("absenceFingerprintSha256"))
+                ) is None
+                or diagnosis.get("valuesExposed") is not False
+            ):
+                raise ProtocolError(
+                    HTTPStatus.BAD_GATEWAY,
+                    "workspace_unactivated_release_response_invalid",
+                    "unactivated workspace release returned an invalid diagnosis",
+                )
+            receipt = {
+                "schemaVersion": WORKSPACE_RELEASE_SCHEMA,
+                "state": "RELEASED",
+                **exact,
+                "workerId": self.worker_id,
+                "requestFingerprintSha256": canonical_hash(exact),
+                "revision": WORKSPACE_RELEASE_REVISION,
+                "removed": {key: 0 for key in WORKSPACE_RELEASE_REMOVED_KEYS},
+                "released": {key: True for key in WORKSPACE_RELEASE_RELEASED_KEYS},
+                "retained": {key: True for key in WORKSPACE_RELEASE_RETAINED_KEYS},
+                "ownershipFingerprintSha256": diagnosis["absenceFingerprintSha256"],
+                "valuesExposed": False,
+            }
+            receipt["receiptSha256"] = canonical_hash(receipt)
+            receipt = validate_workspace_release_receipt(exact, self.worker_id, receipt)
+            with self.lock:
+                self.unactivated_workspace_releases[exact["operationId"]] = {
+                    "request": exact,
+                    "receipt": receipt,
+                }
+                self._persist()
+            return receipt
+
     def diagnose_workspace_release_preflight(
         self, request: dict[str, Any]
     ) -> dict[str, Any]:
@@ -1560,6 +1761,55 @@ class WorkerState:
             return validate_workspace_capacity_owner_response(
                 exact_request, self.worker_id, response
             )
+
+    def diagnose_workspace_readiness(self, request: dict[str, Any]) -> dict[str, Any]:
+        if not self.project_readiness_enabled:
+            raise ProtocolError(
+                HTTPStatus.FORBIDDEN,
+                "workspace_readiness_disabled",
+                "workspace readiness is disabled",
+            )
+        exact = validate_workspace_readiness_request(request)
+        with self.workspace_lifecycle_lock():
+            route = self._project_route(PROJECT_ID)
+            self._refresh_project_mirror(route)
+            canonical_commit = self._observe_project_commit(route)
+            requested_commit = exact["commit"]
+            if requested_commit == canonical_commit:
+                state = "READY_FOR_RETRY"
+                next_action = "RETRY_AGENT_RUN"
+            elif self._is_project_commit_ancestor(
+                route, requested_commit, canonical_commit
+            ):
+                state = "SOURCE_ADVANCED"
+                next_action = "START_FRESH_SESSION"
+            else:
+                raise ProtocolError(
+                    HTTPStatus.CONFLICT,
+                    "workspace_readiness_source_conflict",
+                    "workspace readiness source relationship is not exact",
+                )
+            relationship = {
+                "requestedCommit": requested_commit,
+                "canonicalCommit": canonical_commit,
+                "state": state,
+            }
+            response = {
+                "schemaVersion": WORKSPACE_READINESS_SCHEMA,
+                "state": state,
+                "sessionId": exact["sessionId"],
+                "workspaceIdentity": exact["workspaceIdentity"],
+                "projectId": PROJECT_ID,
+                "workerId": self.worker_id,
+                "requestedCommit": requested_commit,
+                "canonicalCommit": canonical_commit,
+                "retryAllowed": state == "READY_FOR_RETRY",
+                "nextAction": next_action,
+                "requestFingerprintSha256": canonical_hash(exact),
+                "relationshipFingerprintSha256": canonical_hash(relationship),
+                "valuesExposed": False,
+            }
+            return validate_workspace_readiness_response(exact, self.worker_id, response)
 
     def _ensure_workspace_locked(self, request: dict[str, Any]) -> dict[str, Any]:
         if set(request) != WORKSPACE_ENSURE_KEYS:
@@ -2868,6 +3118,48 @@ class WorkerState:
                 "worker mirror canonical refresh failed closed",
             )
 
+    def _is_project_commit_ancestor(
+        self, route: dict[str, Any], ancestor: str, descendant: str
+    ) -> bool:
+        mirror = route.get("mirror")
+        if (
+            mirror is None
+            or not mirror.is_dir()
+            or mirror.is_symlink()
+            or COMMIT_PATTERN.fullmatch(ancestor) is None
+            or COMMIT_PATTERN.fullmatch(descendant) is None
+        ):
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "canonical_source_unavailable",
+                "worker mirror source relationship is unavailable",
+            )
+        try:
+            completed = subprocess.run(
+                [
+                    "git", "--git-dir", str(mirror), "merge-base",
+                    "--is-ancestor", ancestor, descendant,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+                check=False,
+            )
+        except OSError:
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "canonical_source_unavailable",
+                "worker mirror source relationship is unavailable",
+            ) from None
+        if completed.returncode not in {0, 1}:
+            raise ProtocolError(
+                HTTPStatus.CONFLICT,
+                "canonical_source_ambiguous",
+                "worker mirror source relationship is ambiguous",
+            )
+        return completed.returncode == 0
+
     def _project_selection_enabled(self) -> bool:
         for project_id in (PROJECT_ID, BEAUTIPS_PROJECT_ID):
             route = self._project_route(project_id)
@@ -3254,6 +3546,12 @@ class AgentRunHandler(BaseHTTPRequestHandler):
             if path == WORKSPACE_RELEASE_PATH:
                 self._write(HTTPStatus.OK, self.server.state.release_workspace(body))
                 return
+            if path == WORKSPACE_UNACTIVATED_RELEASE_PATH:
+                self._write(
+                    HTTPStatus.OK,
+                    self.server.state.release_unactivated_workspace(body),
+                )
+                return
             if path == WORKSPACE_RELEASE_PREFLIGHT_PATH:
                 self._write(
                     HTTPStatus.OK,
@@ -3264,6 +3562,12 @@ class AgentRunHandler(BaseHTTPRequestHandler):
                 self._write(
                     HTTPStatus.OK,
                     self.server.state.diagnose_workspace_capacity_owner(body),
+                )
+                return
+            if path == WORKSPACE_READINESS_PATH:
+                self._write(
+                    HTTPStatus.OK,
+                    self.server.state.diagnose_workspace_readiness(body),
                 )
                 return
             if path == "/v1/project-workspaces/draft-fingerprint":
@@ -3365,6 +3669,8 @@ def main() -> int:
     parser.add_argument("--normal-capacity", type=int, default=4)
     parser.add_argument("--heavy-capacity", type=int, default=2)
     parser.add_argument("--project-config", type=Path)
+    parser.add_argument("--project-readiness-enabled", action="store_true")
+    parser.add_argument("--unactivated-release-enabled", action="store_true")
     parser.add_argument("--project-runner", type=Path)
     parser.add_argument(
         "--project-workspace-activator",
@@ -3454,6 +3760,8 @@ def main() -> int:
         codex_update_registry=args.codex_update_registry,
         codex_release_root=args.codex_release_root,
         reconcile_materializations_on_start=True,
+        project_readiness_enabled=args.project_readiness_enabled,
+        unactivated_release_enabled=args.unactivated_release_enabled,
     )
     server = AgentRunServer((args.bind, args.port), state, read_token(args.token_file))
     state.start()

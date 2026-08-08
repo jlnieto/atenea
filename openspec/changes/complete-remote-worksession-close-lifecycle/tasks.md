@@ -208,9 +208,14 @@ environment dumps.
   exact allocation retirement, receipt idempotence, zero owned ephemeral
   resources and unchanged retained worktree/Git/turns/runs/attachment/logs/
   artifacts
-- [ ] 7.9 Reconcile WorkSession 17 workspace readiness without sending its
-  prompt or starting Codex/runtime; prove AgentRun 96 and its turn/attachment
-  remain unchanged and the UI now offers, but does not execute, explicit retry
+- [ ] 7.9 Diagnose WorkSession 17 readiness without ensure, prompt or runtime;
+  when its pinned commit is an exact ancestor of current canonical `main`, keep
+  retry forbidden and implement the disabled-by-default, Atenea-only,
+  administrator-only `START_FRESH_SESSION` operation. Prove durable
+  idempotence across response/backend loss, exact normal close before successor
+  creation, no copied prompt/turn/attachment, no worker activation, and web and
+  Android state/action clarity while AgentRun 96 and all retained state remain
+  unchanged
 - [ ] 7.10 Prove production, preview, Beautips, backups, RAID, four rootless
   slots, rootful daemons, listeners, leases, routing and unrelated sessions are
   healthy and unchanged; seal evidence, update the ledger, strict-validate,
@@ -234,6 +239,7 @@ environment dumps.
 - [ ] 8.5 Verify every evidence `SHA256SUMS`, update the programme decision log,
   evidence ledger and resume point, mark only completed tasks, archive the
   change, run global strict validation, commit and push all declared branches
-- [ ] 8.6 Report the preserved explicit operator choice to retry or abandon
-  AgentRun 96 and stop without executing either choice or beginning unrelated
-  work
+- [ ] 8.6 Report the preserved explicit operator choice: retry only when the
+  pinned commit is still canonical, otherwise keep AgentRun 96 retained and
+  start a fresh current-code session or abandon it; stop without replaying any
+  prompt or beginning unrelated work

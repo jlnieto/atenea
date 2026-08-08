@@ -1431,6 +1431,64 @@ class FixedRootReleaseOperatorTest(unittest.TestCase):
                 )
         self.assertFalse(any(self.journal_root.iterdir()))
 
+    def test_unactivated_diagnosis_accepts_only_retained_exact_workspace(self) -> None:
+        allocation = self.session_root / "runtime-allocation-v1.json"
+        allocation.unlink()
+        admission = (
+            self.root / "srv/atenea/worker/runtime-admission-v1/records"
+            / f"{self.session}.json"
+        )
+        admission.unlink()
+        registry_path = self.root / "etc/atenea-worker/project-codex-v1.json"
+        registry = json.loads(registry_path.read_text())
+        registry["workspaces"] = {}
+        registry["selectionEnabled"] = False
+        registry["executionEnabled"] = False
+        self._write(registry_path, registry, 0o644)
+        protected = [
+            self.session_root / "workspace-v1.json",
+            registry_path,
+        ]
+        before = [path.read_bytes() for path in protected]
+
+        with mock.patch.object(MODULE, "MANIFEST_SHA256", self.manifest_sha):
+            result = MODULE.FixedRootReleaseOperator(
+                self.root, test_mode=True
+            ).diagnose_unactivated(self.request)
+
+        self.assertEqual(MODULE.UNACTIVATED_DIAGNOSIS_SCHEMA, result["schemaVersion"])
+        self.assertEqual("UNACTIVATED_ABSENCE_CONFIRMED", result["state"])
+        self.assertEqual(self.session, result["sessionId"])
+        self.assertFalse(result["valuesExposed"])
+        self.assertEqual(before, [path.read_bytes() for path in protected])
+        encoded = json.dumps(result)
+        for forbidden in ("slot2", "heavy1", "/srv/", "21003"):
+            self.assertNotIn(forbidden, encoded)
+
+    def test_unactivated_diagnosis_rejects_partial_or_ephemeral_state(self) -> None:
+        registry_path = self.root / "etc/atenea-worker/project-codex-v1.json"
+        registry = json.loads(registry_path.read_text())
+        registry["workspaces"] = {}
+        self._write(registry_path, registry, 0o644)
+        with mock.patch.object(MODULE, "MANIFEST_SHA256", self.manifest_sha):
+            with self.assertRaises(MODULE.PreflightRejected):
+                MODULE.FixedRootReleaseOperator(
+                    self.root, test_mode=True
+                ).diagnose_unactivated(self.request)
+
+        (self.session_root / "runtime-allocation-v1.json").unlink()
+        (
+            self.root / "srv/atenea/worker/runtime-admission-v1/records"
+            / f"{self.session}.json"
+        ).unlink()
+        marker = self.root / "synthetic-ephemeral-present"
+        marker.write_text("present\n", encoding="utf-8")
+        with mock.patch.object(MODULE, "MANIFEST_SHA256", self.manifest_sha):
+            with self.assertRaises(MODULE.PreflightRejected):
+                MODULE.FixedRootReleaseOperator(
+                    self.root, test_mode=True
+                ).diagnose_unactivated(self.request)
+
     def test_capacity_owner_diagnosis_rejects_partial_or_foreign_state(self) -> None:
         request = {
             key: value for key, value in self.request.items()
