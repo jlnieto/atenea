@@ -303,6 +303,16 @@ commits, then finalization rechecks all three before writing the disabled empty
 successor. Enabled, non-empty, legacy-incomplete, unrelated or foreign state
 fails before the worker is stopped.
 
+The routing installer recognizes only complete checksum-pinned generations.
+For the live four-rule release-preflight generation, apply first retains the
+exact root-owned release mediator beneath a fixed private predecessor root and
+then installs the five-rule successor that adds only the fixed unactivated-
+readiness diagnosis. Rollback verifies that retained static predecessor before
+changing sudoers, restores the exact four-rule authority and then restores the
+same mediator bytes. An absent, partial, changed, symlinked or foreign retained
+predecessor rejects before mutation; rollback never recreates registration,
+admission, allocation or any already released ownership.
+
 ## Failure Matrix
 
 | Observation | Persisted run/session state | Primary action | Automatic mutation |

@@ -28,6 +28,8 @@ RELEASE_PROGRAM="${TEST_ROOT}/usr/local/libexec/atenea/atenea-workspace-release-
 SUDOERS="${TEST_ROOT}/etc/sudoers.d/92-atenea-routing-activation-v1"
 WORKER_BUNDLE="${TEST_ROOT}/srv/atenea/worker/workspace-v1/ops/worker"
 RELEASE_STATE_ROOT="${TEST_ROOT}/srv/atenea/worker/workspace-release-v1/sessions"
+RETAINED_PREDECESSOR_ROOT="${TEST_ROOT}/srv/atenea/worker/routing-activation-v1/predecessors"
+RETAINED_RELEASE_PROGRAM="${RETAINED_PREDECESSOR_ROOT}/atenea-workspace-release-v1.baccb3c7.py"
 require_root() { :; }
 chown() { :; }
 visudo() { :; }
@@ -50,7 +52,7 @@ stat() {
     local mode
     mode="$("${STAT_BIN}" -c %a "$3")"
     case "$3" in
-      "${PROGRAM}"|"${RELEASE_PROGRAM}"|"${SUDOERS}"|"${RELEASE_STATE_ROOT}")
+      "${PROGRAM}"|"${RELEASE_PROGRAM}"|"${SUDOERS}"|"${RELEASE_STATE_ROOT}"|"${RETAINED_PREDECESSOR_ROOT}"|"${RETAINED_RELEASE_PROGRAM}")
         printf 'root:root:%s\n' "${mode}"
         ;;
       "${WORKER_BUNDLE}"/*) printf 'atenea-worker:atenea:%s\n' "${mode}" ;;
@@ -90,6 +92,16 @@ bundle_create_capacity_diagnosis_predecessor() {
   mkdir -p "${RELEASE_STATE_ROOT}"
   chmod 0700 "${RELEASE_STATE_ROOT}"
   capacity_diagnosis_sudoers_content >"${SUDOERS}"
+  chmod 0440 "${SUDOERS}"
+}
+
+bundle_create_release_preflight_predecessor() {
+  bundle_common
+  printf 'reviewed live release predecessor fixture\n' >"${RELEASE_PROGRAM}"
+  chmod 0755 "${RELEASE_PROGRAM}"
+  mkdir -p "${RELEASE_STATE_ROOT}"
+  chmod 0700 "${RELEASE_STATE_ROOT}"
+  release_preflight_predecessor_sudoers_content >"${SUDOERS}"
   chmod 0440 "${SUDOERS}"
 }
 
@@ -134,22 +146,69 @@ apply_install >/dev/null
   || fail_test 'capacity-diagnosis predecessor was not upgraded exactly'
 [[ "$(cat "${SUDOERS}")" == "$(sudoers_content)" ]] \
   || fail_test 'release-preflight sudo authority was not installed exactly'
-RELEASE_PROGRAM_PREDECESSOR_SHA256=df3515f92a99b568840e2cd77798171e8fc3207e7bb88ad61ec992ed07610c54
+RELEASE_PROGRAM_PREDECESSOR_SHA256=baccb3c7c7053e5d09eb05148f1c2e368faf90d5e2706a537ac3473429dfada0
 bundle_reset
 
-bundle_create_current
-printf 'reviewed release predecessor fixture\n' >"${RELEASE_PROGRAM}"
-chmod 0755 "${RELEASE_PROGRAM}"
+bundle_create_release_preflight_predecessor
 RELEASE_PROGRAM_PREDECESSOR_SHA256="$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)"
-[[ "$(activation_bundle_preflight)" == current ]] \
-  || fail_test 'reviewed release predecessor was not accepted for upgrade'
+preapply_rollback="$(rollback_install)"
+jq -e '.changed == false and .releaseAuthority == true and
+  .retainedStaticPredecessor == false' <<<"${preapply_rollback}" >/dev/null \
+  || fail_test 'unapplied live predecessor rollback was not an unchanged result'
+mkdir -p "${RETAINED_PREDECESSOR_ROOT}"
+chmod 0700 "${RETAINED_PREDECESSOR_ROOT}"
+printf 'foreign retained predecessor\n' >"${RETAINED_RELEASE_PROGRAM}"
+chmod 0755 "${RETAINED_RELEASE_PROGRAM}"
+before="$(find "${TEST_ROOT}" -type f -print0 | sort -z | xargs -0 sha256sum)"
+if ( apply_install ) >/dev/null 2>&1; then
+  fail_test 'apply accepted a foreign retained release predecessor'
+fi
+after="$(find "${TEST_ROOT}" -type f -print0 | sort -z | xargs -0 sha256sum)"
+[[ "${before}" == "${after}" ]] \
+  || fail_test 'rejected retained predecessor changed the installed bundle'
+RELEASE_PROGRAM_PREDECESSOR_SHA256=baccb3c7c7053e5d09eb05148f1c2e368faf90d5e2706a537ac3473429dfada0
+bundle_reset
+
+bundle_create_release_preflight_predecessor
+RELEASE_PROGRAM_PREDECESSOR_SHA256="$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)"
+[[ "$(activation_bundle_preflight)" == rollout-predecessor ]] \
+  || fail_test 'live release-preflight predecessor was not accepted for upgrade'
 if ( verify ) >/dev/null 2>&1; then
   fail_test 'installed verifier accepted the release predecessor as current'
 fi
 apply_install >/dev/null
 [[ "$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)" == "${RELEASE_PROGRAM_SHA256}" ]] \
   || fail_test 'release predecessor was not upgraded to the exact source'
-RELEASE_PROGRAM_PREDECESSOR_SHA256=df3515f92a99b568840e2cd77798171e8fc3207e7bb88ad61ec992ed07610c54
+[[ -f "${RETAINED_RELEASE_PROGRAM}" &&
+    "$(sha256sum "${RETAINED_RELEASE_PROGRAM}" | cut -d' ' -f1)" == \
+      "${RELEASE_PROGRAM_PREDECESSOR_SHA256}" ]] \
+  || fail_test 'live release predecessor was not retained exactly'
+printf 'foreign retained rollback predecessor\n' >"${RETAINED_RELEASE_PROGRAM}"
+chmod 0755 "${RETAINED_RELEASE_PROGRAM}"
+before="$(find "${TEST_ROOT}" -type f -print0 | sort -z | xargs -0 sha256sum)"
+if ( rollback_install ) >/dev/null 2>&1; then
+  fail_test 'rollback accepted a foreign retained release predecessor'
+fi
+after="$(find "${TEST_ROOT}" -type f -print0 | sort -z | xargs -0 sha256sum)"
+[[ "${before}" == "${after}" ]] \
+  || fail_test 'rejected retained rollback predecessor changed the installed bundle'
+printf 'reviewed live release predecessor fixture\n' >"${RETAINED_RELEASE_PROGRAM}"
+chmod 0755 "${RETAINED_RELEASE_PROGRAM}"
+live_predecessor_hash="${RELEASE_PROGRAM_PREDECESSOR_SHA256}"
+live_rollback="$(rollback_install)"
+jq -e '.state == "rolled-back" and .changed == true and
+  .releaseAuthority == true and .retainedStaticPredecessor == true' \
+  <<<"${live_rollback}" >/dev/null \
+  || fail_test 'live predecessor rollback result is not exact'
+[[ "$(activation_bundle_preflight)" == rollout-predecessor &&
+    "$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)" == "${live_predecessor_hash}" &&
+    "$(cat "${SUDOERS}")" == "$(release_preflight_predecessor_sudoers_content)" ]] \
+  || fail_test 'rollback did not restore the complete live predecessor'
+live_repeat="$(rollback_install)"
+jq -e '.changed == false and .releaseAuthority == true and
+  .retainedStaticPredecessor == true' <<<"${live_repeat}" >/dev/null \
+  || fail_test 'repeated live predecessor rollback was not idempotent'
+RELEASE_PROGRAM_PREDECESSOR_SHA256=baccb3c7c7053e5d09eb05148f1c2e368faf90d5e2706a537ac3473429dfada0
 bundle_reset
 
 mkdir -p "$(dirname -- "${PROGRAM}")"
@@ -272,7 +331,12 @@ rollback_install >/dev/null
 [[ "$(activation_bundle_preflight)" == predecessor ]] \
   || fail_test 'interrupted rollback did not resume to the predecessor'
 
-[[ "$(sudoers_content | wc -l)" -eq 4 ]] || fail_test 'sudoers rule count is not exact'
+[[ "$(sudoers_content | wc -l)" -eq 5 ]] || fail_test 'sudoers rule count is not exact'
+[[ "$(release_preflight_predecessor_sudoers_content | wc -l)" -eq 4 ]] \
+  || fail_test 'live predecessor sudoers rule count is not exact'
+! release_preflight_predecessor_sudoers_content \
+  | grep -F -- '--diagnose-unactivated' >/dev/null \
+  || fail_test 'live predecessor unexpectedly contains successor authority'
 [[ "$(sudoers_content | grep -Fxc \
   "atenea-worker ALL=(root) NOPASSWD: ${RELEASE_PROGRAM}")" -eq 1 ]] \
   || fail_test 'release sudo authority without arguments is missing'
@@ -282,6 +346,9 @@ rollback_install >/dev/null
 [[ "$(sudoers_content | grep -Fxc \
   "atenea-worker ALL=(root) NOPASSWD: ${RELEASE_PROGRAM} --diagnose-release-preflight")" \
   -eq 1 ]] || fail_test 'release-preflight sudo authority is not exact'
+[[ "$(sudoers_content | grep -Fxc \
+  "atenea-worker ALL=(root) NOPASSWD: ${RELEASE_PROGRAM} --diagnose-unactivated")" \
+  -eq 1 ]] || fail_test 'unactivated diagnosis sudo authority is not exact'
 ! sudoers_content | grep -F "${RELEASE_PROGRAM} *" >/dev/null \
   || fail_test 'release sudo authority is broadened'
 grep -Fq 'installed activation bundle changed after preflight' \

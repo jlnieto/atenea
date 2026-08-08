@@ -447,6 +447,14 @@ sudo ./install-agent-run-worker-v1.sh disable
 The activation installer must run first. The AgentRun installer fails closed
 before stopping or writing if the installed activation program, sudoers
 boundary or three fixed workspace dependencies are absent, stale or foreign.
+The routing installer also supports the single exact four-rule release-
+preflight generation currently installed on AX42. Before replacing its exact
+release mediator, it retains those root-owned bytes beneath the fixed private
+routing predecessor root. The successor adds only the fixed
+`--diagnose-unactivated` authority. Rollback restores the retained mediator and
+the exact four-rule boundary; it never reconstructs released ownership. A
+missing, changed, symlinked or foreign retained predecessor rejects before the
+installed bundle is changed.
 If canonical Atenea source advanced while its root-owned project registry was
 completely empty and both selection and execution remained disabled, the
 installer may advance only that registry commit after proving the retained

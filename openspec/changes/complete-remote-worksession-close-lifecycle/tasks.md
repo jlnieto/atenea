@@ -218,7 +218,10 @@ environment dumps.
   unchanged; before rollout, prove the worker installer advances only an exact
   empty disabled canonical Atenea registry whose retained commit is an ancestor
   of the fixed mirror, while rejecting enabled, non-empty, incomplete or
-  unrelated registry state before service stop
+  unrelated registry state before service stop; prove the routing installer
+  upgrades only the exact live four-rule release-preflight generation, retains
+  its static mediator and restores both exact predecessor bytes and authority
+  on rollback while rejecting foreign retained state before mutation
 - [ ] 7.10 Prove production, preview, Beautips, backups, RAID, four rootless
   slots, rootful daemons, listeners, leases, routing and unrelated sessions are
   healthy and unchanged; seal evidence, update the ledger, strict-validate,

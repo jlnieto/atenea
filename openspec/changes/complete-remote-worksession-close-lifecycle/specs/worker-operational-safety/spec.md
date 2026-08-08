@@ -78,3 +78,14 @@ registration, admission, allocation, runtime, preview or retained ownership.
 - **AND** it SHALL reject before stopping the worker when either gate is
   enabled, a workspace exists, modern fixed authority is incomplete, or the
   retained commit is unrelated, missing, foreign or ambiguous
+
+#### Scenario: Routing installer observes the exact release-preflight predecessor
+
+- **WHEN** the installed release mediator and four-rule sudoers boundary match
+  the complete checksum-pinned AX42 predecessor
+- **THEN** apply retains those exact root-owned mediator bytes beneath the
+  fixed private predecessor root before installing the five-rule successor
+- **AND** rollback restores the exact four-rule authority and retained mediator
+  bytes without reconstructing released ownership
+- **AND** a partial, changed, symlinked, missing or foreign predecessor rejects
+  before the installed routing bundle is mutated

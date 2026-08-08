@@ -14576,3 +14576,59 @@ OpenSpec remains `52/60`; task 7.9 remains first pending. The correction must
 be committed, sealed into a new exact programme/AX42 candidate and pass a fresh
 clean-state audit. Production, AX42 installation, configuration, APK and the
 later `START_FRESH_SESSION` action remain separate authorization gates.
+
+## Task 7.9 routing predecessor correction after stopped rollout
+
+The operator next authorized the pre-task-7.9 rollout sealed by manifest
+`c36be8cd6da28565be42803a30b2273d33975e4f7d312c7a6e1f8e239e466069`.
+The programme checkout advanced by exact fast-forward to
+`55cd3ca7104d86fda345077c8ff122fee8a65174`. The AX42 routing installer then
+rejected before mutation because the exact live release mediator
+`baccb3c7c7053e5d09eb05148f1c2e368faf90d5e2706a537ac3473429dfada0`
+was newer than the predecessor accepted by that candidate. Therefore no
+worker installation, service restart, configuration activation, backend image
+load/deploy, APK publication/installation or later WorkSession action ran.
+
+Post-rejection verification preserved the live worker at
+`4d102a4b02e7e0389d5bbae6e8fc0a45275101dda5b4e7577a7fa71555ef6749`,
+release mediator at
+`baccb3c7c7053e5d09eb05148f1c2e368faf90d5e2706a537ac3473429dfada0`,
+worker service at
+`21064a91421914588bab464022c55599fe78a9ee4eba25e9c1b9164068eb5f18`,
+four-rule routing sudoers at
+`45f07abab8b9b2af33bf98e6aa38ac937c6fe249fad6845d6a7ab66fad2791bf`,
+disabled empty registry at
+`839445b05b1006573646f0f6104ed01dab2cf15de84a226e67863a94d22c31c0` /
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`, and fixed mirror at
+`e4287dbc9a6a3545e6e1d0eda3b488e4a8e8edd5` with the retained commit as a
+direct ancestor. Worker service remained active and enabled without restarts;
+rootless slots remained `3/0/0/3`; rootful daemons remained inactive; all
+three RAID arrays remained `[UU]`; backup and health units remained successful.
+Production, preview, Beautips and Caddy were unchanged and healthy, both fresh-
+session environment values remained absent, and
+`atenea-activation-code_default` remained absent.
+
+Sanitized stopped-rollout evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.9-registry-transition-rollout-20260808`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.9-registry-transition-rollout-20260808`.
+Both copies verify and the SHA-256 of `SHA256SUMS` is
+`7e1ea7d1a49d8e60277fac15de75c7fb0d1a660acc624e7702e48ab10c47435b`.
+
+The correction accepts only that complete live four-rule generation. Apply
+verifies and retains its exact root-owned mediator beneath a fixed private
+predecessor root before installing the successor mediator and the fifth fixed
+`--diagnose-unactivated` rule. Rollback verifies the retained file before
+changing authority, then restores the four-rule sudoers generation and the
+same mediator bytes. Repetition is idempotent. Missing, changed, symlinked,
+partial or foreign retained state rejects before the installed bundle changes;
+the operation never reconstructs registration, admission, allocation or other
+released ownership.
+
+The focused routing installer suite covers exact upgrade, byte-for-byte
+retention, exact rollback, repeated rollback and foreign predecessor rejection.
+Together with it, the worker installer sandbox passes, the authenticated worker
+suite passes 88/88 and the release mediator suite passes 45/45. No UI contract
+or rendered surface changed in this correction. OpenSpec remains `52/60` and
+task 7.9 remains first pending until a separately authorized exact rollout and
+its post-deployment readiness evidence complete.

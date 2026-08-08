@@ -10,6 +10,8 @@ RELEASE_PROGRAM=/usr/local/libexec/atenea/atenea-workspace-release-v1.py
 SUDOERS=/etc/sudoers.d/92-atenea-routing-activation-v1
 WORKER_BUNDLE=/srv/atenea/worker/workspace-v1/ops/worker
 RELEASE_STATE_ROOT=/srv/atenea/worker/workspace-release-v1/sessions
+RETAINED_PREDECESSOR_ROOT=/srv/atenea/worker/routing-activation-v1/predecessors
+RETAINED_RELEASE_PROGRAM="${RETAINED_PREDECESSOR_ROOT}/atenea-workspace-release-v1.baccb3c7.py"
 DEPENDENCIES=(
   session-workspace-v1.sh
   runtime-admission-v1.sh
@@ -17,7 +19,7 @@ DEPENDENCIES=(
 )
 PROGRAM_PREDECESSOR_SHA256=61fc03da468f2f9fa1fb101dc42129a773f02acaacbc40fd46e18d7a06724df2
 PROGRAM_SHA256=5ef544c478c17a0ae6ae88586915185572721ca89dc48dbbf15b65ad417aa889
-RELEASE_PROGRAM_PREDECESSOR_SHA256=df3515f92a99b568840e2cd77798171e8fc3207e7bb88ad61ec992ed07610c54
+RELEASE_PROGRAM_PREDECESSOR_SHA256=baccb3c7c7053e5d09eb05148f1c2e368faf90d5e2706a537ac3473429dfada0
 RELEASE_PROGRAM_SHA256=095e0db0ee77814f59f12907d003bad462c64c57aa8b85137e9c142147416de3
 SESSION_WORKSPACE_SHA256=3e41ae7f218f360920bed7cd4b2d75cab5396bb07649635694db3271b12d2ffe
 RUNTIME_ADMISSION_SHA256=a81366d3495bb2a7bf4702e9ea934a74e9b3edb30f728926e655a5c0a6a9f7ce
@@ -41,6 +43,14 @@ release_source_hash() {
 }
 
 sudoers_content() {
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s ensure *\n' "${PROGRAM}"
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s\n' "${RELEASE_PROGRAM}"
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s --diagnose-capacity-owner\n' "${RELEASE_PROGRAM}"
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s --diagnose-release-preflight\n' "${RELEASE_PROGRAM}"
+  printf 'atenea-worker ALL=(root) NOPASSWD: %s --diagnose-unactivated\n' "${RELEASE_PROGRAM}"
+}
+
+release_preflight_predecessor_sudoers_content() {
   printf 'atenea-worker ALL=(root) NOPASSWD: %s ensure *\n' "${PROGRAM}"
   printf 'atenea-worker ALL=(root) NOPASSWD: %s\n' "${RELEASE_PROGRAM}"
   printf 'atenea-worker ALL=(root) NOPASSWD: %s --diagnose-capacity-owner\n' "${RELEASE_PROGRAM}"
@@ -110,6 +120,38 @@ verify_release_state_root() {
     fail 'release journal root identity is ambiguous'
 }
 
+verify_retained_release_predecessor() {
+  [[ -d "${RETAINED_PREDECESSOR_ROOT}" && ! -L "${RETAINED_PREDECESSOR_ROOT}" &&
+      "$(stat -c %U:%G:%a "${RETAINED_PREDECESSOR_ROOT}")" == root:root:700 ]] ||
+    fail 'retained predecessor root identity is ambiguous'
+  [[ -f "${RETAINED_RELEASE_PROGRAM}" && ! -L "${RETAINED_RELEASE_PROGRAM}" &&
+      "$(stat -c %U:%G:%a "${RETAINED_RELEASE_PROGRAM}")" == root:root:755 &&
+      "$(sha256sum "${RETAINED_RELEASE_PROGRAM}" | cut -d' ' -f1)" == \
+        "${RELEASE_PROGRAM_PREDECESSOR_SHA256}" ]] ||
+    fail 'retained release mediator predecessor differs'
+}
+
+retain_release_predecessor() {
+  local installed_hash
+  installed_hash="$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)"
+  [[ "${installed_hash}" == "${RELEASE_PROGRAM_PREDECESSOR_SHA256}" ||
+      "${installed_hash}" == "${RELEASE_PROGRAM_SHA256}" ]] ||
+    fail 'installed release mediator changed after preflight'
+  if [[ -e "${RETAINED_PREDECESSOR_ROOT}" || -L "${RETAINED_PREDECESSOR_ROOT}" ]]; then
+    verify_retained_release_predecessor
+    [[ "${installed_hash}" == "${RELEASE_PROGRAM_PREDECESSOR_SHA256}" ]] || return 0
+  else
+    [[ "${installed_hash}" == "${RELEASE_PROGRAM_PREDECESSOR_SHA256}" ]] || return 0
+    install -d -o root -g root -m 0700 "${RETAINED_PREDECESSOR_ROOT}"
+    chown root:root "${RETAINED_PREDECESSOR_ROOT}"
+    chmod 0700 "${RETAINED_PREDECESSOR_ROOT}"
+    chmod u-s,g-s,o-t "${RETAINED_PREDECESSOR_ROOT}"
+    install -o root -g root -m 0755 \
+      "${RELEASE_PROGRAM}" "${RETAINED_RELEASE_PROGRAM}"
+  fi
+  verify_retained_release_predecessor
+}
+
 verify_common_predecessor() {
   [[ -f "${PROGRAM}" && ! -L "${PROGRAM}" &&
       "$(stat -c %U:%G:%a "${PROGRAM}")" == root:root:755 ]] ||
@@ -132,7 +174,7 @@ verify_common_predecessor() {
 activation_bundle_preflight() {
   verify_source_bundle
   local present=0 total=$((4 + ${#DEPENDENCIES[@]}))
-  local path dependency digest sudoers_value
+  local path dependency digest release_digest sudoers_value
   for path in "${PROGRAM}" "${RELEASE_PROGRAM}" "${SUDOERS}" "${RELEASE_STATE_ROOT}"; do
     [[ -e "${path}" || -L "${path}" ]] && present=$((present + 1))
   done
@@ -155,9 +197,22 @@ activation_bundle_preflight() {
   if [[ "${sudoers_value}" == "$(sudoers_content)" ]]; then
     [[ "${present}" -eq "${total}" && "${digest}" == "${PROGRAM_SHA256}" ]] ||
       fail 'installed successor activation bundle is partial'
-    verify_release_program_upgrade
+    verify_release_program
     verify_release_state_root
     printf 'current\n'
+    return 0
+  fi
+  if [[ "${sudoers_value}" == "$(release_preflight_predecessor_sudoers_content)" ]]; then
+    [[ "${present}" -eq "${total}" && "${digest}" == "${PROGRAM_SHA256}" ]] ||
+      fail 'installed unactivated-diagnosis predecessor is partial'
+    verify_release_program_upgrade
+    verify_release_state_root
+    release_digest="$(sha256sum "${RELEASE_PROGRAM}" | cut -d' ' -f1)"
+    if [[ "${release_digest}" == "${RELEASE_PROGRAM_PREDECESSOR_SHA256}" ]]; then
+      printf 'rollout-predecessor\n'
+    else
+      printf 'rollback-routing-predecessor\n'
+    fi
     return 0
   fi
   if [[ "${sudoers_value}" == "$(capacity_diagnosis_sudoers_content)" ]]; then
@@ -211,6 +266,10 @@ apply_install() {
   preflight_state="$(activation_bundle_preflight)"
   [[ "$(activation_bundle_preflight)" == "${preflight_state}" ]] ||
     fail 'installed activation bundle changed after preflight'
+  if [[ -e "${RETAINED_PREDECESSOR_ROOT}" || -L "${RETAINED_PREDECESSOR_ROOT}" ||
+        "${preflight_state}" == rollout-predecessor ]]; then
+    retain_release_predecessor
+  fi
   install -d -o root -g root -m 0755 "$(dirname -- "${PROGRAM}")"
   install -d -o atenea-worker -g atenea -m 0750 "${WORKER_BUNDLE}"
   local dependency
@@ -245,6 +304,34 @@ rollback_install() {
   if [[ "${state}" == predecessor ]]; then
     jq -cn '{state: "rolled-back", changed: false, routingChanged: false,
       releaseAuthority: false, retainedJournals: true}'
+    return 0
+  fi
+  if [[ "${state}" == rollout-predecessor ]]; then
+    local retained_static=false
+    if [[ -e "${RETAINED_PREDECESSOR_ROOT}" || -L "${RETAINED_PREDECESSOR_ROOT}" ]]; then
+      verify_retained_release_predecessor
+      retained_static=true
+    fi
+    jq -cn --argjson retained_static "${retained_static}" '{
+      state: "rolled-back", changed: false, routingChanged: false,
+      releaseAuthority: true, retainedJournals: true,
+      retainedStaticPredecessor: $retained_static
+    }'
+    return 0
+  fi
+  if [[ "${state}" == current &&
+        ( -e "${RETAINED_PREDECESSOR_ROOT}" || -L "${RETAINED_PREDECESSOR_ROOT}" ) ]]; then
+    verify_retained_release_predecessor
+    write_sudoers release_preflight_predecessor_sudoers_content
+    [[ "$(activation_bundle_preflight)" == rollback-routing-predecessor ]] ||
+      fail 'predecessor routing authority was not restored exactly'
+    install -o root -g root -m 0755 \
+      "${RETAINED_RELEASE_PROGRAM}" "${RELEASE_PROGRAM}"
+    [[ "$(activation_bundle_preflight)" == rollout-predecessor ]] ||
+      fail 'complete rollout predecessor was not restored exactly'
+    jq -cn '{state: "rolled-back", changed: true, routingChanged: false,
+      releaseAuthority: true, retainedJournals: true,
+      retainedStaticPredecessor: true}'
     return 0
   fi
   if [[ "${state}" == current || "${state}" == upgrade ]]; then
