@@ -14460,8 +14460,15 @@ Sanitized evidence is retained locally beneath
 `/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.8-real-release-idempotence-20260807`
 and on the control host beneath
 `/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.8-real-release-idempotence-20260807`.
-Both copies verify 5/5 payload files; the SHA-256 of `SHA256SUMS` is
+The initial 5/5 payload seal was
 `e865b89f4656b1810c299b4280c7f589f98e0d14ef8774b778755af9a5f407e1`.
+The task 7.9 preflight found that its retention summary had transcribed the
+unchanged Beautips image as `ff9d8e2c...` instead of the authoritative
+`ff9d2a0a...`. Live state and all prior sealed rollout evidence retain the
+second value; no production divergence or mutation occurred. Both evidence
+copies preserve the original payload and add `CORRECTION.md`. The successor
+6/6 payload seal is
+`86ca45b8ce5f5c4ca3f8c50caf3cfaefd85633fdece2fafa59af7a324996041c`.
 
 Task 7.8 is complete and OpenSpec progress advances to `52/60`; task 7.9 is
 first pending. Task 7.9 must prepare only WorkSession 17 readiness and expose
