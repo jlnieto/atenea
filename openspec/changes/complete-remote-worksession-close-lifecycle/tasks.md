@@ -203,7 +203,7 @@ environment dumps.
   single-use confirmation rather than retrying automatically; web and Android
   must name WorkSession 16 as the exact confirmation target even while
   WorkSession 17 is the open client context
-- [ ] 7.8 After confirmation, reconcile only remote session
+- [x] 7.8 After confirmation, reconcile only remote session
   `7151dce0-69ab-4614-86e4-f93f1af825e4`; prove registration/admission release,
   exact allocation retirement, receipt idempotence, zero owned ephemeral
   resources and unchanged retained worktree/Git/turns/runs/attachment/logs/

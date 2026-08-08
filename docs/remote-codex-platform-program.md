@@ -14409,3 +14409,61 @@ Task 7.7 is complete and OpenSpec progress advances to `51/60`; task 7.8 is
 first pending. No idempotence repetition is claimed here. Task 7.8 must prove
 the repeated exact receipt plus complete zero-residual and retained inventory
 without reconstructing released ownership.
+
+## Task 7.8 real RELEASED idempotence and retained-state proof
+
+The operator authorized task 7.8 after its scope was limited to one controlled
+repeat of WorkSession 16's already persisted exact release operation. The
+complete request was reconstructed from persisted server state and reviewed
+canonical constants, then sent exactly once from the production backend
+container through its configured authenticated worker boundary with finite
+timeouts. No client-selected path, endpoint, slot, port, service, label,
+credential or resource was accepted. Authentication material was consumed
+inside the request process and was neither printed nor retained.
+
+The worker returned `RELEASED`, revision 6 and the exact existing receipt
+`59987a1cad35992a0bf54b4b2fa3420f8daf83c4d0fb4cbeaef343457cdeed64`,
+with zero removed resources, every release assertion true, every retention
+assertion true and `valuesExposed=false`. An independent canonical
+recalculation matched the worker and persisted receipt. WorkSession 16 and its
+immutable operation remained `RELEASED/revision 10` with the same release
+timestamp; persisted plan and lifecycle-event counts remained 8 and 10. The
+repeat therefore added no mutation and did not reconstruct released ownership.
+
+Registration remains disabled with zero workspaces, admission remains
+`released/released`, the active allocation remains absent and the exact retired
+allocation retains SHA-256
+`af69156b9a6935cb11c96e0b7bdd73b950ec97959281a97b870bdad0c691a80f`.
+WorkSession 16 and 17 workspace hashes, WorkSession 16 clean Git HEAD/tree, and
+all 179 retained directories and 870 retained files were unchanged. WorkSession
+17 remains `OPEN/NOT_STARTED/revision 0`; AgentRun 96 remains `FAILED` with zero
+retry children, and its single turn, AgentRun, attachment and binding remain
+present. No prompt, retry, Codex process or runtime was started.
+
+Owned containers, networks, images, listeners and transient Codex/Playwright
+units remain zero. Rootless slots remain `3/0/0/3`; the declared worker
+services remain active without restarts; backup/check/health remain
+`success/0`; all RAID arrays remain `[UU]`; and rootful Docker/containerd remain
+inactive. Production, preview and Beautips retain their exact image/container
+identities, zero restarts and local HTTP 200. The explicitly accepted absent
+`atenea-activation-code_default` network was not recreated.
+
+The worker/release suite passes 43/43. Focused backend verification passes
+17/17 (2 unit and 15 integration tests) in a clean detached worktree against a
+disposable PostgreSQL 16 instance. The standard development test compose stack
+was not adopted because it named pre-existing containers; the isolated
+equivalent avoided changing unrelated development resources. Its database,
+worktree and logs were removed, the Atenea source branch remains clean, and no
+test residue remains.
+
+Sanitized evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.8-real-release-idempotence-20260807`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.8-real-release-idempotence-20260807`.
+Both copies verify 5/5 payload files; the SHA-256 of `SHA256SUMS` is
+`e865b89f4656b1810c299b4280c7f589f98e0d14ef8774b778755af9a5f407e1`.
+
+Task 7.8 is complete and OpenSpec progress advances to `52/60`; task 7.9 is
+first pending. Task 7.9 must prepare only WorkSession 17 readiness and expose
+the operator's explicit retry choice without sending a prompt, retrying
+AgentRun 96, or starting Codex/runtime.
