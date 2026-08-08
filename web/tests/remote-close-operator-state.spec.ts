@@ -21,6 +21,8 @@ type SyntheticState = {
   planRequests: Record<string, unknown>[];
   confirmationRequests: Record<string, unknown>[];
   recoveryRequests: Record<string, unknown>[];
+  freshRequests?: Record<string, unknown>[];
+  freshFailuresRemaining?: number;
   staleConfirmation?: boolean;
   blockedConfirmation?: boolean;
   planTargetWorkSessionId?: number;
@@ -57,6 +59,29 @@ function conversationEnvelope() {
         status: "FAILED",
         errorSummary: "La capacidad necesaria sigue ocupada."
       },
+      lastError: null,
+      lastAgentResponse: null
+    },
+    recentTurns: [],
+    recentTurnLimit: 50,
+    historyTruncated: false
+  };
+}
+
+function freshConversationEnvelope() {
+  return {
+    view: {
+      session: {
+        id: 18,
+        projectId: 1,
+        title: "Validación sintética del cierre remoto",
+        status: "OPEN",
+        operationalState: "READY",
+        closeRetryable: false
+      },
+      runInProgress: false,
+      canCreateTurn: true,
+      latestRun: null,
       lastError: null,
       lastAgentResponse: null
     },
@@ -113,6 +138,27 @@ async function installSyntheticApi(page: Page, apiState: SyntheticState) {
     const path = new URL(request.url()).pathname;
     if (path === `/api/mobile/sessions/${currentSessionId}/summary`) {
       return json(route, summary(apiState));
+    }
+    if (path === "/api/mobile/sessions/18/summary") {
+      return json(route, {
+        conversation: freshConversationEnvelope(),
+        approvedDeliverables: { deliverables: [] },
+        approvedPriceEstimate: null,
+        actions: {},
+        insights: {},
+        operatorState: {
+          surfaceEnabled: false,
+          state: "DEFAULT",
+          title: "Lista",
+          blocker: null,
+          primaryAction: "NONE",
+          primaryActionLabel: null,
+          primaryActionAvailable: false,
+          requiredRole: null,
+          targetWorkSessionId: null,
+          targetAgentRunId: null
+        }
+      });
     }
     if (path === `/api/mobile/sessions/${currentSessionId}/attachments/capability`) {
       return json(route, {
@@ -228,6 +274,23 @@ async function installSyntheticApi(page: Page, apiState: SyntheticState) {
         state: "ACCEPTED",
         summary: "Reintento aceptado.",
         requiredNextAction: "NONE"
+      });
+    }
+    if (path === `/api/mobile/sessions/${currentSessionId}/start-fresh`
+        && request.method() === "POST") {
+      apiState.freshRequests ??= [];
+      apiState.freshRequests.push(request.postDataJSON());
+      if ((apiState.freshFailuresRemaining ?? 0) > 0) {
+        apiState.freshFailuresRemaining = (apiState.freshFailuresRemaining ?? 0) - 1;
+        return json(route, { code: "REMOTE_RESPONSE_UNCONFIRMED" }, 503);
+      }
+      return json(route, {
+        operationId: "30000000-0000-4000-8000-000000000001",
+        state: "COMPLETED",
+        sourceWorkSessionId: currentSessionId,
+        resultWorkSessionId: 18,
+        created: true,
+        view: freshConversationEnvelope()
       });
     }
     if (path === "/api/mobile/operations/hosts") return json(route, []);
@@ -523,6 +586,92 @@ test(`${viewport.name} stale confirmation is discarded until an explicit screen 
   expect(apiState.planRequests).toHaveLength(2);
 });
 }
+
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 }
+] as const) {
+  test(`${viewport.name} source advance offers one clear empty-session action`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const apiState: SyntheticState = {
+      operatorRole: "PLATFORM_ADMINISTRATOR",
+      operatorState: {
+        surfaceEnabled: true,
+        state: "SOURCE_ADVANCED",
+        title: "Código actualizado",
+        blocker: "El código canónico avanzó desde el intento fallido. AgentRun 96 permanece conservado y no se volverá a enviar ninguna instrucción ni adjunto automáticamente.",
+        primaryAction: "START_FRESH_SESSION",
+        primaryActionLabel: "Empezar desde código actual",
+        primaryActionAvailable: true,
+        requiredRole: "PLATFORM_ADMINISTRATOR",
+        targetWorkSessionId: currentSessionId,
+        targetAgentRunId: failedRunId
+      },
+      released: false,
+      closeRequests: 0,
+      planRequests: [],
+      confirmationRequests: [],
+      recoveryRequests: [],
+      freshRequests: []
+    };
+    await openConversation(page, apiState, `${viewport.name}-source-advanced`);
+
+    await expect(page.getByText("Código actualizado", { exact: true })).toBeVisible();
+    await expect(page.getByText(
+      "Se conservarán esta sesión y su historial. La nueva sesión se abrirá vacía y no iniciará Codex hasta que escribas una instrucción nueva.",
+      { exact: true }
+    )).toBeVisible();
+    await expectPrimaryActionInFirstViewport(page, "Empezar desde código actual");
+    await expectNoHorizontalOverflow(page);
+    await retainScreenshot(page, `${viewport.name}-source-advanced.png`);
+
+    await page.getByRole("button", { name: "Empezar desde código actual" }).click();
+    await expect(page).toHaveURL(/#\/conversation\/1\/18$/);
+    await expect(page.locator(".conversation-composer")).toBeVisible();
+    expect(apiState.freshRequests).toHaveLength(1);
+    expect(apiState.recoveryRequests).toHaveLength(0);
+    expect(apiState.freshRequests![0]).toMatchObject({
+      idempotencyKey: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+      )
+    });
+  });
+}
+
+test("fresh-session retry after transport loss reuses the same idempotency key", async ({ page }) => {
+  const apiState: SyntheticState = {
+    operatorRole: "PLATFORM_ADMINISTRATOR",
+    operatorState: {
+      surfaceEnabled: true,
+      state: "SOURCE_ADVANCED",
+      title: "Código actualizado",
+      blocker: "El código canónico avanzó.",
+      primaryAction: "START_FRESH_SESSION",
+      primaryActionLabel: "Empezar desde código actual",
+      primaryActionAvailable: true,
+      requiredRole: "PLATFORM_ADMINISTRATOR",
+      targetWorkSessionId: currentSessionId,
+      targetAgentRunId: failedRunId
+    },
+    released: false,
+    closeRequests: 0,
+    planRequests: [],
+    confirmationRequests: [],
+    recoveryRequests: [],
+    freshRequests: [],
+    freshFailuresRemaining: 1
+  };
+  await openConversation(page, apiState, "fresh-response-loss");
+
+  await page.getByRole("button", { name: "Empezar desde código actual" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.getByRole("button", { name: "Empezar desde código actual" }).click();
+  await expect(page).toHaveURL(/#\/conversation\/1\/18$/);
+
+  expect(apiState.freshRequests).toHaveLength(2);
+  expect(apiState.freshRequests![0]).toEqual(apiState.freshRequests![1]);
+  expect(apiState.recoveryRequests).toHaveLength(0);
+});
 
 test("blocked confirmation requires refresh and a new single-use plan", async ({ page }) => {
   const apiState: SyntheticState = {

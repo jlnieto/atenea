@@ -12,8 +12,8 @@ android {
         applicationId = "com.atenea.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 133
-        versionName = "0.5.100"
+        versionCode = 134
+        versionName = "0.5.101"
 
         val ateneaApiBaseUrl = providers.gradleProperty("ATENEA_API_BASE_URL")
             .orElse("https://atenea.yudri.es")

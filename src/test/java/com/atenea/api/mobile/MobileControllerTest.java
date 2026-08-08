@@ -1,6 +1,7 @@
 package com.atenea.api.mobile;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -53,6 +54,7 @@ import com.atenea.service.mobile.MobileSessionReadStateService;
 import com.atenea.service.mobile.MobileSessionEventService;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.mobile.MobileStreamService;
+import com.atenea.service.mobile.FreshWorkSessionService;
 import com.atenea.service.operations.OperationsService;
 import com.atenea.service.rescue.RescueSessionService;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
@@ -62,6 +64,7 @@ import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.atenea.service.worksession.WorkSessionService;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -107,6 +110,8 @@ class MobileControllerTest {
     private RescueSessionService rescueSessionService;
     @Mock
     private OperationsService operationsService;
+    @Mock
+    private FreshWorkSessionService freshWorkSessionService;
 
     private MockMvc mockMvc;
 
@@ -126,7 +131,8 @@ class MobileControllerTest {
                         sessionDeliverableGenerationService,
                         billingQueueService,
                         rescueSessionService,
-                        operationsService))
+                        operationsService,
+                        freshWorkSessionService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -250,6 +256,36 @@ class MobileControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sessionId").value(12))
                 .andExpect(jsonPath("$.updatedAt").isNumber());
+    }
+
+    @Test
+    void startFreshSessionUsesAuthenticatedOperatorAndExactIdempotencyKey() throws Exception {
+        var operator = new AuthenticatedOperator(
+                4L, "operator@atenea.local", "Operator");
+        var principal = SecurityMockMvcRequestPostProcessors.authentication(
+                new UsernamePasswordAuthenticationToken(operator, null));
+        UUID key = UUID.fromString("00000000-0000-4000-8000-000000000017");
+        when(freshWorkSessionService.start(
+                any(), eq(17L), eq(new StartFreshWorkSessionRequest(key))))
+                .thenReturn(new StartFreshWorkSessionResponse(
+                        UUID.fromString("00000000-0000-4000-8000-000000000018"),
+                        "COMPLETED",
+                        17L,
+                        12L,
+                        true,
+                        conversation()));
+
+        mockMvc.perform(post("/api/mobile/sessions/17/start-fresh")
+                        .with(principal)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"idempotencyKey":"00000000-0000-4000-8000-000000000017"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("COMPLETED"))
+                .andExpect(jsonPath("$.sourceWorkSessionId").value(17))
+                .andExpect(jsonPath("$.resultWorkSessionId").value(12))
+                .andExpect(jsonPath("$.view.view.session.id").value(12));
     }
 
     @Test

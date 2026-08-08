@@ -144,6 +144,43 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/project-workspaces/release-unactivated", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            releaseIdempotencyHeader.set(
+                    exchange.getRequestHeaders().getFirst("Idempotency-Key"));
+            Map<String, Object> receipt = workspaceReleaseReceipt(requestBody.get());
+            byte[] response = objectMapper.writeValueAsBytes(receipt);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.createContext("/v1/project-workspaces/readiness", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            String canonicalCommit = "2".repeat(40);
+            Map<String, Object> relationship = Map.of(
+                    "requestedCommit", request.get("commit").asText(),
+                    "canonicalCommit", canonicalCommit,
+                    "state", "SOURCE_ADVANCED");
+            byte[] response = objectMapper.writeValueAsBytes(Map.ofEntries(
+                    Map.entry("schemaVersion", "project-workspace-readiness-v1"),
+                    Map.entry("state", "SOURCE_ADVANCED"),
+                    Map.entry("sessionId", request.get("sessionId").asText()),
+                    Map.entry("workspaceIdentity", request.get("workspaceIdentity").asText()),
+                    Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
+                    Map.entry("workerId", ProjectCodexIdentity.WORKER_ID),
+                    Map.entry("requestedCommit", request.get("commit").asText()),
+                    Map.entry("canonicalCommit", canonicalCommit),
+                    Map.entry("retryAllowed", false),
+                    Map.entry("nextAction", "START_FRESH_SESSION"),
+                    Map.entry("requestFingerprintSha256", canonicalSha256(request)),
+                    Map.entry("relationshipFingerprintSha256",
+                            canonicalSha256(objectMapper.valueToTree(relationship))),
+                    Map.entry("valuesExposed", false)));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.createContext("/v1/project-workspaces/capacity-owner", exchange -> {
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
             JsonNode request = requestBody.get();
@@ -620,6 +657,46 @@ class RemoteWorkerClientTest {
         assertEquals(6, result.revision());
         assertEquals(true, result.retained().values().stream().allMatch(Boolean.TRUE::equals));
         assertEquals(false, result.valuesExposed());
+    }
+
+    @Test
+    void readinessIsReadOnlyServerDerivedAndClassifiesExactSourceAdvance() {
+        AgentRunEntity run = projectRun(null);
+        run.getSession().setWorkspaceBranch(
+                "atenea/session-" + run.getRemoteSessionId());
+
+        RemoteWorkerClient.WorkspaceReadiness result =
+                client.diagnoseWorkspaceReadiness(run);
+
+        JsonNode body = requestBody.get();
+        assertEquals(Set.of(
+                        "sessionId", "workspaceIdentity", "projectId", "repository",
+                        "branch", "commit", "manifestSha256", "workspaceBranch"),
+                objectMapper.convertValue(body, Map.class).keySet());
+        assertEquals("SOURCE_ADVANCED", result.state());
+        assertEquals("START_FRESH_SESSION", result.nextAction());
+        assertEquals(false, result.retryAllowed());
+        assertEquals("2".repeat(40), result.canonicalCommit());
+        for (String forbidden : List.of(
+                "command", "path", "slot", "port", "service", "endpoint",
+                "resourceName", "label", "credential", "deletionTarget")) {
+            assertNull(body.get(forbidden));
+        }
+    }
+
+    @Test
+    void unactivatedReleaseUsesExactExistingCloseContractAndHeader() {
+        WorkSessionEntity session = releasableSession();
+
+        RemoteWorkerClient.WorkspaceRelease result =
+                client.releaseUnactivatedWorkspace(session);
+
+        assertEquals("RELEASED", result.state());
+        assertEquals(session.getRemoteCloseOperationId().toString(),
+                result.operationId());
+        assertEquals(session.getRemoteCloseOperationId().toString(),
+                releaseIdempotencyHeader.get());
+        assertEquals(10, requestBody.get().size());
     }
 
     @Test

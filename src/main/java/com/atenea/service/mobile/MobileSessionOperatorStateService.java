@@ -182,17 +182,7 @@ public class MobileSessionOperatorStateService {
         WorkSessionEntity blocker = workSessionRepository.findWithProjectById(blockerId)
                 .orElse(null);
         if (agentRunService.isRemoteRetryEligible(run.getId())) {
-            return state(
-                    true,
-                    MobileSessionOperatorState.CAPACITY_RELEASED,
-                    "Capacidad liberada",
-                    null,
-                    MobileSessionPrimaryAction.RETRY_AGENT_RUN,
-                    "Reintentar tarea",
-                    true,
-                    CodexOperationsRole.ROUTINE_OPERATOR,
-                    blockerId,
-                    run.getId());
+            return releasedCapacityState(run, blockerId);
         }
 
         if (blocker != null && (blocker.getRemoteCloseState() == RemoteCloseState.REQUESTED
@@ -277,17 +267,7 @@ public class MobileSessionOperatorStateService {
                     || !agentRunService.isRemoteRetryEligible(run.getId())) {
                 return ownershipReview(predecessorId, run.getId());
             }
-            return state(
-                    true,
-                    MobileSessionOperatorState.CAPACITY_RELEASED,
-                    "Capacidad liberada",
-                    null,
-                    MobileSessionPrimaryAction.RETRY_AGENT_RUN,
-                    "Reintentar tarea",
-                    true,
-                    CodexOperationsRole.ROUTINE_OPERATOR,
-                    predecessorId,
-                    run.getId());
+            return releasedCapacityState(run, predecessorId);
         }
         if (predecessor.getRemoteCloseState() == RemoteCloseState.REQUESTED
                 || predecessor.getRemoteCloseState() == RemoteCloseState.RECONCILING) {
@@ -388,6 +368,72 @@ public class MobileSessionOperatorStateService {
         return immediateWitness != null
                 && current.getId() != null
                 && current.getId().equals(immediateWitness.getId());
+    }
+
+    private MobileSessionOperatorStateResponse releasedCapacityState(
+            AgentRunEntity run,
+            Long releasedOwnerId
+    ) {
+        if (!remoteWorkerProperties.isFreshSessionOnSourceAdvanceEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)) {
+            return state(
+                    true,
+                    MobileSessionOperatorState.CAPACITY_RELEASED,
+                    "Capacidad liberada",
+                    null,
+                    MobileSessionPrimaryAction.RETRY_AGENT_RUN,
+                    "Reintentar tarea",
+                    true,
+                    CodexOperationsRole.ROUTINE_OPERATOR,
+                    releasedOwnerId,
+                    run.getId());
+        }
+        try {
+            RemoteWorkerClient.WorkspaceReadiness readiness =
+                    remoteWorkerClient.diagnoseWorkspaceReadiness(run);
+            if ("READY_FOR_RETRY".equals(readiness.state())) {
+                return state(
+                        true,
+                        MobileSessionOperatorState.CAPACITY_RELEASED,
+                        "Capacidad liberada",
+                        null,
+                        MobileSessionPrimaryAction.RETRY_AGENT_RUN,
+                        "Reintentar tarea",
+                        true,
+                        CodexOperationsRole.ROUTINE_OPERATOR,
+                        releasedOwnerId,
+                        run.getId());
+            }
+            if ("SOURCE_ADVANCED".equals(readiness.state())) {
+                return state(
+                        true,
+                        MobileSessionOperatorState.SOURCE_ADVANCED,
+                        "Código actualizado",
+                        "Esta tarea quedó vinculada a una versión anterior. Empieza una sesión nueva para trabajar sobre el código actual.",
+                        MobileSessionPrimaryAction.START_FRESH_SESSION,
+                        "Empezar desde código actual",
+                        true,
+                        CodexOperationsRole.PLATFORM_ADMINISTRATOR,
+                        run.getSession().getId(),
+                        run.getId());
+            }
+            return ownershipReview(releasedOwnerId, run.getId());
+        } catch (RemoteWorkerException exception) {
+            if (exception.isCompatibleTransportFailure()) {
+                return state(
+                        true,
+                        MobileSessionOperatorState.SOURCE_READINESS_PENDING,
+                        "Comprobando código actual",
+                        "No se pudo confirmar todavía si el código cambió. Vuelve a intentarlo cuando se restablezca la conexión.",
+                        MobileSessionPrimaryAction.WAIT,
+                        "Esperar actualización",
+                        false,
+                        null,
+                        run.getSession().getId(),
+                        run.getId());
+            }
+            return ownershipReview(releasedOwnerId, run.getId());
+        }
     }
 
     private boolean hasNoCanonicalSourceObservation(WorkSessionEntity session) {

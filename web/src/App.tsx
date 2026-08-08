@@ -1273,6 +1273,8 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
           retryOverride={operatorState?.surfaceEnabled
             ? operatorState.state === "CAPACITY_RELEASED"
               ? "Usa «Reintentar tarea» en el estado operativo"
+              : operatorState.state === "SOURCE_ADVANCED"
+                ? "El código cambió; empieza una sesión nueva desde el estado operativo"
               : "Reconciliar el cierre antes de reintentar"
             : null}
           onRecovery={requestRecovery}
@@ -1405,6 +1407,30 @@ function RemoteCloseOperatorPanel({
         setNotice("Reconciliación solicitada. Se mantendrá la misma operación de cierre.");
         await onChanged();
       }
+      if (state.primaryAction === "START_FRESH_SESSION" && state.targetWorkSessionId) {
+        const storageKey = `atenea.fresh-session.${state.targetWorkSessionId}`;
+        let idempotencyKey = sessionStorage.getItem(storageKey);
+        if (!idempotencyKey) {
+          idempotencyKey = crypto.randomUUID();
+          sessionStorage.setItem(storageKey, idempotencyKey);
+        }
+        const result = await api.startFreshWorkSession(
+          state.targetWorkSessionId,
+          idempotencyKey
+        );
+        if (result.state !== "COMPLETED"
+            || result.sourceWorkSessionId !== state.targetWorkSessionId
+            || result.resultWorkSessionId !== result.view.session.id
+            || typeof result.view.session.projectId !== "number") {
+          throw new Error("invalid-fresh-session");
+        }
+        sessionStorage.removeItem(storageKey);
+        navigate({
+          name: "conversation",
+          projectId: result.view.session.projectId,
+          sessionId: result.resultWorkSessionId
+        });
+      }
     } catch (actionError) {
       if (actionError instanceof ApiError && actionError.status === 409) {
         setPlan(null);
@@ -1482,6 +1508,9 @@ function RemoteCloseOperatorPanel({
         {state.state === "CAPACITY_RELEASED" && (
           <p>El reintento es una decisión explícita: no se ha vuelto a enviar ninguna instrucción.</p>
         )}
+        {state.state === "SOURCE_ADVANCED" && (
+          <p>Se conservarán esta sesión y su historial. La nueva sesión se abrirá vacía y no iniciará Codex hasta que escribas una instrucción nueva.</p>
+        )}
       </div>
       <div className="remote-close-state__action">
         {!plan && state.primaryAction !== "NONE" && state.primaryAction !== "WAIT" && (
@@ -1545,6 +1574,11 @@ function remoteCloseActionMatchesState(state: MobileSessionOperatorState) {
     return ["CLOSING_REMOTE", "LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY", "REMOTE_CLOSE_BLOCKED"].includes(state.state)
       && Boolean(state.targetWorkSessionId);
   }
+  if (state.primaryAction === "START_FRESH_SESSION") {
+    return state.state === "SOURCE_ADVANCED"
+      && Boolean(state.targetWorkSessionId)
+      && Boolean(state.targetAgentRunId);
+  }
   return false;
 }
 
@@ -1557,7 +1591,7 @@ function operatorRoleLabel(role: NonNullable<MobileSessionOperatorState["require
 }
 
 function remoteCloseStateLevel(state: MobileSessionOperatorState["state"]): Level {
-  if (state === "CAPACITY_RELEASED") return "ok";
+  if (["CAPACITY_RELEASED", "SOURCE_ADVANCED"].includes(state)) return "ok";
   if (["REMOTE_CLOSE_BLOCKED", "OWNERSHIP_REVIEW_REQUIRED"].includes(state)) return "critical";
   return "warning";
 }
@@ -1570,6 +1604,8 @@ function remoteCloseStateLabel(state: MobileSessionOperatorState["state"]) {
     CLOSED_OWNER_BLOCKS_CAPACITY: "BLOQUEO",
     CLOSED_OWNER_RECONCILING: "EN CURSO",
     CAPACITY_RELEASED: "LISTA",
+    SOURCE_READINESS_PENDING: "COMPROBANDO",
+    SOURCE_ADVANCED: "CÓDIGO NUEVO",
     OWNERSHIP_REVIEW_REQUIRED: "REVISIÓN",
     DEFAULT: "LISTA",
     RUNNING: "EN CURSO",
@@ -1581,6 +1617,7 @@ function remoteCloseFallbackActionLabel(action: MobileSessionOperatorState["prim
   return ({
     RECONCILE_REMOTE_CLOSE: "Reconciliar cierre",
     RETRY_AGENT_RUN: "Reintentar tarea",
+    START_FRESH_SESSION: "Empezar desde código actual",
     CONTACT_PLATFORM_ADMINISTRATOR: "Contactar con administración",
     WAIT: "Esperar actualización",
     NONE: ""

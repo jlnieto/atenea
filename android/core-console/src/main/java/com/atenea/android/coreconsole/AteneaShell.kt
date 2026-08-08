@@ -227,7 +227,11 @@ internal fun AteneaShell(
                         sessionId = selectedSessionId,
                         onOpenConversation = { selectedDestination = AteneaDestination.CONVERSATION },
                         onOpenCore = { selectedDestination = AteneaDestination.CORE },
-                        onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS }
+                        onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS },
+                        onFreshSession = { freshSessionId ->
+                            selectedSessionId = freshSessionId
+                            selectedDestination = AteneaDestination.CONVERSATION
+                        }
                     )
                     AteneaDestination.CONVERSATION -> key(conversationRequestKey, selectedSessionId) {
                         WorkSessionConversationScreen(
@@ -235,6 +239,10 @@ internal fun AteneaShell(
                             projectId = selectedProjectId,
                             sessionId = selectedSessionId,
                             onOpenCore = { selectedDestination = AteneaDestination.CORE },
+                            onFreshSession = { freshSessionId ->
+                                selectedSessionId = freshSessionId
+                                selectedDestination = AteneaDestination.CONVERSATION
+                            },
                             onBackToSession = {
                                 selectedDestination = if (selectedProjectId == null) {
                                     AteneaDestination.PROJECTS

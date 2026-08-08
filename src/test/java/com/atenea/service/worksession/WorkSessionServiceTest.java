@@ -941,6 +941,29 @@ class WorkSessionServiceTest {
     }
 
     @Test
+    void neverDispatchedRemoteSessionUsesAbsenceAttestationBeforeClosing() throws IOException {
+        Path repoPath = createGitRepo(
+                tempDir.resolve("repos/internal/atenea-unactivated-close"));
+        WorkSessionEntity session = remoteSession(repoPath);
+        prepareSuccessfulCloseMocks(session, repoPath);
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(agentRunRepository.existsBySessionId(12L)).thenReturn(true);
+        when(agentRunRepository.existsBySessionIdAndRemoteExecutionIdIsNotNull(12L))
+                .thenReturn(false);
+        when(remoteWorkerClient.releaseUnactivatedWorkspace(session)).thenAnswer(
+                ignored -> releasedReceipt(session));
+
+        WorkSessionResponse response = workSessionService.closeSession(12L);
+
+        assertEquals(WorkSessionStatus.CLOSED, response.status());
+        assertEquals(RemoteCloseState.RELEASED, response.remoteCloseState());
+        assertEquals("9".repeat(64), session.getRemoteCloseReceiptSha256());
+        verify(remoteWorkerClient).releaseUnactivatedWorkspace(session);
+        verify(remoteWorkerClient, never()).releaseWorkspace(any());
+    }
+
+    @Test
     void remoteCloseRaceAfterPreparationReusesAlreadyReleasedOperation() throws IOException {
         Path repoPath = createGitRepo(tempDir.resolve("repos/internal/atenea-close-race"));
         WorkSessionEntity preparing = remoteSession(repoPath);

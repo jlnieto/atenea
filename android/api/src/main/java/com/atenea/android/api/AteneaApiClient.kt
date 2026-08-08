@@ -183,6 +183,16 @@ class AteneaApiClient(
         ) { Unit }
     }
 
+    suspend fun startFreshWorkSession(
+        sessionId: Long,
+        idempotencyKey: String
+    ): StartFreshWorkSessionResult = postJson(
+        path = "/api/mobile/sessions/$sessionId/start-fresh",
+        body = JSONObject().put("idempotencyKey", idempotencyKey),
+        authenticated = true,
+        parser = ::parseStartFreshWorkSessionResult
+    )
+
     suspend fun createLegacyRemoteClosePlan(
         sessionId: Long,
         idempotencyKey: String
@@ -985,6 +995,15 @@ data class ResolveMobileWorkSessionResult(
     val view: MobileWorkSessionConversation
 )
 
+data class StartFreshWorkSessionResult(
+    val operationId: String,
+    val state: String,
+    val sourceWorkSessionId: Long,
+    val resultWorkSessionId: Long,
+    val created: Boolean,
+    val view: MobileWorkSessionConversation
+)
+
 data class MobileWorkSessionConversation(
     val session: MobileWorkSession,
     val runInProgress: Boolean,
@@ -1769,6 +1788,16 @@ private fun parseMobileProjectOverview(json: JSONObject): MobileProjectOverview 
 
 private fun parseResolveMobileWorkSessionResult(json: JSONObject): ResolveMobileWorkSessionResult =
     ResolveMobileWorkSessionResult(
+        created = json.optBoolean("created", false),
+        view = parseMobileWorkSessionConversation(json.getJSONObject("view"))
+    )
+
+private fun parseStartFreshWorkSessionResult(json: JSONObject): StartFreshWorkSessionResult =
+    StartFreshWorkSessionResult(
+        operationId = json.getString("operationId"),
+        state = json.getString("state"),
+        sourceWorkSessionId = json.getLong("sourceWorkSessionId"),
+        resultWorkSessionId = json.getLong("resultWorkSessionId"),
         created = json.optBoolean("created", false),
         view = parseMobileWorkSessionConversation(json.getJSONObject("view"))
     )

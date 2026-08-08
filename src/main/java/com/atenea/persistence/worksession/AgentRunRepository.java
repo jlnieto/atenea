@@ -21,6 +21,10 @@ public interface AgentRunRepository extends JpaRepository<AgentRunEntity, Long> 
 
     boolean existsBySessionIdAndStatusIn(Long sessionId, List<AgentRunStatus> statuses);
 
+    boolean existsBySessionIdAndRemoteExecutionIdIsNotNull(Long sessionId);
+
+    boolean existsBySessionId(Long sessionId);
+
     @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
     Optional<AgentRunEntity> findFirstBySessionIdOrderByCreatedAtDesc(Long sessionId);
 

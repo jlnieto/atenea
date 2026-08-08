@@ -115,6 +115,14 @@ public class WorkSessionService {
 
     @Transactional
     public WorkSessionResponse openSession(Long projectId, CreateWorkSessionRequest request) {
+        return openSession(projectId, request, null);
+    }
+
+    private WorkSessionResponse openSession(
+            Long projectId,
+            CreateWorkSessionRequest request,
+            UUID freshStartOperationId
+    ) {
         ProjectEntity project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new WorkSessionProjectNotFoundException(projectId));
 
@@ -145,6 +153,7 @@ public class WorkSessionService {
         session.setWorkspaceIdentity("local:pending");
         session.setRemoteSessionId(null);
         session.setRemoteWorkloadKind(null);
+        session.setFreshStartOperationId(freshStartOperationId);
         session.setRemoteCloseState(RemoteCloseState.NOT_REQUIRED);
         session.setAttachmentPolicyRevision(null);
         session.setPullRequestUrl(null);
@@ -172,6 +181,32 @@ public class WorkSessionService {
         persistedSession.setUpdatedAt(Instant.now());
 
         return toResponse(workSessionRepository.save(persistedSession));
+    }
+
+    @Transactional
+    public ResolveWorkSessionConversationViewResponse resolveFreshSessionConversationView(
+            Long projectId,
+            String title,
+            UUID operationId
+    ) {
+        WorkSessionEntity existing = workSessionRepository
+                .findByFreshStartOperationId(operationId)
+                .orElse(null);
+        if (existing != null) {
+            if (existing.getProject() == null
+                    || !projectId.equals(existing.getProject().getId())) {
+                throw new IllegalStateException(
+                        "Fresh-start operation belongs to another project");
+            }
+            return new ResolveWorkSessionConversationViewResponse(
+                    false, getSessionConversationView(existing.getId()));
+        }
+        WorkSessionResponse created = openSession(
+                projectId,
+                new CreateWorkSessionRequest(title, null),
+                operationId);
+        return new ResolveWorkSessionConversationViewResponse(
+                true, getSessionConversationView(created.id()));
     }
 
     @Transactional
@@ -319,7 +354,9 @@ public class WorkSessionService {
     ) {
         RemoteWorkerClient.WorkspaceRelease receipt;
         try {
-            receipt = remoteWorkerClient.releaseWorkspace(invocation.session());
+            receipt = invocation.unactivated()
+                    ? remoteWorkerClient.releaseUnactivatedWorkspace(invocation.session())
+                    : remoteWorkerClient.releaseWorkspace(invocation.session());
         } catch (RemoteWorkerException exception) {
             CloseFailurePersistence persistence = closeTransaction.execute(
                     ignored -> persistRemoteCloseFailure(
@@ -392,7 +429,9 @@ public class WorkSessionService {
         WorkSessionEntity session = workSessionRepository.findLockedWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
         if (isPersistedReleasedClose(session)) {
-            return new RemoteCloseInvocation(session.getRemoteCloseOperationId(), session);
+            return new RemoteCloseInvocation(
+                    session.getRemoteCloseOperationId(), session,
+                    hasUnactivatedRemoteHistory(session.getId()));
         }
         if (session.getStatus() != WorkSessionStatus.CLOSING
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
@@ -427,7 +466,14 @@ public class WorkSessionService {
         clearCloseBlock(session);
         WorkSessionEntity persisted = workSessionRepository.saveAndFlush(session);
         return new RemoteCloseInvocation(
-                persisted.getRemoteCloseOperationId(), persisted);
+                persisted.getRemoteCloseOperationId(), persisted,
+                hasUnactivatedRemoteHistory(persisted.getId()));
+    }
+
+    private boolean hasUnactivatedRemoteHistory(Long sessionId) {
+        return agentRunRepository.existsBySessionId(sessionId)
+                && !agentRunRepository.existsBySessionIdAndRemoteExecutionIdIsNotNull(
+                        sessionId);
     }
 
     private CloseFailurePersistence persistRemoteCloseFailure(
@@ -559,7 +605,8 @@ public class WorkSessionService {
 
     private record RemoteCloseInvocation(
             UUID operationId,
-            WorkSessionEntity session
+            WorkSessionEntity session,
+            boolean unactivated
     ) {
     }
 

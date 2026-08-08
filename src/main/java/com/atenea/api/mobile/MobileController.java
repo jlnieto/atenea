@@ -33,6 +33,7 @@ import com.atenea.service.mobile.MobileSessionReadStateService;
 import com.atenea.service.mobile.MobileSessionEventService;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.mobile.MobileStreamService;
+import com.atenea.service.mobile.FreshWorkSessionService;
 import com.atenea.service.operations.OperationsService;
 import com.atenea.service.rescue.RescueSessionService;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
@@ -73,6 +74,7 @@ public class MobileController {
     private final BillingQueueService billingQueueService;
     private final RescueSessionService rescueSessionService;
     private final OperationsService operationsService;
+    private final FreshWorkSessionService freshWorkSessionService;
 
     public MobileController(
             MobileProjectOverviewService mobileProjectOverviewService,
@@ -88,7 +90,8 @@ public class MobileController {
             SessionDeliverableGenerationService sessionDeliverableGenerationService,
             BillingQueueService billingQueueService,
             RescueSessionService rescueSessionService,
-            OperationsService operationsService
+            OperationsService operationsService,
+            FreshWorkSessionService freshWorkSessionService
     ) {
         this.mobileProjectOverviewService = mobileProjectOverviewService;
         this.mobileInboxService = mobileInboxService;
@@ -104,6 +107,7 @@ public class MobileController {
         this.billingQueueService = billingQueueService;
         this.rescueSessionService = rescueSessionService;
         this.operationsService = operationsService;
+        this.freshWorkSessionService = freshWorkSessionService;
     }
 
     @GetMapping("/projects/overview")
@@ -176,6 +180,15 @@ public class MobileController {
             @Valid @RequestBody(required = false) ResolveWorkSessionRequest request
     ) {
         return workSessionService.resolveSessionConversationView(projectId, request);
+    }
+
+    @PostMapping("/sessions/{sessionId}/start-fresh")
+    public StartFreshWorkSessionResponse startFreshSession(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable Long sessionId,
+            @Valid @RequestBody StartFreshWorkSessionRequest request
+    ) {
+        return freshWorkSessionService.start(operator, sessionId, request);
     }
 
     @PostMapping("/projects/{projectId}/rescue-sessions/resolve")

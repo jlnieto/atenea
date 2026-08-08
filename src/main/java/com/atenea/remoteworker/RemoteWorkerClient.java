@@ -41,6 +41,8 @@ public class RemoteWorkerClient {
     private static final String WORKSPACE_RELEASE_SCHEMA = "project-workspace-release-v1";
     private static final String WORKSPACE_CAPACITY_OWNER_SCHEMA =
             "project-workspace-capacity-owner-v1";
+    private static final String WORKSPACE_READINESS_SCHEMA =
+            "project-workspace-readiness-v1";
     private static final String WORKSPACE_RELEASE_PREFLIGHT_SCHEMA =
             "project-workspace-release-diagnosis-v1";
     private static final long WORKSPACE_RELEASE_REVISION = 6;
@@ -178,8 +180,83 @@ public class RemoteWorkerClient {
                 properties.getWorkspaceProvisionTimeout());
     }
 
+    public WorkspaceReadiness diagnoseWorkspaceReadiness(AgentRunEntity run) {
+        if (!ProjectCodexIdentity.matches(run)
+                || run.getSession() == null
+                || run.getSession().getWorkspaceBranch() == null) {
+            throw new RemoteWorkerException(
+                    "Persisted workspace readiness identity is incomplete or incompatible",
+                    409);
+        }
+        Map<String, Object> body = Map.of(
+                "sessionId", run.getRemoteSessionId().toString(),
+                "workspaceIdentity", run.getWorkspaceIdentity(),
+                "projectId", run.getProjectIdentity(),
+                "repository", run.getRepositoryUrl(),
+                "branch", run.getRepositoryBranch(),
+                "commit", run.getRepositoryCommit(),
+                "manifestSha256", run.getManifestSha256(),
+                "workspaceBranch", run.getSession().getWorkspaceBranch());
+        WorkspaceReadiness response = exchange(
+                "POST",
+                "/v1/project-workspaces/readiness",
+                body,
+                WorkspaceReadiness.class,
+                null,
+                properties.getWorkspaceProvisionTimeout());
+        String requestFingerprint = canonicalSha256(objectMapper.valueToTree(body));
+        Map<String, Object> relationship = Map.of(
+                "requestedCommit", run.getRepositoryCommit(),
+                "canonicalCommit", response.canonicalCommit(),
+                "state", response.state());
+        String expectedAction = switch (response.state()) {
+            case "READY_FOR_RETRY" -> "RETRY_AGENT_RUN";
+            case "SOURCE_ADVANCED" -> "START_FRESH_SESSION";
+            default -> null;
+        };
+        if (!WORKSPACE_READINESS_SCHEMA.equals(response.schemaVersion())
+                || expectedAction == null
+                || !run.getRemoteSessionId().toString().equals(response.sessionId())
+                || !run.getWorkspaceIdentity().equals(response.workspaceIdentity())
+                || !ProjectCodexIdentity.PROJECT_IDENTITY.equals(response.projectId())
+                || !ProjectCodexIdentity.WORKER_ID.equals(response.workerId())
+                || !run.getRepositoryCommit().equals(response.requestedCommit())
+                || response.canonicalCommit() == null
+                || !response.canonicalCommit().matches("^[0-9a-f]{40}$")
+                || response.retryAllowed() != "READY_FOR_RETRY".equals(response.state())
+                || !expectedAction.equals(response.nextAction())
+                || !requestFingerprint.equals(response.requestFingerprintSha256())
+                || !canonicalSha256(objectMapper.valueToTree(relationship)).equals(
+                        response.relationshipFingerprintSha256())
+                || response.valuesExposed()) {
+            throw new RemoteWorkerException(
+                    "Remote worker workspace readiness response was invalid",
+                    502,
+                    PROTOCOL_FAILURE_CODE,
+                    RemoteWorkerFailureCategory.PROTOCOL,
+                    false,
+                    AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                    null);
+        }
+        return response;
+    }
+
     public WorkspaceRelease releaseWorkspace(WorkSessionEntity session) {
         return releaseWorkspace(session, session);
+    }
+
+    public WorkspaceRelease releaseUnactivatedWorkspace(WorkSessionEntity session) {
+        Map<String, Object> body = workspaceReleaseRequest(session, session);
+        String operationId = session.getRemoteCloseOperationId().toString();
+        JsonNode receipt = exchange(
+                "POST",
+                "/v1/project-workspaces/release-unactivated",
+                body,
+                JsonNode.class,
+                operationId,
+                properties.getWorkspaceProvisionTimeout());
+        return validateWorkspaceReleaseReceipt(
+                session, objectMapper.valueToTree(body), receipt);
     }
 
     public WorkspaceRelease releaseWorkspace(
@@ -1067,6 +1144,24 @@ public class RemoteWorkerClient {
             String canonicalCommit,
             boolean selectionEnabled,
             boolean executionEnabled,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record WorkspaceReadiness(
+            String schemaVersion,
+            String state,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String workerId,
+            String requestedCommit,
+            String canonicalCommit,
+            boolean retryAllowed,
+            String nextAction,
+            String requestFingerprintSha256,
+            String relationshipFingerprintSha256,
             boolean valuesExposed
     ) {
     }

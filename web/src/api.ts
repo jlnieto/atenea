@@ -35,6 +35,7 @@ import {
   ResolveMobileWorkSessionResult,
   SessionDeliverable,
   SessionDeliverablesView,
+  StartFreshWorkSessionResult,
   UploadWorkSessionAttachmentRequest,
   WorkSessionAttachment,
   WorkSessionAttachmentCapability,
@@ -232,6 +233,19 @@ export class AteneaApi {
 
   resumeWorkSessionClose(sessionId: number) {
     return this.post(`/api/sessions/${sessionId}/close`);
+  }
+
+  async startFreshWorkSession(
+    sessionId: number,
+    idempotencyKey: string
+  ): Promise<StartFreshWorkSessionResult> {
+    const response = await this.post<Omit<StartFreshWorkSessionResult, "view"> & {
+      view: WorkSessionConversationEnvelope;
+    }>(`/api/mobile/sessions/${sessionId}/start-fresh`, { idempotencyKey });
+    return {
+      ...response,
+      view: unwrapWorkSessionConversation(response.view)
+    };
   }
 
   createLegacyRemoteClosePlan(sessionId: number, idempotencyKey: string) {

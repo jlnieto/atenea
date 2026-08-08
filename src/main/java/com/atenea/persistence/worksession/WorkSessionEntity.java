@@ -60,6 +60,9 @@ public class WorkSessionEntity {
     @Column(name = "remote_workload_kind", length = 80)
     private String remoteWorkloadKind;
 
+    @Column(name = "fresh_start_operation_id", unique = true)
+    private UUID freshStartOperationId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "remote_close_state", nullable = false, length = 32)
     private RemoteCloseState remoteCloseState = RemoteCloseState.NOT_REQUIRED;
@@ -299,6 +302,8 @@ public class WorkSessionEntity {
     public void setRemoteWorkloadKind(String remoteWorkloadKind) {
         this.remoteWorkloadKind = remoteWorkloadKind;
     }
+    public UUID getFreshStartOperationId() { return freshStartOperationId; }
+    public void setFreshStartOperationId(UUID value) { freshStartOperationId = value; }
 
     public RemoteCloseState getRemoteCloseState() { return remoteCloseState; }
     public void setRemoteCloseState(RemoteCloseState value) { this.remoteCloseState = value; }

@@ -180,6 +180,12 @@ class MobileSessionOperatorStateServiceTest {
     void exactClosedOwnerMakesReconciliationTheSingleEnabledAction() {
         WorkSessionViewLatestRunResponse latestRun = closedOwnerRun();
         AgentRunEntity run = blockedRun();
+        run.setSession(exactRemoteSession(
+                17L,
+                "18c00753-6080-42f7-ac05-18c47b236cac",
+                WorkSessionStatus.OPEN,
+                RemoteCloseState.NOT_STARTED,
+                Instant.parse("2026-08-03T10:03:00Z")));
         WorkSessionEntity blocker = blocker(RemoteCloseState.UNVERIFIED_LEGACY);
         when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
         when(workSessionRepository.findWithProjectById(16L))
@@ -226,6 +232,56 @@ class MobileSessionOperatorStateServiceTest {
         assertEquals("Reintentar tarea", response.primaryActionLabel());
         assertTrue(response.primaryActionAvailable());
         assertEquals(CodexOperationsRole.ROUTINE_OPERATOR, response.requiredRole());
+    }
+
+    @Test
+    void sourceAdvanceReplacesRetryWithOneAdministrativeFreshSessionAction() {
+        WorkSessionViewLatestRunResponse latestRun = closedOwnerRun();
+        AgentRunEntity run = blockedRun();
+        run.setSession(exactRemoteSession(
+                17L,
+                "18c00753-6080-42f7-ac05-18c47b236cac",
+                WorkSessionStatus.OPEN,
+                RemoteCloseState.NOT_STARTED,
+                Instant.parse("2026-08-03T10:03:00Z")));
+        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
+        when(workSessionRepository.findWithProjectById(16L))
+                .thenReturn(Optional.of(blocker(RemoteCloseState.RELEASED)));
+        when(agentRunService.isRemoteRetryEligible(96L)).thenReturn(true);
+        when(remoteWorkerProperties.isFreshSessionOnSourceAdvanceEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerClient.diagnoseWorkspaceReadiness(run)).thenReturn(
+                new RemoteWorkerClient.WorkspaceReadiness(
+                        "project-workspace-readiness-v1",
+                        "SOURCE_ADVANCED",
+                        "18c00753-6080-42f7-ac05-18c47b236cac",
+                        "remote:ax42-01:work-session:18c00753-6080-42f7-ac05-18c47b236cac",
+                        ProjectCodexIdentity.PROJECT_IDENTITY,
+                        ProjectCodexIdentity.WORKER_ID,
+                        "1".repeat(40),
+                        "2".repeat(40),
+                        false,
+                        "START_FRESH_SESSION",
+                        "3".repeat(64),
+                        "4".repeat(64),
+                        false));
+
+        MobileSessionOperatorStateResponse response = service.build(conversation(
+                WorkSessionStatus.OPEN,
+                RemoteCloseState.NOT_STARTED,
+                latestRun,
+                false));
+
+        assertEquals(MobileSessionOperatorState.SOURCE_ADVANCED, response.state());
+        assertEquals("Código actualizado", response.title());
+        assertEquals(MobileSessionPrimaryAction.START_FRESH_SESSION,
+                response.primaryAction());
+        assertEquals("Empezar desde código actual", response.primaryActionLabel());
+        assertTrue(response.primaryActionAvailable());
+        assertEquals(CodexOperationsRole.PLATFORM_ADMINISTRATOR,
+                response.requiredRole());
+        assertEquals(17L, response.targetWorkSessionId());
+        assertEquals(96L, response.targetAgentRunId());
     }
 
     @Test

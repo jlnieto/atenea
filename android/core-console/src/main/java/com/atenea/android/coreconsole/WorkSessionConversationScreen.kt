@@ -39,7 +39,8 @@ internal fun WorkSessionConversationScreen(
     projectId: Long?,
     sessionId: Long?,
     onOpenCore: () -> Unit,
-    onBackToSession: () -> Unit
+    onBackToSession: () -> Unit,
+    onFreshSession: (Long) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -466,7 +467,12 @@ internal fun WorkSessionConversationScreen(
         val coordinator = remoteCloseCoordinator ?: return
         scope.launch {
             if (coordinator.runPrimaryAction(currentState)) {
-                refresh(silent = true, includeProfile = false)
+                val freshSessionId = coordinator.state.value.freshSessionId
+                if (freshSessionId != null) {
+                    onFreshSession(freshSessionId)
+                } else {
+                    refresh(silent = true, includeProfile = false)
+                }
             }
         }
     }

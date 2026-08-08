@@ -36,6 +36,9 @@ public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, 
     Optional<WorkSessionEntity> findByRemoteSessionId(UUID remoteSessionId);
 
     @EntityGraph(attributePaths = "project")
+    Optional<WorkSessionEntity> findByFreshStartOperationId(UUID operationId);
+
+    @EntityGraph(attributePaths = "project")
     Optional<WorkSessionEntity>
             findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
                     Long projectId,

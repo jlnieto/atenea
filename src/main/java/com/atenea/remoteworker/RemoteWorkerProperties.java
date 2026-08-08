@@ -22,6 +22,8 @@ public class RemoteWorkerProperties {
     private boolean remoteCloseReleaseEnabled;
     private boolean remoteCloseReconciliationEnabled;
     private Set<String> remoteCloseProjectAllowlist = new LinkedHashSet<>();
+    private boolean freshSessionOnSourceAdvanceEnabled;
+    private Set<String> freshSessionProjectAllowlist = new LinkedHashSet<>();
     private Duration connectTimeout = Duration.ofSeconds(3);
     private Duration requestTimeout = Duration.ofSeconds(5);
     private Duration pollInterval = Duration.ofMillis(250);
@@ -73,6 +75,25 @@ public class RemoteWorkerProperties {
         return remoteCloseReconciliationEnabled
                 && ProjectCodexIdentity.PROJECT_IDENTITY.equals(projectIdentity)
                 && remoteCloseProjectAllowlist.contains(projectIdentity);
+    }
+    public boolean isFreshSessionOnSourceAdvanceEnabled() {
+        return freshSessionOnSourceAdvanceEnabled;
+    }
+    public void setFreshSessionOnSourceAdvanceEnabled(boolean value) {
+        freshSessionOnSourceAdvanceEnabled = value;
+    }
+    public Set<String> getFreshSessionProjectAllowlist() {
+        return freshSessionProjectAllowlist;
+    }
+    public void setFreshSessionProjectAllowlist(Set<String> values) {
+        freshSessionProjectAllowlist = values == null
+                ? new LinkedHashSet<>()
+                : new LinkedHashSet<>(values);
+    }
+    public boolean isFreshSessionOnSourceAdvanceEnabledFor(String projectIdentity) {
+        return freshSessionOnSourceAdvanceEnabled
+                && ProjectCodexIdentity.PROJECT_IDENTITY.equals(projectIdentity)
+                && freshSessionProjectAllowlist.contains(projectIdentity);
     }
     public Duration getConnectTimeout() { return connectTimeout; }
     public void setConnectTimeout(Duration connectTimeout) { this.connectTimeout = connectTimeout; }

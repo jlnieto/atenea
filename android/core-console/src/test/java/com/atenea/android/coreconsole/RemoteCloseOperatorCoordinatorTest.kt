@@ -5,6 +5,9 @@ import com.atenea.android.api.AteneaApiException
 import com.atenea.android.api.LegacyRemoteCloseOperation
 import com.atenea.android.api.LegacyRemoteClosePlan
 import com.atenea.android.api.MobileSessionOperatorState
+import com.atenea.android.api.MobileWorkSession
+import com.atenea.android.api.MobileWorkSessionConversation
+import com.atenea.android.api.StartFreshWorkSessionResult
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -97,6 +100,28 @@ class RemoteCloseOperatorCoordinatorTest {
     }
 
     @Test
+    fun sourceAdvanceStartsOneEmptySuccessorWithStableIdempotency() = runBlocking {
+        val gateway = FakeGateway()
+        val coordinator = coordinator(gateway, role = "PLATFORM_ADMINISTRATOR")
+        val state = capacityReleasedState().copy(
+            state = "SOURCE_ADVANCED",
+            title = "Código actualizado",
+            primaryAction = "START_FRESH_SESSION",
+            primaryActionLabel = "Empezar desde código actual",
+            requiredRole = "PLATFORM_ADMINISTRATOR",
+            targetWorkSessionId = 17
+        )
+
+        coordinator.accept(state)
+        assertTrue(coordinator.runPrimaryAction(state))
+
+        assertEquals(1, gateway.freshStarts.size)
+        assertEquals(17L, gateway.freshStarts.single().first)
+        assertEquals(18L, coordinator.state.value.freshSessionId)
+        assertTrue(coordinator.state.value.notice!!.contains("código actual"))
+    }
+
+    @Test
     fun mapsDeterministicAndTransportFailuresWithoutWorkerUnavailableCopy() {
         assertEquals(
             "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación.",
@@ -183,6 +208,7 @@ class RemoteCloseOperatorCoordinatorTest {
         val planKeys = mutableListOf<String>()
         val confirmationKeys = mutableListOf<String>()
         val retryRuns = mutableListOf<Pair<Long, Long>>()
+        val freshStarts = mutableListOf<Pair<Long, String>>()
 
         override suspend fun resumeClose(sessionId: Long) = Unit
 
@@ -209,6 +235,14 @@ class RemoteCloseOperatorCoordinatorTest {
         override suspend fun retryRun(runId: Long, workSessionId: Long): Boolean {
             retryRuns += runId to workSessionId
             return true
+        }
+
+        override suspend fun startFresh(
+            sessionId: Long,
+            idempotencyKey: String
+        ): StartFreshWorkSessionResult {
+            freshStarts += sessionId to idempotencyKey
+            return freshResult(sessionId)
         }
     }
 
@@ -267,5 +301,44 @@ class RemoteCloseOperatorCoordinatorTest {
             releasedAt = "2026-08-04T17:56:01Z",
             valuesExposed = false
         )
+
+        private fun freshResult(sourceSessionId: Long): StartFreshWorkSessionResult {
+            val session = MobileWorkSession(
+                id = 18,
+                projectId = 1,
+                title = "Atenea",
+                status = "OPEN",
+                operationalState = "READY",
+                baseBranch = "main",
+                workspaceBranch = "atenea/session-fresh",
+                pullRequestUrl = null,
+                pullRequestStatus = "NOT_CREATED",
+                finalCommitSha = null,
+                openedAt = "2026-08-08T12:00:00Z",
+                lastActivityAt = "2026-08-08T12:00:00Z",
+                publishedAt = null,
+                closedAt = null,
+                closeBlockedState = null,
+                closeBlockedReason = null,
+                closeBlockedAction = null,
+                closeRetryable = false
+            )
+            return StartFreshWorkSessionResult(
+                operationId = "00000000-0000-4000-8000-000000000018",
+                state = "COMPLETED",
+                sourceWorkSessionId = sourceSessionId,
+                resultWorkSessionId = session.id,
+                created = true,
+                view = MobileWorkSessionConversation(
+                    session = session,
+                    runInProgress = false,
+                    canCreateTurn = true,
+                    latestRun = null,
+                    lastError = null,
+                    lastAgentResponse = null,
+                    recentTurns = emptyList()
+                )
+            )
+        }
     }
 }

@@ -49,6 +49,8 @@ atenea:
     remote-close-release-enabled: ${ATENEA_REMOTE_CLOSE_RELEASE_ENABLED:false}
     remote-close-reconciliation-enabled: ${ATENEA_REMOTE_CLOSE_RECONCILIATION_ENABLED:false}
     remote-close-project-allowlist: ${ATENEA_REMOTE_CLOSE_PROJECT_ALLOWLIST:}
+    fresh-session-on-source-advance-enabled: ${ATENEA_FRESH_SESSION_ON_SOURCE_ADVANCE_ENABLED:false}
+    fresh-session-project-allowlist: ${ATENEA_FRESH_SESSION_PROJECT_ALLOWLIST:}
     connect-timeout: ${ATENEA_REMOTE_WORKER_CONNECT_TIMEOUT:3s}
     request-timeout: ${ATENEA_REMOTE_WORKER_REQUEST_TIMEOUT:5s}
     poll-interval: ${ATENEA_REMOTE_WORKER_POLL_INTERVAL:250ms}
