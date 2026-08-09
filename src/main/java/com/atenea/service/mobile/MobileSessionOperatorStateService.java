@@ -30,6 +30,7 @@ public class MobileSessionOperatorStateService {
     private final RemoteWorkerProperties remoteWorkerProperties;
     private final RemoteWorkerClient remoteWorkerClient;
     private final LegacyRemoteCloseService legacyRemoteCloseService;
+    private final FreshWorkSessionService freshWorkSessionService;
 
     public MobileSessionOperatorStateService(
             AgentRunRepository agentRunRepository,
@@ -37,7 +38,8 @@ public class MobileSessionOperatorStateService {
             AgentRunService agentRunService,
             RemoteWorkerProperties remoteWorkerProperties,
             RemoteWorkerClient remoteWorkerClient,
-            LegacyRemoteCloseService legacyRemoteCloseService
+            LegacyRemoteCloseService legacyRemoteCloseService,
+            FreshWorkSessionService freshWorkSessionService
     ) {
         this.agentRunRepository = agentRunRepository;
         this.workSessionRepository = workSessionRepository;
@@ -45,6 +47,7 @@ public class MobileSessionOperatorStateService {
         this.remoteWorkerProperties = remoteWorkerProperties;
         this.remoteWorkerClient = remoteWorkerClient;
         this.legacyRemoteCloseService = legacyRemoteCloseService;
+        this.freshWorkSessionService = freshWorkSessionService;
     }
 
     public MobileSessionOperatorStateResponse build(
@@ -81,6 +84,24 @@ public class MobileSessionOperatorStateService {
                     && legacyRemoteCloseService.isExactBlockedRecoveryAvailable(
                             session.id());
             return blockedState(session.id(), null, recoveryAvailable);
+        }
+
+        if (session.status() == WorkSessionStatus.CLOSED
+                && closeState == RemoteCloseState.RELEASED
+                && remoteWorkerProperties.isFreshSessionOnSourceAdvanceEnabledFor(
+                        ProjectCodexIdentity.PROJECT_IDENTITY)
+                && freshWorkSessionService.hasIncompleteOperationForSource(session.id())) {
+            return state(
+                    true,
+                    MobileSessionOperatorState.SOURCE_ADVANCED,
+                    "Nueva sesión pendiente",
+                    "La sesión anterior ya está cerrada. Completa la creación de su única sucesora vacía.",
+                    MobileSessionPrimaryAction.START_FRESH_SESSION,
+                    "Completar sesión nueva",
+                    true,
+                    CodexOperationsRole.PLATFORM_ADMINISTRATOR,
+                    session.id(),
+                    view.latestRun() == null ? null : view.latestRun().id());
         }
 
         AgentRunEntity latestRun = view.latestRun() == null

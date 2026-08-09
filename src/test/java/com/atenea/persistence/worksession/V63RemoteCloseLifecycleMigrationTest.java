@@ -158,6 +158,88 @@ class V63RemoteCloseLifecycleMigrationTest {
     }
 
     @Test
+    void v66AllowsOnlyExactInitialRemoteProjectionWithoutWeakeningCloseMonotonicity()
+            throws Exception {
+        withIsolatedSchema(schema -> {
+            assertEquals(65, flyway(schema, "65").migrate().migrationsExecuted);
+
+            long sessionId;
+            UUID remoteSessionId = UUID.randomUUID();
+            try (Connection connection = connection(schema)) {
+                long projectId = insertProject(connection, "V66 remote pin project");
+                execute(connection, """
+                        INSERT INTO worker_node (
+                            id, protocol_version, endpoint, enabled, healthy,
+                            normal_capacity, heavy_capacity, normal_in_use,
+                            heavy_in_use, capabilities)
+                        VALUES (
+                            'ax42-v66-fixture', 'atenea-agent-run-worker/v1',
+                            'http://worker.invalid', TRUE, TRUE, 4, 2, 0, 0,
+                            'project-codex-v1')
+                        """);
+                sessionId = queryLong(connection, """
+                        INSERT INTO work_session (
+                            project_id, status, title, base_branch,
+                            execution_target, workspace_identity,
+                            remote_close_state, opened_at, last_activity_at,
+                            created_at, updated_at)
+                        VALUES (
+                            ?, 'OPEN', 'V66 local pending session', ?,
+                            'LOCAL', 'local:pending', 'NOT_REQUIRED',
+                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        RETURNING id
+                        """, projectId, BRANCH);
+            }
+
+            assertEquals(1, flyway(schema, "66").migrate().migrationsExecuted);
+            assertEquals(0, flyway(schema, "66").migrate().migrationsExecuted);
+
+            try (Connection connection = connection(schema)) {
+                execute(connection, """
+                        UPDATE work_session
+                        SET execution_target = 'REMOTE',
+                            selected_worker_id = 'ax42-v66-fixture',
+                            remote_session_id = ?,
+                            remote_workload_kind = 'project-codex-v1',
+                            workspace_identity = ?,
+                            remote_close_state = 'NOT_STARTED'
+                        WHERE id = ?
+                        """, remoteSessionId,
+                        "remote:ax42-v66-fixture:work-session:" + remoteSessionId,
+                        sessionId);
+
+                assertEquals("NOT_STARTED", remoteCloseState(connection, sessionId));
+                assertEquals(0, queryLong(connection,
+                        "SELECT remote_close_revision FROM work_session WHERE id = ?",
+                        sessionId));
+                assertSqlRejected(connection, """
+                        UPDATE work_session
+                        SET status = 'CLOSED', closed_at = CURRENT_TIMESTAMP,
+                            remote_close_state = 'RELEASED',
+                            remote_close_revision = 1,
+                            remote_close_operation_id = ?,
+                            remote_close_receipt_sha256 = ?,
+                            remote_close_requested_at = CURRENT_TIMESTAMP,
+                            remote_close_updated_at = CURRENT_TIMESTAMP,
+                            remote_close_released_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """, UUID.randomUUID(), "a".repeat(64), sessionId);
+                assertSqlRejected(connection, """
+                        UPDATE work_session
+                        SET execution_target = 'LOCAL',
+                            selected_worker_id = NULL,
+                            remote_session_id = NULL,
+                            remote_workload_kind = NULL,
+                            workspace_identity = 'local:work-session:' || id,
+                            remote_close_state = 'NOT_REQUIRED'
+                        WHERE id = ?
+                        """, sessionId);
+            }
+        });
+    }
+
+    @Test
     void backfillsLegacyRowsWithoutClaimingHistoricalRemoteRelease() throws Exception {
         withIsolatedSchema(schema -> {
             assertEquals(62, flyway(schema, "62").migrate().migrationsExecuted);

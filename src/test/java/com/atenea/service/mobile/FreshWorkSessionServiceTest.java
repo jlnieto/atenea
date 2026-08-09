@@ -49,11 +49,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class FreshWorkSessionServiceTest {
@@ -72,6 +74,7 @@ class FreshWorkSessionServiceTest {
     private WorkSessionEntity source;
     private WorkSessionEntity successor;
     private AgentRunEntity run;
+    private OperatorEntity operatorAccount;
 
     @BeforeEach
     void setUp() {
@@ -127,17 +130,17 @@ class FreshWorkSessionServiceTest {
         run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
         ReviewedInstructionBundleIdentity.apply(run, ProjectCodexIdentity.PROJECT_IDENTITY);
 
-        OperatorEntity operator = new OperatorEntity();
-        operator.setId(1L);
-        operator.setActive(true);
-        operator.setCodexOperationsRole(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        operatorAccount = new OperatorEntity();
+        operatorAccount.setId(1L);
+        operatorAccount.setActive(true);
+        operatorAccount.setCodexOperationsRole(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
         when(operatorRepository.findByIdForRecoveryRequest(1L))
-                .thenReturn(Optional.of(operator));
+                .thenReturn(Optional.of(operatorAccount));
         when(workSessionRepository.findLockedWithProjectById(17L))
                 .thenReturn(Optional.of(source));
         when(workSessionRepository.findWithProjectById(17L))
                 .thenReturn(Optional.of(source));
-        when(workSessionRepository.findWithProjectById(18L))
+        lenient().when(workSessionRepository.findWithProjectById(18L))
                 .thenReturn(Optional.of(successor));
         when(agentRunRepository.findFirstBySessionIdOrderByCreatedAtDesc(17L))
                 .thenReturn(Optional.of(run));
@@ -169,9 +172,9 @@ class FreshWorkSessionServiceTest {
         WorkSessionConversationViewResponse view = mock(WorkSessionConversationViewResponse.class);
         WorkSessionViewResponse nested = mock(WorkSessionViewResponse.class);
         WorkSessionResponse sessionResponse = mock(WorkSessionResponse.class);
-        when(view.view()).thenReturn(nested);
-        when(nested.session()).thenReturn(sessionResponse);
-        when(sessionResponse.id()).thenReturn(18L);
+        lenient().when(view.view()).thenReturn(nested);
+        lenient().when(nested.session()).thenReturn(sessionResponse);
+        lenient().when(sessionResponse.id()).thenReturn(18L);
         lenient().when(workSessionService.resolveFreshSessionConversationView(
                 any(), any(), any())).thenAnswer(invocation -> {
             events.add("resolve-successor");
@@ -179,7 +182,7 @@ class FreshWorkSessionServiceTest {
             successor.setFreshStartOperationId(operationId);
             return new ResolveWorkSessionConversationViewResponse(true, view);
         });
-        when(workSessionService.getSessionConversationView(18L)).thenReturn(view);
+        lenient().when(workSessionService.getSessionConversationView(18L)).thenReturn(view);
     }
 
     @Test
@@ -272,6 +275,69 @@ class FreshWorkSessionServiceTest {
         verify(workSessionService, times(1)).closeSession(17L);
         verify(workSessionService, times(2)).resolveFreshSessionConversationView(
                 1L, "Atenea", resumed.operationId());
+    }
+
+    @Test
+    void sameAdministratorCanRecoverIncompleteSourceWithAReplacementClientKey() {
+        UUID firstKey = UUID.fromString("00000000-0000-4000-8000-000000000317");
+        UUID replacementKey = UUID.fromString("00000000-0000-4000-8000-000000000417");
+        AuthenticatedOperator operator = new AuthenticatedOperator(
+                1L, "operator@example.invalid", "Operator");
+        int[] attempts = {0};
+        doAnswer(invocation -> {
+            events.add("resolve-successor");
+            if (attempts[0]++ == 0) {
+                throw new IllegalStateException("synthetic-client-state-loss");
+            }
+            UUID operationId = invocation.getArgument(2);
+            successor.setFreshStartOperationId(operationId);
+            WorkSessionConversationViewResponse view =
+                    workSessionService.getSessionConversationView(18L);
+            return new ResolveWorkSessionConversationViewResponse(true, view);
+        }).when(workSessionService).resolveFreshSessionConversationView(
+                any(), any(), any());
+
+        assertThrows(IllegalStateException.class, () ->
+                service.start(operator, 17L, new StartFreshWorkSessionRequest(firstKey)));
+        UUID originalOperationId = jdbc.row.operationId;
+        var resumed = service.start(
+                operator, 17L, new StartFreshWorkSessionRequest(replacementKey));
+
+        assertEquals(originalOperationId, resumed.operationId());
+        assertEquals(18L, resumed.resultWorkSessionId());
+        assertEquals(firstKey, jdbc.row.idempotencyKey);
+        assertEquals(List.of(
+                "persist-request", "close-source", "persist-source-released",
+                "resolve-successor", "resolve-successor",
+                "persist-completed"), events);
+        verify(workSessionService, times(1)).closeSession(17L);
+        verify(workSessionService, times(2)).resolveFreshSessionConversationView(
+                1L, "Atenea", resumed.operationId());
+    }
+
+    @Test
+    void revokedAdministratorCannotResumeAnIncompleteDurableOperation() {
+        UUID key = UUID.fromString("00000000-0000-4000-8000-000000000517");
+        AuthenticatedOperator operator = new AuthenticatedOperator(
+                1L, "operator@example.invalid", "Operator");
+        doAnswer(ignored -> {
+            events.add("resolve-successor");
+            throw new IllegalStateException("synthetic-backend-stop");
+        }).when(workSessionService).resolveFreshSessionConversationView(
+                any(), any(), any());
+
+        assertThrows(IllegalStateException.class, () ->
+                service.start(operator, 17L, new StartFreshWorkSessionRequest(key)));
+        operatorAccount.setActive(false);
+
+        var rejection = assertThrows(
+                ResponseStatusException.class,
+                () -> service.start(operator, 17L, new StartFreshWorkSessionRequest(key)));
+
+        assertEquals(HttpStatus.FORBIDDEN, rejection.getStatusCode());
+        assertEquals("SOURCE_RELEASED", jdbc.row.state);
+        verify(workSessionService, times(1)).resolveFreshSessionConversationView(
+                1L, "Atenea", jdbc.row.operationId);
     }
 
     private final class RecordingJdbcTemplate extends JdbcTemplate {

@@ -88,7 +88,12 @@ public class FreshWorkSessionService {
         } catch (DataIntegrityViolationException concurrentRequest) {
             operation = findByOperatorAndKey(
                     authenticated.operatorId(), request.idempotencyKey());
-            if (operation == null || !sourceSessionId.equals(operation.sourceSessionId())) {
+            if (operation == null) {
+                operation = findBySourceSession(sourceSessionId);
+            }
+            if (operation == null
+                    || !authenticated.operatorId().equals(operation.operatorId())
+                    || !sourceSessionId.equals(operation.sourceSessionId())) {
                 throw conflict("Fresh-session request conflicts with another operation");
             }
         }
@@ -103,6 +108,7 @@ public class FreshWorkSessionService {
             Long sourceSessionId,
             UUID idempotencyKey
     ) {
+        requirePlatformAdministrator(operatorId);
         FreshOperation idempotent = findByOperatorAndKey(operatorId, idempotencyKey);
         if (idempotent != null) {
             if (!sourceSessionId.equals(idempotent.sourceSessionId())) {
@@ -112,14 +118,10 @@ public class FreshWorkSessionService {
         }
         FreshOperation sourceOperation = findBySourceSession(sourceSessionId);
         if (sourceOperation != null) {
+            if (operatorId.equals(sourceOperation.operatorId())) {
+                return sourceOperation;
+            }
             throw conflict("WorkSession already has a different fresh-session operation");
-        }
-        OperatorEntity operator = operatorRepository.findByIdForRecoveryRequest(operatorId)
-                .orElseThrow(() -> forbidden("Operator not found"));
-        if (!operator.isActive()
-                || operator.getCodexOperationsRole()
-                    != CodexOperationsRole.PLATFORM_ADMINISTRATOR) {
-            throw forbidden("PLATFORM_ADMINISTRATOR is required");
         }
         WorkSessionEntity source = workSessionRepository
                 .findLockedWithProjectById(sourceSessionId)
@@ -172,6 +174,23 @@ public class FreshWorkSessionService {
                 Timestamp.from(now),
                 Timestamp.from(now));
         return findByOperation(operationId);
+    }
+
+    public boolean hasIncompleteOperationForSource(Long sourceSessionId) {
+        FreshOperation operation = findBySourceSession(sourceSessionId);
+        return operation != null
+                && ("REQUESTED".equals(operation.state())
+                    || "SOURCE_RELEASED".equals(operation.state()));
+    }
+
+    private void requirePlatformAdministrator(Long operatorId) {
+        OperatorEntity operator = operatorRepository.findByIdForRecoveryRequest(operatorId)
+                .orElseThrow(() -> forbidden("Operator not found"));
+        if (!operator.isActive()
+                || operator.getCodexOperationsRole()
+                    != CodexOperationsRole.PLATFORM_ADMINISTRATOR) {
+            throw forbidden("PLATFORM_ADMINISTRATOR is required");
+        }
     }
 
     private StartFreshWorkSessionResponse resume(UUID operationId) {

@@ -26,6 +26,7 @@ type SyntheticState = {
   staleConfirmation?: boolean;
   blockedConfirmation?: boolean;
   planTargetWorkSessionId?: number;
+  closedSession?: boolean;
 };
 
 const currentSessionId = 17;
@@ -41,14 +42,14 @@ function json(route: Route, body: unknown, status = 200) {
   });
 }
 
-function conversationEnvelope() {
+function conversationEnvelope(closed = false) {
   return {
     view: {
       session: {
         id: currentSessionId,
         projectId: 1,
         title: "Validación sintética del cierre remoto",
-        status: "OPEN",
+        status: closed ? "CLOSED" : "OPEN",
         operationalState: "READY",
         closeRetryable: false
       },
@@ -108,13 +109,59 @@ function releasedState(): OperatorState {
 
 function summary(apiState: SyntheticState) {
   return {
-    conversation: conversationEnvelope(),
+    conversation: conversationEnvelope(apiState.closedSession),
     approvedDeliverables: { deliverables: [] },
     approvedPriceEstimate: null,
     actions: {},
     insights: {},
     operatorState: apiState.released ? releasedState() : apiState.operatorState
   };
+}
+
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 }
+] as const) {
+  test(`${viewport.name} released source keeps its incomplete fresh operation actionable`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const apiState: SyntheticState = {
+      operatorRole: "PLATFORM_ADMINISTRATOR",
+      operatorState: {
+        surfaceEnabled: true,
+        state: "SOURCE_ADVANCED",
+        title: "Nueva sesión pendiente",
+        blocker: "La sesión anterior ya está cerrada. Completa la creación de su única sucesora vacía.",
+        primaryAction: "START_FRESH_SESSION",
+        primaryActionLabel: "Completar sesión nueva",
+        primaryActionAvailable: true,
+        requiredRole: "PLATFORM_ADMINISTRATOR",
+        targetWorkSessionId: currentSessionId,
+        targetAgentRunId: failedRunId
+      },
+      released: false,
+      closeRequests: 0,
+      planRequests: [],
+      confirmationRequests: [],
+      recoveryRequests: [],
+      freshRequests: [],
+      closedSession: true
+    };
+    await openConversation(page, apiState, `${viewport.name}-fresh-recovery`);
+
+    await expect(page.getByText("Nueva sesión pendiente", { exact: true })).toBeVisible();
+    await expect(page.getByText(
+      "La sesión anterior ya está cerrada. Completa la creación de su única sucesora vacía.",
+      { exact: true }
+    )).toBeVisible();
+    await expectPrimaryActionInFirstViewport(page, "Completar sesión nueva");
+    await expectNoHorizontalOverflow(page);
+    await retainScreenshot(page, `${viewport.name}-fresh-recovery.png`);
+
+    await page.getByRole("button", { name: "Completar sesión nueva" }).click();
+    await expect(page).toHaveURL(/#\/conversation\/1\/18$/);
+    expect(apiState.freshRequests).toHaveLength(1);
+    expect(apiState.recoveryRequests).toHaveLength(0);
+  });
 }
 
 async function installSyntheticApi(page: Page, apiState: SyntheticState) {
