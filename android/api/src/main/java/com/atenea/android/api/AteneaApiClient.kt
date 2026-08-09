@@ -987,7 +987,8 @@ data class MobileProjectSessionOverview(
     val runInProgress: Boolean,
     val closeBlockedState: String?,
     val pullRequestStatus: String?,
-    val lastActivityAt: String?
+    val lastActivityAt: String?,
+    val recoveryPending: Boolean
 )
 
 data class ResolveMobileWorkSessionResult(
@@ -1781,7 +1782,8 @@ private fun parseMobileProjectOverview(json: JSONObject): MobileProjectOverview 
                 runInProgress = it.optBoolean("runInProgress", false),
                 closeBlockedState = it.optNullableString("closeBlockedState"),
                 pullRequestStatus = it.optNullableString("pullRequestStatus"),
-                lastActivityAt = it.optNullableString("lastActivityAt")
+                lastActivityAt = it.optNullableString("lastActivityAt"),
+                recoveryPending = it.optBoolean("recoveryPending", false)
             )
         }
     )

@@ -164,6 +164,106 @@ for (const viewport of [
   });
 }
 
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 }
+] as const) {
+  test(`${viewport.name} projects exposes closed-source recovery without creating or rescuing`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const observedPosts: string[] = [];
+    await installProjectsRecoveryApi(page, observedPosts);
+    await page.goto(`/?case=${viewport.name}-project-recovery#/projects`, { waitUntil: "networkidle" });
+    const projectCard = page.locator(".project-card").filter({
+      has: page.getByRole("heading", { name: "Atenea", exact: true })
+    });
+
+    await expect(projectCard.getByText("Nueva sesión pendiente", { exact: true })).toBeVisible();
+    await expect(projectCard.getByText(
+      "La sesión anterior ya está cerrada. Continúa la creación de su única sucesora vacía.",
+      { exact: true }
+    )).toBeVisible();
+    await expect(projectCard.getByRole("button", { name: "Crear sesión" })).toHaveCount(0);
+    await expect(projectCard.getByRole("button", { name: "Rescate" })).toHaveCount(0);
+    await expect(projectCard.getByText("Título de nueva sesión", { exact: true })).toHaveCount(0);
+    await expectPrimaryActionInFirstViewport(page, "Continuar recuperación");
+    await expectNoHorizontalOverflow(page);
+    await retainScreenshot(page, `${viewport.name}-project-recovery.png`);
+
+    await projectCard.getByRole("button", { name: "Continuar recuperación" }).click();
+    await expect(page).toHaveURL(/#\/session\/1\/17$/);
+    expect(observedPosts).toHaveLength(0);
+  });
+}
+
+async function installProjectsRecoveryApi(page: Page, observedPosts: string[]) {
+  await page.addInitScript(() => {
+    sessionStorage.setItem("atenea.web.console.auth.v2", JSON.stringify({
+      accessToken: "synthetic-access",
+      accessTokenExpiresAt: "2099-01-01T00:00:00Z",
+      refreshToken: "synthetic-refresh",
+      refreshTokenExpiresAt: "2099-01-01T00:00:00Z",
+      operator: {
+        id: 1,
+        email: "operator@example.invalid",
+        displayName: "Operador sintético",
+        codexOperationsRole: "PLATFORM_ADMINISTRATOR"
+      }
+    }));
+  });
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "POST") {
+      observedPosts.push(path);
+      return json(route, { code: "UNEXPECTED_MUTATION" }, 409);
+    }
+    if (path === "/api/mobile/projects/overview") {
+      return json(route, [{
+        projectId: 1,
+        projectName: "Atenea",
+        description: "Self-hosted Atenea source repository",
+        defaultBaseBranch: "main",
+        session: {
+          sessionId: currentSessionId,
+          status: "CLOSED",
+          title: "Validación sintética del cierre remoto",
+          runInProgress: false,
+          closeBlockedState: null,
+          pullRequestStatus: null,
+          lastActivityAt: "2026-08-09T10:00:00Z",
+          recoveryPending: true
+        }
+      }]);
+    }
+    if (path === `/api/mobile/sessions/${currentSessionId}/summary`) {
+      return json(route, summary({
+        operatorRole: "PLATFORM_ADMINISTRATOR",
+        operatorState: {
+          surfaceEnabled: true,
+          state: "SOURCE_ADVANCED",
+          title: "Nueva sesión pendiente",
+          blocker: "La sesión anterior ya está cerrada. Completa la creación de su única sucesora vacía.",
+          primaryAction: "START_FRESH_SESSION",
+          primaryActionLabel: "Completar sesión nueva",
+          primaryActionAvailable: true,
+          requiredRole: "PLATFORM_ADMINISTRATOR",
+          targetWorkSessionId: currentSessionId,
+          targetAgentRunId: failedRunId
+        },
+        released: false,
+        closeRequests: 0,
+        planRequests: [],
+        confirmationRequests: [],
+        recoveryRequests: [],
+        closedSession: true
+      }));
+    }
+    if (path === "/api/mobile/operations/hosts") return json(route, []);
+    if (path === "/api/mobile/operations/incidents") return json(route, { incidents: [] });
+    return json(route, {});
+  });
+}
+
 async function installSyntheticApi(page: Page, apiState: SyntheticState) {
   await page.addInitScript((role) => {
     sessionStorage.setItem("atenea.web.console.auth.v2", JSON.stringify({

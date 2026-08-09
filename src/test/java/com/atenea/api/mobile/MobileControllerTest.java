@@ -154,13 +154,15 @@ class MobileControllerTest {
                                 true,
                                 null,
                                 WorkSessionPullRequestStatus.OPEN,
-                                Instant.parse("2026-03-29T10:00:00Z")))));
+                                Instant.parse("2026-03-29T10:00:00Z"),
+                                false))));
 
         mockMvc.perform(get("/api/mobile/projects/overview"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].projectId").value(7))
                 .andExpect(jsonPath("$[0].session.sessionId").value(12))
-                .andExpect(jsonPath("$[0].session.runInProgress").value(true));
+                .andExpect(jsonPath("$[0].session.runInProgress").value(true))
+                .andExpect(jsonPath("$[0].session.recoveryPending").value(false));
     }
 
     @Test

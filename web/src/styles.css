@@ -682,6 +682,10 @@ select:focus {
   font-size: 13px;
 }
 
+.session-mini--recovery {
+  border-left-color: var(--warn);
+}
+
 .button-row,
 .button-grid {
   display: flex;

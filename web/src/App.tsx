@@ -376,7 +376,8 @@ function HomeScreen() {
 
   const active = projects.filter((project) => project.session && project.session.status !== "CLOSED");
   const attention = projects.filter((project) =>
-    project.session?.runInProgress || project.session?.closeBlockedState || project.session?.pullRequestStatus === "OPEN"
+    project.session?.recoveryPending || project.session?.runInProgress ||
+      project.session?.closeBlockedState || project.session?.pullRequestStatus === "OPEN"
   );
 
   return (
@@ -468,12 +469,17 @@ function ProjectsScreen() {
       return Boolean(project.session && project.session.status !== "CLOSED");
     }
     if (filter === "attention") {
-      return Boolean(project.session?.runInProgress || project.session?.closeBlockedState || !project.session);
+      return Boolean(project.session?.recoveryPending || project.session?.runInProgress ||
+        project.session?.closeBlockedState || !project.session);
     }
     return true;
   });
 
   async function openSession(project: MobileProjectOverview) {
+    if (project.session?.recoveryPending) {
+      navigate({ name: "session", projectId: project.projectId, sessionId: project.session.sessionId });
+      return;
+    }
     setLoadingProjectId(project.projectId);
     setError("");
     try {
@@ -536,9 +542,11 @@ function ProjectsScreen() {
               <Fact label="PR" value={project.session?.pullRequestStatus || "-"} />
             </div>
             {project.session ? (
-              <div className="session-mini">
-                <strong>{project.session.title}</strong>
-                <span>{project.session.lastActivityAt ? formatRelative(project.session.lastActivityAt) : "Sin actividad reciente"}</span>
+              <div className={`session-mini${project.session.recoveryPending ? " session-mini--recovery" : ""}`}>
+                <strong>{project.session.recoveryPending ? "Nueva sesión pendiente" : project.session.title}</strong>
+                <span>{project.session.recoveryPending
+                  ? "La sesión anterior ya está cerrada. Continúa la creación de su única sucesora vacía."
+                  : project.session.lastActivityAt ? formatRelative(project.session.lastActivityAt) : "Sin actividad reciente"}</span>
               </div>
             ) : (
               <label className="field">
@@ -556,11 +564,15 @@ function ProjectsScreen() {
                 disabled={loadingProjectId === project.projectId}
                 onClick={() => openSession(project)}
               >
-                {project.session ? "Abrir sesión" : "Crear sesión"}
+                {project.session?.recoveryPending
+                  ? "Continuar recuperación"
+                  : project.session ? "Abrir sesión" : "Crear sesión"}
               </Button>
-              <Button variant="ghost" disabled={loadingProjectId === project.projectId} onClick={() => openRescue(project)}>
-                Rescate
-              </Button>
+              {!project.session?.recoveryPending && (
+                <Button variant="ghost" disabled={loadingProjectId === project.projectId} onClick={() => openRescue(project)}>
+                  Rescate
+                </Button>
+              )}
             </div>
           </article>
         ))}
@@ -3103,6 +3115,9 @@ function projectLevel(project: MobileProjectOverview): Level {
   if (!project.session) {
     return "neutral";
   }
+  if (project.session.recoveryPending) {
+    return "warning";
+  }
   if (project.session.runInProgress) {
     return "running";
   }
@@ -3117,6 +3132,7 @@ function projectLevel(project: MobileProjectOverview): Level {
 
 function projectLabel(project: MobileProjectOverview) {
   if (!project.session) return "Sin sesión";
+  if (project.session.recoveryPending) return "Pendiente";
   if (project.session.runInProgress) return "RUNNING";
   if (project.session.closeBlockedState) return "Bloqueo";
   return project.session.status;

@@ -89,6 +89,7 @@ export interface MobileProjectSessionOverview {
   closeBlockedState?: string | null;
   pullRequestStatus?: string | null;
   lastActivityAt?: string | null;
+  recoveryPending: boolean;
 }
 
 export interface ResolveMobileWorkSessionResult {
