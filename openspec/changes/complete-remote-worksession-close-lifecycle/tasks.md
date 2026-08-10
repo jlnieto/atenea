@@ -233,7 +233,7 @@ environment dumps.
   prove zero in-progress lifecycle operations, and deploy the exact
   V63-compatible rollback application plus worker predecessors without
   reintroducing released ownership
-- [ ] 8.2 Prove expanded records remain readable, WorkSession 16 stays released,
+- [x] 8.2 Prove expanded records remain readable, WorkSession 16 stays released,
   WorkSession 17 and AgentRun 96 remain immutable, and production, preview,
   Beautips and unrelated worker resources remain healthy
 - [ ] 8.3 Restore the reviewed successor, re-enable only canonical Atenea and

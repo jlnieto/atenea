@@ -14851,3 +14851,83 @@ the worker. The evidence checksum is sealed in that package.
 
 OpenSpec progress is now `55/60`; task 8.2 is the exact first pending task and
 has not begun.
+
+## Task 8.2 completed — expanded records remain readable and immutable
+
+This task was a read-only post-rollback audit. Preflight reverified the clean,
+published programme/app/rollback branches, exact task-8.1 evidence, disabled
+production gates, V66 schema, V63-behaviour application and original AX42
+static predecessor before any evidence directory was created. No deployment,
+service restart, lifecycle action or runtime request occurred.
+
+The live V64–V66 schema remains fully readable: all 20 selected expansion
+columns/table fields, seven selected constraints, three selected indexes and
+the V66 monotonic trigger function are present. WorkSession 16's eight legacy
+plans are readable; five are consumed, all eight satisfy the nullable
+consumption triple and every operation reference is valid. Its single durable
+operation is still `RELEASED`. The single V65 fresh-session operation remains
+`COMPLETED`, links exactly WorkSession 17, AgentRun 96 and result WorkSession
+19, satisfies fingerprint, commit and timestamp invariants, and is bound once
+to its result.
+
+Independent before/after safe fingerprints are byte-identical for the plan
+set `aeb511c5...`, fresh operation `88ed7809...`, WorkSessions 16/17/19
+`22d33536...` / `8d8f470d...` / `e37a692d...` and AgentRun 96
+`38483d2a...`. WorkSession 16 remains `CLOSED/RELEASED/revision 10`;
+WorkSession 17 remains `CLOSED/RELEASED/revision 6`; WorkSession 19 remains
+`OPEN/NOT_STARTED/revision 0`. AgentRun 96 remains terminal `FAILED`, has no
+retry parent/children or remote execution, and retains its complete profile
+and attachment metadata. WorkSession 17 retains exactly one turn, one run, one
+attachment and one binding without reading their content.
+
+WorkSession 16/17 workspace records remain exact at `6014606b...` and
+`97b41b63...`; both worktrees remain clean at commit `615e539d...`, tree
+`3b8a5517...`. WorkSession 16's active allocation remains absent while its
+released admission and retired allocation remain exact at `eddd53a8...` and
+`af69156b...`. WorkSession 17 has no active allocation or admission. The
+excluded allocation/admission remain byte-exact at `bd45cac9...` /
+`5ced8132...` and were not adopted or changed.
+
+Production stays on `sha256:877a401f...`, preview on
+`sha256:b097910a...`, Beautips on `sha256:ff9d2a0a...` and Caddy on
+`sha256:612f0ff4...`; all are running with zero restarts. Production, preview
+and Beautips return local HTTP 200, the unauthenticated public API remains HTTP
+401, Compose remains `6625e9b3...`, and all five lifecycle values remain
+false/empty. Unrelated WorkSessions 3 and 4 retain their exact aggregate
+projections, lifecycle activity remains `0:0:0:0:0`, and the activation
+network remains absent.
+
+AX42 retains the original static predecessor and disabled empty registry
+`ccf236bb...` pinned to `e4287dbc...`; release mediator remains absent, and
+release journal/retained-static fingerprints are unchanged. All declared
+worker, attachment, preview, image-root and proxy services remain active with
+zero automatic restarts. Rootless container counts remain `3/0/0/3`, and all
+container/network/volume inventory fingerprints are identical before/after.
+Backup/check/health remain `success/0`, all three RAID arrays remain `[UU]`
+and pass `mdadm --detail --test`, rootful Docker/containerd remain inactive,
+Tailscale/UFW remain active and failed units remain zero.
+
+The first audit SELECT used a nonexistent historical binding table name and
+was rejected before its remaining reads. No data changed. The rejected read
+was retained transparently, the catalogue identified
+`session_turn_attachment`, and the complete corrected audit plus independent
+post-audit fingerprints passed. No prompt, response, attachment content,
+credential, cookie, screenshot, Codex internal history or environment dump was
+read or retained.
+
+No UI source or deployed asset changed, so the sealed task-8.1 Playwright
+acceptance remains applicable and no duplicate visual run was required.
+Task-labelled containers, networks, volumes and post-audit processes are zero;
+the task-8.1 staging remains absent.
+
+Sanitized evidence verifies locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-8.2-expanded-record-readability-20260810`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-8.2-expanded-record-readability-20260810`.
+The SHA-256 of `SHA256SUMS` is
+`6bd8243f5c90d11887fb433557b9ba7f0d5886325e57565ee672e3dbd89eb3d1`.
+
+OpenSpec progress is now `56/60`; task 8.3 is the exact first pending task and
+has not begun. Restoring the successor and re-enabling canonical Atenea are new
+production/AX42 mutations and require a separately sealed rollout and explicit
+operator authorization.
