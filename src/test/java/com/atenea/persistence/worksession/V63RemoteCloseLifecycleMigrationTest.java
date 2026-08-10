@@ -215,13 +215,17 @@ class V63RemoteCloseLifecycleMigrationTest {
                 execute(connection, """
                         UPDATE agent_run
                         SET failure_code = 'CLOSED_SESSION_OWNS_CAPACITY',
-                            recovery_next_action = 'RECONCILE_REMOTE_CLOSE'
+                            recovery_next_action = 'RECONCILE_REMOTE_CLOSE',
+                            recovery_blocker_work_session_id = ?
                         WHERE id = ?
-                        """, rows.agentRunId());
+                        """, rows.closedRemoteSessionId(), rows.agentRunId());
                 assertEquals("CLOSED_SESSION_OWNS_CAPACITY", queryString(connection,
                         "SELECT failure_code FROM agent_run WHERE id = ?", rows.agentRunId()));
                 assertEquals("RECONCILE_REMOTE_CLOSE", queryString(connection,
                         "SELECT recovery_next_action FROM agent_run WHERE id = ?", rows.agentRunId()));
+                assertEquals(rows.closedRemoteSessionId(), queryLong(connection,
+                        "SELECT recovery_blocker_work_session_id FROM agent_run WHERE id = ?",
+                        rows.agentRunId()));
             }
         });
     }

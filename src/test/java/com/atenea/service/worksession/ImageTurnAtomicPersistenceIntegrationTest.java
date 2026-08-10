@@ -24,6 +24,7 @@ import com.atenea.persistence.worksession.AttachmentRetentionClass;
 import com.atenea.persistence.worksession.AttachmentSource;
 import com.atenea.persistence.worksession.AttachmentStorageScope;
 import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.ExecutionProfileSource;
 import com.atenea.persistence.worksession.CodexReasoningEffort;
 import com.atenea.persistence.worksession.SessionTurnRepository;
@@ -496,6 +497,7 @@ class ImageTurnAtomicPersistenceIntegrationTest {
         session.setTitle("Atomic image turn fixture");
         session.setBaseBranch(ProjectCodexIdentity.BRANCH);
         session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setRemoteCloseState(RemoteCloseState.NOT_STARTED);
         session.setSelectedWorkerId(worker.getId());
         session.setRemoteSessionId(remoteSessionId);
         session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
