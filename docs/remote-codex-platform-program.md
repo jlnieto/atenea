@@ -14780,3 +14780,74 @@ the exact first pending task. Task 8.1 would disable the Atenea and global
 lifecycle gates and deploy retained application/worker predecessors. That is
 a new production/AX42 rollback mutation and must not begin without a separate
 exact sealed manifest and explicit operator authorization.
+
+## Task 8.1 completed — disable-first V63-compatible rollback
+
+The operator authorized only sealed manifest
+`cb5b6d3deb9856f36561f9656f22dab749160c5f9c4a6bce96278ff6513c3843`.
+Immediately before mutation, the programme and application repositories were
+clean and aligned with their declared upstreams, production remained on the
+exact V66 successor, Flyway reported `66:true`, lifecycle activity was
+`0:0:0:0:0`, AX42 retained its reviewed successor generation, and the
+excluded allocation/admission hashes remained exact.
+
+The rollout first emptied only the canonical Atenea remote-close and
+fresh-session allowlists, recreated only `atenea-backend-prod`, and re-proved
+quietness and retained state. It then disabled the release, reconciliation and
+fresh-session global prerequisites, recreated only the same service and
+re-proved the same gates. Only after both layers were disabled did it deploy
+the V66-aware V63-behaviour image
+`sha256:877a401ff8c4e8cda3a941868c1daf18bf5c12a2db1e5f00c9faf080fa10c5ee`.
+Final production Compose is
+`6625e9b36b6917803ce21bc27186fbe8f6cfaad08c585dc25524743265c64498`;
+all five lifecycle values are false or empty, production returns HTTP 200 and
+has zero restarts. No down-migration ran and schema V66 remains intact.
+
+On AX42, bundle
+`308af80ec0c75d6605c8b6a87a6f22dd87dee891a976ab8d6951c6e35e739eb1`
+verified as 33 fixed-prefix members with no symlink or traversal. The guarded
+installer accepted only the complete reviewed successor and installed the
+exact original predecessor: worker `b574fa2a...`, activation mediator
+`5ef544c4...`, installer `d7c103ea...`, unit `0368f876...` and one-rule
+sudoers `208730e9...`; the release mediator is absent. A second application
+returned `already-complete`. Registry `ccf236bb...`, release journal
+`128ec850...`, retained static tree `ffafb501...` and excluded ownership
+`bd45cac9...` / `5ced8132...` remained exact. Only the fixed task-owned AX42
+staging directory was deleted after verification.
+
+WorkSessions 16, 17 and 19 remain respectively
+`CLOSED/RELEASED/10`, `CLOSED/RELEASED/6` and `OPEN/NOT_STARTED/0`.
+WorkSession 19 remains empty at `0/0/0`, AgentRun 96 remains
+`FAILED/no-parent/0`, and the lifecycle projection remains `0:0:0:0:0`.
+No prompt, retry, Codex or runtime started. The four worker services are active
+with zero automatic restarts, rootless slots remain `3/0/0/3`, admission
+remains `1/4` normal and `0/2` heavy, backup/check/health remain successful,
+all RAID arrays remain `[UU]`, and rootful daemons remain inactive.
+
+Preview stays on `sha256:b097910a...`, Beautips on `sha256:ff9d2a0a...` and
+Caddy on `sha256:612f0ff4...`, all running with zero restarts; production,
+preview and Beautips return local HTTP 200 and the public unauthenticated API
+remains HTTP 401. The retired activation network remains absent. No
+task-labelled container, network or volume, browser process, SSH tunnel or
+AX42 staging remains. Three mode-0600 `.task81-plan-stage*` candidate-planning
+files predated the rollout and were retained unchanged because the exact
+authorization permits deletion only of the AX42 staging directory.
+
+Persistence, rendered DOM and visual usability were checked separately. The
+database proof is the retained projection above. Actual production assets,
+loaded through a bounded local tunnel with wholly synthetic authentication and
+API data, rendered Atenea WorkSession 19 as `OPEN` with `Abrir sesión` visible
+in the first viewport at `1440x900` and `390x844`. Both viewports had zero POST,
+visible error, horizontal overflow, clipping or overlap. The browser and
+tunnel exited, and the retained screenshots contain no real conversation or
+attachment data.
+
+Sanitized rollout evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-8.1-rollback-rollout-20260810`,
+on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-8.1-rollback-rollout-20260810`,
+and the AX42 execution/archive remains under the same protected run path on
+the worker. The evidence checksum is sealed in that package.
+
+OpenSpec progress is now `55/60`; task 8.2 is the exact first pending task and
+has not begun.

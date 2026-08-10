@@ -229,7 +229,7 @@ environment dumps.
 
 ## 8. Rollback, idempotence and closure
 
-- [ ] 8.1 Disable Atenea project then global release/reconciliation gates,
+- [x] 8.1 Disable Atenea project then global release/reconciliation gates,
   prove zero in-progress lifecycle operations, and deploy the exact
   V63-compatible rollback application plus worker predecessors without
   reintroducing released ownership
