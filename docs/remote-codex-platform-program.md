@@ -14632,3 +14632,75 @@ suite passes 88/88 and the release mediator suite passes 45/45. No UI contract
 or rendered surface changed in this correction. OpenSpec remains `52/60` and
 task 7.9 remains first pending until a separately authorized exact rollout and
 its post-deployment readiness evidence complete.
+
+## Task 7.9 completed — durable current-code successor for WorkSession 17
+
+The complete readiness path retained AgentRun 96 as terminal `FAILED` without
+retry and diagnosed its pinned commit
+`615e539d1f2622a4ac2568ba7697b876d49ae33e` as an exact ancestor of current
+canonical `main` `e4287dbc9a6a3545e6e1d0eda3b488e4a8e8edd5`. The worker
+installer now advances only the exact complete root-owned disabled empty
+Atenea registry across that ancestor relationship and rejects enabled,
+non-empty, incomplete, unrelated, ambiguous or post-preflight-changed state
+before service stop. The routing installer accepts only the exact live
+four-rule release-preflight generation, retains its static mediator and
+restores both exact predecessor bytes and authority on rollback; foreign or
+changed retained state rejects before mutation. The focused installer suites,
+authenticated worker 88/88 suite and release mediator 45/45 suite pass.
+
+The backend, web and Android implementation at Atenea commit
+`918f3b2edbe87ca98dbbdefbb6947c2b2a4e0f80`, tree
+`7c79c500d08321d5fd23178b98d0f658d7283ea4`, adds the disabled-by-default,
+administrator-only `START_FRESH_SESSION` journal and exposes an incomplete
+closed source from Projects without turning navigation into mutation. Focused
+backend tests pass 12/12, the complete isolated PostgreSQL 16 suite passes
+713/713 through V66, the complete remote-close Playwright suite passes 21/21,
+focused web checks pass at `1440x900` and `390x844`, Android unit tests and
+instrumentation compilation pass, and the signed `0.5.102` / versionCode 135
+APK retains SHA-256
+`6dc6dc1d49ee08063ecdcdb3d221acd6eb81d414a2a35557826c6e94966313d8`.
+
+The first authorized backend candidate was correctly rejected by the real
+deployed-assets gate because its embedded JAR was byte-identical to the
+predecessor. Production was restored exactly before any operator action. The
+clean corrected JAR `002bfc248d...` and non-privileged read-only image
+`sha256:53d4a7f4aac19e64eac7528aa4310132ae2f872079916720af82a5f15cf9f0ad`
+then passed isolated boot, V66 and static-asset checks before a separate exact
+authorization deployed it. Production returned HTTP 200 with zero restarts;
+preview, Beautips, Caddy, routing, AX42 and all excluded ownership remained
+unchanged. Actual production assets passed the separated persistence, DOM and
+visual gates, and the real Android screen clearly named WorkSession 17 and the
+single recovery path without clipping or overflow.
+
+The immutable operation
+`595a2268-6447-48e8-92f6-9ae602979ceb` remained `SOURCE_RELEASED` with no
+result through the original lost response and multiple backend replacements
+and restarts. The operator resumed it only through Atenea. Project navigation
+performed zero POST and left zero successors; the separately visible source
+action then advanced the same operation monotonically to `COMPLETED` and
+created exactly one result, WorkSession 19. WorkSession 17 remains
+`CLOSED/RELEASED/revision 6` with its exact receipt. WorkSession 19 is `OPEN`
+with zero turns, zero AgentRuns, zero attachments and zero bindings. AgentRun
+96 remains `FAILED`, has no remote execution or retry child, and all source
+retained counts remain `1/1/1/1` without reading retained content.
+
+WorkSession 19 records only its deterministic future remote routing identity;
+its close state is `NOT_STARTED`. Its exact workspace, artifact, cache,
+admission, release and attachment paths are absent, the disabled empty worker
+registry contains no owner, and all four rootless slots report zero matching
+containers, networks and volumes. Global slot counts remain `3/0/0/3`,
+admission remains `1/4` normal and `0/2` heavy, backups and health remain
+`success/0`, all RAID arrays remain `[UU]`, and excluded allocation/admission
+hashes remain `bd45cac9...` / `5ced8132...`.
+
+Sanitized completion evidence is retained locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.9-start-fresh-session-completed-20260810`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.9-start-fresh-session-completed-20260810`.
+Both copies verify; the SHA-256 of `SHA256SUMS` is
+`72ee3fa3f8faff1f57e9ddbc7591669d6b89454c2482b46a71f2c0153ae266f6`.
+The corrected rollout and real Android visual packages also verify at
+`a94746918a1b04a193e4f7641b98c619cd8cb4aebe9a47913f3f7d1c28695ed2`
+and `2b6e2002363698da2fcce5da7d1a4a1a4bfdea7de6fd200e615fc50b32a25493`.
+
+OpenSpec progress is now `53/60`; task 7.10 is the exact first pending task.

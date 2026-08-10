@@ -208,7 +208,7 @@ environment dumps.
   exact allocation retirement, receipt idempotence, zero owned ephemeral
   resources and unchanged retained worktree/Git/turns/runs/attachment/logs/
   artifacts
-- [ ] 7.9 Diagnose WorkSession 17 readiness without ensure, prompt or runtime;
+- [x] 7.9 Diagnose WorkSession 17 readiness without ensure, prompt or runtime;
   when its pinned commit is an exact ancestor of current canonical `main`, keep
   retry forbidden and implement the disabled-by-default, Atenea-only,
   administrator-only `START_FRESH_SESSION` operation. Prove durable
