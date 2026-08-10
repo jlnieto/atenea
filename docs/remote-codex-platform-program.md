@@ -14704,3 +14704,79 @@ The corrected rollout and real Android visual packages also verify at
 and `2b6e2002363698da2fcce5da7d1a4a1a4bfdea7de6fd200e615fc50b32a25493`.
 
 OpenSpec progress is now `53/60`; task 7.10 is the exact first pending task.
+
+## Task 7.10 completed — retained systems healthy after the real canary
+
+The final section-7 audit was read-only. Production remains on exact image
+`sha256:53d4a7f4aac19e64eac7528aa4310132ae2f872079916720af82a5f15cf9f0ad`,
+preview remains on
+`sha256:b097910ae585b5e3b9abe247cf38ca42da01cc742b09b2a2a714eb82cff33941`,
+Beautips remains on
+`sha256:ff9d2a0ab2620f0ea198daa029a6c92e9063a5b7369c9c0b3d49e3fab58385f3`
+and Caddy remains on
+`sha256:612f0ff47f33888e3b61a8db399ff2dc22c2cefb8cb652d86a619e52eabcd51f`.
+All four containers are running with zero restarts. Production, preview and
+Beautips return local HTTP 200; the unauthenticated public production API
+remains HTTP 401. Production Compose remains exact at
+`ec3e3e222d694016a16d422b328d47896ebc14bfb5285989cded9d0cb1e42ca2`,
+Caddy validates at `f58e7b59...`, the retired Expo routes remain unserved and
+`atenea-activation-code_default` remains absent.
+
+Production retains only the established Atenea lifecycle policy: release,
+reconciliation and current-code fresh-session gates are true, and both
+project allowlists are exactly `atenea`. Preview and Beautips contain none of
+those five values. No environment dump or secret was read. The control-host
+network projection remains the exact sealed baseline `99bd956a...`; the
+retained volume projection is `42d4a0c5...`, with zero volumes created on or
+after the real operation date and no retained volume inspected for content or
+changed.
+
+Flyway remains successful through V66. The durable operation `595a2268...`
+remains a single `COMPLETED` row with one idempotency key and WorkSession 19 as
+its one result. WorkSession 17 remains `CLOSED/RELEASED/revision 6`,
+WorkSession 19 remains `OPEN/NOT_STARTED` with exact content counts `0/0/0/0`,
+and AgentRun 96 remains terminal `FAILED` without remote execution or retry.
+Source retention remains `1/1/1/1` without reading content. Non-terminal
+AgentRuns, active AgentRun leases, active preview leases, non-terminal legacy
+close operations and non-terminal fresh-session operations are all zero.
+Unrelated WorkSessions 3 and 4 remain open with their exact aggregate
+projections; active application registrations remain one `0.5.102` and one
+unrelated `0.5.98`, without selecting device identities or push tokens.
+
+AX42's AgentRun worker, preview, attachment, image-root and four fixed proxy
+services remain active with zero restarts. Backup, backup-check and worker
+health remain `success/0`; their timers remain enabled and active. Failed
+units are zero, rootful Docker/containerd remain inactive, Tailscale and UFW
+remain active, and all three RAID arrays remain `[UU]` and pass explicit
+`mdadm --detail --test`. Rootless slot container counts remain `3/0/0/3`,
+admission remains ready at `1/4` normal and `0/2` heavy, and the sanitized TCP
+listener projection is sealed at `cd5cdb9e...`.
+
+The installed worker, release mediator, installer, service and five-rule
+routing boundary retain exact reviewed hashes `1d4af8ea...`, `095e0db0...`,
+`7ad4978d...`, `9d5e7b75...` and `a711394a...`; both sudoers boundaries
+validate. The canonical registry remains disabled, empty and pinned to
+`e4287dbc...`. The excluded allocation `c20f3cde...` and its admission record
+remain byte-exact at `bd45cac9...` and `5ced8132...` and were not adopted,
+repaired, retired or changed.
+
+The exact task-7.9 completion, corrected rollout and Android visual evidence
+packages verify both locally and remotely. Task-7.10 evidence is retained
+locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-7.10-final-health-20260810`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-7.10-final-health-20260810`.
+Both copies verify 6/6 payloads; the SHA-256 of `SHA256SUMS` is
+`7318caa96e12b85153988714c2a9bc14ab94e42af897f0d9266eeb004781e017`.
+
+No user-visible source changed during task 7.10, so the separated real
+persistence, DOM and visual acceptance remains the sealed task-7.9 result.
+No prompt, retry, Codex/runtime start, lifecycle action, deployment,
+configuration, APK, preview, Beautips, other-project or foreign-resource
+mutation occurred.
+
+Section 7 is complete and OpenSpec progress advances to `54/60`; task 8.1 is
+the exact first pending task. Task 8.1 would disable the Atenea and global
+lifecycle gates and deploy retained application/worker predecessors. That is
+a new production/AX42 rollback mutation and must not begin without a separate
+exact sealed manifest and explicit operator authorization.

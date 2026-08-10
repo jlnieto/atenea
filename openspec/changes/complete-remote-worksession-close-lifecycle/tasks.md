@@ -222,7 +222,7 @@ environment dumps.
   upgrades only the exact live four-rule release-preflight generation, retains
   its static mediator and restores both exact predecessor bytes and authority
   on rollback while rejecting foreign retained state before mutation
-- [ ] 7.10 Prove production, preview, Beautips, backups, RAID, four rootless
+- [x] 7.10 Prove production, preview, Beautips, backups, RAID, four rootless
   slots, rootful daemons, listeners, leases, routing and unrelated sessions are
   healthy and unchanged; seal evidence, update the ledger, strict-validate,
   mark section 7, commit and push
