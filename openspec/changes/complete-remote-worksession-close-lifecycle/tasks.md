@@ -236,7 +236,7 @@ environment dumps.
 - [x] 8.2 Prove expanded records remain readable, WorkSession 16 stays released,
   WorkSession 17 and AgentRun 96 remain immutable, and production, preview,
   Beautips and unrelated worker resources remain healthy
-- [ ] 8.3 Restore the reviewed successor, re-enable only canonical Atenea and
+- [x] 8.3 Restore the reviewed successor, re-enable only canonical Atenea and
   repeat read-only reconciliation/release to prove no additional mutation and
   the same durable receipt
 - [ ] 8.4 Re-run the complete application/worker smoke and strict OpenSpec

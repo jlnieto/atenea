@@ -14931,3 +14931,93 @@ OpenSpec progress is now `56/60`; task 8.3 is the exact first pending task and
 has not begun. Restoring the successor and re-enabling canonical Atenea are new
 production/AX42 mutations and require a separately sealed rollout and explicit
 operator authorization.
+
+## Task 8.3 completed — reviewed successor restored and exact receipt repeated
+
+The operator explicitly authorized sealed manifest `f7f63944...` for the
+reviewed AX42/production successor, canonical Atenea-only gates and one exact
+repeat of WorkSession 16's already `RELEASED` operation. Preflight first
+reverified the published programme, Atenea and rollback branches; exact
+task-8.2 rollback state; V66; lifecycle quiescence; retained WorkSessions/Git;
+worker ownership; excluded allocation/admission; services; rootless slots;
+backups; RAID; preview; Beautips and routing. No divergence was found.
+
+The first orchestration attempt failed closed before service stop or installed
+mutation because unprivileged archive extraction could not retain the guarded
+bundle's required `root:root` payload ownership. Automatic rollback confirmed
+the already-disabled production generation. Independent image/file timestamps,
+hashes and service state proved that neither production nor AX42 had advanced,
+and staging/process residue was zero. The additive correction changed only the
+staging extraction authority to fixed `sudo -n tar`; manifest, bundle, image,
+operations, target identities, gates, timeouts, rollback and exclusions stayed
+unchanged. Its staging-only guarded preflight passed before the rollout was
+resumed. The original candidate seal was `39ed6cf8...`; its additive corrected
+seal is `fe99bf2ecffec3574b5181783ae234c53d881e497edfb900cf95f50013305378`.
+
+The guarded AX42 installer then advanced the exact predecessor to the exact
+successor and a repeated application returned `already-complete`. Installed
+hashes are worker `1d4af8ea...`, activation mediator `5ef544c4...`, release
+mediator `095e0db0...`, installer `7ad4978d...`, unit `9d5e7b75...` and
+sudoers `a711394a...`. Registry remained disabled/disabled/empty at
+`ccf236bb...`; release journal and retained static fingerprints were unchanged.
+Only the AgentRun worker was stopped/started, and generated staging was removed.
+
+Production advanced in the fail-closed order successor-with-gates-disabled
+`e1f8dfb7...`, global-prerequisites-with-empty-allowlists `a7a52c56...`, then
+canonical-Atenea-only `ec3e3e22...`. Final production image is exact
+`sha256:53d4a7f4aac19e64eac7528aa4310132ae2f872079916720af82a5f15cf9f0ad`;
+release, reconciliation and fresh-session globals are true, while both
+allowlists contain exactly `atenea`. Only `atenea-backend-prod` was recreated
+at each stage; it is healthy with zero automatic restarts.
+
+Exactly one repeat of WorkSession 16 operation `5482cb8b...` ran from inside
+the production backend through its configured authenticated fixed worker
+boundary. It returned `RELEASED/revision 6`, request fingerprint `d8d92e5b...`,
+the exact durable receipt
+`59987a1cad35992a0bf54b4b2fa3420f8daf83c4d0fb4cbeaef343457cdeed64`,
+zero removed resources, all four released assertions, all ten retained
+assertions and `valuesExposed=false`. The complete safe durable projection was
+byte-identical before/after at `437b3726...`: WorkSession/operation remain
+revision 10 with the original timestamp, 8 plans, 5 consumed plans and 10
+events. No ownership was reconstructed.
+
+WorkSession 16/17 workspace records remain `6014606b...` / `97b41b63...` and
+their worktrees remain clean at `615e539d...`, tree `3b8a5517...`.
+WorkSession 16 active allocation remains absent, released admission and retired
+allocation remain `eddd53a8...` / `af69156b...`; WorkSession 17 admission and
+active allocation remain absent. The excluded allocation/admission remain
+byte-exact at `bd45cac9...` / `5ced8132...` and were not adopted or changed.
+
+WorkSessions 16, 17 and 19 remain respectively
+`CLOSED/RELEASED/10`, `CLOSED/RELEASED/6` and `OPEN/NOT_STARTED/0`.
+WorkSession 17 retains one turn/run/attachment/binding without content reads;
+WorkSession 19 remains empty. AgentRun 96 remains `FAILED`, unparented,
+unretried, without remote execution and with its complete profile. Lifecycle
+activity remains `0:0:0:0:0`; unrelated WorkSessions 3/4 remain exact.
+
+Production, preview and Beautips return local HTTP 200 and retain exact images
+`53d4a7f4...`, `b097910a...` and `ff9d2a0a...`; Caddy remains `612f0ff4...`,
+validates and keeps public root/API protected by HTTP 401. Worker services and
+all four proxies/sockets are active, rootless slots remain `3/0/0/3`,
+backup/check/health remain `success/0`, RAID is `3/3 [UU]`, rootful daemons
+remain inactive, and the activation network remains absent. Task-labelled
+containers/networks/volumes and AX42 staging are zero.
+
+Persistence, DOM and visual usability were verified separately. Real restored
+production assets were loaded through a bounded local tunnel with wholly
+synthetic authentication/data and every POST fail-closed. At `1440x900` and
+`390x844`, Atenea, `OPEN`, session `#19`, the complete long current-code message
+and enabled `Abrir sesión` were visible in the first viewport with zero error,
+POST, clipping, overlap or horizontal overflow. Sanitized captures were
+inspected; browser and tunnel residue are zero. An initial public-origin probe
+stopped at expected Basic Auth 401 before loading assets and read no credential.
+
+Sanitized rollout evidence verifies locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-8.3-successor-rollout-20260811`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-8.3-successor-rollout-20260811`.
+The SHA-256 of its `SHA256SUMS` is
+`78a1231ae74cbeafe40899b9f49eb9a1fee67a106ee4c894afd2911b6099f478`.
+
+OpenSpec progress is now `57/60`; task 8.4 is the exact first pending task and
+has not begun.
