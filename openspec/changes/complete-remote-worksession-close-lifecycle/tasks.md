@@ -239,7 +239,7 @@ environment dumps.
 - [x] 8.3 Restore the reviewed successor, re-enable only canonical Atenea and
   repeat read-only reconciliation/release to prove no additional mutation and
   the same durable receipt
-- [ ] 8.4 Re-run the complete application/worker smoke and strict OpenSpec
+- [x] 8.4 Re-run the complete application/worker smoke and strict OpenSpec
   validation; capture final Git/index, services, slots, ownership, backup, RAID,
   production, preview and Beautips fingerprints with zero temporary residue
 - [ ] 8.5 Verify every evidence `SHA256SUMS`, update the programme decision log,

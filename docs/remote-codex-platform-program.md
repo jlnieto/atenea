@@ -15021,3 +15021,71 @@ The SHA-256 of its `SHA256SUMS` is
 
 OpenSpec progress is now `57/60`; task 8.4 is the exact first pending task and
 has not begun.
+
+## Task 8.4 completed — final application/worker smoke and fingerprints
+
+Task 8.4 completed without changing application, worker or deployed source.
+The accepted Atenea commit `918f3b2e...` passed all 713 backend tests against
+an isolated PostgreSQL 16 fixture with all 66 migrations successful. Its web
+build compiled 1,583 modules and the complete real Chromium suite passed
+38/38 with one worker, zero retries and finite timeouts. The exact programme
+commit `3a131147...` passed all 33 sorted top-level worker entrypoints,
+including release, ownership, installer rollback, session operations,
+runtime, slots, backup, attachments, preview, Beautips isolation and browser
+cleanup.
+
+Early backend harness diagnostics exposed only the fixture's historical
+hard-coded `/workspace/repos` boundary and the separate application
+workspace-root validator. The unchanged accepted run used a task-owned mounted
+`/workspace`, a private labelled network and PostgreSQL fixture. All containers,
+networks, detached worktrees, dependencies, results, logs, browser processes,
+tunnels, wrappers and visual scratch state were removed. No production or
+AX42 service was restarted.
+
+Production, preview, Beautips and Caddy remain on exact images `53d4a7f4...`,
+`b097910a...`, `ff9d2a0a...` and `612f0ff4...`, running with zero restarts.
+The three application health checks return HTTP 200, public production remains
+HTTP 401 without authentication and Caddy validation passes. Production
+Compose remains `ec3e3e22...`; release, reconciliation and fresh-session
+globals are true and both allowlists contain exactly `atenea`. Preview and
+Beautips retain none of this enablement. The activation network remains absent
+and task-labelled control resources are `0/0/0`.
+
+WorkSessions 16, 17 and 19 remain `CLOSED/RELEASED/10`,
+`CLOSED/RELEASED/6` and `OPEN/NOT_STARTED/0`. WorkSession 17 retains one
+turn/run/attachment/binding without content reads, WorkSession 19 remains
+empty and AgentRun 96 remains `FAILED`, unparented, without children or remote
+execution. The lifecycle projection is `0:0:0:0:0`; WorkSession 16's exact
+operation remains `RELEASED/revision 10` with receipt `59987a1c...`; unrelated
+WorkSessions 3/4 remain exact.
+
+AX42 retains the exact successor hashes, disabled empty registry pinned to
+`e4287dbc...`, clean retained WorkSession 16/17 worktrees at `615e539d...`,
+released/retired WorkSession 16 ownership and absent WorkSession 17 active
+ownership. The excluded allocation/admission remain byte-exact at
+`bd45cac9...` / `5ced8132...` and untouched. Worker, preview, attachment,
+image and proxy boundaries are active with zero restarts; slots remain
+`3/0/0/3`; backup/check/health remain `success/0`; RAID is `3/3 [UU]` with
+all explicit tests passing; rootful daemons remain inactive.
+
+Eighteen final wholly synthetic screenshots cover desktop `1440x900` and
+mobile `390x844`. DOM assertions and inspected images prove clear state and
+next action, first-viewport action visibility, long-message wrapping, role
+handling and zero overflow/clipping. No UI source or deployed asset changed.
+
+The live npm advisory service newly reports moderate `dompurify`
+`GHSA-55q2-fjhq-7xh7` and high `nanoid` `GHSA-2v37-7h3g-55p8`, with fixes
+available. This external-registry observation postdates the separately sealed
+task 6.2 zero-vulnerability audit and is outside task 8.4's application/worker
+smoke. No dependency, lockfile, image or deployment was changed; a separately
+scoped security-maintenance change must refresh and requalify the full chain.
+
+Sanitized evidence verifies locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-8.4-final-smoke-20260811`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-8.4-final-smoke-20260811`.
+The SHA-256 of its `SHA256SUMS` is
+`256b8a1d8c48e715b34eca006bbf14df059fa7516f6605d00a916838dbf23255`.
+
+OpenSpec progress is now `58/60`; task 8.5 is the exact first pending task and
+has not begun.
