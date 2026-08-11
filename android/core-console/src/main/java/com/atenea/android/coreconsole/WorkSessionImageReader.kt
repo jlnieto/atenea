@@ -1,6 +1,8 @@
 package com.atenea.android.coreconsole
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.atenea.android.api.WorkSessionAttachmentCapability
@@ -10,7 +12,8 @@ import java.io.InputStream
 internal data class LocalWorkSessionImage(
     val displayName: String,
     val contentType: String,
-    val bytes: ByteArray
+    val bytes: ByteArray,
+    val preview: Bitmap? = null
 )
 
 internal fun Context.readWorkSessionImage(
@@ -43,7 +46,7 @@ internal fun Context.readWorkSessionImage(
     }
     val input = contentResolver.openInputStream(uri)
         ?: throw ImageSelectionException("No se pudo leer la imagen seleccionada.")
-    return input.use {
+    val validated = input.use {
         readValidatedWorkSessionImage(
             input = it,
             displayName = metadata?.displayName ?: "imagen",
@@ -52,6 +55,7 @@ internal fun Context.readWorkSessionImage(
             maxBytes = minOf(capability.maxFileBytes, capability.remainingSessionBytes)
         )
     }
+    return validated.copy(preview = decodeBoundedImagePreview(validated.bytes))
 }
 
 internal fun readValidatedWorkSessionImage(
@@ -103,6 +107,21 @@ internal fun detectImageContentType(bytes: ByteArray): String? = when {
         bytes.copyOfRange(0, 4).contentEquals("RIFF".toByteArray()) &&
         bytes.copyOfRange(8, 12).contentEquals("WEBP".toByteArray()) -> "image/webp"
     else -> null
+}
+
+private fun decodeBoundedImagePreview(bytes: ByteArray): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (bounds.outWidth / sample > 256 || bounds.outHeight / sample > 256) {
+        sample *= 2
+    }
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = sample
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+    }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
 }
 
 internal class ImageSelectionException(message: String) : IllegalArgumentException(message)

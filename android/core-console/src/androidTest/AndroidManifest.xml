@@ -5,5 +5,9 @@
             android:name="com.atenea.android.coreconsole.RemoteCloseVisualFixtureActivity"
             android:exported="true"
             android:theme="@style/RemoteCloseFixtureTheme" />
+        <activity
+            android:name="com.atenea.android.coreconsole.WorkSessionAttachmentVisualFixtureActivity"
+            android:exported="true"
+            android:theme="@style/RemoteCloseFixtureTheme" />
     </application>
 </manifest>

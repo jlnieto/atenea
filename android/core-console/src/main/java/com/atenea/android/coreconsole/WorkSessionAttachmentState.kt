@@ -1,5 +1,6 @@
 package com.atenea.android.coreconsole
 
+import android.graphics.Bitmap
 import com.atenea.android.api.AteneaApiException
 import com.atenea.android.api.MobileWorkSessionConversation
 import com.atenea.android.api.WorkSessionAttachment
@@ -34,6 +35,7 @@ internal data class PendingWorkSessionImage(
     val contentType: String,
     val sizeBytes: Long,
     val localImage: LocalWorkSessionImage? = null,
+    val preview: Bitmap? = null,
     val status: PendingImageStatus = PendingImageStatus.SELECTED,
     val attachment: WorkSessionAttachment? = null,
     val failure: AttachmentFailure? = null
@@ -88,7 +90,8 @@ internal data class WorkSessionAttachmentDraft(
                 displayName = candidate.displayName,
                 contentType = candidate.contentType,
                 sizeBytes = candidate.bytes.size.toLong(),
-                localImage = candidate
+                localImage = candidate,
+                preview = candidate.preview
             )
         )
     }
@@ -109,6 +112,7 @@ internal data class WorkSessionAttachmentDraft(
 
     fun remove(localId: UUID): WorkSessionAttachmentDraft = if (pendingTurn == null) {
         images.firstOrNull { it.localId == localId }?.localImage?.bytes?.fill(0)
+        images.firstOrNull { it.localId == localId }?.preview?.takeUnless { it.isRecycled }?.recycle()
         copy(images = images.filterNot { it.localId == localId }, capabilityFailure = null)
     } else {
         this
@@ -134,7 +138,10 @@ internal data class WorkSessionAttachmentDraft(
                 turn.messageText.trim() == expected.normalizedMessage &&
                 turn.attachments.sortedBy { it.position }.map { it.id } == expected.attachmentIds
         }
-        return if (accepted) copy(images = emptyList(), pendingTurn = null, capabilityFailure = null, submissionFailure = null) else this
+        return if (accepted) {
+            images.forEach { it.preview?.takeUnless { preview -> preview.isRecycled }?.recycle() }
+            copy(images = emptyList(), pendingTurn = null, capabilityFailure = null, submissionFailure = null)
+        } else this
     }
 
     fun resetUncertainSubmission(): WorkSessionAttachmentDraft = copy(pendingTurn = null)
