@@ -91,6 +91,8 @@ Código principal:
 - `android/core-console/src/main/java/com/atenea/android/coreconsole/WorkSessionConversationScreen.kt`
   - conversacion nativa de WorkSession
   - envio de instrucciones a Codex via Atenea Core con scope `SESSION`
+  - capacidad de imágenes gobernada por backend, selector del sistema, subida idempotente y reintento durable
+  - apertura autenticada de imágenes históricas mediante caché privada y `FileProvider`
   - confirmaciones y aclaraciones con `CommandCard`
   - superficie visual basada en la app no nativa
 
@@ -141,6 +143,8 @@ Cuando la app entra en una superficie conversacional de trabajo:
 - la pantalla ocupa todo el ancho disponible;
 - la propia superficie muestra solo navegación contextual: volver, abrir Core y actualizar;
 - el compositor inferior queda reducido a campo de texto y enviar;
+- la acción secundaria de adjuntar sólo aparece operativa cuando la capacidad exacta de la WorkSession está `READY`;
+- las imágenes seleccionadas muestran miniatura, estado y retirada/reintento, mientras Enviar sigue siendo la única acción primaria;
 - no aparecen botones globales de Voz, Proyectos u Operaciones dentro de la zona de escritura.
 
 La app ya no muestra actualizaciones como tarjeta central. La shell comprueba silenciosamente al arrancar y sólo muestra una entrada pequeña hacia Ajustes si hay versión disponible.
@@ -240,6 +244,15 @@ Regla de mutaciones:
 - Generar entregable: Core `generate_session_deliverable`
 - Aprobar entregable: Core `approve_session_deliverable`
 - Marcar facturado: Core `mark_price_estimate_billed`
+
+Adjuntos de conversación:
+
+- la app consulta `/api/mobile/sessions/{id}/attachments/capability` y no infiere elegibilidad por nombre de proyecto;
+- el selector del sistema acepta únicamente PNG, JPEG y WebP sin permisos amplios de almacenamiento;
+- cada subida usa su UUID idempotente y el turno conserva un `clientRequestId` estable con los IDs ordenados;
+- un timeout conserva texto, selección y UUID para repetir exactamente; sólo la respuesta que devuelve el vínculo exacto limpia el borrador;
+- un HTTP 4xx de validación, límite, política, permiso, conflicto o propiedad se muestra directamente y no se trata como indisponibilidad del worker;
+- el historial descarga contenido sólo tras pulsar `Abrir`, dentro de caché privada y sin URL pública ni path del worker.
 
 Los endpoints `/api/mobile/sessions/{id}/publish`, `/pull-request/sync`, `/close` y `/deliverables/*` de escritura son compatibilidad legacy. La app nativa premium no debe llamarlos para mutaciones nuevas.
 

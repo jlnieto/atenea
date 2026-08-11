@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.atenea.android.api.MobileConversationTurn
 import com.atenea.android.api.SessionTurnAttachment
 import java.util.UUID
@@ -18,6 +19,7 @@ class WorkSessionAttachmentComposerTest {
 
     @Test
     fun readyStateShowsSecondaryAttachAndOneEnabledSendAction() {
+        var attachClicks = 0
         compose.setContent {
             ConversationSurface(
                 title = "Fixture",
@@ -36,13 +38,14 @@ class WorkSessionAttachmentComposerTest {
                     capability = readyCapabilityFixture(),
                     capabilityLoading = false
                 ),
-                onAttachImages = {}
+                onAttachImages = { attachClicks += 1 }
             )
         }
 
         compose.onNodeWithText("Imágenes · 0/4 seleccionadas").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Adjuntar imágenes").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithContentDescription("Adjuntar imágenes").assertIsDisplayed().assertIsEnabled().performClick()
         compose.onNodeWithContentDescription("Enviar").assertIsDisplayed().assertIsEnabled()
+        org.junit.Assert.assertEquals(1, attachClicks)
     }
 
     @Test
@@ -78,6 +81,7 @@ class WorkSessionAttachmentComposerTest {
     @Test
     fun historicalAttachmentIsRenderedOnlyOnItsTurnAndIsActionable() {
         val attachment = historicalAttachmentFixture()
+        var openClicks = 0
         compose.setContent {
             ConversationSurface(
                 title = "Fixture",
@@ -110,13 +114,15 @@ class WorkSessionAttachmentComposerTest {
                     capability = readyCapabilityFixture(),
                     capabilityLoading = false
                 ),
-                onOpenHistoricalAttachment = {}
+                onOpenHistoricalAttachment = { openClicks += 1 }
             )
         }
 
         compose.onNodeWithText("fixture-history.png").assertIsDisplayed()
         compose.onNodeWithText("Respuesta posterior sin adjuntos").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Abrir imagen 1").assertIsDisplayed().assertIsEnabled()
+        org.junit.Assert.assertEquals(0, openClicks)
+        compose.onNodeWithContentDescription("Abrir imagen 1").assertIsDisplayed().assertIsEnabled().performClick()
+        org.junit.Assert.assertEquals(1, openClicks)
     }
 
     @Test

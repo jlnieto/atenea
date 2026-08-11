@@ -41,6 +41,21 @@ class WorkSessionAttachmentStateTest {
     }
 
     @Test
+    fun `ready draft accepts one through four images and rejects a fifth`() {
+        var draft = WorkSessionAttachmentDraft(capability = readyCapability(maxCount = 4), capabilityLoading = false)
+
+        repeat(4) { index ->
+            draft = draft.acceptCandidate(pngImage(), uuid(index + 1), uuid(index + 11))
+            assertEquals(index + 1, draft.images.size)
+            assertEquals(index < 3, draft.canAddImage())
+        }
+
+        val rejected = draft.acceptCandidate(pngImage(), uuid(5), uuid(15))
+        assertEquals(4, rejected.images.size)
+        assertEquals(AttachmentFailureCategory.CAPACITY, rejected.capabilityFailure?.category)
+    }
+
+    @Test
     fun `uncertain submission stays immutable until exact accepted echo`() {
         val attachment = storedAttachment(uuid(21))
         val ready = WorkSessionAttachmentDraft(capability = readyCapability(), capabilityLoading = false)
