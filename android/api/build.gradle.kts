@@ -25,4 +25,8 @@ kotlin {
 
 dependencies {
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(kotlin("test"))
+    testImplementation("org.json:json:20240303")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }

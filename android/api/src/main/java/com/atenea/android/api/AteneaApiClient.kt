@@ -5,7 +5,9 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
+import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URLEncoder
@@ -265,6 +267,72 @@ class AteneaApiClient(
         body = JSONObject().put("message", message),
         authenticated = true
     ) { json -> parseMobileWorkSessionConversation(json.getJSONObject("view")) }
+
+    suspend fun createMobileWorkSessionTurn(
+        sessionId: Long,
+        message: String,
+        clientRequestId: UUID,
+        attachmentIds: List<UUID>
+    ): MobileWorkSessionConversation = postJson(
+        path = "/api/mobile/sessions/$sessionId/turns",
+        body = buildMobileWorkSessionTurnBody(message, clientRequestId, attachmentIds),
+        authenticated = true
+    ) { json -> parseMobileWorkSessionConversation(json.getJSONObject("view")) }
+
+    suspend fun fetchWorkSessionAttachmentCapability(
+        sessionId: Long
+    ): WorkSessionAttachmentCapability = getJson(
+        path = "/api/mobile/sessions/$sessionId/attachments/capability",
+        authenticated = true,
+        parser = ::parseWorkSessionAttachmentCapability
+    )
+
+    suspend fun fetchWorkSessionAttachments(
+        sessionId: Long,
+        limit: Int = 50
+    ): List<WorkSessionAttachment> = getJsonArray(
+        path = "/api/mobile/sessions/$sessionId/attachments?limit=${limit.coerceIn(1, 50)}",
+        authenticated = true
+    ) { items ->
+        List(items.length()) { index -> parseWorkSessionAttachment(items.getJSONObject(index)) }
+    }
+
+    suspend fun uploadWorkSessionAttachment(
+        sessionId: Long,
+        idempotencyKey: UUID,
+        fileName: String,
+        contentType: String,
+        bytes: ByteArray,
+        onProgress: ((MobileUploadTransferProgress) -> Unit)? = null
+    ): WorkSessionAttachment = postMultipartFile(
+        path = "/api/mobile/sessions/$sessionId/attachments",
+        fieldName = "file",
+        fileName = fileName,
+        contentType = contentType,
+        bytes = bytes,
+        onProgress = onProgress,
+        headers = mapOf("Idempotency-Key" to idempotencyKey.toString()),
+        parser = ::parseWorkSessionAttachment
+    )
+
+    suspend fun downloadWorkSessionAttachment(
+        sessionId: Long,
+        attachmentId: UUID,
+        maxBytes: Long = DEFAULT_ATTACHMENT_DOWNLOAD_LIMIT_BYTES
+    ): WorkSessionAttachmentContent {
+        require(maxBytes in 1..MAX_ATTACHMENT_DOWNLOAD_LIMIT_BYTES) {
+            "El límite local de descarga no es válido."
+        }
+        val response = requestAuthenticatedBinary(
+            path = "/api/mobile/sessions/$sessionId/attachments/$attachmentId/content",
+            maxBytes = maxBytes,
+            allowRefresh = true
+        )
+        return WorkSessionAttachmentContent(
+            bytes = response.bytes,
+            contentType = response.contentType ?: "application/octet-stream"
+        )
+    }
 
     suspend fun fetchCodexCatalog(): CodexCatalog = getJson(
         path = "/api/codex/catalog",
@@ -777,8 +845,9 @@ class AteneaApiClient(
         contentType: String,
         bytes: ByteArray,
         onProgress: ((MobileUploadTransferProgress) -> Unit)?,
+        headers: Map<String, String> = emptyMap(),
         parser: (JSONObject) -> T
-    ): T = parser(JSONObject(requestMultipartBody(path, fieldName, fileName, contentType, bytes, onProgress, allowRefresh = true)))
+    ): T = parser(JSONObject(requestMultipartBody(path, fieldName, fileName, contentType, bytes, onProgress, headers, allowRefresh = true)))
 
     private suspend fun requestMultipartBody(
         path: String,
@@ -787,6 +856,7 @@ class AteneaApiClient(
         contentType: String,
         bytes: ByteArray,
         onProgress: ((MobileUploadTransferProgress) -> Unit)?,
+        headers: Map<String, String>,
         allowRefresh: Boolean
     ): String = withContext(Dispatchers.IO) {
         val boundary = "AteneaBoundary${System.currentTimeMillis()}"
@@ -802,6 +872,7 @@ class AteneaApiClient(
             setFixedLengthStreamingMode(multipart.totalBytes)
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            headers.forEach { (name, value) -> setRequestProperty(name, value) }
             val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
                 ?: throw AteneaApiException(401, "No hay sesión activa.")
             setRequestProperty("Authorization", "Bearer $token")
@@ -828,6 +899,7 @@ class AteneaApiClient(
                         contentType = contentType,
                         bytes = bytes,
                         onProgress = onProgress,
+                        headers = headers,
                         allowRefresh = false
                     )
                 }
@@ -836,6 +908,45 @@ class AteneaApiClient(
                 throw buildApiException(connection.responseCode, responseBody)
             }
             responseBody
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private suspend fun requestAuthenticatedBinary(
+        path: String,
+        maxBytes: Long,
+        allowRefresh: Boolean
+    ): BinaryApiResponse = withContext(Dispatchers.IO) {
+        val connection = (URL("$normalizedBaseUrl$path").openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15000
+            readTimeout = 120000
+            setRequestProperty("Accept", "image/png, image/jpeg, image/webp")
+            val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
+                ?: throw AteneaApiException(401, "No hay sesión activa.")
+            setRequestProperty("Authorization", "Bearer $token")
+        }
+
+        try {
+            if (connection.responseCode == 401 && allowRefresh) {
+                val refreshToken = refreshTokenProvider()?.takeIf { it.isNotBlank() }
+                if (refreshToken != null) {
+                    connection.errorStream?.close()
+                    refreshSession(refreshToken)
+                    return@withContext requestAuthenticatedBinary(path, maxBytes, allowRefresh = false)
+                }
+            }
+            if (connection.responseCode !in 200..299) {
+                throw buildApiException(connection.responseCode, connection.readResponseBody())
+            }
+            if (connection.contentLengthLong > maxBytes) {
+                throw AteneaApiException(413, "La imagen supera el límite permitido para abrirla.")
+            }
+            BinaryApiResponse(
+                bytes = connection.inputStream.use { it.readBytesBounded(maxBytes) },
+                contentType = connection.contentType
+            )
         } finally {
             connection.disconnect()
         }
@@ -854,7 +965,7 @@ class AteneaApiClient(
     }
 }
 
-private data class MultipartParts(
+internal data class MultipartParts(
     val header: ByteArray,
     val fileBytes: ByteArray,
     val footer: ByteArray
@@ -862,7 +973,7 @@ private data class MultipartParts(
     val totalBytes: Int = header.size + fileBytes.size + footer.size
 }
 
-private fun multipartParts(
+internal fun multipartParts(
     boundary: String,
     fieldName: String,
     fileName: String,
@@ -905,6 +1016,15 @@ private fun writeMultipartBody(
 }
 
 private fun String.escapeMultipart(): String = replace("\\", "\\\\").replace("\"", "\\\"")
+
+internal fun buildMobileWorkSessionTurnBody(
+    message: String,
+    clientRequestId: UUID,
+    attachmentIds: List<UUID>
+): JSONObject = JSONObject()
+    .put("message", message)
+    .put("clientRequestId", clientRequestId.toString())
+    .put("attachmentIds", JSONArray(attachmentIds.map(UUID::toString)))
 
 data class OperatorProfile(
     val id: Long,
@@ -1013,6 +1133,74 @@ data class MobileWorkSessionConversation(
     val lastError: String?,
     val lastAgentResponse: String?,
     val recentTurns: List<MobileConversationTurn>
+)
+
+enum class WorkSessionAttachmentCapabilityState { READY, BLOCKED }
+
+enum class WorkSessionAttachmentBlockedReason {
+    NONE,
+    GLOBAL_DISABLED,
+    PROJECT_DISABLED,
+    SESSION_NOT_ELIGIBLE,
+    OWNERSHIP_INVALID,
+    SESSION_QUOTA_EXHAUSTED,
+    WORKER_UNAVAILABLE,
+    WORKER_UNSUPPORTED
+}
+
+enum class WorkSessionAttachmentWorkerCompatibility {
+    NOT_CHECKED,
+    UNAVAILABLE,
+    INCOMPATIBLE,
+    COMPATIBLE
+}
+
+data class WorkSessionAttachmentCapability(
+    val state: WorkSessionAttachmentCapabilityState,
+    val blockedReason: WorkSessionAttachmentBlockedReason,
+    val message: String,
+    val nextAction: String,
+    val policyRevision: String,
+    val workerCompatibility: WorkSessionAttachmentWorkerCompatibility,
+    val acceptedContentTypes: List<String>,
+    val currentSessionBytes: Long,
+    val maxSessionBytes: Long,
+    val remainingSessionBytes: Long,
+    val maxFileBytes: Long,
+    val maxAttachmentsPerTurn: Int,
+    val maxAttachmentBytesPerTurn: Long
+)
+
+data class WorkSessionAttachment(
+    val id: UUID,
+    val workSessionId: Long,
+    val projectId: Long,
+    val agentRunId: Long?,
+    val source: String,
+    val kind: String,
+    val originalFilename: String,
+    val contentType: String,
+    val sizeBytes: Long,
+    val retentionClass: String,
+    val retainUntil: String,
+    val sha256: String,
+    val createdAt: String,
+    val indexedAt: String
+)
+
+data class SessionTurnAttachment(
+    val id: UUID,
+    val position: Int,
+    val originalFilename: String,
+    val contentType: String,
+    val sizeBytes: Long,
+    val sha256: String,
+    val downloadPath: String
+)
+
+data class WorkSessionAttachmentContent(
+    val bytes: ByteArray,
+    val contentType: String
 )
 
 data class MobileWorkSession(
@@ -1124,7 +1312,8 @@ data class MobileConversationTurn(
     val actor: String,
     val messageText: String,
     val createdAt: String?,
-    val executionProfile: CodexTurnExecutionProfile? = null
+    val executionProfile: CodexTurnExecutionProfile? = null,
+    val attachments: List<SessionTurnAttachment> = emptyList()
 )
 
 data class CodexTurnExecutionProfile(
@@ -1697,6 +1886,9 @@ private data class BinaryApiResponse(
     val contentType: String?
 )
 
+private const val DEFAULT_ATTACHMENT_DOWNLOAD_LIMIT_BYTES = 16L * 1024L * 1024L
+private const val MAX_ATTACHMENT_DOWNLOAD_LIMIT_BYTES = 32L * 1024L * 1024L
+
 class AteneaApiException(
     val status: Int,
     override val message: String
@@ -1828,6 +2020,41 @@ private fun parseMobileWorkSessionConversation(json: JSONObject): MobileWorkSess
         recentTurns = List(turns.length()) { index -> parseMobileConversationTurn(turns.getJSONObject(index)) }
     )
 }
+
+internal fun parseWorkSessionAttachmentCapability(json: JSONObject): WorkSessionAttachmentCapability =
+    WorkSessionAttachmentCapability(
+        state = enumValueOf(json.getString("state")),
+        blockedReason = enumValueOf(json.getString("blockedReason")),
+        message = json.optString("message", ""),
+        nextAction = json.optString("nextAction", ""),
+        policyRevision = json.optString("policyRevision", ""),
+        workerCompatibility = enumValueOf(json.getString("workerCompatibility")),
+        acceptedContentTypes = json.optJSONArray("acceptedContentTypes").toStringList(),
+        currentSessionBytes = json.getLong("currentSessionBytes"),
+        maxSessionBytes = json.getLong("maxSessionBytes"),
+        remainingSessionBytes = json.getLong("remainingSessionBytes"),
+        maxFileBytes = json.getLong("maxFileBytes"),
+        maxAttachmentsPerTurn = json.getInt("maxAttachmentsPerTurn"),
+        maxAttachmentBytesPerTurn = json.getLong("maxAttachmentBytesPerTurn")
+    )
+
+internal fun parseWorkSessionAttachment(json: JSONObject): WorkSessionAttachment =
+    WorkSessionAttachment(
+        id = UUID.fromString(json.getString("id")),
+        workSessionId = json.getLong("workSessionId"),
+        projectId = json.getLong("projectId"),
+        agentRunId = json.optNullableLong("agentRunId"),
+        source = json.getString("source"),
+        kind = json.getString("kind"),
+        originalFilename = json.getString("originalFilename"),
+        contentType = json.getString("contentType"),
+        sizeBytes = json.getLong("sizeBytes"),
+        retentionClass = json.getString("retentionClass"),
+        retainUntil = json.getString("retainUntil"),
+        sha256 = json.getString("sha256"),
+        createdAt = json.getString("createdAt"),
+        indexedAt = json.getString("indexedAt")
+    )
 
 private fun parseCodexCatalog(json: JSONObject): CodexCatalog {
     val models = json.optJSONArray("models") ?: JSONArray()
@@ -2153,7 +2380,7 @@ private fun parseMobileRescueConversation(json: JSONObject): MobileRescueConvers
     )
 }
 
-private fun parseMobileConversationTurn(json: JSONObject): MobileConversationTurn =
+internal fun parseMobileConversationTurn(json: JSONObject): MobileConversationTurn =
     MobileConversationTurn(
         id = json.getLong("id"),
         actor = json.optString("actor", ""),
@@ -2168,7 +2395,21 @@ private fun parseMobileConversationTurn(json: JSONObject): MobileConversationTur
                 effortSource = profile.optString("effortSource", ""),
                 codexVersion = profile.optString("codexVersion", "")
             )
-        }
+        },
+        attachments = json.optJSONArray("attachments")?.let { attachments ->
+            List(attachments.length()) { index ->
+                val attachment = attachments.getJSONObject(index)
+                SessionTurnAttachment(
+                    id = UUID.fromString(attachment.getString("id")),
+                    position = attachment.getInt("position"),
+                    originalFilename = attachment.getString("originalFilename"),
+                    contentType = attachment.getString("contentType"),
+                    sizeBytes = attachment.getLong("sizeBytes"),
+                    sha256 = attachment.getString("sha256"),
+                    downloadPath = attachment.getString("downloadPath")
+                )
+            }
+        }.orEmpty()
     )
 
 private fun parseManagedHost(json: JSONObject): ManagedHost = ManagedHost(
@@ -2535,6 +2776,22 @@ private fun HttpURLConnection.readResponseBody(): String {
             reader.readText()
         }
     }
+}
+
+private fun InputStream.readBytesBounded(maxBytes: Long): ByteArray {
+    val output = ByteArrayOutputStream(minOf(maxBytes, 64L * 1024L).toInt())
+    val buffer = ByteArray(64 * 1024)
+    var total = 0L
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) break
+        total += read
+        if (total > maxBytes) {
+            throw AteneaApiException(413, "La imagen supera el límite permitido para abrirla.")
+        }
+        output.write(buffer, 0, read)
+    }
+    return output.toByteArray()
 }
 
 private fun buildApiException(status: Int, responseBody: String): AteneaApiException {
