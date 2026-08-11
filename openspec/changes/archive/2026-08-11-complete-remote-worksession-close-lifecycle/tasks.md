@@ -242,7 +242,7 @@ environment dumps.
 - [x] 8.4 Re-run the complete application/worker smoke and strict OpenSpec
   validation; capture final Git/index, services, slots, ownership, backup, RAID,
   production, preview and Beautips fingerprints with zero temporary residue
-- [ ] 8.5 Verify every evidence `SHA256SUMS`, update the programme decision log,
+- [x] 8.5 Verify every evidence `SHA256SUMS`, update the programme decision log,
   evidence ledger and resume point, mark only completed tasks, archive the
   change, run global strict validation, commit and push all declared branches
 - [ ] 8.6 Report the preserved explicit operator choice: retry only when the

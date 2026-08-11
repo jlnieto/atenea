@@ -6,18 +6,18 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `complete-remote-worksession-close-lifecycle` planned after
-  the first consecutive real Atenea WorkSession exposed retained closed-session
-  ownership and incorrect admission-error classification
+- Current phase: `complete-remote-worksession-close-lifecycle` implemented,
+  live-accepted and archived with only its final report-only operator choice
+  remaining
 - Runtime routing: exact canonical Atenea and Beautips project routes are
   enabled; generic project routing and every unrelated project remain disabled
 - Production/control plane: current Atenea VPS
-- Development/execution plane: Hetzner AX42; closed Atenea WorkSession 16 still
-  owns slot 2 pending exact reconciliation, open WorkSession 17 has only its
-  clean workspace, and Beautips retains its accepted slot-4 WorkSession while
-  the administrative slot-1 stack remains foreign
+- Development/execution plane: Hetzner AX42; Atenea WorkSessions 16 and 17 are
+  closed with exact durable `RELEASED` receipts, WorkSession 19 is open and
+  empty on current canonical code, and Beautips retains its accepted slot-4
+  WorkSession while the administrative slot-1 stack remains foreign
 - Canonical source: GitHub
-- Last evidence refresh: 2026-08-03
+- Last evidence refresh: 2026-08-11
 
 The normative requirements live in OpenSpec. This ledger records phase state, decisions, evidence locations and the exact resume point. Code, tests and migrations remain authoritative for existing Atenea runtime behaviour.
 
@@ -199,6 +199,10 @@ independent restore-tested backup. `onboard-atenea-on-ax42` is archived as
 protocol remains installed but project selection/execution is disabled with
 zero registered workspaces. Beautips onboarding and its subsequent exact
 production activation are recorded later in this ledger.
+`complete-remote-worksession-close-lifecycle` is archived as
+`2026-08-11-complete-remote-worksession-close-lifecycle` with `59/60` tasks
+complete. Its only unchecked task is the final report-only operator choice;
+it cannot release ownership, replay a prompt or start runtime.
 
 ## Decision log
 
@@ -303,11 +307,11 @@ production activation are recorded later in this ledger.
 | D-097 | Promote Atenea's two accepted descendant histories to GitHub `main` in order using merge-commit semantics, then reconcile every canonical base declaration to the resulting immutable commit. Squash, force update and source-branch deletion are forbidden. | The attachment candidate already descends from the accumulated feature history; preserving that ancestry makes the second review contain only its additional commits and prevents split source authority for future WorkSessions. | accepted and live-verified | platform/Git/operations owners | before opening the next real Atenea development WorkSession |
 | D-098 | Preserve WorkSession 6 as an immutable `DRAFT_BLOCKED` retained draft during main promotion; do not call ordinary close, rewrite its worktree or change its row after its accepted replacement and allocation-retirement contract has completed. | V51 intentionally requires retained drafts to remain non-closed and fingerprinted; the state is reviewable history rather than an active project lock, and closing it would destroy the distinction the recovery contract created. | accepted and live-verified | WorkSession/programme owners | before any retained-draft lifecycle expansion or deletion policy |
 | D-099 | Retire only WorkSession 15's exact active-name allocation after proving it closed, released, unregistered and resource-free; preserve bytes, inode, ownership, mode, size and mtime under the canonical retired name before repeating WorkSession 16 activation. | The active filename continued to assert fixed slot-2 ownership after the mediated registration/admission release, so the corrected activator properly rejected the replacement; an exact same-filesystem rename retains audit evidence while making released capacity reusable. | accepted and live-verified for the exact closed canary | runtime/programme owners | before general closed-allocation retirement support |
-| D-100 | Make one exact worker `RELEASED` receipt a precondition for a remote WorkSession to become `CLOSED`; mark pre-V63 remote closures `UNVERIFIED_LEGACY` without inferring or changing worker state. | Git reconciliation alone cannot prove that registration, admission, allocation or ephemeral runtime ownership was released, and automatically trusting historical rows would adopt unknown state. | proposed in `complete-remote-worksession-close-lifecycle` | backend/data/worker owners | task 1 persistence implementation |
-| D-101 | Preserve a strict bounded worker error envelope and classify authenticated deterministic rejections separately from transport unavailability. | Discarding the HTTP 409 body caused 81 repetitions of an impossible activation and reported a healthy worker as unavailable, hiding the action that could actually resolve the blocker. | proposed in `complete-remote-worksession-close-lifecycle` | backend/worker/security owners | task 2 protocol implementation |
-| D-102 | Serialize ensure/release under one lifecycle lock and finalize exact ownership through a monotonic crash-resumable journal while retaining source, conversation, attachments, logs, artifacts, backups and policy-retained volumes. | A multi-resource close can stop between mutations; a reviewed prefix journal permits only the same operation to continue without recreating released ownership or deleting ambiguous state. | proposed in `complete-remote-worksession-close-lifecycle` | runtime/worker/security owners | task 3 finalizer implementation |
-| D-103 | Permit historical closed-session release only through a separately confirmed platform-administrator action in Atenea, and never retry the preserved prompt automatically after capacity is released. | Legacy repair is materially different from ordinary retry; binding confirmation to an exact ownership fingerprint makes it self-service without granting arbitrary cleanup or duplicating user work. | proposed in `complete-remote-worksession-close-lifecycle` | product/platform/security owners | tasks 4–7 operator workflow |
-| D-104 | Require a blocked legacy operation's complete immutable release request to pass a non-mutating worker preflight before Atenea persists another human-confirmation plan. | Capacity-owner diagnosis alone proved the retained owner but did not exercise the real release request, lifecycle lock, fixed mediator and journal boundary; consuming more operator plans without that proof repeated the same deterministic failure without diagnostic value. | proposed in `complete-remote-worksession-close-lifecycle` and full-suite-tested | backend/worker/platform/security owners | before another task 7.7 plan or confirmation |
+| D-100 | Make one exact worker `RELEASED` receipt a precondition for a remote WorkSession to become `CLOSED`; mark pre-V63 remote closures `UNVERIFIED_LEGACY` without inferring or changing worker state. | Git reconciliation alone cannot prove that registration, admission, allocation or ephemeral runtime ownership was released, and automatically trusting historical rows would adopt unknown state. | accepted, migration/full-suite/live-verified | backend/data/worker owners | before changing remote-close terminality, receipt identity or legacy classification |
+| D-101 | Preserve a strict bounded worker error envelope and classify authenticated deterministic rejections separately from transport unavailability. | Discarding the HTTP 409 body caused 81 repetitions of an impossible activation and reported a healthy worker as unavailable, hiding the action that could actually resolve the blocker. | accepted, protocol/full-suite/live-verified | backend/worker/security owners | before changing worker error schemas, retry windows or unavailable classification |
+| D-102 | Serialize ensure/release under one lifecycle lock and finalize exact ownership through a monotonic crash-resumable journal while retaining source, conversation, attachments, logs, artifacts, backups and policy-retained volumes. | A multi-resource close can stop between mutations; a reviewed prefix journal permits only the same operation to continue without recreating released ownership or deleting ambiguous state. | accepted, adversarial/crash-resume/live-verified | runtime/worker/security owners | before changing lifecycle locking, journal ordering, release ownership or retention |
+| D-103 | Permit historical closed-session release only through a separately confirmed platform-administrator action in Atenea, and never retry the preserved prompt automatically after capacity is released. | Legacy repair is materially different from ordinary retry; binding confirmation to an exact ownership fingerprint makes it self-service without granting arbitrary cleanup or duplicating user work. | accepted, role/browser/live-verified for WorkSession 16 | product/platform/security owners | before expanding reconciliation authority or retrying any retained failed run |
+| D-104 | Require a blocked legacy operation's complete immutable release request to pass a non-mutating worker preflight before Atenea persists another human-confirmation plan. | Capacity-owner diagnosis alone proved the retained owner but did not exercise the real release request, lifecycle lock, fixed mediator and journal boundary; consuming more operator plans without that proof repeated the same deterministic failure without diagnostic value. | accepted, full-suite/live-intervention-verified | backend/worker/platform/security owners | before changing reconciliation preflight, plan fingerprint or confirmation consumption |
 | D-105 | Handle the newly reported `dompurify` and `nanoid` npm advisories in a separately scoped security-maintenance change, without altering the sealed close-lifecycle implementation or its evidence. The follow-up must identify direct/transitive ownership, select the minimum compatible upgrades, regenerate the lockfile deterministically, obtain a zero-unresolved-applicable-advisory audit or explicitly accepted residual-risk record, and repeat the production web build plus the complete desktop/mobile Playwright qualification before any deployment. | The advisory database changed after the accepted task 6.2 audit. Mixing dependency upgrades into final archival would invalidate reviewed artifacts and expand the close-lifecycle scope, while deferring them without an owned gate would leave a high-severity advisory untracked. | deferred, evidence-backed security follow-up; no dependency or deployment mutation authorized | web/security/platform owners | before the next ordinary production web deployment; immediately if separate exploitability triage finds current exposure |
 
 ## Deferred decisions and gates
@@ -15090,3 +15094,52 @@ The SHA-256 of its `SHA256SUMS` is
 
 OpenSpec progress is now `58/60`; task 8.5 is the exact first pending task and
 has not begun.
+
+## Task 8.5 completed — evidence ledger and OpenSpec archive
+
+Task 8.5 verified every pre-existing `SHA256SUMS` in place: 56 local, 58 on
+the control host and 53 on AX42, for 167/167 verified host copies. The sealed
+closure evidence adds one local and one control-host manifest; the final
+verification is therefore 57/57 local, 59/59 control and 53/53 AX42, or
+169/169 host copies. Stable sorted manifest-ledger aggregates are respectively
+`c7a7560ca3d697997d92fb39e9bcf71b051b79afd16b2f13f1dad97fa3fc1e39`,
+`8f27572b7bff689b3a3fbec96216be7396b02b90073f24472b4eadea02144573`
+and `1b2acbfed5500a8f5746b87678cfb30efd73986b37be2bffa8a51822b69c8164`.
+
+Decisions D-100 through D-104 are accepted with their migration, protocol,
+full-suite, adversarial, crash-resume, browser and live WorkSession 16 evidence.
+D-105 remains a separately scoped security-maintenance follow-up and does not
+alter the sealed close-lifecycle implementation. No dependency, lockfile,
+image or deployment changed during archive closure.
+
+OpenSpec applied eleven additive requirements to the five declared canonical
+specifications and archived the change as
+`2026-08-11-complete-remote-worksession-close-lifecycle`. Global strict
+validation passes all 12 canonical specifications with zero failures and
+`openspec list` reports no active changes. The archived `tasks.md` marks only
+task 8.5 newly complete and preserves task 8.6 unchecked.
+
+Production, preview, Beautips and Caddy retain their exact accepted images,
+zero restarts and healthy state. AX42 services and proxy sockets are active,
+slots remain `3/0/0/3`, backup/check/health remain `success/0`, RAID remains
+`3/3 [UU]`, rootful daemons remain inactive, task resources remain zero and
+the accepted-absent activation network remains absent. WorkSession 16/17
+active allocations remain absent; no retained or foreign resource was read,
+adopted, repaired, removed or changed.
+
+The declared Atenea implementation and rollback branches remain clean and
+already published at `918f3b2e...` and `f44ec24...`; canonical Atenea and
+Beautips remain clean at `e4287dbc...` and `9e122bf0...`. Only the programme
+branch contains this archive closure and is published by its closing commit,
+without force, history rewriting or changes to other refs.
+
+Sanitized closure evidence verifies locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-8.5-archive-20260811`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-8.5-archive-20260811`.
+The SHA-256 of its six-file `SHA256SUMS` is
+`476800d833baae7a1ee4d03dba5a109364fbf4eede1b8c111d2c4281cd460c3d`.
+
+OpenSpec progress is now `59/60`. The exact resume point is archived task 8.6:
+report the preserved explicit operator choice without retrying AgentRun 96,
+replaying a prompt, starting Codex/runtime or beginning unrelated work.
