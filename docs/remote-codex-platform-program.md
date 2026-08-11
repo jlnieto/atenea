@@ -6,9 +6,9 @@ This document is the durable programme ledger for moving Atenea development exec
 
 - Programme: `remote-codex-platform`
 - Foundation change: `establish-remote-codex-platform-program`
-- Current phase: `complete-remote-worksession-close-lifecycle` implemented,
-  live-accepted and archived with only its final report-only operator choice
-  remaining
+- Current phase: `complete-remote-worksession-close-lifecycle` completed,
+  live-accepted and archived; AgentRun 96 remains retained and explicitly will
+  not be retried, while current-code work continues from empty WorkSession 19
 - Runtime routing: exact canonical Atenea and Beautips project routes are
   enabled; generic project routing and every unrelated project remain disabled
 - Production/control plane: current Atenea VPS
@@ -200,9 +200,9 @@ protocol remains installed but project selection/execution is disabled with
 zero registered workspaces. Beautips onboarding and its subsequent exact
 production activation are recorded later in this ledger.
 `complete-remote-worksession-close-lifecycle` is archived as
-`2026-08-11-complete-remote-worksession-close-lifecycle` with `59/60` tasks
-complete. Its only unchecked task is the final report-only operator choice;
-it cannot release ownership, replay a prompt or start runtime.
+`2026-08-11-complete-remote-worksession-close-lifecycle` with all `60/60` tasks
+complete. Its final report-only choice retained AgentRun 96 without retry and
+cannot release ownership, replay a prompt or start runtime.
 
 ## Decision log
 
@@ -15143,3 +15143,36 @@ The SHA-256 of its six-file `SHA256SUMS` is
 OpenSpec progress is now `59/60`. The exact resume point is archived task 8.6:
 report the preserved explicit operator choice without retrying AgentRun 96,
 replaying a prompt, starting Codex/runtime or beginning unrelated work.
+
+## Task 8.6 completed — preserved operator choice
+
+The final read-only comparison confirms that AgentRun 96 is terminal `FAILED`
+and pinned to repository commit
+`615e539d1f2622a4ac2568ba7697b876d49ae33e`. That commit remains an ancestor
+of, but is not equal to, current canonical Atenea `main`
+`e4287dbc9a6a3545e6e1d0eda3b488e4a8e8edd5`. The contract permits retry only
+while the pinned commit is still canonical, so retry is not an eligible choice.
+
+The operator's preserved choice is therefore to abandon replay of that failed
+work while retaining AgentRun 96 as immutable audit history, and to continue
+future current-code work from the already-created empty WorkSession 19. This
+does not delete AgentRun 96 or any turn, attachment, log, artifact, backup,
+volume or source state. It does not copy any old prompt into WorkSession 19.
+
+A production transaction declared `READ ONLY` and ended with `ROLLBACK`.
+AgentRun 96 remains in WorkSession 17 with no remote execution, no retry parent
+and zero retry children. WorkSession 17 remains `CLOSED/RELEASED` with retained
+metadata counts `1/1/1/1`; no retained content was read. WorkSession 19 remains
+`OPEN/NOT_STARTED` with counts `0/0/0/0`. No prompt was sent and no Codex,
+runtime, worker ownership or unrelated operation began.
+
+Sanitized report evidence verifies locally beneath
+`/home/jose/codex-evidence/complete-remote-worksession-close-lifecycle/task-8.6-operator-choice-20260811`
+and on the control host beneath
+`/srv/atenea/artifacts/program/remote-codex-platform/complete-remote-worksession-close-lifecycle/runs/task-8.6-operator-choice-20260811`.
+The SHA-256 of its three-file `SHA256SUMS` is
+`a599645791689560539e56c1c85353edd611271e32f4f066c67886d16c567b25`.
+
+The archived change is complete at `60/60`. There is no remaining task or
+automatic action in this change; normal use of WorkSession 19 requires a new,
+explicit operator prompt outside this close-lifecycle scope.

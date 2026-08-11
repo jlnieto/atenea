@@ -245,7 +245,7 @@ environment dumps.
 - [x] 8.5 Verify every evidence `SHA256SUMS`, update the programme decision log,
   evidence ledger and resume point, mark only completed tasks, archive the
   change, run global strict validation, commit and push all declared branches
-- [ ] 8.6 Report the preserved explicit operator choice: retry only when the
+- [x] 8.6 Report the preserved explicit operator choice: retry only when the
   pinned commit is still canonical, otherwise keep AgentRun 96 retained and
   start a fresh current-code session or abandon it; stop without replaying any
   prompt or beginning unrelated work
