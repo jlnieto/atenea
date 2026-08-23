@@ -5,10 +5,15 @@ import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 
 @Service
 public class GitRepositoryService {
+
+    private static final Pattern EXACT_HEAD_REF =
+            Pattern.compile("refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}");
+    private static final Pattern GIT_OBJECT = Pattern.compile("(?:[0-9a-f]{40}|[0-9a-f]{64})");
 
     public String getCurrentBranch(String repoPath) {
         return runAndRead(repoPath, List.of("git", "rev-parse", "--abbrev-ref", "HEAD"));
@@ -121,6 +126,49 @@ public class GitRepositoryService {
 
     public String getHeadCommitSha(String repoPath) {
         return runAndRead(repoPath, List.of("git", "rev-parse", "HEAD"));
+    }
+
+    public String resolveExactHeadCommit(String repoPath, String exactHeadRef) {
+        if (exactHeadRef == null || !EXACT_HEAD_REF.matcher(exactHeadRef).matches()
+                || exactHeadRef.contains("..") || exactHeadRef.contains("//")) {
+            throw new GitRepositoryOperationException("Base ref is not an exact server-owned head ref");
+        }
+        String commit = runAndRead(repoPath, List.of(
+                "git", "rev-parse", "--verify", "--end-of-options",
+                exactHeadRef + "^{commit}"));
+        if (!GIT_OBJECT.matcher(commit).matches()) {
+            throw new GitRepositoryOperationException("Base ref did not resolve to one exact commit");
+        }
+        return commit;
+    }
+
+    public String resolveCommitTree(String repoPath, String commit) {
+        if (commit == null || !GIT_OBJECT.matcher(commit).matches()) {
+            throw new GitRepositoryOperationException("Commit identity is not exact");
+        }
+        String tree = runAndRead(repoPath, List.of(
+                "git", "rev-parse", "--verify", "--end-of-options", commit + "^{tree}"));
+        if (!GIT_OBJECT.matcher(tree).matches()) {
+            throw new GitRepositoryOperationException("Commit did not resolve to one exact tree");
+        }
+        return tree;
+    }
+
+    public boolean exactLocalHeadExists(String repoPath, String exactHeadRef) {
+        if (exactHeadRef == null || !EXACT_HEAD_REF.matcher(exactHeadRef).matches()
+                || exactHeadRef.contains("..") || exactHeadRef.contains("//")) {
+            throw new GitRepositoryOperationException("Branch ref is not an exact server-owned head ref");
+        }
+        CommandResult result = execute(repoPath, List.of(
+                "git", "show-ref", "--verify", "--quiet", exactHeadRef));
+        if (result.exitCode() == 0) {
+            return true;
+        }
+        if (result.exitCode() == 1) {
+            return false;
+        }
+        throw new GitRepositoryOperationException(
+                "Could not determine exact branch ownership: " + summarize(result.stderr()));
     }
 
     public String getOriginRemoteUrl(String repoPath) {

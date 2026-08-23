@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "kind": "M2_DEVELOPMENT_CHANGE_ENTRY_FIXTURE",
+  "synthetic": true,
+  "containsOperationalContent": false,
+  "policy": {
+    "branchPrefix": "atenea/change-",
+    "workspaceIdentityPrefix": "remote:synthetic-worker-01:change:",
+    "clientOwnedSelectors": [],
+    "oneActiveSessionPerChange": true,
+    "legacyProjectGuardRetained": true,
+    "automaticLegacyBinding": false
+  },
+  "protectedExclusions": [
+    {
+      "workSessionId": 19,
+      "remoteSessionId": "6547081d-895e-4be1-a8fd-d115b7743cdf",
+      "decision": "EXCLUDED_REQUIRES_EXPLICIT_H5",
+      "automaticBinding": false,
+      "mutationAllowed": false
+    }
+  ],
+  "legacySessions": [
+    {
+      "workSessionId": 900001,
+      "projectKey": "synthetic-legacy-project",
+      "developmentChangeId": null,
+      "status": "OPEN",
+      "routingMode": "LEGACY_PROJECT_GUARD",
+      "automaticBinding": false
+    }
+  ],
+  "multiBranchProject": {
+    "projectKey": "synthetic-atenea",
+    "baseRef": "refs/heads/main",
+    "baseCommit": "1111111111111111111111111111111111111111",
+    "changes": [
+      {
+        "developmentChangeId": 910001,
+        "changeKey": "8bf60472-3c0e-49aa-99bf-6dc3c7e60eaf",
+        "workspaceBranch": "atenea/change-8bf60472-3c0e-49aa-99bf-6dc3c7e60eaf",
+        "workspaceIdentity": "remote:synthetic-worker-01:change:8bf60472-3c0e-49aa-99bf-6dc3c7e60eaf",
+        "sourceFingerprintSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "workSession": {
+          "workSessionId": 920001,
+          "developmentChangeId": 910001,
+          "remoteSessionId": "170ffb8e-0caa-4512-a358-d06effb5211c",
+          "status": "OPEN"
+        }
+      },
+      {
+        "developmentChangeId": 910002,
+        "changeKey": "17f120f6-79e2-49e4-bd13-23db520d1374",
+        "workspaceBranch": "atenea/change-17f120f6-79e2-49e4-bd13-23db520d1374",
+        "workspaceIdentity": "remote:synthetic-worker-01:change:17f120f6-79e2-49e4-bd13-23db520d1374",
+        "sourceFingerprintSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "workSession": {
+          "workSessionId": 920002,
+          "developmentChangeId": 910002,
+          "remoteSessionId": "69acaf74-57b2-48d2-881c-67fb04a0b182",
+          "status": "OPEN"
+        }
+      }
+    ]
+  },
+  "negativeCases": [
+    {
+      "case": "SECOND_ACTIVE_SESSION_FOR_CHANGE",
+      "expectedCategory": "OWNERSHIP",
+      "expectedState": "BLOCKED",
+      "mutations": 0
+    },
+    {
+      "case": "DUPLICATE_WORKSPACE_BRANCH",
+      "expectedCategory": "OWNERSHIP",
+      "expectedState": "BLOCKED",
+      "mutations": 0
+    },
+    {
+      "case": "CROSS_CHANGE_SESSION",
+      "expectedCategory": "OWNERSHIP",
+      "expectedState": "BLOCKED",
+      "mutations": 0
+    },
+    {
+      "case": "CLIENT_SUPPLIED_INTERNAL_SELECTOR",
+      "expectedCategory": "VALIDATION",
+      "expectedState": "BLOCKED",
+      "mutations": 0
+    },
+    {
+      "case": "CANONICAL_ADVANCE_WITH_RETAINED_DRAFT",
+      "expectedCategory": "VALIDATION",
+      "expectedState": "STALE",
+      "mutations": 0
+    },
+    {
+      "case": "SECOND_ACTIVE_LEGACY_SESSION_FOR_PROJECT",
+      "expectedCategory": "OWNERSHIP",
+      "expectedState": "BLOCKED",
+      "mutations": 0
+    },
+    {
+      "case": "AUTOMATIC_BIND_PROTECTED_WORK_SESSION_19",
+      "expectedCategory": "POLICY",
+      "expectedState": "EXCLUDED_REQUIRES_EXPLICIT_H5",
+      "mutations": 0
+    }
+  ]
+}

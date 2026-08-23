@@ -38,6 +38,11 @@ atenea:
   v2:
     global-enabled: false
     project-policy-revisions: {}
+  development-change:
+    mutations-enabled: ${ATENEA_DEVELOPMENT_CHANGE_MUTATIONS_ENABLED:false}
+    session-binding-enabled: ${ATENEA_DEVELOPMENT_CHANGE_SESSION_BINDING_ENABLED:false}
+    workspace-operations-enabled: ${ATENEA_DEVELOPMENT_CHANGE_WORKSPACE_OPERATIONS_ENABLED:false}
+    workspace-reconciliation-enabled: ${ATENEA_DEVELOPMENT_CHANGE_WORKSPACE_RECONCILIATION_ENABLED:false}
   codex-session-operations:
     profiles-enabled: ${ATENEA_CODEX_PROFILES_ENABLED:false}
     progress-enabled: ${ATENEA_CODEX_PROGRESS_ENABLED:false}

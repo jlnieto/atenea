@@ -1,5 +1,6 @@
 package com.atenea.persistence.worksession;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.project.ProjectEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
@@ -27,6 +28,10 @@ public class WorkSessionEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "project_id", nullable = false)
     private ProjectEntity project;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "development_change_id")
+    private DevelopmentChangeEntity developmentChange;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
@@ -213,6 +218,14 @@ public class WorkSessionEntity {
 
     public void setProject(ProjectEntity project) {
         this.project = project;
+    }
+
+    public DevelopmentChangeEntity getDevelopmentChange() {
+        return developmentChange;
+    }
+
+    public void setDevelopmentChange(DevelopmentChangeEntity developmentChange) {
+        this.developmentChange = developmentChange;
     }
 
     public WorkSessionStatus getStatus() {

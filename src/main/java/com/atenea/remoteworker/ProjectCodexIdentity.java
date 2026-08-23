@@ -2,6 +2,7 @@ package com.atenea.remoteworker;
 
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.project.ProjectEntity;
 
 public final class ProjectCodexIdentity {
 
@@ -17,6 +18,13 @@ public final class ProjectCodexIdentity {
             "327a0c521017109d7c0067a11e7d8c3ad2079de4ea78d28296848f9de39c164b";
 
     private ProjectCodexIdentity() {
+    }
+
+    public static boolean matches(ProjectEntity project) {
+        return project != null
+                && PROJECT_NAME.equals(project.getName())
+                && REPO_PATH.equals(project.getRepoPath())
+                && BRANCH.equals(project.getDefaultBaseBranch());
     }
 
     public static boolean matches(WorkSessionEntity session) {
