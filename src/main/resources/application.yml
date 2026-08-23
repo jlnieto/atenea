@@ -31,6 +31,9 @@ management:
         include: health,info
 
 atenea:
+  v2:
+    global-enabled: false
+    project-policy-revisions: {}
   codex-session-operations:
     profiles-enabled: ${ATENEA_CODEX_PROFILES_ENABLED:false}
     progress-enabled: ${ATENEA_CODEX_PROGRESS_ENABLED:false}
