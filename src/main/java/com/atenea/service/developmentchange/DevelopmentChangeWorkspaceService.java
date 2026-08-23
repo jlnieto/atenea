@@ -430,6 +430,7 @@ public class DevelopmentChangeWorkspaceService {
                         change.getSourceRevision(),
                         change.getSourceFingerprintSha256(),
                         currentCanonicalCommit(change),
+                        null,
                         observation.ownershipFingerprintSha256());
             }
             return applyOwnedObservation(operation, change, observation);
@@ -480,6 +481,7 @@ public class DevelopmentChangeWorkspaceService {
                 transition.sourceRevision(),
                 observation.sourceFingerprintSha256(),
                 observation.canonicalCommit(),
+                observation.ownershipFingerprintSha256(),
                 observationFingerprint);
     }
 
@@ -514,12 +516,14 @@ public class DevelopmentChangeWorkspaceService {
             long sourceRevision,
             String sourceFingerprint,
             String observedCanonicalCommit,
+            String workspaceOwnershipFingerprint,
             String observationFingerprint) {
         Instant now = Instant.now();
         change.setWorkspaceState(workspaceState);
         change.setWorkspaceOperationRevision(
                 Math.addExact(change.getWorkspaceOperationRevision(), 1));
         change.setWorkspaceObservationSha256(observationFingerprint);
+        change.setWorkspaceOwnershipFingerprintSha256(workspaceOwnershipFingerprint);
         change.setWorkspaceUpdatedAt(now);
         change.setUpdatedAt(now);
         changeRepository.saveAndFlush(change);
@@ -551,6 +555,7 @@ public class DevelopmentChangeWorkspaceService {
                 operation.getOperationId(), state, code,
                 change.getSourceRevision(), change.getSourceFingerprintSha256());
         change.setWorkspaceObservationSha256(observationFingerprint);
+        change.setWorkspaceOwnershipFingerprintSha256(null);
         change.setWorkspaceUpdatedAt(now);
         change.setUpdatedAt(now);
         changeRepository.saveAndFlush(change);

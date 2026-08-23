@@ -34,7 +34,8 @@ public interface AgentRunRepository extends JpaRepository<AgentRunEntity, Long> 
             Long originTurnId
     );
 
-    @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})
+    @EntityGraph(attributePaths = {
+            "session", "session.project", "session.developmentChange", "originTurn", "resultTurn"})
     Optional<AgentRunEntity> findWithSessionById(Long id);
 
     @EntityGraph(attributePaths = {"session", "session.project", "originTurn", "resultTurn"})

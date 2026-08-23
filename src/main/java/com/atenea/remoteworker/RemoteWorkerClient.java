@@ -6,6 +6,10 @@ import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.ValidationOperationKind;
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +33,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -140,13 +145,16 @@ public class RemoteWorkerClient {
 
     public Execution dispatch(AgentRunEntity run, String message) {
         Map<String, Object> workload = workload(run, message);
-        Map<String, Object> body = Map.of(
-                "dispatchId", run.getDispatchId().toString(),
-                "sessionId", run.getRemoteSessionId().toString(),
-                "workspaceIdentity", run.getWorkspaceIdentity(),
-                "workloadClass", run.getWorkloadClass().name(),
-                "leaseGeneration", run.getLeaseGeneration(),
-                "workload", workload);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("dispatchId", run.getDispatchId().toString());
+        body.put("sessionId", run.getRemoteSessionId().toString());
+        body.put("workspaceIdentity", run.getWorkspaceIdentity());
+        body.put("workloadClass", run.getWorkloadClass().name());
+        body.put("leaseGeneration", run.getLeaseGeneration());
+        if (ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind())) {
+            body.put("changeOwnership", changeOwnership(run));
+        }
+        body.put("workload", workload);
         return exchange(
                 "POST",
                 "/v1/executions",
@@ -751,11 +759,15 @@ public class RemoteWorkerClient {
         }
         boolean imageWorkload = ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(
                 run.getWorkloadKind());
-        if (imageWorkload && !hasProfile) {
+        boolean changeWorkload = ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(
+                run.getWorkloadKind());
+        if ((imageWorkload || changeWorkload) && !hasProfile) {
             throw new RemoteWorkerException(
-                    "Persisted image workload has no complete Codex profile", 409);
+                    "Persisted workload has no complete Codex profile", 409);
         }
-        workload.put("kind", imageWorkload
+        workload.put("kind", changeWorkload
+                ? ProjectCodexIdentity.CHANGE_WORKLOAD_KIND
+                : imageWorkload
                 ? ProjectCodexIdentity.IMAGE_WORKLOAD_KIND
                 : hasProfile ? "project-codex-v2" : ProjectCodexIdentity.WORKLOAD_KIND);
         workload.put("projectId", run.getProjectIdentity());
@@ -776,7 +788,7 @@ public class RemoteWorkerClient {
             workload.put("catalogRevision", run.getCodexCatalogRevision());
             workload.put("codexVersion", run.getCodexVersion());
         }
-        if (imageWorkload) {
+        if (imageWorkload || (changeWorkload && run.getAttachmentCount() > 0)) {
             workload.put("attachments", attachmentManifestService.exactReferences(run).stream()
                     .map(reference -> {
                         Map<String, Object> serialized = new LinkedHashMap<>();
@@ -787,8 +799,86 @@ public class RemoteWorkerClient {
                         return serialized;
                     })
                     .toList());
+        } else if (changeWorkload) {
+            workload.put("attachments", List.of());
         }
         return workload;
+    }
+
+    private Map<String, Object> changeOwnership(AgentRunEntity run) {
+        WorkSessionEntity session = run.getSession();
+        DevelopmentChangeEntity change = session == null ? null : session.getDevelopmentChange();
+        String exactWorkspace = run.getDevelopmentChangeKey() == null
+                ? null
+                : "remote:" + ProjectCodexIdentity.WORKER_ID
+                        + ":change:" + run.getDevelopmentChangeKey();
+        if (!ProjectCodexIdentity.matches(run)
+                || session.getId() == null
+                || session.getProject() == null
+                || session.getProject().getId() == null
+                || change == null
+                || change.getProject() == null
+                || change.getChangeKey() == null
+                || !Objects.equals(change.getChangeKey(), run.getDevelopmentChangeKey())
+                || !Objects.equals(change.getProject().getId(), session.getProject().getId())
+                || !Objects.equals(change.getBaseCommit(), run.getChangeBaseCommit())
+                || !Objects.equals(change.getObservedCanonicalCommit(),
+                        run.getChangeExpectedCanonicalCommit())
+                || !Objects.equals(change.getSourceRevision(), run.getChangeSourceRevision())
+                || !Objects.equals(change.getSourceFingerprintSha256(),
+                        run.getChangeSourceFingerprintSha256())
+                || !Objects.equals(change.getWorkspaceOwnershipFingerprintSha256(),
+                        run.getChangeWorkspaceOwnershipFingerprintSha256())
+                || change.getStatus() != DevelopmentChangeStatus.OPEN
+                || change.getWorkspaceState() != DevelopmentChangeWorkspaceState.READY
+                || change.getSourceState() == DevelopmentChangeSourceState.STALE
+                || change.getSourceState() == DevelopmentChangeSourceState.BLOCKED
+                || change.getWorkspaceOperationRevision() < 1
+                || change.getWorkspaceUpdatedAt() == null
+                || session.getExecutionTarget() != ExecutionTarget.REMOTE
+                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
+                || !Objects.equals(change.getBaseRef(),
+                        "refs/heads/" + ProjectCodexIdentity.BRANCH)
+                || !Objects.equals(session.getCanonicalSourceRef(), change.getBaseRef())
+                || !Objects.equals(session.getCanonicalSourceCommit(), change.getBaseCommit())
+                || !Objects.equals(run.getSelectedWorkerId(), ProjectCodexIdentity.WORKER_ID)
+                || !Objects.equals(session.getSelectedWorkerId(), run.getSelectedWorkerId())
+                || !Objects.equals(change.getSelectedWorkerId(), run.getSelectedWorkerId())
+                || !Objects.equals(change.getWorkspaceBranch(),
+                        "atenea/change-" + run.getDevelopmentChangeKey())
+                || !Objects.equals(session.getWorkspaceBranch(), change.getWorkspaceBranch())
+                || !Objects.equals(change.getWorkspaceIdentity(), exactWorkspace)
+                || !Objects.equals(session.getWorkspaceIdentity(), exactWorkspace)
+                || !Objects.equals(run.getWorkspaceIdentity(), exactWorkspace)
+                || !Objects.equals(session.getRemoteSessionId(), run.getRemoteSessionId())
+                || !Objects.equals(run.getRepositoryCommit(),
+                        run.getChangeExpectedCanonicalCommit())
+                || !gitCommit(run.getChangeBaseCommit())
+                || !gitCommit(run.getChangeExpectedCanonicalCommit())
+                || run.getChangeSourceRevision() == null
+                || run.getChangeSourceRevision() < 0
+                || !isSha256(run.getChangeSourceFingerprintSha256())
+                || !isSha256(run.getChangeWorkspaceOwnershipFingerprintSha256())) {
+            throw new RemoteWorkerException(
+                    "Persisted DevelopmentChange AgentRun ownership is incomplete, stale, or incompatible",
+                    409);
+        }
+        return Map.ofEntries(
+                Map.entry("changeKey", run.getDevelopmentChangeKey().toString()),
+                Map.entry("databaseWorkSessionId", session.getId()),
+                Map.entry("remoteSessionId", run.getRemoteSessionId().toString()),
+                Map.entry("workspaceIdentity", run.getWorkspaceIdentity()),
+                Map.entry("databaseProjectId", session.getProject().getId()),
+                Map.entry("baseCommit", run.getChangeBaseCommit()),
+                Map.entry("expectedCanonicalCommit", run.getChangeExpectedCanonicalCommit()),
+                Map.entry("sourceRevision", run.getChangeSourceRevision()),
+                Map.entry("sourceFingerprintSha256", run.getChangeSourceFingerprintSha256()),
+                Map.entry("workspaceOwnershipFingerprintSha256",
+                        run.getChangeWorkspaceOwnershipFingerprintSha256()));
+    }
+
+    private boolean gitCommit(String value) {
+        return value != null && value.matches("^[0-9a-f]{40}$");
     }
 
     public Execution get(AgentRunEntity run) {
@@ -1368,6 +1458,18 @@ public class RemoteWorkerClient {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)
-    public record Result(String threadId, String turnId, String finalAnswer, String outputSummary) {
+    public record Result(
+            String threadId,
+            String turnId,
+            String finalAnswer,
+            String outputSummary,
+            String modelId,
+            String reasoningEffort,
+            String catalogRevision,
+            String codexVersion
+    ) {
+        public Result(String threadId, String turnId, String finalAnswer, String outputSummary) {
+            this(threadId, turnId, finalAnswer, outputSummary, null, null, null, null);
+        }
     }
 }

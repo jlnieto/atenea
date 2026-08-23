@@ -8,6 +8,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.atenea.persistence.project.ProjectEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
@@ -52,6 +56,7 @@ class RemoteWorkerClientTest {
     private final AtomicReference<Consumer<Map<String, Object>>> releaseReceiptMutation =
             new AtomicReference<>();
     private final AtomicReference<String> releaseIdempotencyHeader = new AtomicReference<>();
+    private final AtomicReference<String> executionIdempotencyHeader = new AtomicReference<>();
     private HttpServer server;
     private RemoteWorkerProperties properties;
     private RemoteWorkerClient client;
@@ -64,6 +69,8 @@ class RemoteWorkerClientTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/executions", exchange -> {
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            executionIdempotencyHeader.set(
+                    exchange.getRequestHeaders().getFirst("Idempotency-Key"));
             JsonNode request = requestBody.get();
             String path = exchange.getRequestURI().getPath();
             if (!"/v1/executions".equals(path)) {
@@ -492,6 +499,93 @@ class RemoteWorkerClientTest {
         assertNull(workload.get("command"));
         assertNull(workload.get("provider"));
         assertNull(workload.get("endpoint"));
+    }
+
+    @Test
+    void changeBoundDispatchUsesOnlyExactDurableV4BindingAndReplaysIdentically() {
+        AgentRunEntity run = changeBoundRun();
+
+        client.dispatch(run, "Continue the exact development change.");
+        JsonNode first = requestBody.get().deepCopy();
+        client.dispatch(run, "Continue the exact development change.");
+        JsonNode replay = requestBody.get().deepCopy();
+
+        assertEquals(first, replay);
+        assertEquals(run.getDispatchId().toString(), executionIdempotencyHeader.get());
+        assertEquals(Set.of(
+                        "dispatchId", "sessionId", "workspaceIdentity", "workloadClass",
+                        "leaseGeneration", "changeOwnership", "workload"),
+                objectMapper.convertValue(first, Map.class).keySet());
+        JsonNode ownership = first.get("changeOwnership");
+        assertEquals(Set.of(
+                        "changeKey", "databaseWorkSessionId", "remoteSessionId",
+                        "workspaceIdentity", "databaseProjectId", "baseCommit",
+                        "expectedCanonicalCommit", "sourceRevision",
+                        "sourceFingerprintSha256",
+                        "workspaceOwnershipFingerprintSha256"),
+                objectMapper.convertValue(ownership, Map.class).keySet());
+        assertEquals(run.getDevelopmentChangeKey().toString(),
+                ownership.get("changeKey").asText());
+        assertEquals(run.getSession().getId(),
+                ownership.get("databaseWorkSessionId").asLong());
+        assertEquals(run.getRemoteSessionId().toString(),
+                ownership.get("remoteSessionId").asText());
+        assertEquals(run.getWorkspaceIdentity(), ownership.get("workspaceIdentity").asText());
+        assertEquals(run.getSession().getProject().getId(),
+                ownership.get("databaseProjectId").asLong());
+        assertEquals(run.getChangeBaseCommit(), ownership.get("baseCommit").asText());
+        assertEquals(run.getChangeExpectedCanonicalCommit(),
+                ownership.get("expectedCanonicalCommit").asText());
+        assertEquals(run.getChangeSourceRevision(), ownership.get("sourceRevision").asLong());
+        assertEquals(run.getChangeSourceFingerprintSha256(),
+                ownership.get("sourceFingerprintSha256").asText());
+        assertEquals(run.getChangeWorkspaceOwnershipFingerprintSha256(),
+                ownership.get("workspaceOwnershipFingerprintSha256").asText());
+
+        JsonNode workload = first.get("workload");
+        assertEquals(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND,
+                workload.get("kind").asText());
+        assertEquals(run.getChangeExpectedCanonicalCommit(), workload.get("commit").asText());
+        assertEquals(0, workload.get("attachments").size());
+        assertEquals(18, workload.size());
+        for (String forbidden : List.of(
+                "path", "host", "workerId", "slot", "shell", "credentials",
+                "authorization", "executionAuthority")) {
+            assertNull(first.get(forbidden));
+            assertNull(ownership.get(forbidden));
+            assertNull(workload.get(forbidden));
+        }
+    }
+
+    @Test
+    void changeBoundDispatchRejectsDurableSourceOrOwnershipDriftBeforeHttp() {
+        AgentRunEntity stale = changeBoundRun();
+        stale.getSession().getDevelopmentChange().setSourceState(
+                DevelopmentChangeSourceState.STALE);
+        requestBody.set(null);
+
+        assertThrows(RemoteWorkerException.class,
+                () -> client.dispatch(stale, "Must not dispatch stale state."));
+        assertNull(requestBody.get());
+
+        AgentRunEntity mismatched = changeBoundRun();
+        mismatched.getSession().getDevelopmentChange()
+                .setWorkspaceOwnershipFingerprintSha256("9".repeat(64));
+        assertThrows(RemoteWorkerException.class,
+                () -> client.dispatch(mismatched, "Must not dispatch foreign ownership."));
+        assertNull(requestBody.get());
+
+        AgentRunEntity sourceDrift = changeBoundRun();
+        sourceDrift.getSession().setCanonicalSourceCommit("8".repeat(40));
+        assertThrows(RemoteWorkerException.class,
+                () -> client.dispatch(sourceDrift, "Must not dispatch source drift."));
+        assertNull(requestBody.get());
+
+        AgentRunEntity incompleteProfile = changeBoundRun();
+        incompleteProfile.setCodexCatalogRevision(null);
+        assertThrows(RemoteWorkerException.class,
+                () -> client.dispatch(incompleteProfile, "Must not dispatch incomplete profile."));
+        assertNull(requestBody.get());
     }
 
     @Test
@@ -1538,6 +1632,55 @@ class RemoteWorkerClientTest {
         run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
         ReviewedInstructionBundleIdentity.apply(
                 run, ProjectCodexIdentity.PROJECT_IDENTITY);
+        return run;
+    }
+
+    private AgentRunEntity changeBoundRun() {
+        AgentRunEntity run = projectRun(null);
+        UUID changeKey = UUID.fromString("df99f1a1-1f14-4ca8-a405-58cd5b91bf2f");
+        String workspaceIdentity = "remote:ax42-01:change:" + changeKey;
+        String workspaceBranch = "atenea/change-" + changeKey;
+        WorkSessionEntity session = run.getSession();
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setWorkspaceIdentity(workspaceIdentity);
+        session.setWorkspaceBranch(workspaceBranch);
+
+        DevelopmentChangeEntity change = new DevelopmentChangeEntity();
+        change.setId(91L);
+        change.setChangeKey(changeKey);
+        change.setProject(session.getProject());
+        change.setStatus(DevelopmentChangeStatus.OPEN);
+        change.setBaseRef("refs/heads/main");
+        change.setBaseCommit(TEST_CANONICAL_COMMIT);
+        change.setObservedCanonicalCommit(TEST_CANONICAL_COMMIT);
+        change.setWorkspaceBranch(workspaceBranch);
+        change.setWorkspaceIdentity(workspaceIdentity);
+        change.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        change.setSourceRevision(3);
+        change.setSourceFingerprintSha256("3".repeat(64));
+        change.setSourceState(DevelopmentChangeSourceState.DIRTY);
+        change.setWorkspaceState(DevelopmentChangeWorkspaceState.READY);
+        change.setWorkspaceOperationRevision(2);
+        change.setWorkspaceObservationSha256("4".repeat(64));
+        change.setWorkspaceOwnershipFingerprintSha256("5".repeat(64));
+        change.setWorkspaceUpdatedAt(Instant.parse("2026-08-23T12:00:00Z"));
+        session.setDevelopmentChange(change);
+
+        run.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        run.setWorkspaceIdentity(workspaceIdentity);
+        run.setWorkloadKind(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        run.setDevelopmentChangeKey(changeKey);
+        run.setChangeBaseCommit(TEST_CANONICAL_COMMIT);
+        run.setChangeExpectedCanonicalCommit(TEST_CANONICAL_COMMIT);
+        run.setChangeSourceRevision(3L);
+        run.setChangeSourceFingerprintSha256("3".repeat(64));
+        run.setChangeWorkspaceOwnershipFingerprintSha256("5".repeat(64));
+        run.setAttachmentCount(0);
+        run.setAttachmentBytes(0);
+        run.setAttachmentManifestSha256(null);
+        applyProfile(run);
         return run;
     }
 

@@ -103,7 +103,8 @@ public class ProjectCodexAttachmentManifestService {
 
     private void requireCompleteRun(AgentRunEntity run) {
         if (run == null
-                || !ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
+                || (!ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
+                    && !ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
                 || !ProjectCodexIdentity.matches(run)
                 || run.getSession() == null
                 || run.getSession().getId() == null
@@ -119,8 +120,13 @@ public class ProjectCodexAttachmentManifestService {
                 || run.getWorkspaceIdentity() == null
                 || !RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION.equals(
                     run.getSession().getAttachmentPolicyRevision())
-                || !("remote:" + run.getSelectedWorkerId() + ":work-session:"
-                    + run.getRemoteSessionId()).equals(run.getWorkspaceIdentity())
+                || (!ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
+                    && !("remote:" + run.getSelectedWorkerId() + ":work-session:"
+                        + run.getRemoteSessionId()).equals(run.getWorkspaceIdentity()))
+                || (ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
+                    && (run.getDevelopmentChangeKey() == null
+                        || !("remote:" + run.getSelectedWorkerId() + ":change:"
+                            + run.getDevelopmentChangeKey()).equals(run.getWorkspaceIdentity())))
                 || run.getOriginTurn() == null
                 || run.getOriginTurn().getId() == null
                 || run.getOriginTurn().getSession() == null

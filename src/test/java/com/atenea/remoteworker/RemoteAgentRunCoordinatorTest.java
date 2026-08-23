@@ -11,6 +11,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.atenea.persistence.project.ProjectEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunRepository;
@@ -136,6 +140,33 @@ class RemoteAgentRunCoordinatorTest {
         verify(client, times(1)).ensureWorkspace(run);
         verify(client, times(1)).dispatch(run, "First managed turn");
         verify(mobilePushDispatchService, times(1)).notifyRunSucceeded(run);
+    }
+
+    @Test
+    void changeBoundRunDispatchesV4WithoutEnsuringAnotherWorkspace() throws Exception {
+        AgentRunEntity run = changeBoundRun();
+        WorkSessionEntity session = run.getSession();
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionRepository.findById(session.getId())).thenReturn(Optional.of(session));
+        when(workSessionRepository.save(any(WorkSessionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> {
+            SessionTurnEntity turn = invocation.getArgument(0);
+            turn.setId(901L);
+            return turn;
+        });
+        when(client.dispatch(run, "First managed turn")).thenReturn(succeededV4(run));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals(AgentRunStatus.SUCCEEDED, run.getStatus());
+        assertEquals("project-codex-v4 completed", run.getOutputSummary());
+        verify(client, never()).ensureWorkspace(any());
+        verify(client, times(1)).dispatch(run, "First managed turn");
     }
 
     @Test
@@ -655,6 +686,49 @@ class RemoteAgentRunCoordinatorTest {
         return run;
     }
 
+    private AgentRunEntity changeBoundRun() {
+        AgentRunEntity run = projectRun();
+        UUID changeKey = UUID.fromString("df99f1a1-1f14-4ca8-a405-58cd5b91bf2f");
+        String workspaceIdentity = "remote:ax42-01:change:" + changeKey;
+        run.getSession().setWorkspaceIdentity(workspaceIdentity);
+        run.getSession().setWorkspaceBranch("atenea/change-" + changeKey);
+        run.getSession().setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        DevelopmentChangeEntity change = new DevelopmentChangeEntity();
+        change.setId(91L);
+        change.setChangeKey(changeKey);
+        change.setProject(run.getSession().getProject());
+        change.setStatus(DevelopmentChangeStatus.OPEN);
+        change.setBaseRef("refs/heads/main");
+        change.setBaseCommit(TEST_CANONICAL_COMMIT);
+        change.setObservedCanonicalCommit(TEST_CANONICAL_COMMIT);
+        change.setWorkspaceBranch("atenea/change-" + changeKey);
+        change.setWorkspaceIdentity(workspaceIdentity);
+        change.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        change.setSourceRevision(3);
+        change.setSourceFingerprintSha256("3".repeat(64));
+        change.setSourceState(DevelopmentChangeSourceState.DIRTY);
+        change.setWorkspaceState(DevelopmentChangeWorkspaceState.READY);
+        change.setWorkspaceOperationRevision(2);
+        change.setWorkspaceObservationSha256("4".repeat(64));
+        change.setWorkspaceOwnershipFingerprintSha256("5".repeat(64));
+        change.setWorkspaceUpdatedAt(Instant.parse("2026-08-23T12:00:00Z"));
+        run.getSession().setDevelopmentChange(change);
+        run.setWorkspaceIdentity(workspaceIdentity);
+        run.setWorkloadKind(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        run.setDevelopmentChangeKey(changeKey);
+        run.setChangeBaseCommit(TEST_CANONICAL_COMMIT);
+        run.setChangeExpectedCanonicalCommit(TEST_CANONICAL_COMMIT);
+        run.setChangeSourceRevision(3L);
+        run.setChangeSourceFingerprintSha256("3".repeat(64));
+        run.setChangeWorkspaceOwnershipFingerprintSha256("5".repeat(64));
+        run.setCodexModelId("gpt-5.6-sol");
+        run.setCodexReasoningEffort(
+                com.atenea.persistence.worksession.CodexReasoningEffort.HIGH);
+        run.setCodexCatalogRevision("6".repeat(64));
+        run.setCodexVersion("0.145.0");
+        return run;
+    }
+
     private WorkSessionEntity capacityOwner(
             AgentRunEntity run,
             Long id,
@@ -725,6 +799,21 @@ class RemoteAgentRunCoordinatorTest {
                         "37f0d8f6-4b7f-44cb-b75c-105f51773283",
                         "Managed answer",
                         "project-codex-v1 completed"));
+    }
+
+    private RemoteWorkerClient.Execution succeededV4(AgentRunEntity run) {
+        return execution(
+                run,
+                "SUCCEEDED",
+                new RemoteWorkerClient.Result(
+                        "bd312352-28b8-44d0-835f-e1afc5181cc9",
+                        "37f0d8f6-4b7f-44cb-b75c-105f51773283",
+                        "Managed answer",
+                        "project-codex-v4 completed",
+                        run.getCodexModelId(),
+                        run.getCodexReasoningEffort().canonicalValue(),
+                        run.getCodexCatalogRevision(),
+                        run.getCodexVersion()));
     }
 
     private RemoteWorkerClient.Execution execution(

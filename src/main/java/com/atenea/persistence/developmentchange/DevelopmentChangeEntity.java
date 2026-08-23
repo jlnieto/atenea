@@ -80,6 +80,9 @@ public class DevelopmentChangeEntity {
     @Column(name = "workspace_observation_sha256", length = 64)
     private String workspaceObservationSha256;
 
+    @Column(name = "workspace_ownership_fingerprint_sha256", length = 64)
+    private String workspaceOwnershipFingerprintSha256;
+
     @Column(name = "workspace_updated_at")
     private Instant workspaceUpdatedAt;
 
@@ -149,6 +152,12 @@ public class DevelopmentChangeEntity {
     public void setWorkspaceOperationRevision(long value) { workspaceOperationRevision = value; }
     public String getWorkspaceObservationSha256() { return workspaceObservationSha256; }
     public void setWorkspaceObservationSha256(String value) { workspaceObservationSha256 = value; }
+    public String getWorkspaceOwnershipFingerprintSha256() {
+        return workspaceOwnershipFingerprintSha256;
+    }
+    public void setWorkspaceOwnershipFingerprintSha256(String value) {
+        workspaceOwnershipFingerprintSha256 = value;
+    }
     public Instant getWorkspaceUpdatedAt() { return workspaceUpdatedAt; }
     public void setWorkspaceUpdatedAt(Instant value) { workspaceUpdatedAt = value; }
     public DevelopmentChangeProjectionState getValidationState() { return validationState; }

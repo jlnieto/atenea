@@ -14,6 +14,9 @@ import static org.mockito.Mockito.when;
 
 import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.developmentchange.DevelopmentChangeProperties;
+import com.atenea.developmentchange.RemoteWorkBetaProperties;
+import com.atenea.api.developmentchange.OpenOrResolveRemoteSessionRequest;
+import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.persistence.auth.OperatorEntity;
 import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
@@ -31,12 +34,25 @@ import com.atenea.persistence.v2control.V2GlobalCapabilityGateEntity;
 import com.atenea.persistence.v2control.V2GlobalCapabilityGateRepository;
 import com.atenea.persistence.v2control.V2ProjectCapabilityPolicyEntity;
 import com.atenea.persistence.v2control.V2ProjectCapabilityPolicyRepository;
+import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.AgentRunRepository;
+import com.atenea.persistence.worksession.CodexReasoningEffort;
+import com.atenea.persistence.worksession.ExecutionProfileSource;
+import com.atenea.persistence.worksession.SessionTurnActor;
+import com.atenea.persistence.worksession.SessionTurnEntity;
+import com.atenea.persistence.worksession.SessionTurnRepository;
+import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkerNodeEntity;
+import com.atenea.persistence.worksession.WorkerNodeRepository;
+import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.remoteworker.DevelopmentChangeWorkspaceCommand;
 import com.atenea.remoteworker.DevelopmentChangeWorkspaceGateway;
 import com.atenea.remoteworker.DevelopmentChangeWorkspaceObservation;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteWorkerException;
 import com.atenea.remoteworker.RemoteWorkerProperties;
+import com.atenea.service.worksession.AgentRunService;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -48,6 +64,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -58,8 +76,10 @@ import org.springframework.test.context.support.DirtiesContextTestExecutionListe
 
 @SpringBootTest(properties = {
         "atenea.development-change.mutations-enabled=true",
+        "atenea.development-change.session-binding-enabled=true",
         "atenea.development-change.workspace-operations-enabled=true",
         "atenea.development-change.workspace-reconciliation-enabled=true",
+        "atenea.remote-work-beta.open-or-resolve-enabled=true",
         "atenea.remote-worker.enabled=true",
         "atenea.remote-worker.worker-id=ax42-01"
 })
@@ -81,7 +101,10 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
     private static final String SOURCE_FINGERPRINT = "a".repeat(64);
 
     @Autowired private DevelopmentChangeWorkspaceService service;
+    @Autowired private RemoteSessionService remoteSessionService;
+    @Autowired private AgentRunService agentRunService;
     @Autowired private DevelopmentChangeProperties properties;
+    @Autowired private RemoteWorkBetaProperties betaProperties;
     @Autowired private RemoteWorkerProperties remoteWorkerProperties;
     @Autowired private ProjectRepository projectRepository;
     @Autowired private OperatorRepository operatorRepository;
@@ -89,8 +112,14 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
     @Autowired private DevelopmentChangeWorkspaceOperationRepository operationRepository;
     @Autowired private V2GlobalCapabilityGateRepository globalGateRepository;
     @Autowired private V2ProjectCapabilityPolicyRepository projectPolicyRepository;
+    @Autowired private WorkSessionRepository workSessionRepository;
+    @Autowired private SessionTurnRepository sessionTurnRepository;
+    @Autowired private AgentRunRepository agentRunRepository;
+    @Autowired private WorkerNodeRepository workerNodeRepository;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @MockBean private DevelopmentChangeWorkspaceGateway gateway;
+    @MockBean private CodexExecutionProfileSnapshotService profileSnapshotService;
 
     private ProjectEntity project;
     private OperatorEntity operator;
@@ -104,17 +133,31 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        reset(gateway);
+        reset(gateway, profileSnapshotService);
         properties.setMutationsEnabled(true);
+        properties.setSessionBindingEnabled(true);
         properties.setWorkspaceOperationsEnabled(true);
         properties.setWorkspaceReconciliationEnabled(true);
         remoteWorkerProperties.setEnabled(true);
         remoteWorkerProperties.setWorkerId(ProjectCodexIdentity.WORKER_ID);
+        betaProperties.setOpenOrResolveEnabled(true);
         project = exactProject();
         enablePolicy();
+        enableBetaPolicy();
+        registerWorker();
         operator = operatorRepository.saveAndFlush(operator());
         actor = new AuthenticatedOperator(
                 operator.getId(), operator.getEmail(), operator.getDisplayName());
+        org.mockito.Mockito.doAnswer(invocation -> {
+            AgentRunEntity run = invocation.getArgument(0);
+            run.setCodexModelId("gpt-5.6-sol");
+            run.setCodexModelSource(ExecutionProfileSource.WORK_SESSION);
+            run.setCodexReasoningEffort(CodexReasoningEffort.HIGH);
+            run.setCodexEffortSource(ExecutionProfileSource.WORK_SESSION);
+            run.setCodexCatalogRevision("e".repeat(64));
+            run.setCodexVersion("0.145.0");
+            return null;
+        }).when(profileSnapshotService).applyCurrentProfile(any());
     }
 
     @Test
@@ -134,6 +177,58 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         assertEquals(first.operationId(), replay.operationId());
         assertEquals(first.receiptSha256(), replay.receiptSha256());
         verify(gateway, times(1)).execute(any());
+    }
+
+    @Test
+    void readyDevelopmentChangeCreatesWorkSessionAndImmutableV4AgentRunBinding() {
+        DevelopmentChangeEntity initial = change();
+        doReturn(owned(BASE_COMMIT, SOURCE_FINGERPRINT, false))
+                .when(gateway).execute(any());
+
+        service.provision(actor, project.getId(), initial.getChangeKey(), UUID.randomUUID());
+        DevelopmentChangeEntity ready = changeRepository
+                .findByChangeKey(initial.getChangeKey()).orElseThrow();
+        assertEquals(DevelopmentChangeWorkspaceState.READY, ready.getWorkspaceState());
+        assertEquals("d".repeat(64), ready.getWorkspaceOwnershipFingerprintSha256());
+
+        var opened = remoteSessionService.openOrResolve(
+                actor,
+                project.getId(),
+                ready.getChangeKey(),
+                UUID.randomUUID(),
+                new OpenOrResolveRemoteSessionRequest(ready.getVersion()));
+        WorkSessionEntity session = workSessionRepository
+                .findWithProjectAndDevelopmentChangeById(opened.sessionId()).orElseThrow();
+        SessionTurnEntity turn = new SessionTurnEntity();
+        turn.setSession(session);
+        turn.setActor(SessionTurnActor.OPERATOR);
+        turn.setMessageText("Implement the exact change-bound turn");
+        turn.setInternal(false);
+        turn.setCreatedAt(Instant.now());
+        turn = sessionTurnRepository.saveAndFlush(turn);
+
+        AgentRunEntity run = agentRunService.createRemoteQueuedRun(
+                session, turn, WorkloadClass.NORMAL);
+        agentRunRepository.flush();
+
+        assertEquals(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND, run.getWorkloadKind());
+        assertEquals(ready.getChangeKey(), run.getDevelopmentChangeKey());
+        assertEquals(session.getId(), run.getSession().getId());
+        assertEquals(session.getRemoteSessionId(), run.getRemoteSessionId());
+        assertEquals(ready.getWorkspaceIdentity(), run.getWorkspaceIdentity());
+        assertEquals(ready.getBaseCommit(), run.getChangeBaseCommit());
+        assertEquals(ready.getObservedCanonicalCommit(),
+                run.getChangeExpectedCanonicalCommit());
+        assertEquals(ready.getSourceRevision(), run.getChangeSourceRevision());
+        assertEquals(ready.getSourceFingerprintSha256(),
+                run.getChangeSourceFingerprintSha256());
+        assertEquals(ready.getWorkspaceOwnershipFingerprintSha256(),
+                run.getChangeWorkspaceOwnershipFingerprintSha256());
+        assertThrows(DataIntegrityViolationException.class, () -> jdbcTemplate.update("""
+                UPDATE agent_run
+                SET change_source_fingerprint_sha256 = NULL
+                WHERE id = ?
+                """, run.getId()));
     }
 
     @Test
@@ -334,6 +429,55 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         exact.setPolicyRevision(POLICY_REVISION);
         exact.setUpdatedAt(now);
         projectPolicyRepository.saveAndFlush(exact);
+    }
+
+    private void enableBetaPolicy() {
+        Instant now = Instant.now();
+        V2GlobalCapabilityGateEntity global = globalGateRepository
+                .findById(RemoteWorkBetaPolicy.CAPABILITY).orElse(null);
+        if (global == null) {
+            global = new V2GlobalCapabilityGateEntity();
+            global.setCapability(RemoteWorkBetaPolicy.CAPABILITY);
+            global.setCreatedAt(now);
+        }
+        global.setEnabled(true);
+        global.setRevision(1);
+        global.setUpdatedAt(now);
+        globalGateRepository.saveAndFlush(global);
+
+        V2ProjectCapabilityPolicyEntity exact = projectPolicyRepository
+                .findByProjectIdAndCapability(project.getId(), RemoteWorkBetaPolicy.CAPABILITY)
+                .orElse(null);
+        if (exact == null) {
+            exact = new V2ProjectCapabilityPolicyEntity();
+            exact.setProjectId(project.getId());
+            exact.setCapability(RemoteWorkBetaPolicy.CAPABILITY);
+            exact.setCreatedAt(now);
+        }
+        exact.setEnabled(true);
+        exact.setPolicyRevision(1);
+        exact.setUpdatedAt(now);
+        projectPolicyRepository.saveAndFlush(exact);
+    }
+
+    private void registerWorker() {
+        Instant now = Instant.now();
+        WorkerNodeEntity worker = new WorkerNodeEntity();
+        worker.setId(ProjectCodexIdentity.WORKER_ID);
+        worker.setProtocolVersion(RemoteWorkerProperties.PROTOCOL);
+        worker.setEndpoint("http://127.0.0.1:1");
+        worker.setEnabled(true);
+        worker.setHealthy(true);
+        worker.setNormalCapacity(4);
+        worker.setHeavyCapacity(2);
+        worker.setNormalInUse(0);
+        worker.setHeavyInUse(0);
+        worker.setCapabilities(ProjectCodexIdentity.WORKLOAD_KIND + ","
+                + ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        worker.setLastHeartbeatAt(now);
+        worker.setCreatedAt(now);
+        worker.setUpdatedAt(now);
+        workerNodeRepository.saveAndFlush(worker);
     }
 
     private OperatorEntity operator() {

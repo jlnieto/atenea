@@ -219,8 +219,9 @@ public class RemoteAgentRunCoordinator {
             try {
                 RemoteWorkerClient.Execution response;
                 if (run.getRemoteExecutionId() == null) {
-                    if (ProjectCodexIdentity.matches(run)
-                            || BeautipsProjectCodexIdentity.matches(run)) {
+                    if (!ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
+                            && (ProjectCodexIdentity.matches(run)
+                                || BeautipsProjectCodexIdentity.matches(run))) {
                         RemoteWorkerClient.Workspace workspace = client.ensureWorkspace(run);
                         if (!run.getRepositoryCommit().equals(workspace.canonicalCommit())) {
                             throw new RemoteWorkerException(
@@ -312,6 +313,7 @@ public class RemoteAgentRunCoordinator {
                     mobilePushDispatchService.notifyRunFailed(run);
                     return;
                 }
+                validateChangeResult(run, response.result());
                 WorkSessionEntity session = workSessionRepository.findById(run.getSession().getId()).orElseThrow();
                 session.setExternalThreadId(response.result().threadId());
                 session.setLastActivityAt(finishedAt);
@@ -410,6 +412,40 @@ public class RemoteAgentRunCoordinator {
                 || (run.getRemoteExecutionId() != null
                     && !run.getRemoteExecutionId().equals(response.executionId()))) {
             throw new RemoteWorkerException("Remote worker ownership response does not match persisted AgentRun", 409);
+        }
+    }
+
+    private void validateChangeResult(
+            AgentRunEntity run,
+            RemoteWorkerClient.Result result
+    ) {
+        if (!ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind())) {
+            return;
+        }
+        if (!canonicalUuid(result.threadId())
+                || !canonicalUuid(result.turnId())
+                || result.finalAnswer() == null
+                || result.finalAnswer().isEmpty()
+                || result.finalAnswer().length() > 262_144
+                || !"project-codex-v4 completed".equals(result.outputSummary())
+                || !Objects.equals(run.getCodexModelId(), result.modelId())
+                || run.getCodexReasoningEffort() == null
+                || !Objects.equals(
+                        run.getCodexReasoningEffort().canonicalValue(),
+                        result.reasoningEffort())
+                || !Objects.equals(run.getCodexCatalogRevision(), result.catalogRevision())
+                || !Objects.equals(run.getCodexVersion(), result.codexVersion())) {
+            throw new RemoteWorkerException(
+                    "Remote worker change-bound result is incompatible with the persisted AgentRun",
+                    409);
+        }
+    }
+
+    private boolean canonicalUuid(String value) {
+        try {
+            return value != null && UUID.fromString(value).toString().equals(value);
+        } catch (IllegalArgumentException failure) {
+            return false;
         }
     }
 

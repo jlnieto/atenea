@@ -84,6 +84,24 @@ public class AgentRunEntity {
     @Column(name = "manifest_sha256", length = 64)
     private String manifestSha256;
 
+    @Column(name = "development_change_key", updatable = false)
+    private UUID developmentChangeKey;
+
+    @Column(name = "change_base_commit", length = 40, updatable = false)
+    private String changeBaseCommit;
+
+    @Column(name = "change_expected_canonical_commit", length = 40, updatable = false)
+    private String changeExpectedCanonicalCommit;
+
+    @Column(name = "change_source_revision", updatable = false)
+    private Long changeSourceRevision;
+
+    @Column(name = "change_source_fingerprint_sha256", length = 64, updatable = false)
+    private String changeSourceFingerprintSha256;
+
+    @Column(name = "change_workspace_ownership_fingerprint_sha256", length = 64, updatable = false)
+    private String changeWorkspaceOwnershipFingerprintSha256;
+
     @Column(name = "attachment_count", nullable = false, updatable = false)
     private int attachmentCount;
 
@@ -320,6 +338,26 @@ public class AgentRunEntity {
     public void setWorkerMirrorCommit(String workerMirrorCommit) { this.workerMirrorCommit = workerMirrorCommit; }
     public String getManifestSha256() { return manifestSha256; }
     public void setManifestSha256(String manifestSha256) { this.manifestSha256 = manifestSha256; }
+    public UUID getDevelopmentChangeKey() { return developmentChangeKey; }
+    public void setDevelopmentChangeKey(UUID value) { developmentChangeKey = value; }
+    public String getChangeBaseCommit() { return changeBaseCommit; }
+    public void setChangeBaseCommit(String value) { changeBaseCommit = value; }
+    public String getChangeExpectedCanonicalCommit() { return changeExpectedCanonicalCommit; }
+    public void setChangeExpectedCanonicalCommit(String value) {
+        changeExpectedCanonicalCommit = value;
+    }
+    public Long getChangeSourceRevision() { return changeSourceRevision; }
+    public void setChangeSourceRevision(Long value) { changeSourceRevision = value; }
+    public String getChangeSourceFingerprintSha256() { return changeSourceFingerprintSha256; }
+    public void setChangeSourceFingerprintSha256(String value) {
+        changeSourceFingerprintSha256 = value;
+    }
+    public String getChangeWorkspaceOwnershipFingerprintSha256() {
+        return changeWorkspaceOwnershipFingerprintSha256;
+    }
+    public void setChangeWorkspaceOwnershipFingerprintSha256(String value) {
+        changeWorkspaceOwnershipFingerprintSha256 = value;
+    }
     public int getAttachmentCount() { return attachmentCount; }
     public void setAttachmentCount(int attachmentCount) { this.attachmentCount = attachmentCount; }
     public long getAttachmentBytes() { return attachmentBytes; }
