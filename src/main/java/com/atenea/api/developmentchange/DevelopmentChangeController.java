@@ -3,6 +3,7 @@ package com.atenea.api.developmentchange;
 import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.service.developmentchange.DevelopmentChangeService;
 import com.atenea.service.developmentchange.DevelopmentChangeWorkspaceService;
+import com.atenea.service.developmentchange.RemoteSessionService;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -22,12 +23,15 @@ public class DevelopmentChangeController {
 
     private final DevelopmentChangeService service;
     private final DevelopmentChangeWorkspaceService workspaceService;
+    private final RemoteSessionService remoteSessionService;
 
     public DevelopmentChangeController(
             DevelopmentChangeService service,
-            DevelopmentChangeWorkspaceService workspaceService) {
+            DevelopmentChangeWorkspaceService workspaceService,
+            RemoteSessionService remoteSessionService) {
         this.service = service;
         this.workspaceService = workspaceService;
+        this.remoteSessionService = remoteSessionService;
     }
 
     @GetMapping
@@ -104,5 +108,16 @@ public class DevelopmentChangeController {
             @PathVariable Long projectId,
             @PathVariable UUID changeKey) {
         return workspaceService.reconcile(actor, projectId, changeKey);
+    }
+
+    @PostMapping("/{changeKey}/work-session:open-or-resolve")
+    public RemoteSessionOperationResponse openOrResolveRemoteSession(
+            @AuthenticationPrincipal AuthenticatedOperator actor,
+            @PathVariable Long projectId,
+            @PathVariable UUID changeKey,
+            @RequestHeader(name = "Idempotency-Key", required = false) UUID idempotencyKey,
+            @RequestBody(required = false) OpenOrResolveRemoteSessionRequest request) {
+        return remoteSessionService.openOrResolve(
+                actor, projectId, changeKey, idempotencyKey, request);
     }
 }

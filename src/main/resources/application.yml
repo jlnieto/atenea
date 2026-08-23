@@ -43,6 +43,9 @@ atenea:
     session-binding-enabled: ${ATENEA_DEVELOPMENT_CHANGE_SESSION_BINDING_ENABLED:false}
     workspace-operations-enabled: ${ATENEA_DEVELOPMENT_CHANGE_WORKSPACE_OPERATIONS_ENABLED:false}
     workspace-reconciliation-enabled: ${ATENEA_DEVELOPMENT_CHANGE_WORKSPACE_RECONCILIATION_ENABLED:false}
+  remote-work-beta:
+    open-or-resolve-enabled: ${ATENEA_REMOTE_WORK_BETA_OPEN_OR_RESOLVE_ENABLED:false}
+    recovery-enabled: ${ATENEA_REMOTE_WORK_BETA_RECOVERY_ENABLED:false}
   codex-session-operations:
     profiles-enabled: ${ATENEA_CODEX_PROFILES_ENABLED:false}
     progress-enabled: ${ATENEA_CODEX_PROGRESS_ENABLED:false}

@@ -10,6 +10,7 @@ import com.atenea.auth.webauthn.WebAuthnLifecycleUnavailableException;
 import com.atenea.auth.webauthn.WebAuthnSnapshotIncompleteException;
 import com.atenea.service.developmentchange.DevelopmentChangeNotFoundException;
 import com.atenea.service.developmentchange.DevelopmentChangeRejectedException;
+import com.atenea.service.developmentchange.RemoteSessionRejectedException;
 import com.atenea.service.project.CanonicalProjectConflictException;
 import com.atenea.github.GitHubIntegrationException;
 import com.atenea.service.core.CoreCommandNotFoundException;
@@ -77,6 +78,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(DevelopmentChangeRejectedException.class)
     public ResponseEntity<com.atenea.api.developmentchange.DevelopmentChangeFailureResponse>
             handleDevelopmentChangeRejected(DevelopmentChangeRejectedException exception) {
+        return ResponseEntity.status(exception.response().status()).body(exception.response());
+    }
+
+    @ExceptionHandler(RemoteSessionRejectedException.class)
+    public ResponseEntity<com.atenea.api.developmentchange.RemoteSessionFailureResponse>
+            handleRemoteSessionRejected(RemoteSessionRejectedException exception) {
         return ResponseEntity.status(exception.response().status()).body(exception.response());
     }
 

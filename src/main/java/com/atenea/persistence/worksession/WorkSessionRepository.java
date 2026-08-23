@@ -26,6 +26,19 @@ public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, 
             Long developmentChangeId,
             Collection<WorkSessionStatus> statuses);
 
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
+    List<WorkSessionEntity> findAllByDevelopmentChangeIdOrderByOpenedAtAscIdAsc(
+            Long developmentChangeId);
+
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
+    List<WorkSessionEntity> findAllByWorkspaceIdentityOrderByOpenedAtAscIdAsc(
+            String workspaceIdentity);
+
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
+    List<WorkSessionEntity> findAllByProjectIdAndWorkspaceBranchOrderByOpenedAtAscIdAsc(
+            Long projectId,
+            String workspaceBranch);
+
     @EntityGraph(attributePaths = "project")
     Optional<WorkSessionEntity> findByProjectIdAndStatus(Long projectId, WorkSessionStatus status);
 

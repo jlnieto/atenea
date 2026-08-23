@@ -16,9 +16,13 @@ import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
 import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationKind;
 import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationState;
+import com.atenea.persistence.developmentchange.RemoteSessionOperationState;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.developmentchange.DevelopmentChangeRejectedException;
 import com.atenea.service.developmentchange.DevelopmentChangeService;
 import com.atenea.service.developmentchange.DevelopmentChangeWorkspaceService;
+import com.atenea.service.developmentchange.RemoteSessionRejectedException;
+import com.atenea.service.developmentchange.RemoteSessionService;
 import com.atenea.v2.control.V2FailureCategory;
 import java.time.Instant;
 import java.util.List;
@@ -47,6 +51,7 @@ class DevelopmentChangeControllerTest {
 
     @Mock private DevelopmentChangeService service;
     @Mock private DevelopmentChangeWorkspaceService workspaceService;
+    @Mock private RemoteSessionService remoteSessionService;
 
     private MockMvc mockMvc;
     private RequestPostProcessor principal;
@@ -54,7 +59,8 @@ class DevelopmentChangeControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new DevelopmentChangeController(service, workspaceService))
+                        new DevelopmentChangeController(
+                                service, workspaceService, remoteSessionService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json()
@@ -194,6 +200,98 @@ class DevelopmentChangeControllerTest {
                 .andExpect(jsonPath("$.nextAction.kind").value("BIND_SESSION"))
                 .andExpect(jsonPath("$..workspaceIdentity").doesNotExist())
                 .andExpect(jsonPath("$..workspacePath").doesNotExist());
+    }
+
+    @Test
+    void openOrResolveAcceptsOnlyExpectedRevisionAndOpaqueIdempotencyKey() throws Exception {
+        UUID operationId = UUID.fromString("0bd4bd09-589c-4cf5-8922-a867cad7dbf5");
+        UUID remoteSessionId = UUID.fromString("cc5e4f00-38ce-457e-9c48-97148e95a0ac");
+        when(remoteSessionService.openOrResolve(
+                any(), eq(7L), eq(CHANGE_KEY), eq(IDEMPOTENCY_KEY), any()))
+                .thenReturn(new RemoteSessionOperationResponse(
+                        operationId,
+                        RemoteSessionOperationState.SUCCEEDED,
+                        1,
+                        "a".repeat(64),
+                        false,
+                        RemoteSessionResolution.CREATED,
+                        CHANGE_KEY,
+                        91L,
+                        remoteSessionId,
+                        "b".repeat(64),
+                        "c".repeat(64),
+                        4,
+                        WorkSessionStatus.OPEN,
+                        RemoteSessionNextAction.CONTINUE_SESSION));
+
+        mockMvc.perform(post("/api/v2/projects/7/development-changes/"
+                        + CHANGE_KEY + "/work-session:open-or-resolve")
+                        .with(principal)
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedChangeRevision\":3}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.operationId").value(operationId.toString()))
+                .andExpect(jsonPath("$.state").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.resolution").value("CREATED"))
+                .andExpect(jsonPath("$.sessionId").value(91))
+                .andExpect(jsonPath("$.remoteSessionId").value(remoteSessionId.toString()))
+                .andExpect(jsonPath("$.replayed").value(false))
+                .andExpect(jsonPath("$..workspaceIdentity").doesNotExist())
+                .andExpect(jsonPath("$..workspacePath").doesNotExist());
+    }
+
+    @Test
+    void openOrResolveRetainsEveryClientSelectorForDeterministicRejectionWithoutEcho()
+            throws Exception {
+        when(remoteSessionService.openOrResolve(
+                any(), eq(7L), eq(CHANGE_KEY), eq(IDEMPOTENCY_KEY), any()))
+                .thenAnswer(invocation -> {
+                    OpenOrResolveRemoteSessionRequest request = invocation.getArgument(4);
+                    if (!request.unsupportedFields().containsAll(List.of(
+                            "idempotencyKey", "sessionId", "worker", "workload", "branch",
+                            "workspace", "workspacePath", "path", "remoteIdentity",
+                            "remoteSessionId", "ref", "sourceRef"))) {
+                        throw new AssertionError("Client selectors were not retained for rejection");
+                    }
+                    throw new RemoteSessionRejectedException(
+                            RemoteSessionRejectionClass.VALIDATION,
+                            "REMOTE_SESSION_CLIENT_SELECTOR_REJECTED",
+                            "La solicitud contiene selectores internos no admitidos.",
+                            RemoteSessionNextAction.NONE);
+                });
+
+        mockMvc.perform(post("/api/v2/projects/7/development-changes/"
+                        + CHANGE_KEY + "/work-session:open-or-resolve")
+                        .with(principal)
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedChangeRevision": 3,
+                                  "idempotencyKey": "17f120f6-79e2-49e4-bd13-23db520d1374",
+                                  "sessionId": 19,
+                                  "worker": "foreign",
+                                  "workload": "client-workload",
+                                  "branch": "client/ref",
+                                  "workspace": "client-workspace",
+                                  "workspacePath": "/host/secret",
+                                  "path": "/host/other-secret",
+                                  "remoteIdentity": "foreign-identity",
+                                  "remoteSessionId": "6547081d-895e-4be1-a8fd-d115b7743cdf",
+                                  "ref": "refs/heads/foreign",
+                                  "sourceRef": "refs/heads/client"
+                                }
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.rejectionClass").value("VALIDATION"))
+                .andExpect(jsonPath("$.failureCode")
+                        .value("REMOTE_SESSION_CLIENT_SELECTOR_REJECTED"))
+                .andExpect(jsonPath("$.sessionId").isEmpty())
+                .andExpect(jsonPath("$..idempotencyKey").doesNotExist())
+                .andExpect(jsonPath("$..worker").doesNotExist())
+                .andExpect(jsonPath("$..workspacePath").doesNotExist())
+                .andExpect(jsonPath("$.remoteSessionId").isEmpty());
     }
 
     private DevelopmentChangeResponse response() {
