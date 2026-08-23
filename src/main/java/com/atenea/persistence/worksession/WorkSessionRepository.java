@@ -51,7 +51,7 @@ public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, 
     @EntityGraph(attributePaths = "project")
     Optional<WorkSessionEntity> findFirstByProjectIdOrderByLastActivityAtDesc(Long projectId);
 
-    @EntityGraph(attributePaths = "project")
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
     Optional<WorkSessionEntity> findWithProjectById(Long id);
 
     @EntityGraph(attributePaths = {"project", "developmentChange"})

@@ -19,6 +19,12 @@ import com.atenea.api.worksession.AgentRunResponse;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.project.ProjectEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationRepository;
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunProcessOutcome;
@@ -37,6 +43,8 @@ import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.SessionTurnAttachmentEntity;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
+import com.atenea.persistence.worksession.WorkerNodeEntity;
+import com.atenea.persistence.worksession.WorkerNodeRepository;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
@@ -87,6 +95,15 @@ class AgentRunServiceTest {
     @Mock
     private JdbcTemplate jdbcTemplate;
 
+    @Mock
+    private DevelopmentChangeRepository developmentChangeRepository;
+
+    @Mock
+    private DevelopmentChangeWorkspaceOperationRepository changeWorkspaceOperationRepository;
+
+    @Mock
+    private WorkerNodeRepository workerNodeRepository;
+
     private AgentRunService agentRunService;
     private AgentRunReconciliationService agentRunReconciliationService;
 
@@ -104,6 +121,9 @@ class AgentRunServiceTest {
                 mobilePushDispatchService,
                 workSessionAcceptanceService,
                 codexExecutionProfileSnapshotService,
+                developmentChangeRepository,
+                changeWorkspaceOperationRepository,
+                workerNodeRepository,
                 jdbcTemplate
         );
     }
@@ -607,6 +627,124 @@ class AgentRunServiceTest {
                 run.getProjectInstructionPath());
         assertEquals(ReviewedInstructionBundleIdentity.ATENEA_PROJECT_SHA256,
                 run.getProjectInstructionSha256());
+        assertNull(run.getDevelopmentChangeKey());
+        assertNull(run.getChangeSourceRevision());
+    }
+
+    @Test
+    void createChangeBoundRunSnapshotsReadyWorkspaceOwnershipForV4() {
+        WorkSessionEntity session = changeBoundSession();
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        SessionTurnEntity originTurn = operatorTurn(session);
+        stubChangeAdmission(session, change);
+
+        AgentRunEntity run = agentRunService.createRemoteQueuedRun(
+                session, originTurn, WorkloadClass.NORMAL);
+
+        assertEquals(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND, run.getWorkloadKind());
+        assertEquals(change.getChangeKey(), run.getDevelopmentChangeKey());
+        assertEquals(change.getBaseCommit(), run.getChangeBaseCommit());
+        assertEquals(change.getObservedCanonicalCommit(),
+                run.getChangeExpectedCanonicalCommit());
+        assertEquals(change.getSourceRevision(), run.getChangeSourceRevision());
+        assertEquals(change.getSourceFingerprintSha256(),
+                run.getChangeSourceFingerprintSha256());
+        assertEquals(change.getWorkspaceOwnershipFingerprintSha256(),
+                run.getChangeWorkspaceOwnershipFingerprintSha256());
+        assertEquals(change.getObservedCanonicalCommit(), run.getRepositoryCommit());
+        assertEquals(session.getRemoteSessionId(), run.getRemoteSessionId());
+        assertEquals(session.getWorkspaceIdentity(), run.getWorkspaceIdentity());
+        verify(agentRunRepository).save(run);
+    }
+
+    @Test
+    void createChangeBoundRunRejectsStaleOrIncompleteWorkspaceBeforePersistence() {
+        WorkSessionEntity staleSession = changeBoundSession();
+        DevelopmentChangeEntity stale = staleSession.getDevelopmentChange();
+        stale.setSourceState(DevelopmentChangeSourceState.STALE);
+        stubChangeAdmission(staleSession, stale);
+
+        assertThrows(IllegalStateException.class, () -> agentRunService.createRemoteQueuedRun(
+                staleSession, operatorTurn(staleSession), WorkloadClass.NORMAL));
+
+        WorkSessionEntity incompleteSession = changeBoundSession();
+        DevelopmentChangeEntity incomplete = incompleteSession.getDevelopmentChange();
+        incomplete.setWorkspaceOwnershipFingerprintSha256(null);
+        stubChangeAdmission(incompleteSession, incomplete);
+
+        assertThrows(IllegalStateException.class, () -> agentRunService.createRemoteQueuedRun(
+                incompleteSession, operatorTurn(incompleteSession), WorkloadClass.NORMAL));
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
+    }
+
+    @Test
+    void createChangeBoundRunRejectsCrossChangeWorkspaceOwnership() {
+        WorkSessionEntity session = changeBoundSession();
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        session.setWorkspaceIdentity("remote:ax42-01:change:" + UUID.randomUUID());
+        stubChangeAdmission(session, change);
+
+        assertThrows(IllegalStateException.class, () -> agentRunService.createRemoteQueuedRun(
+                session, operatorTurn(session), WorkloadClass.NORMAL));
+
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
+    }
+
+    @Test
+    void createChangeBoundRunRejectsWorkerWithoutV4Capability() {
+        WorkSessionEntity session = changeBoundSession();
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        stubChangeAdmission(session, change);
+        WorkerNodeEntity legacyWorker = changeWorker();
+        legacyWorker.setCapabilities(ProjectCodexIdentity.WORKLOAD_KIND);
+        when(workerNodeRepository.findById(ProjectCodexIdentity.WORKER_ID))
+                .thenReturn(Optional.of(legacyWorker));
+
+        assertThrows(IllegalStateException.class, () -> agentRunService.createRemoteQueuedRun(
+                session, operatorTurn(session), WorkloadClass.NORMAL));
+
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
+    }
+
+    @Test
+    void createChangeBoundRunRejectsConcurrentWorkspaceOperation() {
+        WorkSessionEntity session = changeBoundSession();
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        stubChangeAdmission(session, change);
+        when(changeWorkspaceOperationRepository.existsByDevelopmentChangeIdAndStateIn(
+                eq(change.getId()), any())).thenReturn(true);
+
+        assertThrows(IllegalStateException.class, () -> agentRunService.createRemoteQueuedRun(
+                session, operatorTurn(session), WorkloadClass.NORMAL));
+
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
+    }
+
+    @Test
+    void createChangeBoundRetryKeepsExactBindingAndRejectsSourceDrift() {
+        WorkSessionEntity session = changeBoundSession();
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        AgentRunEntity source = failedChangeRun(session);
+        stubChangeAdmission(session, change);
+        when(agentRunRepository.findByIdForUpdate(source.getId()))
+                .thenReturn(Optional.of(source));
+        when(agentRunRepository.findFirstByRetryOfRunIdOrderByCreatedAtAsc(source.getId()))
+                .thenReturn(Optional.empty());
+
+        AgentRunEntity retry = agentRunService.createRemoteRetryRun(source.getId());
+
+        assertEquals(source, retry.getRetryOfRun());
+        assertEquals(source.getDevelopmentChangeKey(), retry.getDevelopmentChangeKey());
+        assertEquals(source.getChangeSourceRevision(), retry.getChangeSourceRevision());
+        assertEquals(source.getChangeSourceFingerprintSha256(),
+                retry.getChangeSourceFingerprintSha256());
+
+        change.setSourceRevision(change.getSourceRevision() + 1);
+        change.setSourceFingerprintSha256("6".repeat(64));
+        when(agentRunRepository.findFirstByRetryOfRunIdOrderByCreatedAtAsc(source.getId()))
+                .thenReturn(Optional.empty());
+        assertThrows(AgentRunRecoveryConflictException.class,
+                () -> agentRunService.createRemoteRetryRun(source.getId()));
     }
 
     @Test
@@ -839,6 +977,111 @@ class AgentRunServiceTest {
         session.setCreatedAt(Instant.parse("2026-03-25T10:05:00Z"));
         session.setUpdatedAt(Instant.parse("2026-03-25T10:05:00Z"));
         return session;
+    }
+
+    private WorkSessionEntity changeBoundSession() {
+        WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
+        UUID changeKey = UUID.fromString("df99f1a1-1f14-4ca8-a405-58cd5b91bf2f");
+        UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
+        Instant observedAt = Instant.parse("2026-08-23T12:00:00Z");
+        String workspaceIdentity = "remote:ax42-01:change:" + changeKey;
+        String workspaceBranch = "atenea/change-" + changeKey;
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        session.setRemoteSessionId(remoteSessionId);
+        session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
+        session.setWorkspaceIdentity(workspaceIdentity);
+        session.setWorkspaceBranch(workspaceBranch);
+        session.setCanonicalSourceRef("refs/heads/main");
+        session.setCanonicalSourceCommit(TEST_CANONICAL_COMMIT);
+        session.setCanonicalSourceObservationSha256("2".repeat(64));
+        session.setCanonicalSourceObservedAt(observedAt);
+
+        DevelopmentChangeEntity change = new DevelopmentChangeEntity();
+        change.setId(91L);
+        change.setChangeKey(changeKey);
+        change.setProject(session.getProject());
+        change.setStatus(DevelopmentChangeStatus.OPEN);
+        change.setBaseRef("refs/heads/main");
+        change.setBaseCommit(TEST_CANONICAL_COMMIT);
+        change.setObservedCanonicalCommit(TEST_CANONICAL_COMMIT);
+        change.setWorkspaceBranch(workspaceBranch);
+        change.setWorkspaceIdentity(workspaceIdentity);
+        change.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        change.setSourceRevision(3);
+        change.setSourceFingerprintSha256("3".repeat(64));
+        change.setSourceState(DevelopmentChangeSourceState.DIRTY);
+        change.setWorkspaceState(DevelopmentChangeWorkspaceState.READY);
+        change.setWorkspaceOperationRevision(2);
+        change.setWorkspaceObservationSha256("4".repeat(64));
+        change.setWorkspaceOwnershipFingerprintSha256("5".repeat(64));
+        change.setWorkspaceUpdatedAt(observedAt);
+        session.setDevelopmentChange(change);
+        return session;
+    }
+
+    private SessionTurnEntity operatorTurn(WorkSessionEntity session) {
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        originTurn.setActor(SessionTurnActor.OPERATOR);
+        originTurn.setMessageText("change-bound turn");
+        originTurn.setCreatedAt(Instant.now());
+        return originTurn;
+    }
+
+    private AgentRunEntity failedChangeRun(WorkSessionEntity session) {
+        AgentRunEntity run = buildRun(81L, AgentRunStatus.FAILED);
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        run.setSession(session);
+        run.setOriginTurn(operatorTurn(session));
+        run.setExecutionTarget(ExecutionTarget.REMOTE);
+        run.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        run.setRemoteSessionId(session.getRemoteSessionId());
+        run.setWorkspaceIdentity(session.getWorkspaceIdentity());
+        run.setWorkloadKind(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        run.setWorkloadClass(WorkloadClass.NORMAL);
+        run.setDevelopmentChangeKey(change.getChangeKey());
+        run.setChangeBaseCommit(change.getBaseCommit());
+        run.setChangeExpectedCanonicalCommit(change.getObservedCanonicalCommit());
+        run.setChangeSourceRevision(change.getSourceRevision());
+        run.setChangeSourceFingerprintSha256(change.getSourceFingerprintSha256());
+        run.setChangeWorkspaceOwnershipFingerprintSha256(
+                change.getWorkspaceOwnershipFingerprintSha256());
+        run.setAttachmentCount(0);
+        run.setAttachmentBytes(0);
+        run.setAttachmentManifestSha256(null);
+        return run;
+    }
+
+    private void stubChangeAdmission(
+            WorkSessionEntity session,
+            DevelopmentChangeEntity change) {
+        when(developmentChangeRepository.findByChangeKeyForUpdate(change.getChangeKey()))
+                .thenReturn(Optional.of(change));
+        when(workSessionRepository.findAllByDevelopmentChangeIdOrderByOpenedAtAscIdAsc(
+                change.getId())).thenReturn(List.of(session));
+        org.mockito.Mockito.lenient().when(
+                changeWorkspaceOperationRepository.existsByDevelopmentChangeIdAndStateIn(
+                        eq(change.getId()), any())).thenReturn(false);
+        when(workerNodeRepository.findById(ProjectCodexIdentity.WORKER_ID))
+                .thenReturn(Optional.of(changeWorker()));
+        when(agentRunRepository.existsBySessionIdAndStatus(
+                session.getId(), AgentRunStatus.RUNNING)).thenReturn(false);
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                session.getId(), AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        org.mockito.Mockito.lenient().when(agentRunRepository.save(any(AgentRunEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    private WorkerNodeEntity changeWorker() {
+        WorkerNodeEntity worker = new WorkerNodeEntity();
+        worker.setId(ProjectCodexIdentity.WORKER_ID);
+        worker.setProtocolVersion(com.atenea.remoteworker.RemoteWorkerProperties.PROTOCOL);
+        worker.setEnabled(true);
+        worker.setHealthy(true);
+        worker.setCapabilities(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        return worker;
     }
 
     private static AgentRunEntity buildRun(Long runId, AgentRunStatus status) {

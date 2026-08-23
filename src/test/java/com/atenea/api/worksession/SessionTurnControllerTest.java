@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -257,6 +258,28 @@ class SessionTurnControllerTest {
                 .andExpect(jsonPath("$.details[0]").value(
                         "requestIdentityPresentForAttachments: "
                                 + "clientRequestId is required when attachmentIds are present"));
+
+        verify(sessionTurnService, never()).createTurn(
+                org.mockito.ArgumentMatchers.eq(12L),
+                any(CreateSessionTurnRequest.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "path", "host", "workerId", "slot", "workspace", "workspaceIdentity",
+            "shell", "credentials", "authorization", "executionAuthority"
+    })
+    void createTurnRejectsClientProvidedInternalExecutionSelectors(String selector)
+            throws Exception {
+        mockMvc.perform(post("/api/sessions/12/turns")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "Inspect the project",
+                                  "%s": "client-controlled"
+                                }
+                                """.formatted(selector)))
+                .andExpect(status().isBadRequest());
 
         verify(sessionTurnService, never()).createTurn(
                 org.mockito.ArgumentMatchers.eq(12L),

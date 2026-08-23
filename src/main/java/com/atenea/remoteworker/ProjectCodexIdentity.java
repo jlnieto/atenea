@@ -8,6 +8,7 @@ public final class ProjectCodexIdentity {
 
     public static final String WORKLOAD_KIND = "project-codex-v1";
     public static final String IMAGE_WORKLOAD_KIND = "project-codex-v3";
+    public static final String CHANGE_WORKLOAD_KIND = "project-codex-v4";
     public static final String PROJECT_NAME = "Atenea";
     public static final String PROJECT_IDENTITY = "atenea";
     public static final String WORKER_ID = "ax42-01";
@@ -38,7 +39,8 @@ public final class ProjectCodexIdentity {
     public static boolean matches(AgentRunEntity run) {
         return run != null
                 && (WORKLOAD_KIND.equals(run.getWorkloadKind())
-                    || IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
+                    || IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
+                    || CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
                 && PROJECT_IDENTITY.equals(run.getProjectIdentity())
                 && REPOSITORY.equals(run.getRepositoryUrl())
                 && BRANCH.equals(run.getRepositoryBranch())

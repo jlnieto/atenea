@@ -16,13 +16,25 @@ import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
+import com.atenea.persistence.worksession.WorkerNodeEntity;
+import com.atenea.persistence.worksession.WorkerNodeRepository;
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationRepository;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -42,6 +54,9 @@ public class AgentRunService {
     private final MobilePushDispatchService mobilePushDispatchService;
     private final WorkSessionAcceptanceService workSessionAcceptanceService;
     private final CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService;
+    private final DevelopmentChangeRepository developmentChangeRepository;
+    private final DevelopmentChangeWorkspaceOperationRepository changeWorkspaceOperationRepository;
+    private final WorkerNodeRepository workerNodeRepository;
     private final JdbcTemplate jdbcTemplate;
 
     public AgentRunService(
@@ -54,6 +69,9 @@ public class AgentRunService {
             MobilePushDispatchService mobilePushDispatchService,
             WorkSessionAcceptanceService workSessionAcceptanceService,
             CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService,
+            DevelopmentChangeRepository developmentChangeRepository,
+            DevelopmentChangeWorkspaceOperationRepository changeWorkspaceOperationRepository,
+            WorkerNodeRepository workerNodeRepository,
             JdbcTemplate jdbcTemplate
     ) {
         this.workSessionRepository = workSessionRepository;
@@ -65,6 +83,9 @@ public class AgentRunService {
         this.mobilePushDispatchService = mobilePushDispatchService;
         this.workSessionAcceptanceService = workSessionAcceptanceService;
         this.codexExecutionProfileSnapshotService = codexExecutionProfileSnapshotService;
+        this.developmentChangeRepository = developmentChangeRepository;
+        this.changeWorkspaceOperationRepository = changeWorkspaceOperationRepository;
+        this.workerNodeRepository = workerNodeRepository;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -121,6 +142,8 @@ public class AgentRunService {
         lockCodexActivation(session.getSelectedWorkerId());
         ensureNoNonTerminalRun(session.getId());
         workSessionAcceptanceService.invalidateForNewRun(session);
+        ChangeBinding changeBinding = changeBinding(session);
+        requireCompatibleRetryBinding(retryOfRun, changeBinding);
         if (session.getRemoteSessionId() == null
                 || (!"synthetic-routing-v1".equals(session.getRemoteWorkloadKind())
                     && !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind()))
@@ -140,10 +163,13 @@ public class AgentRunService {
         run.setSelectedWorkerId(session.getSelectedWorkerId());
         run.setWorkspaceIdentity(session.getWorkspaceIdentity());
         run.setRemoteSessionId(session.getRemoteSessionId());
-        run.setWorkloadKind(attachmentSelection == null
-                ? session.getRemoteWorkloadKind()
-                : ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
+        run.setWorkloadKind(changeBinding == null
+                ? attachmentSelection == null
+                        ? session.getRemoteWorkloadKind()
+                        : ProjectCodexIdentity.IMAGE_WORKLOAD_KIND
+                : ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
         applyProjectIdentity(run);
+        applyChangeBinding(run, changeBinding);
         if (attachmentSelection == null) {
             run.setAttachmentCount(0);
             run.setAttachmentBytes(0L);
@@ -487,7 +513,8 @@ public class AgentRunService {
             ReviewedInstructionBundleIdentity.apply(
                     run, BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
         } else if ((ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
-                    || ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
+                    || ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
+                    || ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
                 && ProjectCodexIdentity.hasCanonicalSourceObservation(run.getSession())) {
             run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
             run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);
@@ -504,6 +531,152 @@ public class AgentRunService {
     private boolean matchesProjectWorkload(WorkSessionEntity session) {
         return ProjectCodexIdentity.hasCanonicalSourceObservation(session)
                 || BeautipsProjectCodexIdentity.matchesPinnedSession(session);
+    }
+
+    private ChangeBinding changeBinding(WorkSessionEntity session) {
+        DevelopmentChangeEntity linked = session.getDevelopmentChange();
+        if (linked == null) {
+            return null;
+        }
+        if (linked.getChangeKey() == null) {
+            throw invalidChangeBinding();
+        }
+        DevelopmentChangeEntity change = developmentChangeRepository
+                .findByChangeKeyForUpdate(linked.getChangeKey())
+                .orElseThrow(this::invalidChangeBinding);
+        List<WorkSessionEntity> linkedSessions = workSessionRepository
+                .findAllByDevelopmentChangeIdOrderByOpenedAtAscIdAsc(change.getId());
+        boolean activeWorkspaceOperation = changeWorkspaceOperationRepository
+                .existsByDevelopmentChangeIdAndStateIn(
+                        change.getId(),
+                        Set.of(
+                                DevelopmentChangeWorkspaceOperationState.REQUESTED,
+                                DevelopmentChangeWorkspaceOperationState.DISPATCHED));
+        WorkerNodeEntity worker = workerNodeRepository
+                .findById(change.getSelectedWorkerId()).orElse(null);
+        String expectedWorkspace = "remote:" + ProjectCodexIdentity.WORKER_ID
+                + ":change:" + change.getChangeKey();
+        String expectedWorkspaceBranch = "atenea/change-" + change.getChangeKey();
+        if (session.getId() == null
+                || session.getProject() == null
+                || session.getProject().getId() == null
+                || change.getId() == null
+                || change.getProject() == null
+                || !Objects.equals(change.getId(), linked.getId())
+                || !Objects.equals(change.getProject().getId(), session.getProject().getId())
+                || change.getStatus() != DevelopmentChangeStatus.OPEN
+                || change.getWorkspaceState() != DevelopmentChangeWorkspaceState.READY
+                || change.getSourceState() == DevelopmentChangeSourceState.STALE
+                || change.getSourceState() == DevelopmentChangeSourceState.BLOCKED
+                || change.getWorkspaceOperationRevision() < 1
+                || change.getWorkspaceUpdatedAt() == null
+                || activeWorkspaceOperation
+                || worker == null
+                || !worker.isEnabled()
+                || !worker.isHealthy()
+                || !RemoteWorkerProperties.PROTOCOL.equals(worker.getProtocolVersion())
+                || worker.getCapabilities() == null
+                || List.of(worker.getCapabilities().split(",")).stream()
+                        .map(String::trim)
+                        .noneMatch(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND::equals)
+                || linkedSessions.size() != 1
+                || !Objects.equals(linkedSessions.getFirst().getId(), session.getId())
+                || session.getExecutionTarget() != ExecutionTarget.REMOTE
+                || !Objects.equals(session.getSelectedWorkerId(), ProjectCodexIdentity.WORKER_ID)
+                || !Objects.equals(change.getSelectedWorkerId(), session.getSelectedWorkerId())
+                || !Objects.equals(change.getWorkspaceIdentity(), expectedWorkspace)
+                || !Objects.equals(session.getWorkspaceIdentity(), expectedWorkspace)
+                || !Objects.equals(change.getWorkspaceBranch(), expectedWorkspaceBranch)
+                || !Objects.equals(session.getWorkspaceBranch(), expectedWorkspaceBranch)
+                || !Objects.equals(change.getBaseRef(), "refs/heads/" + ProjectCodexIdentity.BRANCH)
+                || !Objects.equals(session.getCanonicalSourceRef(), change.getBaseRef())
+                || !Objects.equals(session.getCanonicalSourceCommit(), change.getBaseCommit())
+                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
+                || !gitCommit(change.getBaseCommit())
+                || !gitCommit(change.getObservedCanonicalCommit())
+                || change.getSourceRevision() < 0
+                || !sha256(change.getSourceFingerprintSha256())
+                || !sha256(change.getWorkspaceOwnershipFingerprintSha256())) {
+            throw invalidChangeBinding();
+        }
+        return new ChangeBinding(
+                change.getChangeKey(),
+                change.getBaseCommit(),
+                change.getObservedCanonicalCommit(),
+                change.getSourceRevision(),
+                change.getSourceFingerprintSha256(),
+                change.getWorkspaceOwnershipFingerprintSha256());
+    }
+
+    private void applyChangeBinding(AgentRunEntity run, ChangeBinding binding) {
+        if (binding == null) {
+            run.setDevelopmentChangeKey(null);
+            run.setChangeBaseCommit(null);
+            run.setChangeExpectedCanonicalCommit(null);
+            run.setChangeSourceRevision(null);
+            run.setChangeSourceFingerprintSha256(null);
+            run.setChangeWorkspaceOwnershipFingerprintSha256(null);
+            return;
+        }
+        run.setDevelopmentChangeKey(binding.changeKey());
+        run.setChangeBaseCommit(binding.baseCommit());
+        run.setChangeExpectedCanonicalCommit(binding.expectedCanonicalCommit());
+        run.setChangeSourceRevision(binding.sourceRevision());
+        run.setChangeSourceFingerprintSha256(binding.sourceFingerprintSha256());
+        run.setChangeWorkspaceOwnershipFingerprintSha256(
+                binding.workspaceOwnershipFingerprintSha256());
+        run.setRepositoryCommit(binding.expectedCanonicalCommit());
+    }
+
+    private void requireCompatibleRetryBinding(
+            AgentRunEntity retryOfRun,
+            ChangeBinding currentBinding
+    ) {
+        if (retryOfRun == null) {
+            return;
+        }
+        boolean changeRetry = ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(
+                retryOfRun.getWorkloadKind());
+        if (changeRetry != (currentBinding != null)
+                || (changeRetry
+                    && (!Objects.equals(retryOfRun.getDevelopmentChangeKey(),
+                            currentBinding.changeKey())
+                        || !Objects.equals(retryOfRun.getChangeBaseCommit(),
+                            currentBinding.baseCommit())
+                        || !Objects.equals(retryOfRun.getChangeExpectedCanonicalCommit(),
+                            currentBinding.expectedCanonicalCommit())
+                        || !Objects.equals(retryOfRun.getChangeSourceRevision(),
+                            currentBinding.sourceRevision())
+                        || !Objects.equals(retryOfRun.getChangeSourceFingerprintSha256(),
+                            currentBinding.sourceFingerprintSha256())
+                        || !Objects.equals(
+                            retryOfRun.getChangeWorkspaceOwnershipFingerprintSha256(),
+                            currentBinding.workspaceOwnershipFingerprintSha256())))) {
+            throw new AgentRunRecoveryConflictException(
+                    "The change-bound AgentRun retry no longer matches durable ownership");
+        }
+    }
+
+    private IllegalStateException invalidChangeBinding() {
+        return new IllegalStateException(
+                "DevelopmentChange AgentRun ownership is incomplete, stale, or incompatible");
+    }
+
+    private static boolean gitCommit(String value) {
+        return value != null && value.matches("^[0-9a-f]{40}$");
+    }
+
+    private static boolean sha256(String value) {
+        return value != null && value.matches("^[0-9a-f]{64}$");
+    }
+
+    private record ChangeBinding(
+            UUID changeKey,
+            String baseCommit,
+            String expectedCanonicalCommit,
+            long sourceRevision,
+            String sourceFingerprintSha256,
+            String workspaceOwnershipFingerprintSha256) {
     }
 
     private void clearProjectIdentity(AgentRunEntity run) {
