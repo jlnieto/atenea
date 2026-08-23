@@ -461,7 +461,8 @@ class DevelopmentCoreDomainHandlerTest {
                 new MobileSessionInsightsResponse(
                         "Se ha completado la implementación del flujo de voz",
                         new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),
-                        "Publicar la PR de la sesión")));
+                        "Publicar la PR de la sesión"),
+                null));
 
         CoreCommandExecutionResult result = handler.execute(
                 new CoreIntentEnvelope(
@@ -520,7 +521,8 @@ class DevelopmentCoreDomainHandlerTest {
                 new MobileSessionInsightsResponse(
                         "Se aplicó el parche principal",
                         new MobileSessionBlockerResponse("TECHNICAL", "Build failed because tests are still red in CI"),
-                        "Publicar la pull request de la sesión")));
+                        "Publicar la pull request de la sesión"),
+                null));
 
         CoreCommandExecutionResult result = handler.execute(
                 new CoreIntentEnvelope(
@@ -587,7 +589,8 @@ class DevelopmentCoreDomainHandlerTest {
                 new MobileSessionInsightsResponse(
                         "La nueva landing ya está preparada",
                         new MobileSessionBlockerResponse("BUSINESS", "Pendiente de validación del cliente sobre el copy final"),
-                        "Esperar la aprobación final del cliente")));
+                        "Esperar la aprobación final del cliente"),
+                null));
 
         CoreCommandExecutionResult result = handler.execute(
                 new CoreIntentEnvelope(

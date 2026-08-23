@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
             baseUrl = BuildConfig.ATENEA_API_BASE_URL,
             accessTokenProvider = { sessionStore.load()?.accessToken },
             refreshTokenProvider = { sessionStore.load()?.refreshToken },
+            operatorRoleProvider = { sessionStore.load()?.operator?.codexOperationsRole },
             sessionUpdater = { sessionStore.save(it) }
         )
         val pushRegistrar = AteneaPushRegistrar(applicationContext, apiClient)

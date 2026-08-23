@@ -1,6 +1,8 @@
 package com.atenea.service.worksession;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -13,12 +15,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.atenea.mobilepush.MobilePushDispatchService;
+import com.atenea.api.worksession.AgentRunResponse;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
+import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunProcessOutcome;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.CodexReasoningEffort;
 import com.atenea.persistence.worksession.SessionTurnActor;
@@ -27,10 +31,11 @@ import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
-import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.ExecutionProfileSource;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.SessionTurnAttachmentEntity;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
@@ -175,6 +180,21 @@ class AgentRunServiceTest {
     }
 
     @Test
+    void responseProjectsActionSpecificFailureWithoutChangingLegacySummary() {
+        AgentRunEntity run = buildRun(55L, AgentRunStatus.FAILED);
+        run.setProcessOutcome(AgentRunProcessOutcome.FAILED);
+        run.setErrorSummary("Remote close requires operator reconciliation");
+        run.setFailureCode("REMOTE_CLOSE_RELEASE_UNCONFIRMED");
+        run.setRecoveryNextAction(AgentRunRecoveryNextAction.REQUEST_RECONCILIATION);
+
+        AgentRunResponse response = agentRunService.toResponse(run);
+
+        assertEquals("Remote close requires operator reconciliation", response.errorSummary());
+        assertEquals("REMOTE_CLOSE_RELEASE_UNCONFIRMED", response.failureCode());
+        assertEquals(AgentRunRecoveryNextAction.REQUEST_RECONCILIATION, response.recoveryNextAction());
+    }
+
+    @Test
     void forceMarkFailedIfRunningUsesConditionalRepositoryUpdate() {
         AgentRunEntity run = buildRun(55L, AgentRunStatus.FAILED);
         when(agentRunRepository.forceMarkFailedIfRunning(eq(55L), eq("turn_456"), eq("Codex execution failed"), any()))
@@ -254,6 +274,8 @@ class AgentRunServiceTest {
         source.setWorkloadClass(WorkloadClass.NORMAL);
         source.setCodexModelId("gpt-5.6-sol");
         source.setCodexReasoningEffort(CodexReasoningEffort.HIGH);
+        source.setFailureCode("DETERMINISTIC_BLOCKER_CLEARED");
+        source.setRecoveryNextAction(AgentRunRecoveryNextAction.RETRY);
         when(agentRunRepository.findByIdForUpdate(81L)).thenReturn(Optional.of(source));
         when(agentRunRepository.findFirstByRetryOfRunIdOrderByCreatedAtAsc(81L))
                 .thenReturn(Optional.empty());
@@ -272,6 +294,9 @@ class AgentRunServiceTest {
         assertEquals(source, retry.getRetryOfRun());
         assertEquals("gpt-5.6-sol", retry.getCodexModelId());
         assertEquals(CodexReasoningEffort.HIGH, retry.getCodexReasoningEffort());
+        assertEquals("DETERMINISTIC_BLOCKER_CLEARED", source.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.RETRY, source.getRecoveryNextAction());
+        assertEquals(AgentRunStatus.FAILED, source.getStatus());
         verify(agentRunRepository).save(any(AgentRunEntity.class));
         verify(codexExecutionProfileSnapshotService, never()).applyCurrentProfile(retry);
     }
@@ -356,9 +381,113 @@ class AgentRunServiceTest {
         assertEquals(ExecutionProfileSource.NEXT_TURN, retry.getCodexEffortSource());
         assertEquals("d".repeat(64), retry.getCodexCatalogRevision());
         assertEquals("0.145.0", retry.getCodexVersion());
+        assertEquals(AgentRunStatus.FAILED, source.getStatus());
+        assertEquals(originTurn, source.getOriginTurn());
+        assertEquals(2, source.getAttachmentCount());
+        assertEquals(3072L, source.getAttachmentBytes());
+        assertEquals("c".repeat(64), source.getAttachmentManifestSha256());
+        assertEquals("gpt-5.6-sol", source.getCodexModelId());
+        assertEquals(CodexReasoningEffort.HIGH, source.getCodexReasoningEffort());
+        assertEquals("d".repeat(64), source.getCodexCatalogRevision());
+        assertEquals("0.145.0", source.getCodexVersion());
         verify(sessionTurnAttachmentRepository, never()).insert(any(), any(), any(), anyShort());
         verify(sessionTurnRepository, never()).save(any(SessionTurnEntity.class));
         verify(codexExecutionProfileSnapshotService, never()).applyCurrentProfile(retry);
+    }
+
+    @Test
+    void createRemoteRetryRejectsUnclearedDeterministicBlockerWithoutMutation() {
+        WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
+        SessionTurnEntity originTurn = new SessionTurnEntity();
+        originTurn.setId(101L);
+        originTurn.setSession(session);
+        AgentRunEntity source = buildRun(81L, AgentRunStatus.FAILED);
+        source.setSession(session);
+        source.setOriginTurn(originTurn);
+        source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setWorkloadKind(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND);
+        source.setAttachmentCount(1);
+        source.setAttachmentBytes(1024L);
+        source.setAttachmentManifestSha256("a".repeat(64));
+        source.setCodexModelId("gpt-5.6-sol");
+        source.setCodexReasoningEffort(CodexReasoningEffort.HIGH);
+        source.setFailureCode("CLOSED_SESSION_OWNS_CAPACITY");
+        source.setRecoveryNextAction(AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE);
+        when(agentRunRepository.findByIdForUpdate(81L)).thenReturn(Optional.of(source));
+
+        assertThrows(
+                AgentRunRecoveryConflictException.class,
+                () -> agentRunService.createRemoteRetryRun(81L));
+
+        assertEquals(AgentRunStatus.FAILED, source.getStatus());
+        assertEquals(originTurn, source.getOriginTurn());
+        assertEquals("CLOSED_SESSION_OWNS_CAPACITY", source.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE,
+                source.getRecoveryNextAction());
+        assertEquals(1, source.getAttachmentCount());
+        assertEquals(1024L, source.getAttachmentBytes());
+        assertEquals("a".repeat(64), source.getAttachmentManifestSha256());
+        assertEquals("gpt-5.6-sol", source.getCodexModelId());
+        assertEquals(CodexReasoningEffort.HIGH, source.getCodexReasoningEffort());
+        verify(agentRunRepository, never()).findFirstByRetryOfRunIdOrderByCreatedAtAsc(81L);
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
+        verify(sessionTurnAttachmentRepository, never())
+                .findByWorkSessionIdAndSessionTurnIdOrderByPositionAsc(any(), any());
+        verify(sessionTurnRepository, never()).save(any(SessionTurnEntity.class));
+        verify(codexExecutionProfileSnapshotService, never()).applyCurrentProfile(any());
+    }
+
+    @Test
+    void exactReleasedBlockerReceiptAllowsRetryEligibilityForLaterTerminalProof() {
+        AgentRunEntity source = closedOwnerBlockedRun();
+        WorkSessionEntity blocker = releasedBlocker();
+        when(workSessionRepository.findWithProjectById(16L))
+                .thenReturn(Optional.of(blocker));
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Boolean.class),
+                any(), any(), any())).thenReturn(true);
+
+        assertDoesNotThrow(() -> agentRunService.requireRemoteRetryEligible(source));
+    }
+
+    @Test
+    void readModelEligibilityRequiresTerminalSourceAndExactReleasedReceipt() {
+        AgentRunEntity source = closedOwnerBlockedRun();
+        WorkSessionEntity blocker = releasedBlocker();
+        when(agentRunRepository.findById(81L)).thenReturn(Optional.of(source));
+        when(workSessionRepository.findWithProjectById(16L))
+                .thenReturn(Optional.of(blocker));
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Boolean.class),
+                any(), any(), any())).thenReturn(true);
+
+        assertTrue(agentRunService.isRemoteRetryEligible(81L));
+
+        source.setStatus(AgentRunStatus.RECONCILING);
+        assertFalse(agentRunService.isRemoteRetryEligible(81L));
+    }
+
+    @Test
+    void missingMatchingReceiptKeepsClosedOwnerRetryUnavailable() {
+        AgentRunEntity source = closedOwnerBlockedRun();
+        WorkSessionEntity blocker = releasedBlocker();
+        blocker.setRemoteCloseReceiptSha256(null);
+        when(workSessionRepository.findWithProjectById(16L))
+                .thenReturn(Optional.of(blocker));
+
+        assertThrows(AgentRunRecoveryConflictException.class,
+                () -> agentRunService.requireRemoteRetryEligible(source));
+    }
+
+    @Test
+    void projectedReceiptWithoutExactReleasedOperationKeepsRetryUnavailable() {
+        AgentRunEntity source = closedOwnerBlockedRun();
+        WorkSessionEntity blocker = releasedBlocker();
+        when(workSessionRepository.findWithProjectById(16L))
+                .thenReturn(Optional.of(blocker));
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Boolean.class),
+                any(), any(), any())).thenReturn(false);
+
+        assertThrows(AgentRunRecoveryConflictException.class,
+                () -> agentRunService.requireRemoteRetryEligible(source));
     }
 
     @Test
@@ -732,5 +861,45 @@ class AgentRunServiceTest {
         run.setStartedAt(Instant.parse("2026-03-25T10:06:00Z"));
         run.setCreatedAt(Instant.parse("2026-03-25T10:06:00Z"));
         return run;
+    }
+
+    private static AgentRunEntity closedOwnerBlockedRun() {
+        WorkSessionEntity session = buildSession(
+                17L, 7L, ProjectCodexIdentity.REPO_PATH);
+        UUID sessionId = UUID.fromString("18c00753-6080-42f7-ac05-18c47b236cac");
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        session.setRemoteSessionId(sessionId);
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:" + sessionId);
+        AgentRunEntity source = buildRun(96L, AgentRunStatus.FAILED);
+        source.setSession(session);
+        source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        source.setRemoteSessionId(sessionId);
+        source.setFailureCode("CLOSED_SESSION_OWNS_CAPACITY");
+        source.setRecoveryNextAction(AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE);
+        source.setRecoveryBlockerWorkSessionId(16L);
+        return source;
+    }
+
+    private static WorkSessionEntity releasedBlocker() {
+        WorkSessionEntity blocker = buildSession(
+                16L, 7L, ProjectCodexIdentity.REPO_PATH);
+        UUID remoteId = UUID.fromString("7151dce0-69ab-4614-86e4-f93f1af825e4");
+        blocker.setStatus(WorkSessionStatus.CLOSED);
+        blocker.setExecutionTarget(ExecutionTarget.REMOTE);
+        blocker.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        blocker.setRemoteSessionId(remoteId);
+        blocker.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteId);
+        blocker.setCanonicalSourceRef("refs/heads/main");
+        blocker.setCanonicalSourceCommit("a".repeat(40));
+        blocker.setCanonicalSourceObservationSha256("b".repeat(64));
+        blocker.setCanonicalSourceObservedAt(Instant.parse("2026-08-03T10:00:00Z"));
+        blocker.setRemoteCloseState(RemoteCloseState.RELEASED);
+        blocker.setRemoteCloseOperationId(
+                UUID.fromString("12c9de9d-6079-4f47-978e-ff52a440ba40"));
+        blocker.setRemoteCloseReceiptSha256("c".repeat(64));
+        blocker.setRemoteCloseReleasedAt(Instant.parse("2026-08-03T11:00:00Z"));
+        return blocker;
     }
 }

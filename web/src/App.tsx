@@ -50,12 +50,14 @@ import {
   CoreCommandResponse,
   CoreCommandSummary,
   CoreScope,
+  LegacyRemoteClosePlan,
   ManagedHost,
   MobileApiCostsOverview,
   MobileConversationTurn,
   MobileProjectOverview,
   MobileRescueConversation,
   MobileSessionEvent,
+  MobileSessionOperatorState,
   MobileSessionSummary,
   MobileUpload,
   MobileWorkSessionConversation,
@@ -374,7 +376,8 @@ function HomeScreen() {
 
   const active = projects.filter((project) => project.session && project.session.status !== "CLOSED");
   const attention = projects.filter((project) =>
-    project.session?.runInProgress || project.session?.closeBlockedState || project.session?.pullRequestStatus === "OPEN"
+    project.session?.recoveryPending || project.session?.runInProgress ||
+      project.session?.closeBlockedState || project.session?.pullRequestStatus === "OPEN"
   );
 
   return (
@@ -466,12 +469,17 @@ function ProjectsScreen() {
       return Boolean(project.session && project.session.status !== "CLOSED");
     }
     if (filter === "attention") {
-      return Boolean(project.session?.runInProgress || project.session?.closeBlockedState || !project.session);
+      return Boolean(project.session?.recoveryPending || project.session?.runInProgress ||
+        project.session?.closeBlockedState || !project.session);
     }
     return true;
   });
 
   async function openSession(project: MobileProjectOverview) {
+    if (project.session?.recoveryPending) {
+      navigate({ name: "session", projectId: project.projectId, sessionId: project.session.sessionId });
+      return;
+    }
     setLoadingProjectId(project.projectId);
     setError("");
     try {
@@ -534,9 +542,11 @@ function ProjectsScreen() {
               <Fact label="PR" value={project.session?.pullRequestStatus || "-"} />
             </div>
             {project.session ? (
-              <div className="session-mini">
-                <strong>{project.session.title}</strong>
-                <span>{project.session.lastActivityAt ? formatRelative(project.session.lastActivityAt) : "Sin actividad reciente"}</span>
+              <div className={`session-mini${project.session.recoveryPending ? " session-mini--recovery" : ""}`}>
+                <strong>{project.session.recoveryPending ? "Nueva sesión pendiente" : project.session.title}</strong>
+                <span>{project.session.recoveryPending
+                  ? "La sesión anterior ya está cerrada. Continúa la creación de su única sucesora vacía."
+                  : project.session.lastActivityAt ? formatRelative(project.session.lastActivityAt) : "Sin actividad reciente"}</span>
               </div>
             ) : (
               <label className="field">
@@ -554,11 +564,15 @@ function ProjectsScreen() {
                 disabled={loadingProjectId === project.projectId}
                 onClick={() => openSession(project)}
               >
-                {project.session ? "Abrir sesión" : "Crear sesión"}
+                {project.session?.recoveryPending
+                  ? "Continuar recuperación"
+                  : project.session ? "Abrir sesión" : "Crear sesión"}
               </Button>
-              <Button variant="ghost" disabled={loadingProjectId === project.projectId} onClick={() => openRescue(project)}>
-                Rescate
-              </Button>
+              {!project.session?.recoveryPending && (
+                <Button variant="ghost" disabled={loadingProjectId === project.projectId} onClick={() => openRescue(project)}>
+                  Rescate
+                </Button>
+              )}
             </div>
           </article>
         ))}
@@ -576,9 +590,10 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
   const [command, setCommand] = useState<CoreCommandResponse | null>(null);
   const [billingReference, setBillingReference] = useState("");
   const [loading, setLoading] = useState(false);
+  const [operatorRefreshGeneration, setOperatorRefreshGeneration] = useState(0);
   const [error, setError] = useState("");
 
-  async function load() {
+  async function load(explicitOperatorRefresh = false) {
     setLoading(true);
     setError("");
     try {
@@ -594,6 +609,9 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
         })
       ]);
       setSummary(nextSummary);
+      if (explicitOperatorRefresh) {
+        setOperatorRefreshGeneration((generation) => generation + 1);
+      }
       setDeliverables(nextDeliverables);
       setEvents(nextEvents.events || []);
       setPreview(nextPreview);
@@ -610,12 +628,13 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
   useEffect(() => {
     load();
     const timer = window.setInterval(() => {
-      if (summary?.conversation.runInProgress || command?.confirmation) {
+      if (summary?.conversation.runInProgress || summary?.operatorState.surfaceEnabled || command?.confirmation) {
         load();
       }
     }, 8000);
     return () => window.clearInterval(timer);
-  }, [sessionId, command?.confirmation?.confirmationToken]);
+  }, [sessionId, summary?.conversation.runInProgress, summary?.operatorState.surfaceEnabled,
+    command?.confirmation?.confirmationToken]);
 
   async function selectDeliverable(item: SessionDeliverableSummary) {
     try {
@@ -651,7 +670,7 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
       <Toolbar>
         <Button variant="ghost" icon={<ArrowLeft />} onClick={() => navigate({ name: "projects" })}>Proyectos</Button>
         <Button icon={<MessageSquare />} onClick={() => navigate({ name: "conversation", projectId, sessionId })}>Conversación</Button>
-        <Button icon={<RefreshCw />} disabled={loading} onClick={load}>{loading ? "Actualizando" : "Actualizar"}</Button>
+        <Button icon={<RefreshCw />} disabled={loading} onClick={() => load(true)}>{loading ? "Actualizando" : "Actualizar"}</Button>
       </Toolbar>
       {error && <InlineError>{error}</InlineError>}
       <section className="session-hero">
@@ -662,6 +681,12 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
         </div>
         <StatusPill level={sessionLevel(session.operationalState)}>{session.operationalState}</StatusPill>
       </section>
+      <RemoteCloseOperatorPanel
+        state={summary.operatorState}
+        currentWorkSessionId={sessionId}
+        refreshGeneration={operatorRefreshGeneration}
+        onChanged={load}
+      />
       <PreviewPanel preview={preview} onRefresh={load} />
       {command && <CommandCard command={command} onChanged={setCommand} afterResolve={load} />}
       {session.closeBlockedReason && (
@@ -855,6 +880,7 @@ interface PendingImage {
 
 function ConversationScreen({ sessionId, projectId }: { sessionId: number; projectId?: number }) {
   const [conversation, setConversation] = useState<MobileWorkSessionConversation | null>(null);
+  const [operatorState, setOperatorState] = useState<MobileSessionOperatorState | null>(null);
   const [attachmentCapability, setAttachmentCapability] = useState<WorkSessionAttachmentCapability | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [turnRequestId, setTurnRequestId] = useState<string | null>(null);
@@ -877,6 +903,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   const [recoveryPending, setRecoveryPending] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
+  const [operatorRefreshGeneration, setOperatorRefreshGeneration] = useState(0);
   const uploadInProgress = useRef(false);
   const submitInProgress = useRef(false);
   const turnRequestIdRef = useRef<string | null>(null);
@@ -903,18 +930,22 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     }
   }
 
-  async function load() {
+  async function load(explicitOperatorRefresh = false) {
     setError("");
     setAttachmentError("");
     setAttachmentCapabilityLoading(true);
-    const [conversationResult, capabilityResult] = await Promise.allSettled([
-      api.workSessionConversation(sessionId),
+    const [summaryResult, capabilityResult] = await Promise.allSettled([
+      api.workSessionSummary(sessionId),
       api.workSessionAttachmentCapability(sessionId)
     ]);
-    if (conversationResult.status === "fulfilled") {
-      setConversation(conversationResult.value);
+    if (summaryResult.status === "fulfilled") {
+      setConversation(summaryResult.value.conversation);
+      setOperatorState(summaryResult.value.operatorState);
+      if (explicitOperatorRefresh) {
+        setOperatorRefreshGeneration((generation) => generation + 1);
+      }
     } else {
-      setError(errorMessage(conversationResult.reason));
+      setError(errorMessage(summaryResult.reason));
     }
     if (capabilityResult.status === "fulfilled") {
       setAttachmentCapability(capabilityResult.value);
@@ -930,6 +961,7 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
     previewUrls.current.clear();
     setPendingImages([]);
+    setOperatorState(null);
     setTurnRequestId(null);
     turnRequestIdRef.current = null;
     uploadInProgress.current = false;
@@ -941,6 +973,22 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
     previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
     previewUrls.current.clear();
   }, []);
+
+  useEffect(() => {
+    if (!operatorState?.surfaceEnabled) {
+      return;
+    }
+    const timer = window.setInterval(async () => {
+      try {
+        const next = await api.workSessionSummary(sessionId);
+        setConversation(next.conversation);
+        setOperatorState(next.operatorState);
+      } catch (refreshError) {
+        setError(`No se pudo actualizar el estado operativo. ${errorMessage(refreshError)}`);
+      }
+    }, 8_000);
+    return () => window.clearInterval(timer);
+  }, [sessionId, operatorState?.surfaceEnabled]);
 
   useEffect(() => {
     const runId = conversation?.latestRun?.id;
@@ -1215,9 +1263,18 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
       title={conversation?.session.title || `WorkSession #${sessionId}`}
       subtitle="Conversación de sesión vía Atenea Core"
       back={() => navigate({ name: "session", projectId, sessionId })}
-      refresh={load}
+      refresh={() => load(true)}
     >
       {error && <InlineError>{error}</InlineError>}
+      {operatorState && (
+        <RemoteCloseOperatorPanel
+          state={operatorState}
+          currentWorkSessionId={sessionId}
+          refreshGeneration={operatorRefreshGeneration}
+          onChanged={load}
+          dark
+        />
+      )}
       {(runDetail || runProgressError) && (
         <RunProgressPanel
           detail={runDetail}
@@ -1225,6 +1282,13 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
           error={runProgressError || recoveryError}
           notice={recoveryNotice}
           pending={recoveryPending}
+          retryOverride={operatorState?.surfaceEnabled
+            ? operatorState.state === "CAPACITY_RELEASED"
+              ? "Usa «Reintentar tarea» en el estado operativo"
+              : operatorState.state === "SOURCE_ADVANCED"
+                ? "El código cambió; empieza una sesión nueva desde el estado operativo"
+              : "Reconciliar el cierre antes de reintentar"
+            : null}
           onRecovery={requestRecovery}
         />
       )}
@@ -1264,12 +1328,331 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
   );
 }
 
+function RemoteCloseOperatorPanel({
+  state,
+  currentWorkSessionId,
+  refreshGeneration,
+  onChanged,
+  dark = false
+}: {
+  state: MobileSessionOperatorState;
+  currentWorkSessionId: number;
+  refreshGeneration: number;
+  onChanged: () => void | Promise<void>;
+  dark?: boolean;
+}) {
+  const [plan, setPlan] = useState<LegacyRemoteClosePlan | null>(null);
+  const [pending, setPending] = useState(false);
+  const [requiresRefresh, setRequiresRefresh] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const planIdempotencyKey = useRef<string | null>(null);
+  const confirmationIdempotencyKey = useRef<string | null>(null);
+  const confirmationRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setPlan(null);
+    setRequiresRefresh(false);
+    setNotice("");
+    setError("");
+    planIdempotencyKey.current = null;
+    confirmationIdempotencyKey.current = null;
+  }, [currentWorkSessionId, state.targetWorkSessionId, state.state, refreshGeneration]);
+
+  useEffect(() => {
+    if (plan) {
+      confirmationRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [plan]);
+
+  if (!state.surfaceEnabled) {
+    return null;
+  }
+
+  const roleAllowed = operatorHasRole(state.requiredRole);
+  const actionAvailable = state.primaryActionAvailable && roleAllowed &&
+    remoteCloseActionMatchesState(state) && !requiresRefresh;
+  const legacyConfirmationRequired = state.primaryAction === "RECONCILE_REMOTE_CLOSE"
+    && ["LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY", "REMOTE_CLOSE_BLOCKED"].includes(state.state);
+  const level = remoteCloseStateLevel(state.state);
+  const actionLabel = state.primaryActionLabel || remoteCloseFallbackActionLabel(state.primaryAction);
+
+  async function runPrimaryAction() {
+    if (!actionAvailable || pending) {
+      return;
+    }
+    setPending(true);
+    setError("");
+    setNotice("");
+    try {
+      if (state.primaryAction === "RETRY_AGENT_RUN" && state.targetAgentRunId) {
+        const response = await api.requestCodexRecovery(
+          state.targetAgentRunId,
+          currentWorkSessionId,
+          "RETRY"
+        );
+        if (response.state === "REJECTED") {
+          throw new Error("rejected");
+        }
+        setNotice("Reintento solicitado. La tarea original y sus adjuntos permanecen conservados.");
+        await onChanged();
+        return;
+      }
+      if (state.primaryAction === "RECONCILE_REMOTE_CLOSE" && state.targetWorkSessionId) {
+        if (legacyConfirmationRequired) {
+          planIdempotencyKey.current ||= crypto.randomUUID();
+          const nextPlan = await api.createLegacyRemoteClosePlan(
+            state.targetWorkSessionId,
+            planIdempotencyKey.current
+          );
+          if (nextPlan.state !== "READY_FOR_CONFIRMATION"
+              || nextPlan.consumed
+              || nextPlan.workSessionId !== state.targetWorkSessionId) {
+            setRequiresRefresh(true);
+            planIdempotencyKey.current = null;
+            throw new Error("stale-plan");
+          }
+          setPlan(nextPlan);
+          return;
+        }
+        await api.resumeWorkSessionClose(state.targetWorkSessionId);
+        setNotice("Reconciliación solicitada. Se mantendrá la misma operación de cierre.");
+        await onChanged();
+      }
+      if (state.primaryAction === "START_FRESH_SESSION" && state.targetWorkSessionId) {
+        const storageKey = `atenea.fresh-session.${state.targetWorkSessionId}`;
+        let idempotencyKey = sessionStorage.getItem(storageKey);
+        if (!idempotencyKey) {
+          idempotencyKey = crypto.randomUUID();
+          sessionStorage.setItem(storageKey, idempotencyKey);
+        }
+        const result = await api.startFreshWorkSession(
+          state.targetWorkSessionId,
+          idempotencyKey
+        );
+        if (result.state !== "COMPLETED"
+            || result.sourceWorkSessionId !== state.targetWorkSessionId
+            || result.resultWorkSessionId !== result.view.session.id
+            || typeof result.view.session.projectId !== "number") {
+          throw new Error("invalid-fresh-session");
+        }
+        sessionStorage.removeItem(storageKey);
+        navigate({
+          name: "conversation",
+          projectId: result.view.session.projectId,
+          sessionId: result.resultWorkSessionId
+        });
+      }
+    } catch (actionError) {
+      if (actionError instanceof ApiError && actionError.status === 409) {
+        setPlan(null);
+        setRequiresRefresh(true);
+        planIdempotencyKey.current = null;
+        confirmationIdempotencyKey.current = null;
+      }
+      setError(remoteCloseActionError(actionError));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function confirmLegacyReconciliation() {
+    if (!plan || !actionAvailable || pending || !state.targetWorkSessionId) {
+      return;
+    }
+    setPending(true);
+    setError("");
+    setNotice("");
+    try {
+      confirmationIdempotencyKey.current ||= crypto.randomUUID();
+      const operation = await api.confirmLegacyRemoteClose(
+        state.targetWorkSessionId,
+        plan,
+        confirmationIdempotencyKey.current
+      );
+      if (operation.state === "BLOCKED") {
+        setPlan(null);
+        setRequiresRefresh(true);
+        planIdempotencyKey.current = null;
+        confirmationIdempotencyKey.current = null;
+        throw new Error("blocked");
+      }
+      setPlan(null);
+      setNotice(operation.state === "RELEASED"
+        ? "Capacidad liberada. Ya puedes actualizar el estado antes de decidir si reintentas."
+        : "Reconciliación iniciada. Atenea confirmará la liberación sin repetir la operación.");
+      await onChanged();
+    } catch (actionError) {
+      if (actionError instanceof ApiError && actionError.status === 409) {
+        setPlan(null);
+        setRequiresRefresh(true);
+        planIdempotencyKey.current = null;
+        confirmationIdempotencyKey.current = null;
+      }
+      setError(remoteCloseActionError(actionError));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function cancelConfirmation() {
+    setPlan(null);
+    setError("");
+    confirmationIdempotencyKey.current = null;
+  }
+
+  return (
+    <section
+      className={`remote-close-state remote-close-state--${level}${dark ? " remote-close-state--dark" : ""}`}
+      aria-label="Estado operativo del cierre remoto"
+      aria-live="polite"
+    >
+      <div className="remote-close-state__copy">
+        <span className="eyebrow">Estado operativo</span>
+        <div className="remote-close-state__title">
+          <h2>{state.title}</h2>
+          <StatusPill level={level}>{remoteCloseStateLabel(state.state)}</StatusPill>
+        </div>
+        {state.blocker && <p>{state.blocker}</p>}
+        {!roleAllowed && state.requiredRole && (
+          <p className="remote-close-state__role">Requiere {operatorRoleLabel(state.requiredRole)}.</p>
+        )}
+        {state.state === "CAPACITY_RELEASED" && (
+          <p>El reintento es una decisión explícita: no se ha vuelto a enviar ninguna instrucción.</p>
+        )}
+        {state.state === "SOURCE_ADVANCED" && (
+          <p>Se conservarán esta sesión y su historial. La nueva sesión se abrirá vacía y no iniciará Codex hasta que escribas una instrucción nueva.</p>
+        )}
+      </div>
+      <div className="remote-close-state__action">
+        {!plan && state.primaryAction !== "NONE" && state.primaryAction !== "WAIT" && (
+          <Button
+            variant="primary"
+            disabled={!actionAvailable || pending}
+            onClick={runPrimaryAction}
+          >
+            {pending ? "Comprobando…" : actionLabel}
+          </Button>
+        )}
+        {state.primaryAction === "WAIT" && <strong>Esperando confirmación segura</strong>}
+      </div>
+      {plan && (
+        <div
+          className="remote-close-confirmation"
+          ref={confirmationRef}
+          role="group"
+          aria-label="Confirmar reconciliación del cierre"
+        >
+          <strong>Objetivo: WorkSession {state.targetWorkSessionId}</strong>
+          <span>
+            Sesión abierta: WorkSession {currentWorkSessionId}. Solo se liberará el ownership remoto activo del objetivo; historial, Git, runs y adjuntos se conservan.
+          </span>
+          <small>Confirmación disponible hasta {formatAbsoluteDate(plan.expiresAt)}.</small>
+          <div className="button-row">
+            <Button variant="primary" disabled={pending} onClick={confirmLegacyReconciliation}>
+              {pending ? "Confirmando…" : `Confirmar WorkSession ${state.targetWorkSessionId}`}
+            </Button>
+            <Button variant="ghost" disabled={pending} onClick={cancelConfirmation}>Cancelar</Button>
+          </div>
+        </div>
+      )}
+      {error && <span className="remote-close-state__error" role="alert">{error}</span>}
+      {notice && <span className="remote-close-state__notice" role="status">{notice}</span>}
+    </section>
+  );
+}
+
+function operatorHasRole(requiredRole?: MobileSessionOperatorState["requiredRole"]) {
+  if (!requiredRole) {
+    return true;
+  }
+  const actualRole = api.currentSession?.operator.codexOperationsRole;
+  if (!actualRole) {
+    return false;
+  }
+  const rank = {
+    ROUTINE_OPERATOR: 1,
+    PRIVILEGED_OPERATOR: 2,
+    PLATFORM_ADMINISTRATOR: 3
+  } as const;
+  return rank[actualRole] >= rank[requiredRole];
+}
+
+function remoteCloseActionMatchesState(state: MobileSessionOperatorState) {
+  if (state.primaryAction === "RETRY_AGENT_RUN") {
+    return state.state === "CAPACITY_RELEASED" && Boolean(state.targetAgentRunId);
+  }
+  if (state.primaryAction === "RECONCILE_REMOTE_CLOSE") {
+    return ["CLOSING_REMOTE", "LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY", "REMOTE_CLOSE_BLOCKED"].includes(state.state)
+      && Boolean(state.targetWorkSessionId);
+  }
+  if (state.primaryAction === "START_FRESH_SESSION") {
+    return state.state === "SOURCE_ADVANCED"
+      && Boolean(state.targetWorkSessionId)
+      && Boolean(state.targetAgentRunId);
+  }
+  return false;
+}
+
+function operatorRoleLabel(role: NonNullable<MobileSessionOperatorState["requiredRole"]>) {
+  return ({
+    ROUTINE_OPERATOR: "permiso de operador",
+    PRIVILEGED_OPERATOR: "permiso de operador privilegiado",
+    PLATFORM_ADMINISTRATOR: "administración de plataforma"
+  } as const)[role];
+}
+
+function remoteCloseStateLevel(state: MobileSessionOperatorState["state"]): Level {
+  if (["CAPACITY_RELEASED", "SOURCE_ADVANCED"].includes(state)) return "ok";
+  if (["REMOTE_CLOSE_BLOCKED", "OWNERSHIP_REVIEW_REQUIRED"].includes(state)) return "critical";
+  return "warning";
+}
+
+function remoteCloseStateLabel(state: MobileSessionOperatorState["state"]) {
+  return ({
+    CLOSING_REMOTE: "EN CURSO",
+    REMOTE_CLOSE_BLOCKED: "BLOQUEADO",
+    LEGACY_CLOSE_REQUIRED: "CONFIRMACIÓN",
+    CLOSED_OWNER_BLOCKS_CAPACITY: "BLOQUEO",
+    CLOSED_OWNER_RECONCILING: "EN CURSO",
+    CAPACITY_RELEASED: "LISTA",
+    SOURCE_READINESS_PENDING: "COMPROBANDO",
+    SOURCE_ADVANCED: "CÓDIGO NUEVO",
+    OWNERSHIP_REVIEW_REQUIRED: "REVISIÓN",
+    DEFAULT: "LISTA",
+    RUNNING: "EN CURSO",
+    CLOSED: "CERRADA"
+  } as const)[state];
+}
+
+function remoteCloseFallbackActionLabel(action: MobileSessionOperatorState["primaryAction"]) {
+  return ({
+    RECONCILE_REMOTE_CLOSE: "Reconciliar cierre",
+    RETRY_AGENT_RUN: "Reintentar tarea",
+    START_FRESH_SESSION: "Empezar desde código actual",
+    CONTACT_PLATFORM_ADMINISTRATOR: "Contactar con administración",
+    WAIT: "Esperar actualización",
+    NONE: ""
+  } as const)[action];
+}
+
+function remoteCloseActionError(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 403) return "No tienes el permiso requerido para esta acción.";
+    if (error.status === 404) return "La sesión ya no está disponible. Actualiza antes de continuar.";
+    if (error.status === 409) return "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación.";
+    if (error.status === 422) return "La reconciliación no cumple las condiciones seguras. Actualiza el estado.";
+  }
+  return "La acción no pudo confirmarse. El estado se conserva; actualiza antes de volver a intentarlo.";
+}
+
 function RunProgressPanel({
   detail,
   progress,
   error,
   notice,
   pending,
+  retryOverride,
   onRecovery
 }: {
   detail: CodexRunDetail | null;
@@ -1277,6 +1660,7 @@ function RunProgressPanel({
   error: string;
   notice: string;
   pending: boolean;
+  retryOverride: string | null;
   onRecovery: (action: CodexRecoveryAction) => void;
 }) {
   if (!detail) {
@@ -1286,7 +1670,7 @@ function RunProgressPanel({
   const elapsed = progress?.elapsedMillis ?? detail.elapsedMillis;
   const nextAction = progress?.requiredNextAction || detail.requiredNextAction || "NONE";
   const events = (progress?.events || []).slice(-6);
-  const action = recoveryAction(detail, nextAction, state);
+  const action = recoveryAction(detail, nextAction, state, Boolean(retryOverride));
   return (
     <section className="run-progress" aria-label="Ejecución actual">
       <div className="run-progress__summary">
@@ -1306,7 +1690,9 @@ function RunProgressPanel({
         </div>
         <div className="run-progress__next">
           <span>Siguiente acción</span>
-          <strong>{nextActionLabel(nextAction)}</strong>
+          <strong>{retryOverride && nextAction === "RETRY"
+            ? retryOverride
+            : nextActionLabel(nextAction)}</strong>
           {action && (
             <Button variant="primary" disabled={pending} onClick={() => onRecovery(action)}>
               {pending ? "Solicitando…" : recoveryActionLabel(action)}
@@ -1339,9 +1725,14 @@ function RunProgressPanel({
   );
 }
 
-function recoveryAction(detail: CodexRunDetail, nextAction: string, state: string): CodexRecoveryAction | null {
+function recoveryAction(
+  detail: CodexRunDetail,
+  nextAction: string,
+  state: string,
+  suppressRetry = false
+): CodexRecoveryAction | null {
   if (nextAction === "REQUEST_RECONCILIATION") return "RECONCILE";
-  if (nextAction === "RETRY") return "RETRY";
+  if (nextAction === "RETRY" && !suppressRetry) return "RETRY";
   if (!["COMPLETED", "SUCCEEDED", "FAILED", "CANCELLED", "RECONCILING"].includes(state)
       && !["SUCCEEDED", "FAILED", "CANCELLED"].includes(detail.status)) return "CANCEL";
   return null;
@@ -2724,6 +3115,9 @@ function projectLevel(project: MobileProjectOverview): Level {
   if (!project.session) {
     return "neutral";
   }
+  if (project.session.recoveryPending) {
+    return "warning";
+  }
   if (project.session.runInProgress) {
     return "running";
   }
@@ -2738,6 +3132,7 @@ function projectLevel(project: MobileProjectOverview): Level {
 
 function projectLabel(project: MobileProjectOverview) {
   if (!project.session) return "Sin sesión";
+  if (project.session.recoveryPending) return "Pendiente";
   if (project.session.runInProgress) return "RUNNING";
   if (project.session.closeBlockedState) return "Bloqueo";
   return project.session.status;

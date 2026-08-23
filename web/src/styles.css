@@ -682,6 +682,10 @@ select:focus {
   font-size: 13px;
 }
 
+.session-mini--recovery {
+  border-left-color: var(--warn);
+}
+
 .button-row,
 .button-grid {
   display: flex;
@@ -1013,6 +1017,121 @@ select:focus {
   max-width: 1180px;
   margin: 0 auto;
   padding: 18px 16px 210px;
+}
+
+.remote-close-state {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px 22px;
+  padding: 16px 18px;
+  border-radius: 6px;
+  background: var(--surface);
+  border-left: 5px solid var(--warn);
+  box-shadow: var(--shadow);
+}
+
+.remote-close-state--ok {
+  border-left-color: var(--ok);
+}
+
+.remote-close-state--critical {
+  border-left-color: var(--danger);
+}
+
+.remote-close-state__copy,
+.remote-close-state__copy p {
+  min-width: 0;
+}
+
+.remote-close-state__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 3px;
+}
+
+.remote-close-state__title h2,
+.remote-close-state__copy p {
+  margin: 0;
+}
+
+.remote-close-state__title h2 {
+  font-size: 20px;
+  line-height: 26px;
+}
+
+.remote-close-state__copy p {
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.remote-close-state__copy .remote-close-state__role {
+  color: #7a4a09;
+  font-weight: 700;
+}
+
+.remote-close-state__action {
+  min-width: 184px;
+  text-align: right;
+}
+
+.remote-close-state__action .button {
+  width: 100%;
+  justify-content: center;
+}
+
+.remote-close-confirmation {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 5px;
+  padding-top: 13px;
+  border-top: 1px solid var(--border);
+  scroll-margin-bottom: 128px;
+}
+
+.remote-close-confirmation span,
+.remote-close-confirmation small {
+  color: var(--muted);
+  line-height: 19px;
+}
+
+.remote-close-state__error,
+.remote-close-state__notice {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.remote-close-state__error {
+  color: var(--danger);
+}
+
+.remote-close-state__notice {
+  color: var(--ok);
+}
+
+.remote-close-state--dark {
+  margin-bottom: 16px;
+  background: #171b1d;
+  color: #e7ece9;
+  box-shadow: none;
+}
+
+.remote-close-state--dark .remote-close-state__copy p,
+.remote-close-state--dark .remote-close-confirmation span,
+.remote-close-state--dark .remote-close-confirmation small {
+  color: #b8c2c4;
+}
+
+.remote-close-state--dark .remote-close-state__copy .remote-close-state__role {
+  color: #f0c27b;
+}
+
+.remote-close-state--dark .remote-close-confirmation {
+  border-top-color: #303638;
 }
 
 .run-progress {
@@ -1653,6 +1772,30 @@ select:focus {
 
   .run-progress__summary {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .remote-close-state {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .remote-close-state__title {
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .remote-close-state__action {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .remote-close-state__action .button,
+  .remote-close-confirmation .button {
+    width: 100%;
+  }
+
+  .remote-close-confirmation {
+    scroll-margin-bottom: 184px;
   }
 
   .codex-admin-step {

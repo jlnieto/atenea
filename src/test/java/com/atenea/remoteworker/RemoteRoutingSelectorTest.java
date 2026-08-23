@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkerNodeEntity;
 import com.atenea.persistence.worksession.WorkerNodeRepository;
@@ -55,6 +56,7 @@ class RemoteRoutingSelectorTest {
         assertNull(session.getSelectedWorkerId());
         assertNull(session.getRemoteSessionId());
         assertNull(session.getRemoteWorkloadKind());
+        assertEquals(RemoteCloseState.NOT_REQUIRED, session.getRemoteCloseState());
         verify(client, never()).health();
     }
 
@@ -87,6 +89,7 @@ class RemoteRoutingSelectorTest {
         assertEquals(
                 "remote:ax42-01:work-session:" + session.getRemoteSessionId(),
                 session.getWorkspaceIdentity());
+        assertEquals(RemoteCloseState.NOT_STARTED, session.getRemoteCloseState());
     }
 
     @Test
@@ -115,6 +118,7 @@ class RemoteRoutingSelectorTest {
         assertEquals(ProjectCodexIdentity.WORKLOAD_KIND, session.getRemoteWorkloadKind());
         assertNotNull(session.getRemoteSessionId());
         assertTrue(session.getWorkspaceIdentity().endsWith(session.getRemoteSessionId().toString()));
+        assertEquals(RemoteCloseState.NOT_STARTED, session.getRemoteCloseState());
     }
 
     @Test
@@ -142,6 +146,7 @@ class RemoteRoutingSelectorTest {
         assertEquals(ExecutionTarget.LOCAL, session.getExecutionTarget());
         assertNull(session.getRemoteSessionId());
         assertNull(session.getRemoteWorkloadKind());
+        assertEquals(RemoteCloseState.NOT_REQUIRED, session.getRemoteCloseState());
     }
 
     @Test

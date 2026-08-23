@@ -1,6 +1,7 @@
 package com.atenea.android.coreconsole
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -9,6 +10,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,6 +21,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.atenea.android.api.AteneaApiException
 import com.atenea.android.api.CoreCommandResponse
 import com.atenea.android.api.CoreScope
@@ -27,9 +30,16 @@ import com.atenea.android.api.CodexProgressReplay
 import com.atenea.android.api.CodexRecoveryAction
 import com.atenea.android.api.CodexRunDetail
 import com.atenea.android.api.MobileWorkSessionConversation
+import com.atenea.android.api.MobileSessionOperatorState
+import com.atenea.android.api.SessionTurnAttachment
 import com.atenea.android.voiceruntime.AteneaDiagnostics
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
 
 @Composable
 internal fun WorkSessionConversationScreen(
@@ -37,13 +47,21 @@ internal fun WorkSessionConversationScreen(
     projectId: Long?,
     sessionId: Long?,
     onOpenCore: () -> Unit,
-    onBackToSession: () -> Unit
+    onBackToSession: () -> Unit,
+    onFreshSession: (Long) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val promptRecorder = remember(context) { ConversationPromptRecorder(context.applicationContext) }
+    val remoteCloseCoordinator = remember(apiClient, sessionId) {
+        sessionId?.let { RemoteCloseOperatorCoordinator(apiClient, it) }
+    }
+    val remoteCloseActionState by remoteCloseCoordinator?.state?.collectAsState()
+        ?: remember { mutableStateOf(RemoteCloseActionUiState()) }
+    val attachmentCoordinator = remember(apiClient) { WorkSessionAttachmentCoordinator(apiClient) }
     var conversation by remember { mutableStateOf<MobileWorkSessionConversation?>(null) }
+    var operatorState by remember { mutableStateOf<MobileSessionOperatorState?>(null) }
     var input by remember { mutableStateOf("") }
     var pending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -64,6 +82,25 @@ internal fun WorkSessionConversationScreen(
     var operationNotice by remember { mutableStateOf<String?>(null) }
     var operationPending by remember { mutableStateOf(false) }
     var wasBackgrounded by remember { mutableStateOf(false) }
+    var attachmentDraft by remember(sessionId) { mutableStateOf(WorkSessionAttachmentDraft()) }
+    var openingAttachmentId by remember { mutableStateOf<UUID?>(null) }
+
+    suspend fun refreshAttachmentCapability(id: Long) {
+        attachmentDraft = attachmentDraft.copy(capabilityLoading = true, capabilityFailure = null)
+        attachmentDraft = try {
+            attachmentDraft.copy(
+                capability = apiClient.fetchWorkSessionAttachmentCapability(id),
+                capabilityLoading = false,
+                capabilityFailure = null
+            )
+        } catch (capabilityError: Throwable) {
+            attachmentDraft.copy(
+                capability = null,
+                capabilityLoading = false,
+                capabilityFailure = classifyAttachmentFailure(capabilityError)
+            )
+        }
+    }
 
     suspend fun refreshCodexState(loaded: MobileWorkSessionConversation, includeProfile: Boolean) {
         val id = sessionId ?: return
@@ -124,7 +161,10 @@ internal fun WorkSessionConversationScreen(
             if (!silent) pending = true
             error = null
             try {
-                conversation = apiClient.fetchMobileWorkSessionConversation(id).also { loaded ->
+                val summary = apiClient.fetchMobileWorkSessionSummary(id)
+                operatorState = summary.operatorState
+                remoteCloseCoordinator?.accept(summary.operatorState)
+                conversation = summary.conversation.also { loaded ->
                     AteneaDiagnostics.info(
                         area = "conversation",
                         event = "loaded",
@@ -135,6 +175,9 @@ internal fun WorkSessionConversationScreen(
                         )
                     )
                     refreshCodexState(loaded, includeProfile)
+                }
+                if (!silent || attachmentDraft.capability == null) {
+                    refreshAttachmentCapability(id)
                 }
             } catch (loadError: Exception) {
                 error = loadError.message ?: "No se pudo cargar la conversación."
@@ -184,6 +227,112 @@ internal fun WorkSessionConversationScreen(
         }
     }
 
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        val id = sessionId ?: return@rememberLauncherForActivityResult
+        val capability = attachmentDraft.capability ?: return@rememberLauncherForActivityResult
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val available = (capability.maxAttachmentsPerTurn - attachmentDraft.images.size).coerceAtLeast(0)
+        if (uris.size > available) {
+            attachmentDraft = attachmentDraft.copy(
+                capabilityFailure = AttachmentFailure(
+                    AttachmentFailureCategory.CAPACITY,
+                    "Puedes añadir $available imagen${if (available == 1) "" else "es"} más en este turno.",
+                    false
+                )
+            )
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            var selectionFailure: AttachmentFailure? = null
+            for (uri in uris) {
+                try {
+                    val selected = withContext(Dispatchers.IO) {
+                        context.readWorkSessionImage(uri, capability)
+                    }
+                    attachmentDraft = attachmentCoordinator.uploadSequentially(
+                        sessionId = id,
+                        initial = attachmentDraft,
+                        candidates = listOf(selected),
+                        onState = { attachmentDraft = it }
+                    )
+                    selectionFailure = attachmentDraft.capabilityFailure ?: selectionFailure
+                } catch (selectionError: Throwable) {
+                    selectionFailure = classifyAttachmentFailure(selectionError)
+                    attachmentDraft = attachmentDraft.copy(capabilityFailure = selectionFailure)
+                }
+            }
+            refreshAttachmentCapability(id)
+            selectionFailure?.let { attachmentDraft = attachmentDraft.copy(capabilityFailure = it) }
+        }
+    }
+
+    fun selectImages() {
+        if (!attachmentDraft.canAddImage()) return
+        imagePicker.launch(SUPPORTED_IMAGE_TYPES.toTypedArray())
+    }
+
+    fun removeImage(localId: UUID) {
+        attachmentDraft = attachmentDraft.remove(localId)
+    }
+
+    fun retryImage(localId: UUID) {
+        val id = sessionId ?: return
+        scope.launch {
+            attachmentDraft = attachmentCoordinator.retryUpload(
+                sessionId = id,
+                initial = attachmentDraft,
+                localId = localId,
+                onState = { attachmentDraft = it }
+            )
+            refreshAttachmentCapability(id)
+        }
+    }
+
+    fun openHistoricalAttachment(attachment: SessionTurnAttachment) {
+        val id = sessionId ?: return
+        if (openingAttachmentId != null) return
+        scope.launch {
+            openingAttachmentId = attachment.id
+            error = null
+            var partial: File? = null
+            var downloadedBytes: ByteArray? = null
+            try {
+                val content = apiClient.downloadWorkSessionAttachment(
+                    sessionId = id,
+                    attachmentId = attachment.id,
+                    maxBytes = attachmentDraft.capability?.maxFileBytes ?: 16L * 1024L * 1024L
+                )
+                downloadedBytes = content.bytes
+                val target = withContext(Dispatchers.IO) {
+                    val directory = File(context.cacheDir, "worksession-attachments/$id")
+                    check(directory.exists() || directory.mkdirs()) { "No se pudo preparar la vista temporal." }
+                    val extension = attachmentExtension(content.contentType)
+                    val destination = File(directory, "${attachment.id}.$extension")
+                    partial = File(directory, "${attachment.id}.$extension.part")
+                    partial?.delete()
+                    destination.delete()
+                    FileOutputStream(checkNotNull(partial)).use { output -> output.write(content.bytes) }
+                    check(checkNotNull(partial).renameTo(destination)) { "No se pudo confirmar la vista temporal." }
+                    destination
+                }
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target)
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW)
+                        .setDataAndType(uri, content.contentType)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                )
+            } catch (openError: Throwable) {
+                withContext(Dispatchers.IO) { partial?.delete() }
+                error = classifyAttachmentFailure(openError).message
+            } finally {
+                downloadedBytes?.fill(0)
+                openingAttachmentId = null
+            }
+        }
+    }
+
     fun requestVoicePrompt() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             startVoicePrompt()
@@ -192,19 +341,41 @@ internal fun WorkSessionConversationScreen(
         }
     }
 
+    suspend fun submitMessage(id: Long, message: String): Boolean {
+        if (attachmentDraft.images.isEmpty() && attachmentDraft.pendingTurn == null) {
+            conversation = apiClient.createMobileWorkSessionTurn(id, message)
+            input = ""
+            return true
+        }
+        val result = attachmentCoordinator.submit(
+            sessionId = id,
+            initial = attachmentDraft,
+            message = message,
+            onState = { attachmentDraft = it }
+        )
+        attachmentDraft = result.draft
+        result.conversation?.let { conversation = it }
+        return if (attachmentDraft.pendingTurn == null) {
+            input = ""
+            refreshAttachmentCapability(id)
+            true
+        } else {
+            error = attachmentDraft.submissionFailure?.message
+                ?: "Atenea no confirmó el turno exacto. Reintenta sin cambiar el borrador."
+            false
+        }
+    }
+
     fun sendTextPrompt() {
         val id = sessionId ?: return
         val message = input.trim()
-        if (pending || message.isBlank()) {
-            return
-        }
+        if (pending || message.isBlank()) return
         pending = true
         scope.launch {
             error = null
             try {
-                conversation = apiClient.createMobileWorkSessionTurn(id, message)
-                input = ""
-            } catch (sendError: Exception) {
+                submitMessage(id, message)
+            } catch (sendError: Throwable) {
                 error = sendError.message ?: "No se pudo enviar el turno."
             } finally {
                 pending = false
@@ -263,8 +434,8 @@ internal fun WorkSessionConversationScreen(
                     error = "La transcripción llegó vacía. Prueba a grabar de nuevo."
                     return@launch
                 }
-                conversation = apiClient.createMobileWorkSessionTurn(id, transcript)
-                input = ""
+                input = transcript
+                submitMessage(id, transcript)
             } catch (sendError: Exception) {
                 error = sendError.message ?: "No se pudo transcribir y enviar el audio."
                 AteneaDiagnostics.error(
@@ -342,7 +513,10 @@ internal fun WorkSessionConversationScreen(
             error = null
             try {
                 activeCommand = apiClient.confirmCoreCommand(commandId, token)
-                conversation = apiClient.fetchMobileWorkSessionConversation(id)
+                val summary = apiClient.fetchMobileWorkSessionSummary(id)
+                operatorState = summary.operatorState
+                remoteCloseCoordinator?.accept(summary.operatorState)
+                conversation = summary.conversation
             } catch (confirmError: Exception) {
                 error = confirmError.message ?: "No se pudo confirmar el comando."
             } finally {
@@ -369,7 +543,10 @@ internal fun WorkSessionConversationScreen(
                     projectId = projectId,
                     workSessionId = id
                 )
-                conversation = apiClient.fetchMobileWorkSessionConversation(id)
+                val summary = apiClient.fetchMobileWorkSessionSummary(id)
+                operatorState = summary.operatorState
+                remoteCloseCoordinator?.accept(summary.operatorState)
+                conversation = summary.conversation
             } catch (clarificationError: Exception) {
                 error = clarificationError.message ?: "No se pudo resolver la aclaracion."
             } finally {
@@ -428,6 +605,7 @@ internal fun WorkSessionConversationScreen(
                         CodexRecoveryAction.RECONCILE -> "Reconciliación solicitada. Espera la actualización del estado."
                     }
                 }
+                refresh(silent = true, includeProfile = false)
             } catch (recoveryError: AteneaApiException) {
                 operationError = when (recoveryError.status) {
                     403 -> "No tienes permiso para esta acción. Solicítala a un operador autorizado."
@@ -439,6 +617,31 @@ internal fun WorkSessionConversationScreen(
                 operationError = "La acción no se pudo solicitar. Actualiza e inténtalo de nuevo."
             } finally {
                 operationPending = false
+            }
+        }
+    }
+
+    fun runRemoteClosePrimaryAction() {
+        val currentState = operatorState ?: return
+        val coordinator = remoteCloseCoordinator ?: return
+        scope.launch {
+            if (coordinator.runPrimaryAction(currentState)) {
+                val freshSessionId = coordinator.state.value.freshSessionId
+                if (freshSessionId != null) {
+                    onFreshSession(freshSessionId)
+                } else {
+                    refresh(silent = true, includeProfile = false)
+                }
+            }
+        }
+    }
+
+    fun confirmLegacyRemoteClose() {
+        val currentState = operatorState ?: return
+        val coordinator = remoteCloseCoordinator ?: return
+        scope.launch {
+            if (coordinator.confirmLegacyReconciliation(currentState)) {
+                refresh(silent = true, includeProfile = false)
             }
         }
     }
@@ -482,16 +685,34 @@ internal fun WorkSessionConversationScreen(
                 )
             }
         },
-        runContent = if (runDetail != null || operationError != null) {
+        runContent = if (operatorState?.surfaceEnabled == true || runDetail != null || operationError != null) {
             {
-                CodexRunProgressCard(
-                    detail = runDetail,
-                    progress = runProgress,
-                    pending = operationPending,
-                    error = operationError,
-                    notice = operationNotice,
-                    onRecovery = ::requestRecovery
-                )
+                operatorState?.let { currentState ->
+                    RemoteCloseOperatorPanel(
+                        serverState = currentState,
+                        actionState = remoteCloseActionState,
+                        currentWorkSessionId = sessionId,
+                        operatorRole = apiClient.currentOperatorRole(),
+                        onPrimaryAction = ::runRemoteClosePrimaryAction,
+                        onConfirm = ::confirmLegacyRemoteClose,
+                        onCancel = { remoteCloseCoordinator?.cancelConfirmation() },
+                        dark = true
+                    )
+                }
+                if (runDetail != null || operationError != null) {
+                    CodexRunProgressCard(
+                        detail = runDetail,
+                        progress = runProgress,
+                        pending = operationPending,
+                        error = operationError,
+                        notice = operationNotice,
+                        retryOverride = operatorState?.takeIf { it.surfaceEnabled }?.let {
+                            if (it.state == "CAPACITY_RELEASED") null
+                            else "Espera a que Atenea confirme la liberación de capacidad"
+                        },
+                        onRecovery = ::requestRecovery
+                    )
+                }
             }
         } else null,
         profileContent = if (!profileUnavailable) {
@@ -508,8 +729,25 @@ internal fun WorkSessionConversationScreen(
                 )
             }
         } else null,
-        composerEnabled = composerEnabled
+        composerEnabled = composerEnabled,
+        composerInputLocked = attachmentDraft.isSubmissionLocked,
+        attachmentDraft = attachmentDraft,
+        onAttachImages = ::selectImages,
+        onRemoveImage = ::removeImage,
+        onRetryImage = ::retryImage,
+        onResetAttachmentSubmission = {
+            attachmentDraft = attachmentDraft.resetUncertainSubmission()
+            error = null
+        },
+        onOpenHistoricalAttachment = ::openHistoricalAttachment
     )
+}
+
+private fun attachmentExtension(contentType: String): String = when (contentType.lowercase()) {
+    "image/png" -> "png"
+    "image/jpeg" -> "jpg"
+    "image/webp" -> "webp"
+    else -> "bin"
 }
 
 private fun CoreCommandResponse.isVisibleConversationCommand(): Boolean =

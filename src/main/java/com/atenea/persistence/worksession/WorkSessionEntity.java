@@ -60,6 +60,34 @@ public class WorkSessionEntity {
     @Column(name = "remote_workload_kind", length = 80)
     private String remoteWorkloadKind;
 
+    @Column(name = "fresh_start_operation_id", unique = true)
+    private UUID freshStartOperationId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "remote_close_state", nullable = false, length = 32)
+    private RemoteCloseState remoteCloseState = RemoteCloseState.NOT_REQUIRED;
+
+    @Column(name = "remote_close_operation_id")
+    private UUID remoteCloseOperationId;
+
+    @Column(name = "remote_close_revision", nullable = false)
+    private long remoteCloseRevision;
+
+    @Column(name = "remote_close_receipt_sha256", length = 64)
+    private String remoteCloseReceiptSha256;
+
+    @Column(name = "remote_close_error_code", length = 80)
+    private String remoteCloseErrorCode;
+
+    @Column(name = "remote_close_requested_at")
+    private Instant remoteCloseRequestedAt;
+
+    @Column(name = "remote_close_updated_at")
+    private Instant remoteCloseUpdatedAt;
+
+    @Column(name = "remote_close_released_at")
+    private Instant remoteCloseReleasedAt;
+
     @Column(name = "attachment_policy_revision", length = 80)
     private String attachmentPolicyRevision;
 
@@ -274,6 +302,25 @@ public class WorkSessionEntity {
     public void setRemoteWorkloadKind(String remoteWorkloadKind) {
         this.remoteWorkloadKind = remoteWorkloadKind;
     }
+    public UUID getFreshStartOperationId() { return freshStartOperationId; }
+    public void setFreshStartOperationId(UUID value) { freshStartOperationId = value; }
+
+    public RemoteCloseState getRemoteCloseState() { return remoteCloseState; }
+    public void setRemoteCloseState(RemoteCloseState value) { this.remoteCloseState = value; }
+    public UUID getRemoteCloseOperationId() { return remoteCloseOperationId; }
+    public void setRemoteCloseOperationId(UUID value) { this.remoteCloseOperationId = value; }
+    public long getRemoteCloseRevision() { return remoteCloseRevision; }
+    public void setRemoteCloseRevision(long value) { this.remoteCloseRevision = value; }
+    public String getRemoteCloseReceiptSha256() { return remoteCloseReceiptSha256; }
+    public void setRemoteCloseReceiptSha256(String value) { this.remoteCloseReceiptSha256 = value; }
+    public String getRemoteCloseErrorCode() { return remoteCloseErrorCode; }
+    public void setRemoteCloseErrorCode(String value) { this.remoteCloseErrorCode = value; }
+    public Instant getRemoteCloseRequestedAt() { return remoteCloseRequestedAt; }
+    public void setRemoteCloseRequestedAt(Instant value) { this.remoteCloseRequestedAt = value; }
+    public Instant getRemoteCloseUpdatedAt() { return remoteCloseUpdatedAt; }
+    public void setRemoteCloseUpdatedAt(Instant value) { this.remoteCloseUpdatedAt = value; }
+    public Instant getRemoteCloseReleasedAt() { return remoteCloseReleasedAt; }
+    public void setRemoteCloseReleasedAt(Instant value) { this.remoteCloseReleasedAt = value; }
 
     public String getDefaultCodexModelId() {
         return defaultCodexModelId;

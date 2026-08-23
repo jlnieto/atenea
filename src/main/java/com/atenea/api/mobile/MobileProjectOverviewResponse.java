@@ -19,7 +19,8 @@ public record MobileProjectOverviewResponse(
             boolean runInProgress,
             String closeBlockedState,
             WorkSessionPullRequestStatus pullRequestStatus,
-            Instant lastActivityAt
+            Instant lastActivityAt,
+            boolean recoveryPending
     ) {
     }
 }

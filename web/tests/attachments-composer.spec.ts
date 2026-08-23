@@ -170,6 +170,28 @@ function conversationEnvelope(turns: SyntheticTurn[]) {
   };
 }
 
+function summaryEnvelope(turns: SyntheticTurn[]) {
+  return {
+    conversation: conversationEnvelope(turns),
+    approvedDeliverables: { deliverables: [] },
+    approvedPriceEstimate: null,
+    actions: {},
+    insights: {},
+    operatorState: {
+      surfaceEnabled: false,
+      state: "DEFAULT",
+      title: "Sesión lista",
+      blocker: null,
+      primaryAction: "NONE",
+      primaryActionLabel: null,
+      primaryActionAvailable: false,
+      requiredRole: null,
+      targetWorkSessionId: 41,
+      targetAgentRunId: null
+    }
+  };
+}
+
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({
     status,
@@ -193,8 +215,8 @@ async function installSyntheticApi(page: Page, apiState: ApiState) {
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === "/api/mobile/sessions/41/conversation") {
-      return json(route, conversationEnvelope(apiState.turns));
+    if (path === "/api/mobile/sessions/41/summary") {
+      return json(route, summaryEnvelope(apiState.turns));
     }
     if (path === "/api/mobile/sessions/41/attachments/capability") {
       return json(route, apiState.capability);

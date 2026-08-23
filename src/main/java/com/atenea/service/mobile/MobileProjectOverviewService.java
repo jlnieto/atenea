@@ -11,9 +11,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class MobileProjectOverviewService {
 
     private final ProjectOverviewService projectOverviewService;
+    private final FreshWorkSessionService freshWorkSessionService;
 
-    public MobileProjectOverviewService(ProjectOverviewService projectOverviewService) {
+    public MobileProjectOverviewService(
+            ProjectOverviewService projectOverviewService,
+            FreshWorkSessionService freshWorkSessionService
+    ) {
         this.projectOverviewService = projectOverviewService;
+        this.freshWorkSessionService = freshWorkSessionService;
     }
 
     @Transactional(readOnly = true)
@@ -26,21 +31,25 @@ public class MobileProjectOverviewService {
 
     private MobileProjectOverviewResponse toMobileOverview(ProjectOverviewResponse response) {
         ProjectOverviewResponse.WorkSessionOverviewResponse session = response.workSession();
-        ProjectOverviewResponse.WorkSessionOverviewResponse activeSession =
-                session != null && session.current() ? session : null;
+        boolean recoveryPending = session != null
+                && !session.current()
+                && freshWorkSessionService.hasIncompleteOperationForSource(session.sessionId());
+        ProjectOverviewResponse.WorkSessionOverviewResponse visibleSession =
+                session != null && (session.current() || recoveryPending) ? session : null;
         return new MobileProjectOverviewResponse(
                 response.project().id(),
                 response.project().name(),
                 response.project().description(),
                 response.project().defaultBaseBranch(),
-                activeSession == null ? null : new MobileProjectOverviewResponse.MobileProjectSessionSummaryResponse(
-                        activeSession.sessionId(),
-                        activeSession.status(),
-                        activeSession.title(),
-                        activeSession.runInProgress(),
-                        activeSession.closeBlockedState(),
-                        activeSession.pullRequestStatus(),
-                        activeSession.lastActivityAt())
+                visibleSession == null ? null : new MobileProjectOverviewResponse.MobileProjectSessionSummaryResponse(
+                        visibleSession.sessionId(),
+                        visibleSession.status(),
+                        visibleSession.title(),
+                        visibleSession.runInProgress(),
+                        visibleSession.closeBlockedState(),
+                        visibleSession.pullRequestStatus(),
+                        visibleSession.lastActivityAt(),
+                        recoveryPending)
         );
     }
 }

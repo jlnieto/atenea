@@ -89,6 +89,7 @@ export interface MobileProjectSessionOverview {
   closeBlockedState?: string | null;
   pullRequestStatus?: string | null;
   lastActivityAt?: string | null;
+  recoveryPending: boolean;
 }
 
 export interface ResolveMobileWorkSessionResult {
@@ -451,6 +452,69 @@ export interface MobileSessionSummary {
   approvedPriceEstimate?: ApprovedPriceEstimateSummary | null;
   actions: MobileSessionActions;
   insights: MobileSessionInsights;
+  operatorState: MobileSessionOperatorState;
+}
+
+export interface MobileSessionOperatorState {
+  surfaceEnabled: boolean;
+  state: "DEFAULT" | "RUNNING" | "CLOSING_REMOTE" | "REMOTE_CLOSE_BLOCKED" |
+    "LEGACY_CLOSE_REQUIRED" | "CLOSED_OWNER_BLOCKS_CAPACITY" |
+    "CLOSED_OWNER_RECONCILING" | "CAPACITY_RELEASED" |
+    "SOURCE_READINESS_PENDING" | "SOURCE_ADVANCED" |
+    "OWNERSHIP_REVIEW_REQUIRED" | "CLOSED";
+  title: string;
+  blocker?: string | null;
+  primaryAction: "NONE" | "WAIT" | "RECONCILE_REMOTE_CLOSE" |
+    "RETRY_AGENT_RUN" | "START_FRESH_SESSION" |
+    "CONTACT_PLATFORM_ADMINISTRATOR";
+  primaryActionLabel?: string | null;
+  primaryActionAvailable: boolean;
+  requiredRole?: "ROUTINE_OPERATOR" | "PRIVILEGED_OPERATOR" |
+    "PLATFORM_ADMINISTRATOR" | null;
+  targetWorkSessionId?: number | null;
+  targetAgentRunId?: number | null;
+}
+
+export interface StartFreshWorkSessionResult {
+  operationId: string;
+  state: "COMPLETED";
+  sourceWorkSessionId: number;
+  resultWorkSessionId: number;
+  created: boolean;
+  view: MobileWorkSessionConversation;
+}
+
+export interface LegacyRemoteClosePlan {
+  planId: string;
+  workSessionId: number;
+  operation: "RECONCILE_REMOTE_CLOSE";
+  state: "READY_FOR_CONFIRMATION" | "CONSUMED" | "EXPIRED";
+  requiredRole: "PLATFORM_ADMINISTRATOR";
+  ownershipFingerprintSha256: string;
+  expiresAt: string;
+  consumed: boolean;
+  expectedImpact: string;
+  valuesExposed: false;
+  createdAt: string;
+}
+
+export interface LegacyRemoteCloseOperation {
+  operationId: string;
+  planId: string;
+  workSessionId: number;
+  operation: "RECONCILE_REMOTE_CLOSE";
+  state: "REQUESTED" | "RECONCILING" | "BLOCKED" | "RELEASED";
+  revision: number;
+  ownershipFingerprintSha256: string;
+  errorCode?: string | null;
+  errorCategory?: string | null;
+  nextAction: string;
+  retryable: boolean;
+  receiptSha256?: string | null;
+  requestedAt: string;
+  updatedAt: string;
+  releasedAt?: string | null;
+  valuesExposed: false;
 }
 
 export interface MobileSessionActions {

@@ -51,6 +51,7 @@ class AteneaNotificationRouteParserTest {
             validData + ("schemaVersion" to "future-version"),
             validData + ("category" to "UNKNOWN"),
             validData + ("type" to "RUN_FAILED"),
+            validData + ("deepLink" to "atenea://work-sessions/13/conversation"),
             validData + ("runId" to "0"),
             validData + ("notificationEventId" to "not-a-uuid")
         )

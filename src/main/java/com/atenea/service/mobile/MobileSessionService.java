@@ -20,15 +20,18 @@ public class MobileSessionService {
     private final WorkSessionService workSessionService;
     private final SessionDeliverableService sessionDeliverableService;
     private final MobileSessionInsightsService mobileSessionInsightsService;
+    private final MobileSessionOperatorStateService mobileSessionOperatorStateService;
 
     public MobileSessionService(
             WorkSessionService workSessionService,
             SessionDeliverableService sessionDeliverableService,
-            MobileSessionInsightsService mobileSessionInsightsService
+            MobileSessionInsightsService mobileSessionInsightsService,
+            MobileSessionOperatorStateService mobileSessionOperatorStateService
     ) {
         this.workSessionService = workSessionService;
         this.sessionDeliverableService = sessionDeliverableService;
         this.mobileSessionInsightsService = mobileSessionInsightsService;
+        this.mobileSessionOperatorStateService = mobileSessionOperatorStateService;
     }
 
     @Transactional(readOnly = true)
@@ -43,7 +46,8 @@ public class MobileSessionService {
                 approvedDeliverables,
                 approvedPriceEstimate,
                 actions,
-                mobileSessionInsightsService.buildInsights(conversation, actions)
+                mobileSessionInsightsService.buildInsights(conversation, actions),
+                mobileSessionOperatorStateService.build(conversation)
         );
     }
 

@@ -4,9 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.atenea.api.mobile.MobileSessionInsightsResponse;
+import com.atenea.api.mobile.MobileSessionOperatorState;
+import com.atenea.api.mobile.MobileSessionOperatorStateResponse;
+import com.atenea.api.mobile.MobileSessionPrimaryAction;
 import com.atenea.api.mobile.MobileSessionSummaryResponse;
 import com.atenea.api.worksession.SessionDeliverablesViewResponse;
 import com.atenea.api.worksession.SessionTurnResponse;
@@ -37,6 +41,9 @@ class MobileSessionServiceTest {
     @Mock
     private SessionDeliverableService sessionDeliverableService;
 
+    @Mock
+    private MobileSessionOperatorStateService mobileSessionOperatorStateService;
+
     private MobileSessionService mobileSessionService;
 
     @BeforeEach
@@ -44,13 +51,15 @@ class MobileSessionServiceTest {
         mobileSessionService = new MobileSessionService(
                 workSessionService,
                 sessionDeliverableService,
-                new MobileSessionInsightsService());
+                new MobileSessionInsightsService(),
+                mobileSessionOperatorStateService);
     }
 
     @Test
     void getSessionSummaryReturnsNullApprovedPriceEstimateWhenNoApprovedPricingExists() {
         when(workSessionService.getSessionConversationView(12L)).thenReturn(conversation());
         when(workSessionService.canCloseUnpublishedSession(12L)).thenReturn(true);
+        when(mobileSessionOperatorStateService.build(any())).thenReturn(operatorState());
         when(sessionDeliverableService.getApprovedDeliverablesView(12L))
                 .thenReturn(new SessionDeliverablesViewResponse(12L, List.of(), false, false, null));
         when(sessionDeliverableService.getApprovedPriceEstimateSummary(12L))
@@ -60,6 +69,7 @@ class MobileSessionServiceTest {
 
         assertNull(response.approvedPriceEstimate());
         assertTrue(response.actions().canCreateTurn());
+        assertEquals(MobileSessionOperatorState.DEFAULT, response.operatorState().state());
     }
 
     @Test
@@ -186,5 +196,19 @@ class MobileSessionServiceTest {
                         Instant.parse("2026-03-29T10:01:30Z"))),
                 20,
                 false);
+    }
+
+    private static MobileSessionOperatorStateResponse operatorState() {
+        return new MobileSessionOperatorStateResponse(
+                false,
+                MobileSessionOperatorState.DEFAULT,
+                "Sesión lista",
+                null,
+                MobileSessionPrimaryAction.NONE,
+                null,
+                false,
+                null,
+                12L,
+                null);
     }
 }

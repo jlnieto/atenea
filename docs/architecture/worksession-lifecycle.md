@@ -137,7 +137,7 @@ Entradas:
 - Core `close_work_session`
 - alias mobile sobre el mismo workflow
 
-Comportamiento documentado actual:
+Comportamiento actual:
 
 1. Validar que no hay ningún run activo.
 2. Validar estado del pull request.
@@ -145,7 +145,49 @@ Comportamiento documentado actual:
 4. Reconciliar el repositorio local hacia la base branch.
 5. Borrar la branch local de sesión cuando es seguro.
 6. Borrar la branch remota de sesión cuando aplica.
-7. Persistir `CLOSED` y timestamps de cierre.
+7. Para una sesión local, persistir `CLOSED` y los timestamps de cierre.
+8. Para una sesión remota, persistir primero una operación de cierre inmutable
+   y mantener la sesión en `CLOSING`.
+9. Solicitar al worker el release usando exclusivamente la identidad persistida
+   de proyecto, sesión, worker y workspace.
+10. Persistir `CLOSED/RELEASED` sólo después de validar el recibo exacto de esa
+    misma operación.
+
+La proyección remota usa los estados `NOT_REQUIRED`, `NOT_STARTED`, `REQUESTED`,
+`RECONCILING`, `BLOCKED`, `RELEASED` y `UNVERIFIED_LEGACY`. La pérdida de
+respuesta conserva la misma operación para reconciliación; un rechazo
+determinista conserva un bloqueo tipado y no se clasifica como indisponibilidad
+de transporte. El reconciliador de arranque está deshabilitado por defecto y
+sólo considera sesiones `CLOSING` de Atenea con una operación ya persistida.
+
+Las sesiones remotas históricas ya cerradas no se escanean ni se liberan de
+forma automática. Su reconciliación requiere un plan de sólo lectura, rol
+`PLATFORM_ADMINISTRATOR`, confirmación finita de un solo uso y huella exacta de
+ownership/Git/delivery. La operación conserva el estado histórico de la sesión,
+turns, runs, attachments y recursos retenidos, y sólo acepta el recibo
+`RELEASED` correspondiente a su identidad inmutable.
+
+## Estado operativo compartido
+
+`MobileSessionSummaryResponse.operatorState` es el read model común para web y
+Android. Expone exclusivamente:
+
+- un estado operativo estable y un título breve;
+- un blocker seguro, cuando existe;
+- una sola acción primaria con su autoridad mínima y disponibilidad;
+- los identificadores de dominio de la WorkSession o AgentRun relacionados.
+
+No proyecta worker, workspace, operación remota, path, slot, puerto, label,
+comando ni payload de error. La precedencia es cierre remoto en curso o
+bloqueado, bloqueo de capacidad por una sesión cerrada, ownership ambiguo,
+ejecución activa y finalmente el estado ordinario de la sesión.
+
+`CAPACITY_RELEASED` y `RETRY_AGENT_RUN` sólo aparecen cuando la ejecución
+anterior es terminal y el blocker exacto conserva el recibo `RELEASED`
+persistido. Hasta entonces, el read model mantiene `RECONCILE_REMOTE_CLOSE`,
+espera o contacto administrativo. La superficie y la acción de reconciliación
+histórica permanecen deshabilitadas mientras el gate global y la allowlist del
+proyecto canónico Atenea estén apagados.
 
 Close puede bloquearse con diagnósticos:
 
@@ -163,10 +205,9 @@ Estados bloqueados típicos:
 - `unpublished_commits`
 - `repo_unavailable`
 
-## Siguiente pasada de verificación
+## Implementación verificada
 
-Leer estos archivos y actualizar este documento con nombres exactos de métodos y
-casos borde:
+La semántica anterior se contrasta con:
 
 - `src/main/java/com/atenea/api/worksession/WorkSessionController.java`
 - `src/main/java/com/atenea/service/worksession/WorkSessionService.java`

@@ -2,6 +2,7 @@ package com.atenea.service.worksession;
 
 import com.atenea.api.worksession.AgentRunResponse;
 import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
@@ -12,6 +13,8 @@ import com.atenea.persistence.worksession.SessionTurnAttachmentRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.RemoteCloseState;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
@@ -187,6 +190,7 @@ public class AgentRunService {
             throw new AgentRunRecoveryConflictException(
                     "Only an exact failed remote AgentRun may be retried");
         }
+        requireRemoteRetryEligible(source);
         AgentRunEntity existing = agentRunRepository
                 .findFirstByRetryOfRunIdOrderByCreatedAtAsc(sourceRunId)
                 .orElse(null);
@@ -202,6 +206,87 @@ public class AgentRunService {
                 source.getWorkloadClass(),
                 source,
                 attachmentSelection);
+    }
+
+    public void requireRemoteRetryEligible(AgentRunEntity source) {
+        if (source == null) {
+            throw new AgentRunRecoveryConflictException("Retry source is required");
+        }
+        if (source.getFailureCode() == null && source.getRecoveryNextAction() == null) {
+            return;
+        }
+        if (source.getFailureCode() != null
+                && source.getRecoveryNextAction() == AgentRunRecoveryNextAction.RETRY) {
+            return;
+        }
+        if ("CLOSED_SESSION_OWNS_CAPACITY".equals(source.getFailureCode())
+                && source.getRecoveryNextAction()
+                        == AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE
+                && matchingBlockerHasReleasedReceipt(source)) {
+            return;
+        }
+        throw new AgentRunRecoveryConflictException(
+                "The deterministic AgentRun blocker has not been cleared");
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isRemoteRetryEligible(Long runId) {
+        AgentRunEntity source = agentRunRepository.findById(runId).orElse(null);
+        if (source == null || !source.getStatus().isTerminal()) {
+            return false;
+        }
+        try {
+            requireRemoteRetryEligible(source);
+            return true;
+        } catch (AgentRunRecoveryConflictException exception) {
+            return false;
+        }
+    }
+
+    private boolean matchingBlockerHasReleasedReceipt(AgentRunEntity source) {
+        if (source.getRecoveryBlockerWorkSessionId() == null
+                || source.getSession() == null
+                || source.getSession().getProject() == null
+                || source.getSelectedWorkerId() == null) {
+            return false;
+        }
+        WorkSessionEntity blocker = workSessionRepository.findWithProjectById(
+                source.getRecoveryBlockerWorkSessionId()).orElse(null);
+        if (blocker == null
+                || blocker.getProject() == null
+                || !java.util.Objects.equals(
+                        blocker.getProject().getId(), source.getSession().getProject().getId())
+                || blocker.getStatus() != WorkSessionStatus.CLOSED
+                || blocker.getExecutionTarget() != ExecutionTarget.REMOTE
+                || blocker.getRemoteCloseState() != RemoteCloseState.RELEASED
+                || blocker.getRemoteCloseOperationId() == null
+                || blocker.getRemoteCloseReceiptSha256() == null
+                || !blocker.getRemoteCloseReceiptSha256().matches("^[0-9a-f]{64}$")
+                || blocker.getRemoteCloseReleasedAt() == null
+                || !source.getSelectedWorkerId().equals(blocker.getSelectedWorkerId())
+                || !ProjectCodexIdentity.hasCanonicalSourceObservation(blocker)) {
+            return false;
+        }
+        String remoteId = blocker.getRemoteSessionId() == null
+                ? null : blocker.getRemoteSessionId().toString();
+        boolean exactOwnership = remoteId != null
+                && !blocker.getRemoteSessionId().equals(source.getRemoteSessionId())
+                && ("remote:" + blocker.getSelectedWorkerId()
+                    + ":work-session:" + remoteId).equals(blocker.getWorkspaceIdentity());
+        if (!exactOwnership) {
+            return false;
+        }
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                      FROM remote_close_legacy_operation
+                     WHERE operation_id = ?
+                       AND work_session_id = ?
+                       AND state = 'RELEASED'
+                       AND receipt_sha256 = ?
+                       AND released_at IS NOT NULL)
+                """, Boolean.class, blocker.getRemoteCloseOperationId(), blocker.getId(),
+                blocker.getRemoteCloseReceiptSha256()));
     }
 
     private TurnAttachmentSelectionValidator.ValidatedSelection retryAttachmentSelection(
@@ -483,7 +568,9 @@ public class AgentRunService {
                 run.getLastHeartbeatAt(),
                 run.getLifecycleRevision(),
                 run.getStatusReason(),
-                run.getProcessOutcome()
+                run.getProcessOutcome(),
+                run.getFailureCode(),
+                run.getRecoveryNextAction()
         );
     }
 }

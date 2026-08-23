@@ -98,9 +98,10 @@ internal fun AteneaShell(
     }
     LaunchedEffect(requestedConversation?.requestKey) {
         requestedConversation ?: return@LaunchedEffect
+        val conversationNavigation = requestedConversation.toConversationNavigation()
         selectedProjectId = null
-        selectedSessionId = requestedConversation.sessionId
-        conversationRequestKey = requestedConversation.requestKey
+        selectedSessionId = conversationNavigation.sessionId
+        conversationRequestKey = conversationNavigation.requestKey
         selectedDestination = AteneaDestination.CONVERSATION
     }
 
@@ -226,7 +227,11 @@ internal fun AteneaShell(
                         sessionId = selectedSessionId,
                         onOpenConversation = { selectedDestination = AteneaDestination.CONVERSATION },
                         onOpenCore = { selectedDestination = AteneaDestination.CORE },
-                        onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS }
+                        onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS },
+                        onFreshSession = { freshSessionId ->
+                            selectedSessionId = freshSessionId
+                            selectedDestination = AteneaDestination.CONVERSATION
+                        }
                     )
                     AteneaDestination.CONVERSATION -> key(conversationRequestKey, selectedSessionId) {
                         WorkSessionConversationScreen(
@@ -234,6 +239,10 @@ internal fun AteneaShell(
                             projectId = selectedProjectId,
                             sessionId = selectedSessionId,
                             onOpenCore = { selectedDestination = AteneaDestination.CORE },
+                            onFreshSession = { freshSessionId ->
+                                selectedSessionId = freshSessionId
+                                selectedDestination = AteneaDestination.CONVERSATION
+                            },
                             onBackToSession = {
                                 selectedDestination = if (selectedProjectId == null) {
                                     AteneaDestination.PROJECTS

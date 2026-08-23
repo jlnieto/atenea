@@ -1,27 +1,73 @@
 package com.atenea.remoteworker;
 
 import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
+import com.atenea.persistence.worksession.ExecutionTarget;
+import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.ValidationOperationKind;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
 public class RemoteWorkerClient {
+
+    private static final String WORKER_ERROR_SCHEMA = "worker-error-v1";
+    private static final String WORKSPACE_RELEASE_SCHEMA = "project-workspace-release-v1";
+    private static final String WORKSPACE_CAPACITY_OWNER_SCHEMA =
+            "project-workspace-capacity-owner-v1";
+    private static final String WORKSPACE_READINESS_SCHEMA =
+            "project-workspace-readiness-v1";
+    private static final String WORKSPACE_RELEASE_PREFLIGHT_SCHEMA =
+            "project-workspace-release-diagnosis-v1";
+    private static final long WORKSPACE_RELEASE_REVISION = 6;
+    private static final int MAX_WORKER_ERROR_BYTES = 1024;
+    private static final String PROTOCOL_FAILURE_CODE = "REMOTE_WORKER_PROTOCOL_FAILURE";
+    private static final Set<String> WORKSPACE_RELEASE_RECEIPT_FIELDS = Set.of(
+            "schemaVersion", "state", "operationId", "idempotencyKey", "sessionId",
+            "workspaceIdentity", "projectId", "repository", "branch", "commit",
+            "manifestSha256", "workspaceBranch", "workerId", "requestFingerprintSha256",
+            "revision", "removed", "released", "retained", "ownershipFingerprintSha256",
+            "receiptSha256", "valuesExposed");
+    private static final Set<String> WORKSPACE_RELEASE_REMOVED_FIELDS = Set.of(
+            "runtimeContainers", "runtimeNetworks", "sessionImages", "previewResources",
+            "brokerResources", "browserProcesses");
+    private static final Set<String> WORKSPACE_RELEASE_RELEASED_FIELDS = Set.of(
+            "registration", "normalAdmission", "heavyAdmission", "allocation");
+    private static final Set<String> WORKSPACE_RELEASE_RETAINED_FIELDS = Set.of(
+            "workspaceRecord", "worktree", "git", "turns", "agentRuns", "attachments",
+            "logs", "artifacts", "backups", "policyVolumes");
+    private static final Set<AgentRunRecoveryNextAction> WORKER_ERROR_ACTIONS = Set.of(
+            AgentRunRecoveryNextAction.NONE,
+            AgentRunRecoveryNextAction.WAIT,
+            AgentRunRecoveryNextAction.RETRY,
+            AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,
+            AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR);
 
     private final RemoteWorkerProperties properties;
     private final ObjectMapper objectMapper;
@@ -132,6 +178,432 @@ public class RemoteWorkerClient {
                 Workspace.class,
                 run.getDispatchId().toString(),
                 properties.getWorkspaceProvisionTimeout());
+    }
+
+    public WorkspaceReadiness diagnoseWorkspaceReadiness(AgentRunEntity run) {
+        if (!ProjectCodexIdentity.matches(run)
+                || run.getSession() == null
+                || run.getSession().getWorkspaceBranch() == null) {
+            throw new RemoteWorkerException(
+                    "Persisted workspace readiness identity is incomplete or incompatible",
+                    409);
+        }
+        Map<String, Object> body = Map.of(
+                "sessionId", run.getRemoteSessionId().toString(),
+                "workspaceIdentity", run.getWorkspaceIdentity(),
+                "projectId", run.getProjectIdentity(),
+                "repository", run.getRepositoryUrl(),
+                "branch", run.getRepositoryBranch(),
+                "commit", run.getRepositoryCommit(),
+                "manifestSha256", run.getManifestSha256(),
+                "workspaceBranch", run.getSession().getWorkspaceBranch());
+        WorkspaceReadiness response = exchange(
+                "POST",
+                "/v1/project-workspaces/readiness",
+                body,
+                WorkspaceReadiness.class,
+                null,
+                properties.getWorkspaceProvisionTimeout());
+        String requestFingerprint = canonicalSha256(objectMapper.valueToTree(body));
+        Map<String, Object> relationship = Map.of(
+                "requestedCommit", run.getRepositoryCommit(),
+                "canonicalCommit", response.canonicalCommit(),
+                "state", response.state());
+        String expectedAction = switch (response.state()) {
+            case "READY_FOR_RETRY" -> "RETRY_AGENT_RUN";
+            case "SOURCE_ADVANCED" -> "START_FRESH_SESSION";
+            default -> null;
+        };
+        if (!WORKSPACE_READINESS_SCHEMA.equals(response.schemaVersion())
+                || expectedAction == null
+                || !run.getRemoteSessionId().toString().equals(response.sessionId())
+                || !run.getWorkspaceIdentity().equals(response.workspaceIdentity())
+                || !ProjectCodexIdentity.PROJECT_IDENTITY.equals(response.projectId())
+                || !ProjectCodexIdentity.WORKER_ID.equals(response.workerId())
+                || !run.getRepositoryCommit().equals(response.requestedCommit())
+                || response.canonicalCommit() == null
+                || !response.canonicalCommit().matches("^[0-9a-f]{40}$")
+                || response.retryAllowed() != "READY_FOR_RETRY".equals(response.state())
+                || !expectedAction.equals(response.nextAction())
+                || !requestFingerprint.equals(response.requestFingerprintSha256())
+                || !canonicalSha256(objectMapper.valueToTree(relationship)).equals(
+                        response.relationshipFingerprintSha256())
+                || response.valuesExposed()) {
+            throw new RemoteWorkerException(
+                    "Remote worker workspace readiness response was invalid",
+                    502,
+                    PROTOCOL_FAILURE_CODE,
+                    RemoteWorkerFailureCategory.PROTOCOL,
+                    false,
+                    AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                    null);
+        }
+        return response;
+    }
+
+    public WorkspaceRelease releaseWorkspace(WorkSessionEntity session) {
+        return releaseWorkspace(session, session);
+    }
+
+    public WorkspaceRelease releaseUnactivatedWorkspace(WorkSessionEntity session) {
+        Map<String, Object> body = workspaceReleaseRequest(session, session);
+        String operationId = session.getRemoteCloseOperationId().toString();
+        JsonNode receipt = exchange(
+                "POST",
+                "/v1/project-workspaces/release-unactivated",
+                body,
+                JsonNode.class,
+                operationId,
+                properties.getWorkspaceProvisionTimeout());
+        return validateWorkspaceReleaseReceipt(
+                session, objectMapper.valueToTree(body), receipt);
+    }
+
+    public WorkspaceRelease releaseWorkspace(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
+        Map<String, Object> body = workspaceReleaseRequest(
+                session, canonicalSourceWitness);
+        String operationId = session.getRemoteCloseOperationId().toString();
+        JsonNode receipt = exchange(
+                "POST",
+                "/v1/project-workspaces/release",
+                body,
+                JsonNode.class,
+                operationId,
+                properties.getWorkspaceProvisionTimeout());
+        return validateWorkspaceReleaseReceipt(session, objectMapper.valueToTree(body), receipt);
+    }
+
+    public WorkspaceReleasePreflight diagnoseWorkspaceReleasePreflight(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
+        Map<String, Object> body = workspaceReleaseRequest(
+                session, canonicalSourceWitness);
+        String operationId = session.getRemoteCloseOperationId().toString();
+        WorkspaceReleasePreflight response = exchange(
+                "POST",
+                "/v1/project-workspaces/release-preflight",
+                body,
+                WorkspaceReleasePreflight.class,
+                operationId,
+                properties.getWorkspaceProvisionTimeout());
+        String requestFingerprint = canonicalSha256(objectMapper.valueToTree(body));
+        if (!WORKSPACE_RELEASE_PREFLIGHT_SCHEMA.equals(response.schemaVersion())
+                || !"PREFLIGHT_ACCEPTED".equals(response.state())
+                || !operationId.equals(response.operationId())
+                || !session.getRemoteSessionId().toString().equals(response.sessionId())
+                || !session.getWorkspaceIdentity().equals(response.workspaceIdentity())
+                || !ProjectCodexIdentity.PROJECT_IDENTITY.equals(response.projectId())
+                || !ProjectCodexIdentity.WORKER_ID.equals(response.workerId())
+                || !requestFingerprint.equals(response.requestFingerprintSha256())
+                || !isSha256(response.ownershipFingerprintSha256())
+                || !isSha256(response.allocationFingerprintSha256())
+                || response.valuesExposed()) {
+            throw new RemoteWorkerException(
+                    "Remote worker release preflight diagnosis was invalid",
+                    502,
+                    PROTOCOL_FAILURE_CODE,
+                    RemoteWorkerFailureCategory.PROTOCOL,
+                    false,
+                    AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                    null);
+        }
+        return response;
+    }
+
+    private Map<String, Object> workspaceReleaseRequest(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
+        String canonicalCommit = exactOwnerCommit(session, canonicalSourceWitness);
+        if (canonicalCommit == null || !hasExactReleaseLifecycle(session)) {
+            throw new RemoteWorkerException(
+                    "Persisted remote workspace release identity is incomplete or incompatible",
+                    409);
+        }
+        String operationId = session.getRemoteCloseOperationId().toString();
+        return Map.ofEntries(
+                Map.entry("operationId", operationId),
+                Map.entry("idempotencyKey", operationId),
+                Map.entry("sessionId", session.getRemoteSessionId().toString()),
+                Map.entry("workspaceIdentity", session.getWorkspaceIdentity()),
+                Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
+                Map.entry("repository", ProjectCodexIdentity.REPOSITORY),
+                Map.entry("branch", ProjectCodexIdentity.BRANCH),
+                Map.entry("commit", canonicalCommit),
+                Map.entry("manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256),
+                Map.entry("workspaceBranch", session.getWorkspaceBranch()));
+    }
+
+    public WorkspaceCapacityOwner diagnoseWorkspaceCapacityOwner(
+            WorkSessionEntity session
+    ) {
+        return diagnoseWorkspaceCapacityOwner(session, session);
+    }
+
+    public WorkspaceCapacityOwner diagnoseWorkspaceCapacityOwner(
+            WorkSessionEntity session,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
+        String canonicalCommit = exactOwnerCommit(session, canonicalSourceWitness);
+        if (canonicalCommit == null) {
+            throw new RemoteWorkerException(
+                    "Persisted capacity-owner identity is incomplete or incompatible",
+                    409);
+        }
+        Map<String, Object> body = Map.ofEntries(
+                Map.entry("sessionId", session.getRemoteSessionId().toString()),
+                Map.entry("workspaceIdentity", session.getWorkspaceIdentity()),
+                Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
+                Map.entry("repository", ProjectCodexIdentity.REPOSITORY),
+                Map.entry("branch", ProjectCodexIdentity.BRANCH),
+                Map.entry("commit", canonicalCommit),
+                Map.entry("manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256),
+                Map.entry("workspaceBranch", session.getWorkspaceBranch()));
+        WorkspaceCapacityOwner response = exchange(
+                "POST",
+                "/v1/project-workspaces/capacity-owner",
+                body,
+                WorkspaceCapacityOwner.class,
+                null,
+                properties.getWorkspaceProvisionTimeout());
+        String requestFingerprint = canonicalSha256(objectMapper.valueToTree(body));
+        if (!WORKSPACE_CAPACITY_OWNER_SCHEMA.equals(response.schemaVersion())
+                || !"OWNED".equals(response.state())
+                || !session.getRemoteSessionId().toString().equals(response.sessionId())
+                || !session.getWorkspaceIdentity().equals(response.workspaceIdentity())
+                || !ProjectCodexIdentity.PROJECT_IDENTITY.equals(response.projectId())
+                || !ProjectCodexIdentity.WORKER_ID.equals(response.workerId())
+                || !requestFingerprint.equals(response.requestFingerprintSha256())
+                || !isSha256(response.ownershipFingerprintSha256())
+                || response.valuesExposed()) {
+            throw new RemoteWorkerException(
+                    "Remote worker capacity-owner diagnosis was invalid",
+                    502,
+                    PROTOCOL_FAILURE_CODE,
+                    RemoteWorkerFailureCategory.PROTOCOL,
+                    false,
+                    AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                    null);
+        }
+        return response;
+    }
+
+    private String exactOwnerCommit(
+            WorkSessionEntity owner,
+            WorkSessionEntity canonicalSourceWitness
+    ) {
+        if (!isExactRemoteOwnerIdentity(owner)
+                || !isExactRemoteOwnerIdentity(canonicalSourceWitness)
+                || !ProjectCodexIdentity.hasCanonicalSourceObservation(
+                        canonicalSourceWitness)
+                || owner.getProject() == null
+                || canonicalSourceWitness.getProject() == null
+                || owner.getProject().getId() == null
+                || canonicalSourceWitness.getProject().getId() == null
+                || !owner.getProject().getId().equals(
+                        canonicalSourceWitness.getProject().getId())) {
+            return null;
+        }
+        if (ProjectCodexIdentity.hasCanonicalSourceObservation(owner)) {
+            return owner.getId() != null
+                            && owner.getId().equals(canonicalSourceWitness.getId())
+                    ? owner.getCanonicalSourceCommit() : null;
+        }
+        if (!hasNoCanonicalSourceObservation(owner)
+                || owner.getId() == null
+                || canonicalSourceWitness.getId() == null
+                || owner.getId().equals(canonicalSourceWitness.getId())
+                || owner.getRemoteSessionId().equals(
+                        canonicalSourceWitness.getRemoteSessionId())
+                || owner.getCreatedAt() == null
+                || canonicalSourceWitness.getCreatedAt() == null
+                || !owner.getCreatedAt().isBefore(canonicalSourceWitness.getCreatedAt())) {
+            return null;
+        }
+        return canonicalSourceWitness.getCanonicalSourceCommit();
+    }
+
+    private boolean isExactRemoteOwnerIdentity(WorkSessionEntity session) {
+        if (!ProjectCodexIdentity.matches(session)
+                || session.getExecutionTarget() != ExecutionTarget.REMOTE
+                || !ProjectCodexIdentity.WORKER_ID.equals(session.getSelectedWorkerId())
+                || !ProjectCodexIdentity.WORKER_ID.equals(properties.getWorkerId())
+                || session.getRemoteSessionId() == null
+                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())) {
+            return false;
+        }
+        String sessionId = session.getRemoteSessionId().toString();
+        return ("remote:" + ProjectCodexIdentity.WORKER_ID + ":work-session:" + sessionId)
+                        .equals(session.getWorkspaceIdentity())
+                && ("atenea/session-" + sessionId).equals(session.getWorkspaceBranch());
+    }
+
+    private boolean hasExactReleaseLifecycle(WorkSessionEntity session) {
+        return session.getRemoteCloseOperationId() != null
+                && session.getRemoteCloseRevision() >= 1
+                && session.getRemoteCloseRequestedAt() != null
+                && session.getRemoteCloseUpdatedAt() != null
+                && Set.of(
+                        RemoteCloseState.REQUESTED,
+                        RemoteCloseState.RECONCILING,
+                        RemoteCloseState.BLOCKED).contains(session.getRemoteCloseState());
+    }
+
+    private static boolean hasNoCanonicalSourceObservation(WorkSessionEntity session) {
+        return session.getCanonicalSourceRef() == null
+                && session.getCanonicalSourceCommit() == null
+                && session.getCanonicalSourceObservationSha256() == null
+                && session.getCanonicalSourceObservedAt() == null;
+    }
+
+    private WorkspaceRelease validateWorkspaceReleaseReceipt(
+            WorkSessionEntity session,
+            JsonNode request,
+            JsonNode receipt
+    ) {
+        if (!hasExactFields(receipt, WORKSPACE_RELEASE_RECEIPT_FIELDS)
+                || !WORKSPACE_RELEASE_SCHEMA.equals(textValue(receipt, "schemaVersion"))
+                || !"RELEASED".equals(textValue(receipt, "state"))
+                || !ProjectCodexIdentity.WORKER_ID.equals(textValue(receipt, "workerId"))
+                || !request.get("operationId").asText().equals(textValue(receipt, "operationId"))
+                || !request.get("idempotencyKey").asText()
+                        .equals(textValue(receipt, "idempotencyKey"))
+                || !requestOwnershipMatchesReceipt(request, receipt)
+                || !canonicalSha256(request).equals(
+                        textValue(receipt, "requestFingerprintSha256"))
+                || !isFinalReleaseRevision(receipt.get("revision"))
+                || !receipt.get("valuesExposed").isBoolean()
+                || receipt.get("valuesExposed").booleanValue()
+                || !validRemovedProjection(receipt.get("removed"))
+                || !validReleasedProjection(receipt.get("released"))
+                || !validRetainedProjection(receipt.get("retained"))
+                || !isSha256(textValue(receipt, "ownershipFingerprintSha256"))
+                || !isSha256(textValue(receipt, "receiptSha256"))) {
+            throw invalidWorkspaceReleaseReceipt();
+        }
+        ObjectNode sealed = ((ObjectNode) receipt).deepCopy();
+        sealed.remove("receiptSha256");
+        if (!canonicalSha256(sealed).equals(receipt.get("receiptSha256").asText())) {
+            throw invalidWorkspaceReleaseReceipt();
+        }
+        try {
+            WorkspaceRelease result = objectMapper.treeToValue(receipt, WorkspaceRelease.class);
+            if (!session.getRemoteCloseOperationId().toString().equals(result.operationId())) {
+                throw invalidWorkspaceReleaseReceipt();
+            }
+            return result;
+        } catch (IOException exception) {
+            throw invalidWorkspaceReleaseReceipt();
+        }
+    }
+
+    private boolean requestOwnershipMatchesReceipt(JsonNode request, JsonNode receipt) {
+        for (String field : List.of(
+                "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
+                "commit", "manifestSha256", "workspaceBranch")) {
+            if (!request.get(field).equals(receipt.get(field))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean validRemovedProjection(JsonNode value) {
+        if (!hasExactFields(value, WORKSPACE_RELEASE_REMOVED_FIELDS)) {
+            return false;
+        }
+        for (String field : WORKSPACE_RELEASE_REMOVED_FIELDS) {
+            JsonNode count = value.get(field);
+            if (!count.isIntegralNumber() || !count.canConvertToInt() || count.intValue() < 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean validReleasedProjection(JsonNode value) {
+        if (!hasExactFields(value, WORKSPACE_RELEASE_RELEASED_FIELDS)) {
+            return false;
+        }
+        return WORKSPACE_RELEASE_RELEASED_FIELDS.stream()
+                .allMatch(field -> value.get(field).isBoolean()
+                        && value.get(field).booleanValue());
+    }
+
+    private boolean validRetainedProjection(JsonNode value) {
+        if (!hasExactFields(value, WORKSPACE_RELEASE_RETAINED_FIELDS)) {
+            return false;
+        }
+        return WORKSPACE_RELEASE_RETAINED_FIELDS.stream()
+                .allMatch(field -> value.get(field).isBoolean() && value.get(field).booleanValue());
+    }
+
+    private boolean hasExactFields(JsonNode value, Set<String> expected) {
+        if (value == null || !value.isObject()) {
+            return false;
+        }
+        Set<String> actual = new HashSet<>();
+        value.fieldNames().forEachRemaining(actual::add);
+        return actual.equals(expected);
+    }
+
+    private String textValue(JsonNode value, String field) {
+        JsonNode child = value == null ? null : value.get(field);
+        return child != null && child.isTextual() ? child.textValue() : null;
+    }
+
+    private boolean isFinalReleaseRevision(JsonNode value) {
+        return value != null
+                && value.isIntegralNumber()
+                && value.canConvertToLong()
+                && value.longValue() == WORKSPACE_RELEASE_REVISION;
+    }
+
+    private boolean isSha256(String value) {
+        return value != null && value.matches("^[0-9a-f]{64}$");
+    }
+
+    private String canonicalSha256(JsonNode value) {
+        try {
+            byte[] encoded = objectMapper.writeValueAsBytes(canonicalize(value));
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(encoded));
+        } catch (IOException | NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("Cannot seal workspace release projection", exception);
+        }
+    }
+
+    private JsonNode canonicalize(JsonNode value) {
+        if (value.isObject()) {
+            ObjectNode result = objectMapper.createObjectNode();
+            Set<String> fields = new TreeSet<>();
+            value.fieldNames().forEachRemaining(fields::add);
+            for (String field : fields) {
+                result.set(field, canonicalize(value.get(field)));
+            }
+            return result;
+        }
+        if (value.isArray()) {
+            ArrayNode result = objectMapper.createArrayNode();
+            value.forEach(child -> result.add(canonicalize(child)));
+            return result;
+        }
+        return value;
+    }
+
+    private RemoteWorkerException invalidWorkspaceReleaseReceipt() {
+        return new RemoteWorkerException(
+                "Remote worker returned an invalid workspace release receipt",
+                502,
+                PROTOCOL_FAILURE_CODE,
+                RemoteWorkerFailureCategory.PROTOCOL,
+                false,
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                null);
     }
 
     public DraftFingerprint fingerprintRetainedDraft(WorkSessionEntity session) {
@@ -413,15 +885,15 @@ public class RemoteWorkerClient {
                 builder.header("Content-Type", "application/json")
                         .method(method, HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(body)));
             }
-            HttpResponse<byte[]> response = httpClient.send(
+            HttpResponse<InputStream> response = httpClient.send(
                     builder.build(),
-                    HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new RemoteWorkerException(
-                        "Remote worker rejected request with HTTP " + response.statusCode(),
-                        response.statusCode());
+                    HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream responseBody = response.body()) {
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw decodeWorkerRejection(response, responseBody);
+                }
+                return objectMapper.readValue(responseBody, responseType);
             }
-            return objectMapper.readValue(response.body(), responseType);
         } catch (RemoteWorkerException exception) {
             throw exception;
         } catch (IOException exception) {
@@ -432,6 +904,119 @@ public class RemoteWorkerClient {
         } catch (RuntimeException exception) {
             throw new RemoteWorkerException("Remote worker request failed", exception);
         }
+    }
+
+    private RemoteWorkerException decodeWorkerRejection(
+            HttpResponse<InputStream> response,
+            InputStream responseBody
+    ) throws IOException {
+        int statusCode = response.statusCode();
+        String contentType = response.headers().firstValue("Content-Type").orElse("");
+        if (!contentType.equalsIgnoreCase("application/json")) {
+            return protocolFailure(statusCode);
+        }
+        byte[] encoded = responseBody.readNBytes(MAX_WORKER_ERROR_BYTES + 1);
+        if (encoded.length > MAX_WORKER_ERROR_BYTES) {
+            Arrays.fill(encoded, (byte) 0);
+            return protocolFailure(statusCode);
+        }
+        try {
+            WorkerErrorEnvelope envelope = objectMapper.readValue(encoded, WorkerErrorEnvelope.class);
+            if (!WORKER_ERROR_SCHEMA.equals(envelope.schemaVersion())
+                    || envelope.code() == null
+                    || !envelope.code().matches("^[A-Z][A-Z0-9_]{2,79}$")
+                    || envelope.category() == null
+                    || envelope.retryable() == null
+                    || envelope.nextAction() == null) {
+                return protocolFailure(statusCode);
+            }
+            RemoteWorkerFailureCategory category = RemoteWorkerFailureCategory.valueOf(
+                    envelope.category());
+            AgentRunRecoveryNextAction nextAction = AgentRunRecoveryNextAction.valueOf(
+                    envelope.nextAction());
+            if (!WORKER_ERROR_ACTIONS.contains(nextAction)) {
+                return protocolFailure(statusCode);
+            }
+            UUID blockerSessionId = canonicalBlocker(envelope.blockerSessionId(), category, nextAction);
+            if (envelope.blockerSessionId() != null && blockerSessionId == null) {
+                return protocolFailure(statusCode);
+            }
+            if (!validFailureSemantics(
+                    statusCode, category, envelope.retryable(), nextAction, blockerSessionId)) {
+                return protocolFailure(statusCode);
+            }
+            return new RemoteWorkerException(
+                    "Remote worker rejected request with HTTP " + statusCode
+                            + " (" + envelope.code() + ")",
+                    statusCode,
+                    envelope.code(),
+                    category,
+                    envelope.retryable(),
+                    nextAction,
+                    blockerSessionId);
+        } catch (IOException | IllegalArgumentException exception) {
+            return protocolFailure(statusCode);
+        } finally {
+            Arrays.fill(encoded, (byte) 0);
+        }
+    }
+
+    private boolean validFailureSemantics(
+            int statusCode,
+            RemoteWorkerFailureCategory category,
+            boolean retryable,
+            AgentRunRecoveryNextAction nextAction,
+            UUID blockerSessionId
+    ) {
+        if (statusCode >= 500 && statusCode < 600) {
+            return category == RemoteWorkerFailureCategory.TRANSPORT
+                    && retryable
+                    && nextAction == AgentRunRecoveryNextAction.REQUEST_RECONCILIATION
+                    && blockerSessionId == null;
+        }
+        if (statusCode < 400 || statusCode >= 600
+                || category == RemoteWorkerFailureCategory.TRANSPORT) {
+            return false;
+        }
+        if (category == RemoteWorkerFailureCategory.CAPACITY) {
+            return retryable && nextAction == AgentRunRecoveryNextAction.WAIT;
+        }
+        return !retryable
+                && blockerSessionId == null
+                && (nextAction == AgentRunRecoveryNextAction.NONE
+                    || nextAction == AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR);
+    }
+
+    private UUID canonicalBlocker(
+            String value,
+            RemoteWorkerFailureCategory category,
+            AgentRunRecoveryNextAction nextAction
+    ) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            UUID parsed = UUID.fromString(value);
+            if (!parsed.toString().equals(value)
+                    || category != RemoteWorkerFailureCategory.CAPACITY
+                    || nextAction != AgentRunRecoveryNextAction.WAIT) {
+                return null;
+            }
+            return parsed;
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private RemoteWorkerException protocolFailure(int statusCode) {
+        return new RemoteWorkerException(
+                "Remote worker returned an invalid error response",
+                statusCode,
+                PROTOCOL_FAILURE_CODE,
+                RemoteWorkerFailureCategory.PROTOCOL,
+                false,
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                null);
     }
 
     private String readToken() throws IOException {
@@ -447,6 +1032,17 @@ public class RemoteWorkerClient {
 
     private String stripTrailingSlash(String value) {
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private record WorkerErrorEnvelope(
+            String schemaVersion,
+            String code,
+            String category,
+            Boolean retryable,
+            String nextAction,
+            String blockerSessionId
+    ) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)
@@ -548,6 +1144,80 @@ public class RemoteWorkerClient {
             String canonicalCommit,
             boolean selectionEnabled,
             boolean executionEnabled,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record WorkspaceReadiness(
+            String schemaVersion,
+            String state,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String workerId,
+            String requestedCommit,
+            String canonicalCommit,
+            boolean retryAllowed,
+            String nextAction,
+            String requestFingerprintSha256,
+            String relationshipFingerprintSha256,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record WorkspaceRelease(
+            String schemaVersion,
+            String state,
+            String operationId,
+            String idempotencyKey,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String repository,
+            String branch,
+            String commit,
+            String manifestSha256,
+            String workspaceBranch,
+            String workerId,
+            String requestFingerprintSha256,
+            long revision,
+            Map<String, Integer> removed,
+            Map<String, Boolean> released,
+            Map<String, Boolean> retained,
+            String ownershipFingerprintSha256,
+            String receiptSha256,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record WorkspaceCapacityOwner(
+            String schemaVersion,
+            String state,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String workerId,
+            String requestFingerprintSha256,
+            String ownershipFingerprintSha256,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record WorkspaceReleasePreflight(
+            String schemaVersion,
+            String state,
+            String operationId,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String workerId,
+            String requestFingerprintSha256,
+            String ownershipFingerprintSha256,
+            String allocationFingerprintSha256,
             boolean valuesExposed
     ) {
     }

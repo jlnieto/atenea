@@ -3,6 +3,7 @@ package com.atenea.android.coreconsole
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +37,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -44,10 +47,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.atenea.android.api.MobileConversationTurn
+import com.atenea.android.api.SessionTurnAttachment
+import java.util.UUID
 
 @Composable
 internal fun ConversationSurface(
@@ -69,7 +76,14 @@ internal fun ConversationSurface(
     commandContent: @Composable (() -> Unit)? = null,
     runContent: @Composable (() -> Unit)? = null,
     profileContent: @Composable (() -> Unit)? = null,
-    composerEnabled: Boolean = true
+    composerEnabled: Boolean = true,
+    composerInputLocked: Boolean = false,
+    attachmentDraft: WorkSessionAttachmentDraft? = null,
+    onAttachImages: (() -> Unit)? = null,
+    onRemoveImage: ((UUID) -> Unit)? = null,
+    onRetryImage: ((UUID) -> Unit)? = null,
+    onResetAttachmentSubmission: (() -> Unit)? = null,
+    onOpenHistoricalAttachment: ((SessionTurnAttachment) -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -112,6 +126,7 @@ internal fun ConversationSurface(
             } else {
                 ConversationTranscript(
                     turns = turns,
+                    onOpenAttachment = onOpenHistoricalAttachment,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -129,7 +144,13 @@ internal fun ConversationSurface(
             enabled = composerEnabled,
             onInputChange = onInputChange,
             onSend = onSend,
-            onMicrophoneClick = onMicrophoneClick
+            onMicrophoneClick = onMicrophoneClick,
+            inputLocked = composerInputLocked,
+            attachmentDraft = attachmentDraft,
+            onAttachImages = onAttachImages,
+            onRemoveImage = onRemoveImage,
+            onRetryImage = onRetryImage,
+            onResetAttachmentSubmission = onResetAttachmentSubmission
         )
     }
 }
@@ -137,6 +158,7 @@ internal fun ConversationSurface(
 @Composable
 private fun ConversationTranscript(
     turns: List<MobileConversationTurn>,
+    onOpenAttachment: ((SessionTurnAttachment) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -160,7 +182,7 @@ private fun ConversationTranscript(
                         .background(ConversationColors.messageDivider)
                 )
             }
-            ConversationTurn(turn)
+            ConversationTurn(turn, onOpenAttachment)
         }
     }
 }
@@ -249,7 +271,10 @@ private fun ConversationTextAction(
 }
 
 @Composable
-private fun ConversationTurn(turn: MobileConversationTurn) {
+private fun ConversationTurn(
+    turn: MobileConversationTurn,
+    onOpenAttachment: ((SessionTurnAttachment) -> Unit)?
+) {
     val operator = turn.actor == "OPERATOR"
     Column(
         modifier = Modifier
@@ -258,6 +283,13 @@ private fun ConversationTurn(turn: MobileConversationTurn) {
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         RenderedConversationText(turn.messageText, operator)
+        if (turn.attachments.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                turn.attachments.sortedBy { it.position }.forEach { attachment ->
+                    HistoricalAttachmentRow(attachment, onOpenAttachment)
+                }
+            }
+        }
         turn.executionProfile?.let { profile ->
             Text(
                 "${profile.modelId} · ${profile.reasoningEffort} · Codex ${profile.codexVersion}",
@@ -272,6 +304,40 @@ private fun ConversationTurn(turn: MobileConversationTurn) {
                 color = ConversationColors.mutedText
             )
         }
+    }
+}
+
+@Composable
+private fun HistoricalAttachmentRow(
+    attachment: SessionTurnAttachment,
+    onOpenAttachment: ((SessionTurnAttachment) -> Unit)?
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ConversationColors.attachmentBackground, RoundedCornerShape(5.dp))
+            .clickable(enabled = onOpenAttachment != null) { onOpenAttachment?.invoke(attachment) }
+            .semantics { contentDescription = "Abrir imagen ${attachment.position + 1}" }
+            .padding(horizontal = 9.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AttachmentImageGlyph(ConversationColors.action)
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                attachment.originalFilename,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = ConversationColors.primaryText,
+                style = ConversationTypography.meta
+            )
+            Text(
+                "Imagen ${attachment.position + 1} · ${formatAttachmentBytes(attachment.sizeBytes)}",
+                color = ConversationColors.mutedText,
+                style = ConversationTypography.timestamp
+            )
+        }
+        Text("Abrir", color = ConversationColors.action, style = ConversationTypography.action)
     }
 }
 
@@ -383,75 +449,279 @@ private fun ConversationComposer(
     enabled: Boolean,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
-    onMicrophoneClick: (() -> Unit)?
+    onMicrophoneClick: (() -> Unit)?,
+    inputLocked: Boolean,
+    attachmentDraft: WorkSessionAttachmentDraft?,
+    onAttachImages: (() -> Unit)?,
+    onRemoveImage: ((UUID) -> Unit)?,
+    onRetryImage: ((UUID) -> Unit)?,
+    onResetAttachmentSubmission: (() -> Unit)?
 ) {
     val hasInput = input.isNotBlank()
     val showSend = hasInput || recording
-    val actionEnabled = enabled && !pending && (showSend || onMicrophoneClick != null)
+    val attachmentSendReady = attachmentDraft?.let { draft ->
+        !draft.hasUploadInProgress && draft.images.all { it.status == PendingImageStatus.READY }
+    } ?: true
+    val actionEnabled = enabled && attachmentSendReady && !pending && (showSend || onMicrophoneClick != null)
     val actionBackground = if (actionEnabled) ConversationColors.sendBackground else ConversationColors.disabledAction
+    val actionBorder = if (actionEnabled) ConversationColors.sendBorder else ConversationColors.secondaryBorder
+    val actionIcon = if (actionEnabled) ConversationColors.sendText else ConversationColors.mutedText
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(ConversationColors.composerBar)
             .padding(horizontal = 0.dp, vertical = 6.dp)
     ) {
-        BasicTextField(
-            value = input,
-            onValueChange = onInputChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp, max = 156.dp)
-                .background(ConversationColors.composerField)
-                .padding(start = 10.dp, top = 12.dp, end = 60.dp, bottom = 14.dp),
-            enabled = enabled && !pending && !recording,
-            minLines = 1,
-            maxLines = 5,
-            textStyle = ConversationTypography.input.copy(color = ConversationColors.primaryText),
-            decorationBox = { inner ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (recording) {
-                        RecordingWaveform(
-                            levels = audioLevels,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(28.dp)
-                                .padding(end = 50.dp)
-                        )
-                    } else if (input.isBlank()) {
-                        Text(
-                            placeholder,
-                            color = ConversationColors.placeholder,
-                            style = ConversationTypography.input
-                        )
-                    }
-                    inner()
-                }
-            }
-        )
+        attachmentDraft?.let { draft ->
+            AttachmentComposerState(
+                draft = draft,
+                onRemoveImage = onRemoveImage,
+                onRetryImage = onRetryImage,
+                onResetSubmission = onResetAttachmentSubmission
+            )
+        }
         Box(
             modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 4.dp, bottom = 8.dp)
-                .size(40.dp)
-                .border(1.dp, ConversationColors.sendBorder, CircleShape)
-                .background(actionBackground, CircleShape)
-                .clickable(enabled = actionEnabled) {
-                    if (showSend) {
-                        onSend()
-                    } else {
-                        onMicrophoneClick?.invoke()
-                    }
-                },
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
         ) {
-            if (showSend) {
-                SendUpIcon(color = ConversationColors.sendText)
-            } else {
-                MicrophoneIcon(color = ConversationColors.sendText)
+            BasicTextField(
+                value = input,
+                onValueChange = onInputChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp, max = 156.dp)
+                    .background(ConversationColors.composerField)
+                    .padding(
+                        start = if (attachmentDraft != null) 54.dp else 10.dp,
+                        top = 12.dp,
+                        end = 60.dp,
+                        bottom = 14.dp
+                    ),
+                enabled = enabled && !inputLocked && !pending && !recording,
+                minLines = 1,
+                maxLines = 5,
+                textStyle = ConversationTypography.input.copy(color = ConversationColors.primaryText),
+                decorationBox = { inner ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (recording) {
+                            RecordingWaveform(
+                                levels = audioLevels,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(28.dp)
+                                    .padding(end = 50.dp)
+                            )
+                        } else if (input.isBlank()) {
+                            Text(
+                                placeholder,
+                                color = ConversationColors.placeholder,
+                                style = ConversationTypography.input
+                            )
+                        }
+                        inner()
+                    }
+                }
+            )
+            if (attachmentDraft != null) {
+                val attachEnabled = enabled && !pending && attachmentDraft.canAddImage()
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 4.dp, bottom = 8.dp)
+                        .size(40.dp)
+                        .border(1.dp, ConversationColors.secondaryBorder, CircleShape)
+                        .clickable(enabled = attachEnabled) { onAttachImages?.invoke() }
+                        .semantics { contentDescription = "Adjuntar imágenes" },
+                    contentAlignment = Alignment.Center
+                ) {
+                    PaperclipIcon(if (attachEnabled) ConversationColors.action else ConversationColors.mutedText)
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 4.dp, bottom = 8.dp)
+                    .size(40.dp)
+                    .border(1.dp, actionBorder, CircleShape)
+                    .background(actionBackground, CircleShape)
+                    .clickable(enabled = actionEnabled) {
+                        if (showSend) onSend() else onMicrophoneClick?.invoke()
+                    }
+                    .semantics { contentDescription = if (showSend) "Enviar" else "Dictar" },
+                contentAlignment = Alignment.Center
+            ) {
+                if (showSend) SendUpIcon(color = actionIcon)
+                else MicrophoneIcon(color = actionIcon)
             }
         }
     }
+}
+
+@Composable
+private fun AttachmentComposerState(
+    draft: WorkSessionAttachmentDraft,
+    onRemoveImage: ((UUID) -> Unit)?,
+    onRetryImage: ((UUID) -> Unit)?,
+    onResetSubmission: (() -> Unit)?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        val capability = draft.capability
+        val headline = when {
+            draft.capabilityLoading -> "Imágenes · comprobando disponibilidad"
+            draft.isReady -> "Imágenes · ${draft.images.size}/${capability?.maxAttachmentsPerTurn ?: 4} seleccionadas"
+            else -> "Imágenes no disponibles"
+        }
+        Text(
+            headline,
+            color = if (draft.isReady) ConversationColors.action else ConversationColors.secondaryText,
+            style = ConversationTypography.meta.copy(fontWeight = FontWeight.SemiBold)
+        )
+        when {
+            draft.capabilityFailure != null -> AttachmentActionMessage(draft.capabilityFailure.message, draft.capabilityFailure.category)
+            !draft.isReady && capability != null -> {
+                Text(
+                    capability.message.ifBlank { "Esta sesión no admite imágenes." },
+                    color = ConversationColors.secondaryText,
+                    style = ConversationTypography.meta,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                capability.nextAction.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = ConversationColors.mutedText, style = ConversationTypography.timestamp, maxLines = 2)
+                }
+            }
+            draft.isReady && draft.images.isEmpty() -> Text(
+                "PNG, JPEG o WebP · hasta ${capability?.maxAttachmentsPerTurn ?: 4} · ${formatAttachmentBytes(capability?.maxAttachmentBytesPerTurn ?: 0)} por turno",
+                color = ConversationColors.mutedText,
+                style = ConversationTypography.timestamp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (draft.images.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                draft.images.forEach { image ->
+                    PendingImageChip(image, draft.isSubmissionLocked, onRemoveImage, onRetryImage)
+                }
+            }
+        }
+        draft.submissionFailure?.let { failure ->
+            AttachmentActionMessage(failure.message, failure.category)
+        }
+        if (draft.isSubmissionLocked) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Envío pendiente: reintenta exactamente.",
+                    modifier = Modifier.weight(1f),
+                    color = ConversationColors.warning,
+                    style = ConversationTypography.meta
+                )
+                Text(
+                    "Editar borrador",
+                    modifier = Modifier.clickable { onResetSubmission?.invoke() },
+                    color = ConversationColors.action,
+                    style = ConversationTypography.action
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingImageChip(
+    image: PendingWorkSessionImage,
+    locked: Boolean,
+    onRemoveImage: ((UUID) -> Unit)?,
+    onRetryImage: ((UUID) -> Unit)?
+) {
+    Row(
+        modifier = Modifier
+            .widthIn(min = 170.dp, max = 220.dp)
+            .background(ConversationColors.attachmentBackground, RoundedCornerShape(5.dp))
+            .padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val preview = image.preview
+        if (preview != null && !preview.isRecycled) {
+            Image(
+                bitmap = preview.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.size(34.dp)
+            )
+        } else {
+            Box(modifier = Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                AttachmentImageGlyph(ConversationColors.action)
+            }
+        }
+        Spacer(Modifier.width(6.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                image.displayName,
+                color = ConversationColors.primaryText,
+                style = ConversationTypography.meta,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                when (image.status) {
+                    PendingImageStatus.SELECTED -> "Preparando"
+                    PendingImageStatus.UPLOADING -> "Subiendo"
+                    PendingImageStatus.READY -> "Lista · ${formatAttachmentBytes(image.sizeBytes)}"
+                    PendingImageStatus.ERROR -> image.failure?.message ?: "Error de subida"
+                },
+                color = if (image.status == PendingImageStatus.ERROR) ConversationColors.error else ConversationColors.mutedText,
+                style = ConversationTypography.timestamp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (!locked) {
+            val retryable = image.status == PendingImageStatus.ERROR && image.failure?.retryable == true
+            Text(
+                if (retryable) "Reintentar" else "Quitar",
+                modifier = Modifier
+                    .clickable {
+                        if (retryable) onRetryImage?.invoke(image.localId) else onRemoveImage?.invoke(image.localId)
+                    }
+                    .padding(4.dp),
+                color = ConversationColors.action,
+                style = ConversationTypography.action
+            )
+        }
+    }
+}
+
+@Composable
+private fun AttachmentActionMessage(message: String, category: AttachmentFailureCategory) {
+    Text(
+        "${attachmentFailureLabel(category)} · $message",
+        color = if (category == AttachmentFailureCategory.TRANSPORT) ConversationColors.warning else ConversationColors.error,
+        style = ConversationTypography.meta,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+private fun attachmentFailureLabel(category: AttachmentFailureCategory): String = when (category) {
+    AttachmentFailureCategory.TRANSPORT -> "Conexión"
+    AttachmentFailureCategory.CAPACITY -> "Límite"
+    AttachmentFailureCategory.VALIDATION -> "Validación"
+    AttachmentFailureCategory.POLICY -> "Política"
+    AttachmentFailureCategory.OWNERSHIP -> "Propiedad"
+    AttachmentFailureCategory.AUTHORIZATION -> "Permisos"
+    AttachmentFailureCategory.CONFLICT -> "Conflicto"
+    AttachmentFailureCategory.UNKNOWN -> "Error"
 }
 
 @Composable
@@ -612,6 +882,52 @@ private fun MicrophoneIcon(color: Color) {
             strokeWidth,
             cap = StrokeCap.Round
         )
+    }
+}
+
+@Composable
+private fun PaperclipIcon(color: Color) {
+    Canvas(modifier = Modifier.size(21.dp)) {
+        val stroke = 1.8.dp.toPx()
+        val path = Path().apply {
+            moveTo(size.width * 0.68f, size.height * 0.26f)
+            cubicTo(
+                size.width * 0.84f, size.height * 0.42f,
+                size.width * 0.82f, size.height * 0.62f,
+                size.width * 0.66f, size.height * 0.77f
+            )
+            lineTo(size.width * 0.38f, size.height * 0.77f)
+            cubicTo(
+                size.width * 0.20f, size.height * 0.77f,
+                size.width * 0.16f, size.height * 0.54f,
+                size.width * 0.30f, size.height * 0.40f
+            )
+            lineTo(size.width * 0.56f, size.height * 0.20f)
+        }
+        drawPath(path, color = color, style = Stroke(stroke, cap = StrokeCap.Round))
+    }
+}
+
+@Composable
+private fun AttachmentImageGlyph(color: Color) {
+    Canvas(modifier = Modifier.size(18.dp)) {
+        val stroke = 1.5.dp.toPx()
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * 0.08f, size.height * 0.12f),
+            size = Size(size.width * 0.84f, size.height * 0.76f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+            style = Stroke(stroke)
+        )
+        drawCircle(color, radius = size.width * 0.08f, center = Offset(size.width * 0.68f, size.height * 0.34f))
+        val landscape = Path().apply {
+            moveTo(size.width * 0.16f, size.height * 0.73f)
+            lineTo(size.width * 0.38f, size.height * 0.48f)
+            lineTo(size.width * 0.53f, size.height * 0.63f)
+            lineTo(size.width * 0.65f, size.height * 0.51f)
+            lineTo(size.width * 0.85f, size.height * 0.73f)
+        }
+        drawPath(landscape, color, style = Stroke(stroke, cap = StrokeCap.Round))
     }
 }
 
@@ -945,8 +1261,11 @@ internal object ConversationColors {
     val codeBorder = Color(0xFF48504C)
     val codeText = Color(0xFFD4E4DD)
     val messageDivider = Color(0xFF5E6763)
+    val attachmentBackground = Color(0xFF303936)
+    val secondaryBorder = Color(0xFF67736E)
     val quoteText = Color(0xFFA9D8BC)
     val error = Color(0xFFFFB4A9)
+    val warning = Color(0xFFFFD28A)
 }
 
 private val CODE_LANGUAGES = setOf(

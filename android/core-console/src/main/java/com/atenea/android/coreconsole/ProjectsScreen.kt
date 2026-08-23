@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.MobileProjectOverview
@@ -55,7 +56,12 @@ internal fun ProjectsScreen(
             pendingProjectId = project.projectId
             error = null
             try {
-                val hasActiveSession = project.session?.status in setOf("OPEN", "CLOSING")
+                val session = project.session
+                if (session?.recoveryPending == true) {
+                    onOpenSession(project.projectId, session.sessionId)
+                    return@launch
+                }
+                val hasActiveSession = session?.status in setOf("OPEN", "CLOSING")
                 val title = draftTitleByProject[project.projectId]?.trim()?.takeIf { it.isNotBlank() }
                 if (!hasActiveSession && title == null) {
                     error = "Indica un titulo para abrir una nueva sesion."
@@ -88,49 +94,92 @@ internal fun ProjectsScreen(
             Text("No hay proyectos disponibles.", style = MaterialTheme.typography.bodyMedium)
         }
         projects.forEach { project ->
-            val hasActiveSession = project.session?.status in setOf("OPEN", "CLOSING")
-            val draftTitle = draftTitleByProject[project.projectId].orEmpty()
-            AteneaPanel {
-                Text(project.projectName, style = MaterialTheme.typography.titleSmall)
-                project.description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                project.defaultBaseBranch?.let { MetricLine("Base", it) }
-                project.session?.let { session ->
-                    MetricLine("Sesión", session.title)
-                    MetricLine("Estado", if (session.runInProgress) "Codex trabajando" else session.status)
-                    session.pullRequestStatus?.let { MetricLine("Pull request", it.displayLabel()) }
-                    session.lastActivityAt?.let { MetricLine("Actividad", it.formatDateTimeForDisplay()) }
-                } ?: Text("Sin WorkSession abierta.", style = MaterialTheme.typography.bodySmall)
+            ProjectOverviewCard(
+                project = project,
+                draftTitle = draftTitleByProject[project.projectId].orEmpty(),
+                pending = pendingProjectId == project.projectId,
+                actionsEnabled = pendingProjectId == null,
+                onDraftTitleChange = { value ->
+                    draftTitleByProject = draftTitleByProject + (project.projectId to value)
+                },
+                onOpenSession = { openSession(project) },
+                onOpenRescue = { onOpenRescue(project.projectId) }
+            )
+        }
+    }
+}
 
-                if (!hasActiveSession) {
-                    OutlinedTextField(
-                        value = draftTitle,
-                        onValueChange = { value ->
-                            draftTitleByProject = draftTitleByProject + (project.projectId to value)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text("Titulo para nueva sesion") }
-                    )
-                }
+@Composable
+internal fun ProjectOverviewCard(
+    project: MobileProjectOverview,
+    draftTitle: String,
+    pending: Boolean,
+    actionsEnabled: Boolean,
+    onDraftTitleChange: (String) -> Unit,
+    onOpenSession: () -> Unit,
+    onOpenRescue: () -> Unit
+) {
+    val recoveryPending = project.session?.recoveryPending == true
+    val hasActiveSession = project.session?.status in setOf("OPEN", "CLOSING")
+    AteneaPanel {
+        Text(project.projectName, style = MaterialTheme.typography.titleSmall)
+        project.description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        project.defaultBaseBranch?.let { MetricLine("Base", it) }
+        if (recoveryPending) {
+            Text(
+                "Nueva sesión pendiente",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                "La sesión anterior ya está cerrada. Continúa la creación de su única sucesora vacía.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            MetricLine("WorkSession", project.session!!.sessionId.toString())
+        } else {
+            project.session?.let { session ->
+                MetricLine("Sesión", session.title)
+                MetricLine("Estado", if (session.runInProgress) "Codex trabajando" else session.status)
+                session.pullRequestStatus?.let { MetricLine("Pull request", it.displayLabel()) }
+                session.lastActivityAt?.let { MetricLine("Actividad", it.formatDateTimeForDisplay()) }
+            } ?: Text("Sin WorkSession abierta.", style = MaterialTheme.typography.bodySmall)
+        }
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AteneaButton(
-                        text = when {
-                            pendingProjectId == project.projectId -> "Abriendo..."
-                            hasActiveSession -> "Abrir sesion"
-                            else -> "Nueva sesion"
-                        },
-                        modifier = Modifier.weight(1f),
-                        enabled = pendingProjectId == null && (hasActiveSession || draftTitle.isNotBlank()),
-                        onClick = { openSession(project) }
-                    )
-                    AteneaOutlinedButton(
-                        text = "Rescate",
-                        modifier = Modifier.weight(1f),
-                        enabled = pendingProjectId == null,
-                        onClick = { onOpenRescue(project.projectId) }
-                    )
-                }
+        if (!hasActiveSession && !recoveryPending) {
+            OutlinedTextField(
+                value = draftTitle,
+                onValueChange = onDraftTitleChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Titulo para nueva sesion") }
+            )
+        }
+
+        if (recoveryPending) {
+            AteneaButton(
+                text = if (pending) "Abriendo..." else "Continuar recuperación",
+                modifier = Modifier.fillMaxWidth().testTag("project-recovery-action"),
+                enabled = actionsEnabled,
+                onClick = onOpenSession
+            )
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AteneaButton(
+                    text = when {
+                        pending -> "Abriendo..."
+                        hasActiveSession -> "Abrir sesion"
+                        else -> "Nueva sesion"
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = actionsEnabled && (hasActiveSession || draftTitle.isNotBlank()),
+                    onClick = onOpenSession
+                )
+                AteneaOutlinedButton(
+                    text = "Rescate",
+                    modifier = Modifier.weight(1f),
+                    enabled = actionsEnabled,
+                    onClick = onOpenRescue
+                )
             }
         }
     }

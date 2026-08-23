@@ -22,10 +22,13 @@ internal class WorkSessionRepository(
     private val apiClient: AteneaApiClient,
     private val projectId: Long?,
     private val sessionId: Long,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val onFreshSession: (Long) -> Unit
 ) {
     private val mutableState = MutableStateFlow(WorkSessionUiState(sessionId = sessionId))
     val state: StateFlow<WorkSessionUiState> = mutableState
+    private val remoteCloseCoordinator = RemoteCloseOperatorCoordinator(apiClient, sessionId)
+    val remoteCloseState: StateFlow<RemoteCloseActionUiState> = remoteCloseCoordinator.state
 
     private var syncJob: Job? = null
     private var eventCursor: String? = null
@@ -94,6 +97,33 @@ internal class WorkSessionRepository(
     fun clearCommand() {
         mutableState.update { it.copy(activeCommand = null) }
     }
+
+    fun runRemoteClosePrimaryAction() {
+        val operatorState = mutableState.value.summary?.operatorState ?: return
+        scope.launch {
+            if (remoteCloseCoordinator.runPrimaryAction(operatorState)) {
+                val freshSessionId = remoteCloseCoordinator.state.value.freshSessionId
+                if (freshSessionId != null) {
+                    onFreshSession(freshSessionId)
+                } else {
+                    refreshSnapshot(initial = false)
+                    runCatching { refreshEvents() }
+                }
+            }
+        }
+    }
+
+    fun confirmLegacyRemoteClose() {
+        val operatorState = mutableState.value.summary?.operatorState ?: return
+        scope.launch {
+            if (remoteCloseCoordinator.confirmLegacyReconciliation(operatorState)) {
+                refreshSnapshot(initial = false)
+                runCatching { refreshEvents() }
+            }
+        }
+    }
+
+    fun cancelLegacyRemoteClose() = remoteCloseCoordinator.cancelConfirmation()
 
     fun toggleDeliverableDetail(deliverableId: Long) {
         val current = mutableState.value
@@ -225,6 +255,7 @@ internal class WorkSessionRepository(
         }
         try {
             val summary = apiClient.fetchMobileWorkSessionSummary(sessionId)
+            remoteCloseCoordinator.accept(summary.operatorState)
             val deliverables = apiClient.fetchMobileSessionDeliverables(sessionId)
             val preview = try {
                 apiClient.fetchMobileSessionPreview(sessionId)

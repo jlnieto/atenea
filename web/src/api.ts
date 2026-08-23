@@ -20,6 +20,8 @@ import {
   CoreScope,
   CreateWorkSessionTurnRequest,
   ManagedHost,
+  LegacyRemoteCloseOperation,
+  LegacyRemoteClosePlan,
   MobileApiCostsOverview,
   MobileProjectOverview,
   MobileRescueConversation,
@@ -33,6 +35,7 @@ import {
   ResolveMobileWorkSessionResult,
   SessionDeliverable,
   SessionDeliverablesView,
+  StartFreshWorkSessionResult,
   UploadWorkSessionAttachmentRequest,
   WorkSessionAttachment,
   WorkSessionAttachmentCapability,
@@ -226,6 +229,49 @@ export class AteneaApi {
       action,
       idempotencyKey: crypto.randomUUID()
     });
+  }
+
+  resumeWorkSessionClose(sessionId: number) {
+    return this.post(`/api/sessions/${sessionId}/close`);
+  }
+
+  async startFreshWorkSession(
+    sessionId: number,
+    idempotencyKey: string
+  ): Promise<StartFreshWorkSessionResult> {
+    const response = await this.post<Omit<StartFreshWorkSessionResult, "view"> & {
+      view: WorkSessionConversationEnvelope;
+    }>(`/api/mobile/sessions/${sessionId}/start-fresh`, { idempotencyKey });
+    return {
+      ...response,
+      view: unwrapWorkSessionConversation(response.view)
+    };
+  }
+
+  createLegacyRemoteClosePlan(sessionId: number, idempotencyKey: string) {
+    return this.post<LegacyRemoteClosePlan>(
+      `/api/admin/work-sessions/${sessionId}/remote-close-plans`,
+      {
+        operation: "RECONCILE_REMOTE_CLOSE",
+        idempotencyKey
+      }
+    );
+  }
+
+  confirmLegacyRemoteClose(
+    sessionId: number,
+    plan: LegacyRemoteClosePlan,
+    idempotencyKey: string
+  ) {
+    return this.post<LegacyRemoteCloseOperation>(
+      `/api/admin/work-sessions/${sessionId}/remote-close-reconciliations`,
+      {
+        operation: "RECONCILE_REMOTE_CLOSE",
+        planId: plan.planId,
+        ownershipFingerprintSha256: plan.ownershipFingerprintSha256,
+        idempotencyKey
+      }
+    );
   }
 
   codexAdministratorInventory() {

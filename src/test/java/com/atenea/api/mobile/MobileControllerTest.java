@@ -1,6 +1,7 @@
 package com.atenea.api.mobile;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -53,6 +54,7 @@ import com.atenea.service.mobile.MobileSessionReadStateService;
 import com.atenea.service.mobile.MobileSessionEventService;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.mobile.MobileStreamService;
+import com.atenea.service.mobile.FreshWorkSessionService;
 import com.atenea.service.operations.OperationsService;
 import com.atenea.service.rescue.RescueSessionService;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
@@ -62,6 +64,7 @@ import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.atenea.service.worksession.WorkSessionService;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -107,6 +110,8 @@ class MobileControllerTest {
     private RescueSessionService rescueSessionService;
     @Mock
     private OperationsService operationsService;
+    @Mock
+    private FreshWorkSessionService freshWorkSessionService;
 
     private MockMvc mockMvc;
 
@@ -126,7 +131,8 @@ class MobileControllerTest {
                         sessionDeliverableGenerationService,
                         billingQueueService,
                         rescueSessionService,
-                        operationsService))
+                        operationsService,
+                        freshWorkSessionService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -148,13 +154,15 @@ class MobileControllerTest {
                                 true,
                                 null,
                                 WorkSessionPullRequestStatus.OPEN,
-                                Instant.parse("2026-03-29T10:00:00Z")))));
+                                Instant.parse("2026-03-29T10:00:00Z"),
+                                false))));
 
         mockMvc.perform(get("/api/mobile/projects/overview"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].projectId").value(7))
                 .andExpect(jsonPath("$[0].session.sessionId").value(12))
-                .andExpect(jsonPath("$[0].session.runInProgress").value(true));
+                .andExpect(jsonPath("$[0].session.runInProgress").value(true))
+                .andExpect(jsonPath("$[0].session.recoveryPending").value(false));
     }
 
     @Test
@@ -196,7 +204,18 @@ class MobileControllerTest {
                 new MobileSessionInsightsResponse(
                         "Flujo de voz operativo",
                         new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),
-                        "Publicar la pull request de la sesión")));
+                        "Publicar la pull request de la sesión"),
+                new MobileSessionOperatorStateResponse(
+                        true,
+                        MobileSessionOperatorState.CLOSED_OWNER_BLOCKS_CAPACITY,
+                        "Bloqueada por una sesión cerrada",
+                        "Otra sesión cerrada conserva la capacidad necesaria.",
+                        MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE,
+                        "Reconciliar cierre",
+                        true,
+                        com.atenea.persistence.auth.CodexOperationsRole.PLATFORM_ADMINISTRATOR,
+                        16L,
+                        96L)));
 
         mockMvc.perform(get("/api/mobile/sessions/12/summary"))
                 .andExpect(status().isOk())
@@ -204,6 +223,14 @@ class MobileControllerTest {
                 .andExpect(jsonPath("$.actions.canPublish").value(true))
                 .andExpect(jsonPath("$.insights.latestProgress").value("Flujo de voz operativo"))
                 .andExpect(jsonPath("$.insights.currentBlocker.category").value("NONE"))
+                .andExpect(jsonPath("$.operatorState.state").value("CLOSED_OWNER_BLOCKS_CAPACITY"))
+                .andExpect(jsonPath("$.operatorState.title").value("Bloqueada por una sesión cerrada"))
+                .andExpect(jsonPath("$.operatorState.primaryAction").value("RECONCILE_REMOTE_CLOSE"))
+                .andExpect(jsonPath("$.operatorState.requiredRole").value("PLATFORM_ADMINISTRATOR"))
+                .andExpect(jsonPath("$.operatorState.targetWorkSessionId").value(16))
+                .andExpect(jsonPath("$.operatorState.workerId").doesNotExist())
+                .andExpect(jsonPath("$.operatorState.workspaceIdentity").doesNotExist())
+                .andExpect(jsonPath("$.operatorState.operationId").doesNotExist())
                 .andExpect(jsonPath("$.approvedPriceEstimate.billingStatus").value("READY"));
     }
 
@@ -231,6 +258,36 @@ class MobileControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sessionId").value(12))
                 .andExpect(jsonPath("$.updatedAt").isNumber());
+    }
+
+    @Test
+    void startFreshSessionUsesAuthenticatedOperatorAndExactIdempotencyKey() throws Exception {
+        var operator = new AuthenticatedOperator(
+                4L, "operator@atenea.local", "Operator");
+        var principal = SecurityMockMvcRequestPostProcessors.authentication(
+                new UsernamePasswordAuthenticationToken(operator, null));
+        UUID key = UUID.fromString("00000000-0000-4000-8000-000000000017");
+        when(freshWorkSessionService.start(
+                any(), eq(17L), eq(new StartFreshWorkSessionRequest(key))))
+                .thenReturn(new StartFreshWorkSessionResponse(
+                        UUID.fromString("00000000-0000-4000-8000-000000000018"),
+                        "COMPLETED",
+                        17L,
+                        12L,
+                        true,
+                        conversation()));
+
+        mockMvc.perform(post("/api/mobile/sessions/17/start-fresh")
+                        .with(principal)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"idempotencyKey":"00000000-0000-4000-8000-000000000017"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("COMPLETED"))
+                .andExpect(jsonPath("$.sourceWorkSessionId").value(17))
+                .andExpect(jsonPath("$.resultWorkSessionId").value(12))
+                .andExpect(jsonPath("$.view.view.session.id").value(12));
     }
 
     @Test

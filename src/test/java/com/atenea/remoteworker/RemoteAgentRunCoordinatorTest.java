@@ -2,6 +2,7 @@ package com.atenea.remoteworker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
@@ -19,6 +21,7 @@ import com.atenea.persistence.worksession.SessionTurnEntity;
 import com.atenea.persistence.worksession.SessionTurnRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.persistence.worksession.AgentRunProgressCategory;
 import com.atenea.service.worksession.AgentRunProgressService;
@@ -274,7 +277,7 @@ class RemoteAgentRunCoordinatorTest {
         when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
         when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
         when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(client.get(run)).thenThrow(new RemoteWorkerException("partition", 503));
+        when(client.get(run)).thenThrow(transportFailure(503));
 
         coordinator.dispatchAfterCommit(run.getId());
         waitForTerminal(run);
@@ -300,7 +303,7 @@ class RemoteAgentRunCoordinatorTest {
         when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
         when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
         when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(client.get(run)).thenThrow(new RemoteWorkerException("partition", 503));
+        when(client.get(run)).thenThrow(transportFailure(503));
 
         coordinator.dispatchAfterCommit(run.getId());
         waitForTerminal(run);
@@ -309,6 +312,26 @@ class RemoteAgentRunCoordinatorTest {
         assertEquals(
                 "Explicit operator review required; execution was not reassigned",
                 run.getStatusReason());
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void ioFailureUsesBoundedReconciliationWithoutReplacementDispatch() throws Exception {
+        AgentRunEntity run = projectRun();
+        run.setRemoteExecutionId("4ee2d311-b9da-4307-89b6-dd3110ef2057");
+        run.setStatus(AgentRunStatus.RUNNING);
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.get(run)).thenThrow(new RemoteWorkerException(
+                "worker request failed", new java.io.IOException("connection unavailable")));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        verify(progressService, times(1)).append(
+                run.getId(), AgentRunProgressCategory.RECONCILING);
         verify(client, never()).dispatch(any(), any());
     }
 
@@ -352,14 +375,250 @@ class RemoteAgentRunCoordinatorTest {
         verify(client, never()).dispatch(any(), any());
     }
 
+    @Test
+    void deterministicFourHundredFailureStopsWithoutWorkerUnavailableWindow() throws Exception {
+        AgentRunEntity run = projectRun();
+        properties.setPollInterval(Duration.ofMillis(1));
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.ensureWorkspace(run)).thenThrow(new RemoteWorkerException(
+                "safe typed rejection",
+                409,
+                "ATENEA_WORKSPACE_ACTIVATION_REJECTED",
+                RemoteWorkerFailureCategory.VALIDATION,
+                false,
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                null));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertEquals("ATENEA_WORKSPACE_ACTIVATION_REJECTED", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                run.getRecoveryNextAction());
+        assertEquals("Remote worker rejected the persisted admission request", run.getStatusReason());
+        Thread.sleep(120);
+        assertNull(run.getRemoteExecutionId());
+        assertNull(run.getLeaseExpiresAt());
+        assertNull(run.getRetryOfRun());
+        verify(client, times(1)).ensureWorkspace(run);
+        verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
+        verify(mobilePushDispatchService, never()).notifyRunActionRequired(run);
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void fourHundredTransportClaimFailsClosedWithoutWorkerUnavailableWindow() throws Exception {
+        AgentRunEntity run = projectRun();
+        properties.setPollInterval(Duration.ofMillis(1));
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.ensureWorkspace(run)).thenThrow(new RemoteWorkerException(
+                "incoherent deterministic transport claim",
+                403,
+                "WORKSPACE_ACTIVATION_UNAVAILABLE",
+                RemoteWorkerFailureCategory.TRANSPORT,
+                true,
+                AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,
+                null));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+        Thread.sleep(120);
+
+        assertEquals(AgentRunStatus.FAILED, run.getStatus());
+        assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                run.getRecoveryNextAction());
+        assertEquals("Remote worker rejected the persisted admission request", run.getStatusReason());
+        assertNull(run.getRemoteExecutionId());
+        assertNull(run.getLeaseExpiresAt());
+        assertNull(run.getRetryOfRun());
+        verify(client, times(1)).ensureWorkspace(run);
+        verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
+        verify(mobilePushDispatchService, never()).notifyRunActionRequired(run);
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void malformedWorkerErrorRequiresAdministratorReviewWithoutPolling() throws Exception {
+        AgentRunEntity run = projectRun();
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.ensureWorkspace(run)).thenThrow(new RemoteWorkerException(
+                "invalid worker error response",
+                409,
+                "REMOTE_WORKER_PROTOCOL_FAILURE",
+                RemoteWorkerFailureCategory.PROTOCOL,
+                false,
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                null));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+        Thread.sleep(120);
+
+        assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                run.getRecoveryNextAction());
+        assertNull(run.getRemoteExecutionId());
+        assertNull(run.getLeaseExpiresAt());
+        assertNull(run.getRetryOfRun());
+        verify(client, times(1)).ensureWorkspace(run);
+        verify(client, never()).dispatch(any(), any());
+        verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
+    }
+
+    @Test
+    void exactOpenCapacityOwnerKeepsRunQueuedWithoutDispatch() throws Exception {
+        AgentRunEntity run = projectRun();
+        WorkSessionEntity blocker = capacityOwner(run, 42L, WorkSessionStatus.OPEN);
+        RemoteWorkerException capacity = capacityFailure(blocker.getRemoteSessionId());
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionRepository.findByRemoteSessionId(blocker.getRemoteSessionId()))
+                .thenReturn(Optional.of(blocker));
+        when(client.ensureWorkspace(run)).thenThrow(capacity);
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForStatusReason(run, "Waiting for exact active WorkSession capacity owner");
+
+        assertEquals(AgentRunStatus.QUEUED, run.getStatus());
+        assertNull(run.getFinishedAt());
+        assertNull(run.getFailureCode());
+        assertNull(run.getRecoveryNextAction());
+        assertNull(run.getRecoveryBlockerWorkSessionId());
+        verify(progressService, times(1)).append(run.getId(), AgentRunProgressCategory.QUEUED);
+        verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void exactClosedCapacityOwnerRequiresCloseReconciliationWithoutRedispatch() throws Exception {
+        AgentRunEntity run = projectRun();
+        WorkSessionEntity blocker = capacityOwner(run, 42L, WorkSessionStatus.CLOSED);
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionRepository.findByRemoteSessionId(blocker.getRemoteSessionId()))
+                .thenReturn(Optional.of(blocker));
+        when(agentRunRepository.existsBySessionIdAndStatusIn(
+                blocker.getId(), AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(client.ensureWorkspace(run)).thenThrow(capacityFailure(blocker.getRemoteSessionId()));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals("CLOSED_SESSION_OWNS_CAPACITY", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE,
+                run.getRecoveryNextAction());
+        assertEquals(blocker.getId(), run.getRecoveryBlockerWorkSessionId());
+        verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void foreignCapacityOwnerFailsClosedForAdministratorReview() throws Exception {
+        AgentRunEntity run = projectRun();
+        WorkSessionEntity blocker = capacityOwner(run, 42L, WorkSessionStatus.CLOSED);
+        blocker.getProject().setId(999L);
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionRepository.findByRemoteSessionId(blocker.getRemoteSessionId()))
+                .thenReturn(Optional.of(blocker));
+        when(client.ensureWorkspace(run)).thenThrow(capacityFailure(blocker.getRemoteSessionId()));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals("CAPACITY_OWNER_UNVERIFIED", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                run.getRecoveryNextAction());
+        assertNull(run.getRecoveryBlockerWorkSessionId());
+        verify(agentRunRepository, never()).existsBySessionIdAndStatusIn(any(), any());
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void unknownCapacityOwnerRequiresAdministratorReviewWithoutDispatch() throws Exception {
+        AgentRunEntity run = projectRun();
+        UUID unknown = UUID.fromString("fe5f567d-3f2b-4a88-9389-89fe113aba74");
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionRepository.findByRemoteSessionId(unknown)).thenReturn(Optional.empty());
+        when(client.ensureWorkspace(run)).thenThrow(capacityFailure(unknown));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals("CAPACITY_OWNER_UNVERIFIED", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                run.getRecoveryNextAction());
+        assertNull(run.getRemoteExecutionId());
+        assertNull(run.getLeaseExpiresAt());
+        assertNull(run.getRetryOfRun());
+        verify(client, times(1)).ensureWorkspace(run);
+        verify(client, never()).dispatch(any(), any());
+    }
+
+    @Test
+    void mismatchedWorkerOwnershipResponseFailsForAdministratorReview() throws Exception {
+        AgentRunEntity run = projectRun();
+        RemoteWorkerClient.Execution accepted = execution(run, "RUNNING", null);
+        RemoteWorkerClient.Execution mismatched = new RemoteWorkerClient.Execution(
+                accepted.dispatchId(),
+                accepted.executionId(),
+                accepted.sessionId(),
+                "remote:foreign:work-session:" + run.getRemoteSessionId(),
+                accepted.workloadClass(),
+                accepted.leaseGeneration(),
+                accepted.status(),
+                accepted.statusReason(),
+                accepted.revision(),
+                accepted.progress(),
+                accepted.createdAt(),
+                accepted.startedAt(),
+                accepted.finishedAt(),
+                accepted.updatedAt(),
+                accepted.result(),
+                accepted.progressEvents());
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.save(any(AgentRunEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.dispatch(run, "First managed turn")).thenReturn(mismatched);
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForTerminal(run);
+
+        assertEquals("REMOTE_WORKER_PROTOCOL_FAILURE", run.getFailureCode());
+        assertEquals(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR,
+                run.getRecoveryNextAction());
+        assertNull(run.getRemoteExecutionId());
+        assertNull(run.getLeaseExpiresAt());
+        assertNull(run.getRetryOfRun());
+        verify(client, times(1)).dispatch(run, "First managed turn");
+        verify(progressService, never()).append(run.getId(), AgentRunProgressCategory.RECONCILING);
+    }
+
     private AgentRunEntity projectRun() {
         UUID remoteSessionId = UUID.fromString("4bb26a65-0a0a-4ae0-b8e0-b41e03a695bf");
         ProjectEntity project = new ProjectEntity();
+        project.setId(7L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(41L);
         session.setProject(project);
+        session.setStatus(WorkSessionStatus.OPEN);
+        session.setExecutionTarget(ExecutionTarget.REMOTE);
+        session.setSelectedWorkerId("ax42-01");
         session.setBaseBranch(ProjectCodexIdentity.BRANCH);
         session.setRemoteSessionId(remoteSessionId);
         session.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteSessionId);
@@ -394,6 +653,50 @@ class RemoteAgentRunCoordinatorTest {
         ReviewedInstructionBundleIdentity.apply(
                 run, ProjectCodexIdentity.PROJECT_IDENTITY);
         return run;
+    }
+
+    private WorkSessionEntity capacityOwner(
+            AgentRunEntity run,
+            Long id,
+            WorkSessionStatus status
+    ) {
+        UUID remoteSessionId = UUID.fromString("fe5f567d-3f2b-4a88-9389-89fe113aba74");
+        ProjectEntity project = new ProjectEntity();
+        project.setId(run.getSession().getProject().getId());
+        project.setName(run.getSession().getProject().getName());
+        project.setRepoPath(run.getSession().getProject().getRepoPath());
+        WorkSessionEntity blocker = new WorkSessionEntity();
+        blocker.setId(id);
+        blocker.setProject(project);
+        blocker.setStatus(status);
+        blocker.setExecutionTarget(ExecutionTarget.REMOTE);
+        blocker.setSelectedWorkerId(run.getSelectedWorkerId());
+        blocker.setRemoteSessionId(remoteSessionId);
+        blocker.setWorkspaceIdentity("remote:" + run.getSelectedWorkerId()
+                + ":work-session:" + remoteSessionId);
+        return blocker;
+    }
+
+    private RemoteWorkerException capacityFailure(UUID blockerSessionId) {
+        return new RemoteWorkerException(
+                "safe capacity rejection",
+                409,
+                "NORMAL_CAPACITY_EXHAUSTED",
+                RemoteWorkerFailureCategory.CAPACITY,
+                true,
+                AgentRunRecoveryNextAction.WAIT,
+                blockerSessionId);
+    }
+
+    private RemoteWorkerException transportFailure(int statusCode) {
+        return new RemoteWorkerException(
+                "safe transport failure",
+                statusCode,
+                "WORKSPACE_ACTIVATION_UNAVAILABLE",
+                RemoteWorkerFailureCategory.TRANSPORT,
+                true,
+                AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,
+                null);
     }
 
     private AgentRunEntity beautipsRun() {
@@ -502,5 +805,13 @@ class RemoteAgentRunCoordinatorTest {
             Thread.sleep(10);
         }
         assertNotNull(run.getFinishedAt());
+    }
+
+    private void waitForStatusReason(AgentRunEntity run, String expected) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        while (System.nanoTime() < deadline && !expected.equals(run.getStatusReason())) {
+            Thread.sleep(10);
+        }
+        assertEquals(expected, run.getStatusReason());
     }
 }

@@ -543,9 +543,10 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 INSERT INTO work_session (
                     project_id, status, title, base_branch, opened_at, last_activity_at,
                     execution_target, selected_worker_id, workspace_identity,
-                    remote_session_id, remote_workload_kind)
+                    remote_session_id, remote_workload_kind, remote_close_state)
                 VALUES (?, 'OPEN', 'Synthetic active gate', 'main', CURRENT_TIMESTAMP,
-                    CURRENT_TIMESTAMP, 'REMOTE', ?, ?, ?::uuid, 'synthetic-routing-v1')
+                    CURRENT_TIMESTAMP, 'REMOTE', ?, ?, ?::uuid, 'synthetic-routing-v1',
+                    'NOT_STARTED')
                 RETURNING id
                 """, Long.class, projectId, WORKER_ID, "remote:" + identity, identity);
         Long turnId = jdbcTemplate.queryForObject("""

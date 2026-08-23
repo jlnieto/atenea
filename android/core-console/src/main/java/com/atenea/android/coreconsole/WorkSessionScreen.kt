@@ -45,7 +45,8 @@ internal fun WorkSessionScreen(
     sessionId: Long?,
     onOpenConversation: () -> Unit,
     onOpenCore: () -> Unit,
-    onBackToProjects: () -> Unit
+    onBackToProjects: () -> Unit,
+    onFreshSession: (Long) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     if (sessionId == null) {
@@ -57,7 +58,7 @@ internal fun WorkSessionScreen(
     }
 
     val repository = remember(apiClient, projectId, sessionId) {
-        WorkSessionRepository(apiClient, projectId, sessionId, scope)
+        WorkSessionRepository(apiClient, projectId, sessionId, scope, onFreshSession)
     }
     DisposableEffect(repository) {
         repository.start()
@@ -65,6 +66,7 @@ internal fun WorkSessionScreen(
     }
 
     val state by repository.state.collectAsState()
+    val remoteCloseState by repository.remoteCloseState.collectAsState()
     val summary = state.summary
     val context = LocalContext.current
 
@@ -82,6 +84,18 @@ internal fun WorkSessionScreen(
             onOpenCore = onOpenCore,
             onBackToProjects = onBackToProjects
         )
+
+        summary?.operatorState?.let { operatorState ->
+            RemoteCloseOperatorPanel(
+                serverState = operatorState,
+                actionState = remoteCloseState,
+                currentWorkSessionId = sessionId,
+                operatorRole = apiClient.currentOperatorRole(),
+                onPrimaryAction = repository::runRemoteClosePrimaryAction,
+                onConfirm = repository::confirmLegacyRemoteClose,
+                onCancel = repository::cancelLegacyRemoteClose
+            )
+        }
 
         WorkSessionPreviewPanel(
             preview = state.preview,

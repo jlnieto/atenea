@@ -21,6 +21,7 @@ The native client currently implements the first usable operator shell:
 - native `Inicio`, `Core`, `Operaciones`, `Archivos` and `Ajustes` destinations
 - native `Proyectos`, `WorkSession`, `Conversación` and `Rescate` surfaces
 - session-first WorkSession dashboard with Core actions, deliverables, close guidance and event sync
+- governed WorkSession PNG/JPEG/WebP selection, idempotent upload, exact turn binding and authenticated historical viewing when the server capability is ready
 - operations status from `/api/mobile/operations/*`
 - Apache recovery through Core confirmation
 - authenticated file upload through `POST /api/mobile/uploads`
@@ -102,7 +103,8 @@ ATENEA_ANDROID_ENV=prod ../scripts/android-build.sh :app:assembleRelease
 4. Open `Operaciones` and run `Actualizar`.
 5. Open `Proyectos`, enter a project session and verify the WorkSession dashboard loads status, insights, deliverables and timeline.
 6. Open `Conversacion` from the WorkSession and send a scoped instruction through Core.
-7. Send a simple Core command, for example:
+7. In an eligible Atenea WorkSession, confirm the composer shows `Imágenes`, select up to four PNG/JPEG/WebP files and verify each is visibly ready before Send. Do not use the general `Archivos` inbox for a Codex turn attachment.
+8. Send a simple Core command, for example:
 
 ```text
 comprueba apache en el dedicado
