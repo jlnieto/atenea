@@ -2,6 +2,10 @@ spring:
   application:
     name: ${APP_NAME:atenea}
 
+  jackson:
+    parser:
+      strict-duplicate-detection: true
+
   datasource:
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
@@ -31,6 +35,17 @@ management:
         include: health,info
 
 atenea:
+  v2:
+    global-enabled: false
+    project-policy-revisions: {}
+  development-change:
+    mutations-enabled: ${ATENEA_DEVELOPMENT_CHANGE_MUTATIONS_ENABLED:false}
+    session-binding-enabled: ${ATENEA_DEVELOPMENT_CHANGE_SESSION_BINDING_ENABLED:false}
+    workspace-operations-enabled: ${ATENEA_DEVELOPMENT_CHANGE_WORKSPACE_OPERATIONS_ENABLED:false}
+    workspace-reconciliation-enabled: ${ATENEA_DEVELOPMENT_CHANGE_WORKSPACE_RECONCILIATION_ENABLED:false}
+  remote-work-beta:
+    open-or-resolve-enabled: ${ATENEA_REMOTE_WORK_BETA_OPEN_OR_RESOLVE_ENABLED:false}
+    recovery-enabled: ${ATENEA_REMOTE_WORK_BETA_RECOVERY_ENABLED:false}
   codex-session-operations:
     profiles-enabled: ${ATENEA_CODEX_PROFILES_ENABLED:false}
     progress-enabled: ${ATENEA_CODEX_PROGRESS_ENABLED:false}
@@ -115,6 +130,40 @@ atenea:
       secret: ${ATENEA_AUTH_JWT_SECRET:atenea-dev-mobile-secret-change-me-2026}
       access-token-ttl: ${ATENEA_AUTH_ACCESS_TOKEN_TTL:15m}
       refresh-token-ttl: ${ATENEA_AUTH_REFRESH_TOKEN_TTL:30d}
+    sessions:
+      enforcement-enabled: ${ATENEA_AUTH_SESSIONS_ENFORCEMENT_ENABLED:false}
+      default-client-type: ${ATENEA_AUTH_SESSIONS_DEFAULT_CLIENT_TYPE:MOBILE}
+      default-device-label: ${ATENEA_AUTH_SESSIONS_DEFAULT_DEVICE_LABEL:Atenea mobile}
+      supported-protocol-version: ${ATENEA_AUTH_SESSIONS_PROTOCOL_VERSION:FAMILY_V1}
+      web-origin: ${ATENEA_AUTH_WEB_ORIGIN:https://atenea.yudri.es}
+    webauthn:
+      enabled: ${ATENEA_AUTH_WEBAUTHN_ENABLED:false}
+      relying-party-id: ${ATENEA_AUTH_WEBAUTHN_RP_ID:atenea.yudri.es}
+      relying-party-name: ${ATENEA_AUTH_WEBAUTHN_RP_NAME:Atenea}
+      web-origin: ${ATENEA_AUTH_WEBAUTHN_WEB_ORIGIN:https://atenea.yudri.es}
+      android-origins: ${ATENEA_AUTH_WEBAUTHN_ANDROID_ORIGINS:}
+      challenge-ttl: ${ATENEA_AUTH_WEBAUTHN_CHALLENGE_TTL:5m}
+      credential-lifecycle-enabled: ${ATENEA_AUTH_WEBAUTHN_CREDENTIAL_LIFECYCLE_ENABLED:false}
+      credential-inventory-enabled: ${ATENEA_AUTH_WEBAUTHN_CREDENTIAL_INVENTORY_ENABLED:false}
+      credential-signalling-enabled: ${ATENEA_AUTH_WEBAUTHN_CREDENTIAL_SIGNALLING_ENABLED:false}
+      restricted-ceremonies-enabled: ${ATENEA_AUTH_WEBAUTHN_RESTRICTED_CEREMONIES_ENABLED:false}
+      controlled-reset-enabled: ${ATENEA_AUTH_WEBAUTHN_CONTROLLED_RESET_ENABLED:false}
+    recovery:
+      totp-enabled: ${ATENEA_AUTH_TOTP_ENABLED:false}
+      recovery-enabled: ${ATENEA_AUTH_RECOVERY_ENABLED:false}
+      enforcement-enabled: ${ATENEA_AUTH_RECOVERY_ENFORCEMENT_ENABLED:false}
+      active-encryption-key-version: ${ATENEA_AUTH_TOTP_ACTIVE_KEY_VERSION:}
+      encryption-keys: ${ATENEA_AUTH_TOTP_ENCRYPTION_KEYS:}
+      active-hmac-key-version: ${ATENEA_AUTH_RECOVERY_ACTIVE_HMAC_KEY_VERSION:}
+      hmac-keys: ${ATENEA_AUTH_RECOVERY_HMAC_KEYS:}
+      enrollment-ttl: ${ATENEA_AUTH_TOTP_ENROLLMENT_TTL:10m}
+      attempt-window: ${ATENEA_AUTH_FACTOR_ATTEMPT_WINDOW:5m}
+      lockout: ${ATENEA_AUTH_FACTOR_LOCKOUT:15m}
+      max-attempts: ${ATENEA_AUTH_FACTOR_MAX_ATTEMPTS:5}
+    privileged-actions:
+      enabled: ${ATENEA_AUTH_PRIVILEGED_ACTIONS_ENABLED:false}
+      enforcement-enabled: ${ATENEA_AUTH_PRIVILEGED_ACTIONS_ENFORCEMENT_ENABLED:false}
+      authorization-ttl: ${ATENEA_AUTH_PRIVILEGED_ACTION_TTL:5m}
     bootstrap:
       enabled: ${ATENEA_AUTH_BOOTSTRAP_ENABLED:false}
       email: ${ATENEA_AUTH_BOOTSTRAP_EMAIL:}

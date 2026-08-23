@@ -1,8 +1,12 @@
 package com.atenea.auth;
 
+import com.atenea.auth.session.SessionInventoryProjection;
+import com.atenea.auth.session.SessionVersions;
 import com.atenea.persistence.auth.OperatorEntity;
 import com.atenea.persistence.auth.OperatorRepository;
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,18 +41,95 @@ public class OperatorAuthenticationService {
             throw new OperatorAuthenticationException("Invalid operator credentials");
         }
 
-        return issueSession(operator);
+        SessionProtocolNegotiation negotiation = negotiate(
+                request.sessionProtocolVersion(), request.singleFlightRefresh());
+        if (!negotiation.familyProtocol() && refreshTokenService.sessionEnforcementEnabled()) {
+            throw new OperatorAuthenticationException("Legacy login is no longer accepted");
+        }
+        RefreshTokenService.IssuedSession session = negotiation.familyProtocol()
+                ? refreshTokenService.createFamilySession(
+                        operator, request.clientType(), request.deviceLabel())
+                : refreshTokenService.createLegacySession(operator);
+        return issueSession(session);
     }
 
-    @Transactional
     public MobileAuthSessionResponse refresh(MobileRefreshTokenRequest request) {
-        OperatorEntity operator = refreshTokenService.consumeRefreshToken(request.refreshToken().trim());
-        return issueSession(operator);
+        SessionProtocolNegotiation negotiation = negotiate(
+                request.sessionProtocolVersion(), request.singleFlightRefresh());
+        return issueSession(refreshTokenService.rotateRefreshToken(
+                request.refreshToken().trim(),
+                negotiation,
+                request.clientType(),
+                request.deviceLabel()));
     }
 
     @Transactional
+    public MobileAuthSessionResponse loginWithWebAuthn(
+            AuthenticatedOperator authenticatedOperator,
+            String sessionProtocolVersion,
+            Boolean singleFlightRefresh,
+            String clientType,
+            String deviceLabel
+    ) {
+        SessionProtocolNegotiation negotiation = negotiate(
+                sessionProtocolVersion, singleFlightRefresh);
+        if (!negotiation.familyProtocol()) {
+            throw new OperatorAuthenticationException(
+                    "WebAuthn login requires session protocol negotiation");
+        }
+        OperatorEntity operator = operatorRepository.findById(authenticatedOperator.operatorId())
+                .filter(OperatorEntity::isActive)
+                .orElseThrow(() -> new OperatorAuthenticationException(
+                        "Operator account not found"));
+        return issueSession(refreshTokenService.createFamilySession(
+                operator,
+                clientType,
+                deviceLabel,
+                Instant.now(),
+                List.of("webauthn")));
+    }
+
     public void logout(MobileLogoutRequest request) {
-        refreshTokenService.revokeRefreshToken(request.refreshToken().trim());
+        refreshTokenService.revokeRefreshToken(
+                request.refreshToken().trim(),
+                negotiate(request.sessionProtocolVersion(), request.singleFlightRefresh()));
+    }
+
+    @Transactional(readOnly = true)
+    public List<SessionInventoryProjection> listSessions(
+            AuthenticatedOperator authenticatedOperator,
+            UUID currentFamilyId
+    ) {
+        return refreshTokenService.listSessions(
+                authenticatedOperator.operatorId(),
+                currentFamilyId);
+    }
+
+    public void revokeSession(
+            AuthenticatedOperator authenticatedOperator,
+            UUID familyId
+    ) {
+        refreshTokenService.revokeSession(authenticatedOperator.operatorId(), familyId);
+    }
+
+    public void revokeCurrentSession(
+            AuthenticatedOperator authenticatedOperator,
+            UUID currentFamilyId
+    ) {
+        refreshTokenService.revokeCurrentSession(
+                authenticatedOperator.operatorId(), currentFamilyId);
+    }
+
+    public void revokeAllOtherSessions(
+            AuthenticatedOperator authenticatedOperator,
+            UUID currentFamilyId
+    ) {
+        refreshTokenService.revokeAllOtherSessions(
+                authenticatedOperator.operatorId(), currentFamilyId);
+    }
+
+    public void revokeAllSessions(AuthenticatedOperator authenticatedOperator) {
+        refreshTokenService.revokeAllSessions(authenticatedOperator.operatorId());
     }
 
     @Transactional(readOnly = true)
@@ -60,24 +141,57 @@ public class OperatorAuthenticationService {
     }
 
     @Transactional(readOnly = true)
-    public AuthenticatedOperator authenticateAccessToken(String token) {
-        AuthenticatedOperator tokenOperator = jwtTokenService.parseAccessToken(token);
+    public AuthenticatedSession authenticateAccessToken(String token) {
+        JwtTokenService.ParsedAccessToken parsedToken = jwtTokenService.parseSessionAccessToken(token);
+        AuthenticatedOperator tokenOperator = parsedToken.operator();
         OperatorEntity operator = operatorRepository.findById(tokenOperator.operatorId())
                 .filter(OperatorEntity::isActive)
                 .orElseThrow(() -> new OperatorAuthenticationException("Operator account not found"));
-        return new AuthenticatedOperator(operator.getId(), operator.getEmail(), operator.getDisplayName());
+        if (parsedToken.sessionBound()) {
+            SessionVersions issuedVersions = new SessionVersions(
+                    parsedToken.credentialVersion(), parsedToken.roleVersion());
+            if (!issuedVersions.matches(
+                    operator.getCredentialVersion(), operator.getRoleVersion())) {
+                throw new OperatorAuthenticationException("Access token session version is stale");
+            }
+            if (!refreshTokenService.isActiveSession(
+                    operator.getId(), parsedToken.sessionFamilyId())) {
+                throw new OperatorAuthenticationException("Access token session is inactive");
+            }
+        } else if (refreshTokenService.sessionEnforcementEnabled()) {
+            throw new OperatorAuthenticationException("Legacy access token is no longer accepted");
+        }
+        return new AuthenticatedSession(
+                new AuthenticatedOperator(
+                        operator.getId(),
+                        operator.getEmail(),
+                        operator.getDisplayName()),
+                parsedToken.sessionFamilyId(),
+                parsedToken.authenticatedAt(),
+                parsedToken.authenticationMethods());
     }
 
-    private MobileAuthSessionResponse issueSession(OperatorEntity operator) {
+    private MobileAuthSessionResponse issueSession(RefreshTokenService.IssuedSession session) {
+        OperatorEntity operator = session.operator();
         AuthenticatedOperator authenticatedOperator =
-                new AuthenticatedOperator(operator.getId(), operator.getEmail(), operator.getDisplayName());
-        JwtTokenService.IssuedToken accessToken = jwtTokenService.issueAccessToken(authenticatedOperator);
-        RefreshTokenService.IssuedRefreshToken refreshToken = refreshTokenService.createRefreshToken(operator);
+                new AuthenticatedOperator(
+                        operator.getId(),
+                        operator.getEmail(),
+                        operator.getDisplayName());
+        JwtTokenService.IssuedToken accessToken = session.familyId() == null
+                ? jwtTokenService.issueAccessToken(authenticatedOperator)
+                : jwtTokenService.issueAccessToken(
+                        authenticatedOperator,
+                        session.familyId(),
+                        new SessionVersions(
+                                operator.getCredentialVersion(), operator.getRoleVersion()),
+                        session.authenticatedAt(),
+                        session.authenticationMethods());
         return new MobileAuthSessionResponse(
                 accessToken.token(),
                 accessToken.expiresAt(),
-                refreshToken.token(),
-                refreshToken.expiresAt(),
+                session.refreshToken(),
+                session.refreshTokenExpiresAt(),
                 toProfile(operator)
         );
     }
@@ -85,6 +199,16 @@ public class OperatorAuthenticationService {
     private OperatorProfileResponse toProfile(OperatorEntity operator) {
         return new OperatorProfileResponse(operator.getId(), operator.getEmail(), operator.getDisplayName(),
                 operator.getCodexOperationsRole().name());
+    }
+
+    private SessionProtocolNegotiation negotiate(
+            String requestedVersion,
+            Boolean singleFlightRefresh
+    ) {
+        return SessionProtocolNegotiation.resolve(
+                requestedVersion,
+                singleFlightRefresh,
+                refreshTokenService.supportedProtocolVersion());
     }
 
     @Transactional

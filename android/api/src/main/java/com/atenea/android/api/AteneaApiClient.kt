@@ -1,6 +1,8 @@
 package com.atenea.android.api
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -22,6 +24,7 @@ class AteneaApiClient(
     private val sessionUpdater: (MobileAuthSession) -> Unit = {}
 ) {
     private val normalizedBaseUrl = baseUrl.trimEnd('/')
+    private val refreshMutex = Mutex()
 
     fun currentOperatorRole(): String? = operatorRoleProvider()
 
@@ -29,7 +32,11 @@ class AteneaApiClient(
         path = "/api/mobile/auth/login",
         body = JSONObject()
             .put("email", email)
-            .put("password", password),
+            .put("password", password)
+            .put("clientType", "ANDROID")
+            .put("deviceLabel", "Atenea Android")
+            .put("sessionProtocolVersion", SESSION_PROTOCOL)
+            .put("singleFlightRefresh", true),
         authenticated = false,
         parser = ::parseMobileAuthSession
     )
@@ -37,10 +44,81 @@ class AteneaApiClient(
     suspend fun refresh(refreshToken: String): MobileAuthSession = postJson(
         path = "/api/mobile/auth/refresh",
         body = JSONObject()
-            .put("refreshToken", refreshToken),
+            .put("refreshToken", refreshToken)
+            .put("clientType", "ANDROID")
+            .put("deviceLabel", "Atenea Android")
+            .put("sessionProtocolVersion", SESSION_PROTOCOL)
+            .put("singleFlightRefresh", true),
         authenticated = false,
         parser = ::parseMobileAuthSession
     )
+
+    suspend fun logout(refreshToken: String) {
+        postJson(
+            path = "/api/mobile/auth/logout",
+            body = JSONObject()
+                .put("refreshToken", refreshToken)
+                .put("sessionProtocolVersion", SESSION_PROTOCOL)
+                .put("singleFlightRefresh", true),
+            authenticated = false
+        ) { Unit }
+    }
+
+    suspend fun fetchOperatorSessions(): List<OperatorSessionInventory> = getJsonArray(
+        path = "/api/mobile/auth/sessions",
+        authenticated = true
+    ) { items ->
+        List(items.length()) { index -> parseOperatorSessionInventory(items.getJSONObject(index)) }
+    }
+
+    suspend fun revokeOperatorSession(familyId: UUID) {
+        requestBody("/api/mobile/auth/sessions/$familyId", "DELETE", null, authenticated = true)
+    }
+
+    suspend fun revokeOtherOperatorSessions() {
+        requestBody("/api/mobile/auth/sessions/others", "DELETE", null, authenticated = true)
+    }
+
+    suspend fun fetchPasskeyInventory(): PasskeyInventory = getJson(
+        path = "/api/auth/webauthn/credentials",
+        authenticated = true,
+        parser = ::parsePasskeyInventory
+    )
+
+    suspend fun revokePasskey(recordId: UUID) {
+        requestBody(
+            "/api/auth/webauthn/credentials/$recordId",
+            "DELETE",
+            null,
+            authenticated = true
+        )
+    }
+
+    suspend fun fetchPasskeySignalSnapshot(): PasskeySignalSnapshot = getJson(
+        path = "/api/auth/webauthn/credentials/signal-snapshot",
+        authenticated = true,
+        parser = ::parsePasskeySignalSnapshot
+    )
+
+    suspend fun beginTotpEnrollment(): TotpEnrollment = postJson(
+        path = "/api/auth/totp/enrollments",
+        body = JSONObject(),
+        authenticated = true,
+        parser = ::parseTotpEnrollment
+    )
+
+    suspend fun activateTotpEnrollment(enrollmentId: UUID, code: String): List<String> = postJson(
+        path = "/api/auth/totp/enrollments/activate",
+        body = JSONObject().put("enrollmentId", enrollmentId.toString()).put("code", code),
+        authenticated = true
+    ) { json ->
+        val codes = json.getJSONArray("recoveryCodes")
+        List(codes.length()) { index -> codes.getString(index) }
+    }
+
+    suspend fun cancelTotpEnrollment(enrollmentId: UUID) {
+        requestBody("/api/auth/totp/enrollments/$enrollmentId", "DELETE", null, authenticated = true)
+    }
 
     suspend fun registerPushToken(
         token: String,
@@ -952,15 +1030,14 @@ class AteneaApiClient(
         }
     }
 
-    private suspend fun refreshSession(refreshToken: String) {
+    private suspend fun refreshSession(refreshToken: String) = refreshMutex.withLock {
+        if (refreshTokenProvider()?.takeIf { it.isNotBlank() } != refreshToken) {
+            return@withLock
+        }
         try {
-            val session = refresh(refreshToken)
-            sessionUpdater(session)
+            sessionUpdater(refresh(refreshToken))
         } catch (exception: AteneaApiException) {
-            throw AteneaApiException(
-                exception.status,
-                "La sesión ha caducado. Vuelve a entrar en Atenea."
-            )
+            throw AteneaApiException(exception.status, "La sesión ha caducado. Vuelve a entrar en Atenea.")
         }
     }
 }
@@ -1039,6 +1116,71 @@ data class MobileAuthSession(
     val refreshToken: String,
     val refreshTokenExpiresAt: String,
     val operator: OperatorProfile
+)
+
+data class OperatorSessionInventory(
+    val familyId: UUID,
+    val clientType: String,
+    val deviceLabel: String,
+    val createdAt: String,
+    val lastUsedAt: String,
+    val absoluteExpiresAt: String,
+    val state: OperatorSessionState,
+    val current: Boolean
+)
+
+enum class OperatorSessionState { ACTIVE, EXPIRED, REVOKED }
+
+enum class PasskeyProviderCategory {
+    GOOGLE_PASSWORD_MANAGER,
+    ONE_PASSWORD,
+    HARDWARE_SECURITY_KEY,
+    OTHER,
+    UNKNOWN
+}
+
+enum class PasskeyCredentialState { ACTIVE, REVOKED }
+
+data class PasskeyInventoryItem(
+    val recordId: UUID,
+    val label: String,
+    val providerCategory: PasskeyProviderCategory,
+    val provenance: String,
+    val backupEligible: Boolean,
+    val backupState: Boolean,
+    val transports: List<String>,
+    val createdAt: String,
+    val lastUsedAt: String?,
+    val lastVerifiedAt: String?,
+    val state: PasskeyCredentialState
+)
+
+data class PasskeyInventory(
+    val state: String,
+    val credentials: List<PasskeyInventoryItem>,
+    val requiredProviderDomains: List<PasskeyProviderCategory>,
+    val verifiedProviderDomains: List<PasskeyProviderCategory>,
+    val independentDomainsReady: Boolean,
+    val signallingEnabled: Boolean,
+    val readOnly: Boolean,
+    val nextAction: String
+)
+
+data class PasskeySignalSnapshot(
+    val relyingPartyId: String,
+    val userId: String,
+    val allAcceptedCredentialIds: List<String>,
+    val activeCredentialCount: Int,
+    val credentialVersion: Long
+) {
+    override fun toString(): String =
+        "PasskeySignalSnapshot(REDACTED,count=$activeCredentialCount,version=$credentialVersion)"
+}
+
+data class TotpEnrollment(
+    val enrollmentId: UUID,
+    val secret: String,
+    val expiresAt: String
 )
 
 enum class CoreScope {
@@ -1888,6 +2030,7 @@ private data class BinaryApiResponse(
 
 private const val DEFAULT_ATTACHMENT_DOWNLOAD_LIMIT_BYTES = 16L * 1024L * 1024L
 private const val MAX_ATTACHMENT_DOWNLOAD_LIMIT_BYTES = 32L * 1024L * 1024L
+private const val SESSION_PROTOCOL = "FAMILY_V1"
 
 class AteneaApiException(
     val status: Int,
@@ -1909,6 +2052,67 @@ private fun parseMobileAuthSession(json: JSONObject): MobileAuthSession {
         )
     )
 }
+
+internal fun parseOperatorSessionInventory(json: JSONObject): OperatorSessionInventory =
+    OperatorSessionInventory(
+        familyId = UUID.fromString(json.getString("familyId")),
+        clientType = json.getString("clientType"),
+        deviceLabel = json.getString("deviceLabel"),
+        createdAt = json.getString("createdAt"),
+        lastUsedAt = json.getString("lastUsedAt"),
+        absoluteExpiresAt = json.getString("absoluteExpiresAt"),
+        state = OperatorSessionState.valueOf(json.getString("state")),
+        current = json.getBoolean("current")
+    )
+
+internal fun parsePasskeyInventory(json: JSONObject): PasskeyInventory {
+    val credentialsJson = json.getJSONArray("credentials")
+    val credentials = List(credentialsJson.length()) { index ->
+        val item = credentialsJson.getJSONObject(index)
+        PasskeyInventoryItem(
+            recordId = UUID.fromString(item.getString("recordId")),
+            label = item.getString("label"),
+            providerCategory = PasskeyProviderCategory.valueOf(item.getString("providerCategory")),
+            provenance = item.getString("provenance"),
+            backupEligible = item.getBoolean("backupEligible"),
+            backupState = item.getBoolean("backupState"),
+            transports = item.getJSONArray("transports").toStringList(),
+            createdAt = item.getString("createdAt"),
+            lastUsedAt = item.optNullableString("lastUsedAt"),
+            lastVerifiedAt = item.optNullableString("lastVerifiedAt"),
+            state = PasskeyCredentialState.valueOf(item.getString("state"))
+        )
+    }
+    return PasskeyInventory(
+        state = json.getString("state"),
+        credentials = credentials,
+        requiredProviderDomains = json.getJSONArray("requiredProviderDomains").let { values ->
+            List(values.length()) { PasskeyProviderCategory.valueOf(values.getString(it)) }
+        },
+        verifiedProviderDomains = json.getJSONArray("verifiedProviderDomains").let { values ->
+            List(values.length()) { PasskeyProviderCategory.valueOf(values.getString(it)) }
+        },
+        independentDomainsReady = json.getBoolean("independentDomainsReady"),
+        signallingEnabled = json.getBoolean("signallingEnabled"),
+        readOnly = json.getBoolean("readOnly"),
+        nextAction = json.getString("nextAction")
+    )
+}
+
+internal fun parsePasskeySignalSnapshot(json: JSONObject): PasskeySignalSnapshot =
+    PasskeySignalSnapshot(
+        relyingPartyId = json.getString("relyingPartyId"),
+        userId = json.getString("userId"),
+        allAcceptedCredentialIds = json.getJSONArray("allAcceptedCredentialIds").toStringList(),
+        activeCredentialCount = json.getInt("activeCredentialCount"),
+        credentialVersion = json.getLong("credentialVersion")
+    )
+
+private fun parseTotpEnrollment(json: JSONObject) = TotpEnrollment(
+    enrollmentId = UUID.fromString(json.getString("enrollmentId")),
+    secret = json.getString("secret"),
+    expiresAt = json.getString("expiresAt")
+)
 
 private fun parseCoreCommandResponse(json: JSONObject): CoreCommandResponse {
     val confirmation = json.optJSONObject("confirmation")

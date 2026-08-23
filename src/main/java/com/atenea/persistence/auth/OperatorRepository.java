@@ -13,5 +13,9 @@ public interface OperatorRepository extends JpaRepository<OperatorEntity, Long> 
     @Query("select operator from OperatorEntity operator where operator.id = :operatorId")
     Optional<OperatorEntity> findByIdForRecoveryRequest(@Param("operatorId") Long operatorId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select operator from OperatorEntity operator where operator.id = :operatorId")
+    Optional<OperatorEntity> findByIdForUpdate(@Param("operatorId") Long operatorId);
+
     Optional<OperatorEntity> findByEmailIgnoreCase(String email);
 }

@@ -10,9 +10,115 @@ export interface OperatorProfile {
 export interface AuthSession {
   accessToken: string;
   accessTokenExpiresAt: string;
-  refreshToken: string;
-  refreshTokenExpiresAt: string;
   operator: OperatorProfile;
+}
+
+export interface OperatorSessionInventory {
+  familyId: string;
+  clientType: string;
+  deviceLabel: string;
+  createdAt: string;
+  lastUsedAt: string;
+  absoluteExpiresAt: string;
+  state: "ACTIVE" | "EXPIRED" | "REVOKED";
+  current: boolean;
+}
+
+export interface TotpEnrollment {
+  enrollmentId: string;
+  secret: string;
+  expiresAt: string;
+}
+
+export interface WebAuthnOptions {
+  requestId: string;
+  challenge: string;
+  timeoutMillis: number;
+  relyingPartyId: string;
+  relyingPartyName?: string | null;
+  userHandle?: string | null;
+  opaqueUserName?: string | null;
+  credentialParameters: { type: "public-key"; algorithm: number }[];
+  credentials: { type: "public-key"; id: string; transports: AuthenticatorTransport[] }[];
+  userVerification: UserVerificationRequirement;
+  residentKey?: ResidentKeyRequirement | null;
+  attestation?: AttestationConveyancePreference | null;
+}
+
+export type WebAuthnProviderCategory =
+  | "GOOGLE_PASSWORD_MANAGER"
+  | "ONE_PASSWORD"
+  | "HARDWARE_SECURITY_KEY"
+  | "OTHER"
+  | "UNKNOWN";
+
+export interface WebAuthnCredentialInventoryItem {
+  recordId: string;
+  label: string;
+  providerCategory: WebAuthnProviderCategory;
+  provenance: "OPERATOR_DECLARED" | "UNKNOWN";
+  backupEligible: boolean;
+  backupState: boolean;
+  transports: string[];
+  createdAt: string;
+  lastUsedAt?: string | null;
+  lastVerifiedAt?: string | null;
+  state: "ACTIVE" | "REVOKED";
+}
+
+export interface WebAuthnCredentialInventory {
+  state: "DISABLED" | "ACTION_REQUIRED" | "READY";
+  credentials: WebAuthnCredentialInventoryItem[];
+  requiredProviderDomains: WebAuthnProviderCategory[];
+  verifiedProviderDomains: WebAuthnProviderCategory[];
+  independentDomainsReady: boolean;
+  signallingEnabled: boolean;
+  readOnly: boolean;
+  nextAction: string;
+}
+
+export interface WebAuthnCredentialSignalSnapshot {
+  relyingPartyId: string;
+  userId: string;
+  allAcceptedCredentialIds: string[];
+  activeCredentialCount: number;
+  credentialVersion: number;
+}
+
+export interface WebAuthnCredentialVerification {
+  recordId: string;
+  label: string;
+  providerCategory: WebAuthnProviderCategory;
+  verifiedAt: string;
+}
+
+export type WebAuthnControlledResetState =
+  | "DISABLED"
+  | "BLOCKED"
+  | "REGISTER_NEW"
+  | "PROVE_NEW"
+  | "COMMIT_READY"
+  | "COMPLETE";
+
+export interface WebAuthnControlledResetStatus {
+  state: WebAuthnControlledResetState;
+  targetProvider: "1Password";
+  expectedHistoricalCredentialCount: number;
+  observedHistoricalCredentialCount?: number | null;
+  candidateRecordId?: string | null;
+  candidateLabel?: string | null;
+  activeTotpCount?: number | null;
+  activeRecoveryCodeCount?: number | null;
+  nextAction: string;
+}
+
+export interface WebAuthnControlledResetResult {
+  state: "COMMITTED";
+  activePasskeyCount: number;
+  revokedHistoricalCount: number;
+  activeTotpCount: number;
+  activeRecoveryCodeCount: number;
+  credentialVersion: number;
 }
 
 export interface ApiErrorPayload {

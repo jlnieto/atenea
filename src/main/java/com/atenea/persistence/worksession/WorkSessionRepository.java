@@ -17,6 +17,28 @@ public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, 
 
     boolean existsByProjectIdAndStatusIn(Long projectId, Collection<WorkSessionStatus> statuses);
 
+    boolean existsByDevelopmentChangeIdAndStatusIn(
+            Long developmentChangeId,
+            Collection<WorkSessionStatus> statuses);
+
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
+    Optional<WorkSessionEntity> findFirstByDevelopmentChangeIdAndStatusInOrderByOpenedAtAsc(
+            Long developmentChangeId,
+            Collection<WorkSessionStatus> statuses);
+
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
+    List<WorkSessionEntity> findAllByDevelopmentChangeIdOrderByOpenedAtAscIdAsc(
+            Long developmentChangeId);
+
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
+    List<WorkSessionEntity> findAllByWorkspaceIdentityOrderByOpenedAtAscIdAsc(
+            String workspaceIdentity);
+
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
+    List<WorkSessionEntity> findAllByProjectIdAndWorkspaceBranchOrderByOpenedAtAscIdAsc(
+            Long projectId,
+            String workspaceBranch);
+
     @EntityGraph(attributePaths = "project")
     Optional<WorkSessionEntity> findByProjectIdAndStatus(Long projectId, WorkSessionStatus status);
 
@@ -31,6 +53,10 @@ public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, 
 
     @EntityGraph(attributePaths = "project")
     Optional<WorkSessionEntity> findWithProjectById(Long id);
+
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
+    @Query("select session from WorkSessionEntity session where session.id = :id")
+    Optional<WorkSessionEntity> findWithProjectAndDevelopmentChangeById(@Param("id") Long id);
 
     @EntityGraph(attributePaths = "project")
     Optional<WorkSessionEntity> findByRemoteSessionId(UUID remoteSessionId);
@@ -56,6 +82,12 @@ public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, 
     @EntityGraph(attributePaths = "project")
     @Query("select session from WorkSessionEntity session where session.id = :id")
     Optional<WorkSessionEntity> findLockedWithProjectById(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
+    @Query("select session from WorkSessionEntity session where session.id = :id")
+    Optional<WorkSessionEntity> findLockedWithProjectAndDevelopmentChangeById(
+            @Param("id") Long id);
 
     @EntityGraph(attributePaths = "project")
     java.util.List<WorkSessionEntity> findByProjectIdOrderByLastActivityAtDesc(Long projectId);

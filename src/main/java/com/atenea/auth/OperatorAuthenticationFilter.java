@@ -48,14 +48,15 @@ public class OperatorAuthenticationFilter extends OncePerRequestFilter {
         }
 
         try {
-            AuthenticatedOperator operator = operatorAuthenticationService.authenticateAccessToken(
+            AuthenticatedSession session = operatorAuthenticationService.authenticateAccessToken(
                     authorization.substring("Bearer ".length()).trim()
             );
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                    operator,
+                    session.operator(),
                     null,
                     List.of(new SimpleGrantedAuthority("ROLE_OPERATOR"))
             );
+            authentication.setDetails(session.sessionFamilyId());
             SecurityContextHolder.getContext().setAuthentication(authentication);
             filterChain.doFilter(request, response);
         } catch (OperatorAuthenticationException exception) {
@@ -67,6 +68,14 @@ public class OperatorAuthenticationFilter extends OncePerRequestFilter {
     private boolean isPublicAuthPath(String path) {
         return "/api/mobile/auth/login".equals(path)
                 || "/api/mobile/auth/refresh".equals(path)
-                || "/api/mobile/auth/logout".equals(path);
+                || "/api/mobile/auth/logout".equals(path)
+                || "/api/web/auth/login".equals(path)
+                || "/api/web/auth/refresh".equals(path)
+                || "/api/web/auth/logout".equals(path)
+                || "/api/mobile/auth/webauthn/authentication/options".equals(path)
+                || "/api/mobile/auth/webauthn/authentication".equals(path)
+                || "/api/web/auth/webauthn/authentication/options".equals(path)
+                || "/api/web/auth/webauthn/authentication".equals(path)
+                || "/api/auth/recovery".equals(path);
     }
 }

@@ -61,6 +61,7 @@ import {
   MobileSessionSummary,
   MobileUpload,
   MobileWorkSessionConversation,
+  OperatorSessionInventory,
   OperationsHostStatus,
   OperationsIncident,
   SessionDeliverable,
@@ -69,7 +70,10 @@ import {
   SessionTurnAttachment,
   WorkSessionAttachment,
   WorkSessionAttachmentCapability,
-  WorkSessionPreview
+  WorkSessionPreview,
+  WebAuthnControlledResetStatus,
+  WebAuthnCredentialInventory,
+  WebAuthnProviderCategory
 } from "./types";
 
 type RouteName =
@@ -131,10 +135,12 @@ marked.use({
 
 export function App() {
   const [session, setSession] = useState<AuthSession | null>(api.currentSession);
+  const [authReady, setAuthReady] = useState(false);
   const [route, setRoute] = useState<Route>(() => readRoute());
 
   useEffect(() => {
     const unsubscribe = api.subscribe(setSession);
+    api.bootstrap().finally(() => setAuthReady(true));
     return () => {
       unsubscribe();
     };
@@ -148,11 +154,27 @@ export function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  if (!authReady) {
+    return <AuthRestoringScreen />;
+  }
+
   if (!session) {
     return <LoginScreen />;
   }
 
   return <Shell session={session} route={route} />;
+}
+
+function AuthRestoringScreen() {
+  return (
+    <main className="login">
+      <section className="login__panel" aria-live="polite">
+        <span className="eyebrow">Atenea Console</span>
+        <h1>Recuperando sesión segura</h1>
+        <p className="login__copy">Comprobando la cookie protegida del navegador.</p>
+      </section>
+    </main>
+  );
 }
 
 function Shell({ session, route }: { session: AuthSession; route: Route }) {
@@ -305,6 +327,18 @@ function LoginScreen() {
     }
   }
 
+  async function passkeyLogin() {
+    setLoading(true);
+    setError("");
+    try {
+      await api.loginWithPasskey();
+    } catch (loginError) {
+      setError(errorMessage(loginError));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <main className="login">
       <section className="login__panel">
@@ -339,6 +373,10 @@ function LoginScreen() {
           <button className="button button--primary" disabled={loading || !email.trim() || !password} type="submit">
             <Lock />
             {loading ? "Validando..." : "Entrar"}
+          </button>
+          <button className="button" disabled={loading} type="button" onClick={passkeyLogin}>
+            <ShieldCheck />
+            Entrar con passkey
           </button>
         </form>
       </section>
@@ -2586,19 +2624,423 @@ function codexAdminNextStep(
 }
 
 function SettingsScreen() {
+  const [sessions, setSessions] = useState<OperatorSessionInventory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [factorNotice, setFactorNotice] = useState("");
+  const [factorPending, setFactorPending] = useState(false);
+  const [totp, setTotp] = useState<{ enrollmentId: string; secret: string } | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [passkeys, setPasskeys] = useState<WebAuthnCredentialInventory | null>(null);
+  const [passkeyReset, setPasskeyReset] = useState<WebAuthnControlledResetStatus | null>(null);
+  const [passkeyLoading, setPasskeyLoading] = useState(true);
+  const [passkeyError, setPasskeyError] = useState("");
+  const [passkeyNotice, setPasskeyNotice] = useState("");
+  const [providerCategory, setProviderCategory] = useState<WebAuthnProviderCategory>(
+    "UNKNOWN"
+  );
+  const [selectedPasskeyRecordId, setSelectedPasskeyRecordId] = useState("");
+
+  async function loadSessions() {
+    setLoading(true);
+    setError("");
+    try {
+      setSessions(await api.sessions());
+    } catch (loadError) {
+      setError(errorMessage(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadPasskeys() {
+    setPasskeyLoading(true);
+    setPasskeyError("");
+    try {
+      const [inventory, reset] = await Promise.all([
+        api.passkeyInventory(),
+        api.passkeyResetStatus()
+      ]);
+      if (!inventory || !Array.isArray(inventory.credentials)
+        || typeof inventory.readOnly !== "boolean"
+        || !["DISABLED", "ACTION_REQUIRED", "READY"].includes(inventory.state)) {
+        throw new Error("El inventario de passkeys no devolvió un estado válido.");
+      }
+      if (!reset || !["DISABLED", "BLOCKED", "REGISTER_NEW", "PROVE_NEW", "COMMIT_READY", "COMPLETE"].includes(reset.state)
+        || reset.targetProvider !== "1Password") {
+        throw new Error("El reinicio de passkeys no devolvió un estado válido.");
+      }
+      setPasskeys(inventory);
+      setPasskeyReset(reset);
+      setSelectedPasskeyRecordId((current) => inventory.credentials.some(
+        (credential) => credential.recordId === current && credential.state === "ACTIVE"
+      ) ? current : "");
+    } catch (loadError) {
+      setPasskeyError(errorMessage(loadError));
+    } finally {
+      setPasskeyLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadSessions();
+    loadPasskeys();
+  }, []);
+
+  async function revoke(familyId: string) {
+    try {
+      await api.revokeSession(familyId);
+      await loadSessions();
+    } catch (revokeError) {
+      setError(errorMessage(revokeError));
+    }
+  }
+
+  async function registerPasskey() {
+    setFactorPending(true);
+    setFactorNotice("");
+    try {
+      await api.registerPasskey(
+        passkeys?.state === "DISABLED" ? undefined : providerCategory
+      );
+      setFactorNotice("Passkey registrada. Las sesiones anteriores quedan invalidadas.");
+      await loadPasskeys();
+    } catch (factorError) {
+      setError(errorMessage(factorError));
+    } finally {
+      setFactorPending(false);
+    }
+  }
+
+  async function verifyPasskey() {
+    if (!selectedPasskeyRecordId) return;
+    setFactorPending(true);
+    setPasskeyError("");
+    setPasskeyNotice("");
+    try {
+      const verified = await api.verifyPasskeyOwnership(
+        selectedPasskeyRecordId,
+        providerCategory
+      );
+      setPasskeyNotice(`${verified.label} verificada sin exponer su identificador.`);
+      setSelectedPasskeyRecordId("");
+      await loadPasskeys();
+    } catch (factorError) {
+      setPasskeyError(errorMessage(factorError));
+    } finally {
+      setFactorPending(false);
+    }
+  }
+
+  async function revokePasskey(recordId: string) {
+    setFactorPending(true);
+    setPasskeyError("");
+    try {
+      await api.revokePasskey(recordId);
+      setPasskeyNotice(
+        "Passkey revocada en Atenea. Elimínala también del proveedor si ya no la necesitas."
+      );
+      await loadPasskeys();
+    } catch (factorError) {
+      setPasskeyError(errorMessage(factorError));
+    } finally {
+      setFactorPending(false);
+    }
+  }
+
+  async function signalAcceptedPasskeys() {
+    setFactorPending(true);
+    setPasskeyError("");
+    try {
+      const result = await api.signalAcceptedPasskeys();
+      setPasskeyNotice(result === "SIGNALED"
+        ? "El proveedor recibió el inventario activo completo."
+        : "Este navegador no admite Signal API. Revisa las passkeys manualmente en el proveedor.");
+    } catch (factorError) {
+      setPasskeyError(errorMessage(factorError));
+    } finally {
+      setFactorPending(false);
+    }
+  }
+
+  async function advancePasskeyReset() {
+    if (!passkeyReset || passkeyReset.state === "DISABLED"
+      || passkeyReset.state === "BLOCKED" || passkeyReset.state === "COMPLETE") return;
+    setFactorPending(true);
+    setPasskeyError("");
+    setPasskeyNotice("");
+    try {
+      if (passkeyReset.state === "REGISTER_NEW") {
+        await api.registerPasskey("ONE_PASSWORD");
+        setPasskeyNotice("Passkey nueva registrada. Verifícala antes de sustituir las históricas.");
+      } else if (passkeyReset.state === "PROVE_NEW") {
+        if (!passkeyReset.candidateRecordId) {
+          throw new Error("Falta la referencia segura de la passkey nueva.");
+        }
+        await api.verifyPasskeyOwnership(passkeyReset.candidateRecordId, "ONE_PASSWORD");
+        setPasskeyNotice("Passkey nueva verificada. Las históricas aún no han cambiado.");
+      } else if (passkeyReset.state === "COMMIT_READY") {
+        if (!passkeyReset.candidateRecordId) {
+          throw new Error("Falta la referencia segura de la passkey verificada.");
+        }
+        await api.commitPasskeyReset(passkeyReset.candidateRecordId);
+        setPasskeyNotice("Reinicio completado: queda activa la nueva passkey de 1Password.");
+      }
+      await loadPasskeys();
+    } catch (factorError) {
+      setPasskeyError(errorMessage(factorError));
+    } finally {
+      setFactorPending(false);
+    }
+  }
+
+  async function beginTotp() {
+    setFactorPending(true);
+    setError("");
+    try {
+      const enrollment = await api.beginTotpEnrollment();
+      setTotp({ enrollmentId: enrollment.enrollmentId, secret: enrollment.secret });
+      setFactorNotice("Alta pendiente: verifica un código para activarla.");
+    } catch (factorError) {
+      setError(errorMessage(factorError));
+    } finally {
+      setFactorPending(false);
+    }
+  }
+
+  async function activateTotp() {
+    if (!totp) return;
+    setFactorPending(true);
+    try {
+      const result = await api.activateTotpEnrollment(totp.enrollmentId, totpCode);
+      setRecoveryCodes(result.recoveryCodes);
+      setTotp(null);
+      setTotpCode("");
+      setFactorNotice("TOTP activo. Guarda ahora los códigos: sólo se muestran una vez.");
+    } catch (factorError) {
+      setError(errorMessage(factorError));
+    } finally {
+      setFactorPending(false);
+    }
+  }
+
   return (
     <Page>
       <Panel>
-        <PanelHeader title="Ajustes" eyebrow="Operador" />
+        <PanelHeader title="Seguridad de la cuenta" eyebrow="Operador" />
         <List>
-          <Row title="Sesión" detail="Los tokens se guardan en sessionStorage y se refrescan automáticamente." level="ok" />
+          <Row title="Sesión web protegida" detail="Refresh en cookie HttpOnly; acceso sólo en memoria y refresh coordinado." level="ok" />
           <Row title="API" detail={window.location.origin} />
-          <Row title="Web Console" detail="Interfaz React/TypeScript servida por Spring Boot." />
+          <Row title="Factores fuertes" detail="Passkey preferente y TOTP de respaldo. El alta real requiere autorización H11." level="warning" />
         </List>
+        <div className="security-section" aria-label="Factores de seguridad">
+          <div>
+            <span className="eyebrow">Factores</span>
+            <h3>Acceso fuerte y step-up</h3>
+            <p className="muted">El mismo factor reciente se usa para autorizar una acción y un target/plan exactos.</p>
+          </div>
+          {factorNotice && <p className="notice notice--ok">{factorNotice}</p>}
+          {passkeyNotice && <p className="notice notice--ok">{passkeyNotice}</p>}
+          {passkeyLoading && <p className="muted">Cargando passkeys sanitizadas…</p>}
+          {passkeyError && <InlineError>{passkeyError}</InlineError>}
+          {passkeyReset && passkeyReset.state !== "DISABLED" && (
+            <div className="factor-enrollment" aria-label="Reinicio controlado de passkeys">
+              <div className="factor-enrollment__heading">
+                <span className="eyebrow">Reinicio controlado</span>
+                <strong>{passkeyResetStateLabel(passkeyReset)}</strong>
+              </div>
+              <p>{passkeyReset.nextAction}</p>
+              {passkeyReset.state !== "BLOCKED" && passkeyReset.state !== "COMPLETE" && (
+                <Button
+                  variant="primary"
+                  disabled={factorPending}
+                  icon={<ShieldCheck />}
+                  onClick={advancePasskeyReset}
+                >
+                  {passkeyResetActionLabel(passkeyReset)}
+                </Button>
+              )}
+            </div>
+          )}
+          {passkeys && (
+            <div className={`passkey-state passkey-state--${passkeys.state.toLowerCase()}`}>
+              <div>
+                <strong>{passkeyStateLabel(passkeys)}</strong>
+                <span>{passkeys.nextAction}</span>
+              </div>
+              <StatusPill level={passkeys.readOnly ? "warning" : passkeys.independentDomainsReady ? "ok" : passkeys.state === "DISABLED" ? "neutral" : "warning"}>
+                {passkeys.readOnly ? "Solo lectura" : passkeys.independentDomainsReady ? "2 dominios" : passkeys.state === "DISABLED" ? "Desactivado" : "Pendiente"}
+              </StatusPill>
+            </div>
+          )}
+          {passkeys && passkeys.state !== "DISABLED"
+            && (!passkeyReset || passkeyReset.state === "DISABLED") && (
+            <>
+              <label className="field passkey-provider">
+                <span>{passkeys.readOnly
+                  ? "Proveedor usado en esta prueba"
+                  : "Proveedor que vas a usar"}</span>
+                <select
+                  aria-label="Proveedor de passkey"
+                  value={providerCategory}
+                  onChange={(event) => setProviderCategory(event.target.value as WebAuthnProviderCategory)}
+                >
+                  <option value="GOOGLE_PASSWORD_MANAGER">Google Password Manager</option>
+                  <option value="ONE_PASSWORD">1Password</option>
+                  <option value="UNKNOWN">Proveedor desconocido</option>
+                </select>
+              </label>
+              {passkeys.readOnly && (
+                <Button
+                  variant="primary"
+                  disabled={factorPending || !selectedPasskeyRecordId}
+                  icon={<ShieldCheck />}
+                  onClick={verifyPasskey}
+                >
+                  Verificar passkey seleccionada
+                </Button>
+              )}
+              <div className="passkey-inventory" aria-label="Inventario sanitizado de passkeys">
+                {passkeys.credentials.length === 0 && (
+                  <p className="muted">Aún no hay passkeys en el inventario seguro.</p>
+                )}
+                {passkeys.credentials.map((credential) => (
+                  <div className="security-session" key={credential.recordId}>
+                    <div>
+                      <strong>{credential.label}</strong>
+                      <span>
+                        {credential.state === "ACTIVE" ? "Activa" : "Revocada"}
+                        {credential.backupEligible ? " · Sincronizable" : " · No sincronizable"}
+                        {credential.lastVerifiedAt
+                          ? ` · Verificada ${formatAbsoluteDate(credential.lastVerifiedAt)}`
+                          : " · Sin verificar"}
+                      </span>
+                    </div>
+                    {passkeys.readOnly && credential.state === "ACTIVE" && (
+                      <label className="passkey-choice">
+                        <input
+                          type="radio"
+                          name="passkey-record"
+                          value={credential.recordId}
+                          aria-label={`Verificar ${credential.label}`}
+                          checked={selectedPasskeyRecordId === credential.recordId}
+                          onChange={() => setSelectedPasskeyRecordId(credential.recordId)}
+                        />
+                        <span>Elegir para verificar</span>
+                      </label>
+                    )}
+                    {!passkeys.readOnly && credential.state === "ACTIVE" && (
+                      <Button
+                        variant="danger"
+                        disabled={factorPending}
+                        onClick={() => revokePasskey(credential.recordId)}
+                      >
+                        Revocar en Atenea
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="button-row">
+            {passkeys && !passkeys.readOnly
+              && (!passkeyReset || passkeyReset.state === "DISABLED") && (
+              <Button variant="primary" disabled={factorPending} icon={<ShieldCheck />} onClick={registerPasskey}>Registrar passkey</Button>
+            )}
+            {passkeys?.signallingEnabled && !passkeys.readOnly
+              && (!passkeyReset || passkeyReset.state === "DISABLED") && (
+              <Button disabled={factorPending} onClick={signalAcceptedPasskeys}>
+                Sincronizar inventario activo
+              </Button>
+            )}
+            {passkeys && !passkeys.readOnly && !totp
+              && (!passkeyReset || passkeyReset.state === "DISABLED") && (
+              <Button disabled={factorPending} onClick={beginTotp}>Preparar TOTP</Button>
+            )}
+          </div>
+          {totp && !passkeys?.readOnly
+            && (!passkeyReset || passkeyReset.state === "DISABLED") && (
+            <div className="factor-enrollment">
+              <strong>Alta TOTP pendiente</strong>
+              <p>Introduce este secreto en tu authenticator y verifica un código de 6 dígitos.</p>
+              <code>{totp.secret}</code>
+              <label className="field">
+                <span>Código TOTP</span>
+                <input inputMode="numeric" maxLength={6} value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, ""))} />
+              </label>
+              <div className="button-row">
+                <Button variant="primary" disabled={factorPending || totpCode.length !== 6} onClick={activateTotp}>Activar TOTP</Button>
+                <Button onClick={async () => { await api.cancelTotpEnrollment(totp.enrollmentId); setTotp(null); }}>Cancelar</Button>
+              </div>
+            </div>
+          )}
+          {recoveryCodes.length > 0 && (
+            <div className="factor-enrollment" aria-label="Códigos de recuperación de una sola visualización">
+              <strong>Códigos de recuperación</strong>
+              <p>Guárdalos fuera de Atenea. Cada código se usa una sola vez.</p>
+              <div className="recovery-code-grid">{recoveryCodes.map((code) => <code key={code}>{code}</code>)}</div>
+              <Button onClick={() => setRecoveryCodes([])}>Ya los he guardado</Button>
+            </div>
+          )}
+        </div>
+        <div className="security-section">
+          <div>
+            <span className="eyebrow">Sesiones</span>
+            <h3>Dispositivos con acceso</h3>
+          </div>
+          {loading && <p className="muted">Cargando inventario seguro…</p>}
+          {error && <InlineError>{error}</InlineError>}
+          {!loading && !error && sessions.length === 0 && <p className="muted">No hay sesiones familiares activas.</p>}
+          {sessions.map((item) => (
+            <div className="security-session" key={item.familyId}>
+              <div>
+                <strong>{item.deviceLabel}{item.current ? " · Esta sesión" : ""}</strong>
+                <span>{item.clientType} · {item.state} · Último uso {formatAbsoluteDate(item.lastUsedAt)}</span>
+              </div>
+              {!item.current && item.state === "ACTIVE" && (
+                <Button variant="danger" onClick={() => revoke(item.familyId)}>Revocar</Button>
+              )}
+            </div>
+          ))}
+          {sessions.some((item) => !item.current && item.state === "ACTIVE") && (
+            <Button onClick={async () => { await api.revokeOtherSessions(); await loadSessions(); }}>
+              Cerrar las demás sesiones
+            </Button>
+          )}
+        </div>
         <Button variant="danger" icon={<LogOut />} onClick={() => api.logout()}>Cerrar sesión</Button>
       </Panel>
     </Page>
   );
+}
+
+function passkeyStateLabel(inventory: WebAuthnCredentialInventory) {
+  if (inventory.state === "DISABLED") return "Inventario correctivo desactivado";
+  if (inventory.readOnly) return "Discovery de passkeys: solo lectura";
+  if (inventory.independentDomainsReady) return "Passkeys independientes verificadas";
+  return "Falta independencia entre proveedores";
+}
+
+function passkeyResetStateLabel(reset: WebAuthnControlledResetStatus) {
+  switch (reset.state) {
+    case "REGISTER_NEW": return "1 de 3 · Registrar en 1Password";
+    case "PROVE_NEW": return "2 de 3 · Verificar la passkey nueva";
+    case "COMMIT_READY": return "3 de 3 · Sustituir las históricas";
+    case "COMPLETE": return "Reinicio completado";
+    case "BLOCKED": return "Reinicio bloqueado";
+    default: return "Reinicio desactivado";
+  }
+}
+
+function passkeyResetActionLabel(reset: WebAuthnControlledResetStatus) {
+  switch (reset.state) {
+    case "REGISTER_NEW": return "Registrar passkey en 1Password";
+    case "PROVE_NEW": return "Verificar passkey nueva";
+    case "COMMIT_READY": return "Sustituir passkeys históricas";
+    default: return "Sin acción disponible";
+  }
 }
 
 function RescueScreen({ projectId, rescueSessionId }: { projectId: number; rescueSessionId?: number }) {

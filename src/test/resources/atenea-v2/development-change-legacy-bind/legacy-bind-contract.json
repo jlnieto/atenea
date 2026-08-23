@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "kind": "M2_LEGACY_BIND_CONTRACT",
+  "operationKind": "LEGACY_BIND",
+  "status": "SPECIFIED_DISABLED",
+  "synthetic": true,
+  "containsOperationalContent": false,
+  "runtimeSurfacePresent": false,
+  "planEnabledByDefault": false,
+  "confirmationEnabledByDefault": false,
+  "automaticBackfill": false,
+  "contractMigrationCreated": false,
+  "plan": {
+    "operationallyReadOnly": true,
+    "durableBeforeConfirmation": true,
+    "maximumTtlSeconds": 600,
+    "identityMode": "LEGACY_ADOPTED",
+    "requiredFields": [
+      "planId",
+      "projectId",
+      "workSessionId",
+      "remoteSessionId",
+      "proposedChangeKey",
+      "baseRef",
+      "baseCommit",
+      "retainedHead",
+      "workspaceBranch",
+      "workspaceIdentity",
+      "selectedWorkerId",
+      "workloadKind",
+      "workSessionVersion",
+      "sourceFingerprintSha256",
+      "sessionFingerprintSha256",
+      "ownershipFingerprintSha256",
+      "projectPolicyRevision",
+      "createdAt",
+      "expiresAt",
+      "planFingerprintSha256"
+    ],
+    "serverOwnedFields": [
+      "projectId",
+      "workSessionId",
+      "remoteSessionId",
+      "proposedChangeKey",
+      "baseRef",
+      "baseCommit",
+      "retainedHead",
+      "workspaceBranch",
+      "workspaceIdentity",
+      "selectedWorkerId",
+      "workloadKind",
+      "workSessionVersion",
+      "sourceFingerprintSha256",
+      "sessionFingerprintSha256",
+      "ownershipFingerprintSha256",
+      "projectPolicyRevision"
+    ],
+    "clientOwnedSelectors": [],
+    "mayCreateBranch": false,
+    "mayCreateWorkspace": false,
+    "mayMoveSession": false,
+    "mayContactWorker": false,
+    "mayRunPrompt": false
+  },
+  "confirmation": {
+    "implemented": false,
+    "requiresHumanGate": "H5",
+    "requiresPrivilegedActionAuthorization": true,
+    "privilegedActionKind": "LEGACY_BIND",
+    "singleUse": true,
+    "idempotent": true,
+    "concurrentWinners": 1,
+    "requiredInputs": [
+      "planId",
+      "planFingerprintSha256",
+      "h5GateRequestSha256",
+      "privilegedActionAuthorization",
+      "idempotencyKey"
+    ],
+    "allowedAtomicEffects": [
+      "CREATE_LEGACY_ADOPTED_DEVELOPMENT_CHANGE",
+      "SET_EXACT_WORK_SESSION_DEVELOPMENT_CHANGE_ID",
+      "PERSIST_SANITIZED_RECEIPT"
+    ],
+    "forbiddenEffects": [
+      "UPDATE_SOURCE",
+      "MOVE_BRANCH",
+      "MOVE_WORKSPACE",
+      "CHANGE_WORKER",
+      "CHANGE_REMOTE_SESSION",
+      "COPY_HISTORY",
+      "CREATE_TURN",
+      "CREATE_AGENT_RUN",
+      "RUN_PROMPT",
+      "AUTOMATIC_BACKFILL"
+    ]
+  },
+  "privilegedActionBinding": {
+    "actionKind": "LEGACY_BIND",
+    "targetCanonicalFields": [
+      "projectId",
+      "workSessionId",
+      "remoteSessionId",
+      "proposedChangeKey",
+      "ownershipFingerprintSha256"
+    ],
+    "planCanonicalFields": [
+      "planId",
+      "planFingerprintSha256",
+      "sourceFingerprintSha256",
+      "sessionFingerprintSha256",
+      "workSessionVersion",
+      "expiresAt"
+    ]
+  },
+  "protectedExclusion": {
+    "workSessionId": 19,
+    "remoteSessionId": "6547081d-895e-4be1-a8fd-d115b7743cdf",
+    "defaultDecision": "EXCLUDED_REQUIRES_EXPLICIT_H5",
+    "genericPlanAllowed": false,
+    "genericConfirmationAllowed": false,
+    "automaticBinding": false,
+    "exactH5MustName": [
+      "projectId",
+      "workSessionId",
+      "remoteSessionId",
+      "proposedChangeKey",
+      "planFingerprintSha256",
+      "ownershipFingerprintSha256"
+    ]
+  },
+  "failureCases": [
+    {"case": "PLAN_SURFACE_DISABLED", "state": "BLOCKED", "mutations": 0},
+    {"case": "CONFIRMATION_SURFACE_DISABLED", "state": "BLOCKED", "mutations": 0},
+    {"case": "GENERIC_TARGET_IS_WS19", "state": "EXCLUDED_REQUIRES_EXPLICIT_H5", "mutations": 0},
+    {"case": "SESSION_ALREADY_BOUND", "state": "BLOCKED", "mutations": 0},
+    {"case": "PROJECT_OR_CHANGE_OWNERSHIP_MISMATCH", "state": "BLOCKED", "mutations": 0},
+    {"case": "SOURCE_SESSION_OR_WORKER_DRIFT", "state": "STALE", "mutations": 0},
+    {"case": "PLAN_EXPIRED_OR_ALREADY_CONSUMED", "state": "BLOCKED", "mutations": 0},
+    {"case": "PLAN_OR_TARGET_FINGERPRINT_MISMATCH", "state": "BLOCKED", "mutations": 0},
+    {"case": "H5_REQUEST_MISSING_OR_DIVERGENT", "state": "BLOCKED", "mutations": 0},
+    {"case": "PRIVILEGED_AUTHORIZATION_MISSING_EXPIRED_OR_CONSUMED", "state": "BLOCKED", "mutations": 0},
+    {"case": "CONCURRENT_CONFIRMATION_LOSER", "state": "BLOCKED", "mutations": 0}
+  ]
+}

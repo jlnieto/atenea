@@ -1,5 +1,6 @@
 import {
   ApiError,
+  ApiErrorPayload,
   AuthSession,
   BillingQueueResponse,
   CodexActivationAuthorization,
@@ -29,6 +30,7 @@ import {
   MobileSessionSummary,
   MobileUpload,
   MobileWorkSessionConversation,
+  OperatorSessionInventory,
   OperationsHostStatus,
   OperationsIncident,
   ResolveMobileRescueSessionResult,
@@ -39,10 +41,21 @@ import {
   UploadWorkSessionAttachmentRequest,
   WorkSessionAttachment,
   WorkSessionAttachmentCapability,
-  WorkSessionPreview
+  WorkSessionPreview,
+  TotpEnrollment,
+  WebAuthnOptions,
+  WebAuthnCredentialInventory,
+  WebAuthnCredentialSignalSnapshot,
+  WebAuthnCredentialVerification,
+  WebAuthnControlledResetResult,
+  WebAuthnControlledResetStatus,
+  WebAuthnProviderCategory
 } from "./types";
 
-const AUTH_KEY = "atenea.web.console.auth.v2";
+const SESSION_PROTOCOL = "FAMILY_V1";
+const SESSION_PROTOCOL_HEADER = "X-Atenea-Session-Protocol";
+const SINGLE_FLIGHT_HEADER = "X-Atenea-Single-Flight";
+const CSRF_HEADER = "X-Atenea-CSRF";
 
 export type AuthListener = (session: AuthSession | null) => void;
 
@@ -75,9 +88,10 @@ function unwrapWorkSessionConversation(
 export class AteneaApi {
   private session: AuthSession | null;
   private listeners = new Set<AuthListener>();
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor() {
-    this.session = readStoredSession();
+    this.session = null;
   }
 
   get currentSession() {
@@ -90,25 +104,185 @@ export class AteneaApi {
   }
 
   async login(email: string, password: string) {
-    const session = await this.post<AuthSession>("/api/mobile/auth/login", { email, password }, false);
+    const session = await this.request<AuthSession>("/api/web/auth/login", {
+      method: "POST",
+      body: { email, password, deviceLabel: "Atenea web" },
+      authenticated: false,
+      jsonBody: true,
+      credentials: "include",
+      headers: protocolHeaders()
+    });
     this.setSession(session);
     return session;
   }
 
+  async bootstrap() {
+    if (this.session) return true;
+    return this.refresh();
+  }
+
   async logout() {
-    const refreshToken = this.session?.refreshToken;
-    this.setSession(null);
-    if (refreshToken) {
-      try {
-        await this.post("/api/mobile/auth/logout", { refreshToken }, false);
-      } catch {
-        // Local logout must remain deterministic even with an expired refresh token.
-      }
+    try {
+      await this.request("/api/web/auth/logout", {
+        method: "POST",
+        authenticated: false,
+        credentials: "include",
+        headers: cookieProofHeaders()
+      });
+    } catch {
+      // Local logout remains deterministic if the server-side family already expired.
+    } finally {
+      this.setSession(null);
     }
   }
 
   async me() {
     return this.get<{ operator: AuthSession["operator"] }>("/api/mobile/auth/me");
+  }
+
+  sessions() {
+    return this.get<OperatorSessionInventory[]>("/api/mobile/auth/sessions");
+  }
+
+  revokeSession(familyId: string) {
+    return this.delete(`/api/mobile/auth/sessions/${encodeURIComponent(familyId)}`);
+  }
+
+  revokeOtherSessions() {
+    return this.delete("/api/mobile/auth/sessions/others");
+  }
+
+  beginTotpEnrollment() {
+    return this.post<TotpEnrollment>("/api/auth/totp/enrollments");
+  }
+
+  cancelTotpEnrollment(enrollmentId: string) {
+    return this.delete(`/api/auth/totp/enrollments/${encodeURIComponent(enrollmentId)}`);
+  }
+
+  activateTotpEnrollment(enrollmentId: string, code: string) {
+    return this.post<{ recoveryCodes: string[] }>("/api/auth/totp/enrollments/activate", {
+      enrollmentId,
+      code
+    });
+  }
+
+  async registerPasskey(providerCategory?: WebAuthnProviderCategory) {
+    requireWebAuthn();
+    const options = await this.post<WebAuthnOptions>("/api/web/auth/webauthn/registration/options");
+    const credential = await navigator.credentials.create({
+      publicKey: registrationOptions(options)
+    }) as PublicKeyCredential | null;
+    if (!credential) throw new Error("El registro de passkey fue cancelado.");
+    const response = credential.response as AuthenticatorAttestationResponse;
+    await this.post("/api/web/auth/webauthn/registration", {
+      requestId: options.requestId,
+      credentialId: encodeBase64Url(credential.rawId),
+      clientDataJson: encodeBase64Url(response.clientDataJSON),
+      attestationObject: encodeBase64Url(response.attestationObject),
+      transports: response.getTransports?.() ?? [],
+      providerCategory: providerCategory ?? null
+    });
+  }
+
+  passkeyInventory() {
+    return this.get<WebAuthnCredentialInventory>("/api/auth/webauthn/credentials");
+  }
+
+  revokePasskey(recordId: string) {
+    return this.delete(`/api/auth/webauthn/credentials/${encodeURIComponent(recordId)}`);
+  }
+
+  passkeyResetStatus() {
+    return this.get<WebAuthnControlledResetStatus>("/api/auth/webauthn/passkey-reset");
+  }
+
+  commitPasskeyReset(candidateRecordId: string) {
+    return this.post<WebAuthnControlledResetResult>(
+      `/api/auth/webauthn/passkey-reset/${encodeURIComponent(candidateRecordId)}/commit`
+    );
+  }
+
+  async verifyPasskeyOwnership(
+    recordId: string,
+    providerCategory: WebAuthnProviderCategory
+  ) {
+    requireWebAuthn();
+    const options = await this.post<WebAuthnOptions>(
+      "/api/web/auth/webauthn/ownership/options",
+      { recordId }
+    );
+    const credential = await navigator.credentials.get({
+      publicKey: authenticationOptions(options)
+    }) as PublicKeyCredential | null;
+    if (!credential) throw new Error("La verificación de passkey fue cancelada.");
+    const response = credential.response as AuthenticatorAssertionResponse;
+    return this.post<WebAuthnCredentialVerification>("/api/web/auth/webauthn/ownership", {
+      requestId: options.requestId,
+      credentialId: encodeBase64Url(credential.rawId),
+      userHandle: response.userHandle ? encodeBase64Url(response.userHandle) : null,
+      clientDataJson: encodeBase64Url(response.clientDataJSON),
+      authenticatorData: encodeBase64Url(response.authenticatorData),
+      signature: encodeBase64Url(response.signature),
+      providerCategory
+    });
+  }
+
+  async signalAcceptedPasskeys(): Promise<"SIGNALED" | "UNAVAILABLE"> {
+    const snapshot = await this.get<WebAuthnCredentialSignalSnapshot>(
+      "/api/auth/webauthn/credentials/signal-snapshot"
+    );
+    assertCompleteSignalSnapshot(snapshot);
+    const signal = webAuthnSignalMethod("signalAllAcceptedCredentials");
+    if (!signal) return "UNAVAILABLE";
+    await signal({
+      rpId: snapshot.relyingPartyId,
+      userId: snapshot.userId,
+      allAcceptedCredentialIds: [...snapshot.allAcceptedCredentialIds]
+    });
+    return "SIGNALED";
+  }
+
+  async loginWithPasskey() {
+    requireWebAuthn();
+    const options = await this.request<WebAuthnOptions>("/api/web/auth/webauthn/authentication/options", {
+      method: "POST",
+      authenticated: false,
+      credentials: "include"
+    });
+    const credential = await navigator.credentials.get({
+      publicKey: authenticationOptions(options)
+    }) as PublicKeyCredential | null;
+    if (!credential) throw new Error("El acceso con passkey fue cancelado.");
+    const response = credential.response as AuthenticatorAssertionResponse;
+    if (!response.userHandle) throw new Error("La passkey no devolvió una identidad válida.");
+    const credentialId = encodeBase64Url(credential.rawId);
+    let session: AuthSession;
+    try {
+      session = await this.request<AuthSession>("/api/web/auth/webauthn/authentication", {
+        method: "POST",
+        body: {
+          requestId: options.requestId,
+          credentialId,
+          userHandle: encodeBase64Url(response.userHandle),
+          clientDataJson: encodeBase64Url(response.clientDataJSON),
+          authenticatorData: encodeBase64Url(response.authenticatorData),
+          signature: encodeBase64Url(response.signature),
+          deviceLabel: "Atenea web"
+        },
+        authenticated: false,
+        jsonBody: true,
+        credentials: "include",
+        headers: protocolHeaders()
+      });
+    } catch (error) {
+      if (isUnknownCredentialSignal(error)) {
+        await signalUnknownCredential(options.relyingPartyId, credentialId).catch(() => undefined);
+      }
+      throw error;
+    }
+    this.setSession(session);
+    return session;
   }
 
   async health() {
@@ -459,6 +633,10 @@ export class AteneaApi {
     return this.request<T>(path, { method: "PUT", body, authenticated, jsonBody: true });
   }
 
+  delete<T>(path: string, body?: unknown, authenticated = true) {
+    return this.request<T>(path, { method: "DELETE", body, authenticated, jsonBody: true });
+  }
+
   private async request<T>(
     path: string,
     options: ApiRequestOptions,
@@ -500,14 +678,23 @@ export class AteneaApi {
     return fetch(path, { method: "GET", headers });
   }
 
-  private async refresh() {
-    if (!this.session?.refreshToken) {
-      return false;
+  private refresh() {
+    if (!this.refreshPromise) {
+      this.refreshPromise = this.refreshCookieSession().finally(() => {
+        this.refreshPromise = null;
+      });
     }
+    return this.refreshPromise;
+  }
+
+  private async refreshCookieSession() {
     try {
-      const next = await this.post<AuthSession>("/api/mobile/auth/refresh", {
-        refreshToken: this.session.refreshToken
-      }, false);
+      const next = await this.request<AuthSession>("/api/web/auth/refresh", {
+        method: "POST",
+        authenticated: false,
+        credentials: "include",
+        headers: cookieProofHeaders()
+      });
       this.setSession(next);
       return true;
     } catch {
@@ -518,13 +705,155 @@ export class AteneaApi {
 
   private setSession(session: AuthSession | null) {
     this.session = session;
-    if (session) {
-      window.sessionStorage.setItem(AUTH_KEY, JSON.stringify(session));
-    } else {
-      window.sessionStorage.removeItem(AUTH_KEY);
-    }
     this.listeners.forEach((listener) => listener(session));
   }
+}
+
+function protocolHeaders() {
+  return {
+    [SESSION_PROTOCOL_HEADER]: SESSION_PROTOCOL,
+    [SINGLE_FLIGHT_HEADER]: "true"
+  };
+}
+
+function cookieProofHeaders() {
+  const csrf = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("ATENEA_CSRF="))
+    ?.slice("ATENEA_CSRF=".length);
+  return {
+    ...protocolHeaders(),
+    ...(csrf ? { [CSRF_HEADER]: decodeURIComponent(csrf) } : {})
+  };
+}
+
+function requireWebAuthn() {
+  if (!window.isSecureContext || !("PublicKeyCredential" in window)) {
+    throw new Error("Passkey no está disponible en este navegador seguro.");
+  }
+}
+
+function registrationOptions(options: WebAuthnOptions): PublicKeyCredentialCreationOptions {
+  if (!options.userHandle || !options.opaqueUserName || !options.relyingPartyName) {
+    throw new Error("El servidor no devolvió opciones de registro válidas.");
+  }
+  return {
+    challenge: decodeBase64Url(options.challenge),
+    timeout: options.timeoutMillis,
+    rp: { id: options.relyingPartyId, name: options.relyingPartyName },
+    user: {
+      id: decodeBase64Url(options.userHandle),
+      name: options.opaqueUserName,
+      displayName: options.opaqueUserName
+    },
+    pubKeyCredParams: options.credentialParameters.map((item) => ({
+      type: item.type,
+      alg: item.algorithm
+    })),
+    excludeCredentials: options.credentials.map(descriptor),
+    authenticatorSelection: {
+      userVerification: options.userVerification,
+      residentKey: options.residentKey ?? undefined
+    },
+    attestation: options.attestation ?? "none"
+  };
+}
+
+function authenticationOptions(options: WebAuthnOptions): PublicKeyCredentialRequestOptions {
+  return {
+    challenge: decodeBase64Url(options.challenge),
+    timeout: options.timeoutMillis,
+    rpId: options.relyingPartyId,
+    allowCredentials: options.credentials.map(descriptor),
+    userVerification: options.userVerification
+  };
+}
+
+type SignalAllAcceptedCredentials = (options: {
+  rpId: string;
+  userId: string;
+  allAcceptedCredentialIds: string[];
+}) => Promise<void>;
+
+type SignalUnknownCredential = (options: {
+  rpId: string;
+  credentialId: string;
+}) => Promise<void>;
+
+function webAuthnSignalMethod(
+  name: "signalAllAcceptedCredentials"
+): SignalAllAcceptedCredentials | null;
+function webAuthnSignalMethod(
+  name: "signalUnknownCredential"
+): SignalUnknownCredential | null;
+function webAuthnSignalMethod(name: string) {
+  if (!("PublicKeyCredential" in window)) return null;
+  const constructor = window.PublicKeyCredential as unknown as Record<string, unknown>;
+  const method = constructor[name];
+  return typeof method === "function"
+    ? (method as (...args: unknown[]) => Promise<void>).bind(constructor)
+    : null;
+}
+
+function assertCompleteSignalSnapshot(snapshot: WebAuthnCredentialSignalSnapshot) {
+  const ids = snapshot.allAcceptedCredentialIds;
+  const complete = snapshot.relyingPartyId === window.location.hostname
+    && snapshot.userId.length > 0
+    && snapshot.activeCredentialCount > 0
+    && snapshot.activeCredentialCount === ids.length
+    && new Set(ids).size === ids.length
+    && ids.every(isCanonicalBase64Url)
+    && isCanonicalBase64Url(snapshot.userId)
+    && Number.isSafeInteger(snapshot.credentialVersion)
+    && snapshot.credentialVersion >= 0;
+  if (!complete) {
+    throw new Error("El snapshot de passkeys no es completo; no se enviará ninguna señal.");
+  }
+}
+
+function isCanonicalBase64Url(value: string) {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) return false;
+  try {
+    return encodeBase64Url(decodeBase64Url(value)) === value;
+  } catch {
+    return false;
+  }
+}
+
+function isUnknownCredentialSignal(error: unknown) {
+  if (!(error instanceof ApiError) || !error.payload || typeof error.payload !== "object") {
+    return false;
+  }
+  return (error.payload as ApiErrorPayload).action === "SIGNAL_UNKNOWN_CREDENTIAL";
+}
+
+async function signalUnknownCredential(relyingPartyId: string, credentialId: string) {
+  if (relyingPartyId !== window.location.hostname || !isCanonicalBase64Url(credentialId)) {
+    return;
+  }
+  const signal = webAuthnSignalMethod("signalUnknownCredential");
+  if (signal) await signal({ rpId: relyingPartyId, credentialId });
+}
+
+function descriptor(value: WebAuthnOptions["credentials"][number]): PublicKeyCredentialDescriptor {
+  return { type: value.type, id: decodeBase64Url(value.id), transports: value.transports };
+}
+
+function decodeBase64Url(value: string) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function encodeBase64Url(value: ArrayBufferLike | ArrayBufferView) {
+  const bytes = ArrayBuffer.isView(value)
+    ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+    : new Uint8Array(value);
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -546,16 +875,6 @@ function extractMessage(payload: unknown) {
   }
   const object = payload as Record<string, unknown>;
   return String(object.message || object.error || object.reason || "").trim();
-}
-
-function readStoredSession(): AuthSession | null {
-  try {
-    const raw = window.sessionStorage.getItem(AUTH_KEY);
-    return raw ? JSON.parse(raw) as AuthSession : null;
-  } catch {
-    window.sessionStorage.removeItem(AUTH_KEY);
-    return null;
-  }
 }
 
 export const api = new AteneaApi();

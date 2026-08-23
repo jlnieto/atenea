@@ -7,9 +7,13 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.CreateSessionTurnResponse;
+import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
@@ -47,12 +51,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ImageTurnBackendRestartIntegrationTest {
@@ -93,6 +102,9 @@ class ImageTurnBackendRestartIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private MockMvc mockMvc;
+
     @MockBean
     private TurnAttachmentSelectionValidator selectionValidator;
 
@@ -120,11 +132,12 @@ class ImageTurnBackendRestartIntegrationTest {
     private long runsAfterAcceptance;
     private long bindingsAfterAcceptance;
     private long attachmentsAfterAcceptance;
+    private byte[] legacyConversationJson;
 
     @Test
     @Order(1)
     @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
-    void persistsOneTerminalImageAcceptanceBeforeBackendRestart() {
+    void persistsOneTerminalImageAcceptanceBeforeBackendRestart() throws Exception {
         Instant now = Instant.parse("2026-08-02T00:00:00Z");
         WorkerNodeEntity worker = createWorker(now);
         ProjectEntity project = createProject(now);
@@ -175,6 +188,7 @@ class ImageTurnBackendRestartIntegrationTest {
         runsAfterAcceptance = agentRunRepository.count();
         bindingsAfterAcceptance = bindingCount();
         attachmentsAfterAcceptance = attachmentRepository.count();
+        legacyConversationJson = getLegacyConversationJson();
 
         assertEquals(1, accepted.operatorTurn().attachments().size());
         assertEquals(1, run.getAttachmentCount());
@@ -186,12 +200,16 @@ class ImageTurnBackendRestartIntegrationTest {
 
     @Test
     @Order(2)
-    void replayAfterBackendRestartReturnsExactAcceptanceWithoutUploadOrDispatch() {
+    void replayAfterBackendRestartReturnsExactAcceptanceAndLegacyJsonWithoutUploadOrDispatch()
+            throws Exception {
         WorkSessionEntity session = workSessionRepository.findById(fixtureSessionId).orElseThrow();
         WorkSessionAttachmentEntity attachment = attachmentRepository
                 .findByIdAndWorkSessionId(ATTACHMENT_ID, fixtureSessionId)
                 .orElseThrow();
         AgentRunEntity persistedRun = agentRunRepository.findById(acceptedRunId).orElseThrow();
+
+        org.junit.jupiter.api.Assertions.assertArrayEquals(
+                legacyConversationJson, getLegacyConversationJson());
 
         CreateSessionTurnResponse replay = sessionTurnService.createTurn(
                 fixtureSessionId,
@@ -242,6 +260,21 @@ class ImageTurnBackendRestartIntegrationTest {
                 "SELECT count(*) FROM session_turn_attachment",
                 Long.class);
         return value == null ? 0L : value;
+    }
+
+    private byte[] getLegacyConversationJson() throws Exception {
+        return mockMvc.perform(get("/api/mobile/sessions/{sessionId}/conversation", fixtureSessionId)
+                        .with(authentication(new UsernamePasswordAuthenticationToken(
+                                new AuthenticatedOperator(
+                                        900001L,
+                                        "synthetic-restart@atenea.test",
+                                        "Synthetic restart operator"),
+                                null,
+                                List.of(new SimpleGrantedAuthority("ROLE_OPERATOR"))))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
     }
 
     private WorkerNodeEntity createWorker(Instant now) {

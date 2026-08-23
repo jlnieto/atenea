@@ -5,6 +5,12 @@ import com.atenea.attachments.AttachmentWorkerException;
 import com.atenea.previews.PreviewFeatureDisabledException;
 import com.atenea.previews.PreviewWorkerException;
 import com.atenea.auth.OperatorAuthenticationException;
+import com.atenea.auth.webauthn.WebAuthnCredentialNotAcceptedException;
+import com.atenea.auth.webauthn.WebAuthnLifecycleUnavailableException;
+import com.atenea.auth.webauthn.WebAuthnSnapshotIncompleteException;
+import com.atenea.service.developmentchange.DevelopmentChangeNotFoundException;
+import com.atenea.service.developmentchange.DevelopmentChangeRejectedException;
+import com.atenea.service.developmentchange.RemoteSessionRejectedException;
 import com.atenea.service.project.CanonicalProjectConflictException;
 import com.atenea.github.GitHubIntegrationException;
 import com.atenea.service.core.CoreCommandNotFoundException;
@@ -61,6 +67,25 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(DevelopmentChangeNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleDevelopmentChangeNotFound(
+            DevelopmentChangeNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(DevelopmentChangeRejectedException.class)
+    public ResponseEntity<com.atenea.api.developmentchange.DevelopmentChangeFailureResponse>
+            handleDevelopmentChangeRejected(DevelopmentChangeRejectedException exception) {
+        return ResponseEntity.status(exception.response().status()).body(exception.response());
+    }
+
+    @ExceptionHandler(RemoteSessionRejectedException.class)
+    public ResponseEntity<com.atenea.api.developmentchange.RemoteSessionFailureResponse>
+            handleRemoteSessionRejected(RemoteSessionRejectedException exception) {
+        return ResponseEntity.status(exception.response().status()).body(exception.response());
+    }
 
     @ExceptionHandler(DuplicateProjectNameException.class)
     public ResponseEntity<ApiErrorResponse> handleDuplicateProjectName(DuplicateProjectNameException exception) {
@@ -321,6 +346,37 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleMobileUpload(MobileUploadException exception) {
         return ResponseEntity.badRequest()
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(WebAuthnCredentialNotAcceptedException.class)
+    public ResponseEntity<ApiErrorResponse> handleWebAuthnCredentialNotAccepted(
+            WebAuthnCredentialNotAcceptedException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ApiErrorResponse(
+                        exception.getMessage(),
+                        List.of(),
+                        null,
+                        null,
+                        "SIGNAL_UNKNOWN_CREDENTIAL",
+                        false));
+    }
+
+    @ExceptionHandler({
+            WebAuthnLifecycleUnavailableException.class,
+            WebAuthnSnapshotIncompleteException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleWebAuthnLifecycleConflict(
+            RuntimeException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(
+                        exception.getMessage(),
+                        List.of(),
+                        "ACTION_REQUIRED",
+                        null,
+                        "REVIEW_PASSKEY_INVENTORY",
+                        false));
     }
 
     @ExceptionHandler(OperatorAuthenticationException.class)
