@@ -34,6 +34,15 @@ public class OperatorEntity {
     @Column(name = "codex_operations_role", nullable = false, length = 32)
     private CodexOperationsRole codexOperationsRole = CodexOperationsRole.ROUTINE_OPERATOR;
 
+    @Column(name = "credential_version", nullable = false)
+    private long credentialVersion;
+
+    @Column(name = "role_version", nullable = false)
+    private long roleVersion;
+
+    @Column(name = "factor_reenrollment_required", nullable = false)
+    private boolean factorReenrollmentRequired;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -82,6 +91,14 @@ public class OperatorEntity {
 
     public CodexOperationsRole getCodexOperationsRole() { return codexOperationsRole; }
     public void setCodexOperationsRole(CodexOperationsRole value) { codexOperationsRole = value; }
+
+    public long getCredentialVersion() { return credentialVersion; }
+    public void setCredentialVersion(long value) { credentialVersion = value; }
+
+    public long getRoleVersion() { return roleVersion; }
+    public void setRoleVersion(long value) { roleVersion = value; }
+    public boolean isFactorReenrollmentRequired() { return factorReenrollmentRequired; }
+    public void setFactorReenrollmentRequired(boolean value) { factorReenrollmentRequired = value; }
 
     public Instant getCreatedAt() {
         return createdAt;

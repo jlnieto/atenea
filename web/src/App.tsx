@@ -61,6 +61,7 @@ import {
   MobileSessionSummary,
   MobileUpload,
   MobileWorkSessionConversation,
+  OperatorSessionInventory,
   OperationsHostStatus,
   OperationsIncident,
   SessionDeliverable,
@@ -131,10 +132,12 @@ marked.use({
 
 export function App() {
   const [session, setSession] = useState<AuthSession | null>(api.currentSession);
+  const [authReady, setAuthReady] = useState(false);
   const [route, setRoute] = useState<Route>(() => readRoute());
 
   useEffect(() => {
     const unsubscribe = api.subscribe(setSession);
+    api.bootstrap().finally(() => setAuthReady(true));
     return () => {
       unsubscribe();
     };
@@ -148,11 +151,27 @@ export function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  if (!authReady) {
+    return <AuthRestoringScreen />;
+  }
+
   if (!session) {
     return <LoginScreen />;
   }
 
   return <Shell session={session} route={route} />;
+}
+
+function AuthRestoringScreen() {
+  return (
+    <main className="login">
+      <section className="login__panel" aria-live="polite">
+        <span className="eyebrow">Atenea Console</span>
+        <h1>Recuperando sesión segura</h1>
+        <p className="login__copy">Comprobando la cookie protegida del navegador.</p>
+      </section>
+    </main>
+  );
 }
 
 function Shell({ session, route }: { session: AuthSession; route: Route }) {
@@ -305,6 +324,18 @@ function LoginScreen() {
     }
   }
 
+  async function passkeyLogin() {
+    setLoading(true);
+    setError("");
+    try {
+      await api.loginWithPasskey();
+    } catch (loginError) {
+      setError(errorMessage(loginError));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <main className="login">
       <section className="login__panel">
@@ -339,6 +370,10 @@ function LoginScreen() {
           <button className="button button--primary" disabled={loading || !email.trim() || !password} type="submit">
             <Lock />
             {loading ? "Validando..." : "Entrar"}
+          </button>
+          <button className="button" disabled={loading} type="button" onClick={passkeyLogin}>
+            <ShieldCheck />
+            Entrar con passkey
           </button>
         </form>
       </section>
@@ -2586,15 +2621,150 @@ function codexAdminNextStep(
 }
 
 function SettingsScreen() {
+  const [sessions, setSessions] = useState<OperatorSessionInventory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [factorNotice, setFactorNotice] = useState("");
+  const [factorPending, setFactorPending] = useState(false);
+  const [totp, setTotp] = useState<{ enrollmentId: string; secret: string } | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+
+  async function loadSessions() {
+    setLoading(true);
+    setError("");
+    try {
+      setSessions(await api.sessions());
+    } catch (loadError) {
+      setError(errorMessage(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadSessions(); }, []);
+
+  async function revoke(familyId: string) {
+    try {
+      await api.revokeSession(familyId);
+      await loadSessions();
+    } catch (revokeError) {
+      setError(errorMessage(revokeError));
+    }
+  }
+
+  async function registerPasskey() {
+    setFactorPending(true);
+    setFactorNotice("");
+    try {
+      await api.registerPasskey();
+      setFactorNotice("Passkey registrada. Las sesiones anteriores quedan invalidadas.");
+    } catch (factorError) {
+      setError(errorMessage(factorError));
+    } finally {
+      setFactorPending(false);
+    }
+  }
+
+  async function beginTotp() {
+    setFactorPending(true);
+    setError("");
+    try {
+      const enrollment = await api.beginTotpEnrollment();
+      setTotp({ enrollmentId: enrollment.enrollmentId, secret: enrollment.secret });
+      setFactorNotice("Alta pendiente: verifica un código para activarla.");
+    } catch (factorError) {
+      setError(errorMessage(factorError));
+    } finally {
+      setFactorPending(false);
+    }
+  }
+
+  async function activateTotp() {
+    if (!totp) return;
+    setFactorPending(true);
+    try {
+      const result = await api.activateTotpEnrollment(totp.enrollmentId, totpCode);
+      setRecoveryCodes(result.recoveryCodes);
+      setTotp(null);
+      setTotpCode("");
+      setFactorNotice("TOTP activo. Guarda ahora los códigos: sólo se muestran una vez.");
+    } catch (factorError) {
+      setError(errorMessage(factorError));
+    } finally {
+      setFactorPending(false);
+    }
+  }
+
   return (
     <Page>
       <Panel>
-        <PanelHeader title="Ajustes" eyebrow="Operador" />
+        <PanelHeader title="Seguridad de la cuenta" eyebrow="Operador" />
         <List>
-          <Row title="Sesión" detail="Los tokens se guardan en sessionStorage y se refrescan automáticamente." level="ok" />
+          <Row title="Sesión web protegida" detail="Refresh en cookie HttpOnly; acceso sólo en memoria y refresh coordinado." level="ok" />
           <Row title="API" detail={window.location.origin} />
-          <Row title="Web Console" detail="Interfaz React/TypeScript servida por Spring Boot." />
+          <Row title="Factores fuertes" detail="Passkey preferente y TOTP de respaldo. El alta real requiere autorización H11." level="warning" />
         </List>
+        <div className="security-section">
+          <div>
+            <span className="eyebrow">Sesiones</span>
+            <h3>Dispositivos con acceso</h3>
+          </div>
+          {loading && <p className="muted">Cargando inventario seguro…</p>}
+          {error && <InlineError>{error}</InlineError>}
+          {!loading && !error && sessions.length === 0 && <p className="muted">No hay sesiones familiares activas.</p>}
+          {sessions.map((item) => (
+            <div className="security-session" key={item.familyId}>
+              <div>
+                <strong>{item.deviceLabel}{item.current ? " · Esta sesión" : ""}</strong>
+                <span>{item.clientType} · {item.state} · Último uso {formatAbsoluteDate(item.lastUsedAt)}</span>
+              </div>
+              {!item.current && item.state === "ACTIVE" && (
+                <Button variant="danger" onClick={() => revoke(item.familyId)}>Revocar</Button>
+              )}
+            </div>
+          ))}
+          {sessions.some((item) => !item.current && item.state === "ACTIVE") && (
+            <Button onClick={async () => { await api.revokeOtherSessions(); await loadSessions(); }}>
+              Cerrar las demás sesiones
+            </Button>
+          )}
+        </div>
+        <div className="security-section" aria-label="Factores de seguridad">
+          <div>
+            <span className="eyebrow">Factores</span>
+            <h3>Acceso fuerte y step-up</h3>
+            <p className="muted">El mismo factor reciente se usa para autorizar una acción y un target/plan exactos.</p>
+          </div>
+          {factorNotice && <p className="notice notice--ok">{factorNotice}</p>}
+          <div className="button-row">
+            <Button disabled={factorPending} icon={<ShieldCheck />} onClick={registerPasskey}>Registrar passkey</Button>
+            {!totp && <Button disabled={factorPending} onClick={beginTotp}>Preparar TOTP</Button>}
+          </div>
+          {totp && (
+            <div className="factor-enrollment">
+              <strong>Alta TOTP pendiente</strong>
+              <p>Introduce este secreto en tu authenticator y verifica un código de 6 dígitos.</p>
+              <code>{totp.secret}</code>
+              <label className="field">
+                <span>Código TOTP</span>
+                <input inputMode="numeric" maxLength={6} value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, ""))} />
+              </label>
+              <div className="button-row">
+                <Button variant="primary" disabled={factorPending || totpCode.length !== 6} onClick={activateTotp}>Activar TOTP</Button>
+                <Button onClick={async () => { await api.cancelTotpEnrollment(totp.enrollmentId); setTotp(null); }}>Cancelar</Button>
+              </div>
+            </div>
+          )}
+          {recoveryCodes.length > 0 && (
+            <div className="factor-enrollment" aria-label="Códigos de recuperación de una sola visualización">
+              <strong>Códigos de recuperación</strong>
+              <p>Guárdalos fuera de Atenea. Cada código se usa una sola vez.</p>
+              <div className="recovery-code-grid">{recoveryCodes.map((code) => <code key={code}>{code}</code>)}</div>
+              <Button onClick={() => setRecoveryCodes([])}>Ya los he guardado</Button>
+            </div>
+          )}
+        </div>
         <Button variant="danger" icon={<LogOut />} onClick={() => api.logout()}>Cerrar sesión</Button>
       </Panel>
     </Page>

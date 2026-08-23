@@ -196,23 +196,12 @@ for (const viewport of [
 }
 
 async function installProjectsRecoveryApi(page: Page, observedPosts: string[]) {
-  await page.addInitScript(() => {
-    sessionStorage.setItem("atenea.web.console.auth.v2", JSON.stringify({
-      accessToken: "synthetic-access",
-      accessTokenExpiresAt: "2099-01-01T00:00:00Z",
-      refreshToken: "synthetic-refresh",
-      refreshTokenExpiresAt: "2099-01-01T00:00:00Z",
-      operator: {
-        id: 1,
-        email: "operator@example.invalid",
-        displayName: "Operador sintético",
-        codexOperationsRole: "PLATFORM_ADMINISTRATOR"
-      }
-    }));
-  });
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === "/api/web/auth/refresh") {
+      return json(route, authSession("PLATFORM_ADMINISTRATOR"));
+    }
     if (request.method() === "POST") {
       observedPosts.push(path);
       return json(route, { code: "UNEXPECTED_MUTATION" }, 409);
@@ -265,24 +254,12 @@ async function installProjectsRecoveryApi(page: Page, observedPosts: string[]) {
 }
 
 async function installSyntheticApi(page: Page, apiState: SyntheticState) {
-  await page.addInitScript((role) => {
-    sessionStorage.setItem("atenea.web.console.auth.v2", JSON.stringify({
-      accessToken: "synthetic-access",
-      accessTokenExpiresAt: "2099-01-01T00:00:00Z",
-      refreshToken: "synthetic-refresh",
-      refreshTokenExpiresAt: "2099-01-01T00:00:00Z",
-      operator: {
-        id: 1,
-        email: "operator@example.invalid",
-        displayName: "Operador sintético",
-        codexOperationsRole: role
-      }
-    }));
-  }, apiState.operatorRole);
-
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === "/api/web/auth/refresh") {
+      return json(route, authSession(apiState.operatorRole));
+    }
     if (path === `/api/mobile/sessions/${currentSessionId}/summary`) {
       return json(route, summary(apiState));
     }
@@ -444,6 +421,19 @@ async function installSyntheticApi(page: Page, apiState: SyntheticState) {
     if (path === "/api/mobile/operations/incidents") return json(route, { incidents: [] });
     return json(route, {});
   });
+}
+
+function authSession(role: SyntheticState["operatorRole"]) {
+  return {
+    accessToken: "synthetic-access",
+    accessTokenExpiresAt: "2099-01-01T00:00:00Z",
+    operator: {
+      id: 1,
+      email: "operator@example.invalid",
+      displayName: "Operador sintético",
+      codexOperationsRole: role
+    }
+  };
 }
 
 async function openConversation(page: Page, apiState: SyntheticState, caseName: string) {

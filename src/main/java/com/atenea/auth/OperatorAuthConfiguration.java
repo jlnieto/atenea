@@ -45,6 +45,14 @@ public class OperatorAuthConfiguration {
                                 "/api/mobile/auth/login",
                                 "/api/mobile/auth/refresh",
                                 "/api/mobile/auth/logout",
+                                "/api/web/auth/login",
+                                "/api/web/auth/refresh",
+                                "/api/web/auth/logout",
+                                "/api/mobile/auth/webauthn/authentication/options",
+                                "/api/mobile/auth/webauthn/authentication",
+                                "/api/web/auth/webauthn/authentication/options",
+                                "/api/web/auth/webauthn/authentication",
+                                "/api/auth/recovery",
                                 "/actuator/health"
                         ).permitAll()
                         .requestMatchers("/api/**").authenticated()

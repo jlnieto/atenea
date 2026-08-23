@@ -91,6 +91,9 @@ fun CoreConsoleApp(
             onLogout = {
                 scope.launch {
                     runCatching { pushRegistration?.unregisterCurrentToken() }
+                    sessionStore.load()?.refreshToken?.let { refreshToken ->
+                        runCatching { apiClient.logout(refreshToken) }
+                    }
                     sessionStore.clear()
                     session = null
                     pushRegistrationAttempted = false

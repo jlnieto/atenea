@@ -10,9 +10,39 @@ export interface OperatorProfile {
 export interface AuthSession {
   accessToken: string;
   accessTokenExpiresAt: string;
-  refreshToken: string;
-  refreshTokenExpiresAt: string;
   operator: OperatorProfile;
+}
+
+export interface OperatorSessionInventory {
+  familyId: string;
+  clientType: string;
+  deviceLabel: string;
+  createdAt: string;
+  lastUsedAt: string;
+  absoluteExpiresAt: string;
+  state: "ACTIVE" | "EXPIRED" | "REVOKED";
+  current: boolean;
+}
+
+export interface TotpEnrollment {
+  enrollmentId: string;
+  secret: string;
+  expiresAt: string;
+}
+
+export interface WebAuthnOptions {
+  requestId: string;
+  challenge: string;
+  timeoutMillis: number;
+  relyingPartyId: string;
+  relyingPartyName?: string | null;
+  userHandle?: string | null;
+  opaqueUserName?: string | null;
+  credentialParameters: { type: "public-key"; algorithm: number }[];
+  credentials: { type: "public-key"; id: string; transports: AuthenticatorTransport[] }[];
+  userVerification: UserVerificationRequirement;
+  residentKey?: ResidentKeyRequirement | null;
+  attestation?: AttestationConveyancePreference | null;
 }
 
 export interface ApiErrorPayload {

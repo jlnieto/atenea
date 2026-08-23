@@ -35,6 +35,22 @@ public class OperatorRefreshTokenEntity {
     @Column(name = "last_used_at")
     private Instant lastUsedAt;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "session_family_id")
+    private OperatorSessionFamilyEntity sessionFamily;
+
+    @Column(name = "generation")
+    private Long generation;
+
+    @Column(name = "consumed_at")
+    private Instant consumedAt;
+
+    @Column(name = "replaced_by_token_id")
+    private Long replacedByTokenId;
+
+    @Column(name = "revocation_reason", length = 40)
+    private String revocationReason;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -88,6 +104,21 @@ public class OperatorRefreshTokenEntity {
     public void setLastUsedAt(Instant lastUsedAt) {
         this.lastUsedAt = lastUsedAt;
     }
+
+    public OperatorSessionFamilyEntity getSessionFamily() { return sessionFamily; }
+    public void setSessionFamily(OperatorSessionFamilyEntity value) { sessionFamily = value; }
+
+    public Long getGeneration() { return generation; }
+    public void setGeneration(Long value) { generation = value; }
+
+    public Instant getConsumedAt() { return consumedAt; }
+    public void setConsumedAt(Instant value) { consumedAt = value; }
+
+    public Long getReplacedByTokenId() { return replacedByTokenId; }
+    public void setReplacedByTokenId(Long value) { replacedByTokenId = value; }
+
+    public String getRevocationReason() { return revocationReason; }
+    public void setRevocationReason(String value) { revocationReason = value; }
 
     public Instant getCreatedAt() {
         return createdAt;

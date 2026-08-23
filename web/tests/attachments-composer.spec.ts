@@ -202,19 +202,16 @@ function json(route: Route, body: unknown, status = 200) {
 }
 
 async function installSyntheticApi(page: Page, apiState: ApiState) {
-  await page.addInitScript(() => {
-    sessionStorage.setItem("atenea.web.console.auth.v2", JSON.stringify({
-      accessToken: "synthetic-access",
-      accessTokenExpiresAt: "2099-01-01T00:00:00Z",
-      refreshToken: "synthetic-refresh",
-      refreshTokenExpiresAt: "2099-01-01T00:00:00Z",
-      operator: { id: 1, email: "operator@example.invalid", displayName: "Operador" }
-    }));
-  });
-
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === "/api/web/auth/refresh") {
+      return json(route, {
+        accessToken: "synthetic-access",
+        accessTokenExpiresAt: "2099-01-01T00:00:00Z",
+        operator: { id: 1, email: "operator@example.invalid", displayName: "Operador" }
+      });
+    }
     if (path === "/api/mobile/sessions/41/summary") {
       return json(route, summaryEnvelope(apiState.turns));
     }
