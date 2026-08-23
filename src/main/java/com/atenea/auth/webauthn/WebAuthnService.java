@@ -85,6 +85,8 @@ public class WebAuthnService {
     private final OperatorAuthAttemptRepository attemptRepository;
     private final OperatorSecurityEventRepository eventRepository;
     private final OperatorAuthProperties properties;
+    private final WebAuthnCredentialLifecycleService credentialLifecycleService;
+    private final WebAuthnControlledResetService controlledResetService;
     private final SecureRandom secureRandom = new SecureRandom();
     private final WebAuthnManager webAuthnManager;
     private final AttestedCredentialDataConverter credentialDataConverter;
@@ -97,7 +99,9 @@ public class WebAuthnService {
             OperatorWebAuthnChallengeRepository challengeRepository,
             OperatorAuthAttemptRepository attemptRepository,
             OperatorSecurityEventRepository eventRepository,
-            OperatorAuthProperties properties
+            OperatorAuthProperties properties,
+            WebAuthnCredentialLifecycleService credentialLifecycleService,
+            WebAuthnControlledResetService controlledResetService
     ) {
         this.operatorRepository = operatorRepository;
         this.sessionFamilyRepository = sessionFamilyRepository;
@@ -107,6 +111,8 @@ public class WebAuthnService {
         this.attemptRepository = attemptRepository;
         this.eventRepository = eventRepository;
         this.properties = properties;
+        this.credentialLifecycleService = credentialLifecycleService;
+        this.controlledResetService = controlledResetService;
         ObjectConverter objectConverter = new ObjectConverter();
         webAuthnManager = WebAuthnManager.createNonStrictWebAuthnManager(objectConverter);
         webAuthnManager.getAuthenticationDataVerifier()
@@ -121,6 +127,7 @@ public class WebAuthnService {
             WebAuthnChannel channel,
             String presentedOrigin
     ) {
+        credentialLifecycleService.requireRegistrationAllowed();
         WebAuthnConfiguration configuration = configuration(channel, presentedOrigin);
         if (sessionFamilyId == null) {
             throw rejected();
@@ -128,6 +135,7 @@ public class WebAuthnService {
         OperatorEntity operator = operatorRepository.findByIdForUpdate(actor.operatorId())
                 .filter(OperatorEntity::isActive)
                 .orElseThrow(WebAuthnService::rejected);
+        controlledResetService.requireRegistrationStart(operator);
         OperatorSessionFamilyEntity family = sessionFamilyRepository
                 .findByIdAndOperatorId(sessionFamilyId, operator.getId())
                 .filter(candidate -> candidate.getRevokedAt() == null)
@@ -152,7 +160,7 @@ public class WebAuthnService {
                 handle,
                 "operator-" + handle.substring(0, 12),
                 credentialParameters(),
-                List.of(),
+                credentialLifecycleService.registrationExclusions(operator.getId()),
                 "required",
                 "required",
                 "none");
@@ -194,6 +202,7 @@ public class WebAuthnService {
             String presentedOrigin,
             WebAuthnRegistrationRequest request
     ) {
+        credentialLifecycleService.requireRegistrationAllowed();
         WebAuthnConfiguration configuration = configuration(channel, presentedOrigin);
         byte[] clientData = decode(request.clientDataJson(), MAX_CLIENT_DATA_BYTES);
         byte[] attestationObject = decode(request.attestationObject(), MAX_ATTESTATION_BYTES);
@@ -226,6 +235,8 @@ public class WebAuthnService {
         OperatorEntity operator = operatorRepository.findByIdForUpdate(actor.operatorId())
                 .filter(OperatorEntity::isActive)
                 .orElseThrow(WebAuthnService::rejected);
+        controlledResetService.requireRegistrationCompletion(
+                operator, request.providerCategory());
         OperatorWebAuthnUserEntity user = userRepository.findById(operator.getId())
                 .orElseThrow(WebAuthnService::rejected);
         if (user.getUserHandle() == null) {
@@ -246,6 +257,7 @@ public class WebAuthnService {
         credential.setBackupEligible(authenticatorData.isFlagBE());
         credential.setBackupState(authenticatorData.isFlagBS());
         credential.setCreatedAt(Instant.now());
+        credentialLifecycleService.initializeCredential(credential, request.providerCategory());
         try {
             credentialRepository.saveAndFlush(credential);
         } catch (DataIntegrityViolationException exception) {
@@ -255,7 +267,7 @@ public class WebAuthnService {
         consume(challenge);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = WebAuthnCredentialNotAcceptedException.class)
     public AuthenticatedOperator completeAuthentication(
             WebAuthnChannel channel,
             String presentedOrigin,
@@ -270,7 +282,6 @@ public class WebAuthnService {
         byte[] signature = decode(request.signature(), MAX_SIGNATURE_BYTES);
         OperatorWebAuthnCredentialEntity credential = credentialRepository
                 .findByCredentialIdForUpdate(credentialId)
-                .filter(candidate -> candidate.getRevokedAt() == null)
                 .filter(candidate -> candidate.getOperator().isActive())
                 .orElseThrow(WebAuthnService::rejected);
         OperatorWebAuthnUserEntity user = userRepository.findByUserHandle(userHandle)
@@ -294,14 +305,146 @@ public class WebAuthnService {
                 null);
         CredentialRecordImpl record = credentialRecord(credential);
         verifyAuthentication(parsed, rawChallenge, configuration, credentialId, record);
+        if (credential.getRevokedAt() != null) {
+            consume(challenge);
+            if (credentialLifecycleService.isSignallingEnabled()) {
+                throw new WebAuthnCredentialNotAcceptedException();
+            }
+            throw rejected();
+        }
         long presentedCounter = parsed.getAuthenticatorData().getSignCount();
         updateCounterAndBackupState(credential, parsed, presentedCounter);
-        credential.setLastUsedAt(Instant.now());
+        Instant verifiedAt = Instant.now();
+        credential.setLastUsedAt(verifiedAt);
+        credentialLifecycleService.markVerified(credential, null, verifiedAt);
         credentialRepository.saveAndFlush(credential);
         consume(challenge);
         OperatorEntity operator = credential.getOperator();
         return new AuthenticatedOperator(
                 operator.getId(), operator.getEmail(), operator.getDisplayName());
+    }
+
+    @Transactional
+    public WebAuthnOptionsResponse beginOwnershipVerification(
+            AuthenticatedOperator actor,
+            UUID sessionFamilyId,
+            WebAuthnChannel channel,
+            String presentedOrigin,
+            UUID recordId
+    ) {
+        WebAuthnConfiguration configuration = configuration(channel, presentedOrigin);
+        if (!credentialLifecycleService.isRestrictedCeremonyEnabled()
+                || sessionFamilyId == null) {
+            throw rejected();
+        }
+        OperatorEntity operator = operatorRepository.findByIdForUpdate(actor.operatorId())
+                .filter(OperatorEntity::isActive)
+                .orElseThrow(WebAuthnService::rejected);
+        OperatorSessionFamilyEntity family = sessionFamilyRepository
+                .findByIdAndOperatorId(sessionFamilyId, operator.getId())
+                .filter(candidate -> candidate.getRevokedAt() == null)
+                .filter(candidate -> candidate.getAbsoluteExpiresAt().isAfter(Instant.now()))
+                .orElseThrow(WebAuthnService::rejected);
+        controlledResetService.requireProofTarget(operator, recordId);
+        WebAuthnOptionsResponse.CredentialDescriptor credential =
+                credentialLifecycleService.activeCredential(operator.getId(), recordId);
+        PrivilegedActionBinding ownershipBinding = ownershipBinding(recordId);
+        Challenge challenge = createChallenge(
+                WebAuthnChallengePurpose.OWNERSHIP,
+                channel,
+                configuration,
+                operator,
+                family,
+                ownershipBinding);
+        return new WebAuthnOptionsResponse(
+                challenge.id(),
+                encode(challenge.raw()),
+                properties.getWebAuthn().getChallengeTtl().toMillis(),
+                configuration.rpId(),
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(credential),
+                "required",
+                null,
+                null);
+    }
+
+    @Transactional
+    public WebAuthnCredentialVerificationResponse completeOwnershipVerification(
+            AuthenticatedOperator actor,
+            UUID sessionFamilyId,
+            WebAuthnChannel channel,
+            String presentedOrigin,
+            WebAuthnCredentialVerificationRequest request
+    ) {
+        WebAuthnConfiguration configuration = configuration(channel, presentedOrigin);
+        if (!credentialLifecycleService.isRestrictedCeremonyEnabled()
+                || sessionFamilyId == null) {
+            throw rejected();
+        }
+        byte[] credentialId = decode(request.credentialId(), MAX_CREDENTIAL_ID_BYTES);
+        byte[] userHandle = restrictedUserHandle(request.userHandle(), actor.operatorId());
+        byte[] authenticatorData = decode(
+                request.authenticatorData(), MAX_AUTHENTICATOR_DATA_BYTES);
+        byte[] clientData = decode(request.clientDataJson(), MAX_CLIENT_DATA_BYTES);
+        byte[] signature = decode(request.signature(), MAX_SIGNATURE_BYTES);
+        OperatorEntity operator = operatorRepository.findByIdForUpdate(actor.operatorId())
+                .filter(OperatorEntity::isActive)
+                .orElseThrow(WebAuthnService::rejected);
+        OperatorWebAuthnCredentialEntity credential = credentialRepository
+                .findByCredentialIdForUpdate(credentialId)
+                .filter(candidate -> candidate.getRevokedAt() == null)
+                .filter(candidate -> candidate.getOperator().isActive())
+                .filter(candidate -> candidate.getOperator().getId().equals(actor.operatorId()))
+                .orElseThrow(WebAuthnService::rejected);
+        controlledResetService.requireProofTarget(operator, credential.getId());
+        if (controlledResetService.isEnabled()
+                && request.providerCategory() != WebAuthnProviderCategory.ONE_PASSWORD) {
+            throw rejected();
+        }
+        AuthenticationData parsed = parseAuthentication(new AuthenticationRequest(
+                credentialId, userHandle, authenticatorData, clientData, signature));
+        byte[] rawChallenge = parsed.getCollectedClientData().getChallenge().getValue();
+        OperatorWebAuthnChallengeEntity challenge = lockChallenge(
+                request.requestId(),
+                rawChallenge,
+                WebAuthnChallengePurpose.OWNERSHIP,
+                channel,
+                configuration,
+                actor.operatorId(),
+                sessionFamilyId,
+                ownershipBinding(credential.getId()));
+        verifyAuthentication(
+                parsed,
+                rawChallenge,
+                configuration,
+                credentialId,
+                credentialRecord(credential));
+        updateCounterAndBackupState(
+                credential, parsed, parsed.getAuthenticatorData().getSignCount());
+        Instant verifiedAt = Instant.now();
+        credential.setLastUsedAt(verifiedAt);
+        credentialLifecycleService.markVerified(
+                credential, request.providerCategory(), verifiedAt);
+        credentialRepository.saveAndFlush(credential);
+        consume(challenge);
+        return new WebAuthnCredentialVerificationResponse(
+                credential.getId(),
+                credentialLifecycleService.label(credential),
+                credential.getProviderCategory(),
+                verifiedAt);
+    }
+
+    private PrivilegedActionBinding ownershipBinding(UUID recordId) {
+        if (recordId == null) {
+            throw rejected();
+        }
+        return PrivilegedActionBinding.fromCanonical(
+                "WEBAUTHN_CREDENTIAL_OWNERSHIP",
+                "record=" + recordId,
+                "contract=targeted-ownership-v1");
     }
 
     @Transactional
@@ -323,15 +466,8 @@ public class WebAuthnService {
                 .filter(candidate -> candidate.getRevokedAt() == null)
                 .filter(candidate -> candidate.getAbsoluteExpiresAt().isAfter(Instant.now()))
                 .orElseThrow(WebAuthnService::rejected);
-        List<WebAuthnOptionsResponse.CredentialDescriptor> credentials = credentialRepository
-                .findAllByOperatorIdAndRevokedAtIsNullOrderByCreatedAtAscIdAsc(operator.getId())
-                .stream()
-                .map(credential -> new WebAuthnOptionsResponse.CredentialDescriptor(
-                        "public-key", encode(credential.getCredentialId()),
-                        credential.getTransports().isBlank()
-                                ? List.of()
-                                : List.of(credential.getTransports().split(","))))
-                .toList();
+        List<WebAuthnOptionsResponse.CredentialDescriptor> credentials =
+                credentialLifecycleService.activeCredentials(operator.getId());
         if (credentials.isEmpty()) throw rejected();
         Challenge challenge = createChallenge(
                 WebAuthnChallengePurpose.STEP_UP, channel, configuration,
@@ -360,7 +496,7 @@ public class WebAuthnService {
         try {
             WebAuthnConfiguration configuration = configuration(channel, presentedOrigin);
             byte[] credentialId = decode(request.credentialId(), MAX_CREDENTIAL_ID_BYTES);
-            byte[] userHandle = decodeExact(request.userHandle(), USER_HANDLE_BYTES);
+            byte[] userHandle = restrictedUserHandle(request.userHandle(), actor.operatorId());
             byte[] authenticatorData = decode(request.authenticatorData(), MAX_AUTHENTICATOR_DATA_BYTES);
             byte[] clientData = decode(request.clientDataJson(), MAX_CLIENT_DATA_BYTES);
             byte[] signature = decode(request.signature(), MAX_SIGNATURE_BYTES);
@@ -370,10 +506,6 @@ public class WebAuthnService {
                     .filter(candidate -> candidate.getOperator().isActive())
                     .filter(candidate -> candidate.getOperator().getId().equals(actor.operatorId()))
                     .orElseThrow(WebAuthnService::rejected);
-            OperatorWebAuthnUserEntity user = userRepository.findByUserHandle(userHandle)
-                    .filter(candidate -> candidate.getOperatorId().equals(actor.operatorId()))
-                    .orElseThrow(WebAuthnService::rejected);
-            if (!MessageDigest.isEqual(user.getUserHandle(), userHandle)) throw rejected();
             AuthenticationData parsed = parseAuthentication(new AuthenticationRequest(
                     credentialId, userHandle, authenticatorData, clientData, signature));
             byte[] rawChallenge = parsed.getCollectedClientData().getChallenge().getValue();
@@ -386,6 +518,7 @@ public class WebAuthnService {
                     parsed.getAuthenticatorData().getSignCount());
             now = Instant.now();
             credential.setLastUsedAt(now);
+            credentialLifecycleService.markVerified(credential, null, now);
             credentialRepository.saveAndFlush(credential);
             consume(challenge);
             clearStepUpAttempts(attempted.getId());
@@ -421,6 +554,22 @@ public class WebAuthnService {
                         attemptRepository.saveAndFlush(attempt);
                     }
                 });
+    }
+
+    private byte[] restrictedUserHandle(String encodedUserHandle, Long operatorId) {
+        OperatorWebAuthnUserEntity expected = userRepository.findById(operatorId)
+                .orElseThrow(WebAuthnService::rejected);
+        if (encodedUserHandle == null) {
+            if (!credentialLifecycleService.isRestrictedCeremonyEnabled()) {
+                throw rejected();
+            }
+            return null;
+        }
+        byte[] presented = decodeExact(encodedUserHandle, USER_HANDLE_BYTES);
+        if (!MessageDigest.isEqual(expected.getUserHandle(), presented)) {
+            throw rejected();
+        }
+        return presented;
     }
 
     private void recordStepUpFailure(OperatorEntity operator, Instant now) {

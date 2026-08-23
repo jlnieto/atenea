@@ -174,6 +174,11 @@ public class OperatorAuthProperties {
         private String webOrigin = "https://atenea.yudri.es";
         private List<String> androidOrigins = new ArrayList<>();
         private Duration challengeTtl = Duration.ofMinutes(5);
+        private boolean credentialLifecycleEnabled;
+        private boolean credentialInventoryEnabled;
+        private boolean credentialSignallingEnabled;
+        private boolean restrictedCeremoniesEnabled;
+        private boolean controlledResetEnabled;
 
         public boolean isEnabled() {
             return enabled;
@@ -221,6 +226,46 @@ public class OperatorAuthProperties {
 
         public void setChallengeTtl(Duration value) {
             challengeTtl = value;
+        }
+
+        public boolean isCredentialLifecycleEnabled() {
+            return credentialLifecycleEnabled;
+        }
+
+        public void setCredentialLifecycleEnabled(boolean value) {
+            credentialLifecycleEnabled = value;
+        }
+
+        public boolean isCredentialInventoryEnabled() {
+            return credentialInventoryEnabled;
+        }
+
+        public void setCredentialInventoryEnabled(boolean value) {
+            credentialInventoryEnabled = value;
+        }
+
+        public boolean isCredentialSignallingEnabled() {
+            return credentialSignallingEnabled;
+        }
+
+        public void setCredentialSignallingEnabled(boolean value) {
+            credentialSignallingEnabled = value;
+        }
+
+        public boolean isRestrictedCeremoniesEnabled() {
+            return restrictedCeremoniesEnabled;
+        }
+
+        public void setRestrictedCeremoniesEnabled(boolean value) {
+            restrictedCeremoniesEnabled = value;
+        }
+
+        public boolean isControlledResetEnabled() {
+            return controlledResetEnabled;
+        }
+
+        public void setControlledResetEnabled(boolean value) {
+            controlledResetEnabled = value;
         }
     }
 

@@ -12,6 +12,9 @@ import com.atenea.auth.webauthn.WebAuthnAuthenticationRequest;
 import com.atenea.auth.webauthn.WebAuthnChannel;
 import com.atenea.auth.webauthn.WebAuthnOptionsResponse;
 import com.atenea.auth.webauthn.WebAuthnRegistrationRequest;
+import com.atenea.auth.webauthn.WebAuthnCredentialVerificationRequest;
+import com.atenea.auth.webauthn.WebAuthnCredentialVerificationResponse;
+import com.atenea.auth.webauthn.WebAuthnCredentialVerificationStartRequest;
 import com.atenea.auth.webauthn.WebAuthnService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -133,6 +136,36 @@ public class MobileAuthController {
             @Valid @RequestBody WebAuthnRegistrationRequest request
     ) {
         webAuthnService.completeRegistration(
+                operator,
+                currentFamilyId(authentication),
+                WebAuthnChannel.ANDROID,
+                androidOrigin,
+                request);
+    }
+
+    @PostMapping("/webauthn/ownership/options")
+    public WebAuthnOptionsResponse webAuthnOwnershipOptions(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            Authentication authentication,
+            @RequestHeader("X-Atenea-Android-Origin") String androidOrigin,
+            @Valid @RequestBody WebAuthnCredentialVerificationStartRequest request
+    ) {
+        return webAuthnService.beginOwnershipVerification(
+                operator,
+                currentFamilyId(authentication),
+                WebAuthnChannel.ANDROID,
+                androidOrigin,
+                request.recordId());
+    }
+
+    @PostMapping("/webauthn/ownership")
+    public WebAuthnCredentialVerificationResponse verifyWebAuthnOwnership(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            Authentication authentication,
+            @RequestHeader("X-Atenea-Android-Origin") String androidOrigin,
+            @Valid @RequestBody WebAuthnCredentialVerificationRequest request
+    ) {
+        return webAuthnService.completeOwnershipVerification(
                 operator,
                 currentFamilyId(authentication),
                 WebAuthnChannel.ANDROID,

@@ -1,23 +1,20 @@
 package com.atenea.auth.webauthn;
 
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
-public record WebAuthnAuthenticationRequest(
+public record WebAuthnCredentialVerificationRequest(
         @NotNull UUID requestId,
         @NotBlank String credentialId,
         String userHandle,
         @NotBlank String clientDataJson,
         @NotBlank String authenticatorData,
         @NotBlank String signature,
-        String sessionProtocolVersion,
-        Boolean singleFlightRefresh,
-        String clientType,
-        String deviceLabel
+        @NotNull WebAuthnProviderCategory providerCategory
 ) {
     @Override
     public String toString() {
-        return "WebAuthnAuthenticationRequest[REDACTED]";
+        return "WebAuthnCredentialVerificationRequest[REDACTED]";
     }
 }

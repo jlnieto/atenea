@@ -21,4 +21,6 @@ public interface OperatorRecoveryCodeRepository
             + "where code.operator.id = :operatorId order by code.id")
     List<OperatorRecoveryCodeEntity> findAllByOperatorIdForUpdate(
             @Param("operatorId") Long operatorId);
+
+    List<OperatorRecoveryCodeEntity> findAllByOperatorIdOrderById(Long operatorId);
 }

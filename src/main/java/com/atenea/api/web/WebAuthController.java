@@ -12,6 +12,9 @@ import com.atenea.auth.webauthn.WebAuthnAuthenticationRequest;
 import com.atenea.auth.webauthn.WebAuthnChannel;
 import com.atenea.auth.webauthn.WebAuthnOptionsResponse;
 import com.atenea.auth.webauthn.WebAuthnRegistrationRequest;
+import com.atenea.auth.webauthn.WebAuthnCredentialVerificationRequest;
+import com.atenea.auth.webauthn.WebAuthnCredentialVerificationResponse;
+import com.atenea.auth.webauthn.WebAuthnCredentialVerificationStartRequest;
 import com.atenea.auth.webauthn.WebAuthnService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -154,6 +157,38 @@ public class WebAuthController {
     ) {
         requireExactOrigin(origin);
         webAuthnService.completeRegistration(
+                operator,
+                currentFamilyId(authentication),
+                WebAuthnChannel.WEB,
+                origin,
+                request);
+    }
+
+    @PostMapping("/webauthn/ownership/options")
+    public WebAuthnOptionsResponse webAuthnOwnershipOptions(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            Authentication authentication,
+            @RequestHeader(name = HttpHeaders.ORIGIN, required = false) String origin,
+            @Valid @RequestBody WebAuthnCredentialVerificationStartRequest request
+    ) {
+        requireExactOrigin(origin);
+        return webAuthnService.beginOwnershipVerification(
+                operator,
+                currentFamilyId(authentication),
+                WebAuthnChannel.WEB,
+                origin,
+                request.recordId());
+    }
+
+    @PostMapping("/webauthn/ownership")
+    public WebAuthnCredentialVerificationResponse verifyWebAuthnOwnership(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            Authentication authentication,
+            @RequestHeader(name = HttpHeaders.ORIGIN, required = false) String origin,
+            @Valid @RequestBody WebAuthnCredentialVerificationRequest request
+    ) {
+        requireExactOrigin(origin);
+        return webAuthnService.completeOwnershipVerification(
                 operator,
                 currentFamilyId(authentication),
                 WebAuthnChannel.WEB,

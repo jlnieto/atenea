@@ -1,5 +1,6 @@
 import {
   ApiError,
+  ApiErrorPayload,
   AuthSession,
   BillingQueueResponse,
   CodexActivationAuthorization,
@@ -42,7 +43,13 @@ import {
   WorkSessionAttachmentCapability,
   WorkSessionPreview,
   TotpEnrollment,
-  WebAuthnOptions
+  WebAuthnOptions,
+  WebAuthnCredentialInventory,
+  WebAuthnCredentialSignalSnapshot,
+  WebAuthnCredentialVerification,
+  WebAuthnControlledResetResult,
+  WebAuthnControlledResetStatus,
+  WebAuthnProviderCategory
 } from "./types";
 
 const SESSION_PROTOCOL = "FAMILY_V1";
@@ -160,7 +167,7 @@ export class AteneaApi {
     });
   }
 
-  async registerPasskey() {
+  async registerPasskey(providerCategory?: WebAuthnProviderCategory) {
     requireWebAuthn();
     const options = await this.post<WebAuthnOptions>("/api/web/auth/webauthn/registration/options");
     const credential = await navigator.credentials.create({
@@ -173,8 +180,67 @@ export class AteneaApi {
       credentialId: encodeBase64Url(credential.rawId),
       clientDataJson: encodeBase64Url(response.clientDataJSON),
       attestationObject: encodeBase64Url(response.attestationObject),
-      transports: response.getTransports?.() ?? []
+      transports: response.getTransports?.() ?? [],
+      providerCategory: providerCategory ?? null
     });
+  }
+
+  passkeyInventory() {
+    return this.get<WebAuthnCredentialInventory>("/api/auth/webauthn/credentials");
+  }
+
+  revokePasskey(recordId: string) {
+    return this.delete(`/api/auth/webauthn/credentials/${encodeURIComponent(recordId)}`);
+  }
+
+  passkeyResetStatus() {
+    return this.get<WebAuthnControlledResetStatus>("/api/auth/webauthn/passkey-reset");
+  }
+
+  commitPasskeyReset(candidateRecordId: string) {
+    return this.post<WebAuthnControlledResetResult>(
+      `/api/auth/webauthn/passkey-reset/${encodeURIComponent(candidateRecordId)}/commit`
+    );
+  }
+
+  async verifyPasskeyOwnership(
+    recordId: string,
+    providerCategory: WebAuthnProviderCategory
+  ) {
+    requireWebAuthn();
+    const options = await this.post<WebAuthnOptions>(
+      "/api/web/auth/webauthn/ownership/options",
+      { recordId }
+    );
+    const credential = await navigator.credentials.get({
+      publicKey: authenticationOptions(options)
+    }) as PublicKeyCredential | null;
+    if (!credential) throw new Error("La verificación de passkey fue cancelada.");
+    const response = credential.response as AuthenticatorAssertionResponse;
+    return this.post<WebAuthnCredentialVerification>("/api/web/auth/webauthn/ownership", {
+      requestId: options.requestId,
+      credentialId: encodeBase64Url(credential.rawId),
+      userHandle: response.userHandle ? encodeBase64Url(response.userHandle) : null,
+      clientDataJson: encodeBase64Url(response.clientDataJSON),
+      authenticatorData: encodeBase64Url(response.authenticatorData),
+      signature: encodeBase64Url(response.signature),
+      providerCategory
+    });
+  }
+
+  async signalAcceptedPasskeys(): Promise<"SIGNALED" | "UNAVAILABLE"> {
+    const snapshot = await this.get<WebAuthnCredentialSignalSnapshot>(
+      "/api/auth/webauthn/credentials/signal-snapshot"
+    );
+    assertCompleteSignalSnapshot(snapshot);
+    const signal = webAuthnSignalMethod("signalAllAcceptedCredentials");
+    if (!signal) return "UNAVAILABLE";
+    await signal({
+      rpId: snapshot.relyingPartyId,
+      userId: snapshot.userId,
+      allAcceptedCredentialIds: [...snapshot.allAcceptedCredentialIds]
+    });
+    return "SIGNALED";
   }
 
   async loginWithPasskey() {
@@ -190,22 +256,31 @@ export class AteneaApi {
     if (!credential) throw new Error("El acceso con passkey fue cancelado.");
     const response = credential.response as AuthenticatorAssertionResponse;
     if (!response.userHandle) throw new Error("La passkey no devolvió una identidad válida.");
-    const session = await this.request<AuthSession>("/api/web/auth/webauthn/authentication", {
-      method: "POST",
-      body: {
-        requestId: options.requestId,
-        credentialId: encodeBase64Url(credential.rawId),
-        userHandle: encodeBase64Url(response.userHandle),
-        clientDataJson: encodeBase64Url(response.clientDataJSON),
-        authenticatorData: encodeBase64Url(response.authenticatorData),
-        signature: encodeBase64Url(response.signature),
-        deviceLabel: "Atenea web"
-      },
-      authenticated: false,
-      jsonBody: true,
-      credentials: "include",
-      headers: protocolHeaders()
-    });
+    const credentialId = encodeBase64Url(credential.rawId);
+    let session: AuthSession;
+    try {
+      session = await this.request<AuthSession>("/api/web/auth/webauthn/authentication", {
+        method: "POST",
+        body: {
+          requestId: options.requestId,
+          credentialId,
+          userHandle: encodeBase64Url(response.userHandle),
+          clientDataJson: encodeBase64Url(response.clientDataJSON),
+          authenticatorData: encodeBase64Url(response.authenticatorData),
+          signature: encodeBase64Url(response.signature),
+          deviceLabel: "Atenea web"
+        },
+        authenticated: false,
+        jsonBody: true,
+        credentials: "include",
+        headers: protocolHeaders()
+      });
+    } catch (error) {
+      if (isUnknownCredentialSignal(error)) {
+        await signalUnknownCredential(options.relyingPartyId, credentialId).catch(() => undefined);
+      }
+      throw error;
+    }
     this.setSession(session);
     return session;
   }
@@ -695,6 +770,72 @@ function authenticationOptions(options: WebAuthnOptions): PublicKeyCredentialReq
   };
 }
 
+type SignalAllAcceptedCredentials = (options: {
+  rpId: string;
+  userId: string;
+  allAcceptedCredentialIds: string[];
+}) => Promise<void>;
+
+type SignalUnknownCredential = (options: {
+  rpId: string;
+  credentialId: string;
+}) => Promise<void>;
+
+function webAuthnSignalMethod(
+  name: "signalAllAcceptedCredentials"
+): SignalAllAcceptedCredentials | null;
+function webAuthnSignalMethod(
+  name: "signalUnknownCredential"
+): SignalUnknownCredential | null;
+function webAuthnSignalMethod(name: string) {
+  if (!("PublicKeyCredential" in window)) return null;
+  const constructor = window.PublicKeyCredential as unknown as Record<string, unknown>;
+  const method = constructor[name];
+  return typeof method === "function"
+    ? (method as (...args: unknown[]) => Promise<void>).bind(constructor)
+    : null;
+}
+
+function assertCompleteSignalSnapshot(snapshot: WebAuthnCredentialSignalSnapshot) {
+  const ids = snapshot.allAcceptedCredentialIds;
+  const complete = snapshot.relyingPartyId === window.location.hostname
+    && snapshot.userId.length > 0
+    && snapshot.activeCredentialCount > 0
+    && snapshot.activeCredentialCount === ids.length
+    && new Set(ids).size === ids.length
+    && ids.every(isCanonicalBase64Url)
+    && isCanonicalBase64Url(snapshot.userId)
+    && Number.isSafeInteger(snapshot.credentialVersion)
+    && snapshot.credentialVersion >= 0;
+  if (!complete) {
+    throw new Error("El snapshot de passkeys no es completo; no se enviará ninguna señal.");
+  }
+}
+
+function isCanonicalBase64Url(value: string) {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) return false;
+  try {
+    return encodeBase64Url(decodeBase64Url(value)) === value;
+  } catch {
+    return false;
+  }
+}
+
+function isUnknownCredentialSignal(error: unknown) {
+  if (!(error instanceof ApiError) || !error.payload || typeof error.payload !== "object") {
+    return false;
+  }
+  return (error.payload as ApiErrorPayload).action === "SIGNAL_UNKNOWN_CREDENTIAL";
+}
+
+async function signalUnknownCredential(relyingPartyId: string, credentialId: string) {
+  if (relyingPartyId !== window.location.hostname || !isCanonicalBase64Url(credentialId)) {
+    return;
+  }
+  const signal = webAuthnSignalMethod("signalUnknownCredential");
+  if (signal) await signal({ rpId: relyingPartyId, credentialId });
+}
+
 function descriptor(value: WebAuthnOptions["credentials"][number]): PublicKeyCredentialDescriptor {
   return { type: value.type, id: decodeBase64Url(value.id), transports: value.transports };
 }
@@ -706,8 +847,10 @@ function decodeBase64Url(value: string) {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-function encodeBase64Url(value: ArrayBuffer) {
-  const bytes = new Uint8Array(value);
+function encodeBase64Url(value: ArrayBufferLike | ArrayBufferView) {
+  const bytes = ArrayBuffer.isView(value)
+    ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+    : new Uint8Array(value);
   let binary = "";
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

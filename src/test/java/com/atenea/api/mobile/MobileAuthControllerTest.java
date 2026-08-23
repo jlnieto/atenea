@@ -18,6 +18,7 @@ import com.atenea.auth.OperatorAuthenticationService;
 import com.atenea.auth.OperatorProfileResponse;
 import com.atenea.auth.webauthn.WebAuthnAuthenticationRequest;
 import com.atenea.auth.webauthn.WebAuthnChannel;
+import com.atenea.auth.webauthn.WebAuthnCredentialVerificationStartRequest;
 import com.atenea.auth.webauthn.WebAuthnOptionsResponse;
 import com.atenea.auth.webauthn.WebAuthnService;
 import java.time.Instant;
@@ -49,11 +50,12 @@ class MobileAuthControllerTest {
     private WebAuthnService webAuthnService;
 
     private MockMvc mockMvc;
+    private MobileAuthController controller;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(
-                        new MobileAuthController(operatorAuthenticationService, webAuthnService))
+        controller = new MobileAuthController(operatorAuthenticationService, webAuthnService);
+        mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -152,6 +154,39 @@ class MobileAuthControllerTest {
         verify(webAuthnService).completeAuthentication(
                 eq(WebAuthnChannel.ANDROID), eq(ANDROID_ORIGIN),
                 any(WebAuthnAuthenticationRequest.class));
+    }
+
+    @Test
+    void androidOwnershipOptionsRequireOneSanitizedRecordTarget() throws Exception {
+        UUID familyId = UUID.randomUUID();
+        UUID recordId = UUID.randomUUID();
+        UUID requestId = UUID.randomUUID();
+        AuthenticatedOperator operator = new AuthenticatedOperator(
+                4L, "operator@atenea.local", "Operator");
+        UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(operator, null);
+        authentication.setDetails(familyId);
+        when(webAuthnService.beginOwnershipVerification(
+                operator,
+                familyId,
+                WebAuthnChannel.ANDROID,
+                ANDROID_ORIGIN,
+                recordId)).thenReturn(options(requestId));
+
+        WebAuthnCredentialVerificationStartRequest request =
+                new WebAuthnCredentialVerificationStartRequest(recordId);
+        WebAuthnOptionsResponse response = controller.webAuthnOwnershipOptions(
+                operator, authentication, ANDROID_ORIGIN, request);
+
+        org.junit.jupiter.api.Assertions.assertEquals(requestId, response.requestId());
+        org.junit.jupiter.api.Assertions.assertFalse(
+                request.toString().contains(recordId.toString()));
+        verify(webAuthnService).beginOwnershipVerification(
+                operator,
+                familyId,
+                WebAuthnChannel.ANDROID,
+                ANDROID_ORIGIN,
+                recordId);
     }
 
     private MobileAuthSessionResponse session() {

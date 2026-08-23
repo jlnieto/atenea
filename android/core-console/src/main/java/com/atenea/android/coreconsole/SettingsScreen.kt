@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.OperatorSessionInventory
 import com.atenea.android.api.OperatorSessionState
+import com.atenea.android.api.PasskeyCredentialState
+import com.atenea.android.api.PasskeyInventory
 import com.atenea.android.api.TotpEnrollment
 import kotlinx.coroutines.launch
 
@@ -48,6 +50,10 @@ internal fun SettingsScreen(
     var totpEnrollment by remember { mutableStateOf<TotpEnrollment?>(null) }
     var totpCode by remember { mutableStateOf("") }
     var recoveryCodes by remember { mutableStateOf<List<String>>(emptyList()) }
+    var passkeyInventory by remember { mutableStateOf<PasskeyInventory?>(null) }
+    var passkeyLoading by remember { mutableStateOf(true) }
+    var passkeyError by remember { mutableStateOf<String?>(null) }
+    var passkeyMessage by remember { mutableStateOf<String?>(null) }
 
     fun loadSessions() {
         scope.launch {
@@ -63,7 +69,24 @@ internal fun SettingsScreen(
         }
     }
 
-    LaunchedEffect(Unit) { loadSessions() }
+    fun loadPasskeys() {
+        scope.launch {
+            passkeyLoading = true
+            passkeyError = null
+            try {
+                passkeyInventory = apiClient.fetchPasskeyInventory()
+            } catch (error: Exception) {
+                passkeyError = error.message ?: "No se pudo cargar el inventario de passkeys."
+            } finally {
+                passkeyLoading = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadSessions()
+        loadPasskeys()
+    }
     val latestManifest = when (updateState) {
         is UpdateCheckResult.Available -> updateState.update
         is UpdateCheckResult.UpToDate -> updateState.latest
@@ -91,9 +114,89 @@ internal fun SettingsScreen(
                     "No disponible en Android 8"
                 }
             )
+            when {
+                passkeyLoading -> Text("Cargando passkeys sanitizadas…")
+                passkeyError != null -> Text(
+                    passkeyError.orEmpty(),
+                    color = MaterialTheme.colorScheme.error
+                )
+                passkeyInventory?.state == "DISABLED" -> {
+                    Text("Inventario correctivo desactivado", style = MaterialTheme.typography.titleSmall)
+                    Text(passkeyInventory?.nextAction.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                }
+                passkeyInventory != null -> {
+                    val inventory = passkeyInventory!!
+                    Text(
+                        if (inventory.readOnly) {
+                            "Discovery de passkeys: solo lectura"
+                        } else if (inventory.independentDomainsReady) {
+                            "Passkeys independientes verificadas"
+                        } else {
+                            "Falta independencia entre proveedores"
+                        },
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(inventory.nextAction, style = MaterialTheme.typography.bodySmall)
+                    inventory.credentials.forEach { credential ->
+                        Text(credential.label, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            buildString {
+                                append(if (credential.state == PasskeyCredentialState.ACTIVE) "Activa" else "Revocada")
+                                append(if (credential.backupEligible) " · Sincronizable" else " · No sincronizable")
+                                append(if (credential.lastVerifiedAt != null) " · Verificada" else " · Sin verificar")
+                            },
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (passkeyMutationsAllowed(inventory.readOnly)
+                            && credential.state == PasskeyCredentialState.ACTIVE) {
+                            AteneaOutlinedButton(
+                                text = "Revocar en Atenea",
+                                onClick = {
+                                    scope.launch {
+                                        runCatching { apiClient.revokePasskey(credential.recordId) }
+                                            .onSuccess {
+                                                passkeyMessage = "Revocada en Atenea. Bórrala manualmente del proveedor si ya no la necesitas."
+                                                loadPasskeys()
+                                            }
+                                            .onFailure { passkeyError = it.message }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    if (passkeyMutationsAllowed(inventory.readOnly)
+                        && inventory.signallingEnabled) {
+                        AteneaOutlinedButton(
+                            text = "Sincronizar inventario activo",
+                            enabled = inventory.credentials.any { it.state == PasskeyCredentialState.ACTIVE },
+                            onClick = {
+                                scope.launch {
+                                    if (passkey.signalAvailability != PasskeySignalAvailability.AVAILABLE) {
+                                        passkeyMessage = "Signal API requiere Android 15. Revisa las passkeys manualmente en el proveedor."
+                                        return@launch
+                                    }
+                                    runCatching {
+                                        val snapshot = apiClient.fetchPasskeySignalSnapshot()
+                                        passkey.signalAllAcceptedCredentials(
+                                            snapshot,
+                                            expectedRelyingPartyId = "atenea.yudri.es"
+                                        )
+                                    }.onSuccess {
+                                        passkeyMessage = "El proveedor recibió el inventario activo completo."
+                                    }.onFailure {
+                                        passkeyMessage = "No se pudo señalizar. Revisa las passkeys manualmente en el proveedor."
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+            passkeyMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             MetricLine("TOTP", "Respaldo opcional; alta real requiere H11")
             factorMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            if (totpEnrollment == null) {
+            if (passkeyMutationsAllowed(passkeyInventory?.readOnly)
+                && totpEnrollment == null) {
                 AteneaOutlinedButton(
                     text = "Preparar TOTP",
                     onClick = {
@@ -107,7 +210,8 @@ internal fun SettingsScreen(
                         }
                     }
                 )
-            } else {
+            } else if (passkeyMutationsAllowed(passkeyInventory?.readOnly)
+                && totpEnrollment != null) {
                 Text("Secreto de alta (una sola fase pendiente)", style = MaterialTheme.typography.bodySmall)
                 Text(totpEnrollment!!.secret, style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(

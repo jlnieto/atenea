@@ -79,6 +79,27 @@ class AteneaApiClient(
         requestBody("/api/mobile/auth/sessions/others", "DELETE", null, authenticated = true)
     }
 
+    suspend fun fetchPasskeyInventory(): PasskeyInventory = getJson(
+        path = "/api/auth/webauthn/credentials",
+        authenticated = true,
+        parser = ::parsePasskeyInventory
+    )
+
+    suspend fun revokePasskey(recordId: UUID) {
+        requestBody(
+            "/api/auth/webauthn/credentials/$recordId",
+            "DELETE",
+            null,
+            authenticated = true
+        )
+    }
+
+    suspend fun fetchPasskeySignalSnapshot(): PasskeySignalSnapshot = getJson(
+        path = "/api/auth/webauthn/credentials/signal-snapshot",
+        authenticated = true,
+        parser = ::parsePasskeySignalSnapshot
+    )
+
     suspend fun beginTotpEnrollment(): TotpEnrollment = postJson(
         path = "/api/auth/totp/enrollments",
         body = JSONObject(),
@@ -1110,6 +1131,52 @@ data class OperatorSessionInventory(
 
 enum class OperatorSessionState { ACTIVE, EXPIRED, REVOKED }
 
+enum class PasskeyProviderCategory {
+    GOOGLE_PASSWORD_MANAGER,
+    ONE_PASSWORD,
+    HARDWARE_SECURITY_KEY,
+    OTHER,
+    UNKNOWN
+}
+
+enum class PasskeyCredentialState { ACTIVE, REVOKED }
+
+data class PasskeyInventoryItem(
+    val recordId: UUID,
+    val label: String,
+    val providerCategory: PasskeyProviderCategory,
+    val provenance: String,
+    val backupEligible: Boolean,
+    val backupState: Boolean,
+    val transports: List<String>,
+    val createdAt: String,
+    val lastUsedAt: String?,
+    val lastVerifiedAt: String?,
+    val state: PasskeyCredentialState
+)
+
+data class PasskeyInventory(
+    val state: String,
+    val credentials: List<PasskeyInventoryItem>,
+    val requiredProviderDomains: List<PasskeyProviderCategory>,
+    val verifiedProviderDomains: List<PasskeyProviderCategory>,
+    val independentDomainsReady: Boolean,
+    val signallingEnabled: Boolean,
+    val readOnly: Boolean,
+    val nextAction: String
+)
+
+data class PasskeySignalSnapshot(
+    val relyingPartyId: String,
+    val userId: String,
+    val allAcceptedCredentialIds: List<String>,
+    val activeCredentialCount: Int,
+    val credentialVersion: Long
+) {
+    override fun toString(): String =
+        "PasskeySignalSnapshot(REDACTED,count=$activeCredentialCount,version=$credentialVersion)"
+}
+
 data class TotpEnrollment(
     val enrollmentId: UUID,
     val secret: String,
@@ -1996,6 +2063,49 @@ internal fun parseOperatorSessionInventory(json: JSONObject): OperatorSessionInv
         absoluteExpiresAt = json.getString("absoluteExpiresAt"),
         state = OperatorSessionState.valueOf(json.getString("state")),
         current = json.getBoolean("current")
+    )
+
+internal fun parsePasskeyInventory(json: JSONObject): PasskeyInventory {
+    val credentialsJson = json.getJSONArray("credentials")
+    val credentials = List(credentialsJson.length()) { index ->
+        val item = credentialsJson.getJSONObject(index)
+        PasskeyInventoryItem(
+            recordId = UUID.fromString(item.getString("recordId")),
+            label = item.getString("label"),
+            providerCategory = PasskeyProviderCategory.valueOf(item.getString("providerCategory")),
+            provenance = item.getString("provenance"),
+            backupEligible = item.getBoolean("backupEligible"),
+            backupState = item.getBoolean("backupState"),
+            transports = item.getJSONArray("transports").toStringList(),
+            createdAt = item.getString("createdAt"),
+            lastUsedAt = item.optNullableString("lastUsedAt"),
+            lastVerifiedAt = item.optNullableString("lastVerifiedAt"),
+            state = PasskeyCredentialState.valueOf(item.getString("state"))
+        )
+    }
+    return PasskeyInventory(
+        state = json.getString("state"),
+        credentials = credentials,
+        requiredProviderDomains = json.getJSONArray("requiredProviderDomains").let { values ->
+            List(values.length()) { PasskeyProviderCategory.valueOf(values.getString(it)) }
+        },
+        verifiedProviderDomains = json.getJSONArray("verifiedProviderDomains").let { values ->
+            List(values.length()) { PasskeyProviderCategory.valueOf(values.getString(it)) }
+        },
+        independentDomainsReady = json.getBoolean("independentDomainsReady"),
+        signallingEnabled = json.getBoolean("signallingEnabled"),
+        readOnly = json.getBoolean("readOnly"),
+        nextAction = json.getString("nextAction")
+    )
+}
+
+internal fun parsePasskeySignalSnapshot(json: JSONObject): PasskeySignalSnapshot =
+    PasskeySignalSnapshot(
+        relyingPartyId = json.getString("relyingPartyId"),
+        userId = json.getString("userId"),
+        allAcceptedCredentialIds = json.getJSONArray("allAcceptedCredentialIds").toStringList(),
+        activeCredentialCount = json.getInt("activeCredentialCount"),
+        credentialVersion = json.getLong("credentialVersion")
     )
 
 private fun parseTotpEnrollment(json: JSONObject) = TotpEnrollment(

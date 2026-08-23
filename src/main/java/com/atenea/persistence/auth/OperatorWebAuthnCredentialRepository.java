@@ -24,6 +24,29 @@ public interface OperatorWebAuthnCredentialRepository
     List<OperatorWebAuthnCredentialEntity> findAllByOperatorIdAndRevokedAtIsNullOrderByCreatedAtAscIdAsc(
             Long operatorId);
 
+    List<OperatorWebAuthnCredentialEntity> findAllByOperatorIdOrderByLabelOrdinalAscIdAsc(
+            Long operatorId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select credential from OperatorWebAuthnCredentialEntity credential "
+            + "join fetch credential.operator where credential.operator.id = :operatorId "
+            + "order by credential.labelOrdinal, credential.id")
+    List<OperatorWebAuthnCredentialEntity> findAllByOperatorIdForUpdate(
+            @Param("operatorId") Long operatorId);
+
+    List<OperatorWebAuthnCredentialEntity> findAllByOperatorIdAndRevokedAtIsNullOrderByLabelOrdinalAscIdAsc(
+            Long operatorId);
+
+    long countByOperatorIdAndRevokedAtIsNull(Long operatorId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select credential from OperatorWebAuthnCredentialEntity credential "
+            + "join fetch credential.operator where credential.id = :credentialId "
+            + "and credential.operator.id = :operatorId")
+    Optional<OperatorWebAuthnCredentialEntity> findByIdAndOperatorIdForUpdate(
+            @Param("credentialId") UUID credentialId,
+            @Param("operatorId") Long operatorId);
+
     @Modifying(flushAutomatically = true)
     @Query("update OperatorWebAuthnCredentialEntity credential "
             + "set credential.revokedAt = :revokedAt, credential.revocationReason = :reason, "

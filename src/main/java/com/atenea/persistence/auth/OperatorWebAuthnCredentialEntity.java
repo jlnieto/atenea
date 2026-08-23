@@ -1,7 +1,11 @@
 package com.atenea.persistence.auth;
 
+import com.atenea.auth.webauthn.WebAuthnProviderCategory;
+import com.atenea.auth.webauthn.WebAuthnProviderProvenance;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -58,6 +62,20 @@ public class OperatorWebAuthnCredentialEntity {
     @Column(name = "revocation_reason", length = 40)
     private String revocationReason;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "provider_category", nullable = false, length = 32)
+    private WebAuthnProviderCategory providerCategory;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "provider_provenance", nullable = false, length = 32)
+    private WebAuthnProviderProvenance providerProvenance;
+
+    @Column(name = "label_ordinal", nullable = false)
+    private long labelOrdinal;
+
+    @Column(name = "last_verified_at")
+    private Instant lastVerifiedAt;
+
     @Version
     @Column(name = "row_version", nullable = false)
     private long rowVersion;
@@ -90,5 +108,13 @@ public class OperatorWebAuthnCredentialEntity {
     public void setRevokedAt(Instant value) { revokedAt = value; }
     public String getRevocationReason() { return revocationReason; }
     public void setRevocationReason(String value) { revocationReason = value; }
+    public WebAuthnProviderCategory getProviderCategory() { return providerCategory; }
+    public void setProviderCategory(WebAuthnProviderCategory value) { providerCategory = value; }
+    public WebAuthnProviderProvenance getProviderProvenance() { return providerProvenance; }
+    public void setProviderProvenance(WebAuthnProviderProvenance value) { providerProvenance = value; }
+    public long getLabelOrdinal() { return labelOrdinal; }
+    public void setLabelOrdinal(long value) { labelOrdinal = value; }
+    public Instant getLastVerifiedAt() { return lastVerifiedAt; }
+    public void setLastVerifiedAt(Instant value) { lastVerifiedAt = value; }
     public long getRowVersion() { return rowVersion; }
 }

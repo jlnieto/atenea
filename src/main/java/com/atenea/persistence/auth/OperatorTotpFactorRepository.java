@@ -23,4 +23,8 @@ public interface OperatorTotpFactorRepository
     List<OperatorTotpFactorEntity> findAllByOperatorIdAndStateForUpdate(
             @Param("operatorId") Long operatorId,
             @Param("state") TotpFactorState state);
+
+    List<OperatorTotpFactorEntity> findAllByOperatorIdAndStateOrderById(
+            Long operatorId,
+            TotpFactorState state);
 }

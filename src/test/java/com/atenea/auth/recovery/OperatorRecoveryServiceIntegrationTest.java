@@ -524,8 +524,8 @@ class OperatorRecoveryServiceIntegrationTest {
                 INSERT INTO operator_webauthn_credential (
                     id, operator_id, credential_id, public_key_cose, algorithm,
                     aaguid, sign_count, transports, backup_eligible, backup_state,
-                    created_at)
-                VALUES (?, ?, ?, ?, -7, ?, 0, 'internal', FALSE, FALSE, now())
+                    created_at, label_ordinal)
+                VALUES (?, ?, ?, ?, -7, ?, 0, 'internal', FALSE, FALSE, now(), 1)
                 """, UUID.randomUUID(), operatorId, filled(32, (byte) 0x23),
                 filled(32, (byte) 0x45), new UUID(0, 0));
     }

@@ -26,9 +26,6 @@ atenea.yudri.es {
 	}
 
 	handle {
-		basic_auth {
-			atenea-web $2a$14$sheZYb90BPyCv1Q/hTNXwePVmskxKd4uN995x4rjW67OtNNSMvO96
-		}
 		reverse_proxy host.docker.internal:8081
 	}
 }

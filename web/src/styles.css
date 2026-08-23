@@ -288,6 +288,48 @@ svg {
   margin: 3px 0 0;
 }
 
+.passkey-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.passkey-state > div {
+  display: grid;
+  gap: 4px;
+}
+
+.passkey-state span {
+  color: var(--muted);
+}
+
+.passkey-provider {
+  max-width: 360px;
+}
+
+.passkey-inventory {
+  display: grid;
+}
+
+.passkey-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.passkey-choice input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
 .security-session {
   display: flex;
   align-items: center;
@@ -303,7 +345,7 @@ svg {
   min-width: 0;
 }
 
-.security-session span {
+.security-session > div > span {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
@@ -321,6 +363,11 @@ svg {
   color: var(--muted);
 }
 
+.factor-enrollment__heading {
+  display: grid;
+  gap: 2px;
+}
+
 .factor-enrollment > code,
 .recovery-code-grid code {
   overflow-wrap: anywhere;
@@ -334,9 +381,18 @@ svg {
 }
 
 @media (max-width: 560px) {
+  .passkey-state {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .security-session {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .passkey-choice {
+    white-space: normal;
   }
 
   .recovery-code-grid {

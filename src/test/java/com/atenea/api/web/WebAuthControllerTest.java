@@ -21,6 +21,7 @@ import com.atenea.auth.OperatorAuthenticationService;
 import com.atenea.auth.OperatorProfileResponse;
 import com.atenea.auth.webauthn.WebAuthnAuthenticationRequest;
 import com.atenea.auth.webauthn.WebAuthnChannel;
+import com.atenea.auth.webauthn.WebAuthnCredentialVerificationStartRequest;
 import com.atenea.auth.webauthn.WebAuthnOptionsResponse;
 import com.atenea.auth.webauthn.WebAuthnService;
 import jakarta.servlet.http.Cookie;
@@ -238,6 +239,31 @@ class WebAuthControllerTest {
         assertTrue(requestId.equals(response.requestId()));
         verify(webAuthnService).beginRegistration(
                 operator, familyId, WebAuthnChannel.WEB, ORIGIN);
+    }
+
+    @Test
+    void ownershipOptionsRequireAndForwardOneSanitizedRecordTarget() {
+        UUID familyId = UUID.randomUUID();
+        UUID recordId = UUID.randomUUID();
+        AuthenticatedOperator operator = new AuthenticatedOperator(
+                1L, "operator@atenea.local", "Operator");
+        UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(operator, null);
+        authentication.setDetails(familyId);
+        UUID requestId = UUID.randomUUID();
+        when(webAuthnService.beginOwnershipVerification(
+                operator, familyId, WebAuthnChannel.WEB, ORIGIN, recordId))
+                .thenReturn(options(requestId));
+
+        WebAuthnCredentialVerificationStartRequest request =
+                new WebAuthnCredentialVerificationStartRequest(recordId);
+        WebAuthnOptionsResponse response = controller.webAuthnOwnershipOptions(
+                operator, authentication, ORIGIN, request);
+
+        assertTrue(requestId.equals(response.requestId()));
+        assertFalse(request.toString().contains(recordId.toString()));
+        verify(webAuthnService).beginOwnershipVerification(
+                operator, familyId, WebAuthnChannel.WEB, ORIGIN, recordId);
     }
 
     private MobileAuthSessionResponse session() {

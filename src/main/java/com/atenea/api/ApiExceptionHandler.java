@@ -5,6 +5,9 @@ import com.atenea.attachments.AttachmentWorkerException;
 import com.atenea.previews.PreviewFeatureDisabledException;
 import com.atenea.previews.PreviewWorkerException;
 import com.atenea.auth.OperatorAuthenticationException;
+import com.atenea.auth.webauthn.WebAuthnCredentialNotAcceptedException;
+import com.atenea.auth.webauthn.WebAuthnLifecycleUnavailableException;
+import com.atenea.auth.webauthn.WebAuthnSnapshotIncompleteException;
 import com.atenea.service.project.CanonicalProjectConflictException;
 import com.atenea.github.GitHubIntegrationException;
 import com.atenea.service.core.CoreCommandNotFoundException;
@@ -321,6 +324,37 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleMobileUpload(MobileUploadException exception) {
         return ResponseEntity.badRequest()
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(WebAuthnCredentialNotAcceptedException.class)
+    public ResponseEntity<ApiErrorResponse> handleWebAuthnCredentialNotAccepted(
+            WebAuthnCredentialNotAcceptedException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ApiErrorResponse(
+                        exception.getMessage(),
+                        List.of(),
+                        null,
+                        null,
+                        "SIGNAL_UNKNOWN_CREDENTIAL",
+                        false));
+    }
+
+    @ExceptionHandler({
+            WebAuthnLifecycleUnavailableException.class,
+            WebAuthnSnapshotIncompleteException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleWebAuthnLifecycleConflict(
+            RuntimeException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(
+                        exception.getMessage(),
+                        List.of(),
+                        "ACTION_REQUIRED",
+                        null,
+                        "REVIEW_PASSKEY_INVENTORY",
+                        false));
     }
 
     @ExceptionHandler(OperatorAuthenticationException.class)

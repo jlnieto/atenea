@@ -135,6 +135,11 @@ atenea:
       web-origin: ${ATENEA_AUTH_WEBAUTHN_WEB_ORIGIN:https://atenea.yudri.es}
       android-origins: ${ATENEA_AUTH_WEBAUTHN_ANDROID_ORIGINS:}
       challenge-ttl: ${ATENEA_AUTH_WEBAUTHN_CHALLENGE_TTL:5m}
+      credential-lifecycle-enabled: ${ATENEA_AUTH_WEBAUTHN_CREDENTIAL_LIFECYCLE_ENABLED:false}
+      credential-inventory-enabled: ${ATENEA_AUTH_WEBAUTHN_CREDENTIAL_INVENTORY_ENABLED:false}
+      credential-signalling-enabled: ${ATENEA_AUTH_WEBAUTHN_CREDENTIAL_SIGNALLING_ENABLED:false}
+      restricted-ceremonies-enabled: ${ATENEA_AUTH_WEBAUTHN_RESTRICTED_CEREMONIES_ENABLED:false}
+      controlled-reset-enabled: ${ATENEA_AUTH_WEBAUTHN_CONTROLLED_RESET_ENABLED:false}
     recovery:
       totp-enabled: ${ATENEA_AUTH_TOTP_ENABLED:false}
       recovery-enabled: ${ATENEA_AUTH_RECOVERY_ENABLED:false}

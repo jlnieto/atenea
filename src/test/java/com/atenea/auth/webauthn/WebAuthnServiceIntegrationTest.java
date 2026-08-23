@@ -80,6 +80,8 @@ class WebAuthnServiceIntegrationTest {
             "android:apk-key-hash:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     @Autowired private WebAuthnService webAuthnService;
+    @Autowired private WebAuthnCredentialLifecycleService credentialLifecycleService;
+    @Autowired private WebAuthnControlledResetService controlledResetService;
     @Autowired private OperatorAuthenticationService authenticationService;
     @Autowired private RefreshTokenService refreshTokenService;
     @Autowired private OperatorRepository operatorRepository;
@@ -102,6 +104,8 @@ class WebAuthnServiceIntegrationTest {
         properties.getWebAuthn().setWebOrigin(WEB_ORIGIN);
         properties.getWebAuthn().setAndroidOrigins(List.of(ANDROID_ORIGIN));
         properties.getWebAuthn().setChallengeTtl(java.time.Duration.ofMinutes(5));
+        properties.getWebAuthn().setControlledResetEnabled(false);
+        setCorrectiveFlags(false, false, false, false);
         properties.getRecovery().setAttemptWindow(java.time.Duration.ofMinutes(5));
         properties.getRecovery().setLockout(java.time.Duration.ofMinutes(15));
         properties.getRecovery().setMaxAttempts(5);
@@ -133,7 +137,353 @@ class WebAuthnServiceIntegrationTest {
     @AfterEach
     void tearDown() {
         properties.getWebAuthn().setEnabled(false);
+        properties.getWebAuthn().setControlledResetEnabled(false);
+        setCorrectiveFlags(false, false, false, false);
         clearSyntheticState();
+    }
+
+    @Test
+    void correctiveLifecycleUsesCredentialCentricInventoryAndIndependentProviders()
+            throws Exception {
+        setCorrectiveFlags(true, true, true, false);
+        RegisteredPasskey google = registerWithProvider(
+                0, true, true, WebAuthnProviderCategory.GOOGLE_PASSWORD_MANAGER);
+        RegisteredPasskey onePassword = registerWithProvider(
+                0, true, true, WebAuthnProviderCategory.ONE_PASSWORD);
+        UUID googleRecordId = recordId(google);
+        UUID onePasswordRecordId = recordId(onePassword);
+
+        WebAuthnOptionsResponse registration = webAuthnService.beginRegistration(
+                actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN);
+        assertEquals(2, registration.credentials().size());
+        assertEquals(Set.of(encode(google.credentialId()), encode(onePassword.credentialId())),
+                registration.credentials().stream()
+                        .map(WebAuthnOptionsResponse.CredentialDescriptor::id)
+                        .collect(java.util.stream.Collectors.toSet()));
+
+        RegistrationMaterial pendingRegistration = registrationMaterial(
+                decode(registration.challenge()), 0, true, true, WEB_ORIGIN);
+        setCorrectiveFlags(true, true, false, true);
+        assertThrows(WebAuthnLifecycleUnavailableException.class,
+                () -> webAuthnService.completeRegistration(
+                        actor,
+                        familyId,
+                        WebAuthnChannel.WEB,
+                        WEB_ORIGIN,
+                        pendingRegistration.request(registration.requestId())));
+        assertThrows(WebAuthnLifecycleUnavailableException.class,
+                () -> webAuthnService.beginRegistration(
+                        actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN));
+        assertThrows(WebAuthnLifecycleUnavailableException.class,
+                () -> credentialLifecycleService.revoke(actor, googleRecordId));
+        assertThrows(WebAuthnLifecycleUnavailableException.class,
+                () -> credentialLifecycleService.signalSnapshot(actor));
+        assertTrue(credentialLifecycleService.inventory(actor).readOnly());
+        assertThrows(OperatorAuthenticationException.class,
+                () -> webAuthnService.beginOwnershipVerification(
+                        actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN,
+                        UUID.randomUUID()));
+
+        WebAuthnOptionsResponse googleOptions = webAuthnService.beginOwnershipVerification(
+                actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN, googleRecordId);
+        assertEquals(1, googleOptions.credentials().size());
+        assertEquals(encode(google.credentialId()), googleOptions.credentials().getFirst().id());
+        WebAuthnAuthenticationRequest crossTargetAssertion = authenticationRequest(
+                onePassword, googleOptions, 1, true, true, WEB_ORIGIN);
+        assertRejected(() -> webAuthnService.completeOwnershipVerification(
+                actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN,
+                verificationRequest(
+                        crossTargetAssertion,
+                        null,
+                        WebAuthnProviderCategory.ONE_PASSWORD)));
+        WebAuthnAuthenticationRequest googleAssertion = authenticationRequest(
+                google, googleOptions, 1, true, true, WEB_ORIGIN);
+        WebAuthnCredentialVerificationResponse googleVerified = webAuthnService
+                .completeOwnershipVerification(
+                        actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN,
+                        verificationRequest(
+                                googleAssertion,
+                                null,
+                                WebAuthnProviderCategory.GOOGLE_PASSWORD_MANAGER));
+        assertEquals("Google Password Manager · 1", googleVerified.label());
+
+        WebAuthnOptionsResponse rejectedHandleOptions = webAuthnService
+                .beginOwnershipVerification(
+                        actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN,
+                        onePasswordRecordId);
+        WebAuthnAuthenticationRequest rejectedHandleAssertion = authenticationRequest(
+                onePassword, rejectedHandleOptions, 1, true, true, WEB_ORIGIN);
+        assertRejected(() -> webAuthnService.completeOwnershipVerification(
+                actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN,
+                verificationRequest(
+                        rejectedHandleAssertion,
+                        encode(randomBytes(32)),
+                        WebAuthnProviderCategory.ONE_PASSWORD)));
+
+        WebAuthnOptionsResponse onePasswordOptions = webAuthnService
+                .beginOwnershipVerification(
+                        actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN,
+                        onePasswordRecordId);
+        WebAuthnAuthenticationRequest onePasswordAssertion = authenticationRequest(
+                onePassword, onePasswordOptions, 1, true, true, WEB_ORIGIN);
+        WebAuthnCredentialVerificationResponse onePasswordVerified = webAuthnService
+                .completeOwnershipVerification(
+                        actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN,
+                        verificationRequest(
+                                onePasswordAssertion,
+                                onePasswordAssertion.userHandle(),
+                                WebAuthnProviderCategory.ONE_PASSWORD));
+        assertEquals("1Password · 2", onePasswordVerified.label());
+
+        WebAuthnOptionsResponse publicOptions = authenticationOptions(
+                WebAuthnChannel.WEB, WEB_ORIGIN);
+        assertTrue(publicOptions.credentials().isEmpty());
+        assertEquals(null, publicOptions.userHandle());
+        WebAuthnAuthenticationRequest publicAssertion = authenticationRequest(
+                google, publicOptions, 2, true, true, WEB_ORIGIN);
+        WebAuthnAuthenticationRequest absentPublicHandle = new WebAuthnAuthenticationRequest(
+                publicAssertion.requestId(), publicAssertion.credentialId(), null,
+                publicAssertion.clientDataJson(), publicAssertion.authenticatorData(),
+                publicAssertion.signature(), publicAssertion.sessionProtocolVersion(),
+                publicAssertion.singleFlightRefresh(), publicAssertion.clientType(),
+                publicAssertion.deviceLabel());
+        assertRejected(() -> webAuthnService.completeAuthentication(
+                WebAuthnChannel.WEB, WEB_ORIGIN, absentPublicHandle));
+
+        WebAuthnCredentialInventoryResponse ready = credentialLifecycleService.inventory(actor);
+        assertTrue(ready.independentDomainsReady());
+        assertEquals(List.of(
+                WebAuthnProviderCategory.GOOGLE_PASSWORD_MANAGER,
+                WebAuthnProviderCategory.ONE_PASSWORD), ready.verifiedProviderDomains());
+        assertFalse(ready.toString().contains(encode(google.credentialId())));
+        assertEquals(List.of("Google Password Manager · 1", "1Password · 2"),
+                ready.credentials().stream()
+                        .map(WebAuthnCredentialInventoryItem::label)
+                        .toList());
+        assertTrue(ready.readOnly());
+
+        PrivilegedActionBinding restrictedBinding = PrivilegedActionBinding.fromCanonical(
+                "PUBLISH_RELEASE", "project=restricted", "commit=def;mode=ff");
+        WebAuthnOptionsResponse restrictedOptions = webAuthnService.beginStepUp(
+                actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN, restrictedBinding);
+        WebAuthnAuthenticationRequest restrictedAssertion = authenticationRequest(
+                onePassword, restrictedOptions, 2, true, true, WEB_ORIGIN);
+        WebAuthnAuthenticationRequest absentRestrictedHandle =
+                new WebAuthnAuthenticationRequest(
+                        restrictedAssertion.requestId(),
+                        restrictedAssertion.credentialId(),
+                        null,
+                        restrictedAssertion.clientDataJson(),
+                        restrictedAssertion.authenticatorData(),
+                        restrictedAssertion.signature(),
+                        restrictedAssertion.sessionProtocolVersion(),
+                        restrictedAssertion.singleFlightRefresh(),
+                        restrictedAssertion.clientType(),
+                        restrictedAssertion.deviceLabel());
+        assertEquals(PrivilegedActionFactor.WEBAUTHN,
+                webAuthnService.completeStepUp(
+                        actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN,
+                        restrictedBinding, absentRestrictedHandle).factor());
+
+        setCorrectiveFlags(true, true, true, false);
+        WebAuthnCredentialSignalSnapshot full = credentialLifecycleService.signalSnapshot(actor);
+        assertEquals(2, full.activeCredentialCount());
+        assertEquals(Set.of(encode(google.credentialId()), encode(onePassword.credentialId())),
+                Set.copyOf(full.allAcceptedCredentialIds()));
+        assertFalse(full.toString().contains(encode(google.credentialId())));
+
+        credentialLifecycleService.revoke(actor, googleVerified.recordId());
+        WebAuthnCredentialInventoryResponse afterRevoke = credentialLifecycleService
+                .inventory(actor);
+        assertFalse(afterRevoke.independentDomainsReady());
+        assertEquals(WebAuthnCredentialState.REVOKED,
+                afterRevoke.credentials().getFirst().state());
+        assertEquals("Google Password Manager · 1",
+                afterRevoke.credentials().getFirst().label());
+        assertEquals(2, webAuthnService.beginRegistration(
+                actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN).credentials().size());
+        WebAuthnCredentialSignalSnapshot activeOnly = credentialLifecycleService
+                .signalSnapshot(actor);
+        assertEquals(List.of(encode(onePassword.credentialId())),
+                activeOnly.allAcceptedCredentialIds());
+
+        WebAuthnOptionsResponse revokedOptions = authenticationOptions(
+                WebAuthnChannel.WEB, WEB_ORIGIN);
+        WebAuthnAuthenticationRequest revokedAssertion = authenticationRequest(
+                google, revokedOptions, 2, true, true, WEB_ORIGIN);
+        assertThrows(WebAuthnCredentialNotAcceptedException.class,
+                () -> webAuthnService.completeAuthentication(
+                        WebAuthnChannel.WEB, WEB_ORIGIN, revokedAssertion));
+
+        registerWithProvider(
+                0, true, true, WebAuthnProviderCategory.GOOGLE_PASSWORD_MANAGER);
+        assertEquals(List.of(
+                        "Google Password Manager · 1",
+                        "1Password · 2",
+                        "Google Password Manager · 3"),
+                credentialLifecycleService.inventory(actor).credentials().stream()
+                        .map(WebAuthnCredentialInventoryItem::label)
+                        .toList());
+    }
+
+    @Test
+    void controlledResetRequiresNewOnePasswordRegistrationAndProofBeforeCutover()
+            throws Exception {
+        setCorrectiveFlags(true, true, false, false);
+        List<RegisteredPasskey> historical = new java.util.ArrayList<>();
+        for (int index = 0; index < 4; index++) {
+            historical.add(registerWithProvider(
+                    0, true, true, WebAuthnProviderCategory.UNKNOWN));
+        }
+        credentialLifecycleService.revoke(actor, recordId(historical.get(2)));
+        credentialLifecycleService.revoke(actor, recordId(historical.get(3)));
+        seedControlledResetRecoveryChannels();
+        properties.getWebAuthn().setControlledResetEnabled(true);
+        setCorrectiveFlags(true, true, false, true);
+
+        assertEquals(WebAuthnControlledResetState.REGISTER_NEW,
+                controlledResetService.status(actor).state());
+        WebAuthnOptionsResponse registration = webAuthnService.beginRegistration(
+                actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN);
+        RegistrationMaterial replacementMaterial = registrationMaterial(
+                decode(registration.challenge()), 0, true, true, WEB_ORIGIN);
+        assertRejected(() -> completeRegistration(
+                replacementMaterial.request(
+                        registration.requestId(), WebAuthnProviderCategory.UNKNOWN),
+                familyId));
+        assertEquals(4L, jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM operator_webauthn_credential WHERE operator_id = ?
+                """, Long.class, operator.getId()));
+        completeRegistration(
+                replacementMaterial.request(
+                        registration.requestId(), WebAuthnProviderCategory.ONE_PASSWORD),
+                familyId);
+        RegisteredPasskey replacement = new RegisteredPasskey(
+                replacementMaterial.keyPair(),
+                replacementMaterial.credentialId(),
+                decode(registration.userHandle()),
+                true);
+        UUID replacementRecordId = recordId(replacement);
+        assertEquals(WebAuthnControlledResetState.PROVE_NEW,
+                controlledResetService.status(actor).state());
+        assertThrows(OperatorAuthenticationException.class,
+                () -> controlledResetService.commit(actor, replacementRecordId));
+        assertEquals(2L, jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM operator_webauthn_credential
+                WHERE operator_id = ? AND label_ordinal <= 4 AND revoked_at IS NULL
+                """, Long.class, operator.getId()));
+        assertThrows(OperatorAuthenticationException.class,
+                () -> webAuthnService.beginOwnershipVerification(
+                        actor,
+                        familyId,
+                        WebAuthnChannel.WEB,
+                        WEB_ORIGIN,
+                        recordId(historical.getFirst())));
+
+        WebAuthnOptionsResponse proofOptions = webAuthnService.beginOwnershipVerification(
+                actor,
+                familyId,
+                WebAuthnChannel.WEB,
+                WEB_ORIGIN,
+                replacementRecordId);
+        WebAuthnAuthenticationRequest assertion = authenticationRequest(
+                replacement, proofOptions, 1, true, true, WEB_ORIGIN);
+        WebAuthnCredentialVerificationResponse proof = webAuthnService
+                .completeOwnershipVerification(
+                        actor,
+                        familyId,
+                        WebAuthnChannel.WEB,
+                        WEB_ORIGIN,
+                        verificationRequest(
+                                assertion,
+                                null,
+                                WebAuthnProviderCategory.ONE_PASSWORD));
+        assertEquals(replacementRecordId, proof.recordId());
+        assertEquals(WebAuthnControlledResetState.COMMIT_READY,
+                controlledResetService.status(actor).state());
+        long versionBeforeCommit = credentialVersion();
+
+        WebAuthnControlledResetResult result = controlledResetService.commit(
+                actor, replacementRecordId);
+
+        assertEquals("COMMITTED", result.state());
+        assertEquals(versionBeforeCommit + 1L, result.credentialVersion());
+        assertEquals(1, result.activePasskeyCount());
+        assertEquals(4, result.revokedHistoricalCount());
+        assertEquals(1, result.activeTotpCount());
+        assertEquals(10, result.activeRecoveryCodeCount());
+        assertEquals(WebAuthnControlledResetState.COMPLETE,
+                controlledResetService.status(actor).state());
+        assertEquals(5L, jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM operator_webauthn_credential WHERE operator_id = ?
+                """, Long.class, operator.getId()));
+        assertEquals(1L, jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM operator_webauthn_credential
+                WHERE operator_id = ? AND revoked_at IS NULL
+                """, Long.class, operator.getId()));
+    }
+
+    @Test
+    void unknownProviderIsNeverInferredAndFlagsRollBackWithoutSchemaRemoval()
+            throws Exception {
+        setCorrectiveFlags(true, true, false, false);
+        RegisteredPasskey unknown = register(
+                0, true, true, WebAuthnChannel.WEB, WEB_ORIGIN);
+        OperatorWebAuthnCredentialEntity stored = credentialRepository
+                .findByCredentialId(unknown.credentialId()).orElseThrow();
+        assertEquals(WebAuthnProviderCategory.UNKNOWN, stored.getProviderCategory());
+        assertEquals(WebAuthnProviderProvenance.UNKNOWN, stored.getProviderProvenance());
+        assertEquals("Proveedor desconocido · 1",
+                credentialLifecycleService.inventory(actor).credentials().getFirst().label());
+
+        setCorrectiveFlags(true, true, false, true);
+        WebAuthnOptionsResponse proof = webAuthnService.beginOwnershipVerification(
+                actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN, recordId(unknown));
+        WebAuthnAuthenticationRequest assertion = authenticationRequest(
+                unknown, proof, 1, true, true, WEB_ORIGIN);
+        WebAuthnCredentialVerificationResponse verified = webAuthnService
+                .completeOwnershipVerification(
+                        actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN,
+                        verificationRequest(
+                                assertion,
+                                assertion.userHandle(),
+                                WebAuthnProviderCategory.UNKNOWN));
+        assertEquals("Proveedor desconocido · 1", verified.label());
+        stored = credentialRepository.findByCredentialId(unknown.credentialId()).orElseThrow();
+        assertEquals(WebAuthnProviderCategory.UNKNOWN, stored.getProviderCategory());
+        assertEquals(WebAuthnProviderProvenance.UNKNOWN, stored.getProviderProvenance());
+        assertNotNull(stored.getLastVerifiedAt());
+
+        setCorrectiveFlags(false, false, false, false);
+        assertEquals("DISABLED", credentialLifecycleService.inventory(actor).state());
+        assertEquals(operator.getId(), authenticate(
+                unknown, 1, true, true, WebAuthnChannel.WEB, WEB_ORIGIN, WEB_ORIGIN)
+                .operatorId());
+        assertEquals(1, jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'operator_webauthn_credential'
+                  AND column_name = 'provider_category'
+                """, Integer.class));
+    }
+
+    @Test
+    void incompleteSnapshotAndInvalidFlagDependenciesFailClosed() throws Exception {
+        setCorrectiveFlags(true, true, true, false);
+        registerWithProvider(0, true, true,
+                WebAuthnProviderCategory.GOOGLE_PASSWORD_MANAGER);
+        jdbcTemplate.update(
+                "DELETE FROM operator_webauthn_user WHERE operator_id = ?", operator.getId());
+        assertThrows(WebAuthnSnapshotIncompleteException.class,
+                () -> credentialLifecycleService.signalSnapshot(actor));
+
+        properties.getWebAuthn().setRestrictedCeremoniesEnabled(true);
+        assertThrows(WebAuthnLifecycleUnavailableException.class,
+                () -> credentialLifecycleService.inventory(actor));
+        properties.getWebAuthn().setRestrictedCeremoniesEnabled(false);
+        properties.getWebAuthn().setCredentialLifecycleEnabled(false);
+        assertThrows(WebAuthnLifecycleUnavailableException.class,
+                () -> credentialLifecycleService.inventory(actor));
     }
 
     @Test
@@ -396,6 +746,13 @@ class WebAuthnServiceIntegrationTest {
         assertEquals(1, options.credentials().size());
         WebAuthnAuthenticationRequest request = authenticationRequest(
                 passkey, options, 1, true, true, WEB_ORIGIN);
+        WebAuthnAuthenticationRequest absentHandle = new WebAuthnAuthenticationRequest(
+                request.requestId(), request.credentialId(), null,
+                request.clientDataJson(), request.authenticatorData(), request.signature(),
+                request.sessionProtocolVersion(), request.singleFlightRefresh(),
+                request.clientType(), request.deviceLabel());
+        assertRejected(() -> webAuthnService.completeStepUp(
+                actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN, binding, absentHandle));
         VerifiedStepUp proof = webAuthnService.completeStepUp(
                 actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN, binding, request);
         assertEquals(operator.getId(), proof.operatorId());
@@ -566,6 +923,56 @@ class WebAuthnServiceIntegrationTest {
         return new RegisteredPasskey(
                 material.keyPair(), material.credentialId(), decode(options.userHandle()),
                 backupEligible);
+    }
+
+    private RegisteredPasskey registerWithProvider(
+            long counter,
+            boolean backupEligible,
+            boolean backupState,
+            WebAuthnProviderCategory providerCategory
+    ) throws Exception {
+        WebAuthnOptionsResponse options = webAuthnService.beginRegistration(
+                actor, familyId, WebAuthnChannel.WEB, WEB_ORIGIN);
+        RegistrationMaterial material = registrationMaterial(
+                decode(options.challenge()), counter, backupEligible, backupState, WEB_ORIGIN);
+        completeRegistration(
+                material.request(options.requestId(), providerCategory), familyId);
+        return new RegisteredPasskey(
+                material.keyPair(), material.credentialId(), decode(options.userHandle()),
+                backupEligible);
+    }
+
+    private UUID recordId(RegisteredPasskey passkey) {
+        return credentialRepository.findByCredentialId(passkey.credentialId())
+                .orElseThrow()
+                .getId();
+    }
+
+    private WebAuthnCredentialVerificationRequest verificationRequest(
+            WebAuthnAuthenticationRequest assertion,
+            String userHandle,
+            WebAuthnProviderCategory providerCategory
+    ) {
+        return new WebAuthnCredentialVerificationRequest(
+                assertion.requestId(),
+                assertion.credentialId(),
+                userHandle,
+                assertion.clientDataJson(),
+                assertion.authenticatorData(),
+                assertion.signature(),
+                providerCategory);
+    }
+
+    private void setCorrectiveFlags(
+            boolean lifecycle,
+            boolean inventory,
+            boolean signalling,
+            boolean restricted
+    ) {
+        properties.getWebAuthn().setCredentialLifecycleEnabled(lifecycle);
+        properties.getWebAuthn().setCredentialInventoryEnabled(inventory);
+        properties.getWebAuthn().setCredentialSignallingEnabled(signalling);
+        properties.getWebAuthn().setRestrictedCeremoniesEnabled(restricted);
     }
 
     private void completeRegistration(WebAuthnRegistrationRequest request, UUID sessionId) {
@@ -758,6 +1165,44 @@ class WebAuthnServiceIntegrationTest {
                 """, Long.class, operator.getId());
     }
 
+    private void seedControlledResetRecoveryChannels() {
+        UUID factorId = UUID.randomUUID();
+        UUID enrollmentId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+        Instant createdAt = Instant.now().minusSeconds(120);
+        byte[] encryptedSecret = new byte[44];
+        java.util.Arrays.fill(encryptedSecret, (byte) 31);
+        jdbcTemplate.update("""
+                INSERT INTO operator_totp_factor (
+                    id, operator_id, enrollment_id, encrypted_secret,
+                    secret_key_version, state, created_at, expires_at, activated_at, row_version
+                ) VALUES (?, ?, ?, ?, 'synthetic-v2', 'ACTIVE', ?, ?, ?, 0)
+                """,
+                factorId,
+                operator.getId(),
+                enrollmentId,
+                encryptedSecret,
+                java.sql.Timestamp.from(createdAt),
+                java.sql.Timestamp.from(createdAt.plusSeconds(600)),
+                java.sql.Timestamp.from(createdAt.plusSeconds(1)));
+        for (int index = 0; index < 10; index++) {
+            byte[] hmac = new byte[32];
+            java.util.Arrays.fill(hmac, (byte) (index + 1));
+            jdbcTemplate.update("""
+                    INSERT INTO operator_recovery_code (
+                        id, operator_id, factor_id, batch_id, code_hmac,
+                        hmac_key_version, created_at, row_version
+                    ) VALUES (?, ?, ?, ?, ?, 'synthetic-v2', ?, 0)
+                    """,
+                    UUID.randomUUID(),
+                    operator.getId(),
+                    factorId,
+                    batchId,
+                    hmac,
+                    java.sql.Timestamp.from(createdAt.plusSeconds(index + 2)));
+        }
+    }
+
     private long storedCounter(RegisteredPasskey passkey) {
         return credentialRepository.findByCredentialId(passkey.credentialId())
                 .orElseThrow().getSignCount();
@@ -772,6 +1217,8 @@ class WebAuthnServiceIntegrationTest {
         jdbcTemplate.update("DELETE FROM operator_security_notification");
         jdbcTemplate.update("DELETE FROM operator_security_event");
         jdbcTemplate.update("DELETE FROM operator_auth_attempt_window");
+        jdbcTemplate.update("DELETE FROM operator_recovery_code");
+        jdbcTemplate.update("DELETE FROM operator_totp_factor");
         jdbcTemplate.update("DELETE FROM operator_webauthn_challenge");
         jdbcTemplate.update("DELETE FROM operator_webauthn_credential");
         jdbcTemplate.update("DELETE FROM operator_webauthn_user");
@@ -817,6 +1264,19 @@ class WebAuthnServiceIntegrationTest {
                     clientDataJson,
                     attestationObject,
                     Set.of("internal", "hybrid"));
+        }
+
+        private WebAuthnRegistrationRequest request(
+                UUID requestId,
+                WebAuthnProviderCategory providerCategory
+        ) {
+            return new WebAuthnRegistrationRequest(
+                    requestId,
+                    Base64.getUrlEncoder().withoutPadding().encodeToString(credentialId),
+                    clientDataJson,
+                    attestationObject,
+                    Set.of("internal", "hybrid"),
+                    providerCategory);
         }
     }
 
