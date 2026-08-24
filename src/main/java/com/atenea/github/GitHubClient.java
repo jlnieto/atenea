@@ -3,12 +3,16 @@ package com.atenea.github;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -65,6 +69,28 @@ public class GitHubClient {
                 properties.getApiBaseUrl().resolve("/repos/" + repository.owner() + "/" + repository.repo() + "/pulls/" + pullRequestNumber),
                 null);
         return toPullRequest(response);
+    }
+
+    public List<GitHubPullRequest> findOpenPullRequests(
+            GitHubRepositoryRef repository,
+            String headBranch,
+            String baseBranch) {
+        ensureConfigured();
+        String query = "state=open&head=" + encode(repository.owner() + ":" + headBranch)
+                + "&base=" + encode(baseBranch);
+        JsonNode response = sendJsonRequest(
+                "GET",
+                properties.getApiBaseUrl().resolve(
+                        "/repos/" + repository.owner() + "/" + repository.repo()
+                                + "/pulls?" + query),
+                null);
+        if (!response.isArray()) {
+            throw new GitHubIntegrationException(
+                    "GitHub did not return a pull request collection");
+        }
+        List<GitHubPullRequest> result = new ArrayList<>();
+        response.forEach(item -> result.add(toPullRequest(item)));
+        return List.copyOf(result);
     }
 
     public GitHubRepositoryRef resolveRepository(String remoteUrl) {
@@ -224,7 +250,8 @@ public class GitHubClient {
                 json.path("base").path("ref").asText(null),
                 json.path("head").path("repo").path("full_name").asText(null),
                 json.path("head").path("ref").asText(null),
-                json.path("head").path("sha").asText(null)
+                json.path("head").path("sha").asText(null),
+                json.path("draft").asBoolean(false)
         );
     }
 
@@ -234,5 +261,9 @@ public class GitHubClient {
         } catch (Exception exception) {
             throw new GitHubIntegrationException("Failed to encode GitHub JSON payload", exception);
         }
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }

@@ -721,6 +721,19 @@ class AgentRunServiceTest {
     }
 
     @Test
+    void createChangeBoundRunRejectsSourceAlreadyFrozenForPublication() {
+        WorkSessionEntity session = changeBoundSession();
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        session.setPublishedChangeKey(change.getChangeKey());
+        stubChangeAdmission(session, change);
+
+        assertThrows(IllegalStateException.class, () -> agentRunService.createRemoteQueuedRun(
+                session, operatorTurn(session), WorkloadClass.NORMAL));
+
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
+    }
+
+    @Test
     void createChangeBoundRetryKeepsExactBindingAndRejectsSourceDrift() {
         WorkSessionEntity session = changeBoundSession();
         DevelopmentChangeEntity change = session.getDevelopmentChange();
