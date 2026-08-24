@@ -14,6 +14,7 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.worksession.AgentRunNotFoundException;
 import com.atenea.service.worksession.AgentRunProgressService;
+import com.atenea.service.developmentchange.DevelopmentChangeAgentRunSourceAdvanceService;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
@@ -59,6 +60,7 @@ public class RemoteAgentRunCoordinator {
     private final RemoteWorkerClient client;
     private final RemoteWorkerProperties properties;
     private final MobilePushDispatchService mobilePushDispatchService;
+    private final DevelopmentChangeAgentRunSourceAdvanceService sourceAdvanceService;
     private final TransactionTemplate transaction;
     private final ExecutorService executor;
 
@@ -70,6 +72,7 @@ public class RemoteAgentRunCoordinator {
             RemoteWorkerClient client,
             RemoteWorkerProperties properties,
             MobilePushDispatchService mobilePushDispatchService,
+            DevelopmentChangeAgentRunSourceAdvanceService sourceAdvanceService,
             PlatformTransactionManager transactionManager
     ) {
         this.agentRunRepository = agentRunRepository;
@@ -79,6 +82,7 @@ public class RemoteAgentRunCoordinator {
         this.client = client;
         this.properties = properties;
         this.mobilePushDispatchService = mobilePushDispatchService;
+        this.sourceAdvanceService = sourceAdvanceService;
         this.transaction = new TransactionTemplate(transactionManager);
         this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         ThreadFactory factory = runnable -> {
@@ -314,6 +318,10 @@ public class RemoteAgentRunCoordinator {
                     return;
                 }
                 validateChangeResult(run, response.result());
+                if (ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind())) {
+                    sourceAdvanceService.advance(
+                            run, response.result().sourceIdentity(), finishedAt);
+                }
                 WorkSessionEntity session = workSessionRepository.findById(run.getSession().getId()).orElseThrow();
                 session.setExternalThreadId(response.result().threadId());
                 session.setLastActivityAt(finishedAt);
@@ -434,7 +442,8 @@ public class RemoteAgentRunCoordinator {
                         run.getCodexReasoningEffort().canonicalValue(),
                         result.reasoningEffort())
                 || !Objects.equals(run.getCodexCatalogRevision(), result.catalogRevision())
-                || !Objects.equals(run.getCodexVersion(), result.codexVersion())) {
+                || !Objects.equals(run.getCodexVersion(), result.codexVersion())
+                || result.sourceIdentity() == null) {
             throw new RemoteWorkerException(
                     "Remote worker change-bound result is incompatible with the persisted AgentRun",
                     409);

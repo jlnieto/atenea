@@ -29,6 +29,7 @@ import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.persistence.worksession.AgentRunProgressCategory;
 import com.atenea.service.worksession.AgentRunProgressService;
+import com.atenea.service.developmentchange.DevelopmentChangeAgentRunSourceAdvanceService;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import java.time.Duration;
 import java.time.Instant;
@@ -52,6 +53,7 @@ class RemoteAgentRunCoordinatorTest {
     private RemoteWorkerClient client;
     private RemoteWorkerProperties properties;
     private MobilePushDispatchService mobilePushDispatchService;
+    private DevelopmentChangeAgentRunSourceAdvanceService sourceAdvanceService;
     private RemoteAgentRunCoordinator coordinator;
 
     @BeforeEach
@@ -63,6 +65,7 @@ class RemoteAgentRunCoordinatorTest {
         client = mock(RemoteWorkerClient.class);
         properties = new RemoteWorkerProperties();
         mobilePushDispatchService = mock(MobilePushDispatchService.class);
+        sourceAdvanceService = mock(DevelopmentChangeAgentRunSourceAdvanceService.class);
         properties.setPollInterval(Duration.ofMillis(10));
         properties.setReconciliationTimeout(Duration.ofMillis(40));
         PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
@@ -92,6 +95,7 @@ class RemoteAgentRunCoordinatorTest {
                 client,
                 properties,
                 mobilePushDispatchService,
+                sourceAdvanceService,
                 transactionManager);
     }
 
@@ -140,6 +144,7 @@ class RemoteAgentRunCoordinatorTest {
         verify(client, times(1)).ensureWorkspace(run);
         verify(client, times(1)).dispatch(run, "First managed turn");
         verify(mobilePushDispatchService, times(1)).notifyRunSucceeded(run);
+        verify(sourceAdvanceService, never()).advance(any(), any(), any());
     }
 
     @Test
@@ -167,6 +172,46 @@ class RemoteAgentRunCoordinatorTest {
         assertEquals("project-codex-v4 completed", run.getOutputSummary());
         verify(client, never()).ensureWorkspace(any());
         verify(client, times(1)).dispatch(run, "First managed turn");
+        verify(sourceAdvanceService, times(1)).advance(
+                run, succeededV4(run).result().sourceIdentity(),
+                Instant.parse("2026-07-29T06:00:00Z"));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        Thread.sleep(50);
+        verify(sourceAdvanceService, times(1)).advance(any(), any(), any());
+    }
+
+    @Test
+    void failedAndCancelledChangeRunsNeverAdvanceSource() throws Exception {
+        AgentRunEntity failed = changeBoundRun();
+        when(agentRunRepository.findWithSessionById(failed.getId())).thenReturn(Optional.of(failed));
+        when(agentRunRepository.findById(failed.getId())).thenReturn(Optional.of(failed));
+        when(agentRunRepository.save(any(AgentRunEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.dispatch(failed, "First managed turn"))
+                .thenReturn(execution(failed, "FAILED", null));
+
+        coordinator.dispatchAfterCommit(failed.getId());
+        waitForTerminal(failed);
+        assertEquals(AgentRunStatus.FAILED, failed.getStatus());
+        verify(sourceAdvanceService, never()).advance(any(), any(), any());
+
+        AgentRunEntity cancelled = changeBoundRun();
+        cancelled.setId(56L);
+        cancelled.setRemoteExecutionId("5ee2d311-b9da-4307-89b6-dd3110ef2057");
+        cancelled.setStatus(AgentRunStatus.RUNNING);
+        when(agentRunRepository.findWithSessionById(cancelled.getId()))
+                .thenReturn(Optional.of(cancelled));
+        when(agentRunRepository.findById(cancelled.getId())).thenReturn(Optional.of(cancelled));
+        when(agentRunRepository.save(any(AgentRunEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.cancelExact(cancelled))
+                .thenReturn(execution(cancelled, "CANCELLED", null));
+
+        coordinator.requestCancellation(cancelled.getId());
+        waitForTerminal(cancelled);
+        assertEquals(AgentRunStatus.CANCELLED, cancelled.getStatus());
+        verify(sourceAdvanceService, never()).advance(any(), any(), any());
     }
 
     @Test
@@ -813,7 +858,16 @@ class RemoteAgentRunCoordinatorTest {
                         run.getCodexModelId(),
                         run.getCodexReasoningEffort().canonicalValue(),
                         run.getCodexCatalogRevision(),
-                        run.getCodexVersion()));
+                        run.getCodexVersion(),
+                        new RemoteWorkerClient.SourceIdentity(
+                                run.getDevelopmentChangeKey().toString(),
+                                run.getSession().getId(),
+                                run.getRemoteSessionId().toString(),
+                                run.getWorkspaceIdentity(),
+                                "4ee2d311-b9da-4307-89b6-dd3110ef2057",
+                                "6".repeat(64),
+                                "7".repeat(64),
+                                true)));
     }
 
     private RemoteWorkerClient.Execution execution(

@@ -1466,10 +1466,24 @@ public class RemoteWorkerClient {
             String modelId,
             String reasoningEffort,
             String catalogRevision,
-            String codexVersion
+            String codexVersion,
+            SourceIdentity sourceIdentity
     ) {
         public Result(String threadId, String turnId, String finalAnswer, String outputSummary) {
-            this(threadId, turnId, finalAnswer, outputSummary, null, null, null, null);
+            this(threadId, turnId, finalAnswer, outputSummary, null, null, null, null, null);
         }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record SourceIdentity(
+            String changeKey,
+            Long databaseWorkSessionId,
+            String remoteSessionId,
+            String workspaceIdentity,
+            String executionId,
+            String sourceFingerprintSha256,
+            String workspaceOwnershipFingerprintSha256,
+            Boolean workspaceDirty
+    ) {
     }
 }
