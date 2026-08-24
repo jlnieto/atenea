@@ -8,6 +8,7 @@ import com.atenea.github.GitHubClient;
 import com.atenea.github.GitHubIntegrationException;
 import com.atenea.github.GitHubPullRequest;
 import com.atenea.github.GitHubRepositoryRef;
+import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnActor;
 import com.atenea.persistence.worksession.SessionTurnRepository;
@@ -36,6 +37,7 @@ public class WorkSessionGitHubService {
     private final GitRepositoryService gitRepositoryService;
     private final GitHubClient gitHubClient;
     private final MobilePushDispatchService mobilePushDispatchService;
+    private final DevelopmentChangeBranchPublicationService changeBranchPublicationService;
 
     public WorkSessionGitHubService(
             WorkSessionRepository workSessionRepository,
@@ -47,7 +49,8 @@ public class WorkSessionGitHubService {
             SessionBranchService sessionBranchService,
             GitRepositoryService gitRepositoryService,
             GitHubClient gitHubClient,
-            MobilePushDispatchService mobilePushDispatchService
+            MobilePushDispatchService mobilePushDispatchService,
+            DevelopmentChangeBranchPublicationService changeBranchPublicationService
     ) {
         this.workSessionRepository = workSessionRepository;
         this.workSessionService = workSessionService;
@@ -59,12 +62,17 @@ public class WorkSessionGitHubService {
         this.gitRepositoryService = gitRepositoryService;
         this.gitHubClient = gitHubClient;
         this.mobilePushDispatchService = mobilePushDispatchService;
+        this.changeBranchPublicationService = changeBranchPublicationService;
     }
 
     @Transactional
     public WorkSessionResponse publishSession(Long sessionId, PublishWorkSessionRequest request) {
         WorkSessionEntity session = findSession(sessionId);
         ensurePublishable(session);
+
+        if (session.getDevelopmentChange() != null) {
+            return publishChangeOwned(session, request);
+        }
 
         String repoPath = workspaceRepositoryPathValidator.normalizeConfiguredRepoPath(session.getProject().getRepoPath());
         String workspaceBranch = sessionBranchService.prepareWorkspaceBranch(session, repoPath);
@@ -120,6 +128,102 @@ public class WorkSessionGitHubService {
         session.setPublishedAt(now);
         session.setUpdatedAt(now);
         return workSessionService.toResponse(workSessionRepository.save(session));
+    }
+
+    private WorkSessionResponse publishChangeOwned(
+            WorkSessionEntity session,
+            PublishWorkSessionRequest request) {
+        DevelopmentChangeBranchPublicationService.PublishedIdentity identity =
+                changeBranchPublicationService.publish(session.getId());
+        applyPublishedIdentity(session, identity);
+
+        GitHubRepositoryRef repository = gitHubClient.resolveRepository(
+                ProjectCodexIdentity.REPOSITORY);
+        String exactRepository = repository.owner() + "/" + repository.repo();
+        if (!identity.repository().equalsIgnoreCase(exactRepository)) {
+            throw new WorkSessionPublishConflictException(session.getId(),
+                    "published repository does not match the server-owned GitHub repository");
+        }
+
+        String requestedTitle = normalizeNullableText(
+                request == null ? null : request.commitMessage());
+        String pullRequestTitle = requestedTitle == null ? session.getTitle() : requestedTitle;
+        List<GitHubPullRequest> candidates = gitHubClient.findOpenPullRequests(
+                repository, identity.headBranch(), identity.baseBranch());
+        if (candidates.size() > 1) {
+            throw new WorkSessionPublishConflictException(session.getId(),
+                    "multiple open pull requests match the exact change-owned branch");
+        }
+        GitHubPullRequest pullRequest;
+        if (candidates.size() == 1) {
+            pullRequest = candidates.getFirst();
+        } else {
+            pullRequest = gitHubClient.createPullRequest(
+                    repository,
+                    pullRequestTitle,
+                    buildChangeOwnedPullRequestBody(session, identity),
+                    identity.headBranch(),
+                    identity.baseBranch());
+        }
+        if (pullRequest == null) {
+            throw new GitHubIntegrationException(
+                    "GitHub did not return pull request metadata after change-owned publish");
+        }
+        WorkSessionPullRequestIdentity.validateChangeOwned(
+                session, repository, pullRequest);
+
+        Instant now = Instant.now();
+        session.setPullRequestUrl(pullRequest.htmlUrl());
+        session.setPullRequestStatus(mapPullRequestStatus(pullRequest));
+        session.setPublishedAt(now);
+        session.setUpdatedAt(now);
+        return workSessionService.toResponse(workSessionRepository.save(session));
+    }
+
+    private void applyPublishedIdentity(
+            WorkSessionEntity session,
+            DevelopmentChangeBranchPublicationService.PublishedIdentity identity) {
+        session.setWorkspaceBranch(identity.headBranch());
+        session.setFinalCommitSha(identity.headSha());
+        session.setPublishedChangeKey(identity.changeKey());
+        session.setPublishedSourceRevision(identity.sourceRevision());
+        session.setPublishedSourceFingerprintSha256(identity.sourceFingerprintSha256());
+        session.setPublishedWorkspaceOwnershipFingerprintSha256(
+                session.getDevelopmentChange().getWorkspaceOwnershipFingerprintSha256());
+        session.setPublishedRepository(identity.repository());
+        session.setPublishedBaseBranch(identity.baseBranch());
+        session.setPublishedHeadBranch(identity.headBranch());
+        session.setPublicationReceiptSha256(identity.publicationReceiptSha256());
+    }
+
+    private String buildChangeOwnedPullRequestBody(
+            WorkSessionEntity session,
+            DevelopmentChangeBranchPublicationService.PublishedIdentity identity) {
+        return """
+                ## Summary
+
+                - Publishes the exact server-owned DevelopmentChange branch.
+
+                ## How to review
+
+                - Review `%s` against `%s` at head `%s`.
+
+                ## Atenea metadata
+
+                - WorkSession: %s
+                - DevelopmentChange: %s
+                - Source revision: %s
+                - Source fingerprint: `%s`
+                - Publication receipt: `%s`
+                """.formatted(
+                identity.headBranch(),
+                identity.baseBranch(),
+                identity.headSha(),
+                session.getId(),
+                identity.changeKey(),
+                identity.sourceRevision(),
+                identity.sourceFingerprintSha256(),
+                identity.publicationReceiptSha256());
     }
 
     @Transactional

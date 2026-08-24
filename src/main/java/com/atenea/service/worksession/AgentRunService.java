@@ -571,6 +571,7 @@ public class AgentRunService {
                 || change.getWorkspaceOperationRevision() < 1
                 || change.getWorkspaceUpdatedAt() == null
                 || activeWorkspaceOperation
+                || session.getPublishedChangeKey() != null
                 || worker == null
                 || !worker.isEnabled()
                 || !worker.isHealthy()

@@ -22,6 +22,7 @@ import com.atenea.github.GitHubPullRequest;
 import com.atenea.github.GitHubRepositoryRef;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.project.ProjectEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.SessionTurnRepository;
@@ -36,6 +37,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -74,6 +76,9 @@ class WorkSessionGitHubServiceTest {
     @Mock
     private MobilePushDispatchService mobilePushDispatchService;
 
+    @Mock
+    private DevelopmentChangeBranchPublicationService changeBranchPublicationService;
+
     @TempDir
     Path tempDir;
 
@@ -92,7 +97,8 @@ class WorkSessionGitHubServiceTest {
                 sessionBranchService,
                 gitRepositoryService,
                 gitHubClient,
-                mobilePushDispatchService
+                mobilePushDispatchService,
+                changeBranchPublicationService
         );
     }
 
@@ -250,6 +256,107 @@ class WorkSessionGitHubServiceTest {
         workSessionGitHubService.publishSession(12L, new PublishWorkSessionRequest(null));
 
         verify(gitRepositoryService).commit(repoPath.toString(), "Add landing page assets");
+    }
+
+    @Test
+    void publishChangeOwnedCreatesDraftOnlyForExactPublishedHead() throws Exception {
+        Path repoPath = createRepoPath();
+        WorkSessionEntity session = buildChangeSession(repoPath);
+        var identity = publishedIdentity(session);
+        GitHubRepositoryRef repository = new GitHubRepositoryRef("jlnieto", "atenea");
+        GitHubPullRequest exact = exactPullRequest(session, identity, 42L);
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(changeBranchPublicationService.publish(12L)).thenReturn(identity);
+        when(gitHubClient.resolveRepository("https://github.com/jlnieto/atenea.git"))
+                .thenReturn(repository);
+        when(gitHubClient.findOpenPullRequests(
+                repository, identity.headBranch(), identity.baseBranch()))
+                .thenReturn(List.of());
+        when(gitHubClient.createPullRequest(
+                eq(repository), eq("Publish exact change"), anyString(),
+                eq(identity.headBranch()), eq(identity.baseBranch())))
+                .thenReturn(exact);
+        when(workSessionRepository.save(any(WorkSessionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionService.toResponse(any(WorkSessionEntity.class)))
+                .thenAnswer(invocation -> responseFor(invocation.getArgument(0)));
+
+        WorkSessionResponse response = workSessionGitHubService.publishSession(
+                12L, new PublishWorkSessionRequest("Publish exact change"));
+
+        assertEquals(identity.headSha(), response.finalCommitSha());
+        assertEquals(exact.htmlUrl(), response.pullRequestUrl());
+        assertEquals(identity.changeKey(), session.getPublishedChangeKey());
+        assertEquals(identity.sourceFingerprintSha256(),
+                session.getPublishedSourceFingerprintSha256());
+        verifyNoInteractions(sessionBranchService, gitRepositoryService);
+    }
+
+    @Test
+    void publishChangeOwnedAdoptsExactDraftAfterLostGitHubResponse() throws Exception {
+        Path repoPath = createRepoPath();
+        WorkSessionEntity session = buildChangeSession(repoPath);
+        var identity = publishedIdentity(session);
+        GitHubRepositoryRef repository = new GitHubRepositoryRef("jlnieto", "atenea");
+        GitHubPullRequest existing = exactPullRequest(session, identity, 42L);
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(changeBranchPublicationService.publish(12L)).thenReturn(identity);
+        when(gitHubClient.resolveRepository("https://github.com/jlnieto/atenea.git"))
+                .thenReturn(repository);
+        when(gitHubClient.findOpenPullRequests(
+                repository, identity.headBranch(), identity.baseBranch()))
+                .thenReturn(List.of(existing));
+        when(workSessionRepository.save(any(WorkSessionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(workSessionService.toResponse(any(WorkSessionEntity.class)))
+                .thenAnswer(invocation -> responseFor(invocation.getArgument(0)));
+
+        WorkSessionResponse response = workSessionGitHubService.publishSession(
+                12L, new PublishWorkSessionRequest(null));
+
+        assertEquals(existing.htmlUrl(), response.pullRequestUrl());
+        verify(gitHubClient, never()).createPullRequest(
+                any(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void publishChangeOwnedRejectsDraftWithDifferentHead() throws Exception {
+        Path repoPath = createRepoPath();
+        WorkSessionEntity session = buildChangeSession(repoPath);
+        var identity = publishedIdentity(session);
+        GitHubRepositoryRef repository = new GitHubRepositoryRef("jlnieto", "atenea");
+        GitHubPullRequest mismatched = new GitHubPullRequest(
+                42L,
+                "https://github.com/jlnieto/atenea/pull/42",
+                "open",
+                false,
+                "jlnieto/atenea",
+                "main",
+                "jlnieto/atenea",
+                identity.headBranch(),
+                "f".repeat(40),
+                true);
+
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
+        when(changeBranchPublicationService.publish(12L)).thenReturn(identity);
+        when(gitHubClient.resolveRepository("https://github.com/jlnieto/atenea.git"))
+                .thenReturn(repository);
+        when(gitHubClient.findOpenPullRequests(
+                repository, identity.headBranch(), identity.baseBranch()))
+                .thenReturn(List.of(mismatched));
+
+        WorkSessionPublishConflictException failure = assertThrows(
+                WorkSessionPublishConflictException.class,
+                () -> workSessionGitHubService.publishSession(
+                        12L, new PublishWorkSessionRequest(null)));
+
+        assertTrue(failure.getMessage().contains("persisted DevelopmentChange publication"));
+        verify(workSessionRepository, never()).save(any());
     }
 
     @Test
@@ -420,6 +527,49 @@ class WorkSessionGitHubServiceTest {
         session.setCreatedAt(Instant.parse("2026-03-25T10:05:00Z"));
         session.setUpdatedAt(Instant.parse("2026-03-25T10:06:00Z"));
         return session;
+    }
+
+    private static WorkSessionEntity buildChangeSession(Path repoPath) {
+        WorkSessionEntity session = buildSession(repoPath);
+        UUID changeKey = UUID.fromString("8bf60472-3c0e-49aa-99bf-6dc3c7e60eaf");
+        DevelopmentChangeEntity change = new DevelopmentChangeEntity();
+        change.setId(81L);
+        change.setChangeKey(changeKey);
+        change.setProject(session.getProject());
+        change.setWorkspaceOwnershipFingerprintSha256("c".repeat(64));
+        session.setDevelopmentChange(change);
+        session.setWorkspaceBranch("atenea/change-" + changeKey);
+        return session;
+    }
+
+    private static DevelopmentChangeBranchPublicationService.PublishedIdentity publishedIdentity(
+            WorkSessionEntity session) {
+        return new DevelopmentChangeBranchPublicationService.PublishedIdentity(
+                "jlnieto/atenea",
+                "main",
+                session.getWorkspaceBranch(),
+                "a".repeat(40),
+                session.getDevelopmentChange().getChangeKey(),
+                3L,
+                "b".repeat(64),
+                "d".repeat(64));
+    }
+
+    private static GitHubPullRequest exactPullRequest(
+            WorkSessionEntity session,
+            DevelopmentChangeBranchPublicationService.PublishedIdentity identity,
+            long number) {
+        return new GitHubPullRequest(
+                number,
+                "https://github.com/jlnieto/atenea/pull/" + number,
+                "open",
+                false,
+                "jlnieto/atenea",
+                identity.baseBranch(),
+                "jlnieto/atenea",
+                identity.headBranch(),
+                identity.headSha(),
+                true);
     }
 
     private static WorkSessionResponse responseFor(WorkSessionEntity session) {

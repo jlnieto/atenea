@@ -174,6 +174,30 @@ public class WorkSessionEntity {
     @Column(name = "final_commit_sha", length = 64)
     private String finalCommitSha;
 
+    @Column(name = "published_change_key")
+    private UUID publishedChangeKey;
+
+    @Column(name = "published_source_revision")
+    private Long publishedSourceRevision;
+
+    @Column(name = "published_source_fingerprint_sha256", length = 64)
+    private String publishedSourceFingerprintSha256;
+
+    @Column(name = "published_workspace_ownership_fingerprint_sha256", length = 64)
+    private String publishedWorkspaceOwnershipFingerprintSha256;
+
+    @Column(name = "published_repository", length = 160)
+    private String publishedRepository;
+
+    @Column(name = "published_base_branch", length = 120)
+    private String publishedBaseBranch;
+
+    @Column(name = "published_head_branch", length = 180)
+    private String publishedHeadBranch;
+
+    @Column(name = "publication_receipt_sha256", length = 64)
+    private String publicationReceiptSha256;
+
     @Column(name = "opened_at", nullable = false)
     private Instant openedAt;
 
@@ -295,6 +319,27 @@ public class WorkSessionEntity {
     public UUID getRemoteSessionId() {
         return remoteSessionId;
     }
+
+    public UUID getPublishedChangeKey() { return publishedChangeKey; }
+    public void setPublishedChangeKey(UUID value) { publishedChangeKey = value; }
+    public Long getPublishedSourceRevision() { return publishedSourceRevision; }
+    public void setPublishedSourceRevision(Long value) { publishedSourceRevision = value; }
+    public String getPublishedSourceFingerprintSha256() { return publishedSourceFingerprintSha256; }
+    public void setPublishedSourceFingerprintSha256(String value) { publishedSourceFingerprintSha256 = value; }
+    public String getPublishedWorkspaceOwnershipFingerprintSha256() {
+        return publishedWorkspaceOwnershipFingerprintSha256;
+    }
+    public void setPublishedWorkspaceOwnershipFingerprintSha256(String value) {
+        publishedWorkspaceOwnershipFingerprintSha256 = value;
+    }
+    public String getPublishedRepository() { return publishedRepository; }
+    public void setPublishedRepository(String value) { publishedRepository = value; }
+    public String getPublishedBaseBranch() { return publishedBaseBranch; }
+    public void setPublishedBaseBranch(String value) { publishedBaseBranch = value; }
+    public String getPublishedHeadBranch() { return publishedHeadBranch; }
+    public void setPublishedHeadBranch(String value) { publishedHeadBranch = value; }
+    public String getPublicationReceiptSha256() { return publicationReceiptSha256; }
+    public void setPublicationReceiptSha256(String value) { publicationReceiptSha256 = value; }
 
     public void setRemoteSessionId(UUID remoteSessionId) {
         this.remoteSessionId = remoteSessionId;
