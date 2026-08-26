@@ -1,5 +1,6 @@
 package com.atenea.remoteworker;
 
+import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
@@ -58,40 +59,54 @@ public class CanonicalSourceAdmissionService {
             return;
         }
 
-        String canonicalRef = REF_PREFIX + branch;
-        String localRemote = run("remote", "get-url", "origin").trim();
-        String localBranch = run("symbolic-ref", "--quiet", "--short", "HEAD").trim();
-        String localHead = run("rev-parse", "--verify", "HEAD^{commit}").trim();
-        String status = run("status", "--porcelain=v1", "-z", "--untracked-files=all");
-        String remoteObservation = runExternal(
-                "git", "-c", "protocol.file.allow=always",
-                "ls-remote", "--exit-code", "--refs", repositoryUrl, canonicalRef).trim();
-        String[] fields = remoteObservation.split("\\s+");
+        CanonicalSourceObservation observation = observeCanonicalSource(session.getProject());
+        String canonicalRef = observation.ref();
+        String observedCommit = observation.commit();
 
-        if (!repositoryUrl.equals(localRemote)
-                || !branch.equals(localBranch)
-                || !status.isEmpty()
-                || fields.length != 2
-                || !canonicalRef.equals(fields[1])
-                || !isCommit(fields[0])
-                || !fields[0].equals(localHead)) {
-            throw blocked();
-        }
-
-        String observedCommit = fields[0];
         if (session.getCanonicalSourceCommit() != null
                 && (!observedCommit.equals(session.getCanonicalSourceCommit())
                     || !canonicalRef.equals(session.getCanonicalSourceRef()))) {
             throw blocked();
         }
 
-        Instant observedAt = Instant.now();
         session.setCanonicalSourceRef(canonicalRef);
         session.setCanonicalSourceCommit(observedCommit);
-        session.setCanonicalSourceObservationSha256(
-                sha256(repositoryUrl + "\0" + canonicalRef + "\0" + observedCommit));
-        session.setCanonicalSourceObservedAt(observedAt);
+        session.setCanonicalSourceObservationSha256(observation.observationSha256());
+        session.setCanonicalSourceObservedAt(observation.observedAt());
         workSessionRepository.save(session);
+    }
+
+    public CanonicalSourceObservation observeCanonicalSource(ProjectEntity project) {
+        if (!ProjectCodexIdentity.matches(project)) {
+            throw blocked();
+        }
+
+        String canonicalRef = REF_PREFIX + branch;
+        String localRemote = run("remote", "get-url", "origin").trim();
+        String localBranch = run("symbolic-ref", "--quiet", "--short", "HEAD").trim();
+        String localHead = run("rev-parse", "--verify", "HEAD^{commit}").trim();
+        String localRef = run("rev-parse", "--verify", canonicalRef + "^{commit}").trim();
+        String status = run("status", "--porcelain=v1", "-z", "--untracked-files=all");
+        String remoteObservation = runExternal(
+                "git", "-c", "protocol.file.allow=always",
+                "ls-remote", "--exit-code", "--refs", repositoryUrl, canonicalRef).trim();
+        String observedCommit = exactRemoteCommit(remoteObservation, canonicalRef);
+
+        if (!repositoryUrl.equals(localRemote)
+                || !branch.equals(localBranch)
+                || !localHead.equals(localRef)
+                || !status.isEmpty()
+                || !observedCommit.equals(localHead)) {
+            throw blocked();
+        }
+
+        Instant observedAt = Instant.now();
+        return new CanonicalSourceObservation(
+                repositoryUrl,
+                canonicalRef,
+                observedCommit,
+                sha256(repositoryUrl + "\0" + canonicalRef + "\0" + observedCommit),
+                observedAt);
     }
 
     private String run(String... arguments) {
@@ -134,6 +149,18 @@ public class CanonicalSourceAdmissionService {
         return value != null && value.matches("^[0-9a-f]{40}$");
     }
 
+    String exactRemoteCommit(String remoteObservation, String canonicalRef) {
+        String[] fields = remoteObservation == null
+                ? new String[0]
+                : remoteObservation.trim().split("\\s+");
+        if (fields.length != 2
+                || !canonicalRef.equals(fields[1])
+                || !isCommit(fields[0])) {
+            throw blocked();
+        }
+        return fields[0];
+    }
+
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -146,5 +173,13 @@ public class CanonicalSourceAdmissionService {
     private WorkSessionOperationBlockedException blocked() {
         return new WorkSessionOperationBlockedException(
                 "Canonical source admission failed closed; create a clean current WorkSession");
+    }
+
+    public record CanonicalSourceObservation(
+            String repositoryUrl,
+            String ref,
+            String commit,
+            String observationSha256,
+            Instant observedAt) {
     }
 }

@@ -42,6 +42,7 @@ import com.atenea.persistence.worksession.WorkerNodeRepository;
 import com.atenea.remoteworker.DevelopmentChangeWorkspaceCommand;
 import com.atenea.remoteworker.DevelopmentChangeWorkspaceGateway;
 import com.atenea.remoteworker.DevelopmentChangeWorkspaceObservation;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.service.git.GitRepositoryService;
@@ -115,6 +116,7 @@ class DevelopmentChangeTwoChangeIsolationIntegrationTest {
     @Autowired private V2ProjectCapabilityPolicyRepository projectPolicyRepository;
 
     @MockBean private GitRepositoryService gitRepositoryService;
+    @MockBean private CanonicalSourceAdmissionService canonicalSourceAdmissionService;
     @MockBean private DevelopmentChangeWorkspaceGateway gateway;
 
     private ProjectEntity project;
@@ -156,9 +158,13 @@ class DevelopmentChangeTwoChangeIsolationIntegrationTest {
         actor = new AuthenticatedOperator(
                 operator.getId(), operator.getEmail(), operator.getDisplayName());
 
-        when(gitRepositoryService.resolveExactHeadCommit(
-                ProjectCodexIdentity.REPO_PATH, "refs/heads/main"))
-                .thenReturn(baseCommit);
+        when(canonicalSourceAdmissionService.observeCanonicalSource(any(ProjectEntity.class)))
+                .thenReturn(new CanonicalSourceAdmissionService.CanonicalSourceObservation(
+                        ProjectCodexIdentity.REPOSITORY,
+                        "refs/heads/" + ProjectCodexIdentity.BRANCH,
+                        baseCommit,
+                        "9".repeat(64),
+                        Instant.now()));
         when(gitRepositoryService.resolveCommitTree(
                 ProjectCodexIdentity.REPO_PATH, baseCommit))
                 .thenReturn(baseTree);

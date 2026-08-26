@@ -25,13 +25,15 @@ import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
-import com.atenea.remoteworker.RemoteWorkerProperties;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.service.v2control.V2AuditFact;
 import com.atenea.service.v2control.V2AuditOutboxService;
 import com.atenea.service.worksession.WorkSessionProjectNotFoundException;
+import com.atenea.service.worksession.WorkSessionOperationBlockedException;
 import com.atenea.v2.control.V2FailureCategory;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -60,6 +62,7 @@ public class DevelopmentChangeService {
     private final DevelopmentChangeOperationRepository operationRepository;
     private final WorkSessionRepository workSessionRepository;
     private final DevelopmentChangePolicy policy;
+    private final CanonicalSourceAdmissionService canonicalSourceAdmissionService;
     private final GitRepositoryService gitRepositoryService;
     private final RemoteWorkerProperties remoteWorkerProperties;
     private final V2AuditOutboxService auditService;
@@ -72,6 +75,7 @@ public class DevelopmentChangeService {
             DevelopmentChangeOperationRepository operationRepository,
             WorkSessionRepository workSessionRepository,
             DevelopmentChangePolicy policy,
+            CanonicalSourceAdmissionService canonicalSourceAdmissionService,
             GitRepositoryService gitRepositoryService,
             RemoteWorkerProperties remoteWorkerProperties,
             V2AuditOutboxService auditService,
@@ -82,6 +86,7 @@ public class DevelopmentChangeService {
         this.operationRepository = operationRepository;
         this.workSessionRepository = workSessionRepository;
         this.policy = policy;
+        this.canonicalSourceAdmissionService = canonicalSourceAdmissionService;
         this.gitRepositoryService = gitRepositoryService;
         this.remoteWorkerProperties = remoteWorkerProperties;
         this.auditService = auditService;
@@ -194,18 +199,40 @@ public class DevelopmentChangeService {
             return policyDenied(actor, project, requestFingerprint, projectTarget, decision);
         }
 
-        if (!validBaseBranch(project.getDefaultBaseBranch())) {
+        if (!ProjectCodexIdentity.matches(project)) {
             return denied(actor, project, requestFingerprint, projectTarget,
                     V2FailureCategory.OWNERSHIP,
-                    "DEVELOPMENT_CHANGE_BASE_REF_INVALID",
-                    "La base server-owned del proyecto no es inequívoca.");
+                    "DEVELOPMENT_CHANGE_PROJECT_IDENTITY_MISMATCH",
+                    "El proyecto no coincide con la identidad canónica de Atenea.");
         }
-        String baseRef = "refs/heads/" + project.getDefaultBaseBranch();
-        String baseCommit;
+        CanonicalSourceAdmissionService.CanonicalSourceObservation observation;
+        try {
+            observation = canonicalSourceAdmissionService.observeCanonicalSource(project);
+        } catch (WorkSessionOperationBlockedException rejectedSource) {
+            return denied(actor, project, requestFingerprint, projectTarget,
+                    V2FailureCategory.OWNERSHIP,
+                    "DEVELOPMENT_CHANGE_CANONICAL_SOURCE_REJECTED",
+                    "No se pudo demostrar una fuente canónica limpia y actual de Atenea.");
+        }
+        if (observation == null) {
+            return denied(actor, project, requestFingerprint, projectTarget,
+                    V2FailureCategory.OWNERSHIP,
+                    "DEVELOPMENT_CHANGE_CANONICAL_SOURCE_REJECTED",
+                    "No se pudo demostrar una fuente canónica limpia y actual de Atenea.");
+        }
+        String baseRef = observation.ref();
+        String baseCommit = observation.commit();
+        if (!ProjectCodexIdentity.REPOSITORY.equals(observation.repositoryUrl())
+                || !("refs/heads/" + ProjectCodexIdentity.BRANCH).equals(baseRef)
+                || baseCommit == null
+                || !baseCommit.matches("^[0-9a-f]{40}$")) {
+            return denied(actor, project, requestFingerprint, projectTarget,
+                    V2FailureCategory.OWNERSHIP,
+                    "DEVELOPMENT_CHANGE_CANONICAL_SOURCE_REJECTED",
+                    "No se pudo demostrar una fuente canónica limpia y actual de Atenea.");
+        }
         String baseTree;
         try {
-            baseCommit = gitRepositoryService.resolveExactHeadCommit(
-                    project.getRepoPath(), baseRef);
             baseTree = gitRepositoryService.resolveCommitTree(
                     project.getRepoPath(), baseCommit);
         } catch (GitRepositoryOperationException unresolved) {
@@ -769,14 +796,6 @@ public class DevelopmentChangeService {
                     DevelopmentChangeActionResponse.none());
         }
         return actor;
-    }
-
-    private boolean validBaseBranch(String baseBranch) {
-        return baseBranch != null && !baseBranch.isBlank()
-                && !baseBranch.startsWith("refs/")
-                && !baseBranch.contains("..")
-                && !baseBranch.contains("//")
-                && baseBranch.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,199}");
     }
 
     private String changeTargetFingerprint(DevelopmentChangeEntity change, Object... suffix) {

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -20,6 +21,7 @@ import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeOperationRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
@@ -28,6 +30,7 @@ import com.atenea.persistence.v2control.V2GlobalCapabilityGateEntity;
 import com.atenea.persistence.v2control.V2GlobalCapabilityGateRepository;
 import com.atenea.persistence.v2control.V2ProjectCapabilityPolicyEntity;
 import com.atenea.persistence.v2control.V2ProjectCapabilityPolicyRepository;
+import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
@@ -36,10 +39,12 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkerNodeEntity;
 import com.atenea.persistence.worksession.WorkerNodeRepository;
-import com.atenea.remoteworker.RemoteWorkerProperties;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.service.git.GitRepositoryService;
+import com.atenea.service.worksession.WorkSessionOperationBlockedException;
 import com.atenea.v2.control.V2FailureCategory;
 import java.time.Instant;
 import java.util.UUID;
@@ -67,13 +72,16 @@ class DevelopmentChangeServiceIntegrationTest {
     @Autowired private OperatorRepository operatorRepository;
     @Autowired private DevelopmentChangeRepository changeRepository;
     @Autowired private DevelopmentChangeOperationRepository operationRepository;
+    @Autowired private DevelopmentChangeWorkspaceOperationRepository workspaceOperationRepository;
     @Autowired private WorkSessionRepository workSessionRepository;
+    @Autowired private AgentRunRepository agentRunRepository;
     @Autowired private WorkerNodeRepository workerNodeRepository;
     @Autowired private V2AuditEventRepository auditRepository;
     @Autowired private V2GlobalCapabilityGateRepository globalGateRepository;
     @Autowired private V2ProjectCapabilityPolicyRepository projectPolicyRepository;
 
     @MockBean private GitRepositoryService gitRepositoryService;
+    @MockBean private CanonicalSourceAdmissionService canonicalSourceAdmissionService;
 
     private ProjectEntity project;
     private OperatorEntity operator;
@@ -88,13 +96,13 @@ class DevelopmentChangeServiceIntegrationTest {
         remoteWorkerProperties.setWorkerId("synthetic-worker-01");
         registerWorker();
         String identity = UUID.randomUUID().toString();
-        project = project("m2-api-" + identity);
+        project = projectRepository.saveAndFlush(canonicalProject());
         operator = operator(identity + "@atenea.test");
         actor = new AuthenticatedOperator(
                 operator.getId(), operator.getEmail(), operator.getDisplayName());
         enablePolicy(project, 7);
-        when(gitRepositoryService.resolveExactHeadCommit(
-                project.getRepoPath(), "refs/heads/main")).thenReturn(BASE_COMMIT);
+        when(canonicalSourceAdmissionService.observeCanonicalSource(any(ProjectEntity.class)))
+                .thenReturn(canonicalObservation());
         when(gitRepositoryService.resolveCommitTree(project.getRepoPath(), BASE_COMMIT))
                 .thenReturn(BASE_TREE);
         when(gitRepositoryService.exactLocalHeadExists(
@@ -171,6 +179,50 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals(1, auditRepository.findAll().stream()
                 .filter(event -> "DEVELOPMENT_CHANGE_CREATED".equals(event.getEventType()))
                 .count());
+        verify(gitRepositoryService, never()).resolveExactHeadCommit(anyString(), anyString());
+    }
+
+    @Test
+    void canonicalSourceRejectionCreatesNoChangeOperationWorkspaceSessionOrRun() {
+        when(canonicalSourceAdmissionService.observeCanonicalSource(any(ProjectEntity.class)))
+                .thenThrow(new WorkSessionOperationBlockedException("synthetic rejection"));
+
+        DevelopmentChangeRejectedException failure = assertThrows(
+                DevelopmentChangeRejectedException.class,
+                () -> service.create(
+                        actor, project.getId(), UUID.randomUUID(),
+                        new CreateDevelopmentChangeRequest("Rejected canonical source")));
+
+        assertEquals(V2FailureCategory.OWNERSHIP, failure.response().failureCategory());
+        assertEquals("DEVELOPMENT_CHANGE_CANONICAL_SOURCE_REJECTED",
+                failure.response().failureCode());
+        assertEquals(0, changeRepository.count());
+        assertEquals(0, operationRepository.count());
+        assertEquals(0, workspaceOperationRepository.count());
+        assertEquals(0, workSessionRepository.count());
+        assertEquals(0, agentRunRepository.count());
+    }
+
+    @Test
+    void nonCanonicalProjectIdentityCreatesNoChangeOrRelatedSideEffect() {
+        ProjectEntity foreign = project("foreign-create-" + UUID.randomUUID());
+        enablePolicy(foreign, 7);
+
+        DevelopmentChangeRejectedException failure = assertThrows(
+                DevelopmentChangeRejectedException.class,
+                () -> service.create(
+                        actor, foreign.getId(), UUID.randomUUID(),
+                        new CreateDevelopmentChangeRequest("Foreign source")));
+
+        assertEquals(V2FailureCategory.OWNERSHIP, failure.response().failureCategory());
+        assertEquals("DEVELOPMENT_CHANGE_PROJECT_IDENTITY_MISMATCH",
+                failure.response().failureCode());
+        assertEquals(0, changeRepository.count());
+        assertEquals(0, operationRepository.count());
+        assertEquals(0, workspaceOperationRepository.count());
+        assertEquals(0, workSessionRepository.count());
+        assertEquals(0, agentRunRepository.count());
+        verify(canonicalSourceAdmissionService, never()).observeCanonicalSource(foreign);
     }
 
     @Test
@@ -364,6 +416,25 @@ class DevelopmentChangeServiceIntegrationTest {
         value.setCreatedAt(Instant.now());
         value.setUpdatedAt(value.getCreatedAt());
         return projectRepository.saveAndFlush(value);
+    }
+
+    private ProjectEntity canonicalProject() {
+        ProjectEntity value = new ProjectEntity();
+        value.setName(ProjectCodexIdentity.PROJECT_NAME);
+        value.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        value.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
+        value.setCreatedAt(Instant.now());
+        value.setUpdatedAt(value.getCreatedAt());
+        return value;
+    }
+
+    private CanonicalSourceAdmissionService.CanonicalSourceObservation canonicalObservation() {
+        return new CanonicalSourceAdmissionService.CanonicalSourceObservation(
+                ProjectCodexIdentity.REPOSITORY,
+                "refs/heads/" + ProjectCodexIdentity.BRANCH,
+                BASE_COMMIT,
+                "a".repeat(64),
+                Instant.now());
     }
 
     private OperatorEntity operator(String email) {
