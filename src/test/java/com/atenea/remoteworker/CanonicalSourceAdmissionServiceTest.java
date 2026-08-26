@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.ExecutionTarget;
@@ -25,6 +26,7 @@ class CanonicalSourceAdmissionServiceTest {
 
     private Path origin;
     private Path repository;
+    private WorkSessionRepository workSessionRepository;
     private CanonicalSourceAdmissionService service;
     private WorkSessionEntity session;
 
@@ -39,8 +41,9 @@ class CanonicalSourceAdmissionServiceTest {
         git(repository, "remote", "add", "origin", origin.toString());
         commitAndPush("first");
 
+        workSessionRepository = mock(WorkSessionRepository.class);
         service = new CanonicalSourceAdmissionService(
-                mock(WorkSessionRepository.class),
+                workSessionRepository,
                 repository,
                 origin.toString(),
                 ProjectCodexIdentity.BRANCH);
@@ -57,6 +60,17 @@ class CanonicalSourceAdmissionServiceTest {
                 session.getCanonicalSourceRef());
         assertNotNull(session.getCanonicalSourceObservedAt());
         assertEquals(64, session.getCanonicalSourceObservationSha256().length());
+        verify(workSessionRepository).save(session);
+    }
+
+    @Test
+    void canonicalObservationReturnsExactlyTheRemoteTip() {
+        CanonicalSourceAdmissionService.CanonicalSourceObservation observation =
+                service.observeCanonicalSource(session.getProject());
+
+        assertEquals(origin.toString(), observation.repositoryUrl());
+        assertEquals("refs/heads/main", observation.ref());
+        assertEquals(git(origin, "rev-parse", "refs/heads/main"), observation.commit());
     }
 
     @Test
@@ -79,6 +93,33 @@ class CanonicalSourceAdmissionServiceTest {
         Files.writeString(repository.resolve("untracked.txt"), "draft");
 
         assertThrows(WorkSessionOperationBlockedException.class, () -> service.admitBeforeWrite(session));
+    }
+
+    @Test
+    void legacyPlatformRemoteIsRejected() {
+        git(repository, "remote", "set-url", "origin",
+                "https://github.com/jlnieto/atenea-remote-worker-spec.git");
+
+        assertThrows(WorkSessionOperationBlockedException.class,
+                () -> service.observeCanonicalSource(session.getProject()));
+    }
+
+    @Test
+    void anyOtherRemoteIsRejected() {
+        git(repository, "remote", "set-url", "origin",
+                "https://github.com/another/repository.git");
+
+        assertThrows(WorkSessionOperationBlockedException.class,
+                () -> service.observeCanonicalSource(session.getProject()));
+    }
+
+    @Test
+    void missingLocalBranchAndRefAreRejected() {
+        git(repository, "checkout", "--detach");
+        git(repository, "branch", "-D", ProjectCodexIdentity.BRANCH);
+
+        assertThrows(WorkSessionOperationBlockedException.class,
+                () -> service.observeCanonicalSource(session.getProject()));
     }
 
     @Test
@@ -109,10 +150,41 @@ class CanonicalSourceAdmissionServiceTest {
         assertThrows(WorkSessionOperationBlockedException.class, () -> missing.admitBeforeWrite(session));
     }
 
+    @Test
+    void emptyRemoteObservationFailsClosed() {
+        git(repository, "push", "origin", ":refs/heads/" + ProjectCodexIdentity.BRANCH);
+
+        assertThrows(WorkSessionOperationBlockedException.class,
+                () -> service.observeCanonicalSource(session.getProject()));
+    }
+
+    @Test
+    void ambiguousRemoteObservationFailsClosed() {
+        String commit = git(repository, "rev-parse", "HEAD");
+        String canonicalRef = "refs/heads/" + ProjectCodexIdentity.BRANCH;
+        String ambiguous = commit + "\t" + canonicalRef + "\n"
+                + commit + "\t" + canonicalRef;
+
+        assertThrows(WorkSessionOperationBlockedException.class,
+                () -> service.exactRemoteCommit(ambiguous, canonicalRef));
+    }
+
+    @Test
+    void nonCanonicalProjectIdentityFailsClosed() {
+        ProjectEntity foreign = new ProjectEntity();
+        foreign.setName("Not Atenea");
+        foreign.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        foreign.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
+
+        assertThrows(WorkSessionOperationBlockedException.class,
+                () -> service.observeCanonicalSource(foreign));
+    }
+
     private WorkSessionEntity remoteAteneaSession() {
         ProjectEntity project = new ProjectEntity();
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
         WorkSessionEntity value = new WorkSessionEntity();
         value.setProject(project);
         value.setBaseBranch(ProjectCodexIdentity.BRANCH);

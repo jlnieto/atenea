@@ -3,6 +3,7 @@ package com.atenea.service.developmentchange;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -20,6 +21,8 @@ import com.atenea.persistence.v2control.V2GlobalCapabilityGateEntity;
 import com.atenea.persistence.v2control.V2GlobalCapabilityGateRepository;
 import com.atenea.persistence.v2control.V2ProjectCapabilityPolicyEntity;
 import com.atenea.persistence.v2control.V2ProjectCapabilityPolicyRepository;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
+import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.service.git.GitRepositoryService;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -74,15 +77,16 @@ class DevelopmentChangeConcurrencyIntegrationTest {
     @Autowired private V2ProjectCapabilityPolicyRepository projectPolicyRepository;
 
     @MockBean private GitRepositoryService gitRepositoryService;
+    @MockBean private CanonicalSourceAdmissionService canonicalSourceAdmissionService;
 
     @Test
     void concurrentIdenticalCreateHasOneDurableWinnerAndOneReplay() throws Exception {
         String identity = UUID.randomUUID().toString();
         Instant now = Instant.now();
         ProjectEntity project = new ProjectEntity();
-        project.setName("m2-concurrent-" + identity);
-        project.setRepoPath("/tmp/m2-concurrent-" + identity);
-        project.setDefaultBaseBranch("main");
+        project.setName(ProjectCodexIdentity.PROJECT_NAME);
+        project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
         project.setCreatedAt(now);
         project.setUpdatedAt(now);
         project = projectRepository.saveAndFlush(project);
@@ -118,8 +122,13 @@ class DevelopmentChangeConcurrencyIntegrationTest {
         projectPolicyRepository.saveAndFlush(exact);
 
         String commit = "3".repeat(40);
-        when(gitRepositoryService.resolveExactHeadCommit(
-                project.getRepoPath(), "refs/heads/main")).thenReturn(commit);
+        when(canonicalSourceAdmissionService.observeCanonicalSource(any(ProjectEntity.class)))
+                .thenReturn(new CanonicalSourceAdmissionService.CanonicalSourceObservation(
+                        ProjectCodexIdentity.REPOSITORY,
+                        "refs/heads/" + ProjectCodexIdentity.BRANCH,
+                        commit,
+                        "5".repeat(64),
+                        now));
         when(gitRepositoryService.resolveCommitTree(project.getRepoPath(), commit))
                 .thenReturn("4".repeat(40));
         when(gitRepositoryService.exactLocalHeadExists(eq(project.getRepoPath()), anyString()))
