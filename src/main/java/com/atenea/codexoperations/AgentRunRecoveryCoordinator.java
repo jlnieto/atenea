@@ -157,7 +157,9 @@ public class AgentRunRecoveryCoordinator {
                     operationId, AgentRunRecoveryOutcome.POLICY_BLOCKED, null);
             return;
         }
-        canonicalSourceAdmissionService.admitBeforeWrite(source.getSession());
+        if (source.getSession().getDevelopmentChange() == null) {
+            canonicalSourceAdmissionService.admitBeforeWrite(source.getSession());
+        }
         RemoteAgentRunCoordinator.RetryProof proof = remoteCoordinator.proveTerminalOrAbsent(runId);
         if (proof == RemoteAgentRunCoordinator.RetryProof.STILL_LIVE) {
             operationService.complete(

@@ -178,7 +178,9 @@ public class SessionTurnService {
         if (session.getStatus() != WorkSessionStatus.OPEN) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
-        canonicalSourceAdmissionService.admitBeforeWrite(session);
+        if (session.getDevelopmentChange() == null) {
+            canonicalSourceAdmissionService.admitBeforeWrite(session);
+        }
         agentRunReconciliationService.reconcileSession(sessionId);
         if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)
                 || agentRunRepository.existsBySessionIdAndStatusIn(

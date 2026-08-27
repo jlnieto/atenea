@@ -274,6 +274,7 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         assertThrows(IllegalStateException.class, () -> sessionTurnService.createTurn(
                 session.getId(), turnRequest()));
 
+        verify(canonicalSourceAdmissionService, never()).admitBeforeWrite(any());
         assertEquals(runCount, agentRunRepository.count());
         assertEquals(turnCount, sessionTurnRepository.count());
     }

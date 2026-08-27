@@ -1,11 +1,13 @@
 package com.atenea.codexoperations;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRecoveryAction;
 import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
@@ -85,6 +87,42 @@ class AgentRunRecoveryCoordinatorTest {
         verify(operationService).complete(
                 operationId, AgentRunRecoveryOutcome.RETRY_CREATED, retry.getId());
         verify(canonicalSourceAdmissionService).admitBeforeWrite(session);
+        verify(remoteCoordinator).dispatchAfterCommit(retry.getId());
+    }
+
+    @Test
+    void changeOwnedRetrySkipsLegacyCurrentOnlyAdmissionAndUsesChangeBinding() {
+        UUID operationId = UUID.randomUUID();
+        WorkSessionEntity session = new WorkSessionEntity();
+        session.setId(9L);
+        DevelopmentChangeEntity change = new DevelopmentChangeEntity();
+        change.setId(91L);
+        session.setDevelopmentChange(change);
+        AgentRunEntity source = new AgentRunEntity();
+        source.setId(81L);
+        source.setSession(session);
+        source.setStatus(AgentRunStatus.FAILED);
+        AgentRunEntity retry = new AgentRunEntity();
+        retry.setId(84L);
+        retry.setSession(session);
+        retry.setRetryOfRun(source);
+        AgentRunRecoveryOperationEntity operation = operation(
+                operationId, source, AgentRunRecoveryAction.RETRY);
+
+        when(operationService.start(operationId)).thenReturn(operation);
+        when(runRepository.findWithSessionById(source.getId())).thenReturn(Optional.of(source));
+        when(runRepository.existsBySessionIdAndStatusIn(
+                session.getId(), AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
+        when(remoteCoordinator.proveTerminalOrAbsent(source.getId()))
+                .thenReturn(RemoteAgentRunCoordinator.RetryProof.ABSENT);
+        when(runService.createRemoteRetryRun(source.getId())).thenReturn(retry);
+
+        coordinator.executeOne(operationId);
+
+        verify(canonicalSourceAdmissionService, never()).admitBeforeWrite(any());
+        verify(runService).createRemoteRetryRun(source.getId());
+        verify(operationService).complete(
+                operationId, AgentRunRecoveryOutcome.RETRY_CREATED, retry.getId());
         verify(remoteCoordinator).dispatchAfterCommit(retry.getId());
     }
 
