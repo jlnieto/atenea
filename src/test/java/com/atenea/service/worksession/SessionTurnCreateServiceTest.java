@@ -20,6 +20,7 @@ import com.atenea.api.worksession.CreateSessionTurnResponse;
 import com.atenea.codexappserver.CodexAppServerClient.CodexAppServerExecutionHandle;
 import com.atenea.codexappserver.CodexAppServerExecutionResult;
 import com.atenea.attachments.RealAttachmentProjectRegistry;
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
@@ -337,6 +338,38 @@ class SessionTurnCreateServiceTest {
 
         verify(sessionTurnRepository, never()).save(any(SessionTurnEntity.class));
         verify(agentRunService, never()).createRunningRun(any(), any());
+    }
+
+    @Test
+    void changeOwnedTurnSkipsLegacyCurrentOnlyAdmissionAndReachesAgentRunBinding() {
+        WorkSessionEntity session = exactRemoteAteneaSession();
+        session.setCanonicalSourceCommit("a8612dbf501089daf7043905c0fb67b4c59a3abf");
+        DevelopmentChangeEntity change = new DevelopmentChangeEntity();
+        change.setId(91L);
+        change.setBaseCommit(session.getCanonicalSourceCommit());
+        session.setDevelopmentChange(change);
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(sessionTurnRepository.save(any(SessionTurnEntity.class))).thenAnswer(invocation -> {
+            SessionTurnEntity saved = invocation.getArgument(0);
+            saved.setId(101L);
+            return saved;
+        });
+        AgentRunEntity run = new AgentRunEntity();
+        run.setId(55L);
+        run.setSession(session);
+        run.setStatus(AgentRunStatus.QUEUED);
+        when(agentRunService.createRemoteQueuedRun(
+                eq(session), any(SessionTurnEntity.class), eq(WorkloadClass.NORMAL)))
+                .thenReturn(run);
+
+        sessionTurnService.createTurn(
+                12L,
+                new CreateSessionTurnRequest("Continue the canonical change workspace"));
+
+        verify(canonicalSourceAdmissionService, never()).admitBeforeWrite(any());
+        verify(agentRunService).createRemoteQueuedRun(
+                eq(session), any(SessionTurnEntity.class), eq(WorkloadClass.NORMAL));
+        verify(remoteAgentRunCoordinator).dispatchAfterCommit(55L);
     }
 
     @Test

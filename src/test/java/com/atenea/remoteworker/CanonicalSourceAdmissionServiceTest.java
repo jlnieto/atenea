@@ -132,7 +132,7 @@ class CanonicalSourceAdmissionServiceTest {
     }
 
     @Test
-    void movedHeadIsRejectedAfterTheSessionPersistedItsFirstObservation() throws Exception {
+    void legacySessionFixedAtARejectsWhenCanonicalMainAdvancesToB() throws Exception {
         service.admitBeforeWrite(session);
         commitAndPush("second");
 
