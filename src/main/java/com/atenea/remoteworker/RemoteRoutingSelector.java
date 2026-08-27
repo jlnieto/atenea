@@ -70,6 +70,38 @@ public class RemoteRoutingSelector {
         }
     }
 
+    public WorkerNodeEntity refreshKnownWorker(
+            String expectedWorkerId,
+            String requiredCapability
+    ) {
+        if (!properties.getWorkerId().equals(expectedWorkerId)) {
+            return null;
+        }
+        try {
+            RemoteWorkerClient.Health health = client.health();
+            if (!validHealth(health)) {
+                return recordUnavailable("Remote worker health response is invalid");
+            }
+            if (!expectedWorkerId.equals(health.workerId())) {
+                return recordUnavailable("Remote worker health identity is incompatible");
+            }
+
+            WorkerNodeEntity worker = recordHealth(health, null);
+            boolean compatible = health.healthy()
+                    && RemoteWorkerProperties.PROTOCOL.equals(health.protocolVersion())
+                    && health.capabilities().contains(requiredCapability);
+            worker.setEnabled(compatible);
+            if (!compatible) {
+                worker.setUnavailableReason(
+                        "Worker is unhealthy, incompatible or lacks the required capability");
+            }
+            return workerNodeRepository.save(worker);
+        } catch (RemoteWorkerException exception) {
+            log.warn("remote worker health refresh failed: {}", exception.getMessage());
+            return recordUnavailable(exception.getMessage());
+        }
+    }
+
     private String selectedWorkloadKind(WorkSessionEntity session) {
         if (!properties.isEnabled()) {
             return null;
@@ -108,7 +140,24 @@ public class RemoteRoutingSelector {
         return worker;
     }
 
-    private void recordUnavailable(String reason) {
+    private boolean validHealth(RemoteWorkerClient.Health health) {
+        return health != null
+                && health.protocolVersion() != null
+                && !health.protocolVersion().isBlank()
+                && health.workerId() != null
+                && !health.workerId().isBlank()
+                && health.capabilities() != null
+                && health.capabilities().stream()
+                        .allMatch(capability -> capability != null && !capability.isBlank())
+                && health.normalCapacity() >= 0
+                && health.heavyCapacity() >= 0
+                && health.normalInUse() >= 0
+                && health.heavyInUse() >= 0
+                && health.queued() >= 0
+                && health.serverTime() != null;
+    }
+
+    private WorkerNodeEntity recordUnavailable(String reason) {
         Instant now = Instant.now();
         WorkerNodeEntity worker = workerNodeRepository.findById(properties.getWorkerId()).orElseGet(WorkerNodeEntity::new);
         if (worker.getId() == null) {
@@ -126,6 +175,6 @@ public class RemoteRoutingSelector {
         worker.setHeavyInUse(0);
         worker.setUnavailableReason(reason);
         worker.setUpdatedAt(now);
-        workerNodeRepository.save(worker);
+        return workerNodeRepository.save(worker);
     }
 }

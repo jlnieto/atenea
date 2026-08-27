@@ -16,6 +16,7 @@ import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.developmentchange.DevelopmentChangeProperties;
 import com.atenea.developmentchange.RemoteWorkBetaProperties;
 import com.atenea.api.developmentchange.OpenOrResolveRemoteSessionRequest;
+import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.persistence.auth.OperatorEntity;
 import com.atenea.persistence.auth.OperatorRepository;
@@ -49,10 +50,13 @@ import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.remoteworker.DevelopmentChangeWorkspaceCommand;
 import com.atenea.remoteworker.DevelopmentChangeWorkspaceGateway;
 import com.atenea.remoteworker.DevelopmentChangeWorkspaceObservation;
+import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteWorkerException;
+import com.atenea.remoteworker.RemoteWorkerClient;
 import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.service.worksession.AgentRunService;
+import com.atenea.service.worksession.SessionTurnService;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -103,6 +107,7 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
     @Autowired private DevelopmentChangeWorkspaceService service;
     @Autowired private RemoteSessionService remoteSessionService;
     @Autowired private AgentRunService agentRunService;
+    @Autowired private SessionTurnService sessionTurnService;
     @Autowired private DevelopmentChangeProperties properties;
     @Autowired private RemoteWorkBetaProperties betaProperties;
     @Autowired private RemoteWorkerProperties remoteWorkerProperties;
@@ -120,6 +125,8 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
 
     @MockBean private DevelopmentChangeWorkspaceGateway gateway;
     @MockBean private CodexExecutionProfileSnapshotService profileSnapshotService;
+    @MockBean private RemoteWorkerClient remoteWorkerClient;
+    @MockBean private CanonicalSourceAdmissionService canonicalSourceAdmissionService;
 
     private ProjectEntity project;
     private OperatorEntity operator;
@@ -133,7 +140,11 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        reset(gateway, profileSnapshotService);
+        reset(
+                gateway,
+                profileSnapshotService,
+                remoteWorkerClient,
+                canonicalSourceAdmissionService);
         properties.setMutationsEnabled(true);
         properties.setSessionBindingEnabled(true);
         properties.setWorkspaceOperationsEnabled(true);
@@ -145,6 +156,13 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         enablePolicy();
         enableBetaPolicy();
         registerWorker();
+        when(remoteWorkerClient.health()).thenReturn(workerHealth(
+                true,
+                RemoteWorkerProperties.PROTOCOL,
+                java.util.List.of(
+                        ProjectCodexIdentity.WORKLOAD_KIND,
+                        "project-codex-v2",
+                        ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)));
         operator = operatorRepository.saveAndFlush(operator());
         actor = new AuthenticatedOperator(
                 operator.getId(), operator.getEmail(), operator.getDisplayName());
@@ -224,11 +242,89 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
                 run.getChangeSourceFingerprintSha256());
         assertEquals(ready.getWorkspaceOwnershipFingerprintSha256(),
                 run.getChangeWorkspaceOwnershipFingerprintSha256());
+        WorkerNodeEntity refreshed = workerNodeRepository
+                .findById(ProjectCodexIdentity.WORKER_ID).orElseThrow();
+        assertEquals(
+                ProjectCodexIdentity.WORKLOAD_KIND + ",project-codex-v2,"
+                        + ProjectCodexIdentity.CHANGE_WORKLOAD_KIND,
+                refreshed.getCapabilities());
+        assertEquals(6, refreshed.getNormalCapacity());
+        assertEquals(2, refreshed.getNormalInUse());
+        assertTrue(refreshed.isEnabled());
+        assertTrue(refreshed.isHealthy());
         assertThrows(DataIntegrityViolationException.class, () -> jdbcTemplate.update("""
                 UPDATE agent_run
                 SET change_source_fingerprint_sha256 = NULL
                 WHERE id = ?
                 """, run.getId()));
+    }
+
+    @Test
+    void changeAdmissionFailsClosedWhenRefreshedRuntimeLacksV4() {
+        WorkSessionEntity session = readyChangeSession();
+        long runCount = agentRunRepository.count();
+        long turnCount = sessionTurnRepository.count();
+        when(remoteWorkerClient.health()).thenReturn(workerHealth(
+                true,
+                RemoteWorkerProperties.PROTOCOL,
+                java.util.List.of(
+                        ProjectCodexIdentity.WORKLOAD_KIND,
+                        "project-codex-v2")));
+
+        assertThrows(IllegalStateException.class, () -> sessionTurnService.createTurn(
+                session.getId(), turnRequest()));
+
+        assertEquals(runCount, agentRunRepository.count());
+        assertEquals(turnCount, sessionTurnRepository.count());
+    }
+
+    @Test
+    void changeAdmissionFailsClosedWhenWorkerIsUnreachable() {
+        WorkSessionEntity session = readyChangeSession();
+        long runCount = agentRunRepository.count();
+        long turnCount = sessionTurnRepository.count();
+        when(remoteWorkerClient.health()).thenThrow(
+                new RemoteWorkerException("connection refused", 503));
+
+        assertThrows(IllegalStateException.class, () -> sessionTurnService.createTurn(
+                session.getId(), turnRequest()));
+
+        assertEquals(runCount, agentRunRepository.count());
+        assertEquals(turnCount, sessionTurnRepository.count());
+    }
+
+    @Test
+    void changeAdmissionFailsClosedWhenWorkerReportsUnhealthy() {
+        WorkSessionEntity session = readyChangeSession();
+        long runCount = agentRunRepository.count();
+        long turnCount = sessionTurnRepository.count();
+        when(remoteWorkerClient.health()).thenReturn(workerHealth(
+                false,
+                RemoteWorkerProperties.PROTOCOL,
+                java.util.List.of(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)));
+
+        assertThrows(IllegalStateException.class, () -> sessionTurnService.createTurn(
+                session.getId(), turnRequest()));
+
+        assertEquals(runCount, agentRunRepository.count());
+        assertEquals(turnCount, sessionTurnRepository.count());
+    }
+
+    @Test
+    void changeAdmissionFailsClosedWhenWorkerProtocolMismatches() {
+        WorkSessionEntity session = readyChangeSession();
+        long runCount = agentRunRepository.count();
+        long turnCount = sessionTurnRepository.count();
+        when(remoteWorkerClient.health()).thenReturn(workerHealth(
+                true,
+                "agent-run-worker/v0",
+                java.util.List.of(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)));
+
+        assertThrows(IllegalStateException.class, () -> sessionTurnService.createTurn(
+                session.getId(), turnRequest()));
+
+        assertEquals(runCount, agentRunRepository.count());
+        assertEquals(turnCount, sessionTurnRepository.count());
     }
 
     @Test
@@ -472,12 +568,51 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         worker.setHeavyCapacity(2);
         worker.setNormalInUse(0);
         worker.setHeavyInUse(0);
-        worker.setCapabilities(ProjectCodexIdentity.WORKLOAD_KIND + ","
-                + ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        worker.setCapabilities(ProjectCodexIdentity.WORKLOAD_KIND + ",project-codex-v2");
         worker.setLastHeartbeatAt(now);
         worker.setCreatedAt(now);
         worker.setUpdatedAt(now);
         workerNodeRepository.saveAndFlush(worker);
+    }
+
+    private WorkSessionEntity readyChangeSession() {
+        DevelopmentChangeEntity initial = change();
+        doReturn(owned(BASE_COMMIT, SOURCE_FINGERPRINT, false))
+                .when(gateway).execute(any());
+        service.provision(actor, project.getId(), initial.getChangeKey(), UUID.randomUUID());
+        DevelopmentChangeEntity ready = changeRepository
+                .findByChangeKey(initial.getChangeKey()).orElseThrow();
+        var opened = remoteSessionService.openOrResolve(
+                actor,
+                project.getId(),
+                ready.getChangeKey(),
+                UUID.randomUUID(),
+                new OpenOrResolveRemoteSessionRequest(ready.getVersion()));
+        return workSessionRepository
+                .findWithProjectAndDevelopmentChangeById(opened.sessionId()).orElseThrow();
+    }
+
+    private CreateSessionTurnRequest turnRequest() {
+        return new CreateSessionTurnRequest(
+                "Implement the exact change-bound turn", null, java.util.List.of());
+    }
+
+    private RemoteWorkerClient.Health workerHealth(
+            boolean healthy,
+            String protocolVersion,
+            java.util.List<String> capabilities
+    ) {
+        return new RemoteWorkerClient.Health(
+                protocolVersion,
+                ProjectCodexIdentity.WORKER_ID,
+                healthy,
+                capabilities,
+                6,
+                3,
+                2,
+                1,
+                0,
+                Instant.parse("2026-08-27T12:00:00Z"));
     }
 
     private OperatorEntity operator() {
