@@ -44,10 +44,10 @@ import com.atenea.persistence.worksession.SessionTurnAttachmentEntity;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.persistence.worksession.WorkerNodeEntity;
-import com.atenea.persistence.worksession.WorkerNodeRepository;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
+import com.atenea.remoteworker.RemoteRoutingSelector;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -102,7 +102,7 @@ class AgentRunServiceTest {
     private DevelopmentChangeWorkspaceOperationRepository changeWorkspaceOperationRepository;
 
     @Mock
-    private WorkerNodeRepository workerNodeRepository;
+    private RemoteRoutingSelector remoteRoutingSelector;
 
     private AgentRunService agentRunService;
     private AgentRunReconciliationService agentRunReconciliationService;
@@ -123,7 +123,7 @@ class AgentRunServiceTest {
                 codexExecutionProfileSnapshotService,
                 developmentChangeRepository,
                 changeWorkspaceOperationRepository,
-                workerNodeRepository,
+                remoteRoutingSelector,
                 jdbcTemplate
         );
     }
@@ -654,6 +654,9 @@ class AgentRunServiceTest {
         assertEquals(change.getObservedCanonicalCommit(), run.getRepositoryCommit());
         assertEquals(session.getRemoteSessionId(), run.getRemoteSessionId());
         assertEquals(session.getWorkspaceIdentity(), run.getWorkspaceIdentity());
+        verify(remoteRoutingSelector).refreshKnownWorker(
+                ProjectCodexIdentity.WORKER_ID,
+                ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
         verify(agentRunRepository).save(run);
     }
 
@@ -697,8 +700,9 @@ class AgentRunServiceTest {
         stubChangeAdmission(session, change);
         WorkerNodeEntity legacyWorker = changeWorker();
         legacyWorker.setCapabilities(ProjectCodexIdentity.WORKLOAD_KIND);
-        when(workerNodeRepository.findById(ProjectCodexIdentity.WORKER_ID))
-                .thenReturn(Optional.of(legacyWorker));
+        when(remoteRoutingSelector.refreshKnownWorker(
+                ProjectCodexIdentity.WORKER_ID,
+                ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)).thenReturn(legacyWorker);
 
         assertThrows(IllegalStateException.class, () -> agentRunService.createRemoteQueuedRun(
                 session, operatorTurn(session), WorkloadClass.NORMAL));
@@ -1077,8 +1081,9 @@ class AgentRunServiceTest {
         org.mockito.Mockito.lenient().when(
                 changeWorkspaceOperationRepository.existsByDevelopmentChangeIdAndStateIn(
                         eq(change.getId()), any())).thenReturn(false);
-        when(workerNodeRepository.findById(ProjectCodexIdentity.WORKER_ID))
-                .thenReturn(Optional.of(changeWorker()));
+        when(remoteRoutingSelector.refreshKnownWorker(
+                ProjectCodexIdentity.WORKER_ID,
+                ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)).thenReturn(changeWorker());
         when(agentRunRepository.existsBySessionIdAndStatus(
                 session.getId(), AgentRunStatus.RUNNING)).thenReturn(false);
         when(agentRunRepository.existsBySessionIdAndStatusIn(

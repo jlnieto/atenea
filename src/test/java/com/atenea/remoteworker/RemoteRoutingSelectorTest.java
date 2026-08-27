@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -298,6 +299,194 @@ class RemoteRoutingSelectorTest {
 
         assertEquals(ExecutionTarget.LOCAL, session.getExecutionTarget());
         assertNull(session.getSelectedWorkerId());
+    }
+
+    @Test
+    void refreshKnownWorkerReplacesStaleProjectionWithCurrentHealth() {
+        WorkerNodeEntity stale = staleWorker();
+        when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.of(stale));
+        when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.health()).thenReturn(health(
+                true,
+                RemoteWorkerProperties.PROTOCOL,
+                List.of(
+                        ProjectCodexIdentity.WORKLOAD_KIND,
+                        "project-codex-v2",
+                        ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)));
+
+        WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+                "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+
+        assertTrue(refreshed.isEnabled());
+        assertTrue(refreshed.isHealthy());
+        assertEquals(RemoteWorkerProperties.PROTOCOL, refreshed.getProtocolVersion());
+        assertEquals("http://100.64.0.2:8787", refreshed.getEndpoint());
+        assertEquals(6, refreshed.getNormalCapacity());
+        assertEquals(3, refreshed.getHeavyCapacity());
+        assertEquals(2, refreshed.getNormalInUse());
+        assertEquals(1, refreshed.getHeavyInUse());
+        assertEquals(
+                ProjectCodexIdentity.WORKLOAD_KIND + ",project-codex-v2,"
+                        + ProjectCodexIdentity.CHANGE_WORKLOAD_KIND,
+                refreshed.getCapabilities());
+        assertNotNull(refreshed.getLastHeartbeatAt());
+        assertTrue(refreshed.getUpdatedAt().isAfter(
+                Instant.parse("2026-08-10T00:00:00Z")));
+        assertNull(refreshed.getUnavailableReason());
+    }
+
+    @Test
+    void refreshKnownWorkerStoresRuntimeCapabilitiesWithoutV4AndDisablesAdmission() {
+        WorkerNodeEntity stale = staleWorker();
+        stale.setCapabilities(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.of(stale));
+        when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.health()).thenReturn(health(
+                true,
+                RemoteWorkerProperties.PROTOCOL,
+                List.of(ProjectCodexIdentity.WORKLOAD_KIND, "project-codex-v2")));
+
+        WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+                "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+
+        assertFalse(refreshed.isEnabled());
+        assertTrue(refreshed.isHealthy());
+        assertEquals("project-codex-v1,project-codex-v2", refreshed.getCapabilities());
+        assertNotNull(refreshed.getUnavailableReason());
+    }
+
+    @Test
+    void refreshKnownWorkerFailsClosedWhenRuntimeIsUnreachable() {
+        WorkerNodeEntity stale = staleWorker();
+        stale.setCapabilities(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.of(stale));
+        when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.health()).thenThrow(new RemoteWorkerException("connection refused", 503));
+
+        WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+                "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+
+        assertFalse(refreshed.isEnabled());
+        assertFalse(refreshed.isHealthy());
+        assertEquals("connection refused", refreshed.getUnavailableReason());
+    }
+
+    @Test
+    void refreshKnownWorkerFailsClosedForUnhealthyOrProtocolMismatch() {
+        for (RemoteWorkerClient.Health health : List.of(
+                health(false, RemoteWorkerProperties.PROTOCOL,
+                        List.of(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)),
+                health(true, "agent-run-worker/v0",
+                        List.of(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)))) {
+            WorkerNodeEntity stale = staleWorker();
+            when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.of(stale));
+            when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
+            when(client.health()).thenReturn(health);
+
+            WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+                    "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+
+            assertFalse(refreshed.isEnabled());
+            assertEquals(health.healthy(), refreshed.isHealthy());
+            assertEquals(health.protocolVersion(), refreshed.getProtocolVersion());
+        }
+    }
+
+    @Test
+    void refreshKnownWorkerRejectsInvalidHealthWithoutTrustingStaleV4() {
+        WorkerNodeEntity stale = staleWorker();
+        stale.setCapabilities(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.of(stale));
+        when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.health()).thenReturn(new RemoteWorkerClient.Health(
+                RemoteWorkerProperties.PROTOCOL,
+                "ax42-01",
+                true,
+                null,
+                6,
+                3,
+                2,
+                1,
+                0,
+                Instant.parse("2026-08-27T12:00:00Z")));
+
+        WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+                "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+
+        assertFalse(refreshed.isEnabled());
+        assertFalse(refreshed.isHealthy());
+    }
+
+    @Test
+    void refreshKnownWorkerRejectsUnexpectedIdentityWithoutUpdatingForeignProjection() {
+        WorkerNodeEntity stale = staleWorker();
+        stale.setCapabilities(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.of(stale));
+        when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        RemoteWorkerClient.Health unexpected = health(
+                true,
+                RemoteWorkerProperties.PROTOCOL,
+                List.of(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND));
+        when(client.health()).thenReturn(new RemoteWorkerClient.Health(
+                unexpected.protocolVersion(),
+                "unexpected-worker",
+                unexpected.healthy(),
+                unexpected.capabilities(),
+                unexpected.normalCapacity(),
+                unexpected.heavyCapacity(),
+                unexpected.normalInUse(),
+                unexpected.heavyInUse(),
+                unexpected.queued(),
+                unexpected.serverTime()));
+
+        WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+                "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+
+        assertFalse(refreshed.isEnabled());
+        assertFalse(refreshed.isHealthy());
+        verify(workerNodeRepository, never()).findById("unexpected-worker");
+    }
+
+    private WorkerNodeEntity staleWorker() {
+        WorkerNodeEntity worker = new WorkerNodeEntity();
+        worker.setId("ax42-01");
+        worker.setProtocolVersion(RemoteWorkerProperties.PROTOCOL);
+        worker.setEndpoint("http://old-endpoint:8787");
+        worker.setEnabled(true);
+        worker.setHealthy(true);
+        worker.setNormalCapacity(4);
+        worker.setHeavyCapacity(2);
+        worker.setNormalInUse(0);
+        worker.setHeavyInUse(0);
+        worker.setCapabilities("project-codex-v1,project-codex-v2");
+        worker.setLastHeartbeatAt(Instant.parse("2026-08-10T00:00:00Z"));
+        worker.setCreatedAt(Instant.parse("2026-07-28T00:00:00Z"));
+        worker.setUpdatedAt(Instant.parse("2026-08-10T00:00:00Z"));
+        return worker;
+    }
+
+    private RemoteWorkerClient.Health health(
+            boolean healthy,
+            String protocol,
+            List<String> capabilities
+    ) {
+        return new RemoteWorkerClient.Health(
+                protocol,
+                "ax42-01",
+                healthy,
+                capabilities,
+                6,
+                3,
+                2,
+                1,
+                0,
+                Instant.parse("2026-08-27T12:00:00Z"));
     }
 
     private WorkSessionEntity session(String projectName) {

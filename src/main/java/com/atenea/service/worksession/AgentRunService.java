@@ -17,7 +17,6 @@ import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
 import com.atenea.persistence.worksession.WorkerNodeEntity;
-import com.atenea.persistence.worksession.WorkerNodeRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
@@ -30,6 +29,7 @@ import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteWorkerProperties;
+import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
 import java.time.Instant;
 import java.util.List;
@@ -56,7 +56,7 @@ public class AgentRunService {
     private final CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService;
     private final DevelopmentChangeRepository developmentChangeRepository;
     private final DevelopmentChangeWorkspaceOperationRepository changeWorkspaceOperationRepository;
-    private final WorkerNodeRepository workerNodeRepository;
+    private final RemoteRoutingSelector remoteRoutingSelector;
     private final JdbcTemplate jdbcTemplate;
 
     public AgentRunService(
@@ -71,7 +71,7 @@ public class AgentRunService {
             CodexExecutionProfileSnapshotService codexExecutionProfileSnapshotService,
             DevelopmentChangeRepository developmentChangeRepository,
             DevelopmentChangeWorkspaceOperationRepository changeWorkspaceOperationRepository,
-            WorkerNodeRepository workerNodeRepository,
+            RemoteRoutingSelector remoteRoutingSelector,
             JdbcTemplate jdbcTemplate
     ) {
         this.workSessionRepository = workSessionRepository;
@@ -85,7 +85,7 @@ public class AgentRunService {
         this.codexExecutionProfileSnapshotService = codexExecutionProfileSnapshotService;
         this.developmentChangeRepository = developmentChangeRepository;
         this.changeWorkspaceOperationRepository = changeWorkspaceOperationRepository;
-        this.workerNodeRepository = workerNodeRepository;
+        this.remoteRoutingSelector = remoteRoutingSelector;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -552,8 +552,8 @@ public class AgentRunService {
                         Set.of(
                                 DevelopmentChangeWorkspaceOperationState.REQUESTED,
                                 DevelopmentChangeWorkspaceOperationState.DISPATCHED));
-        WorkerNodeEntity worker = workerNodeRepository
-                .findById(change.getSelectedWorkerId()).orElse(null);
+        WorkerNodeEntity worker = remoteRoutingSelector.refreshKnownWorker(
+                change.getSelectedWorkerId(), ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
         String expectedWorkspace = "remote:" + ProjectCodexIdentity.WORKER_ID
                 + ":change:" + change.getChangeKey();
         String expectedWorkspaceBranch = "atenea/change-" + change.getChangeKey();
