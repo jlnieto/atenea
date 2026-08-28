@@ -640,7 +640,6 @@ public class RemoteSessionService {
     private boolean readyWorkspace(DevelopmentChangeEntity change) {
         return change.getWorkspaceState() == DevelopmentChangeWorkspaceState.READY
                 && change.getWorkspaceOperationRevision() > 0
-                && isSha256(change.getWorkspaceObservationSha256())
                 && change.getWorkspaceUpdatedAt() != null
                 && change.getBaseRef() != null
                 && change.getBaseRef().matches("^refs/heads/[^\\s]+$")
@@ -652,7 +651,10 @@ public class RemoteSessionService {
                 && !change.getWorkspaceIdentity().isBlank()
                 && change.getSelectedWorkerId() != null
                 && !change.getSelectedWorkerId().isBlank()
-                && isSha256(change.getSourceFingerprintSha256())
+                && change.getObservedCanonicalCommit() != null
+                && change.getObservedCanonicalCommit().matches("^[0-9a-f]{40}$")
+                && (change.getSourceState() != DevelopmentChangeSourceState.DIRTY
+                    || isSha256(change.getSourceFingerprintSha256()))
                 && change.getSourceState() != DevelopmentChangeSourceState.STALE
                 && change.getSourceState() != DevelopmentChangeSourceState.BLOCKED;
     }
@@ -671,11 +673,7 @@ public class RemoteSessionService {
                 && Objects.equals(session.getSelectedWorkerId(), change.getSelectedWorkerId())
                 && Objects.equals(session.getWorkspaceBranch(), change.getWorkspaceBranch())
                 && Objects.equals(session.getWorkspaceIdentity(), change.getWorkspaceIdentity())
-                && Objects.equals("refs/heads/" + session.getBaseBranch(), change.getBaseRef())
-                && Objects.equals(session.getCanonicalSourceRef(), change.getBaseRef())
-                && Objects.equals(session.getCanonicalSourceCommit(), change.getBaseCommit())
-                && Objects.equals(session.getCanonicalSourceObservationSha256(),
-                        change.getSourceFingerprintSha256());
+                && Objects.equals("refs/heads/" + session.getBaseBranch(), change.getBaseRef());
     }
 
     private RemoteSessionNextAction nextAction(

@@ -631,7 +631,7 @@ class AgentRunServiceTest {
     }
 
     @Test
-    void createChangeBoundRunSnapshotsReadyWorkspaceOwnershipForV4() {
+    void createChangeBoundRunSnapshotsExactSourceIdentityForV4() {
         WorkSessionEntity session = changeBoundSession();
         DevelopmentChangeEntity change = session.getDevelopmentChange();
         SessionTurnEntity originTurn = operatorTurn(session);
@@ -648,7 +648,7 @@ class AgentRunServiceTest {
         assertEquals(change.getSourceRevision(), run.getChangeSourceRevision());
         assertEquals(change.getSourceFingerprintSha256(),
                 run.getChangeSourceFingerprintSha256());
-        assertEquals(change.getWorkspaceOwnershipFingerprintSha256(),
+        assertEquals(run.getChangeSourceFingerprintSha256(),
                 run.getChangeWorkspaceOwnershipFingerprintSha256());
         assertEquals(change.getObservedCanonicalCommit(), run.getRepositoryCommit());
         assertEquals(session.getRemoteSessionId(), run.getRemoteSessionId());
@@ -671,7 +671,7 @@ class AgentRunServiceTest {
 
         WorkSessionEntity incompleteSession = changeBoundSession();
         DevelopmentChangeEntity incomplete = incompleteSession.getDevelopmentChange();
-        incomplete.setWorkspaceOwnershipFingerprintSha256(null);
+        incomplete.setObservedCanonicalCommit(null);
         stubChangeAdmission(incompleteSession, incomplete);
 
         assertThrows(IllegalStateException.class, () -> agentRunService.createRemoteQueuedRun(
@@ -1062,6 +1062,7 @@ class AgentRunServiceTest {
         run.setChangeSourceFingerprintSha256(change.getSourceFingerprintSha256());
         run.setChangeWorkspaceOwnershipFingerprintSha256(
                 change.getWorkspaceOwnershipFingerprintSha256());
+        run.setRepositoryCommit(change.getObservedCanonicalCommit());
         run.setAttachmentCount(0);
         run.setAttachmentBytes(0);
         run.setAttachmentManifestSha256(null);

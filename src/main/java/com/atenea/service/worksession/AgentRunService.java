@@ -146,7 +146,7 @@ public class AgentRunService {
                 || (!"synthetic-routing-v1".equals(session.getRemoteWorkloadKind())
                     && !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind()))
                 || (ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
-                    && !matchesProjectWorkload(session))) {
+                    && !matchesProjectWorkload(session, changeBinding))) {
             throw new IllegalStateException("Remote WorkSession workload ownership is incomplete or incompatible");
         }
 
@@ -166,7 +166,7 @@ public class AgentRunService {
                         ? session.getRemoteWorkloadKind()
                         : ProjectCodexIdentity.IMAGE_WORKLOAD_KIND
                 : ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
-        applyProjectIdentity(run);
+        applyProjectIdentity(run, changeBinding);
         applyChangeBinding(run, changeBinding);
         if (attachmentSelection == null) {
             run.setAttachmentCount(0);
@@ -500,7 +500,7 @@ public class AgentRunService {
         return agentRunRepository.save(run);
     }
 
-    private void applyProjectIdentity(AgentRunEntity run) {
+    private void applyProjectIdentity(AgentRunEntity run, ChangeBinding changeBinding) {
         if (ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
                 && BeautipsProjectCodexIdentity.matchesPinnedSession(run.getSession())) {
             run.setProjectIdentity(BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
@@ -510,9 +510,18 @@ public class AgentRunService {
             run.setManifestSha256(BeautipsProjectCodexIdentity.MANIFEST_SHA256);
             ReviewedInstructionBundleIdentity.apply(
                     run, BeautipsProjectCodexIdentity.PROJECT_IDENTITY);
+        } else if (ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
+                && changeBinding != null) {
+            run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
+            run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);
+            run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
+            run.setRepositoryCommit(changeBinding.sourceCommit());
+            run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
+            ReviewedInstructionBundleIdentity.apply(
+                    run, ProjectCodexIdentity.PROJECT_IDENTITY);
         } else if ((ProjectCodexIdentity.WORKLOAD_KIND.equals(run.getWorkloadKind())
                     || ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
-                    || ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
+                    )
                 && ProjectCodexIdentity.hasCanonicalSourceObservation(run.getSession())) {
             run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
             run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);
@@ -526,8 +535,11 @@ public class AgentRunService {
         }
     }
 
-    private boolean matchesProjectWorkload(WorkSessionEntity session) {
-        return ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+    private boolean matchesProjectWorkload(
+            WorkSessionEntity session,
+            ChangeBinding changeBinding) {
+        return changeBinding != null
+                || ProjectCodexIdentity.hasCanonicalSourceObservation(session)
                 || BeautipsProjectCodexIdentity.matchesPinnedSession(session);
     }
 
@@ -580,14 +592,12 @@ public class AgentRunService {
                 || !Objects.equals(change.getWorkspaceBranch(), expectedWorkspaceBranch)
                 || !Objects.equals(session.getWorkspaceBranch(), expectedWorkspaceBranch)
                 || !Objects.equals(change.getBaseRef(), "refs/heads/" + ProjectCodexIdentity.BRANCH)
-                || !Objects.equals(session.getCanonicalSourceRef(), change.getBaseRef())
-                || !Objects.equals(session.getCanonicalSourceCommit(), change.getBaseCommit())
                 || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
                 || !gitCommit(change.getBaseCommit())
                 || !gitCommit(change.getObservedCanonicalCommit())
                 || change.getSourceRevision() < 0
-                || !sha256(change.getSourceFingerprintSha256())
-                || !sha256(change.getWorkspaceOwnershipFingerprintSha256())) {
+                || (change.getSourceState() == DevelopmentChangeSourceState.DIRTY
+                    && !sha256(change.getSourceFingerprintSha256()))) {
             throw invalidChangeBinding();
         }
         return new ChangeBinding(
@@ -596,7 +606,7 @@ public class AgentRunService {
                 change.getObservedCanonicalCommit(),
                 change.getSourceRevision(),
                 change.getSourceFingerprintSha256(),
-                change.getWorkspaceOwnershipFingerprintSha256());
+                change.getSourceState() == DevelopmentChangeSourceState.DIRTY);
     }
 
     private void applyChangeBinding(AgentRunEntity run, ChangeBinding binding) {
@@ -611,12 +621,11 @@ public class AgentRunService {
         }
         run.setDevelopmentChangeKey(binding.changeKey());
         run.setChangeBaseCommit(binding.baseCommit());
-        run.setChangeExpectedCanonicalCommit(binding.expectedCanonicalCommit());
+        run.setChangeExpectedCanonicalCommit(binding.sourceCommit());
         run.setChangeSourceRevision(binding.sourceRevision());
         run.setChangeSourceFingerprintSha256(binding.sourceFingerprintSha256());
-        run.setChangeWorkspaceOwnershipFingerprintSha256(
-                binding.workspaceOwnershipFingerprintSha256());
-        run.setRepositoryCommit(binding.expectedCanonicalCommit());
+        run.setChangeWorkspaceOwnershipFingerprintSha256(binding.sourceFingerprintSha256());
+        run.setRepositoryCommit(binding.sourceCommit());
     }
 
     private void requireCompatibleRetryBinding(
@@ -634,15 +643,14 @@ public class AgentRunService {
                             currentBinding.changeKey())
                         || !Objects.equals(retryOfRun.getChangeBaseCommit(),
                             currentBinding.baseCommit())
-                        || !Objects.equals(retryOfRun.getChangeExpectedCanonicalCommit(),
-                            currentBinding.expectedCanonicalCommit())
+                        || !Objects.equals(retryOfRun.getRepositoryCommit(),
+                            currentBinding.sourceCommit())
                         || !Objects.equals(retryOfRun.getChangeSourceRevision(),
                             currentBinding.sourceRevision())
-                        || !Objects.equals(retryOfRun.getChangeSourceFingerprintSha256(),
-                            currentBinding.sourceFingerprintSha256())
-                        || !Objects.equals(
-                            retryOfRun.getChangeWorkspaceOwnershipFingerprintSha256(),
-                            currentBinding.workspaceOwnershipFingerprintSha256())))) {
+                        || (currentBinding.workspaceDirty()
+                            && !Objects.equals(
+                                retryOfRun.getChangeSourceFingerprintSha256(),
+                                currentBinding.sourceFingerprintSha256()))))) {
             throw new AgentRunRecoveryConflictException(
                     "The change-bound AgentRun retry no longer matches durable ownership");
         }
@@ -664,10 +672,10 @@ public class AgentRunService {
     private record ChangeBinding(
             UUID changeKey,
             String baseCommit,
-            String expectedCanonicalCommit,
+            String sourceCommit,
             long sourceRevision,
             String sourceFingerprintSha256,
-            String workspaceOwnershipFingerprintSha256) {
+            boolean workspaceDirty) {
     }
 
     private void clearProjectIdentity(AgentRunEntity run) {

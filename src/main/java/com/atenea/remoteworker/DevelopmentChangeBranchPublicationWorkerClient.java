@@ -89,14 +89,12 @@ public class DevelopmentChangeBranchPublicationWorkerClient
         body.put("repository", command.repository());
         body.put("repositoryBranch", command.repositoryBranch());
         body.put("baseCommit", command.baseCommit());
-        body.put("expectedCanonicalCommit", command.expectedCanonicalCommit());
+        body.put("sourceCommit", command.sourceCommit());
         body.put("workspaceBranch", command.workspaceBranch());
         body.put("workspaceIdentity", command.workspaceIdentity());
         body.put("workerId", command.workerId());
         body.put("sourceRevision", command.sourceRevision());
         body.put("sourceFingerprintSha256", command.sourceFingerprintSha256());
-        body.put("workspaceOwnershipFingerprintSha256",
-                command.workspaceOwnershipFingerprintSha256());
         return body;
     }
 
@@ -118,15 +116,13 @@ public class DevelopmentChangeBranchPublicationWorkerClient
                 || !command.projectIdentity().equals(response.projectId())
                 || !command.repositoryBranch().equals(response.repositoryBranch())
                 || !command.baseCommit().equals(response.baseCommit())
-                || !command.expectedCanonicalCommit().equals(response.expectedCanonicalCommit())
+                || !command.sourceCommit().equals(response.sourceCommit())
                 || !command.workspaceBranch().equals(response.workspaceBranch())
                 || !command.workspaceIdentity().equals(response.workspaceIdentity())
                 || !command.workerId().equals(response.workerId())
                 || !Long.valueOf(command.sourceRevision()).equals(response.sourceRevision())
-                || !command.sourceFingerprintSha256().equals(
-                        response.expectedSourceFingerprintSha256())
-                || !command.workspaceOwnershipFingerprintSha256().equals(
-                        response.expectedWorkspaceOwnershipFingerprintSha256())
+                || !Objects.equals(command.sourceFingerprintSha256(),
+                        response.sourceFingerprintSha256())
                 || !requestFingerprint.equals(response.requestFingerprintSha256())
                 || !GIT_COMMIT.matcher(Objects.toString(response.publishedHeadSha(), "")).matches()
                 || !SHA256.matcher(Objects.toString(
@@ -262,13 +258,12 @@ public class DevelopmentChangeBranchPublicationWorkerClient
             String projectId,
             String repositoryBranch,
             String baseCommit,
-            String expectedCanonicalCommit,
+            String sourceCommit,
             String workspaceBranch,
             String workspaceIdentity,
             String workerId,
             Long sourceRevision,
-            String expectedSourceFingerprintSha256,
-            String expectedWorkspaceOwnershipFingerprintSha256,
+            String sourceFingerprintSha256,
             String publishedHeadSha,
             String remoteDisposition,
             String requestFingerprintSha256,

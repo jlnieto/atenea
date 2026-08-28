@@ -28,8 +28,6 @@ import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteWorkerProperties;
-import com.atenea.service.git.GitRepositoryService;
-import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.service.v2control.V2AuditFact;
 import com.atenea.service.v2control.V2AuditOutboxService;
 import com.atenea.service.worksession.WorkSessionProjectNotFoundException;
@@ -63,7 +61,6 @@ public class DevelopmentChangeService {
     private final WorkSessionRepository workSessionRepository;
     private final DevelopmentChangePolicy policy;
     private final CanonicalSourceAdmissionService canonicalSourceAdmissionService;
-    private final GitRepositoryService gitRepositoryService;
     private final RemoteWorkerProperties remoteWorkerProperties;
     private final V2AuditOutboxService auditService;
     private final TransactionTemplate transaction;
@@ -76,7 +73,6 @@ public class DevelopmentChangeService {
             WorkSessionRepository workSessionRepository,
             DevelopmentChangePolicy policy,
             CanonicalSourceAdmissionService canonicalSourceAdmissionService,
-            GitRepositoryService gitRepositoryService,
             RemoteWorkerProperties remoteWorkerProperties,
             V2AuditOutboxService auditService,
             PlatformTransactionManager transactionManager) {
@@ -87,7 +83,6 @@ public class DevelopmentChangeService {
         this.workSessionRepository = workSessionRepository;
         this.policy = policy;
         this.canonicalSourceAdmissionService = canonicalSourceAdmissionService;
-        this.gitRepositoryService = gitRepositoryService;
         this.remoteWorkerProperties = remoteWorkerProperties;
         this.auditService = auditService;
         transaction = new TransactionTemplate(transactionManager);
@@ -207,7 +202,7 @@ public class DevelopmentChangeService {
         }
         CanonicalSourceAdmissionService.CanonicalSourceObservation observation;
         try {
-            observation = canonicalSourceAdmissionService.observeCanonicalSource(project);
+            observation = canonicalSourceAdmissionService.observeRemoteBase(project);
         } catch (WorkSessionOperationBlockedException rejectedSource) {
             return denied(actor, project, requestFingerprint, projectTarget,
                     V2FailureCategory.OWNERSHIP,
@@ -231,16 +226,6 @@ public class DevelopmentChangeService {
                     "DEVELOPMENT_CHANGE_CANONICAL_SOURCE_REJECTED",
                     "No se pudo demostrar una fuente canónica limpia y actual de Atenea.");
         }
-        String baseTree;
-        try {
-            baseTree = gitRepositoryService.resolveCommitTree(
-                    project.getRepoPath(), baseCommit);
-        } catch (GitRepositoryOperationException unresolved) {
-            return denied(actor, project, requestFingerprint, projectTarget,
-                    V2FailureCategory.OWNERSHIP,
-                    "DEVELOPMENT_CHANGE_BASE_REF_UNRESOLVED",
-                    "La base server-owned no resuelve a una fuente Git exacta.");
-        }
         UUID changeKey = UUID.randomUUID();
         DevelopmentChangeIdentity identity;
         try {
@@ -252,30 +237,16 @@ public class DevelopmentChangeService {
                     "DEVELOPMENT_CHANGE_WORKER_POLICY_INVALID",
                     "La política server-owned de worker no es válida.");
         }
-        boolean branchExists;
-        try {
-            branchExists = gitRepositoryService.exactLocalHeadExists(
-                    project.getRepoPath(), "refs/heads/" + identity.workspaceBranch());
-        } catch (GitRepositoryOperationException unavailable) {
-            return denied(actor, project, requestFingerprint, projectTarget,
-                    V2FailureCategory.OWNERSHIP,
-                    "DEVELOPMENT_CHANGE_BRANCH_STATE_UNAVAILABLE",
-                    "No se pudo demostrar que la rama server-owned está libre.");
-        }
-        if (branchExists
-                || changeRepository.findByWorkspaceIdentity(identity.workspaceIdentity()).isPresent()) {
+        if (changeRepository.findByWorkspaceIdentity(identity.workspaceIdentity()).isPresent()) {
             return denied(actor, project, requestFingerprint, projectTarget,
                     V2FailureCategory.OWNERSHIP,
                     "DEVELOPMENT_CHANGE_IDENTITY_COLLISION",
                     "La identidad server-owned ya está ocupada.");
         }
-        String sourceFingerprint = fingerprint(
-                projectId, baseRef, baseCommit, baseTree,
-                identity.workspaceBranch(), identity.workspaceIdentity(),
-                decision.projectPolicyRevision());
+        String sourceFingerprint = observation.observationSha256();
         String targetFingerprint = fingerprint(
                 projectTarget, changeKey, identity.workspaceBranch(),
-                identity.workspaceIdentity(), baseCommit, baseTree);
+                identity.workspaceIdentity(), baseCommit);
         Instant now = Instant.now();
 
         DevelopmentChangeOperationEntity operation = requestedOperation(
@@ -296,6 +267,7 @@ public class DevelopmentChangeService {
         change.setProjectPolicyRevision(decision.projectPolicyRevision());
         change.setSourceRevision(0);
         change.setSourceFingerprintSha256(sourceFingerprint);
+        change.setObservedCanonicalCommit(baseCommit);
         change.setSourceState(DevelopmentChangeSourceState.CLEAN);
         change.setWorkspaceState(DevelopmentChangeWorkspaceState.NOT_PROVISIONED);
         change.setWorkspaceOperationRevision(0);

@@ -86,18 +86,13 @@ public class DevelopmentChangeAgentRunSourceAdvanceService {
                 || !Objects.equals(session.getWorkspaceBranch(), exactBranch)
                 || !Objects.equals(change.getBaseRef(),
                         "refs/heads/" + ProjectCodexIdentity.BRANCH)
-                || !Objects.equals(session.getCanonicalSourceRef(), change.getBaseRef())
-                || !Objects.equals(session.getCanonicalSourceCommit(), change.getBaseCommit())
                 || !Objects.equals(change.getBaseCommit(), run.getChangeBaseCommit())
-                || !Objects.equals(change.getObservedCanonicalCommit(),
-                        run.getChangeExpectedCanonicalCommit())
                 || !Objects.equals(run.getRepositoryCommit(),
-                        run.getChangeExpectedCanonicalCommit())
+                        change.getObservedCanonicalCommit())
                 || change.getSourceRevision() != run.getChangeSourceRevision()
-                || !Objects.equals(change.getSourceFingerprintSha256(),
-                        run.getChangeSourceFingerprintSha256())
-                || !Objects.equals(change.getWorkspaceOwnershipFingerprintSha256(),
-                        run.getChangeWorkspaceOwnershipFingerprintSha256())
+                || (change.getSourceState() == DevelopmentChangeSourceState.DIRTY
+                    && !Objects.equals(change.getSourceFingerprintSha256(),
+                            run.getChangeSourceFingerprintSha256()))
                 || change.getWorkspaceOperationRevision() < 1
                 || change.getWorkspaceUpdatedAt() == null
                 || workspaceOperationRepository.existsByDevelopmentChangeIdAndStateIn(
@@ -105,22 +100,21 @@ public class DevelopmentChangeAgentRunSourceAdvanceService {
             reject();
         }
 
-        boolean sourceChanged = !run.getChangeSourceFingerprintSha256().equals(
-                postRun.sourceFingerprintSha256());
+        boolean expectedDirty = change.getSourceState() == DevelopmentChangeSourceState.DIRTY;
+        boolean sourceChanged = !Objects.equals(run.getRepositoryCommit(), postRun.sourceCommit())
+                || postRun.workspaceDirty() != expectedDirty
+                || (expectedDirty && !Objects.equals(
+                        run.getChangeSourceFingerprintSha256(),
+                        postRun.sourceFingerprintSha256()));
         if (!sourceChanged) {
-            boolean expectedDirty = change.getSourceState() == DevelopmentChangeSourceState.DIRTY;
-            if (!Objects.equals(run.getChangeWorkspaceOwnershipFingerprintSha256(),
-                        postRun.workspaceOwnershipFingerprintSha256())
-                    || postRun.workspaceDirty() != expectedDirty) {
-                reject();
-            }
             return false;
         }
 
         change.setSourceRevision(Math.addExact(change.getSourceRevision(), 1L));
-        change.setSourceFingerprintSha256(postRun.sourceFingerprintSha256());
-        change.setWorkspaceOwnershipFingerprintSha256(
-                postRun.workspaceOwnershipFingerprintSha256());
+        change.setObservedCanonicalCommit(postRun.sourceCommit());
+        if (postRun.workspaceDirty()) {
+            change.setSourceFingerprintSha256(postRun.sourceFingerprintSha256());
+        }
         change.setSourceState(postRun.workspaceDirty()
                 ? DevelopmentChangeSourceState.DIRTY
                 : DevelopmentChangeSourceState.CLEAN);
@@ -153,9 +147,11 @@ public class DevelopmentChangeAgentRunSourceAdvanceService {
                 && Objects.equals(postRun.remoteSessionId(), run.getRemoteSessionId().toString())
                 && Objects.equals(postRun.workspaceIdentity(), run.getWorkspaceIdentity())
                 && Objects.equals(postRun.executionId(), run.getRemoteExecutionId())
-                && sha256(postRun.sourceFingerprintSha256())
-                && sha256(postRun.workspaceOwnershipFingerprintSha256())
-                && postRun.workspaceDirty() != null;
+                && gitCommit(postRun.sourceCommit())
+                && postRun.workspaceDirty() != null
+                && (postRun.workspaceDirty()
+                    ? sha256(postRun.sourceFingerprintSha256())
+                    : postRun.sourceFingerprintSha256() == null);
     }
 
     private DevelopmentChangeProjectionState staleIfCurrent(
@@ -168,6 +164,10 @@ public class DevelopmentChangeAgentRunSourceAdvanceService {
 
     private boolean sha256(String value) {
         return value != null && value.matches("^[0-9a-f]{64}$");
+    }
+
+    private boolean gitCommit(String value) {
+        return value != null && value.matches("^[0-9a-f]{40}$");
     }
 
     private static void reject() {

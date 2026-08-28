@@ -17,7 +17,7 @@ public record DevelopmentChangeWorkspaceCommand(
         String repository,
         String repositoryBranch,
         String baseCommit,
-        String expectedCanonicalCommit,
+        String sourceCommit,
         String workspaceBranch,
         String workspaceIdentity,
         String workerId,
@@ -47,9 +47,10 @@ public record DevelopmentChangeWorkspaceCommand(
                 || !ProjectCodexIdentity.BRANCH.equals(repositoryBranch)
                 || !ProjectCodexIdentity.WORKER_ID.equals(workerId)
                 || !GIT_COMMIT.matcher(Objects.toString(baseCommit, "")).matches()
-                || !GIT_COMMIT.matcher(Objects.toString(expectedCanonicalCommit, "")).matches()
+                || !GIT_COMMIT.matcher(Objects.toString(sourceCommit, "")).matches()
                 || sourceRevision < 0
-                || !SHA256.matcher(Objects.toString(sourceFingerprintSha256, "")).matches()) {
+                || (sourceFingerprintSha256 != null
+                    && !SHA256.matcher(sourceFingerprintSha256).matches())) {
             throw new IllegalArgumentException("Development change worker identity is invalid");
         }
         new DevelopmentChangeIdentity(

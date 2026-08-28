@@ -536,6 +536,7 @@ class WorkSessionGitHubServiceTest {
         change.setId(81L);
         change.setChangeKey(changeKey);
         change.setProject(session.getProject());
+        change.setSourceFingerprintSha256("b".repeat(64));
         change.setWorkspaceOwnershipFingerprintSha256("c".repeat(64));
         session.setDevelopmentChange(change);
         session.setWorkspaceBranch("atenea/change-" + changeKey);

@@ -74,6 +74,19 @@ class CanonicalSourceAdmissionServiceTest {
     }
 
     @Test
+    void changeBaseObservationDependsOnlyOnTheExactRemoteRef() throws Exception {
+        String remoteTip = git(origin, "rev-parse", "refs/heads/main");
+        git(repository, "checkout", "--detach");
+        Files.writeString(repository.resolve("local-only.txt"), "dirty local checkout");
+
+        CanonicalSourceAdmissionService.CanonicalSourceObservation observation =
+                service.observeRemoteBase(session.getProject());
+
+        assertEquals(remoteTip, observation.commit());
+        assertEquals("refs/heads/main", observation.ref());
+    }
+
+    @Test
     void staleHeadIsRejectedEvenWhenItIsAnAncestor() throws Exception {
         Path publisher = temporary.resolve("publisher");
         git(temporary, "clone", "--branch", ProjectCodexIdentity.BRANCH,

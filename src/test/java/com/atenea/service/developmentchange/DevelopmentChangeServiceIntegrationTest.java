@@ -42,7 +42,6 @@ import com.atenea.persistence.worksession.WorkerNodeRepository;
 import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteWorkerProperties;
-import com.atenea.service.git.GitRepositoryOperationException;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.worksession.WorkSessionOperationBlockedException;
 import com.atenea.v2.control.V2FailureCategory;
@@ -101,7 +100,7 @@ class DevelopmentChangeServiceIntegrationTest {
         actor = new AuthenticatedOperator(
                 operator.getId(), operator.getEmail(), operator.getDisplayName());
         enablePolicy(project, 7);
-        when(canonicalSourceAdmissionService.observeCanonicalSource(any(ProjectEntity.class)))
+        when(canonicalSourceAdmissionService.observeRemoteBase(any(ProjectEntity.class)))
                 .thenReturn(canonicalObservation());
         when(gitRepositoryService.resolveCommitTree(project.getRepoPath(), BASE_COMMIT))
                 .thenReturn(BASE_TREE);
@@ -184,7 +183,7 @@ class DevelopmentChangeServiceIntegrationTest {
 
     @Test
     void canonicalSourceRejectionCreatesNoChangeOperationWorkspaceSessionOrRun() {
-        when(canonicalSourceAdmissionService.observeCanonicalSource(any(ProjectEntity.class)))
+        when(canonicalSourceAdmissionService.observeRemoteBase(any(ProjectEntity.class)))
                 .thenThrow(new WorkSessionOperationBlockedException("synthetic rejection"));
 
         DevelopmentChangeRejectedException failure = assertThrows(
@@ -222,7 +221,7 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals(0, workspaceOperationRepository.count());
         assertEquals(0, workSessionRepository.count());
         assertEquals(0, agentRunRepository.count());
-        verify(canonicalSourceAdmissionService, never()).observeCanonicalSource(foreign);
+        verify(canonicalSourceAdmissionService, never()).observeRemoteBase(foreign);
     }
 
     @Test
@@ -246,33 +245,21 @@ class DevelopmentChangeServiceIntegrationTest {
     }
 
     @Test
-    void occupiedOrUnprovableServerBranchFailsClosedWithAudit() {
+    void canonicalCheckoutBranchStateDoesNotGovernChangeCreation() {
         long auditsBefore = auditRepository.count();
         when(gitRepositoryService.exactLocalHeadExists(
                 org.mockito.ArgumentMatchers.eq(project.getRepoPath()), anyString()))
                 .thenReturn(true);
 
-        DevelopmentChangeRejectedException occupied = assertThrows(
-                DevelopmentChangeRejectedException.class,
-                () -> service.create(
-                        actor, project.getId(), UUID.randomUUID(),
-                        new CreateDevelopmentChangeRequest("Synthetic occupied branch")));
-        assertEquals("DEVELOPMENT_CHANGE_IDENTITY_COLLISION",
-                occupied.response().failureCode());
+        var created = service.create(
+                actor, project.getId(), UUID.randomUUID(),
+                new CreateDevelopmentChangeRequest("Synthetic remote-pinned base"));
 
-        when(gitRepositoryService.exactLocalHeadExists(
-                org.mockito.ArgumentMatchers.eq(project.getRepoPath()), anyString()))
-                .thenThrow(new GitRepositoryOperationException("synthetic inspection failure"));
-        DevelopmentChangeRejectedException unavailable = assertThrows(
-                DevelopmentChangeRejectedException.class,
-                () -> service.create(
-                        actor, project.getId(), UUID.randomUUID(),
-                        new CreateDevelopmentChangeRequest("Synthetic unavailable branch")));
-        assertEquals("DEVELOPMENT_CHANGE_BRANCH_STATE_UNAVAILABLE",
-                unavailable.response().failureCode());
-        assertEquals(auditsBefore + 2, auditRepository.count());
-        assertEquals(0, changeRepository.count());
-        assertEquals(0, operationRepository.count());
+        assertEquals(BASE_COMMIT, created.developmentChange().baseCommit());
+        assertEquals(auditsBefore + 1, auditRepository.count());
+        assertEquals(1, changeRepository.count());
+        assertEquals(1, operationRepository.count());
+        verify(gitRepositoryService, never()).exactLocalHeadExists(anyString(), anyString());
     }
 
     @Test

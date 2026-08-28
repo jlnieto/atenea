@@ -14,13 +14,12 @@ public record DevelopmentChangeBranchPublicationCommand(
         String repository,
         String repositoryBranch,
         String baseCommit,
-        String expectedCanonicalCommit,
+        String sourceCommit,
         String workspaceBranch,
         String workspaceIdentity,
         String workerId,
         long sourceRevision,
-        String sourceFingerprintSha256,
-        String workspaceOwnershipFingerprintSha256
+        String sourceFingerprintSha256
 ) {
     public static final int SCHEMA_VERSION = 1;
     public static final String PROTOCOL_VERSION =
@@ -40,11 +39,10 @@ public record DevelopmentChangeBranchPublicationCommand(
                 || !ProjectCodexIdentity.BRANCH.equals(repositoryBranch)
                 || !ProjectCodexIdentity.WORKER_ID.equals(workerId)
                 || !GIT_COMMIT.matcher(Objects.toString(baseCommit, "")).matches()
-                || !GIT_COMMIT.matcher(Objects.toString(expectedCanonicalCommit, "")).matches()
+                || !GIT_COMMIT.matcher(Objects.toString(sourceCommit, "")).matches()
                 || sourceRevision < 0
-                || !SHA256.matcher(Objects.toString(sourceFingerprintSha256, "")).matches()
-                || !SHA256.matcher(Objects.toString(
-                        workspaceOwnershipFingerprintSha256, "")).matches()) {
+                || (sourceFingerprintSha256 != null
+                    && !SHA256.matcher(sourceFingerprintSha256).matches())) {
             throw new IllegalArgumentException("Development change publication identity is invalid");
         }
         new DevelopmentChangeIdentity(

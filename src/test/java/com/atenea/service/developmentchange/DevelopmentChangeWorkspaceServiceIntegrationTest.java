@@ -207,7 +207,7 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         DevelopmentChangeEntity ready = changeRepository
                 .findByChangeKey(initial.getChangeKey()).orElseThrow();
         assertEquals(DevelopmentChangeWorkspaceState.READY, ready.getWorkspaceState());
-        assertEquals("d".repeat(64), ready.getWorkspaceOwnershipFingerprintSha256());
+        assertNotNull(ready.getWorkspaceOwnershipFingerprintSha256());
 
         var opened = remoteSessionService.openOrResolve(
                 actor,
@@ -240,7 +240,7 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         assertEquals(ready.getSourceRevision(), run.getChangeSourceRevision());
         assertEquals(ready.getSourceFingerprintSha256(),
                 run.getChangeSourceFingerprintSha256());
-        assertEquals(ready.getWorkspaceOwnershipFingerprintSha256(),
+        assertEquals(run.getChangeSourceFingerprintSha256(),
                 run.getChangeWorkspaceOwnershipFingerprintSha256());
         WorkerNodeEntity refreshed = workerNodeRepository
                 .findById(ProjectCodexIdentity.WORKER_ID).orElseThrow();
@@ -432,7 +432,7 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
     }
 
     @Test
-    void canonicalAdvanceRetainsBaseAndMarksCurrentEvidenceStale() {
+    void sourceHeadAdvanceRetainsImmutableBaseAndInvalidatesProjections() {
         DevelopmentChangeEntity change = change();
         change.setValidationState(DevelopmentChangeProjectionState.CURRENT);
         change.setReviewState(DevelopmentChangeProjectionState.CURRENT);
@@ -445,11 +445,12 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         var result = service.provision(
                 actor, project.getId(), change.getChangeKey(), UUID.randomUUID());
 
-        assertEquals(DevelopmentChangeSourceState.STALE, result.sourceState());
+        assertEquals(DevelopmentChangeSourceState.DIRTY, result.sourceState());
         DevelopmentChangeEntity stored = changeRepository
                 .findByChangeKey(change.getChangeKey()).orElseThrow();
         assertEquals(BASE_COMMIT, stored.getBaseCommit());
         assertEquals(advanced, stored.getObservedCanonicalCommit());
+        assertEquals(changedFingerprint, stored.getSourceFingerprintSha256());
         assertEquals(DevelopmentChangeProjectionState.STALE,
                 stored.getValidationState());
         assertEquals(DevelopmentChangeProjectionState.STALE, stored.getReviewState());
@@ -664,11 +665,10 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         return new DevelopmentChangeWorkspaceObservation(
                 DevelopmentChangeWorkspaceObservation.Disposition.OWNED,
                 canonicalCommit,
-                sourceFingerprint,
+                dirty ? sourceFingerprint : null,
                 dirty,
                 dirty,
-                "c".repeat(64),
-                "d".repeat(64));
+                "c".repeat(64));
     }
 
     private DevelopmentChangeWorkspaceObservation foreign() {
@@ -678,8 +678,7 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
                 null,
                 false,
                 false,
-                "c".repeat(64),
-                "d".repeat(64));
+                "c".repeat(64));
     }
 
     private static String requiredEnvironment(String name) {
