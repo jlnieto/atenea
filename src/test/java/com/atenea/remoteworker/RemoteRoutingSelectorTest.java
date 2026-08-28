@@ -315,9 +315,13 @@ class RemoteRoutingSelectorTest {
                         "project-codex-v2",
                         ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)));
 
-        WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+        boolean admitted = selector.refreshKnownWorker(
                 "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        var saved = org.mockito.ArgumentCaptor.forClass(WorkerNodeEntity.class);
+        verify(workerNodeRepository).save(saved.capture());
+        WorkerNodeEntity refreshed = saved.getValue();
 
+        assertTrue(admitted);
         assertTrue(refreshed.isEnabled());
         assertTrue(refreshed.isHealthy());
         assertEquals(RemoteWorkerProperties.PROTOCOL, refreshed.getProtocolVersion());
@@ -348,9 +352,13 @@ class RemoteRoutingSelectorTest {
                 RemoteWorkerProperties.PROTOCOL,
                 List.of(ProjectCodexIdentity.WORKLOAD_KIND, "project-codex-v2")));
 
-        WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+        boolean admitted = selector.refreshKnownWorker(
                 "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        var saved = org.mockito.ArgumentCaptor.forClass(WorkerNodeEntity.class);
+        verify(workerNodeRepository).save(saved.capture());
+        WorkerNodeEntity refreshed = saved.getValue();
 
+        assertFalse(admitted);
         assertFalse(refreshed.isEnabled());
         assertTrue(refreshed.isHealthy());
         assertEquals("project-codex-v1,project-codex-v2", refreshed.getCapabilities());
@@ -366,9 +374,13 @@ class RemoteRoutingSelectorTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(client.health()).thenThrow(new RemoteWorkerException("connection refused", 503));
 
-        WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+        boolean admitted = selector.refreshKnownWorker(
                 "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        var saved = org.mockito.ArgumentCaptor.forClass(WorkerNodeEntity.class);
+        verify(workerNodeRepository).save(saved.capture());
+        WorkerNodeEntity refreshed = saved.getValue();
 
+        assertFalse(admitted);
         assertFalse(refreshed.isEnabled());
         assertFalse(refreshed.isHealthy());
         assertEquals("connection refused", refreshed.getUnavailableReason());
@@ -381,15 +393,20 @@ class RemoteRoutingSelectorTest {
                         List.of(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)),
                 health(true, "agent-run-worker/v0",
                         List.of(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)))) {
+            org.mockito.Mockito.clearInvocations(workerNodeRepository, client);
             WorkerNodeEntity stale = staleWorker();
             when(workerNodeRepository.findById("ax42-01")).thenReturn(Optional.of(stale));
             when(workerNodeRepository.save(any(WorkerNodeEntity.class)))
                     .thenAnswer(invocation -> invocation.getArgument(0));
             when(client.health()).thenReturn(health);
 
-            WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+            boolean admitted = selector.refreshKnownWorker(
                     "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+            var saved = org.mockito.ArgumentCaptor.forClass(WorkerNodeEntity.class);
+            verify(workerNodeRepository).save(saved.capture());
+            WorkerNodeEntity refreshed = saved.getValue();
 
+            assertFalse(admitted);
             assertFalse(refreshed.isEnabled());
             assertEquals(health.healthy(), refreshed.isHealthy());
             assertEquals(health.protocolVersion(), refreshed.getProtocolVersion());
@@ -415,9 +432,13 @@ class RemoteRoutingSelectorTest {
                 0,
                 Instant.parse("2026-08-27T12:00:00Z")));
 
-        WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+        boolean admitted = selector.refreshKnownWorker(
                 "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        var saved = org.mockito.ArgumentCaptor.forClass(WorkerNodeEntity.class);
+        verify(workerNodeRepository).save(saved.capture());
+        WorkerNodeEntity refreshed = saved.getValue();
 
+        assertFalse(admitted);
         assertFalse(refreshed.isEnabled());
         assertFalse(refreshed.isHealthy());
     }
@@ -445,9 +466,13 @@ class RemoteRoutingSelectorTest {
                 unexpected.queued(),
                 unexpected.serverTime()));
 
-        WorkerNodeEntity refreshed = selector.refreshKnownWorker(
+        boolean admitted = selector.refreshKnownWorker(
                 "ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+        var saved = org.mockito.ArgumentCaptor.forClass(WorkerNodeEntity.class);
+        verify(workerNodeRepository).save(saved.capture());
+        WorkerNodeEntity refreshed = saved.getValue();
 
+        assertFalse(admitted);
         assertFalse(refreshed.isEnabled());
         assertFalse(refreshed.isHealthy());
         verify(workerNodeRepository, never()).findById("unexpected-worker");

@@ -26,10 +26,7 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
-import com.atenea.persistence.worksession.WorkerNodeEntity;
-import com.atenea.persistence.worksession.WorkerNodeRepository;
 import com.atenea.remoteworker.ProjectCodexIdentity;
-import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.service.v2control.V2AuditFact;
 import com.atenea.service.v2control.V2AuditOutboxService;
 import com.atenea.service.worksession.WorkSessionProjectNotFoundException;
@@ -57,7 +54,6 @@ public class RemoteSessionService {
     private final OperatorRepository operatorRepository;
     private final DevelopmentChangeRepository changeRepository;
     private final WorkSessionRepository workSessionRepository;
-    private final WorkerNodeRepository workerNodeRepository;
     private final RemoteSessionOperationRepository operationRepository;
     private final DevelopmentChangePolicy developmentChangePolicy;
     private final RemoteWorkBetaPolicy betaPolicy;
@@ -69,7 +65,6 @@ public class RemoteSessionService {
             OperatorRepository operatorRepository,
             DevelopmentChangeRepository changeRepository,
             WorkSessionRepository workSessionRepository,
-            WorkerNodeRepository workerNodeRepository,
             RemoteSessionOperationRepository operationRepository,
             DevelopmentChangePolicy developmentChangePolicy,
             RemoteWorkBetaPolicy betaPolicy,
@@ -79,7 +74,6 @@ public class RemoteSessionService {
         this.operatorRepository = operatorRepository;
         this.changeRepository = changeRepository;
         this.workSessionRepository = workSessionRepository;
-        this.workerNodeRepository = workerNodeRepository;
         this.operationRepository = operationRepository;
         this.developmentChangePolicy = developmentChangePolicy;
         this.betaPolicy = betaPolicy;
@@ -331,16 +325,6 @@ public class RemoteSessionService {
                     RemoteSessionRejectionClass.OWNERSHIP,
                     code,
                     "Un recurso retenido no demuestra ownership exacto y permanece intacto.",
-                    RemoteSessionNextAction.RESOLVE_OWNERSHIP);
-        }
-
-        if (!exactWorker(change)) {
-            return rejectTerminal(actor, project, change, idempotencyKey, expectedRevision,
-                    requestFingerprint, targetFingerprint, sourceFingerprint, changeOwnership,
-                    betaDecision.projectPolicyRevision(),
-                    RemoteSessionRejectionClass.OWNERSHIP,
-                    "REMOTE_SESSION_WORKER_OWNERSHIP_MISMATCH",
-                    "El worker server-owned del cambio no está disponible con identidad exacta.",
                     RemoteSessionNextAction.RESOLVE_OWNERSHIP);
         }
 
@@ -671,22 +655,6 @@ public class RemoteSessionService {
                 && isSha256(change.getSourceFingerprintSha256())
                 && change.getSourceState() != DevelopmentChangeSourceState.STALE
                 && change.getSourceState() != DevelopmentChangeSourceState.BLOCKED;
-    }
-
-    private boolean exactWorker(DevelopmentChangeEntity change) {
-        WorkerNodeEntity worker = workerNodeRepository
-                .findById(change.getSelectedWorkerId())
-                .orElse(null);
-        if (worker == null
-                || !worker.isEnabled()
-                || !worker.isHealthy()
-                || !RemoteWorkerProperties.PROTOCOL.equals(worker.getProtocolVersion())
-                || worker.getCapabilities() == null) {
-            return false;
-        }
-        return List.of(worker.getCapabilities().split(",")).stream()
-                .map(String::trim)
-                .anyMatch(ProjectCodexIdentity.WORKLOAD_KIND::equals);
     }
 
     private boolean exactOwnership(
