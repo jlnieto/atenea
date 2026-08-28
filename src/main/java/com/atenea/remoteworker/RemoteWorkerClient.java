@@ -774,12 +774,14 @@ public class RemoteWorkerClient {
         workload.put("repository", run.getRepositoryUrl());
         workload.put("branch", run.getRepositoryBranch());
         workload.put("commit", run.getRepositoryCommit());
-        workload.put("manifestSha256", run.getManifestSha256());
-        workload.put("instructionBundleRevision", run.getInstructionBundleRevision());
-        workload.put("instructionBundleSha256", run.getInstructionBundleSha256());
-        workload.put("platformInstructionSha256", run.getPlatformInstructionSha256());
-        workload.put("projectInstructionPath", run.getProjectInstructionPath());
-        workload.put("projectInstructionSha256", run.getProjectInstructionSha256());
+        if (!changeWorkload) {
+            workload.put("manifestSha256", run.getManifestSha256());
+            workload.put("instructionBundleRevision", run.getInstructionBundleRevision());
+            workload.put("instructionBundleSha256", run.getInstructionBundleSha256());
+            workload.put("platformInstructionSha256", run.getPlatformInstructionSha256());
+            workload.put("projectInstructionPath", run.getProjectInstructionPath());
+            workload.put("projectInstructionSha256", run.getProjectInstructionSha256());
+        }
         workload.put("message", message);
         workload.put("threadId", run.getSession().getExternalThreadId());
         if (hasProfile) {

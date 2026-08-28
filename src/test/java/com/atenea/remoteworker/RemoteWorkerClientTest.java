@@ -504,6 +504,12 @@ class RemoteWorkerClientTest {
     @Test
     void changeBoundDispatchUsesOnlyExactDurableV4BindingAndReplaysIdentically() {
         AgentRunEntity run = changeBoundRun();
+        run.setManifestSha256(null);
+        run.setInstructionBundleRevision(null);
+        run.setInstructionBundleSha256(null);
+        run.setPlatformInstructionSha256(null);
+        run.setProjectInstructionPath(null);
+        run.setProjectInstructionSha256(null);
 
         client.dispatch(run, "Continue the exact development change.");
         JsonNode first = requestBody.get().deepCopy();
@@ -547,10 +553,13 @@ class RemoteWorkerClientTest {
                 workload.get("kind").asText());
         assertEquals(run.getChangeExpectedCanonicalCommit(), workload.get("commit").asText());
         assertEquals(0, workload.get("attachments").size());
-        assertEquals(18, workload.size());
+        assertEquals(12, workload.size());
         for (String forbidden : List.of(
                 "path", "host", "workerId", "slot", "shell", "credentials",
-                "authorization", "executionAuthority")) {
+                "authorization", "executionAuthority", "manifestSha256",
+                "instructionBundleRevision", "instructionBundleSha256",
+                "platformInstructionSha256", "projectInstructionPath",
+                "projectInstructionSha256")) {
             assertNull(first.get(forbidden));
             assertNull(ownership.get(forbidden));
             assertNull(workload.get(forbidden));
