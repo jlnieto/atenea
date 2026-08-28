@@ -74,20 +74,21 @@ public class DevelopmentChangeWorkspaceWorkerClient
         } catch (RuntimeException invalid) {
             throw protocolFailure();
         }
-        if (!SHA256.matcher(Objects.toString(response.ownershipFingerprintSha256(), ""))
-                .matches()
-                || !Boolean.FALSE.equals(response.valuesExposed())) {
+        if (!Boolean.FALSE.equals(response.valuesExposed())) {
             throw protocolFailure();
         }
         if (disposition == DevelopmentChangeWorkspaceObservation.Disposition.OWNED) {
-            if (!GIT_COMMIT.matcher(Objects.toString(response.canonicalCommit(), "")).matches()
-                    || !SHA256.matcher(Objects.toString(
-                            response.sourceFingerprintSha256(), "")).matches()
+            if (!GIT_COMMIT.matcher(Objects.toString(response.sourceCommit(), "")).matches()
                     || response.workspaceDirty() == null
-                    || response.retainedDraft() == null) {
+                    || response.retainedDraft() == null
+                    || (response.workspaceDirty()
+                        && !SHA256.matcher(Objects.toString(
+                                response.sourceFingerprintSha256(), "")).matches())
+                    || (!response.workspaceDirty()
+                        && response.sourceFingerprintSha256() != null)) {
                 throw protocolFailure();
             }
-        } else if (response.canonicalCommit() != null
+        } else if (response.sourceCommit() != null
                 || response.sourceFingerprintSha256() != null
                 || response.workspaceDirty() != null
                 || response.retainedDraft() != null) {
@@ -95,12 +96,11 @@ public class DevelopmentChangeWorkspaceWorkerClient
         }
         return new DevelopmentChangeWorkspaceObservation(
                 disposition,
-                response.canonicalCommit(),
+                response.sourceCommit(),
                 response.sourceFingerprintSha256(),
                 Boolean.TRUE.equals(response.workspaceDirty()),
                 Boolean.TRUE.equals(response.retainedDraft()),
-                response.requestFingerprintSha256(),
-                response.ownershipFingerprintSha256());
+                response.requestFingerprintSha256());
     }
 
     private Map<String, Object> requestBody(DevelopmentChangeWorkspaceCommand command) {
@@ -119,7 +119,7 @@ public class DevelopmentChangeWorkspaceWorkerClient
         body.put("repository", command.repository());
         body.put("repositoryBranch", command.repositoryBranch());
         body.put("baseCommit", command.baseCommit());
-        body.put("expectedCanonicalCommit", command.expectedCanonicalCommit());
+        body.put("sourceCommit", command.sourceCommit());
         body.put("workspaceBranch", command.workspaceBranch());
         body.put("workspaceIdentity", command.workspaceIdentity());
         body.put("workerId", command.workerId());
@@ -150,13 +150,10 @@ public class DevelopmentChangeWorkspaceWorkerClient
                 || !command.repository().equals(response.repository())
                 || !command.repositoryBranch().equals(response.repositoryBranch())
                 || !command.baseCommit().equals(response.baseCommit())
-                || !command.expectedCanonicalCommit().equals(response.expectedCanonicalCommit())
                 || !command.workspaceBranch().equals(response.workspaceBranch())
                 || !command.workspaceIdentity().equals(response.workspaceIdentity())
                 || !command.workerId().equals(response.workerId())
                 || !Long.valueOf(command.sourceRevision()).equals(response.sourceRevision())
-                || !command.sourceFingerprintSha256().equals(
-                        response.expectedSourceFingerprintSha256())
                 || !requestFingerprint.equals(response.requestFingerprintSha256())) {
             throw ownershipFailure();
         }
@@ -325,18 +322,15 @@ public class DevelopmentChangeWorkspaceWorkerClient
             String repository,
             String repositoryBranch,
             String baseCommit,
-            String expectedCanonicalCommit,
             String workspaceBranch,
             String workspaceIdentity,
             String workerId,
             Long sourceRevision,
-            String expectedSourceFingerprintSha256,
-            String canonicalCommit,
+            String sourceCommit,
             String sourceFingerprintSha256,
             Boolean workspaceDirty,
             Boolean retainedDraft,
             String requestFingerprintSha256,
-            String ownershipFingerprintSha256,
             Boolean valuesExposed) {
     }
 }

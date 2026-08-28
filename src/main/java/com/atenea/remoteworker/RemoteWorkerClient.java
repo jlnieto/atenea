@@ -824,13 +824,10 @@ public class RemoteWorkerClient {
                 || !Objects.equals(change.getChangeKey(), run.getDevelopmentChangeKey())
                 || !Objects.equals(change.getProject().getId(), session.getProject().getId())
                 || !Objects.equals(change.getBaseCommit(), run.getChangeBaseCommit())
-                || !Objects.equals(change.getObservedCanonicalCommit(),
-                        run.getChangeExpectedCanonicalCommit())
                 || !Objects.equals(change.getSourceRevision(), run.getChangeSourceRevision())
-                || !Objects.equals(change.getSourceFingerprintSha256(),
-                        run.getChangeSourceFingerprintSha256())
-                || !Objects.equals(change.getWorkspaceOwnershipFingerprintSha256(),
-                        run.getChangeWorkspaceOwnershipFingerprintSha256())
+                || (change.getSourceState() == DevelopmentChangeSourceState.DIRTY
+                    && !Objects.equals(change.getSourceFingerprintSha256(),
+                            run.getChangeSourceFingerprintSha256()))
                 || change.getStatus() != DevelopmentChangeStatus.OPEN
                 || change.getWorkspaceState() != DevelopmentChangeWorkspaceState.READY
                 || change.getSourceState() == DevelopmentChangeSourceState.STALE
@@ -841,8 +838,6 @@ public class RemoteWorkerClient {
                 || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
                 || !Objects.equals(change.getBaseRef(),
                         "refs/heads/" + ProjectCodexIdentity.BRANCH)
-                || !Objects.equals(session.getCanonicalSourceRef(), change.getBaseRef())
-                || !Objects.equals(session.getCanonicalSourceCommit(), change.getBaseCommit())
                 || !Objects.equals(run.getSelectedWorkerId(), ProjectCodexIdentity.WORKER_ID)
                 || !Objects.equals(session.getSelectedWorkerId(), run.getSelectedWorkerId())
                 || !Objects.equals(change.getSelectedWorkerId(), run.getSelectedWorkerId())
@@ -854,29 +849,30 @@ public class RemoteWorkerClient {
                 || !Objects.equals(run.getWorkspaceIdentity(), exactWorkspace)
                 || !Objects.equals(session.getRemoteSessionId(), run.getRemoteSessionId())
                 || !Objects.equals(run.getRepositoryCommit(),
-                        run.getChangeExpectedCanonicalCommit())
+                        change.getObservedCanonicalCommit())
                 || !gitCommit(run.getChangeBaseCommit())
-                || !gitCommit(run.getChangeExpectedCanonicalCommit())
+                || !gitCommit(run.getRepositoryCommit())
                 || run.getChangeSourceRevision() == null
                 || run.getChangeSourceRevision() < 0
-                || !isSha256(run.getChangeSourceFingerprintSha256())
-                || !isSha256(run.getChangeWorkspaceOwnershipFingerprintSha256())) {
+                || (change.getSourceState() == DevelopmentChangeSourceState.DIRTY
+                    && !isSha256(run.getChangeSourceFingerprintSha256()))) {
             throw new RemoteWorkerException(
                     "Persisted DevelopmentChange AgentRun ownership is incomplete, stale, or incompatible",
                     409);
         }
-        return Map.ofEntries(
-                Map.entry("changeKey", run.getDevelopmentChangeKey().toString()),
-                Map.entry("databaseWorkSessionId", session.getId()),
-                Map.entry("remoteSessionId", run.getRemoteSessionId().toString()),
-                Map.entry("workspaceIdentity", run.getWorkspaceIdentity()),
-                Map.entry("databaseProjectId", session.getProject().getId()),
-                Map.entry("baseCommit", run.getChangeBaseCommit()),
-                Map.entry("expectedCanonicalCommit", run.getChangeExpectedCanonicalCommit()),
-                Map.entry("sourceRevision", run.getChangeSourceRevision()),
-                Map.entry("sourceFingerprintSha256", run.getChangeSourceFingerprintSha256()),
-                Map.entry("workspaceOwnershipFingerprintSha256",
-                        run.getChangeWorkspaceOwnershipFingerprintSha256()));
+        Map<String, Object> ownership = new LinkedHashMap<>();
+        ownership.put("changeKey", run.getDevelopmentChangeKey().toString());
+        ownership.put("databaseWorkSessionId", session.getId());
+        ownership.put("remoteSessionId", run.getRemoteSessionId().toString());
+        ownership.put("workspaceIdentity", run.getWorkspaceIdentity());
+        ownership.put("databaseProjectId", session.getProject().getId());
+        ownership.put("baseCommit", run.getChangeBaseCommit());
+        ownership.put("sourceRevision", run.getChangeSourceRevision());
+        ownership.put("sourceFingerprintSha256",
+                change.getSourceState() == DevelopmentChangeSourceState.DIRTY
+                        ? run.getChangeSourceFingerprintSha256()
+                        : null);
+        return ownership;
     }
 
     private boolean gitCommit(String value) {
@@ -1483,8 +1479,8 @@ public class RemoteWorkerClient {
             String remoteSessionId,
             String workspaceIdentity,
             String executionId,
+            String sourceCommit,
             String sourceFingerprintSha256,
-            String workspaceOwnershipFingerprintSha256,
             Boolean workspaceDirty
     ) {
     }

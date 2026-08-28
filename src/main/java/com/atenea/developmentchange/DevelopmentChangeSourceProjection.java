@@ -13,73 +13,74 @@ public final class DevelopmentChangeSourceProjection {
             EnumSet.allOf(DownstreamProjection.class));
 
     private final long sourceRevision;
-    private final String sourceFingerprintSha256;
-    private final String canonicalBaseCommit;
+    private final String dirtySourceFingerprintSha256;
+    private final String sourceCommit;
+    private final boolean workspaceDirty;
 
     public DevelopmentChangeSourceProjection(
             long sourceRevision,
-            String sourceFingerprintSha256,
-            String canonicalBaseCommit
+            String dirtySourceFingerprintSha256,
+            String sourceCommit,
+            boolean workspaceDirty
     ) {
         if (sourceRevision < 0) {
             throw new IllegalArgumentException("sourceRevision must not be negative");
         }
         this.sourceRevision = sourceRevision;
-        this.sourceFingerprintSha256 = requireSha256(
-                sourceFingerprintSha256, "sourceFingerprintSha256");
-        this.canonicalBaseCommit = requireGitCommit(canonicalBaseCommit);
+        this.dirtySourceFingerprintSha256 = requireFingerprint(
+                dirtySourceFingerprintSha256, workspaceDirty);
+        this.sourceCommit = requireGitCommit(sourceCommit);
+        this.workspaceDirty = workspaceDirty;
     }
 
     public Transition observe(
             String observedFingerprintSha256,
-            String observedCanonicalBaseCommit,
-            boolean workspaceDirty
+            String observedSourceCommit,
+            boolean observedWorkspaceDirty
     ) {
-        String fingerprint = requireSha256(
-                observedFingerprintSha256, "observedFingerprintSha256");
-        String canonicalCommit = requireGitCommit(observedCanonicalBaseCommit);
-        boolean fingerprintChanged = !sourceFingerprintSha256.equals(fingerprint);
-        boolean canonicalAdvanced = !canonicalBaseCommit.equals(canonicalCommit);
+        String fingerprint = requireFingerprint(
+                observedFingerprintSha256, observedWorkspaceDirty);
+        String commit = requireGitCommit(observedSourceCommit);
+        boolean fingerprintChanged = observedWorkspaceDirty
+                && !Objects.equals(dirtySourceFingerprintSha256, fingerprint);
+        boolean sourceChanged = !sourceCommit.equals(commit)
+                || workspaceDirty != observedWorkspaceDirty
+                || fingerprintChanged;
 
-        if (!fingerprintChanged && !canonicalAdvanced) {
+        if (!sourceChanged) {
             return new Transition(
                     Outcome.UNCHANGED,
                     sourceRevision,
-                    SourceState.CLEAN,
+                    observedWorkspaceDirty ? SourceState.DIRTY : SourceState.CLEAN,
                     false,
                     false,
                     Set.of());
         }
 
         long nextRevision = Math.addExact(sourceRevision, 1L);
-        if (canonicalAdvanced) {
-            return new Transition(
-                    Outcome.CANONICAL_ADVANCED,
-                    nextRevision,
-                    SourceState.STALE,
-                    true,
-                    true,
-                    ALL_DOWNSTREAM);
-        }
         return new Transition(
                 Outcome.SOURCE_CHANGED,
                 nextRevision,
-                workspaceDirty ? SourceState.DIRTY : SourceState.CLEAN,
+                observedWorkspaceDirty ? SourceState.DIRTY : SourceState.CLEAN,
                 true,
                 false,
                 ALL_DOWNSTREAM);
     }
 
-    private static String requireSha256(String value, String field) {
-        if (value == null || !SHA256.matcher(value).matches()) {
-            throw new IllegalArgumentException(field + " must be a lowercase SHA-256");
+    private static String requireFingerprint(String value, boolean dirty) {
+        if (dirty && (value == null || !SHA256.matcher(value).matches())) {
+            throw new IllegalArgumentException(
+                    "dirty source fingerprint must be a lowercase SHA-256");
+        }
+        if (!dirty && value != null) {
+            throw new IllegalArgumentException("clean source must not have a fingerprint");
         }
         return value;
     }
 
     private static String requireGitCommit(String value) {
         if (value == null || !GIT_COMMIT.matcher(value).matches()) {
-            throw new IllegalArgumentException("canonicalBaseCommit must be an exact Git object ID");
+            throw new IllegalArgumentException("sourceCommit must be an exact Git object ID");
         }
         return value;
     }
@@ -101,8 +102,7 @@ public final class DevelopmentChangeSourceProjection {
 
     public enum Outcome {
         UNCHANGED,
-        SOURCE_CHANGED,
-        CANONICAL_ADVANCED
+        SOURCE_CHANGED
     }
 
     public enum SourceState {

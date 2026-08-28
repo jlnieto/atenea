@@ -324,7 +324,7 @@ public class DevelopmentChangeWorkspaceService {
 
         Instant now = Instant.now();
         UUID operationId = UUID.randomUUID();
-        String canonicalCommit = currentCanonicalCommit(change);
+        String sourceCommit = currentSourceCommit(change);
         DevelopmentChangeWorkspaceOperationEntity operation =
                 new DevelopmentChangeWorkspaceOperationEntity();
         operation.setOperationId(operationId);
@@ -340,7 +340,7 @@ public class DevelopmentChangeWorkspaceService {
         operation.setExpectedSourceRevision(change.getSourceRevision());
         operation.setExpectedSourceFingerprintSha256(
                 change.getSourceFingerprintSha256());
-        operation.setExpectedCanonicalCommit(canonicalCommit);
+        operation.setExpectedCanonicalCommit(sourceCommit);
         operation.setState(DevelopmentChangeWorkspaceOperationState.REQUESTED);
         operation.setRevision(0);
         operation.setRequestedAt(now);
@@ -359,12 +359,12 @@ public class DevelopmentChangeWorkspaceService {
                         ProjectCodexIdentity.REPOSITORY,
                         ProjectCodexIdentity.BRANCH,
                         change.getBaseCommit(),
-                        canonicalCommit,
+                        sourceCommit,
                         change.getWorkspaceBranch(),
                         change.getWorkspaceIdentity(),
                         change.getSelectedWorkerId(),
                         change.getSourceRevision(),
-                        change.getSourceFingerprintSha256());
+                        dirtySourceFingerprint(change));
         return StartOutcome.dispatch(command);
     }
 
@@ -429,9 +429,7 @@ public class DevelopmentChangeWorkspaceService {
                         change.getSourceState(),
                         change.getSourceRevision(),
                         change.getSourceFingerprintSha256(),
-                        currentCanonicalCommit(change),
-                        null,
-                        observation.ownershipFingerprintSha256());
+                        currentSourceCommit(change));
             }
             return applyOwnedObservation(operation, change, observation);
         }));
@@ -443,11 +441,12 @@ public class DevelopmentChangeWorkspaceService {
             DevelopmentChangeWorkspaceObservation observation) {
         DevelopmentChangeSourceProjection projection = new DevelopmentChangeSourceProjection(
                 change.getSourceRevision(),
-                change.getSourceFingerprintSha256(),
-                currentCanonicalCommit(change));
+                dirtySourceFingerprint(change),
+                currentSourceCommit(change),
+                change.getSourceState() == DevelopmentChangeSourceState.DIRTY);
         DevelopmentChangeSourceProjection.Transition transition = projection.observe(
                 observation.sourceFingerprintSha256(),
-                observation.canonicalCommit(),
+                observation.sourceCommit(),
                 observation.workspaceDirty());
         DevelopmentChangeSourceState sourceState = switch (transition.sourceState()) {
             case CLEAN -> observation.workspaceDirty()
@@ -463,26 +462,19 @@ public class DevelopmentChangeWorkspaceService {
             change.setReleaseState(staleIfCurrent(change.getReleaseState()));
         }
         change.setSourceRevision(transition.sourceRevision());
-        change.setSourceFingerprintSha256(observation.sourceFingerprintSha256());
+        if (observation.workspaceDirty()) {
+            change.setSourceFingerprintSha256(observation.sourceFingerprintSha256());
+        }
         change.setSourceState(sourceState);
-        change.setObservedCanonicalCommit(observation.canonicalCommit());
-        String observationFingerprint = fingerprint(
-                observation.requestFingerprintSha256(),
-                observation.ownershipFingerprintSha256(),
-                observation.canonicalCommit(),
-                observation.sourceFingerprintSha256(),
-                observation.workspaceDirty(),
-                observation.retainedDraft());
+        change.setObservedCanonicalCommit(observation.sourceCommit());
         return completeSuccess(
                 operation,
                 change,
                 DevelopmentChangeWorkspaceState.READY,
                 sourceState,
                 transition.sourceRevision(),
-                observation.sourceFingerprintSha256(),
-                observation.canonicalCommit(),
-                observation.ownershipFingerprintSha256(),
-                observationFingerprint);
+                change.getSourceFingerprintSha256(),
+                observation.sourceCommit());
     }
 
     private DevelopmentChangeWorkspaceOperationResponse completeRemoteFailure(
@@ -515,15 +507,13 @@ public class DevelopmentChangeWorkspaceService {
             DevelopmentChangeSourceState sourceState,
             long sourceRevision,
             String sourceFingerprint,
-            String observedCanonicalCommit,
-            String workspaceOwnershipFingerprint,
-            String observationFingerprint) {
+            String observedSourceCommit) {
         Instant now = Instant.now();
         change.setWorkspaceState(workspaceState);
         change.setWorkspaceOperationRevision(
                 Math.addExact(change.getWorkspaceOperationRevision(), 1));
-        change.setWorkspaceObservationSha256(observationFingerprint);
-        change.setWorkspaceOwnershipFingerprintSha256(workspaceOwnershipFingerprint);
+        change.setWorkspaceObservationSha256(operation.getRequestFingerprintSha256());
+        change.setWorkspaceOwnershipFingerprintSha256(operation.getRequestFingerprintSha256());
         change.setWorkspaceUpdatedAt(now);
         change.setUpdatedAt(now);
         changeRepository.saveAndFlush(change);
@@ -531,7 +521,7 @@ public class DevelopmentChangeWorkspaceService {
         operation.setState(DevelopmentChangeWorkspaceOperationState.SUCCEEDED);
         terminalFields(
                 operation, workspaceState, sourceState, sourceRevision,
-                sourceFingerprint, observedCanonicalCommit, null, null, now);
+                sourceFingerprint, observedSourceCommit, null, null, now);
         operationRepository.saveAndFlush(operation);
         audit(operation, "DEVELOPMENT_CHANGE_WORKSPACE_OPERATION_SUCCEEDED", null, null);
         return response(operation, change, false);
@@ -551,10 +541,7 @@ public class DevelopmentChangeWorkspaceService {
         change.setWorkspaceState(workspaceState);
         change.setWorkspaceOperationRevision(
                 Math.addExact(change.getWorkspaceOperationRevision(), 1));
-        String observationFingerprint = fingerprint(
-                operation.getOperationId(), state, code,
-                change.getSourceRevision(), change.getSourceFingerprintSha256());
-        change.setWorkspaceObservationSha256(observationFingerprint);
+        change.setWorkspaceObservationSha256(operation.getRequestFingerprintSha256());
         change.setWorkspaceOwnershipFingerprintSha256(null);
         change.setWorkspaceUpdatedAt(now);
         change.setUpdatedAt(now);
@@ -567,7 +554,7 @@ public class DevelopmentChangeWorkspaceService {
                 change.getSourceState(),
                 change.getSourceRevision(),
                 change.getSourceFingerprintSha256(),
-                currentCanonicalCommit(change),
+                currentSourceCommit(change),
                 category,
                 code,
                 now);
@@ -683,8 +670,9 @@ public class DevelopmentChangeWorkspaceService {
                 && ProjectCodexIdentity.WORKER_ID.equals(remoteWorkerProperties.getWorkerId())
                 && ("refs/heads/" + ProjectCodexIdentity.BRANCH).equals(change.getBaseRef())
                 && exactGitObject(change.getBaseCommit())
-                && exactGitObject(currentCanonicalCommit(change))
-                && sha256(change.getSourceFingerprintSha256());
+                && exactGitObject(currentSourceCommit(change))
+                && (change.getSourceState() != DevelopmentChangeSourceState.DIRTY
+                    || sha256(change.getSourceFingerprintSha256()));
     }
 
     private boolean exactOperationTarget(
@@ -694,12 +682,6 @@ public class DevelopmentChangeWorkspaceService {
                 && Objects.equals(
                         operation.getDevelopmentChange().getId(), change.getId())
                 && operation.getExpectedSourceRevision() == change.getSourceRevision()
-                && Objects.equals(
-                        operation.getExpectedSourceFingerprintSha256(),
-                        change.getSourceFingerprintSha256())
-                && Objects.equals(
-                        operation.getExpectedCanonicalCommit(),
-                        currentCanonicalCommit(change))
                 && Objects.equals(
                         operation.getTargetFingerprintSha256(),
                         changeTargetFingerprint(change))
@@ -713,10 +695,16 @@ public class DevelopmentChangeWorkspaceService {
                 : state;
     }
 
-    private String currentCanonicalCommit(DevelopmentChangeEntity change) {
+    private String currentSourceCommit(DevelopmentChangeEntity change) {
         return change.getObservedCanonicalCommit() == null
                 ? change.getBaseCommit()
                 : change.getObservedCanonicalCommit();
+    }
+
+    private String dirtySourceFingerprint(DevelopmentChangeEntity change) {
+        return change.getSourceState() == DevelopmentChangeSourceState.DIRTY
+                ? change.getSourceFingerprintSha256()
+                : null;
     }
 
     private String changeTargetFingerprint(DevelopmentChangeEntity change) {
@@ -731,8 +719,6 @@ public class DevelopmentChangeWorkspaceService {
                 change.getSelectedWorkerId(),
                 change.getProjectPolicyRevision(),
                 change.getSourceRevision(),
-                change.getSourceFingerprintSha256(),
-                currentCanonicalCommit(change),
                 change.getWorkspaceState(),
                 change.getWorkspaceOperationRevision(),
                 change.getVersion());

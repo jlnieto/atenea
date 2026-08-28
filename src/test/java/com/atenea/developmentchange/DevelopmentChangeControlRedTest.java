@@ -94,29 +94,31 @@ class DevelopmentChangeControlRedTest {
     void sourceAdvanceIsMonotonicAndInvalidatesEveryDownstreamProjection() throws Exception {
         Class<?> sourceType = changeType("DevelopmentChangeSourceProjection");
         Constructor<?> constructor = sourceType.getConstructor(
-                long.class, String.class, String.class);
+                long.class, String.class, String.class, boolean.class);
         Method observe = sourceType.getMethod(
                 "observe", String.class, String.class, boolean.class);
         String initialFingerprint = "a".repeat(64);
         String changedFingerprint = "b".repeat(64);
         String baseCommit = "1".repeat(40);
         String advancedCommit = "2".repeat(40);
-        Object initial = constructor.newInstance(4L, initialFingerprint, baseCommit);
+        Object initial = constructor.newInstance(4L, null, baseCommit, false);
 
-        Object unchanged = observe.invoke(initial, initialFingerprint, baseCommit, false);
+        Object unchanged = observe.invoke(initial, null, baseCommit, false);
         Object changed = observe.invoke(initial, changedFingerprint, baseCommit, true);
-        Object stale = observe.invoke(initial, changedFingerprint, advancedCommit, true);
+        Object advanced = observe.invoke(initial, null, advancedCommit, false);
 
         assertTransition(unchanged, "UNCHANGED", 4L, "CLEAN", false, false, Set.of());
         assertTransition(changed, "SOURCE_CHANGED", 5L, "DIRTY", true, false,
                 Set.of("VALIDATION", "REVIEW", "INTEGRATION", "RELEASE"));
-        assertTransition(stale, "CANONICAL_ADVANCED", 5L, "STALE", true, true,
+        assertTransition(advanced, "SOURCE_CHANGED", 5L, "CLEAN", true, false,
                 Set.of("VALIDATION", "REVIEW", "INTEGRATION", "RELEASE"));
 
         assertInvocationCause(IllegalArgumentException.class,
-                () -> constructor.newInstance(-1L, initialFingerprint, baseCommit));
+                () -> constructor.newInstance(-1L, null, baseCommit, false));
         assertInvocationCause(IllegalArgumentException.class,
-                () -> constructor.newInstance(0L, "not-a-sha256", baseCommit));
+                () -> constructor.newInstance(0L, "not-a-sha256", baseCommit, true));
+        assertInvocationCause(IllegalArgumentException.class,
+                () -> constructor.newInstance(0L, initialFingerprint, baseCommit, false));
     }
 
     private static Object identity(

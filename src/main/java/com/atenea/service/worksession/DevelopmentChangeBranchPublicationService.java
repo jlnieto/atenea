@@ -65,8 +65,10 @@ public class DevelopmentChangeBranchPublicationService {
                 "change-branch-publication-v1",
                 change.getChangeKey().toString(),
                 Long.toString(change.getSourceRevision()),
-                change.getSourceFingerprintSha256(),
-                change.getWorkspaceOwnershipFingerprintSha256());
+                change.getObservedCanonicalCommit(),
+                change.getSourceState() == DevelopmentChangeSourceState.DIRTY
+                        ? change.getSourceFingerprintSha256()
+                        : "clean");
         UUID idempotencyKey = UUID.nameUUIDFromBytes(stable.getBytes(StandardCharsets.UTF_8));
         UUID operationId = UUID.nameUUIDFromBytes(
                 ("operation|" + stable).getBytes(StandardCharsets.UTF_8));
@@ -84,8 +86,9 @@ public class DevelopmentChangeBranchPublicationService {
                 change.getWorkspaceIdentity(),
                 change.getSelectedWorkerId(),
                 change.getSourceRevision(),
-                change.getSourceFingerprintSha256(),
-                change.getWorkspaceOwnershipFingerprintSha256());
+                change.getSourceState() == DevelopmentChangeSourceState.DIRTY
+                        ? change.getSourceFingerprintSha256()
+                        : null);
     }
 
     private PublishedIdentity persistExact(
@@ -112,9 +115,9 @@ public class DevelopmentChangeBranchPublicationService {
             session.setFinalCommitSha(result.publishedHeadSha());
             session.setPublishedChangeKey(command.changeKey());
             session.setPublishedSourceRevision(command.sourceRevision());
-            session.setPublishedSourceFingerprintSha256(command.sourceFingerprintSha256());
+            session.setPublishedSourceFingerprintSha256(change.getSourceFingerprintSha256());
             session.setPublishedWorkspaceOwnershipFingerprintSha256(
-                    command.workspaceOwnershipFingerprintSha256());
+                    change.getSourceFingerprintSha256());
             session.setPublishedRepository(GITHUB_REPOSITORY);
             session.setPublishedBaseBranch(command.repositoryBranch());
             session.setPublishedHeadBranch(command.workspaceBranch());
@@ -161,13 +164,11 @@ public class DevelopmentChangeBranchPublicationService {
                 || !Objects.equals(session.getWorkspaceIdentity(), expectedWorkspace)
                 || !Objects.equals(change.getBaseRef(), "refs/heads/" + ProjectCodexIdentity.BRANCH)
                 || !Objects.equals(session.getBaseBranch(), ProjectCodexIdentity.BRANCH)
-                || !Objects.equals(session.getCanonicalSourceRef(), change.getBaseRef())
-                || !Objects.equals(session.getCanonicalSourceCommit(), change.getBaseCommit())
                 || !gitCommit(change.getBaseCommit())
                 || !gitCommit(change.getObservedCanonicalCommit())
                 || change.getSourceRevision() < 0
-                || !sha256(change.getSourceFingerprintSha256())
-                || !sha256(change.getWorkspaceOwnershipFingerprintSha256())) {
+                || (change.getSourceState() == DevelopmentChangeSourceState.DIRTY
+                    && !sha256(change.getSourceFingerprintSha256()))) {
             throw conflict(session.getId(),
                     "DevelopmentChange publication ownership is incomplete, stale, or foreign");
         }
@@ -180,15 +181,15 @@ public class DevelopmentChangeBranchPublicationService {
         return Objects.equals(command.changeKey(), change.getChangeKey())
                 && command.databaseProjectId() == change.getProject().getId()
                 && Objects.equals(command.baseCommit(), change.getBaseCommit())
-                && Objects.equals(command.expectedCanonicalCommit(), change.getObservedCanonicalCommit())
+                && Objects.equals(command.sourceCommit(), change.getObservedCanonicalCommit())
                 && Objects.equals(command.workspaceBranch(), change.getWorkspaceBranch())
                 && Objects.equals(command.workspaceIdentity(), change.getWorkspaceIdentity())
                 && Objects.equals(command.workerId(), change.getSelectedWorkerId())
                 && command.sourceRevision() == change.getSourceRevision()
                 && Objects.equals(command.sourceFingerprintSha256(),
-                        change.getSourceFingerprintSha256())
-                && Objects.equals(command.workspaceOwnershipFingerprintSha256(),
-                        change.getWorkspaceOwnershipFingerprintSha256());
+                        change.getSourceState() == DevelopmentChangeSourceState.DIRTY
+                                ? change.getSourceFingerprintSha256()
+                                : null);
     }
 
     private void requirePersistedReplay(
@@ -197,10 +198,6 @@ public class DevelopmentChangeBranchPublicationService {
             DevelopmentChangeBranchPublication result) {
         if (!Objects.equals(session.getPublishedChangeKey(), command.changeKey())
                 || !Objects.equals(session.getPublishedSourceRevision(), command.sourceRevision())
-                || !Objects.equals(session.getPublishedSourceFingerprintSha256(),
-                        command.sourceFingerprintSha256())
-                || !Objects.equals(session.getPublishedWorkspaceOwnershipFingerprintSha256(),
-                        command.workspaceOwnershipFingerprintSha256())
                 || !Objects.equals(session.getPublishedRepository(), GITHUB_REPOSITORY)
                 || !Objects.equals(session.getPublishedBaseBranch(), command.repositoryBranch())
                 || !Objects.equals(session.getPublishedHeadBranch(), command.workspaceBranch())

@@ -64,24 +64,25 @@ class DevelopmentChangeAgentRunSourceAdvanceServiceTest {
         AgentRunEntity first = run(81L, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
 
         assertTrue(service.advance(
-                first, identity(first, "6".repeat(64), "7".repeat(64), true), FINISHED));
+                first, identity(first, COMMIT, "6".repeat(64), true), FINISHED));
         assertEquals(4, change.getSourceRevision());
         assertEquals("6".repeat(64), change.getSourceFingerprintSha256());
-        assertEquals("7".repeat(64), change.getWorkspaceOwnershipFingerprintSha256());
+        assertEquals(FIRST_OWNERSHIP, change.getWorkspaceOwnershipFingerprintSha256());
         assertEquals(DevelopmentChangeSourceState.DIRTY, change.getSourceState());
 
         AgentRunEntity second = run(82L, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
         assertEquals(4L, second.getChangeSourceRevision());
         assertEquals("6".repeat(64), second.getChangeSourceFingerprintSha256());
-        assertEquals("7".repeat(64),
+        assertEquals(FIRST_OWNERSHIP,
                 second.getChangeWorkspaceOwnershipFingerprintSha256());
 
         assertTrue(service.advance(
-                second, identity(second, "8".repeat(64), "9".repeat(64), false),
+                second, identity(second, "2".repeat(40), null, false),
                 FINISHED.plusSeconds(1)));
         assertEquals(5, change.getSourceRevision());
-        assertEquals("8".repeat(64), change.getSourceFingerprintSha256());
-        assertEquals("9".repeat(64), change.getWorkspaceOwnershipFingerprintSha256());
+        assertEquals("6".repeat(64), change.getSourceFingerprintSha256());
+        assertEquals("2".repeat(40), change.getObservedCanonicalCommit());
+        assertEquals(FIRST_OWNERSHIP, change.getWorkspaceOwnershipFingerprintSha256());
         assertEquals(DevelopmentChangeSourceState.CLEAN, change.getSourceState());
     }
 
@@ -89,7 +90,7 @@ class DevelopmentChangeAgentRunSourceAdvanceServiceTest {
     void unchangedExactResultIsIdempotentAndDoesNotAdvance() {
         AgentRunEntity run = run(81L, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
         RemoteWorkerClient.SourceIdentity unchanged = identity(
-                run, FIRST_SOURCE, FIRST_OWNERSHIP, true);
+                run, COMMIT, FIRST_SOURCE, true);
 
         assertFalse(service.advance(run, unchanged, FINISHED));
         assertFalse(service.advance(run, unchanged, FINISHED));
@@ -101,51 +102,48 @@ class DevelopmentChangeAgentRunSourceAdvanceServiceTest {
     void oldMutatingResultCannotOverwriteTheNewerIdentity() {
         AgentRunEntity old = run(81L, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
         RemoteWorkerClient.SourceIdentity oldResult = identity(
-                old, "6".repeat(64), "7".repeat(64), true);
+                old, COMMIT, "6".repeat(64), true);
         service.advance(old, oldResult, FINISHED);
         AgentRunEntity newer = run(82L, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
         service.advance(
-                newer, identity(newer, "8".repeat(64), "9".repeat(64), true),
+                newer, identity(newer, COMMIT, "8".repeat(64), true),
                 FINISHED.plusSeconds(1));
 
         assertThrows(RemoteWorkerException.class,
                 () -> service.advance(old, oldResult, FINISHED));
         assertEquals(5, change.getSourceRevision());
         assertEquals("8".repeat(64), change.getSourceFingerprintSha256());
-        assertEquals("9".repeat(64), change.getWorkspaceOwnershipFingerprintSha256());
+        assertEquals(FIRST_OWNERSHIP, change.getWorkspaceOwnershipFingerprintSha256());
     }
 
     @Test
     void crossedChangeWorkSessionWorkspaceOrExecutionIsRejected() {
         AgentRunEntity run = run(81L, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
         RemoteWorkerClient.SourceIdentity valid = identity(
-                run, "6".repeat(64), "7".repeat(64), true);
+                run, COMMIT, "6".repeat(64), true);
         var crossed = java.util.List.of(
                 new RemoteWorkerClient.SourceIdentity(
                         UUID.randomUUID().toString(), valid.databaseWorkSessionId(),
                         valid.remoteSessionId(), valid.workspaceIdentity(), valid.executionId(),
-                        valid.sourceFingerprintSha256(),
-                        valid.workspaceOwnershipFingerprintSha256(), true),
+                        valid.sourceCommit(), valid.sourceFingerprintSha256(), true),
                 new RemoteWorkerClient.SourceIdentity(
                         valid.changeKey(), 999L, valid.remoteSessionId(),
                         valid.workspaceIdentity(), valid.executionId(),
-                        valid.sourceFingerprintSha256(),
-                        valid.workspaceOwnershipFingerprintSha256(), true),
+                        valid.sourceCommit(), valid.sourceFingerprintSha256(), true),
                 new RemoteWorkerClient.SourceIdentity(
                         valid.changeKey(), valid.databaseWorkSessionId(),
                         UUID.randomUUID().toString(), valid.workspaceIdentity(),
-                        valid.executionId(), valid.sourceFingerprintSha256(),
-                        valid.workspaceOwnershipFingerprintSha256(), true),
+                        valid.executionId(), valid.sourceCommit(),
+                        valid.sourceFingerprintSha256(), true),
                 new RemoteWorkerClient.SourceIdentity(
                         valid.changeKey(), valid.databaseWorkSessionId(),
                         valid.remoteSessionId(), "remote:ax42-01:change:" + UUID.randomUUID(),
-                        valid.executionId(), valid.sourceFingerprintSha256(),
-                        valid.workspaceOwnershipFingerprintSha256(), true),
+                        valid.executionId(), valid.sourceCommit(),
+                        valid.sourceFingerprintSha256(), true),
                 new RemoteWorkerClient.SourceIdentity(
                         valid.changeKey(), valid.databaseWorkSessionId(),
                         valid.remoteSessionId(), valid.workspaceIdentity(), UUID.randomUUID().toString(),
-                        valid.sourceFingerprintSha256(),
-                        valid.workspaceOwnershipFingerprintSha256(), true));
+                        valid.sourceCommit(), valid.sourceFingerprintSha256(), true));
 
         crossed.forEach(identity -> assertThrows(
                 RemoteWorkerException.class,
@@ -159,11 +157,11 @@ class DevelopmentChangeAgentRunSourceAdvanceServiceTest {
         AgentRunEntity run = run(81L, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
         change.setSourceRevision(4);
         assertThrows(RemoteWorkerException.class, () -> service.advance(
-                run, identity(run, "6".repeat(64), "7".repeat(64), true), FINISHED));
+                run, identity(run, COMMIT, "6".repeat(64), true), FINISHED));
 
         change.setSourceRevision(3);
         assertThrows(RemoteWorkerException.class, () -> service.advance(
-                run, identity(run, FIRST_SOURCE, "7".repeat(64), true), FINISHED));
+                run, identity(run, COMMIT, FIRST_SOURCE, false), FINISHED));
         assertEquals(FIRST_SOURCE, change.getSourceFingerprintSha256());
         assertEquals(FIRST_OWNERSHIP, change.getWorkspaceOwnershipFingerprintSha256());
         verify(changeRepository, never()).saveAndFlush(any());
@@ -176,7 +174,7 @@ class DevelopmentChangeAgentRunSourceAdvanceServiceTest {
                 any(), any())).thenReturn(true);
 
         assertThrows(RemoteWorkerException.class, () -> service.advance(
-                run, identity(run, "6".repeat(64), "7".repeat(64), true), FINISHED));
+                run, identity(run, COMMIT, "6".repeat(64), true), FINISHED));
         assertEquals(3, change.getSourceRevision());
         verify(changeRepository, never()).saveAndFlush(any());
     }
@@ -265,8 +263,8 @@ class DevelopmentChangeAgentRunSourceAdvanceServiceTest {
 
     private RemoteWorkerClient.SourceIdentity identity(
             AgentRunEntity run,
-            String source,
-            String ownership,
+            String sourceCommit,
+            String sourceFingerprint,
             boolean dirty
     ) {
         return new RemoteWorkerClient.SourceIdentity(
@@ -275,8 +273,8 @@ class DevelopmentChangeAgentRunSourceAdvanceServiceTest {
                 run.getRemoteSessionId().toString(),
                 run.getWorkspaceIdentity(),
                 run.getRemoteExecutionId(),
-                source,
-                ownership,
+                sourceCommit,
+                sourceFingerprint,
                 dirty);
     }
 }

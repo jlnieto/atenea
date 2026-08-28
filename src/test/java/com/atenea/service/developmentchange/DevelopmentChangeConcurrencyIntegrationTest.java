@@ -122,7 +122,7 @@ class DevelopmentChangeConcurrencyIntegrationTest {
         projectPolicyRepository.saveAndFlush(exact);
 
         String commit = "3".repeat(40);
-        when(canonicalSourceAdmissionService.observeCanonicalSource(any(ProjectEntity.class)))
+        when(canonicalSourceAdmissionService.observeRemoteBase(any(ProjectEntity.class)))
                 .thenReturn(new CanonicalSourceAdmissionService.CanonicalSourceObservation(
                         ProjectCodexIdentity.REPOSITORY,
                         "refs/heads/" + ProjectCodexIdentity.BRANCH,

@@ -187,9 +187,10 @@ public class WorkSessionGitHubService {
         session.setFinalCommitSha(identity.headSha());
         session.setPublishedChangeKey(identity.changeKey());
         session.setPublishedSourceRevision(identity.sourceRevision());
-        session.setPublishedSourceFingerprintSha256(identity.sourceFingerprintSha256());
+        session.setPublishedSourceFingerprintSha256(
+                session.getDevelopmentChange().getSourceFingerprintSha256());
         session.setPublishedWorkspaceOwnershipFingerprintSha256(
-                session.getDevelopmentChange().getWorkspaceOwnershipFingerprintSha256());
+                session.getDevelopmentChange().getSourceFingerprintSha256());
         session.setPublishedRepository(identity.repository());
         session.setPublishedBaseBranch(identity.baseBranch());
         session.setPublishedHeadBranch(identity.headBranch());

@@ -264,15 +264,19 @@ class RemoteSessionServiceIntegrationTest {
     }
 
     @Test
-    void rejectsAChangedSourceOnTheLinkedSessionWithoutRebindingIt() {
+    void linkedSessionCanonicalCopiesDoNotGovernV4Resolution() {
         WorkSessionEntity linked = exactSession(change, true);
         linked.setCanonicalSourceCommit("9".repeat(40));
         linked = workSessionRepository.saveAndFlush(linked);
         Long linkedId = linked.getId();
         UUID remoteId = linked.getRemoteSessionId();
 
-        assertRejectedWithoutNewSession("REMOTE_SESSION_OWNERSHIP_MISMATCH");
+        var resolved = service.openOrResolve(
+                actor, project.getId(), change.getChangeKey(), UUID.randomUUID(),
+                new OpenOrResolveRemoteSessionRequest(change.getVersion()));
 
+        assertEquals(RemoteSessionResolution.RESOLVED, resolved.resolution());
+        assertEquals(linkedId, resolved.sessionId());
         WorkSessionEntity preserved = workSessionRepository.findById(linkedId).orElseThrow();
         assertEquals("9".repeat(40), preserved.getCanonicalSourceCommit());
         assertEquals(remoteId, preserved.getRemoteSessionId());
@@ -379,6 +383,7 @@ class RemoteSessionServiceIntegrationTest {
         value.setStatus(status);
         value.setBaseRef("refs/heads/main");
         value.setBaseCommit("1".repeat(40));
+        value.setObservedCanonicalCommit(value.getBaseCommit());
         value.setWorkspaceBranch("atenea/change-" + key);
         value.setWorkspaceIdentity("remote:synthetic-worker-01:change:" + key);
         value.setSelectedWorkerId("synthetic-worker-01");

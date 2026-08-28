@@ -158,7 +158,7 @@ class DevelopmentChangeTwoChangeIsolationIntegrationTest {
         actor = new AuthenticatedOperator(
                 operator.getId(), operator.getEmail(), operator.getDisplayName());
 
-        when(canonicalSourceAdmissionService.observeCanonicalSource(any(ProjectEntity.class)))
+        when(canonicalSourceAdmissionService.observeRemoteBase(any(ProjectEntity.class)))
                 .thenReturn(new CanonicalSourceAdmissionService.CanonicalSourceObservation(
                         ProjectCodexIdentity.REPOSITORY,
                         "refs/heads/" + ProjectCodexIdentity.BRANCH,
@@ -456,13 +456,11 @@ class DevelopmentChangeTwoChangeIsolationIntegrationTest {
             }
             return new DevelopmentChangeWorkspaceObservation(
                     DevelopmentChangeWorkspaceObservation.Disposition.OWNED,
-                    command.expectedCanonicalCommit(),
-                    command.sourceFingerprintSha256(),
+                    command.sourceCommit(),
+                    null,
                     false,
                     false,
-                    sha256(command.operationId(), command.idempotencyKey()),
-                    sha256(command.workspaceIdentity(), allocation.worktree(),
-                            allocation.resourcePath()));
+                    sha256(command.operationId(), command.idempotencyKey()));
         }
 
         private SyntheticAllocation allocation(UUID changeKey) {

@@ -2,6 +2,7 @@ package com.atenea.remoteworker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -526,9 +527,7 @@ class RemoteWorkerClientTest {
         assertEquals(Set.of(
                         "changeKey", "databaseWorkSessionId", "remoteSessionId",
                         "workspaceIdentity", "databaseProjectId", "baseCommit",
-                        "expectedCanonicalCommit", "sourceRevision",
-                        "sourceFingerprintSha256",
-                        "workspaceOwnershipFingerprintSha256"),
+                        "sourceRevision", "sourceFingerprintSha256"),
                 objectMapper.convertValue(ownership, Map.class).keySet());
         assertEquals(run.getDevelopmentChangeKey().toString(),
                 ownership.get("changeKey").asText());
@@ -540,18 +539,14 @@ class RemoteWorkerClientTest {
         assertEquals(run.getSession().getProject().getId(),
                 ownership.get("databaseProjectId").asLong());
         assertEquals(run.getChangeBaseCommit(), ownership.get("baseCommit").asText());
-        assertEquals(run.getChangeExpectedCanonicalCommit(),
-                ownership.get("expectedCanonicalCommit").asText());
         assertEquals(run.getChangeSourceRevision(), ownership.get("sourceRevision").asLong());
         assertEquals(run.getChangeSourceFingerprintSha256(),
                 ownership.get("sourceFingerprintSha256").asText());
-        assertEquals(run.getChangeWorkspaceOwnershipFingerprintSha256(),
-                ownership.get("workspaceOwnershipFingerprintSha256").asText());
 
         JsonNode workload = first.get("workload");
         assertEquals(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND,
                 workload.get("kind").asText());
-        assertEquals(run.getChangeExpectedCanonicalCommit(), workload.get("commit").asText());
+        assertEquals(run.getRepositoryCommit(), workload.get("commit").asText());
         assertEquals(0, workload.get("attachments").size());
         assertEquals(12, workload.size());
         for (String forbidden : List.of(
@@ -567,7 +562,7 @@ class RemoteWorkerClientTest {
     }
 
     @Test
-    void changeBoundDispatchRejectsDurableSourceOrOwnershipDriftBeforeHttp() {
+    void changeBoundDispatchRejectsDurableSourceDriftButIgnoresLegacyCopies() {
         AgentRunEntity stale = changeBoundRun();
         stale.getSession().getDevelopmentChange().setSourceState(
                 DevelopmentChangeSourceState.STALE);
@@ -580,14 +575,21 @@ class RemoteWorkerClientTest {
         AgentRunEntity mismatched = changeBoundRun();
         mismatched.getSession().getDevelopmentChange()
                 .setWorkspaceOwnershipFingerprintSha256("9".repeat(64));
-        assertThrows(RemoteWorkerException.class,
-                () -> client.dispatch(mismatched, "Must not dispatch foreign ownership."));
-        assertNull(requestBody.get());
+        mismatched.getSession().setCanonicalSourceCommit("8".repeat(40));
+        client.dispatch(mismatched, "Legacy copies do not govern v4.");
+        assertNotNull(requestBody.get());
+        requestBody.set(null);
 
         AgentRunEntity sourceDrift = changeBoundRun();
-        sourceDrift.getSession().setCanonicalSourceCommit("8".repeat(40));
+        sourceDrift.setRepositoryCommit("8".repeat(40));
         assertThrows(RemoteWorkerException.class,
                 () -> client.dispatch(sourceDrift, "Must not dispatch source drift."));
+        assertNull(requestBody.get());
+
+        AgentRunEntity revisionDrift = changeBoundRun();
+        revisionDrift.getSession().getDevelopmentChange().setSourceRevision(4L);
+        assertThrows(RemoteWorkerException.class,
+                () -> client.dispatch(revisionDrift, "Must not dispatch revision drift."));
         assertNull(requestBody.get());
 
         AgentRunEntity incompleteProfile = changeBoundRun();

@@ -34,15 +34,13 @@ class DevelopmentChangeBranchPublicationWorkerClientTest {
                     "schemaVersion", "protocolVersion", "effect", "operationId",
                     "idempotencyKey", "operation", "changeKey", "databaseProjectId",
                     "projectId", "repositoryBranch", "baseCommit",
-                    "expectedCanonicalCommit", "workspaceBranch", "workspaceIdentity",
+                    "sourceCommit", "workspaceBranch", "workspaceIdentity",
                     "workerId", "sourceRevision", "requestFingerprintSha256"}) {
                 response.set(field, request.get(field));
             }
             response.put("state", "PUBLISHED");
-            response.set("expectedSourceFingerprintSha256",
+            response.set("sourceFingerprintSha256",
                     request.get("sourceFingerprintSha256"));
-            response.set("expectedWorkspaceOwnershipFingerprintSha256",
-                    request.get("workspaceOwnershipFingerprintSha256"));
             response.put("publishedHeadSha", "3".repeat(40));
             response.put("remoteDisposition", "CREATED");
             response.put("publicationReceiptSha256", "d".repeat(64));
@@ -76,8 +74,7 @@ class DevelopmentChangeBranchPublicationWorkerClientTest {
                     "remote:ax42-01:change:" + changeKey,
                     "ax42-01",
                     3L,
-                    "a".repeat(64),
-                    "b".repeat(64));
+                    "a".repeat(64));
 
             DevelopmentChangeBranchPublication result =
                     new DevelopmentChangeBranchPublicationWorkerClient(properties, mapper)

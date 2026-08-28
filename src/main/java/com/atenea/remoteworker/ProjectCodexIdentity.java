@@ -37,20 +37,25 @@ public final class ProjectCodexIdentity {
     }
 
     public static boolean matches(AgentRunEntity run) {
-        return run != null
-                && (WORKLOAD_KIND.equals(run.getWorkloadKind())
-                    || IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
-                    || CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
-                && PROJECT_IDENTITY.equals(run.getProjectIdentity())
-                && REPOSITORY.equals(run.getRepositoryUrl())
-                && BRANCH.equals(run.getRepositoryBranch())
-                && hasCanonicalSourceObservation(run.getSession())
-                && run.getRepositoryCommit() != null
-                && run.getRepositoryCommit().matches("^[0-9a-f]{40}$")
+        if (run == null
+                || (!WORKLOAD_KIND.equals(run.getWorkloadKind())
+                    && !IMAGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
+                    && !CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind()))
+                || !PROJECT_IDENTITY.equals(run.getProjectIdentity())
+                || !REPOSITORY.equals(run.getRepositoryUrl())
+                || !BRANCH.equals(run.getRepositoryBranch())
+                || run.getRepositoryCommit() == null
+                || !run.getRepositoryCommit().matches("^[0-9a-f]{40}$")) {
+            return false;
+        }
+        if (CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind())) {
+            return run.getDevelopmentChangeKey() != null;
+        }
+        return
+                hasCanonicalSourceObservation(run.getSession())
                 && run.getRepositoryCommit().equals(run.getSession().getCanonicalSourceCommit())
-                && (CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
-                    || (MANIFEST_SHA256.equals(run.getManifestSha256())
-                        && ReviewedInstructionBundleIdentity.matches(run)));
+                && MANIFEST_SHA256.equals(run.getManifestSha256())
+                && ReviewedInstructionBundleIdentity.matches(run);
     }
 
     public static boolean hasCanonicalSourceObservation(WorkSessionEntity session) {

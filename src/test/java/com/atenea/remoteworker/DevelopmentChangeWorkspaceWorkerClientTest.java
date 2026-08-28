@@ -73,7 +73,7 @@ class DevelopmentChangeWorkspaceWorkerClientTest {
 
         assertEquals(DevelopmentChangeWorkspaceObservation.Disposition.OWNED,
                 observation.disposition());
-        assertEquals(BASE_COMMIT, observation.canonicalCommit());
+        assertEquals(BASE_COMMIT, observation.sourceCommit());
         JsonNode request = received.get();
         assertEquals(1, request.path("schemaVersion").asInt());
         assertEquals("development-change-workspace/v1",
@@ -92,7 +92,7 @@ class DevelopmentChangeWorkspaceWorkerClientTest {
                         "schemaVersion", "protocolVersion", "effect", "operationId",
                         "idempotencyKey", "operation", "predecessorOperationId",
                         "changeKey", "databaseProjectId", "projectId", "repository",
-                        "repositoryBranch", "baseCommit", "expectedCanonicalCommit",
+                        "repositoryBranch", "baseCommit", "sourceCommit",
                         "workspaceBranch", "workspaceIdentity", "workerId",
                         "sourceRevision", "sourceFingerprintSha256",
                         "requestFingerprintSha256"),
@@ -233,17 +233,14 @@ class DevelopmentChangeWorkspaceWorkerClientTest {
                     "schemaVersion", "protocolVersion", "effect", "operationId",
                     "idempotencyKey", "operation", "predecessorOperationId",
                     "changeKey", "databaseProjectId", "projectId", "repository",
-                    "repositoryBranch", "baseCommit", "expectedCanonicalCommit",
+                    "repositoryBranch", "baseCommit", "sourceCommit",
                     "workspaceBranch", "workspaceIdentity", "workerId",
                     "sourceRevision", "requestFingerprintSha256");
-            response.set("expectedSourceFingerprintSha256",
-                    request.get("sourceFingerprintSha256"));
             response.put("state", "OWNED");
-            response.put("canonicalCommit", BASE_COMMIT);
-            response.put("sourceFingerprintSha256", SOURCE_FINGERPRINT);
+            response.put("sourceCommit", BASE_COMMIT);
+            response.putNull("sourceFingerprintSha256");
             response.put("workspaceDirty", false);
             response.put("retainedDraft", false);
-            response.put("ownershipFingerprintSha256", "b".repeat(64));
             response.put("valuesExposed", false);
             if (mode == ResponseMode.WRONG_IDENTITY) {
                 response.put("workspaceIdentity", "remote:foreign:change:" + CHANGE_KEY);

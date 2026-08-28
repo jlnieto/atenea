@@ -109,6 +109,24 @@ public class CanonicalSourceAdmissionService {
                 observedAt);
     }
 
+    public CanonicalSourceObservation observeRemoteBase(ProjectEntity project) {
+        if (!ProjectCodexIdentity.matches(project)) {
+            throw blocked();
+        }
+        String canonicalRef = REF_PREFIX + branch;
+        String remoteObservation = runRemoteExternal(
+                "git", "-c", "protocol.file.allow=always",
+                "ls-remote", "--exit-code", "--refs", repositoryUrl, canonicalRef).trim();
+        String observedCommit = exactRemoteCommit(remoteObservation, canonicalRef);
+        Instant observedAt = Instant.now();
+        return new CanonicalSourceObservation(
+                repositoryUrl,
+                canonicalRef,
+                observedCommit,
+                sha256(repositoryUrl + "\0" + canonicalRef + "\0" + observedCommit),
+                observedAt);
+    }
+
     private String run(String... arguments) {
         List<String> command = new ArrayList<>(List.of(
                 "git", "-c", "safe.directory=" + repositoryPath,
@@ -118,12 +136,22 @@ public class CanonicalSourceAdmissionService {
     }
 
     private String runExternal(String... command) {
+        return runExternal(true, command);
+    }
+
+    private String runRemoteExternal(String... command) {
+        return runExternal(false, command);
+    }
+
+    private String runExternal(boolean useRepositoryWorkingDirectory, String... command) {
         Process process = null;
         try {
-            process = new ProcessBuilder(command)
-                    .directory(repositoryPath.toFile())
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
+            ProcessBuilder builder = new ProcessBuilder(command)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD);
+            if (useRepositoryWorkingDirectory) {
+                builder.directory(repositoryPath.toFile());
+            }
+            process = builder.start();
             if (!process.waitFor(COMMAND_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly();
                 throw blocked();
