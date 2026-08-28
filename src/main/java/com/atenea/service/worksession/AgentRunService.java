@@ -16,7 +16,6 @@ import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
-import com.atenea.persistence.worksession.WorkerNodeEntity;
 import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
@@ -28,7 +27,6 @@ import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
-import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
 import java.time.Instant;
@@ -552,9 +550,9 @@ public class AgentRunService {
                         Set.of(
                                 DevelopmentChangeWorkspaceOperationState.REQUESTED,
                                 DevelopmentChangeWorkspaceOperationState.DISPATCHED));
-        WorkerNodeEntity worker = remoteRoutingSelector.refreshKnownWorker(
+        boolean workerAdmitted = remoteRoutingSelector.refreshKnownWorker(
                 change.getSelectedWorkerId(), ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
-        String expectedWorkspace = "remote:" + ProjectCodexIdentity.WORKER_ID
+        String expectedWorkspace = "remote:" + change.getSelectedWorkerId()
                 + ":change:" + change.getChangeKey();
         String expectedWorkspaceBranch = "atenea/change-" + change.getChangeKey();
         if (session.getId() == null
@@ -572,18 +570,10 @@ public class AgentRunService {
                 || change.getWorkspaceUpdatedAt() == null
                 || activeWorkspaceOperation
                 || session.getPublishedChangeKey() != null
-                || worker == null
-                || !worker.isEnabled()
-                || !worker.isHealthy()
-                || !RemoteWorkerProperties.PROTOCOL.equals(worker.getProtocolVersion())
-                || worker.getCapabilities() == null
-                || List.of(worker.getCapabilities().split(",")).stream()
-                        .map(String::trim)
-                        .noneMatch(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND::equals)
+                || !workerAdmitted
                 || linkedSessions.size() != 1
                 || !Objects.equals(linkedSessions.getFirst().getId(), session.getId())
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
-                || !Objects.equals(session.getSelectedWorkerId(), ProjectCodexIdentity.WORKER_ID)
                 || !Objects.equals(change.getSelectedWorkerId(), session.getSelectedWorkerId())
                 || !Objects.equals(change.getWorkspaceIdentity(), expectedWorkspace)
                 || !Objects.equals(session.getWorkspaceIdentity(), expectedWorkspace)

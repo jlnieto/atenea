@@ -43,7 +43,6 @@ import com.atenea.persistence.worksession.RemoteCloseState;
 import com.atenea.persistence.worksession.SessionTurnAttachmentEntity;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.worksession.WorkloadClass;
-import com.atenea.persistence.worksession.WorkerNodeEntity;
 import com.atenea.remoteworker.BeautipsProjectCodexIdentity;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.ReviewedInstructionBundleIdentity;
@@ -698,11 +697,9 @@ class AgentRunServiceTest {
         WorkSessionEntity session = changeBoundSession();
         DevelopmentChangeEntity change = session.getDevelopmentChange();
         stubChangeAdmission(session, change);
-        WorkerNodeEntity legacyWorker = changeWorker();
-        legacyWorker.setCapabilities(ProjectCodexIdentity.WORKLOAD_KIND);
         when(remoteRoutingSelector.refreshKnownWorker(
                 ProjectCodexIdentity.WORKER_ID,
-                ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)).thenReturn(legacyWorker);
+                ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)).thenReturn(false);
 
         assertThrows(IllegalStateException.class, () -> agentRunService.createRemoteQueuedRun(
                 session, operatorTurn(session), WorkloadClass.NORMAL));
@@ -1083,23 +1080,13 @@ class AgentRunServiceTest {
                         eq(change.getId()), any())).thenReturn(false);
         when(remoteRoutingSelector.refreshKnownWorker(
                 ProjectCodexIdentity.WORKER_ID,
-                ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)).thenReturn(changeWorker());
+                ProjectCodexIdentity.CHANGE_WORKLOAD_KIND)).thenReturn(true);
         when(agentRunRepository.existsBySessionIdAndStatus(
                 session.getId(), AgentRunStatus.RUNNING)).thenReturn(false);
         when(agentRunRepository.existsBySessionIdAndStatusIn(
                 session.getId(), AgentRunStatus.nonTerminalStatuses())).thenReturn(false);
         org.mockito.Mockito.lenient().when(agentRunRepository.save(any(AgentRunEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-    }
-
-    private WorkerNodeEntity changeWorker() {
-        WorkerNodeEntity worker = new WorkerNodeEntity();
-        worker.setId(ProjectCodexIdentity.WORKER_ID);
-        worker.setProtocolVersion(com.atenea.remoteworker.RemoteWorkerProperties.PROTOCOL);
-        worker.setEnabled(true);
-        worker.setHealthy(true);
-        worker.setCapabilities(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
-        return worker;
     }
 
     private static AgentRunEntity buildRun(Long runId, AgentRunStatus status) {

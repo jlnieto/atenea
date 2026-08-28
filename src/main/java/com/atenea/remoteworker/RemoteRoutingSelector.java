@@ -70,20 +70,19 @@ public class RemoteRoutingSelector {
         }
     }
 
-    public WorkerNodeEntity refreshKnownWorker(
+    public boolean refreshKnownWorker(
             String expectedWorkerId,
             String requiredCapability
     ) {
-        if (!properties.getWorkerId().equals(expectedWorkerId)) {
-            return null;
-        }
         try {
             RemoteWorkerClient.Health health = client.health();
             if (!validHealth(health)) {
-                return recordUnavailable("Remote worker health response is invalid");
+                recordUnavailable("Remote worker health response is invalid");
+                return false;
             }
             if (!expectedWorkerId.equals(health.workerId())) {
-                return recordUnavailable("Remote worker health identity is incompatible");
+                recordUnavailable("Remote worker health identity is incompatible");
+                return false;
             }
 
             WorkerNodeEntity worker = recordHealth(health, null);
@@ -95,10 +94,12 @@ public class RemoteRoutingSelector {
                 worker.setUnavailableReason(
                         "Worker is unhealthy, incompatible or lacks the required capability");
             }
-            return workerNodeRepository.save(worker);
+            workerNodeRepository.save(worker);
+            return compatible;
         } catch (RemoteWorkerException exception) {
             log.warn("remote worker health refresh failed: {}", exception.getMessage());
-            return recordUnavailable(exception.getMessage());
+            recordUnavailable(exception.getMessage());
+            return false;
         }
     }
 

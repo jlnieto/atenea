@@ -233,13 +233,6 @@ class RemoteSessionServiceIntegrationTest {
         change.setWorkspaceState(DevelopmentChangeWorkspaceState.READY);
         change.setUpdatedAt(Instant.now());
         change = changeRepository.saveAndFlush(change);
-        WorkerNodeEntity worker = workerNodeRepository.findById("synthetic-worker-01").orElseThrow();
-        worker.setEnabled(false);
-        workerNodeRepository.saveAndFlush(worker);
-        assertRejectedWithoutSession("REMOTE_SESSION_WORKER_OWNERSHIP_MISMATCH");
-        worker.setEnabled(true);
-        workerNodeRepository.saveAndFlush(worker);
-
         WorkSessionEntity foreign = exactSession(change, false);
         foreign.setWorkspaceBranch("atenea/foreign-retained");
         workSessionRepository.saveAndFlush(foreign);
@@ -251,6 +244,23 @@ class RemoteSessionServiceIntegrationTest {
         ProjectEntity foreignProject = project("m25-foreign-" + UUID.randomUUID());
         exactSession(change, false, foreignProject);
         assertRejectedWithoutNewSession("REMOTE_SESSION_RETAINED_STATE_AMBIGUOUS");
+    }
+
+    @Test
+    void createsChangeOwnedSessionDespiteStaleWorkerProjection() {
+        WorkerNodeEntity worker = workerNodeRepository.findById("synthetic-worker-01").orElseThrow();
+        worker.setEnabled(false);
+        worker.setHealthy(false);
+        worker.setCapabilities(ProjectCodexIdentity.WORKLOAD_KIND);
+        workerNodeRepository.saveAndFlush(worker);
+
+        var created = service.openOrResolve(
+                actor, project.getId(), change.getChangeKey(), UUID.randomUUID(),
+                new OpenOrResolveRemoteSessionRequest(change.getVersion()));
+
+        assertEquals(RemoteSessionResolution.CREATED, created.resolution());
+        assertEquals("synthetic-worker-01", workSessionRepository.findById(created.sessionId())
+                .orElseThrow().getSelectedWorkerId());
     }
 
     @Test
