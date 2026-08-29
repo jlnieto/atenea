@@ -38,6 +38,11 @@ class CodexExecutionProfileJpaIntegrationTest {
     @Test
     void persistsDefaultsAndKeepsEffectiveRunProfileImmutable() {
         Instant now = Instant.parse("2026-07-31T11:00:00Z");
+        assertEquals(1, jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_constraint
+                WHERE conname = 'ck_agent_run_finished_at_consistency'
+                """, Integer.class));
 
         ProjectEntity project = new ProjectEntity();
         project.setName("codex-profile-integration");
@@ -71,6 +76,58 @@ class CodexExecutionProfileJpaIntegrationTest {
         turn.setCreatedAt(now);
         turn = sessionTurnRepository.save(turn);
 
+        AgentRunEntity run = runningRun(session, turn, project, now);
+        run = agentRunRepository.saveAndFlush(run);
+        Long runId = run.getId();
+
+        entityManager.clear();
+        AgentRunEntity persisted = agentRunRepository.findById(runId).orElseThrow();
+        assertEquals(AgentRunStatus.RUNNING, persisted.getStatus());
+        assertNull(persisted.getFinishedAt());
+        persisted.setCodexModelId("gpt-5.6-terra");
+        persisted.setCodexReasoningEffort(CodexReasoningEffort.MAX);
+        agentRunRepository.saveAndFlush(persisted);
+        entityManager.clear();
+
+        AgentRunEntity reloaded = agentRunRepository.findById(runId).orElseThrow();
+        WorkSessionEntity reloadedSession = workSessionRepository.findById(session.getId()).orElseThrow();
+        assertNull(reloadedSession.getDefaultCodexModelId());
+        assertEquals(CodexReasoningEffort.HIGH, reloadedSession.getDefaultCodexReasoningEffort());
+        assertEquals("gpt-5.6-sol", reloaded.getCodexModelId());
+        assertEquals(CodexReasoningEffort.HIGH, reloaded.getCodexReasoningEffort());
+        assertEquals(ExecutionProfileSource.PROJECT, reloaded.getCodexModelSource());
+        assertEquals(ExecutionProfileSource.WORK_SESSION, reloaded.getCodexEffortSource());
+        assertEquals("a".repeat(64), reloaded.getCodexCatalogRevision());
+        assertEquals("0.145.0", reloaded.getCodexVersion());
+
+        Instant succeededAt = now.plusSeconds(1);
+        reloaded.setStatus(AgentRunStatus.SUCCEEDED);
+        reloaded.setFinishedAt(succeededAt);
+        agentRunRepository.saveAndFlush(reloaded);
+        entityManager.clear();
+        AgentRunEntity succeeded = agentRunRepository.findById(runId).orElseThrow();
+        assertEquals(AgentRunStatus.SUCCEEDED, succeeded.getStatus());
+        assertEquals(AgentRunProcessOutcome.SUCCEEDED, succeeded.getProcessOutcome());
+        assertEquals(succeededAt, succeeded.getFinishedAt());
+
+        AgentRunEntity failed = runningRun(session, turn, project, now.plusSeconds(2));
+        failed = agentRunRepository.saveAndFlush(failed);
+        assertNull(failed.getFinishedAt());
+        Instant failedAt = now.plusSeconds(3);
+        failed.setStatus(AgentRunStatus.FAILED);
+        failed.setFinishedAt(failedAt);
+        failed = agentRunRepository.saveAndFlush(failed);
+        assertEquals(AgentRunStatus.FAILED, failed.getStatus());
+        assertEquals(AgentRunProcessOutcome.FAILED, failed.getProcessOutcome());
+        assertEquals(failedAt, failed.getFinishedAt());
+    }
+
+    private AgentRunEntity runningRun(
+            WorkSessionEntity session,
+            SessionTurnEntity turn,
+            ProjectEntity project,
+            Instant now
+    ) {
         AgentRunEntity run = new AgentRunEntity();
         run.setSession(session);
         run.setOriginTurn(turn);
@@ -87,26 +144,7 @@ class CodexExecutionProfileJpaIntegrationTest {
         run.setCodexEffortSource(ExecutionProfileSource.WORK_SESSION);
         run.setCodexCatalogRevision("a".repeat(64));
         run.setCodexVersion("0.145.0");
-        run = agentRunRepository.saveAndFlush(run);
-        Long runId = run.getId();
-
-        entityManager.clear();
-        AgentRunEntity persisted = agentRunRepository.findById(runId).orElseThrow();
-        persisted.setCodexModelId("gpt-5.6-terra");
-        persisted.setCodexReasoningEffort(CodexReasoningEffort.MAX);
-        agentRunRepository.saveAndFlush(persisted);
-        entityManager.clear();
-
-        AgentRunEntity reloaded = agentRunRepository.findById(runId).orElseThrow();
-        WorkSessionEntity reloadedSession = workSessionRepository.findById(session.getId()).orElseThrow();
-        assertNull(reloadedSession.getDefaultCodexModelId());
-        assertEquals(CodexReasoningEffort.HIGH, reloadedSession.getDefaultCodexReasoningEffort());
-        assertEquals("gpt-5.6-sol", reloaded.getCodexModelId());
-        assertEquals(CodexReasoningEffort.HIGH, reloaded.getCodexReasoningEffort());
-        assertEquals(ExecutionProfileSource.PROJECT, reloaded.getCodexModelSource());
-        assertEquals(ExecutionProfileSource.WORK_SESSION, reloaded.getCodexEffortSource());
-        assertEquals("a".repeat(64), reloaded.getCodexCatalogRevision());
-        assertEquals("0.145.0", reloaded.getCodexVersion());
+        return run;
     }
 
     @Test
