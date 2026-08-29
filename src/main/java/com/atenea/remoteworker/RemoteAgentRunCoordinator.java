@@ -307,6 +307,7 @@ public class RemoteAgentRunCoordinator {
                 return;
             }
             Instant finishedAt = response.finishedAt() == null ? Instant.now() : response.finishedAt();
+            run.setStatus(remoteStatus);
             run.setFinishedAt(finishedAt);
 
             if (remoteStatus == AgentRunStatus.SUCCEEDED) {
@@ -344,7 +345,6 @@ public class RemoteAgentRunCoordinator {
                 run.setOutputSummary(null);
                 run.setErrorSummary(remoteStatus == AgentRunStatus.FAILED ? response.statusReason() : null);
             }
-            run.setStatus(remoteStatus);
             run = agentRunRepository.save(run);
             appendProgress(runId, progressEvents, true);
             if (remoteStatus == AgentRunStatus.SUCCEEDED) {

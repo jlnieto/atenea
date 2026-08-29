@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -16,6 +17,7 @@ import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
 import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
 import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.persistence.worksession.AgentRunEntity;
+import com.atenea.persistence.worksession.AgentRunProcessOutcome;
 import com.atenea.persistence.worksession.AgentRunRecoveryNextAction;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
@@ -151,6 +153,12 @@ class RemoteAgentRunCoordinatorTest {
     void changeBoundRunDispatchesV4WithoutEnsuringAnotherWorkspace() throws Exception {
         AgentRunEntity run = changeBoundRun();
         WorkSessionEntity session = run.getSession();
+        java.util.concurrent.atomic.AtomicReference<AgentRunStatus> statusAtSourceAdvance =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<AgentRunProcessOutcome> outcomeAtSourceAdvance =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<Instant> finishedAtSourceAdvance =
+                new java.util.concurrent.atomic.AtomicReference<>();
         when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
         when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
         when(agentRunRepository.save(any(AgentRunEntity.class)))
@@ -163,16 +171,27 @@ class RemoteAgentRunCoordinatorTest {
             turn.setId(901L);
             return turn;
         });
+        when(sourceAdvanceService.advance(any(), any(), any())).thenAnswer(invocation -> {
+            AgentRunEntity observed = invocation.getArgument(0);
+            statusAtSourceAdvance.set(observed.getStatus());
+            outcomeAtSourceAdvance.set(observed.getProcessOutcome());
+            finishedAtSourceAdvance.set(observed.getFinishedAt());
+            return true;
+        });
         when(client.dispatch(run, "First managed turn")).thenReturn(succeededV4(run));
 
         coordinator.dispatchAfterCommit(run.getId());
         waitForTerminal(run);
 
         assertEquals(AgentRunStatus.SUCCEEDED, run.getStatus());
+        assertEquals(AgentRunStatus.SUCCEEDED, statusAtSourceAdvance.get());
+        assertEquals(AgentRunProcessOutcome.SUCCEEDED, outcomeAtSourceAdvance.get());
+        assertEquals(Instant.parse("2026-07-29T06:00:00Z"), finishedAtSourceAdvance.get());
         assertEquals("project-codex-v4 completed", run.getOutputSummary());
         verify(client, never()).ensureWorkspace(any());
-        verify(client, times(1)).dispatch(run, "First managed turn");
-        verify(sourceAdvanceService, times(1)).advance(
+        org.mockito.InOrder workerThenSource = inOrder(client, sourceAdvanceService);
+        workerThenSource.verify(client).dispatch(run, "First managed turn");
+        workerThenSource.verify(sourceAdvanceService).advance(
                 run, succeededV4(run).result().sourceIdentity(),
                 Instant.parse("2026-07-29T06:00:00Z"));
 
@@ -194,6 +213,8 @@ class RemoteAgentRunCoordinatorTest {
         coordinator.dispatchAfterCommit(failed.getId());
         waitForTerminal(failed);
         assertEquals(AgentRunStatus.FAILED, failed.getStatus());
+        assertEquals(AgentRunProcessOutcome.FAILED, failed.getProcessOutcome());
+        assertEquals(Instant.parse("2026-07-29T06:00:00Z"), failed.getFinishedAt());
         verify(sourceAdvanceService, never()).advance(any(), any(), any());
 
         AgentRunEntity cancelled = changeBoundRun();
@@ -211,6 +232,31 @@ class RemoteAgentRunCoordinatorTest {
         coordinator.requestCancellation(cancelled.getId());
         waitForTerminal(cancelled);
         assertEquals(AgentRunStatus.CANCELLED, cancelled.getStatus());
+        assertEquals(AgentRunProcessOutcome.CANCELLED, cancelled.getProcessOutcome());
+        assertEquals(Instant.parse("2026-07-29T06:00:00Z"), cancelled.getFinishedAt());
+        verify(sourceAdvanceService, never()).advance(any(), any(), any());
+    }
+
+    @Test
+    void nonTerminalWorkerObservationKeepsFinishedAtNull() throws Exception {
+        AgentRunEntity run = changeBoundRun();
+        AgentRunEntity terminalSentinel = changeBoundRun();
+        terminalSentinel.setStatus(AgentRunStatus.FAILED);
+        terminalSentinel.setFinishedAt(Instant.parse("2026-07-29T06:00:01Z"));
+        when(agentRunRepository.findWithSessionById(run.getId())).thenReturn(Optional.of(run));
+        when(agentRunRepository.findById(run.getId())).thenReturn(Optional.of(terminalSentinel));
+        when(agentRunRepository.save(any(AgentRunEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(client.dispatch(run, "First managed turn"))
+                .thenReturn(execution(run, "RUNNING", null));
+
+        coordinator.dispatchAfterCommit(run.getId());
+        waitForRemoteExecution(run);
+
+        assertEquals(AgentRunStatus.RUNNING, run.getStatus());
+        assertNull(run.getProcessOutcome());
+        assertNull(run.getFinishedAt());
+        verify(agentRunRepository).save(run);
         verify(sourceAdvanceService, never()).advance(any(), any(), any());
     }
 
@@ -948,6 +994,14 @@ class RemoteAgentRunCoordinatorTest {
             Thread.sleep(10);
         }
         assertNotNull(run.getFinishedAt());
+    }
+
+    private void waitForRemoteExecution(AgentRunEntity run) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        while (System.nanoTime() < deadline && run.getRemoteExecutionId() == null) {
+            Thread.sleep(10);
+        }
+        assertNotNull(run.getRemoteExecutionId());
     }
 
     private void waitForStatusReason(AgentRunEntity run, String expected) throws InterruptedException {
