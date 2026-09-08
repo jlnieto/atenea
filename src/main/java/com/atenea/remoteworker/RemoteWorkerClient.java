@@ -308,7 +308,9 @@ public class RemoteWorkerClient {
                 || !ProjectCodexIdentity.WORKER_ID.equals(response.workerId())
                 || !requestFingerprint.equals(response.requestFingerprintSha256())
                 || !isSha256(response.ownershipFingerprintSha256())
-                || !isSha256(response.allocationFingerprintSha256())
+                || (body.containsKey("changeKey")
+                    ? response.allocationFingerprintSha256() != null
+                    : !isSha256(response.allocationFingerprintSha256()))
                 || response.valuesExposed()) {
             throw new RemoteWorkerException(
                     "Remote worker release preflight diagnosis was invalid",
@@ -326,6 +328,9 @@ public class RemoteWorkerClient {
             WorkSessionEntity session,
             WorkSessionEntity canonicalSourceWitness
     ) {
+        if (session.getDevelopmentChange() != null) {
+            return changeWorkspaceReleaseRequest(session);
+        }
         String canonicalCommit = exactOwnerCommit(session, canonicalSourceWitness);
         if (canonicalCommit == null || !hasExactReleaseLifecycle(session)) {
             throw new RemoteWorkerException(
@@ -344,6 +349,50 @@ public class RemoteWorkerClient {
                 Map.entry("commit", canonicalCommit),
                 Map.entry("manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256),
                 Map.entry("workspaceBranch", session.getWorkspaceBranch()));
+    }
+
+    private Map<String, Object> changeWorkspaceReleaseRequest(WorkSessionEntity session) {
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        String workspace = "remote:" + ProjectCodexIdentity.WORKER_ID
+                + ":change:" + change.getChangeKey();
+        if (!ProjectCodexIdentity.matches(session)
+                || !ProjectCodexIdentity.matches(change.getProject())
+                || session.getId() == null || session.getId() <= 0
+                || change.getId() == null || change.getChangeKey() == null
+                || session.getProject().getId() == null
+                || !Objects.equals(session.getProject().getId(), change.getProject().getId())
+                || session.getExecutionTarget() != ExecutionTarget.REMOTE
+                || session.getRemoteSessionId() == null
+                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
+                || !ProjectCodexIdentity.WORKER_ID.equals(properties.getWorkerId())
+                || !ProjectCodexIdentity.WORKER_ID.equals(session.getSelectedWorkerId())
+                || !Objects.equals(session.getSelectedWorkerId(), change.getSelectedWorkerId())
+                || !workspace.equals(change.getWorkspaceIdentity())
+                || !workspace.equals(session.getWorkspaceIdentity())
+                || !("atenea/change-" + change.getChangeKey()).equals(change.getWorkspaceBranch())
+                || !Objects.equals(session.getWorkspaceBranch(), change.getWorkspaceBranch())
+                || !("refs/heads/" + ProjectCodexIdentity.BRANCH).equals(change.getBaseRef())
+                || !gitCommit(change.getBaseCommit())
+                || !hasExactReleaseLifecycle(session)) {
+            throw new RemoteWorkerException(
+                    "Persisted change-owned workspace release identity is incomplete or incompatible", 409);
+        }
+        // The binding owns identity. Source/workspace projections do not gate release.
+        String operationId = session.getRemoteCloseOperationId().toString();
+        return Map.ofEntries(
+                Map.entry("operationId", operationId),
+                Map.entry("idempotencyKey", operationId),
+                Map.entry("sessionId", session.getRemoteSessionId().toString()),
+                Map.entry("databaseWorkSessionId", session.getId()),
+                Map.entry("changeKey", change.getChangeKey().toString()),
+                Map.entry("databaseProjectId", change.getProject().getId()),
+                Map.entry("workspaceIdentity", workspace),
+                Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
+                Map.entry("repository", ProjectCodexIdentity.REPOSITORY),
+                Map.entry("branch", ProjectCodexIdentity.BRANCH),
+                Map.entry("baseCommit", change.getBaseCommit()),
+                Map.entry("workspaceBranch", change.getWorkspaceBranch()),
+                Map.entry("workerId", change.getSelectedWorkerId()));
     }
 
     public WorkspaceCapacityOwner diagnoseWorkspaceCapacityOwner(
@@ -473,7 +522,13 @@ public class RemoteWorkerClient {
             JsonNode request,
             JsonNode receipt
     ) {
-        if (!hasExactFields(receipt, WORKSPACE_RELEASE_RECEIPT_FIELDS)
+        boolean changeOwned = request.has("changeKey");
+        Set<String> receiptFields = new HashSet<>(WORKSPACE_RELEASE_RECEIPT_FIELDS);
+        if (changeOwned) {
+            receiptFields.removeAll(Set.of("commit", "manifestSha256"));
+            receiptFields.addAll(Set.of("changeKey", "databaseWorkSessionId", "databaseProjectId", "baseCommit"));
+        }
+        if (!hasExactFields(receipt, receiptFields)
                 || !WORKSPACE_RELEASE_SCHEMA.equals(textValue(receipt, "schemaVersion"))
                 || !"RELEASED".equals(textValue(receipt, "state"))
                 || !ProjectCodexIdentity.WORKER_ID.equals(textValue(receipt, "workerId"))
@@ -487,7 +542,7 @@ public class RemoteWorkerClient {
                 || !receipt.get("valuesExposed").isBoolean()
                 || receipt.get("valuesExposed").booleanValue()
                 || !validRemovedProjection(receipt.get("removed"))
-                || !validReleasedProjection(receipt.get("released"))
+                || !validReleasedProjection(receipt.get("released"), !changeOwned)
                 || !validRetainedProjection(receipt.get("retained"))
                 || !isSha256(textValue(receipt, "ownershipFingerprintSha256"))
                 || !isSha256(textValue(receipt, "receiptSha256"))) {
@@ -510,10 +565,17 @@ public class RemoteWorkerClient {
     }
 
     private boolean requestOwnershipMatchesReceipt(JsonNode request, JsonNode receipt) {
-        for (String field : List.of(
-                "sessionId", "workspaceIdentity", "projectId", "repository", "branch",
-                "commit", "manifestSha256", "workspaceBranch")) {
-            if (!request.get(field).equals(receipt.get(field))) {
+        var fields = request.fieldNames();
+        while (fields.hasNext()) {
+            String field = fields.next();
+            JsonNode expected = request.get(field);
+            JsonNode observed = receipt.get(field);
+            if (expected.isIntegralNumber()) {
+                if (observed == null || !observed.isIntegralNumber()
+                        || !expected.bigIntegerValue().equals(observed.bigIntegerValue())) {
+                    return false;
+                }
+            } else if (!expected.equals(observed)) {
                 return false;
             }
         }
@@ -533,13 +595,13 @@ public class RemoteWorkerClient {
         return true;
     }
 
-    private boolean validReleasedProjection(JsonNode value) {
+    private boolean validReleasedProjection(JsonNode value, boolean expected) {
         if (!hasExactFields(value, WORKSPACE_RELEASE_RELEASED_FIELDS)) {
             return false;
         }
         return WORKSPACE_RELEASE_RELEASED_FIELDS.stream()
                 .allMatch(field -> value.get(field).isBoolean()
-                        && value.get(field).booleanValue());
+                        && value.get(field).booleanValue() == expected);
     }
 
     private boolean validRetainedProjection(JsonNode value) {
@@ -1276,7 +1338,11 @@ public class RemoteWorkerClient {
             Map<String, Boolean> retained,
             String ownershipFingerprintSha256,
             String receiptSha256,
-            boolean valuesExposed
+            boolean valuesExposed,
+            String changeKey,
+            Long databaseWorkSessionId,
+            Long databaseProjectId,
+            String baseCommit
     ) {
     }
 

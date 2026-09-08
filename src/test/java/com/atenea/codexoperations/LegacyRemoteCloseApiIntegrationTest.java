@@ -1031,7 +1031,7 @@ class LegacyRemoteCloseApiIntegrationTest {
                 ProjectCodexIdentity.MANIFEST_SHA256, session.getWorkspaceBranch(),
                 ProjectCodexIdentity.WORKER_ID, "1".repeat(64), 2,
                 java.util.Map.of(), java.util.Map.of(), java.util.Map.of(),
-                "2".repeat(64), "3".repeat(64), false);
+                "2".repeat(64), "3".repeat(64), false, null, null, null, null);
     }
 
     private RemoteWorkerClient.WorkspaceCapacityOwner capacityOwner(

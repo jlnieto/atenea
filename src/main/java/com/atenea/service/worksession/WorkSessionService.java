@@ -426,12 +426,12 @@ public class WorkSessionService {
             Long sessionId,
             boolean allowNewOperation
     ) {
-        WorkSessionEntity session = workSessionRepository.findLockedWithProjectById(sessionId)
+        WorkSessionEntity session = workSessionRepository.findLockedWithProjectAndDevelopmentChangeById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
         if (isPersistedReleasedClose(session)) {
             return new RemoteCloseInvocation(
                     session.getRemoteCloseOperationId(), session,
-                    hasUnactivatedRemoteHistory(session.getId()));
+                    session.getDevelopmentChange() == null && hasUnactivatedRemoteHistory(session.getId()));
         }
         if (session.getStatus() != WorkSessionStatus.CLOSING
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
@@ -467,7 +467,7 @@ public class WorkSessionService {
         WorkSessionEntity persisted = workSessionRepository.saveAndFlush(session);
         return new RemoteCloseInvocation(
                 persisted.getRemoteCloseOperationId(), persisted,
-                hasUnactivatedRemoteHistory(persisted.getId()));
+                persisted.getDevelopmentChange() == null && hasUnactivatedRemoteHistory(persisted.getId()));
     }
 
     private boolean hasUnactivatedRemoteHistory(Long sessionId) {
