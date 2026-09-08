@@ -21,6 +21,7 @@ import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeOperationRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState;
 import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.persistence.project.ProjectEntity;
@@ -335,6 +336,60 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals(3, auditRepository.findAll().stream()
                 .filter(event -> event.getEventType().startsWith("DEVELOPMENT_CHANGE_"))
                 .count());
+    }
+
+    @Test
+    void closedDeclinedSessionAllowsAbandonWithoutIntegrationOrHistoryLoss() {
+        var created = service.create(actor, project.getId(), UUID.randomUUID(),
+                new CreateDevelopmentChangeRequest("Synthetic declined publication"));
+        var change = changeRepository.findByChangeKey(created.developmentChange().changeKey()).orElseThrow();
+        markWorkspaceReady(change);
+        WorkSessionEntity session = matchingSession(project, change);
+        session.setDevelopmentChange(change);
+        session.setStatus(WorkSessionStatus.CLOSING);
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.DECLINED);
+        session.setFinalCommitSha("a".repeat(40));
+        session.setPublishedAt(Instant.now());
+        workSessionRepository.saveAndFlush(session);
+        long runsBefore = agentRunRepository.count();
+
+        assertEquals("DEVELOPMENT_CHANGE_ACTIVE_SESSION_PRESENT",
+                assertThrows(DevelopmentChangeRejectedException.class,
+                        () -> service.abandon(actor, project.getId(), change.getChangeKey(), UUID.randomUUID()))
+                        .response().failureCode());
+
+        // Model the persisted release lifecycle; abandonment is a separate operation from close.
+        session.setRemoteCloseState(RemoteCloseState.REQUESTED);
+        session.setRemoteCloseOperationId(UUID.randomUUID());
+        session.setRemoteCloseRevision(1);
+        session.setRemoteCloseRequestedAt(Instant.now());
+        session.setRemoteCloseUpdatedAt(session.getRemoteCloseRequestedAt());
+        workSessionRepository.saveAndFlush(session);
+        session.setStatus(WorkSessionStatus.CLOSED);
+        session.setClosedAt(Instant.now());
+        session.setRemoteCloseState(RemoteCloseState.RELEASED);
+        session.setRemoteCloseRevision(2);
+        session.setRemoteCloseReceiptSha256("b".repeat(64));
+        session.setRemoteCloseReleasedAt(session.getClosedAt());
+        session.setRemoteCloseUpdatedAt(session.getClosedAt());
+        workSessionRepository.saveAndFlush(session);
+        var closed = service.detail(project.getId(), change.getChangeKey());
+        assertEquals(DevelopmentChangeStatus.OPEN, closed.status());
+        assertNull(closed.activeSessionId());
+        assertEquals(DevelopmentChangeProjectionState.NOT_STARTED, closed.integrationState());
+
+        UUID key = UUID.randomUUID();
+        var abandoned = service.abandon(actor, project.getId(), change.getChangeKey(), key);
+        assertEquals(DevelopmentChangeStatus.ABANDONED, abandoned.developmentChange().status());
+        assertEquals(DevelopmentChangeProjectionState.NOT_STARTED, abandoned.developmentChange().integrationState());
+        assertTrue(service.abandon(actor, project.getId(), change.getChangeKey(), key).replayed());
+        assertEquals(runsBefore, agentRunRepository.count());
+        var retained = workSessionRepository.findById(session.getId()).orElseThrow();
+        assertEquals(WorkSessionPullRequestStatus.DECLINED, retained.getPullRequestStatus());
+        assertEquals("a".repeat(40), retained.getFinalCommitSha());
+        assertNotNull(retained.getPublishedAt());
+        assertNull(retained.getIntegrationReadyAt());
+        assertEquals(change.getId(), retained.getDevelopmentChange().getId());
     }
 
     @Test

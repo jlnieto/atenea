@@ -806,12 +806,16 @@ public class WorkSessionService {
                 && gitRepositoryService.remoteBranchExists(repoPath, workspaceBranch);
         if (sessionHasPublishedPullRequest) {
             syncPullRequestStateForClose(session, repoPath);
+            if (session.getPullRequestStatus() == WorkSessionPullRequestStatus.DECLINED) {
+                // Retain the unintegrated publication; only finalize the session/release below.
+                return;
+            }
             if (session.getPullRequestStatus() != WorkSessionPullRequestStatus.MERGED) {
                 blockClose(
                         session,
                         "pull_request_not_merged",
-                        "WorkSession pull request is not merged yet",
-                        "Merge the pull request and retry close",
+                        "WorkSession pull request is not merged or deliberately closed",
+                        "Merge or close the pull request and retry close",
                         true);
             }
         } else {
@@ -992,7 +996,9 @@ public class WorkSessionService {
         if ("open".equalsIgnoreCase(pullRequest.state())) {
             return WorkSessionPullRequestStatus.OPEN;
         }
-        return WorkSessionPullRequestStatus.DECLINED;
+        return "closed".equalsIgnoreCase(pullRequest.state())
+                ? WorkSessionPullRequestStatus.DECLINED
+                : WorkSessionPullRequestStatus.NOT_CREATED;
     }
 
     private void clearCloseBlock(WorkSessionEntity session) {
