@@ -473,3 +473,4 @@ Current roadmap reading should be:
 - immediate next major step: extend voice capture cleanly beyond the `Core` tab and finish the remaining client hardening on top of the implemented core contract
 - mobile full operation remains important, now over the implemented core contract
 - future planning beyond that: still requires explicit human decisions
+<!-- Creado por el primer dogfooding post-simplificación. -->
