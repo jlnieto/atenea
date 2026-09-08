@@ -211,7 +211,7 @@ class RemoteWorkerClientTest {
             releaseIdempotencyHeader.set(
                     exchange.getRequestHeaders().getFirst("Idempotency-Key"));
             JsonNode request = requestBody.get();
-            byte[] response = objectMapper.writeValueAsBytes(Map.ofEntries(
+            Map<String, Object> diagnosis = new java.util.LinkedHashMap<>(Map.ofEntries(
                     Map.entry("schemaVersion", "project-workspace-release-diagnosis-v1"),
                     Map.entry("state", "PREFLIGHT_ACCEPTED"),
                     Map.entry("operationId", request.get("operationId").asText()),
@@ -223,6 +223,8 @@ class RemoteWorkerClientTest {
                     Map.entry("ownershipFingerprintSha256", "8".repeat(64)),
                     Map.entry("allocationFingerprintSha256", "9".repeat(64)),
                     Map.entry("valuesExposed", false)));
+            if (request.has("changeKey")) diagnosis.put("allocationFingerprintSha256", null);
+            byte[] response = objectMapper.writeValueAsBytes(diagnosis);
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
             exchange.close();
@@ -762,6 +764,98 @@ class RemoteWorkerClientTest {
         assertEquals(6, result.revision());
         assertEquals(true, result.retained().values().stream().allMatch(Boolean.TRUE::equals));
         assertEquals(false, result.valuesExposed());
+    }
+
+    @Test
+    void changeReleaseUsesBindingWithoutCanonicalFieldsOrProjectionGates() {
+        WorkSessionEntity session = releasableChangeSession();
+        RemoteWorkerClient.WorkspaceRelease receipt = client.releaseWorkspace(session);
+        JsonNode request = requestBody.get();
+        assertEquals(Set.of("operationId", "idempotencyKey", "sessionId", "databaseWorkSessionId",
+                "changeKey", "databaseProjectId", "workspaceIdentity", "projectId", "repository",
+                "branch", "baseCommit", "workspaceBranch", "workerId"),
+                objectMapper.convertValue(request, Map.class).keySet());
+        assertEquals(session.getDevelopmentChange().getChangeKey().toString(), receipt.changeKey());
+        assertEquals(session.getId(), receipt.databaseWorkSessionId());
+        assertEquals(session.getProject().getId(), receipt.databaseProjectId());
+        assertNull(receipt.commit());
+        assertNull(receipt.manifestSha256());
+        assertEquals(false, receipt.released().get("allocation"));
+        assertEquals("RELEASED", receipt.state());
+        client.releaseWorkspace(session);
+        assertEquals(request, requestBody.get());
+    }
+
+    @Test
+    void changeReleasePreflightDoesNotInventAllocationFingerprint() {
+        WorkSessionEntity session = releasableChangeSession();
+        var diagnosis = client.diagnoseWorkspaceReleasePreflight(session, session);
+        assertEquals("PREFLIGHT_ACCEPTED", diagnosis.state());
+        assertNull(diagnosis.allocationFingerprintSha256());
+        assertEquals(session.getWorkspaceIdentity(), diagnosis.workspaceIdentity());
+    }
+
+    @Test
+    void changeReleaseRejectsForeignBindingAndMixedLegacyIdentityBeforeNetwork() {
+        List<Consumer<WorkSessionEntity>> mutations = List.of(
+                session -> session.setDevelopmentChange(null),
+                session -> session.getDevelopmentChange().setChangeKey(UUID.randomUUID()),
+                session -> session.getDevelopmentChange().setWorkspaceIdentity("remote:ax42-01:change:" + UUID.randomUUID()),
+                session -> session.setWorkspaceIdentity("remote:ax42-01:work-session:" + session.getRemoteSessionId()),
+                session -> session.setWorkspaceBranch("atenea/session-" + session.getRemoteSessionId()),
+                session -> session.getDevelopmentChange().setWorkspaceBranch("atenea/change-" + UUID.randomUUID()),
+                session -> session.setSelectedWorkerId("foreign-worker"),
+                session -> session.getDevelopmentChange().setSelectedWorkerId("foreign-worker"),
+                session -> {
+                    ProjectEntity foreign = new ProjectEntity();
+                    foreign.setId(999L);
+                    foreign.setName(ProjectCodexIdentity.PROJECT_NAME);
+                    foreign.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+                    foreign.setDefaultBaseBranch("main");
+                    session.getDevelopmentChange().setProject(foreign);
+                },
+                session -> session.getProject().setRepoPath("/workspace/repos/internal/foreign"),
+                session -> session.getDevelopmentChange().setBaseRef("refs/heads/foreign"),
+                session -> session.setRemoteCloseOperationId(null));
+        for (Consumer<WorkSessionEntity> mutation : mutations) {
+            WorkSessionEntity session = releasableChangeSession();
+            mutation.accept(session);
+            assertEquals(409, assertThrows(RemoteWorkerException.class,
+                    () -> client.releaseWorkspace(session)).getStatusCode());
+            assertNull(requestBody.get());
+        }
+    }
+
+    @Test
+    void changeReleaseRequiresExactReceiptIncludingBindingAndInapplicableLegacyResources() {
+        List<Consumer<Map<String, Object>>> mutations = List.of(
+                receipt -> receipt.put("changeKey", UUID.randomUUID().toString()),
+                receipt -> receipt.put("databaseWorkSessionId", 999L),
+                receipt -> receipt.put("databaseProjectId", 999L),
+                receipt -> receipt.put("baseCommit", "f".repeat(40)),
+                receipt -> receipt.put("manifestSha256", "f".repeat(64)),
+                receipt -> receipt.put("released", Map.of("registration", true,
+                        "normalAdmission", true, "heavyAdmission", true, "allocation", true)));
+        for (Consumer<Map<String, Object>> mutation : mutations) {
+            releaseReceiptMutation.set(receipt -> {
+                mutation.accept(receipt);
+                sealWorkspaceReleaseReceipt(receipt);
+            });
+            assertEquals(502, assertThrows(RemoteWorkerException.class,
+                    () -> client.releaseWorkspace(releasableChangeSession())).getStatusCode());
+        }
+    }
+
+    private WorkSessionEntity releasableChangeSession() {
+        WorkSessionEntity session = changeBoundRun().getSession();
+        session.getProject().setDefaultBaseBranch("main");
+        clearCanonicalSourceObservation(session);
+        session.setRemoteCloseState(RemoteCloseState.RECONCILING);
+        session.setRemoteCloseOperationId(UUID.fromString("22222222-2222-4222-8222-222222222222"));
+        session.setRemoteCloseRevision(3);
+        session.setRemoteCloseRequestedAt(Instant.parse("2026-08-03T09:00:00Z"));
+        session.setRemoteCloseUpdatedAt(Instant.parse("2026-08-03T09:00:00Z"));
+        return session;
     }
 
     @Test
@@ -1553,7 +1647,7 @@ class RemoteWorkerClientTest {
         Map<String, Object> receipt = new java.util.LinkedHashMap<>();
         receipt.put("schemaVersion", "project-workspace-release-v1");
         receipt.put("state", "RELEASED");
-        request.fields().forEachRemaining(entry -> receipt.put(entry.getKey(), entry.getValue().asText()));
+        request.fields().forEachRemaining(entry -> receipt.put(entry.getKey(), objectMapper.convertValue(entry.getValue(), Object.class)));
         receipt.put("workerId", ProjectCodexIdentity.WORKER_ID);
         receipt.put("requestFingerprintSha256", canonicalSha256(request));
         receipt.put("revision", 6);
@@ -1565,10 +1659,10 @@ class RemoteWorkerClientTest {
                 "brokerResources", 0,
                 "browserProcesses", 0));
         receipt.put("released", Map.of(
-                "registration", true,
-                "normalAdmission", true,
-                "heavyAdmission", true,
-                "allocation", true));
+                "registration", !request.has("changeKey"),
+                "normalAdmission", !request.has("changeKey"),
+                "heavyAdmission", !request.has("changeKey"),
+                "allocation", !request.has("changeKey")));
         receipt.put("retained", Map.of(
                 "workspaceRecord", true,
                 "worktree", true,

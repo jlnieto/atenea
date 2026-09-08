@@ -978,7 +978,9 @@ class WorkSessionServiceTest {
         UUID operationId = UUID.fromString("22222222-2222-4222-8222-222222222222");
         WorkSessionEntity released = remoteSession(repoPath);
         markReleased(released, operationId);
-        when(workSessionRepository.findLockedWithProjectById(12L))
+        when(workSessionRepository.findLockedWithProjectAndDevelopmentChangeById(12L))
+                .thenReturn(Optional.of(released));
+        lenient().when(workSessionRepository.findLockedWithProjectById(12L))
                 .thenReturn(Optional.of(released));
         when(remoteWorkerClient.releaseWorkspace(released)).thenReturn(releasedReceipt(released));
 
@@ -1020,8 +1022,10 @@ class WorkSessionServiceTest {
         markReleased(released, operationId);
         when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
                 ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(workSessionRepository.findLockedWithProjectAndDevelopmentChangeById(12L))
+                .thenReturn(Optional.of(requested));
         when(workSessionRepository.findLockedWithProjectById(12L))
-                .thenReturn(Optional.of(requested), Optional.of(released));
+                .thenReturn(Optional.of(released));
         when(workSessionRepository.saveAndFlush(requested)).thenReturn(requested);
         when(remoteWorkerClient.releaseWorkspace(requested)).thenThrow(
                 new RemoteWorkerException("Remote worker I/O failed", new IOException("closed")));
@@ -1439,6 +1443,8 @@ class WorkSessionServiceTest {
         session.setPullRequestStatus(WorkSessionPullRequestStatus.OPEN);
         session.setFinalCommitSha("a".repeat(40));
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        lenient().when(workSessionRepository.findLockedWithProjectAndDevelopmentChangeById(12L))
+                .thenReturn(Optional.of(session));
         lenient().when(workSessionRepository.findLockedWithProjectById(12L)).thenReturn(Optional.of(session));
         lenient().when(workSessionRepository.saveAndFlush(any(WorkSessionEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -1533,6 +1539,8 @@ class WorkSessionServiceTest {
 
     private void prepareSuccessfulCloseMocks(WorkSessionEntity session, Path repoPath) {
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        lenient().when(workSessionRepository.findLockedWithProjectAndDevelopmentChangeById(12L))
+                .thenReturn(Optional.of(session));
         lenient().when(workSessionRepository.findLockedWithProjectById(12L))
                 .thenReturn(Optional.of(session));
         lenient().when(workSessionRepository.saveAndFlush(any(WorkSessionEntity.class)))
@@ -1596,7 +1604,7 @@ class WorkSessionServiceTest {
                         "policyVolumes", true),
                 "4".repeat(64),
                 "9".repeat(64),
-                false);
+                false, null, null, null, null);
     }
 
     private void markReleased(WorkSessionEntity session, UUID operationId) {
