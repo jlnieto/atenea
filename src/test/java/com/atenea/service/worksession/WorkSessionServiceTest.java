@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -63,6 +64,9 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
@@ -1325,6 +1329,133 @@ class WorkSessionServiceTest {
 
         assertEquals(WorkSessionStatus.CLOSED, response.status());
         assertEquals(AgentRunStatus.FAILED, staleRun.getStatus());
+    }
+
+    @Test
+    void mergedPublicationStillClosesWithExistingGitCleanup() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/merged"));
+        WorkSessionEntity session = publishedRemoteSession(repoPath);
+        when(gitHubClient.getPullRequest(any(), anyLong()))
+                .thenReturn(publishedPullRequest(session, "closed", true));
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString()))
+                .thenReturn(session.getWorkspaceBranch(), "main");
+        when(gitRepositoryService.branchExists(repoPath.toString(), session.getWorkspaceBranch()))
+                .thenReturn(true, false);
+        when(gitRepositoryService.remoteBranchExists(repoPath.toString(), session.getWorkspaceBranch()))
+                .thenReturn(true, false);
+        when(remoteWorkerClient.releaseWorkspace(session)).thenAnswer(ignored -> releasedReceipt(session));
+
+        WorkSessionResponse result = workSessionService.closeSession(12L);
+
+        assertEquals(WorkSessionStatus.CLOSED, result.status());
+        assertEquals(WorkSessionPullRequestStatus.MERGED, result.pullRequestStatus());
+        verify(gitRepositoryService).checkoutBranch(repoPath.toString(), "main");
+        verify(gitRepositoryService).fastForwardCurrentBranchToOrigin(repoPath.toString(), "main");
+        verify(gitRepositoryService).deleteLocalBranch(repoPath.toString(), session.getWorkspaceBranch());
+        verify(gitRepositoryService).deleteRemoteBranch(repoPath.toString(), session.getWorkspaceBranch());
+    }
+
+    @Test
+    void declinedPublicationResumesBlockedClosingAndRetainsEvidenceIdempotently() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/declined"));
+        WorkSessionEntity session = publishedRemoteSession(repoPath);
+        Instant publishedAt = session.getPublishedAt();
+        var acceptance = session.getAcceptanceState();
+        when(gitHubClient.getPullRequest(any(), anyLong()))
+                .thenReturn(publishedPullRequest(session, "open", false),
+                        publishedPullRequest(session, "closed", false));
+        when(remoteWorkerClient.releaseWorkspace(session)).thenAnswer(ignored -> releasedReceipt(session));
+
+        assertEquals("pull_request_not_merged", assertThrows(WorkSessionCloseBlockedException.class,
+                () -> workSessionService.closeSession(12L)).getState());
+        assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
+        assertEquals(RemoteCloseState.NOT_STARTED, session.getRemoteCloseState());
+        assertNull(session.getClosedAt());
+        verify(remoteWorkerClient, never()).releaseWorkspace(any());
+
+        WorkSessionResponse result = workSessionService.closeSession(12L);
+        UUID operationId = session.getRemoteCloseOperationId();
+        WorkSessionResponse replay = workSessionService.closeSession(12L);
+
+        assertEquals(WorkSessionStatus.CLOSED, result.status());
+        assertEquals(RemoteCloseState.RELEASED, result.remoteCloseState());
+        assertEquals(WorkSessionPullRequestStatus.DECLINED, result.pullRequestStatus());
+        assertEquals(result, replay);
+        assertEquals(operationId, session.getRemoteCloseOperationId());
+        assertNull(session.getCloseBlockedState());
+        assertNull(session.getIntegrationReadyAt());
+        assertEquals(acceptance, session.getAcceptanceState());
+        assertEquals("a".repeat(40), session.getFinalCommitSha());
+        assertEquals(publishedAt, session.getPublishedAt());
+        verify(remoteWorkerClient, times(1)).releaseWorkspace(session);
+        verify(gitRepositoryService, never()).checkoutBranch(any(), any());
+        verify(gitRepositoryService, never()).fastForwardCurrentBranchToOrigin(any(), any());
+        verify(gitRepositoryService, never()).deleteLocalBranch(any(), any());
+        verify(gitRepositoryService, never()).deleteRemoteBranch(any(), any());
+        verify(gitRepositoryService, never()).commit(any(), any());
+        verify(gitRepositoryService, never()).pushBranchSetUpstream(any(), any());
+        verify(agentRunRepository, never()).save(any());
+        verify(agentRunRepository, never()).saveAndFlush(any());
+        verify(gitHubClient, times(2)).getPullRequest(any(), anyLong());
+        verify(gitHubClient, times(2)).resolveRepository(any());
+        verify(gitHubClient, times(2)).extractPullRequestNumber(any());
+        org.mockito.Mockito.verifyNoMoreInteractions(gitHubClient);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"open", "unknown"})
+    void nonterminalPublicationStillBlocksClose(String state) throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/nonterminal"));
+        WorkSessionEntity session = publishedRemoteSession(repoPath);
+        when(gitHubClient.getPullRequest(any(), anyLong()))
+                .thenReturn(publishedPullRequest(session, state, false));
+
+        assertEquals("pull_request_not_merged", assertThrows(WorkSessionCloseBlockedException.class,
+                () -> workSessionService.closeSession(12L)).getState());
+        assertEquals(WorkSessionStatus.CLOSING, session.getStatus());
+        assertNull(session.getClosedAt());
+        assertFalse(session.getPullRequestStatus() == WorkSessionPullRequestStatus.DECLINED);
+        verify(remoteWorkerClient, never()).releaseWorkspace(any());
+        verify(gitRepositoryService, never()).deleteRemoteBranch(any(), any());
+    }
+
+    @Test
+    void publishedSessionWithoutPullRequestUrlStillBlocksClose() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/internal/missing-pr"));
+        WorkSessionEntity session = publishedRemoteSession(repoPath);
+        session.setPullRequestUrl(null);
+
+        assertEquals("published_without_pull_request_url", assertThrows(WorkSessionCloseBlockedException.class,
+                () -> workSessionService.closeSession(12L)).getState());
+        verify(remoteWorkerClient, never()).releaseWorkspace(any());
+        verify(gitRepositoryService, never()).deleteRemoteBranch(any(), any());
+    }
+
+    private WorkSessionEntity publishedRemoteSession(Path repoPath) {
+        WorkSessionEntity session = remoteSession(repoPath);
+        session.setPublishedAt(Instant.parse("2026-03-25T10:08:00Z"));
+        session.setPullRequestUrl("https://github.com/acme/atenea/pull/42");
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.OPEN);
+        session.setFinalCommitSha("a".repeat(40));
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        lenient().when(workSessionRepository.findLockedWithProjectById(12L)).thenReturn(Optional.of(session));
+        lenient().when(workSessionRepository.saveAndFlush(any(WorkSessionEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(gitRepositoryService.getCurrentBranch(repoPath.toString())).thenReturn(session.getWorkspaceBranch());
+        when(gitRepositoryService.isWorkingTreeClean(repoPath.toString())).thenReturn(true);
+        when(gitRepositoryService.branchExists(repoPath.toString(), session.getWorkspaceBranch())).thenReturn(true);
+        when(gitRepositoryService.remoteBranchExists(repoPath.toString(), session.getWorkspaceBranch())).thenReturn(true);
+        lenient().when(gitRepositoryService.getOriginRemoteUrl(repoPath.toString())).thenReturn("git@github.com:acme/atenea.git");
+        lenient().when(gitHubClient.resolveRepository(any())).thenReturn(new GitHubRepositoryRef("acme", "atenea"));
+        lenient().when(gitHubClient.extractPullRequestNumber(any())).thenReturn(42L);
+        lenient().when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        return session;
+    }
+
+    private GitHubPullRequest publishedPullRequest(WorkSessionEntity session, String state, boolean merged) {
+        return new GitHubPullRequest(42L, session.getPullRequestUrl(), state, merged,
+                "acme/atenea", "main", "acme/atenea", session.getWorkspaceBranch(), session.getFinalCommitSha());
     }
 
     @Test
