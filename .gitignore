@@ -4,6 +4,7 @@ target/
 node_modules/
 *.tsbuildinfo
 android/.gradle/
+android/.cache/
 android/**/build/
 android/local.properties
 operator-uploads/
