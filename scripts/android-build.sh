@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE_NAME="${ATENEA_ANDROID_BUILDER_IMAGE:-atenea-android-builder:local}"
-ANDROID_HOME_DIR="${ATENEA_ANDROID_HOME_DIR:-/srv/atenea/platform/secrets/android-home}"
+ANDROID_HOME_DIR="${ATENEA_ANDROID_HOME_DIR:-$REPO_DIR/android/.cache/android-home}"
 APK_SECRET_FILE="${ATENEA_APK_SECRET_FILE:-/srv/atenea/platform/secrets/android-apk-download.env}"
 ANDROID_ENV="${ATENEA_ANDROID_ENV:-prod}"
 FIREBASE_SECRET_FILE="${ATENEA_ANDROID_FIREBASE_FILE:-/srv/atenea/platform/secrets/android-firebase-${ANDROID_ENV}.env}"
@@ -12,17 +12,34 @@ GRADLE_TASK="${1:-:app:assembleDebug}"
 
 shift || true
 
+# Android's aggregate :core-console:test task does not accept Gradle's --tests
+# filter. Keep the documented focal command useful by directing its selected
+# invocation to the concrete debug unit-test task.
+if [[ "$GRADLE_TASK" == ":core-console:test" ]]; then
+  for argument in "$@"; do
+    if [[ "$argument" == "--tests" ]]; then
+      GRADLE_TASK=":core-console:testDebugUnitTest"
+      break
+    fi
+  done
+fi
+
 cd "$REPO_DIR"
 
 install -d -m 700 "$ANDROID_HOME_DIR"
 
-if [[ -f "$APK_SECRET_FILE" ]]; then
-  # shellcheck source=/dev/null
-  source "$APK_SECRET_FILE"
-fi
-if [[ -f "$FIREBASE_SECRET_FILE" ]]; then
-  # shellcheck source=/dev/null
-  source "$FIREBASE_SECRET_FILE"
+# Unit tests for library modules do not produce an APK and must not need either
+# platform-owned secret files or their directories. APK builds retain the
+# existing optional configuration behaviour.
+if [[ "$GRADLE_TASK" == :app:assemble* || "$GRADLE_TASK" == :app:bundle* ]]; then
+  if [[ -f "$APK_SECRET_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$APK_SECRET_FILE"
+  fi
+  if [[ -f "$FIREBASE_SECRET_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$FIREBASE_SECRET_FILE"
+  fi
 fi
 
 EXTRA_GRADLE_ARGS=()
