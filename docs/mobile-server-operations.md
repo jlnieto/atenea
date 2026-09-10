@@ -117,6 +117,31 @@ El backend ya puede sincronizar y cerrar:
 
 Lo que no está implementado todavía es fusionar la pull request desde Atenea. Hoy el merge debe hacerse fuera de Atenea, normalmente desde GitHub, y después ejecutar `sync_work_session_pull_request` y `close_work_session`.
 
+## Sincronizar el `main` canónico con el mirror operativo
+
+`github/main` es la autoridad de código. `origin/main` sólo es el mirror del
+workspace operativo; no recibe merges automáticamente. Antes de ejecutar un
+build, preview, producción o release desde ese workspace, un operador autorizado
+puede ejecutar este procedimiento `sync-canonical-main`:
+
+```bash
+git fetch github main
+git fetch origin main
+git merge-base --is-ancestor origin/main github/main || {
+  echo "Divergencia: abortar y resolver manualmente" >&2
+  exit 1
+}
+git push origin github/main:refs/heads/main
+git fetch origin main
+test "$(git rev-parse origin/main)" = "$(git rev-parse github/main)"
+```
+
+La comprobación de ancestry es obligatoria: si falla, no se hace push ni se
+intenta elegir una base. El push sólo puede avanzar `origin/main` hasta el SHA
+actual de `github/main`; están prohibidos `--force`, `--force-with-lease` y
+cualquier reescritura. El procedimiento termina únicamente cuando ambos SHAs
+se imprimen iguales y se conservan en el registro operativo.
+
 Si queremos merge completo desde móvil, el siguiente bloque debe añadir una capacidad confirmable:
 
 - `merge_work_session_pull_request`
