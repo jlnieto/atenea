@@ -17,6 +17,10 @@ Preserve these boundaries:
 Use `./scripts/test.sh` for Maven tests and the scripts under `scripts/` for
 repo-specific build/run operations.
 
+Después de un cambio committeado y antes de abrir una PR, ejecuta
+`./scripts/validate-change`. Si UFD produce un plan, respétalo y no lo sustituyas
+manualmente por una selección más permisiva.
+
 ## Autoridad de `main`
 
 `github/main` es la autoridad de código e integración de Atenea app. `origin/main`
