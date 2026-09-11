@@ -24,16 +24,19 @@ public final class ProjectCodexIdentity {
     public static boolean matches(ProjectEntity project) {
         return project != null
                 && PROJECT_NAME.equals(project.getName())
-                && REPO_PATH.equals(project.getRepoPath())
+                && hasConfiguredRepoPath(project.getRepoPath())
                 && BRANCH.equals(project.getDefaultBaseBranch());
     }
 
     public static boolean matches(WorkSessionEntity session) {
         return session != null
                 && session.getProject() != null
-                && PROJECT_NAME.equals(session.getProject().getName())
-                && REPO_PATH.equals(session.getProject().getRepoPath())
+                && matches(session.getProject())
                 && BRANCH.equals(session.getBaseBranch());
+    }
+
+    private static boolean hasConfiguredRepoPath(String repoPath) {
+        return repoPath != null && !repoPath.isBlank();
     }
 
     public static boolean matches(AgentRunEntity run) {
