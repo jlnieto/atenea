@@ -72,7 +72,7 @@ class ChangeOwnedReleaseIntegrationTest {
         ProjectEntity project = projects.findByName("Atenea").orElseGet(() -> {
             ProjectEntity created = new ProjectEntity();
             created.setName("Atenea");
-            created.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+            created.setRepoPath("/repos/atenea");
             created.setDefaultBaseBranch("main");
             created.setCreatedAt(now);
             created.setUpdatedAt(now);
@@ -127,7 +127,7 @@ class ChangeOwnedReleaseIntegrationTest {
         session.setUpdatedAt(now);
         session = sessions.saveAndFlush(session);
         when(paths.normalizeNullableText(any())).thenCallRealMethod();
-        when(paths.normalizeConfiguredRepoPath(ProjectCodexIdentity.REPO_PATH)).thenReturn("/synthetic/atenea");
+        when(paths.normalizeConfiguredRepoPath("/repos/atenea")).thenReturn("/synthetic/atenea");
         when(git.getCurrentBranch(anyString())).thenReturn("main");
         when(git.isWorkingTreeClean(anyString())).thenReturn(true);
         when(git.getOriginRemoteUrl(anyString())).thenReturn(ProjectCodexIdentity.REPOSITORY);
@@ -183,6 +183,7 @@ class ChangeOwnedReleaseIntegrationTest {
         assertEquals(operation, persisted.getRemoteCloseOperationId());
         assertEquals(6, persisted.getRemoteCloseRevision());
         assertEquals(1, releases.get());
+        verify(paths, atLeastOnce()).normalizeConfiguredRepoPath("/repos/atenea");
         assertEquals(change.getChangeKey().toString(), request.get().get("changeKey").asText());
         assertEquals(session.getId().longValue(), request.get().get("databaseWorkSessionId").longValue());
         assertFalse(request.get().has("manifestSha256"));

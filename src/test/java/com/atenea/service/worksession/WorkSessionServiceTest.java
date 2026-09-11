@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
@@ -942,6 +943,27 @@ class WorkSessionServiceTest {
         assertEquals(RemoteCloseState.RELEASED, repeated.remoteCloseState());
         assertEquals("9".repeat(64), session.getRemoteCloseReceiptSha256());
         verify(remoteWorkerClient, times(1)).releaseWorkspace(session);
+    }
+
+    @Test
+    void remoteCloseUsesTheEffectiveConfiguredAteneaRepositoryPath() throws IOException {
+        Path repoPath = createGitRepo(tempDir.resolve("repos/atenea"));
+        WorkSessionEntity session = remoteSession(repoPath);
+        session.getProject().setRepoPath("/repos/atenea");
+        lenient().doReturn(repoPath.toString()).when(validator)
+                .normalizeConfiguredRepoPath("/repos/atenea");
+        prepareSuccessfulCloseMocks(session, repoPath);
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor(
+                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
+        when(remoteWorkerClient.releaseWorkspace(session)).thenAnswer(
+                ignored -> releasedReceipt(session));
+
+        WorkSessionResponse response = workSessionService.closeSession(12L);
+
+        assertEquals(WorkSessionStatus.CLOSED, response.status());
+        assertEquals(RemoteCloseState.RELEASED, response.remoteCloseState());
+        verify(validator, atLeastOnce()).normalizeConfiguredRepoPath("/repos/atenea");
+        verify(remoteWorkerClient).releaseWorkspace(session);
     }
 
     @Test
