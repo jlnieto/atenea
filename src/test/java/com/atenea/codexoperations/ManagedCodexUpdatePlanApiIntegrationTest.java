@@ -483,6 +483,64 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 .andExpect(jsonPath("$.consumedRollbackId").value(rollbackId));
     }
 
+    @Test
+    void administratorReconcilesExactInstalledReleasesIdempotentlyWithAbsentPrevious()
+            throws Exception {
+        OperatorEntity routine = operator(CodexOperationsRole.ROUTINE_OPERATOR);
+        OperatorEntity administrator = operator(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        workerWithoutInventory();
+        UUID key = UUID.randomUUID();
+        UUID planId = UUID.fromString("15414500-0000-4000-8000-000000000001");
+        UUID currentId = UUID.fromString("15414500-0000-4000-8000-000000000002");
+        UUID candidateId = UUID.fromString("15414500-0000-4000-8000-000000000003");
+        when(remoteWorkerClient.reconcileInstalledCodexReleases(key)).thenReturn(
+                reconciliationResult(key, planId, currentId, candidateId));
+        String body = """
+                {"operation":"RECONCILE_INSTALLED_CODEX_RELEASES","idempotencyKey":"%s"}
+                """.formatted(key);
+
+        mockMvc.perform(post("/api/admin/codex/reconcile-installed-releases")
+                        .with(auth(routine)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        String first = mockMvc.perform(post("/api/admin/codex/reconcile-installed-releases")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("RECONCILED"))
+                .andExpect(jsonPath("$.current.codexVersion").value("0.154.0"))
+                .andExpect(jsonPath("$.current.installationState").value("INSTALLED"))
+                .andExpect(jsonPath("$.current.linkState").value("CURRENT"))
+                .andExpect(jsonPath("$.candidate.codexVersion").value("0.145.0"))
+                .andExpect(jsonPath("$.candidate.installationState").value("STAGED"))
+                .andExpect(jsonPath("$.candidate.linkState").value("NONE"))
+                .andExpect(jsonPath("$.previousState").value("ABSENT"))
+                .andExpect(jsonPath("$.previousCompatibilityState").value("UNKNOWN"))
+                .andExpect(jsonPath("$.gates.length()").value(6))
+                .andExpect(jsonPath("$.valuesExposed").value(false))
+                .andExpect(jsonPath("$.path").doesNotExist())
+                .andExpect(jsonPath("$.version").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        String second = mockMvc.perform(post("/api/admin/codex/reconcile-installed-releases")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        assertEquals(first, second);
+        verify(remoteWorkerClient, times(1)).reconcileInstalledCodexReleases(key);
+        assertEquals("RECOVERY", jdbcTemplate.queryForObject(
+                "SELECT plan_kind FROM worker_codex_update_plan WHERE plan_id = ?",
+                String.class, planId));
+        assertEquals("ABSENT_UNKNOWN", jdbcTemplate.queryForObject(
+                "SELECT previous_bootstrap_state FROM worker_codex_update_plan WHERE plan_id = ?",
+                String.class, planId));
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM worker_codex_release_inventory WHERE link_state = 'PREVIOUS'",
+                Integer.class));
+        mockMvc.perform(post("/api/admin/codex/reconcile-installed-releases")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.substring(0, body.lastIndexOf('}'))
+                                + ",\"path\":\"/tmp/foreign\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
     private Inventory inventory(boolean candidate) {
         jdbcTemplate.update("""
                 INSERT INTO worker_node (id, protocol_version, endpoint, enabled, healthy,
@@ -501,6 +559,16 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 ? release("0.146.0", "3".repeat(64), "DISCOVERED", "NONE", CATALOG, 4)
                 : null;
         return new Inventory(current, previous, candidateId);
+    }
+
+    private void workerWithoutInventory() {
+        jdbcTemplate.update("""
+                INSERT INTO worker_node (id, protocol_version, endpoint, enabled, healthy,
+                    normal_capacity, heavy_capacity, capabilities, created_at, updated_at)
+                VALUES (?, 'agent-run-worker/v1', 'https://worker.invalid', true, true,
+                    4, 2, 'project-codex-v4,codex-release-reconcile-v1',
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, WORKER_ID);
     }
 
     private UUID release(String version, String digest, String installation, String link,
@@ -631,6 +699,22 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 planId, candidateId, idempotencyKey, "STAGED", "0.146.0",
                 releaseDigest, CATALOG, proof, proof,
                 "PASS", "PASS", "PASS", proof, proof, false, false);
+    }
+
+    private RemoteWorkerClient.CodexReleaseReconciliation reconciliationResult(
+            UUID idempotencyKey, UUID planId, UUID currentId, UUID candidateId) {
+        String proof = "a".repeat(64);
+        return new RemoteWorkerClient.CodexReleaseReconciliation(
+                "codex-release-reconcile-v1", "RECONCILE_INSTALLED_CODEX_RELEASES",
+                WORKER_ID, idempotencyKey, "RECONCILED", planId, currentId, candidateId,
+                "0.154.0", "0.145.0",
+                "37de474b157b0313c73ddc05928855f61517676138827df51660fe8715dca14f",
+                "56da3312ccb2109a2f4e0d71b003f08d33244ec6f5863e8fc7f6f24b7a6489c2",
+                "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187",
+                "INSTALLED", "CURRENT", "UNKNOWN", "STAGED", "NONE", "COMPATIBLE",
+                "ABSENT", "UNKNOWN", "PASS", "PASS", "PASS", "PASS", "PASS",
+                "PASS", proof, true, proof, proof, proof, false,
+                Instant.parse("2026-09-17T23:00:00Z"));
     }
 
     private RemoteWorkerClient.CodexUpdateActivation activationResult(

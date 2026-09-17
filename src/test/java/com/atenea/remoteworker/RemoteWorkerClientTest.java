@@ -354,6 +354,48 @@ class RemoteWorkerClientTest {
             exchange.getResponseBody().write(response);
             exchange.close();
         });
+        server.createContext("/v1/codex/update/reconcile-installed", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
+                    java.util.Map.entry("schemaVersion", "codex-release-reconcile-v1"),
+                    java.util.Map.entry("operation", request.get("operation").asText()),
+                    java.util.Map.entry("workerId", "ax42-01"),
+                    java.util.Map.entry("idempotencyKey", request.get("idempotencyKey").asText()),
+                    java.util.Map.entry("state", "RECONCILED"),
+                    java.util.Map.entry("planId", "15414500-0000-4000-8000-000000000001"),
+                    java.util.Map.entry("currentInventoryId", "15414500-0000-4000-8000-000000000002"),
+                    java.util.Map.entry("candidateInventoryId", "15414500-0000-4000-8000-000000000003"),
+                    java.util.Map.entry("currentVersion", "0.154.0"),
+                    java.util.Map.entry("candidateVersion", "0.145.0"),
+                    java.util.Map.entry("currentReleaseDigestSha256", "1".repeat(64)),
+                    java.util.Map.entry("candidateReleaseDigestSha256", "2".repeat(64)),
+                    java.util.Map.entry("candidateCatalogRevision", "3".repeat(64)),
+                    java.util.Map.entry("currentInstallationState", "INSTALLED"),
+                    java.util.Map.entry("currentLinkState", "CURRENT"),
+                    java.util.Map.entry("currentCompatibilityState", "UNKNOWN"),
+                    java.util.Map.entry("candidateInstallationState", "STAGED"),
+                    java.util.Map.entry("candidateLinkState", "NONE"),
+                    java.util.Map.entry("candidateCompatibilityState", "COMPATIBLE"),
+                    java.util.Map.entry("previousState", "ABSENT"),
+                    java.util.Map.entry("previousCompatibilityState", "UNKNOWN"),
+                    java.util.Map.entry("structureVerification", "PASS"),
+                    java.util.Map.entry("permissionVerification", "PASS"),
+                    java.util.Map.entry("metadataVerification", "PASS"),
+                    java.util.Map.entry("versionVerification", "PASS"),
+                    java.util.Map.entry("hashVerification", "PASS"),
+                    java.util.Map.entry("zeroNonTerminalRuns", "PASS"),
+                    java.util.Map.entry("currentLinkFingerprint", "4".repeat(64)),
+                    java.util.Map.entry("linksChanged", true),
+                    java.util.Map.entry("inventorySha256", "5".repeat(64)),
+                    java.util.Map.entry("planSha256", "6".repeat(64)),
+                    java.util.Map.entry("registrySha256", "7".repeat(64)),
+                    java.util.Map.entry("valuesExposed", false),
+                    java.util.Map.entry("completedAt", "2026-09-17T23:00:00Z")));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
         server.createContext("/v1/codex/update/activate", exchange -> {
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
             JsonNode request = requestBody.get();
@@ -996,6 +1038,26 @@ class RemoteWorkerClientTest {
         assertNull(body.get("path"));
         assertNull(body.get("command"));
         assertNull(body.get("service"));
+    }
+
+    @Test
+    void codexReleaseReconciliationSendsNoPathVersionCommandOrSymlinkAuthority() {
+        UUID idempotencyKey = UUID.randomUUID();
+
+        RemoteWorkerClient.CodexReleaseReconciliation result =
+                client.reconcileInstalledCodexReleases(idempotencyKey);
+
+        JsonNode body = requestBody.get();
+        assertEquals(Set.of("operation", "idempotencyKey"),
+                objectMapper.convertValue(body, java.util.Map.class).keySet());
+        assertEquals("RECONCILE_INSTALLED_CODEX_RELEASES", body.get("operation").asText());
+        assertEquals(idempotencyKey.toString(), body.get("idempotencyKey").asText());
+        assertEquals("RECONCILED", result.state());
+        assertEquals("ABSENT", result.previousState());
+        for (String forbidden : List.of(
+                "path", "source", "destination", "version", "command", "symlink")) {
+            assertNull(body.get(forbidden));
+        }
     }
 
     @Test

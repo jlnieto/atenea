@@ -113,6 +113,16 @@ public class RemoteWorkerClient {
                 Duration.ofMinutes(5));
     }
 
+    public CodexReleaseReconciliation reconcileInstalledCodexReleases(UUID idempotencyKey) {
+        Map<String, Object> body = Map.of(
+                "operation", "RECONCILE_INSTALLED_CODEX_RELEASES",
+                "idempotencyKey", idempotencyKey.toString());
+        return exchange(
+                "POST", "/v1/codex/update/reconcile-installed", body,
+                CodexReleaseReconciliation.class, idempotencyKey.toString(),
+                Duration.ofMinutes(5));
+    }
+
     public CodexUpdateActivation activateCodexUpdate(
             UUID planId, UUID candidateId, UUID authorizationId, UUID idempotencyKey) {
         Map<String, Object> body = Map.of(
@@ -1469,6 +1479,45 @@ public class RemoteWorkerClient {
             String previousLinkFingerprint,
             boolean linksChanged,
             boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record CodexReleaseReconciliation(
+            String schemaVersion,
+            String operation,
+            String workerId,
+            UUID idempotencyKey,
+            String state,
+            UUID planId,
+            UUID currentInventoryId,
+            UUID candidateInventoryId,
+            String currentVersion,
+            String candidateVersion,
+            String currentReleaseDigestSha256,
+            String candidateReleaseDigestSha256,
+            String candidateCatalogRevision,
+            String currentInstallationState,
+            String currentLinkState,
+            String currentCompatibilityState,
+            String candidateInstallationState,
+            String candidateLinkState,
+            String candidateCompatibilityState,
+            String previousState,
+            String previousCompatibilityState,
+            String structureVerification,
+            String permissionVerification,
+            String metadataVerification,
+            String versionVerification,
+            String hashVerification,
+            String zeroNonTerminalRuns,
+            String currentLinkFingerprint,
+            boolean linksChanged,
+            String inventorySha256,
+            String planSha256,
+            String registrySha256,
+            boolean valuesExposed,
+            Instant completedAt
     ) {
     }
 
