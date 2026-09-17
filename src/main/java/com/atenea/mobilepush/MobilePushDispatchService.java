@@ -13,6 +13,7 @@ import com.atenea.service.notification.NotificationOutboxService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -144,6 +145,26 @@ public class MobilePushDispatchService {
         );
     }
 
+    @Transactional
+    public void notifyOperationsDegraded(Long hostId, String hostName, List<String> errors) {
+        String eventKey = "OPERATIONS_DEGRADED:" + UUID.randomUUID();
+        send(
+                eventKey,
+                "OPERATIONS_DEGRADED",
+                null,
+                null,
+                null,
+                "Atenea: degradación operativa",
+                hostName + ": " + String.join("; ", errors),
+                Map.of(
+                        "type", "OPERATIONS_DEGRADED",
+                        "hostId", hostId,
+                        "hostName", hostName,
+                        "errors", String.join("; ", errors)
+                )
+        );
+    }
+
     private void sendOnce(
             String eventKey,
             String eventType,
@@ -157,6 +178,19 @@ public class MobilePushDispatchService {
         if (mobilePushNotificationLogRepository.existsByEventKey(eventKey)) {
             return;
         }
+        send(eventKey, eventType, sessionId, runId, deliverableId, title, body, data);
+    }
+
+    private void send(
+            String eventKey,
+            String eventType,
+            Long sessionId,
+            Long runId,
+            Long deliverableId,
+            String title,
+            String body,
+            Map<String, Object> data
+    ) {
         List<OperatorPushDeviceEntity> devices = operatorPushDeviceRepository.findByActiveTrueOrderByUpdatedAtDesc();
         if (devices.isEmpty()) {
             return;

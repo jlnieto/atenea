@@ -3,10 +3,12 @@ package com.atenea.mobilepush;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.atenea.persistence.auth.MobilePushNotificationLogRepository;
+import com.atenea.persistence.auth.MobilePushNotificationLogEntity;
 import com.atenea.persistence.auth.OperatorEntity;
 import com.atenea.persistence.auth.OperatorPushDeviceEntity;
 import com.atenea.persistence.auth.OperatorPushDeviceRepository;
@@ -164,6 +166,34 @@ class MobilePushDispatchServiceTest {
 
         verify(fcmPushSender).send(any());
         verify(mobilePushNotificationLogRepository).save(any());
+    }
+
+    @Test
+    void operationsDegradationIsSentAgainForEveryCheck() {
+        when(operatorPushDeviceRepository.findByActiveTrueOrderByUpdatedAtDesc()).thenReturn(List.of(buildDevice()));
+
+        mobilePushDispatchService.notifyOperationsDegraded(
+                3L,
+                "dedicado-principal",
+                List.of("Cliente: Slow response 3200ms above 2500ms threshold"));
+        mobilePushDispatchService.notifyOperationsDegraded(
+                3L,
+                "dedicado-principal",
+                List.of("Cliente: Slow response 3300ms above 2500ms threshold"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<FcmPushSender.FcmPushMessage>> messagesCaptor = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<MobilePushNotificationLogEntity> logCaptor =
+                ArgumentCaptor.forClass(MobilePushNotificationLogEntity.class);
+        verify(fcmPushSender, times(2)).send(messagesCaptor.capture());
+        verify(mobilePushNotificationLogRepository, times(2)).save(logCaptor.capture());
+        verify(mobilePushNotificationLogRepository, never()).existsByEventKey(any());
+        assertEquals(
+                "dedicado-principal: Cliente: Slow response 3200ms above 2500ms threshold",
+                messagesCaptor.getAllValues().getFirst().getFirst().body());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                logCaptor.getAllValues().get(0).getEventKey(),
+                logCaptor.getAllValues().get(1).getEventKey());
     }
 
     private static WorkSessionEntity buildSession(Long id, String projectName, String title) {
