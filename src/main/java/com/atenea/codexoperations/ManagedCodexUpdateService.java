@@ -27,6 +27,20 @@ public class ManagedCodexUpdateService {
 
     private static final String WORKER_ID = "ax42-01";
     private static final String UPDATE_PLAN_OPERATION = "PLAN_CODEX_UPDATE";
+    private static final String RECONCILE_INSTALLED_OPERATION =
+            "RECONCILE_INSTALLED_CODEX_RELEASES";
+    private static final UUID RECOVERY_PLAN_ID =
+            UUID.fromString("15414500-0000-4000-8000-000000000001");
+    private static final UUID RECOVERY_CURRENT_ID =
+            UUID.fromString("15414500-0000-4000-8000-000000000002");
+    private static final UUID RECOVERY_CANDIDATE_ID =
+            UUID.fromString("15414500-0000-4000-8000-000000000003");
+    private static final String RECOVERY_CURRENT_DIGEST =
+            "37de474b157b0313c73ddc05928855f61517676138827df51660fe8715dca14f";
+    private static final String RECOVERY_CANDIDATE_DIGEST =
+            "56da3312ccb2109a2f4e0d71b003f08d33244ec6f5863e8fc7f6f24b7a6489c2";
+    private static final String RECOVERY_CATALOG_REVISION =
+            "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187";
     private static final String UPDATE_STAGE_OPERATION = "STAGE_CODEX_UPDATE";
     private static final String AUTHORIZE_ACTIVATION_OPERATION = "AUTHORIZE_CODEX_UPDATE_ACTIVATION";
     private static final String ACTIVATE_UPDATE_OPERATION = "ACTIVATE_CODEX_UPDATE";
@@ -160,6 +174,103 @@ public class ManagedCodexUpdateService {
                  WHERE requested_by = ? AND idempotency_key = ?
                 """, UUID.class, operator.operatorId(), request.idempotencyKey());
         return updatePlanForAdministrator(persistedPlanId);
+    }
+
+    @Transactional
+    public ReleaseReconciliationResponse reconcileInstalledReleases(
+            AuthenticatedOperator operator, ReleaseReconciliationRequest request) {
+        requireManagedUpdates();
+        requirePlatformAdministrator(operator);
+        if (request == null || !RECONCILE_INSTALLED_OPERATION.equals(request.operation())
+                || request.idempotencyKey() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Exact installed Codex release reconciliation request required");
+        }
+        List<UUID> existing = jdbcTemplate.queryForList("""
+                SELECT reconciliation_id FROM worker_codex_release_reconciliation
+                 WHERE requested_by = ? AND idempotency_key = ?
+                """, UUID.class, operator.operatorId(), request.idempotencyKey());
+        if (!existing.isEmpty()) {
+            return releaseReconciliationForAdministrator(existing.getFirst());
+        }
+        Integer activeRuns = jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM agent_run
+                 WHERE selected_worker_id = ?
+                   AND status IN ('QUEUED', 'STARTING', 'RUNNING', 'CANCELLING', 'RECONCILING')
+                """, Integer.class, WORKER_ID);
+        if (activeRuns == null || activeRuns != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Codex release reconciliation requires zero active worker executions");
+        }
+
+        RemoteWorkerClient.CodexReleaseReconciliation result;
+        try {
+            result = remoteWorkerClient.reconcileInstalledCodexReleases(request.idempotencyKey());
+        } catch (RemoteWorkerException exception) {
+            throw new ResponseStatusException(
+                    exception.getStatusCode() == 0 || exception.getStatusCode() >= 500
+                            ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.CONFLICT,
+                    "Closed installed Codex release reconciliation failed", exception);
+        }
+        validateReconciliationResult(request, result);
+        rejectConflictingBootstrapInventory(result);
+        Instant now = Instant.now();
+        Timestamp observedAt = Timestamp.from(result.completedAt());
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_release_inventory (
+                    inventory_id, worker_id, codex_version, release_digest_sha256,
+                    installation_state, link_state, compatibility_state, catalog_revision,
+                    observed_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'INSTALLED', 'CURRENT', 'UNKNOWN', NULL, ?, ?, ?)
+                ON CONFLICT (worker_id, codex_version, release_digest_sha256) DO NOTHING
+                """, result.currentInventoryId(), WORKER_ID, result.currentVersion(),
+                result.currentReleaseDigestSha256(), observedAt, Timestamp.from(now),
+                Timestamp.from(now));
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_release_inventory (
+                    inventory_id, worker_id, codex_version, release_digest_sha256,
+                    installation_state, link_state, compatibility_state, catalog_revision,
+                    observed_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'STAGED', 'NONE', 'COMPATIBLE', ?, ?, ?, ?)
+                ON CONFLICT (worker_id, codex_version, release_digest_sha256)
+                DO UPDATE SET installation_state = 'STAGED', link_state = 'NONE',
+                    compatibility_state = 'COMPATIBLE', catalog_revision = EXCLUDED.catalog_revision,
+                    observed_at = EXCLUDED.observed_at, updated_at = EXCLUDED.updated_at
+                """, result.candidateInventoryId(), WORKER_ID, result.candidateVersion(),
+                result.candidateReleaseDigestSha256(), result.candidateCatalogRevision(),
+                observedAt, Timestamp.from(now), Timestamp.from(now));
+        requireExactBootstrapInventory(result);
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_update_plan (
+                    plan_id, worker_id, requested_by, idempotency_key,
+                    current_inventory_id, previous_inventory_id, candidate_inventory_id,
+                    state, compatibility_state, worker_health_gate, current_link_gate,
+                    catalog_alignment_gate, candidate_compatibility_gate,
+                    expected_service_impact, created_at, plan_kind, previous_bootstrap_state)
+                VALUES (?, ?, ?, ?, ?, NULL, ?, 'READY', 'COMPATIBLE', 'PASS', 'PASS',
+                    'PASS', 'PASS', ?, ?, 'RECOVERY', 'ABSENT_UNKNOWN')
+                """, result.planId(), WORKER_ID, operator.operatorId(),
+                request.idempotencyKey(), result.currentInventoryId(),
+                result.candidateInventoryId(), EXPECTED_UPDATE_IMPACT, Timestamp.from(now));
+        UUID reconciliationId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_release_reconciliation (
+                    reconciliation_id, worker_id, requested_by, idempotency_key, plan_id,
+                    current_inventory_id, candidate_inventory_id, state, previous_state,
+                    previous_compatibility_state, structure_verification_gate,
+                    permission_verification_gate, metadata_verification_gate,
+                    version_verification_gate, hash_verification_gate,
+                    zero_non_terminal_runs_gate, current_link_fingerprint,
+                    inventory_sha256, plan_sha256, registry_sha256, links_changed,
+                    values_exposed, completed_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'RECONCILED', 'ABSENT', 'UNKNOWN',
+                    'PASS', 'PASS', 'PASS', 'PASS', 'PASS', 'PASS', ?, ?, ?, ?, ?, FALSE, ?, ?)
+                """, reconciliationId, WORKER_ID, operator.operatorId(),
+                request.idempotencyKey(), result.planId(), result.currentInventoryId(),
+                result.candidateInventoryId(), result.currentLinkFingerprint(),
+                result.inventorySha256(), result.planSha256(), result.registrySha256(),
+                result.linksChanged(), Timestamp.from(result.completedAt()), Timestamp.from(now));
+        return releaseReconciliationForAdministrator(reconciliationId);
     }
 
     @Transactional(readOnly = true)
@@ -1056,6 +1167,137 @@ public class ManagedCodexUpdateService {
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Update rollback not found"));
     }
 
+    private void validateReconciliationResult(
+            ReleaseReconciliationRequest request,
+            RemoteWorkerClient.CodexReleaseReconciliation result) {
+        if (result == null || !"codex-release-reconcile-v1".equals(result.schemaVersion())
+                || !RECONCILE_INSTALLED_OPERATION.equals(result.operation())
+                || !WORKER_ID.equals(result.workerId())
+                || !request.idempotencyKey().equals(result.idempotencyKey())
+                || !"RECONCILED".equals(result.state())
+                || !RECOVERY_PLAN_ID.equals(result.planId())
+                || !RECOVERY_CURRENT_ID.equals(result.currentInventoryId())
+                || !RECOVERY_CANDIDATE_ID.equals(result.candidateInventoryId())
+                || !"0.154.0".equals(result.currentVersion())
+                || !"0.145.0".equals(result.candidateVersion())
+                || !RECOVERY_CURRENT_DIGEST.equals(result.currentReleaseDigestSha256())
+                || !RECOVERY_CANDIDATE_DIGEST.equals(result.candidateReleaseDigestSha256())
+                || !RECOVERY_CATALOG_REVISION.equals(result.candidateCatalogRevision())
+                || !"INSTALLED".equals(result.currentInstallationState())
+                || !"CURRENT".equals(result.currentLinkState())
+                || !"UNKNOWN".equals(result.currentCompatibilityState())
+                || !"STAGED".equals(result.candidateInstallationState())
+                || !"NONE".equals(result.candidateLinkState())
+                || !"COMPATIBLE".equals(result.candidateCompatibilityState())
+                || !"ABSENT".equals(result.previousState())
+                || !"UNKNOWN".equals(result.previousCompatibilityState())
+                || !List.of(result.structureVerification(), result.permissionVerification(),
+                        result.metadataVerification(), result.versionVerification(),
+                        result.hashVerification(), result.zeroNonTerminalRuns())
+                        .stream().allMatch("PASS"::equals)
+                || !digest(result.currentLinkFingerprint())
+                || !digest(result.inventorySha256()) || !digest(result.planSha256())
+                || !digest(result.registrySha256()) || result.valuesExposed()
+                || result.completedAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Worker installed release reconciliation result is conflicting");
+        }
+    }
+
+    private void rejectConflictingBootstrapInventory(
+            RemoteWorkerClient.CodexReleaseReconciliation result) {
+        WorkerInventoryResponse inventory = workerInventory(WORKER_ID);
+        ReleaseInventoryResponse current = linked(inventory.releases(), "CURRENT");
+        ReleaseInventoryResponse previous = linked(inventory.releases(), "PREVIOUS");
+        if (previous != null || (current != null
+                && (!current.inventoryId().equals(result.currentInventoryId())
+                    || !current.codexVersion().equals(result.currentVersion())
+                    || !current.releaseDigestSha256().equals(result.currentReleaseDigestSha256())))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Persisted Codex inventory conflicts with recovery bootstrap");
+        }
+        ReleaseInventoryResponse candidate = inventory.releases().stream()
+                .filter(release -> release.codexVersion().equals(result.candidateVersion()))
+                .findFirst().orElse(null);
+        if (candidate != null && (!candidate.inventoryId().equals(result.candidateInventoryId())
+                || !candidate.releaseDigestSha256()
+                        .equals(result.candidateReleaseDigestSha256())
+                || !"NONE".equals(candidate.linkState()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Persisted Codex candidate conflicts with recovery bootstrap");
+        }
+    }
+
+    private void requireExactBootstrapInventory(
+            RemoteWorkerClient.CodexReleaseReconciliation result) {
+        WorkerInventoryResponse inventory = workerInventory(WORKER_ID);
+        ReleaseInventoryResponse current = byId(inventory.releases(), result.currentInventoryId());
+        ReleaseInventoryResponse candidate = byId(
+                inventory.releases(), result.candidateInventoryId());
+        if (current == null || candidate == null
+                || !"INSTALLED".equals(current.installationState())
+                || !"CURRENT".equals(current.linkState())
+                || !"UNKNOWN".equals(current.compatibilityState())
+                || !"STAGED".equals(candidate.installationState())
+                || !"NONE".equals(candidate.linkState())
+                || !"COMPATIBLE".equals(candidate.compatibilityState())
+                || linked(inventory.releases(), "PREVIOUS") != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Recovered Codex inventory was not persisted exactly");
+        }
+    }
+
+    private ReleaseReconciliationResponse releaseReconciliationForAdministrator(
+            UUID reconciliationId) {
+        return jdbcTemplate.query("""
+                SELECT reconciliation_id, worker_id, idempotency_key, plan_id,
+                       current_inventory_id, candidate_inventory_id, state,
+                       previous_state, previous_compatibility_state,
+                       structure_verification_gate, permission_verification_gate,
+                       metadata_verification_gate, version_verification_gate,
+                       hash_verification_gate, zero_non_terminal_runs_gate,
+                       current_link_fingerprint, inventory_sha256, plan_sha256,
+                       registry_sha256, links_changed, values_exposed,
+                       completed_at, created_at
+                  FROM worker_codex_release_reconciliation
+                 WHERE reconciliation_id = ?
+                """, (rs, row) -> {
+                    WorkerInventoryResponse inventory = workerInventory(rs.getString("worker_id"));
+                    return new ReleaseReconciliationResponse(
+                            (UUID) rs.getObject("reconciliation_id"),
+                            rs.getString("worker_id"),
+                            (UUID) rs.getObject("idempotency_key"),
+                            (UUID) rs.getObject("plan_id"), rs.getString("state"),
+                            byId(inventory.releases(),
+                                    (UUID) rs.getObject("current_inventory_id")),
+                            byId(inventory.releases(),
+                                    (UUID) rs.getObject("candidate_inventory_id")),
+                            rs.getString("previous_state"),
+                            rs.getString("previous_compatibility_state"),
+                            List.of(
+                                    new CompatibilityGateResponse("STRUCTURE_VERIFICATION",
+                                            rs.getString("structure_verification_gate")),
+                                    new CompatibilityGateResponse("PERMISSION_VERIFICATION",
+                                            rs.getString("permission_verification_gate")),
+                                    new CompatibilityGateResponse("METADATA_VERIFICATION",
+                                            rs.getString("metadata_verification_gate")),
+                                    new CompatibilityGateResponse("VERSION_VERIFICATION",
+                                            rs.getString("version_verification_gate")),
+                                    new CompatibilityGateResponse("HASH_VERIFICATION",
+                                            rs.getString("hash_verification_gate")),
+                                    new CompatibilityGateResponse("ZERO_NON_TERMINAL_RUNS",
+                                            rs.getString("zero_non_terminal_runs_gate"))),
+                            rs.getString("current_link_fingerprint"),
+                            rs.getString("inventory_sha256"), rs.getString("plan_sha256"),
+                            rs.getString("registry_sha256"), rs.getBoolean("links_changed"),
+                            rs.getBoolean("values_exposed"),
+                            rs.getTimestamp("completed_at").toInstant(),
+                            rs.getTimestamp("created_at").toInstant());
+                }, reconciliationId).stream().findFirst().orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Codex release reconciliation not found"));
+    }
+
     private static String sha256(String value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -1199,6 +1441,7 @@ public class ManagedCodexUpdateService {
                                           String previousVersion, String compatibilityState,
                                           List<ReleaseInventoryResponse> releases) {}
     public record UpdatePlanRequest(String operation, String workerId, UUID idempotencyKey) {}
+    public record ReleaseReconciliationRequest(String operation, UUID idempotencyKey) {}
     public record UpdateStageRequest(String operation, UUID planId, UUID candidateId,
                                      UUID idempotencyKey) {}
     public record ActivationAuthorizationRequest(String operation, UUID planId,
@@ -1210,6 +1453,13 @@ public class ManagedCodexUpdateService {
     public record UpdateRollbackRequest(
             String operation, UUID activationId, UUID authorizationId, UUID idempotencyKey) {}
     public record CompatibilityGateResponse(String gate, String state) {}
+    public record ReleaseReconciliationResponse(
+            UUID reconciliationId, String workerId, UUID idempotencyKey, UUID planId,
+            String state, ReleaseInventoryResponse current, ReleaseInventoryResponse candidate,
+            String previousState, String previousCompatibilityState,
+            List<CompatibilityGateResponse> gates, String currentLinkFingerprint,
+            String inventorySha256, String planSha256, String registrySha256,
+            boolean linksChanged, boolean valuesExposed, Instant completedAt, Instant createdAt) {}
     public record UpdatePlanResponse(UUID planId, String workerId, String state,
                                      String compatibilityState,
                                      ReleaseInventoryResponse current,

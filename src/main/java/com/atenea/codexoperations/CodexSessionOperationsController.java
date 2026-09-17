@@ -13,6 +13,8 @@ import com.atenea.codexoperations.CodexSessionOperationsService.SettingsResponse
 import com.atenea.codexoperations.ManagedCodexUpdateService.AdministratorInventoryResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.ActivationAuthorizationRequest;
 import com.atenea.codexoperations.ManagedCodexUpdateService.ActivationAuthorizationResponse;
+import com.atenea.codexoperations.ManagedCodexUpdateService.ReleaseReconciliationRequest;
+import com.atenea.codexoperations.ManagedCodexUpdateService.ReleaseReconciliationResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdatePlanRequest;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdatePlanResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateStageRequest;
@@ -145,6 +147,15 @@ public class CodexSessionOperationsController {
             @RequestBody JsonNode request) {
         return managedUpdateService.createUpdatePlan(operator, closed(request, UpdatePlanRequest.class,
                 Set.of("operation", "workerId", "idempotencyKey")));
+    }
+
+    @PostMapping("/api/admin/codex/reconcile-installed-releases")
+    public ReleaseReconciliationResponse reconcileInstalledReleases(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @RequestBody JsonNode request) {
+        return managedUpdateService.reconcileInstalledReleases(operator,
+                closed(request, ReleaseReconciliationRequest.class,
+                        Set.of("operation", "idempotencyKey")));
     }
 
     @GetMapping("/api/admin/codex/update-plans/{planId}")
