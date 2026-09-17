@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -20,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.MobileProjectOverview
 import kotlinx.coroutines.launch
@@ -28,9 +30,14 @@ import kotlinx.coroutines.launch
 internal fun ProjectsScreen(
     apiClient: AteneaApiClient,
     onOpenSession: (Long, Long) -> Unit,
+    onOpenConversation: (Long, Long) -> Unit,
     onOpenRescue: (Long) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val newChangeViewModel = remember(apiClient) {
+        NewDevelopmentChangeViewModel(apiClient::startNewDevelopmentChange)
+    }
+    val newChangeState by newChangeViewModel.state.collectAsStateWithLifecycle()
     var projects by remember { mutableStateOf<List<MobileProjectOverview>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -98,14 +105,70 @@ internal fun ProjectsScreen(
                 project = project,
                 draftTitle = draftTitleByProject[project.projectId].orEmpty(),
                 pending = pendingProjectId == project.projectId,
-                actionsEnabled = pendingProjectId == null,
+                newChangePending = newChangeState.submitting &&
+                    newChangeState.projectId == project.projectId,
+                actionsEnabled = pendingProjectId == null && !newChangeState.submitting,
                 onDraftTitleChange = { value ->
                     draftTitleByProject = draftTitleByProject + (project.projectId to value)
                 },
                 onOpenSession = { openSession(project) },
+                onNewDevelopmentChange = { newChangeViewModel.open(project.projectId) },
                 onOpenRescue = { onOpenRescue(project.projectId) }
             )
         }
+    }
+
+    if (newChangeState.visible) {
+        AlertDialog(
+            modifier = Modifier.testTag("new-development-change-dialog"),
+            onDismissRequest = newChangeViewModel::dismiss,
+            title = { Text("Nuevo cambio") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newChangeState.title,
+                        onValueChange = newChangeViewModel::updateTitle,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("new-development-change-title"),
+                        enabled = !newChangeState.submitting && !newChangeState.attemptStarted,
+                        singleLine = true,
+                        label = { Text("Titulo") }
+                    )
+                    if (newChangeState.submitting) {
+                        Text(
+                            "Creando cambio y preparando workspace...",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    newChangeState.error?.let { ErrorPanel(it) }
+                }
+            },
+            confirmButton = {
+                AteneaButton(
+                    text = when {
+                        newChangeState.submitting -> "Preparando..."
+                        newChangeState.attemptStarted -> "Reintentar"
+                        else -> "Crear y abrir"
+                    },
+                    enabled = newChangeState.canSubmit,
+                    onClick = {
+                        scope.launch {
+                            newChangeViewModel.submit()?.let { navigation ->
+                                onOpenConversation(navigation.projectId, navigation.sessionId)
+                            }
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                AteneaTextButton(
+                    text = "Cancelar",
+                    enabled = !newChangeState.submitting,
+                    onClick = newChangeViewModel::dismiss
+                )
+            }
+        )
     }
 }
 
@@ -114,9 +177,11 @@ internal fun ProjectOverviewCard(
     project: MobileProjectOverview,
     draftTitle: String,
     pending: Boolean,
+    newChangePending: Boolean,
     actionsEnabled: Boolean,
     onDraftTitleChange: (String) -> Unit,
     onOpenSession: () -> Unit,
+    onNewDevelopmentChange: () -> Unit,
     onOpenRescue: () -> Unit
 ) {
     val recoveryPending = project.session?.recoveryPending == true
@@ -125,6 +190,15 @@ internal fun ProjectOverviewCard(
         Text(project.projectName, style = MaterialTheme.typography.titleSmall)
         project.description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         project.defaultBaseBranch?.let { MetricLine("Base", it) }
+        AteneaButton(
+            text = if (newChangePending) "Preparando cambio..." else "Nuevo cambio",
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("project-new-development-change-action"),
+            enabled = actionsEnabled,
+            onClick = onNewDevelopmentChange
+        )
+
         if (recoveryPending) {
             Text(
                 "Nueva sesión pendiente",
