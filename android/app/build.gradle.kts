@@ -12,8 +12,9 @@ android {
         applicationId = "com.atenea.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 136
-        versionName = "0.5.103"
+        versionCode = 137
+        versionName = "0.5.104"
+        manifestPlaceholders["appName"] = "Atenea"
 
         val ateneaApiBaseUrl = providers.gradleProperty("ATENEA_API_BASE_URL")
             .orElse("https://atenea.yudri.es")
@@ -39,6 +40,21 @@ android {
         buildConfigField("String", "ATENEA_FIREBASE_PROJECT_ID", "\"${escapeBuildConfigString(firebaseProjectId)}\"")
         buildConfigField("String", "ATENEA_FIREBASE_APP_ID", "\"${escapeBuildConfigString(firebaseAppId)}\"")
         buildConfigField("String", "ATENEA_FIREBASE_GCM_SENDER_ID", "\"${escapeBuildConfigString(firebaseGcmSenderId)}\"")
+    }
+
+    buildTypes {
+        create("dev") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["appName"] = "Atenea DEV"
+            matchingFallbacks += listOf("debug")
+            buildConfigField(
+                "String",
+                "ATENEA_API_BASE_URL",
+                "\"https://codex-worker-01.tailf11cbc.ts.net\""
+            )
+            buildConfigField("String", "ATENEA_ANDROID_UPDATE_MANIFEST_URL", "\"\"")
+        }
     }
 
     buildFeatures {

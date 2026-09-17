@@ -216,6 +216,11 @@ internal fun AteneaShell(
                             selectedSessionId = sessionId
                             selectedDestination = AteneaDestination.SESSION
                         },
+                        onOpenConversation = { projectId, sessionId ->
+                            selectedProjectId = projectId
+                            selectedSessionId = sessionId
+                            selectedDestination = AteneaDestination.CONVERSATION
+                        },
                         onOpenRescue = { projectId ->
                             selectedProjectId = projectId
                             selectedDestination = AteneaDestination.RESCUE

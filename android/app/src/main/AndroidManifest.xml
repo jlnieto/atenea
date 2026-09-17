@@ -11,7 +11,7 @@
     <application
         android:allowBackup="false"
         android:icon="@drawable/atenea_icon_wa0009"
-        android:label="Atenea"
+        android:label="${appName}"
         android:roundIcon="@drawable/atenea_icon_wa0009"
         android:supportsRtl="true"
         android:theme="@style/Theme.Atenea">

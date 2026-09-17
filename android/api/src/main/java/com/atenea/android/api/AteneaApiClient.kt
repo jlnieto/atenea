@@ -243,6 +243,78 @@ class AteneaApiClient(
         parser = ::parseResolveMobileWorkSessionResult
     )
 
+    suspend fun startNewDevelopmentChange(
+        projectId: Long,
+        title: String,
+        keys: NewDevelopmentChangeRequestKeys = NewDevelopmentChangeRequestKeys.create()
+    ): NewDevelopmentChangeResult {
+        val normalizedTitle = title.trim()
+        if (normalizedTitle.isBlank() || normalizedTitle.length > 200) {
+            throw NewDevelopmentChangeException(
+                NewDevelopmentChangeStage.CREATE,
+                "El titulo debe tener entre 1 y 200 caracteres."
+            )
+        }
+        val basePath = "/api/v2/projects/$projectId/development-changes"
+        val created = newDevelopmentChangeStep(NewDevelopmentChangeStage.CREATE) {
+            postJson(
+                path = basePath,
+                body = JSONObject().put("title", normalizedTitle),
+                authenticated = true,
+                headers = mapOf("Idempotency-Key" to keys.create.toString()),
+                parser = ::parseCreatedDevelopmentChange
+            )
+        }
+        val changePath = "$basePath/${created.changeKey}"
+        val provisioned = newDevelopmentChangeStep(NewDevelopmentChangeStage.PROVISION) {
+            postJson(
+                path = "$changePath/workspace/provision",
+                body = JSONObject(),
+                authenticated = true,
+                headers = mapOf("Idempotency-Key" to keys.provision.toString()),
+                parser = ::parseDevelopmentChangeWorkspaceOperation
+            )
+        }
+        if (provisioned.state != "SUCCEEDED" || provisioned.workspaceState != "READY") {
+            throw NewDevelopmentChangeException(
+                NewDevelopmentChangeStage.PROVISION,
+                "El workspace no esta listo (${provisioned.failureCode ?: provisioned.state})."
+            )
+        }
+        val detail = newDevelopmentChangeStep(NewDevelopmentChangeStage.REFRESH) {
+            getJson(
+                path = changePath,
+                authenticated = true,
+                parser = ::parseDevelopmentChangeDetail
+            )
+        }
+        if (detail.workspaceState != "READY") {
+            throw NewDevelopmentChangeException(
+                NewDevelopmentChangeStage.REFRESH,
+                "El servidor aun no confirma el workspace como listo."
+            )
+        }
+        val session = newDevelopmentChangeStep(NewDevelopmentChangeStage.OPEN_SESSION) {
+            postJson(
+                path = "$changePath/work-session:open-or-resolve",
+                body = JSONObject().put("expectedChangeRevision", detail.version),
+                authenticated = true,
+                headers = mapOf("Idempotency-Key" to keys.openSession.toString()),
+                parser = ::parseDevelopmentChangeRemoteSession
+            )
+        }
+        if (session.state != "SUCCEEDED" || session.sessionState != "OPEN" || session.sessionId == null) {
+            throw NewDevelopmentChangeException(
+                NewDevelopmentChangeStage.OPEN_SESSION,
+                "La sesion de trabajo no esta lista (${session.sessionState ?: session.state})."
+            )
+        }
+        return NewDevelopmentChangeResult(
+            changeKey = created.changeKey,
+            sessionId = session.sessionId
+        )
+    }
+
     suspend fun fetchMobileWorkSessionConversation(sessionId: Long): MobileWorkSessionConversation = getJson(
         path = "/api/mobile/sessions/$sessionId/conversation",
         authenticated = true,
@@ -767,8 +839,16 @@ class AteneaApiClient(
         path: String,
         body: JSONObject,
         authenticated: Boolean,
+        headers: Map<String, String> = emptyMap(),
         parser: (JSONObject) -> T
-    ): T = requestJson(path = path, method = "POST", body = body, authenticated = authenticated, parser = parser)
+    ): T = requestJson(
+        path = path,
+        method = "POST",
+        body = body,
+        authenticated = authenticated,
+        headers = headers,
+        parser = parser
+    )
 
     private suspend fun <T> putJson(
         path: String,
@@ -789,8 +869,9 @@ class AteneaApiClient(
         method: String,
         body: JSONObject?,
         authenticated: Boolean,
+        headers: Map<String, String> = emptyMap(),
         parser: (JSONObject) -> T
-    ): T = parser(JSONObject(requestBody(path, method, body, authenticated).ifBlank { "{}" }))
+    ): T = parser(JSONObject(requestBody(path, method, body, authenticated, headers).ifBlank { "{}" }))
 
     private suspend fun <T> requestJsonArray(
         path: String,
@@ -804,14 +885,16 @@ class AteneaApiClient(
         path: String,
         method: String,
         body: JSONObject?,
-        authenticated: Boolean
-    ): String = requestBody(path, method, body, authenticated, allowRefresh = true)
+        authenticated: Boolean,
+        headers: Map<String, String> = emptyMap()
+    ): String = requestBody(path, method, body, authenticated, headers, allowRefresh = true)
 
     private suspend fun requestBody(
         path: String,
         method: String,
         body: JSONObject?,
         authenticated: Boolean,
+        headers: Map<String, String>,
         allowRefresh: Boolean
     ): String = withContext(Dispatchers.IO) {
         val connection = (URL("$normalizedBaseUrl$path").openConnection() as HttpURLConnection).apply {
@@ -823,6 +906,7 @@ class AteneaApiClient(
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
             }
+            headers.forEach { (name, value) -> setRequestProperty(name, value) }
             if (authenticated) {
                 val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
                     ?: throw AteneaApiException(401, "No hay sesión activa.")
@@ -847,6 +931,7 @@ class AteneaApiClient(
                         method = method,
                         body = body,
                         authenticated = authenticated,
+                        headers = headers,
                         allowRefresh = false
                     )
                 }
@@ -1257,6 +1342,38 @@ data class ResolveMobileWorkSessionResult(
     val created: Boolean,
     val view: MobileWorkSessionConversation
 )
+
+data class NewDevelopmentChangeRequestKeys(
+    val create: UUID,
+    val provision: UUID,
+    val openSession: UUID
+) {
+    companion object {
+        fun create(): NewDevelopmentChangeRequestKeys = NewDevelopmentChangeRequestKeys(
+            create = UUID.randomUUID(),
+            provision = UUID.randomUUID(),
+            openSession = UUID.randomUUID()
+        )
+    }
+}
+
+data class NewDevelopmentChangeResult(
+    val changeKey: UUID,
+    val sessionId: Long
+)
+
+enum class NewDevelopmentChangeStage {
+    CREATE,
+    PROVISION,
+    REFRESH,
+    OPEN_SESSION
+}
+
+class NewDevelopmentChangeException(
+    val stage: NewDevelopmentChangeStage,
+    override val message: String,
+    cause: Throwable? = null
+) : RuntimeException(message, cause)
 
 data class StartFreshWorkSessionResult(
     val operationId: String,
@@ -2189,6 +2306,76 @@ private fun parseResolveMobileWorkSessionResult(json: JSONObject): ResolveMobile
         created = json.optBoolean("created", false),
         view = parseMobileWorkSessionConversation(json.getJSONObject("view"))
     )
+
+private data class CreatedDevelopmentChange(
+    val changeKey: UUID
+)
+
+private data class DevelopmentChangeWorkspaceOperation(
+    val state: String,
+    val workspaceState: String,
+    val failureCode: String?
+)
+
+private data class DevelopmentChangeDetail(
+    val version: Long,
+    val workspaceState: String
+)
+
+private data class DevelopmentChangeRemoteSession(
+    val state: String,
+    val sessionId: Long?,
+    val sessionState: String?
+)
+
+private fun parseCreatedDevelopmentChange(json: JSONObject): CreatedDevelopmentChange {
+    val change = json.getJSONObject("developmentChange")
+    return CreatedDevelopmentChange(changeKey = UUID.fromString(change.getString("changeKey")))
+}
+
+private fun parseDevelopmentChangeWorkspaceOperation(json: JSONObject): DevelopmentChangeWorkspaceOperation =
+    DevelopmentChangeWorkspaceOperation(
+        state = json.optString("state", ""),
+        workspaceState = json.optString("workspaceState", ""),
+        failureCode = json.optNullableString("failureCode")
+    )
+
+private fun parseDevelopmentChangeDetail(json: JSONObject): DevelopmentChangeDetail =
+    DevelopmentChangeDetail(
+        version = json.getLong("version"),
+        workspaceState = json.optString("workspaceState", "")
+    )
+
+private fun parseDevelopmentChangeRemoteSession(json: JSONObject): DevelopmentChangeRemoteSession =
+    DevelopmentChangeRemoteSession(
+        state = json.optString("state", ""),
+        sessionId = json.optNullableLong("sessionId"),
+        sessionState = json.optNullableString("sessionState")
+    )
+
+private suspend fun <T> newDevelopmentChangeStep(
+    stage: NewDevelopmentChangeStage,
+    block: suspend () -> T
+): T = try {
+    block()
+} catch (error: NewDevelopmentChangeException) {
+    throw error
+} catch (error: Exception) {
+    val prefix = when (stage) {
+        NewDevelopmentChangeStage.CREATE -> "No se pudo crear el cambio."
+        NewDevelopmentChangeStage.PROVISION ->
+            "El cambio se creo, pero no se pudo preparar su workspace."
+        NewDevelopmentChangeStage.REFRESH ->
+            "El workspace se preparo, pero no se pudo confirmar su estado."
+        NewDevelopmentChangeStage.OPEN_SESSION ->
+            "El workspace esta listo, pero no se pudo abrir su sesion."
+    }
+    throw NewDevelopmentChangeException(
+        stage = stage,
+        message = listOfNotNull(prefix, error.message?.takeIf { it.isNotBlank() }).joinToString(" "),
+        cause = error
+    )
+}
 
 private fun parseStartFreshWorkSessionResult(json: JSONObject): StartFreshWorkSessionResult =
     StartFreshWorkSessionResult(

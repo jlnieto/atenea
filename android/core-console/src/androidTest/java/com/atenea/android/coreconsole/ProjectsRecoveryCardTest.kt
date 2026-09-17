@@ -19,8 +19,9 @@ class ProjectsRecoveryCardTest {
     val compose = createComposeRule()
 
     @Test
-    fun pendingRecoveryLeadsWithOneNavigationActionAndNoCreationOrRescueControls() {
+    fun pendingRecoveryKeepsRecoveryActionAndAlsoOffersIndependentNewChange() {
         var opens = 0
+        var newChanges = 0
         var rescues = 0
         compose.setContent {
             MaterialTheme {
@@ -28,9 +29,11 @@ class ProjectsRecoveryCardTest {
                     project = recoveryProject(),
                     draftTitle = "",
                     pending = false,
+                    newChangePending = false,
                     actionsEnabled = true,
                     onDraftTitleChange = {},
                     onOpenSession = { opens += 1 },
+                    onNewDevelopmentChange = { newChanges += 1 },
                     onOpenRescue = { rescues += 1 }
                 )
             }
@@ -43,10 +46,42 @@ class ProjectsRecoveryCardTest {
         compose.onAllNodesWithText("Titulo para nueva sesion").assertCountEquals(0)
         compose.onAllNodesWithText("Nueva sesion").assertCountEquals(0)
         compose.onAllNodesWithText("Rescate").assertCountEquals(0)
+        compose.onNodeWithText("Nuevo cambio").assertIsDisplayed().performClick()
         compose.onNodeWithTag("project-recovery-action").assertIsDisplayed().performClick()
 
         assertEquals(1, opens)
+        assertEquals(1, newChanges)
         assertEquals(0, rescues)
+    }
+
+    @Test
+    fun openSessionDoesNotHideNewChangeAction() {
+        var newChanges = 0
+        compose.setContent {
+            MaterialTheme {
+                ProjectOverviewCard(
+                    project = recoveryProject().copy(
+                        session = recoveryProject().session?.copy(
+                            status = "OPEN",
+                            recoveryPending = false
+                        )
+                    ),
+                    draftTitle = "",
+                    pending = false,
+                    newChangePending = false,
+                    actionsEnabled = true,
+                    onDraftTitleChange = {},
+                    onOpenSession = {},
+                    onNewDevelopmentChange = { newChanges += 1 },
+                    onOpenRescue = {}
+                )
+            }
+        }
+
+        compose.onNodeWithText("Abrir sesion").assertIsDisplayed()
+        compose.onNodeWithText("Nuevo cambio").assertIsDisplayed().performClick()
+
+        assertEquals(1, newChanges)
     }
 
     private fun recoveryProject() = MobileProjectOverview(
