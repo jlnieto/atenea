@@ -541,6 +541,104 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void administratorActivatesOnlyTheExactReconciledRecoveryBootstrap() throws Exception {
+        OperatorEntity administrator = operator(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        OperatorEntity routine = operator(CodexOperationsRole.ROUTINE_OPERATOR);
+        workerWithoutInventory();
+        String revision = "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187";
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_catalog (worker_id, catalog_revision, schema_version,
+                    codex_version, generated_at, observed_at)
+                VALUES (?, ?, 'codex-model-catalog-v1', '0.145.0', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, WORKER_ID, revision);
+        UUID reconcileKey = UUID.randomUUID();
+        UUID planId = UUID.fromString("15414500-0000-4000-8000-000000000001");
+        UUID currentId = UUID.fromString("15414500-0000-4000-8000-000000000002");
+        UUID candidateId = UUID.fromString("15414500-0000-4000-8000-000000000003");
+        when(remoteWorkerClient.reconcileInstalledCodexReleases(reconcileKey)).thenReturn(
+                reconciliationResult(reconcileKey, planId, currentId, candidateId));
+        mockMvc.perform(post("/api/admin/codex/reconcile-installed-releases")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"operation":"RECONCILE_INSTALLED_CODEX_RELEASES",
+                                 "idempotencyKey":"%s"}
+                                """.formatted(reconcileKey)))
+                .andExpect(status().isOk());
+        when(remoteWorkerClient.health()).thenReturn(new RemoteWorkerClient.Health(
+                "agent-run-worker/v1", WORKER_ID, true,
+                List.of("project-codex-v4", "codex-release-recovery-activate-v1"),
+                4, 2, 0, 0, 0, Instant.now()));
+        when(remoteWorkerClient.codexCatalog()).thenReturn(new RemoteWorkerClient.CodexCatalog(
+                "codex-model-catalog-v1", revision, WORKER_ID, "0.145.0",
+                Instant.now(), List.of()));
+        UUID key = UUID.randomUUID();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        when(remoteWorkerClient.activateReconciledCodexReleases(key)).thenReturn(
+                mapper.readTree("""
+                        {"schemaVersion":"codex-release-recovery-activate-v1",
+                         "operation":"ACTIVATE_RECONCILED_CODEX_RELEASES",
+                         "idempotencyKey":"%s","workerId":"ax42-01",
+                         "planId":"%s","currentInventoryId":"%s",
+                         "candidateInventoryId":"%s","state":"PENDING",
+                         "gates":{},"automaticRestore":"NOT_REQUIRED","valuesExposed":false}
+                        """.formatted(key, planId, currentId, candidateId)));
+        when(remoteWorkerClient.inspectRecoveryActivation(key)).thenReturn(
+                mapper.readTree("""
+                        {"schemaVersion":"codex-release-recovery-activate-v1",
+                         "operation":"ACTIVATE_RECONCILED_CODEX_RELEASES",
+                         "idempotencyKey":"%s","workerId":"ax42-01",
+                         "planId":"%s","currentInventoryId":"%s",
+                         "candidateInventoryId":"%s","state":"ACTIVATED",
+                         "gates":{"hashes":"PASS","catalog":"PASS","version":"PASS",
+                                  "workerHealth":"PASS","fixedCanary":"PASS",
+                                  "zeroNonTerminalRuns":"PASS"},
+                         "automaticRestore":"NOT_REQUIRED","valuesExposed":false,
+                         "currentBeforeFingerprint":"%s","currentAfterFingerprint":"%s",
+                         "previousAfterFingerprint":"%s","inventorySha256":"%s",
+                         "planSha256":"%s","completedAt":"2026-09-19T12:00:00Z"}
+                        """.formatted(key, planId, currentId, candidateId,
+                        "a".repeat(64), "b".repeat(64), "c".repeat(64),
+                        "d".repeat(64), "e".repeat(64))));
+        String body = """
+                {"operation":"ACTIVATE_RECONCILED_CODEX_RELEASES","idempotencyKey":"%s"}
+                """.formatted(key);
+        mockMvc.perform(post("/api/admin/codex/recovery-activations")
+                        .with(auth(routine)).contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+        String response = mockMvc.perform(post("/api/admin/codex/recovery-activations")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("ACTIVATED"))
+                .andExpect(jsonPath("$.inventory.currentVersion").value("0.145.0"))
+                .andExpect(jsonPath("$.inventory.previousVersion").value("0.154.0"))
+                .andReturn().getResponse().getContentAsString();
+        assertEquals("ACTIVATED", jdbcTemplate.queryForObject(
+                "SELECT state FROM worker_codex_update_plan WHERE plan_id = ?",
+                String.class, planId));
+        assertEquals(1, jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM worker_codex_recovery_activation",
+                Integer.class));
+        String activationId = com.jayway.jsonpath.JsonPath.read(response, "$.activationId");
+        mockMvc.perform(get("/api/admin/codex/recovery-activations/{activationId}", activationId)
+                        .with(auth(administrator)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("ACTIVATED"));
+        mockMvc.perform(post("/api/admin/codex/recovery-activations")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.activationId").value(activationId));
+        verify(remoteWorkerClient, times(1)).activateReconciledCodexReleases(key);
+        mockMvc.perform(post("/api/admin/codex/recovery-activations")
+                        .with(auth(administrator)).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.substring(0, body.lastIndexOf('}')) +
+                                ",\"path\":\"/tmp/foreign\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
     private Inventory inventory(boolean candidate) {
         jdbcTemplate.update("""
                 INSERT INTO worker_node (id, protocol_version, endpoint, enabled, healthy,

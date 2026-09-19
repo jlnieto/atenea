@@ -123,6 +123,19 @@ public class RemoteWorkerClient {
                 Duration.ofMinutes(5));
     }
 
+    public JsonNode activateReconciledCodexReleases(UUID idempotencyKey) {
+        Map<String, Object> body = Map.of(
+                "operation", "ACTIVATE_RECONCILED_CODEX_RELEASES",
+                "idempotencyKey", idempotencyKey.toString());
+        return exchange("POST", "/v1/codex/update/activate-recovery", body,
+                JsonNode.class, idempotencyKey.toString(), Duration.ofSeconds(45));
+    }
+
+    public JsonNode inspectRecoveryActivation(UUID idempotencyKey) {
+        return exchange("GET", "/v1/codex/update/activate-recovery/" + idempotencyKey,
+                null, JsonNode.class);
+    }
+
     public CodexUpdateActivation activateCodexUpdate(
             UUID planId, UUID candidateId, UUID authorizationId, UUID idempotencyKey) {
         Map<String, Object> body = Map.of(
