@@ -5,6 +5,7 @@ import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.remoteworker.RemoteWorkerClient;
 import com.atenea.remoteworker.RemoteWorkerException;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -41,6 +42,8 @@ public class ManagedCodexUpdateService {
             "56da3312ccb2109a2f4e0d71b003f08d33244ec6f5863e8fc7f6f24b7a6489c2";
     private static final String RECOVERY_CATALOG_REVISION =
             "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187";
+    private static final String ACTIVATE_RECOVERY_OPERATION =
+            "ACTIVATE_RECONCILED_CODEX_RELEASES";
     private static final String UPDATE_STAGE_OPERATION = "STAGE_CODEX_UPDATE";
     private static final String AUTHORIZE_ACTIVATION_OPERATION = "AUTHORIZE_CODEX_UPDATE_ACTIVATION";
     private static final String ACTIVATE_UPDATE_OPERATION = "ACTIVATE_CODEX_UPDATE";
@@ -460,6 +463,265 @@ public class ManagedCodexUpdateService {
         requireManagedUpdates();
         requirePlatformAdministrator(operator);
         return activationAuthorizationForAdministrator(authorizationId);
+    }
+
+    @Transactional
+    public RecoveryActivationResponse activateReconciledReleases(
+            AuthenticatedOperator operator, RecoveryActivationRequest request) {
+        requireManagedUpdates();
+        requirePlatformAdministrator(operator);
+        if (request == null || !ACTIVATE_RECOVERY_OPERATION.equals(request.operation())
+                || request.idempotencyKey() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Exact recovery activation request required");
+        }
+        List<UUID> existing = jdbcTemplate.queryForList("""
+                SELECT activation_id FROM worker_codex_recovery_activation
+                 WHERE requested_by = ? AND idempotency_key = ?
+                """, UUID.class, operator.operatorId(), request.idempotencyKey());
+        if (!existing.isEmpty()) return recoveryActivation(existing.getFirst());
+
+        lockActivationBarrier(WORKER_ID);
+        List<UUID> reconciliations = jdbcTemplate.queryForList("""
+                SELECT reconciliation_id FROM worker_codex_release_reconciliation
+                 WHERE worker_id = ? AND plan_id = ?
+                   AND current_inventory_id = ? AND candidate_inventory_id = ?
+                   AND state = 'RECONCILED' AND previous_state = 'ABSENT'
+                   AND previous_compatibility_state = 'UNKNOWN'
+                   AND structure_verification_gate = 'PASS'
+                   AND permission_verification_gate = 'PASS'
+                   AND metadata_verification_gate = 'PASS'
+                   AND version_verification_gate = 'PASS'
+                   AND hash_verification_gate = 'PASS'
+                   AND zero_non_terminal_runs_gate = 'PASS'
+                   AND values_exposed = FALSE
+                """, UUID.class, WORKER_ID, RECOVERY_PLAN_ID,
+                RECOVERY_CURRENT_ID, RECOVERY_CANDIDATE_ID);
+        Integer plans = jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM worker_codex_update_plan
+                 WHERE plan_id = ? AND worker_id = ? AND plan_kind = 'RECOVERY'
+                   AND previous_bootstrap_state = 'ABSENT_UNKNOWN'
+                   AND previous_inventory_id IS NULL AND state = 'READY'
+                   AND compatibility_state = 'COMPATIBLE'
+                   AND current_inventory_id = ? AND candidate_inventory_id = ?
+                   AND worker_health_gate = 'PASS' AND current_link_gate = 'PASS'
+                   AND catalog_alignment_gate = 'PASS'
+                   AND candidate_compatibility_gate = 'PASS'
+                """, Integer.class, RECOVERY_PLAN_ID, WORKER_ID,
+                RECOVERY_CURRENT_ID, RECOVERY_CANDIDATE_ID);
+        WorkerInventoryResponse inventory = workerInventory(WORKER_ID);
+        ReleaseInventoryResponse current = byId(inventory.releases(), RECOVERY_CURRENT_ID);
+        ReleaseInventoryResponse candidate = byId(inventory.releases(), RECOVERY_CANDIDATE_ID);
+        Integer activeRuns = jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM agent_run WHERE selected_worker_id = ?
+                   AND status IN ('QUEUED','STARTING','RUNNING','CANCELLING','RECONCILING')
+                """, Integer.class, WORKER_ID);
+        Integer priorActivations = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM worker_codex_recovery_activation WHERE plan_id = ?",
+                Integer.class, RECOVERY_PLAN_ID);
+        if (reconciliations.size() != 1 || plans == null || plans != 1
+                || priorActivations == null || priorActivations != 0
+                || activeRuns == null || activeRuns != 0
+                || !inventory.enabled() || !inventory.healthy()
+                || !RECOVERY_CATALOG_REVISION.equals(inventory.catalogRevision())
+                || !"0.145.0".equals(inventory.catalogCodexVersion())
+                || inventory.releases().size() != 2
+                || current == null || !"0.154.0".equals(current.codexVersion())
+                || !RECOVERY_CURRENT_DIGEST.equals(current.releaseDigestSha256())
+                || !"INSTALLED".equals(current.installationState())
+                || !"CURRENT".equals(current.linkState())
+                || candidate == null || !"0.145.0".equals(candidate.codexVersion())
+                || !RECOVERY_CANDIDATE_DIGEST.equals(candidate.releaseDigestSha256())
+                || !"STAGED".equals(candidate.installationState())
+                || !"NONE".equals(candidate.linkState())
+                || !"COMPATIBLE".equals(candidate.compatibilityState())
+                || !RECOVERY_CATALOG_REVISION.equals(candidate.catalogRevision())
+                || linked(inventory.releases(), "PREVIOUS") != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Persisted recovery bootstrap is no longer exact");
+        }
+        try {
+            RemoteWorkerClient.Health health = remoteWorkerClient.health();
+            RemoteWorkerClient.CodexCatalog catalog = remoteWorkerClient.codexCatalog();
+            if (!health.healthy() || !WORKER_ID.equals(health.workerId())
+                    || !health.capabilities().contains("codex-release-recovery-activate-v1")
+                    || !WORKER_ID.equals(catalog.workerId())
+                    || !"0.145.0".equals(catalog.codexVersion())
+                    || !RECOVERY_CATALOG_REVISION.equals(catalog.catalogRevision())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Worker recovery activation or catalog is unavailable");
+            }
+        } catch (RemoteWorkerException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Worker preflight is unavailable", exception);
+        }
+
+        // The worker operation is durable and idempotent. A dropped response is
+        // recovered by inspecting the same key; it must never create a second key.
+        try {
+            remoteWorkerClient.activateReconciledCodexReleases(request.idempotencyKey());
+        } catch (RemoteWorkerException exception) {
+            if (exception.getStatusCode() >= 400 && exception.getStatusCode() < 500) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Closed recovery activation was rejected", exception);
+            }
+            // A transport failure may follow a committed worker operation.
+        }
+        JsonNode result = null;
+        for (int attempt = 0; attempt < 180; attempt++) {
+            try {
+                result = remoteWorkerClient.inspectRecoveryActivation(request.idempotencyKey());
+                if (result != null && ("ACTIVATED".equals(text(result, "state"))
+                        || "RESTORED".equals(text(result, "state")))) break;
+            } catch (RemoteWorkerException ignored) {
+                // Expected while the exact worker service is restarting.
+            }
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "Recovery activation inspection interrupted", exception);
+            }
+        }
+        if (result == null || !List.of("ACTIVATED", "RESTORED")
+                .contains(text(result, "state"))) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Recovery activation remains non-terminal; inspect the same idempotency key");
+        }
+        validateRecoveryResult(request, result);
+        boolean activated = "ACTIVATED".equals(text(result, "state"));
+        UUID activationId = UUID.randomUUID();
+        Instant completedAt = Instant.parse(text(result, "completedAt"));
+        JsonNode gates = result.path("gates");
+        jdbcTemplate.update("""
+                INSERT INTO worker_codex_recovery_activation (
+                    activation_id, worker_id, requested_by, idempotency_key,
+                    reconciliation_id, plan_id, current_inventory_id,
+                    candidate_inventory_id, state, automatic_restore,
+                    version_gate, catalog_gate, worker_health_gate, fixed_canary_gate,
+                    zero_non_terminal_runs_gate, current_before_fingerprint,
+                    current_after_fingerprint, previous_after_fingerprint,
+                    inventory_sha256, plan_sha256, values_exposed, completed_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,FALSE,?)
+                """, activationId, WORKER_ID, operator.operatorId(), request.idempotencyKey(),
+                reconciliations.getFirst(), RECOVERY_PLAN_ID, RECOVERY_CURRENT_ID,
+                RECOVERY_CANDIDATE_ID, text(result, "state"),
+                text(result, "automaticRestore"), text(gates, "version"),
+                text(gates, "catalog"), text(gates, "workerHealth"),
+                text(gates, "fixedCanary"), text(gates, "zeroNonTerminalRuns"),
+                text(result, "currentBeforeFingerprint"),
+                text(result, "currentAfterFingerprint"),
+                text(result, "previousAfterFingerprint"),
+                text(result, "inventorySha256"), text(result, "planSha256"),
+                Timestamp.from(completedAt));
+        if (activated) {
+            Instant now = Instant.now();
+            int previousUpdated = jdbcTemplate.update("""
+                    UPDATE worker_codex_release_inventory
+                       SET link_state = 'PREVIOUS', updated_at = ?
+                     WHERE worker_id = ? AND inventory_id = ? AND link_state = 'CURRENT'
+                    """, Timestamp.from(now), WORKER_ID, RECOVERY_CURRENT_ID);
+            int currentUpdated = jdbcTemplate.update("""
+                    UPDATE worker_codex_release_inventory
+                       SET installation_state = 'INSTALLED', link_state = 'CURRENT',
+                           updated_at = ?
+                     WHERE worker_id = ? AND inventory_id = ?
+                       AND installation_state = 'STAGED' AND link_state = 'NONE'
+                    """, Timestamp.from(now), WORKER_ID, RECOVERY_CANDIDATE_ID);
+            int planUpdated = jdbcTemplate.update("""
+                    UPDATE worker_codex_update_plan SET state = 'ACTIVATED'
+                     WHERE plan_id = ? AND state = 'READY' AND plan_kind = 'RECOVERY'
+                    """, RECOVERY_PLAN_ID);
+            if (previousUpdated != 1 || currentUpdated != 1 || planUpdated != 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Recovery activation inventory persistence failed closed");
+            }
+        }
+        return recoveryActivation(activationId);
+    }
+
+    private static String text(JsonNode value, String field) {
+        JsonNode node = value == null ? null : value.get(field);
+        return node != null && node.isTextual() ? node.asText() : null;
+    }
+
+    private void validateRecoveryResult(RecoveryActivationRequest request, JsonNode result) {
+        JsonNode gates = result.path("gates");
+        String state = text(result, "state");
+        if (!"codex-release-recovery-activate-v1".equals(text(result, "schemaVersion"))
+                || !ACTIVATE_RECOVERY_OPERATION.equals(text(result, "operation"))
+                || !WORKER_ID.equals(text(result, "workerId"))
+                || !request.idempotencyKey().toString().equals(text(result, "idempotencyKey"))
+                || !RECOVERY_PLAN_ID.toString().equals(text(result, "planId"))
+                || !RECOVERY_CURRENT_ID.toString().equals(text(result, "currentInventoryId"))
+                || !RECOVERY_CANDIDATE_ID.toString().equals(text(result, "candidateInventoryId"))
+                || !digest(text(result, "inventorySha256"))
+                || !digest(text(result, "planSha256"))
+                || !result.path("valuesExposed").isBoolean()
+                || result.path("valuesExposed").asBoolean()
+                || text(result, "completedAt") == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Worker recovery activation result is conflicting");
+        }
+        if ("ACTIVATED".equals(state)) {
+            if (!"NOT_REQUIRED".equals(text(result, "automaticRestore"))
+                    || !List.of("hashes", "catalog", "version", "workerHealth",
+                            "fixedCanary", "zeroNonTerminalRuns").stream()
+                            .allMatch(gate -> "PASS".equals(text(gates, gate)))
+                    || !digest(text(result, "currentBeforeFingerprint"))
+                    || !digest(text(result, "currentAfterFingerprint"))
+                    || !digest(text(result, "previousAfterFingerprint"))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Worker recovery activation gates are conflicting");
+            }
+        } else if (!"RESTORED".equals(state)
+                || !"PASS".equals(text(result, "automaticRestore"))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Worker recovery restoration is conflicting");
+        }
+        Integer matchingEvidence = jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM worker_codex_release_reconciliation
+                 WHERE plan_id = ?
+                   AND current_link_fingerprint = ?
+                   AND ( (? = 'ACTIVATED') OR
+                         (inventory_sha256 = ? AND plan_sha256 = ?) )
+                """, Integer.class, RECOVERY_PLAN_ID,
+                "ACTIVATED".equals(state)
+                        ? text(result, "currentBeforeFingerprint")
+                        : text(result, "currentAfterFingerprint"),
+                state, text(result, "inventorySha256"), text(result, "planSha256"));
+        if (matchingEvidence == null || matchingEvidence != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Worker recovery result is not bound to reconciliation evidence");
+        }
+    }
+
+    private RecoveryActivationResponse recoveryActivation(UUID activationId) {
+        return jdbcTemplate.query("""
+                SELECT activation_id, idempotency_key, reconciliation_id, plan_id,
+                       worker_id, state, automatic_restore, inventory_sha256,
+                       plan_sha256, completed_at
+                  FROM worker_codex_recovery_activation WHERE activation_id = ?
+                """, (rs, row) -> new RecoveryActivationResponse(
+                (UUID) rs.getObject("activation_id"),
+                (UUID) rs.getObject("idempotency_key"),
+                (UUID) rs.getObject("reconciliation_id"),
+                (UUID) rs.getObject("plan_id"), rs.getString("worker_id"),
+                rs.getString("state"), rs.getString("automatic_restore"),
+                rs.getString("inventory_sha256"), rs.getString("plan_sha256"),
+                workerInventory(rs.getString("worker_id")),
+                rs.getTimestamp("completed_at").toInstant()), activationId)
+                .stream().findFirst().orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Recovery activation not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public RecoveryActivationResponse recoveryActivation(
+            AuthenticatedOperator operator, UUID activationId) {
+        requireManagedUpdates();
+        requirePlatformAdministrator(operator);
+        return recoveryActivation(activationId);
     }
 
     @Transactional
@@ -1442,6 +1704,12 @@ public class ManagedCodexUpdateService {
                                           List<ReleaseInventoryResponse> releases) {}
     public record UpdatePlanRequest(String operation, String workerId, UUID idempotencyKey) {}
     public record ReleaseReconciliationRequest(String operation, UUID idempotencyKey) {}
+    public record RecoveryActivationRequest(String operation, UUID idempotencyKey) {}
+    public record RecoveryActivationResponse(
+            UUID activationId, UUID idempotencyKey, UUID reconciliationId, UUID planId,
+            String workerId, String state, String automaticRestore,
+            String inventorySha256, String planSha256, WorkerInventoryResponse inventory,
+            Instant completedAt) {}
     public record UpdateStageRequest(String operation, UUID planId, UUID candidateId,
                                      UUID idempotencyKey) {}
     public record ActivationAuthorizationRequest(String operation, UUID planId,

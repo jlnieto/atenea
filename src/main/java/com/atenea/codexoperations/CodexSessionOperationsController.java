@@ -15,6 +15,8 @@ import com.atenea.codexoperations.ManagedCodexUpdateService.ActivationAuthorizat
 import com.atenea.codexoperations.ManagedCodexUpdateService.ActivationAuthorizationResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.ReleaseReconciliationRequest;
 import com.atenea.codexoperations.ManagedCodexUpdateService.ReleaseReconciliationResponse;
+import com.atenea.codexoperations.ManagedCodexUpdateService.RecoveryActivationRequest;
+import com.atenea.codexoperations.ManagedCodexUpdateService.RecoveryActivationResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdatePlanRequest;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdatePlanResponse;
 import com.atenea.codexoperations.ManagedCodexUpdateService.UpdateStageRequest;
@@ -205,6 +207,22 @@ public class CodexSessionOperationsController {
                 closed(request, UpdateActivationRequest.class,
                         Set.of("operation", "planId", "candidateId", "authorizationId",
                                 "idempotencyKey")));
+    }
+
+    @PostMapping("/api/admin/codex/recovery-activations")
+    public RecoveryActivationResponse activateReconciledReleases(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @RequestBody JsonNode request) {
+        return managedUpdateService.activateReconciledReleases(operator,
+                closed(request, RecoveryActivationRequest.class,
+                        Set.of("operation", "idempotencyKey")));
+    }
+
+    @GetMapping("/api/admin/codex/recovery-activations/{activationId}")
+    public RecoveryActivationResponse recoveryActivation(
+            @AuthenticationPrincipal AuthenticatedOperator operator,
+            @PathVariable java.util.UUID activationId) {
+        return managedUpdateService.recoveryActivation(operator, activationId);
     }
 
     @GetMapping("/api/admin/codex/update-activations/{activationId}")
