@@ -221,10 +221,25 @@ internal fun AteneaShell(
                             selectedSessionId = sessionId
                             selectedDestination = AteneaDestination.CONVERSATION
                         },
+                        onOpenChanges = { projectId ->
+                            selectedProjectId = projectId
+                            selectedSessionId = null
+                            selectedDestination = AteneaDestination.CHANGES
+                        },
                         onOpenRescue = { projectId ->
                             selectedProjectId = projectId
                             selectedDestination = AteneaDestination.RESCUE
                         }
+                    )
+                    AteneaDestination.CHANGES -> DevelopmentChangesScreen(
+                        apiClient = apiClient,
+                        projectId = selectedProjectId,
+                        onOpenConversation = { projectId, sessionId ->
+                            selectedProjectId = projectId
+                            selectedSessionId = sessionId
+                            selectedDestination = AteneaDestination.CONVERSATION
+                        },
+                        onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS }
                     )
                     AteneaDestination.SESSION -> WorkSessionScreen(
                         apiClient = apiClient,
@@ -340,6 +355,7 @@ private enum class AteneaDestination(
 ) {
     HOME("Inicio", "Inicio"),
     PROJECTS("Proyectos", "Proyectos"),
+    CHANGES("Cambios", "Cambios"),
     SESSION("Sesión", "Sesión"),
     CONVERSATION("Conversación", "Conversación"),
     RESCUE("Rescate", "Rescate"),
@@ -388,6 +404,7 @@ private class AteneaNavigationStore(context: Context) {
     }
 
     private fun AteneaDestination.validFor(projectId: Long?, sessionId: Long?): AteneaDestination = when (this) {
+        AteneaDestination.CHANGES -> if (projectId != null) this else AteneaDestination.PROJECTS
         AteneaDestination.SESSION -> if (projectId != null && sessionId != null) this else AteneaDestination.PROJECTS
         AteneaDestination.CONVERSATION -> if (sessionId != null) this else AteneaDestination.PROJECTS
         AteneaDestination.RESCUE -> if (projectId != null) this else AteneaDestination.PROJECTS

@@ -3,6 +3,7 @@ package com.atenea.android.api
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 import kotlin.test.Test
@@ -10,6 +11,55 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class AteneaApiClientDevelopmentChangeTest {
+
+    @Test
+    fun `existing changes are listed read only with their bound session`() = withServer { server ->
+        val changeKey = UUID.fromString("59315b6e-59bc-4884-9def-356e1ca86ef4")
+        server.enqueue(jsonResponse(200, JSONArray().put(
+            JSONObject()
+                .put("changeKey", changeKey.toString())
+                .put("projectId", 1)
+                .put("title", "Monitorizar degradación de Apache cada 5 minutos")
+                .put("status", "OPEN")
+                .put("workspaceState", "READY")
+                .put("activeSessionId", 21)
+                .put("primaryAction", JSONObject().put("kind", "CONTINUE_SESSION").put("label", "Continuar sesión"))
+                .put("updatedAt", "2026-09-19T21:29:59Z")
+        ).toString()))
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+
+        val changes = runBlocking { client.fetchDevelopmentChanges(1) }
+
+        assertEquals(1, changes.size)
+        assertEquals(changeKey, changes.single().changeKey)
+        assertEquals(1L, changes.single().projectId)
+        assertEquals(21L, changes.single().activeSessionId)
+        assertEquals("OPEN", changes.single().status)
+        assertEquals("Continuar sesión", changes.single().primaryActionLabel)
+        val request = server.takeRequest()
+        assertEquals("GET", request.method)
+        assertEquals("/api/v2/projects/1/development-changes", request.path)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `a change from another project cannot become a navigation target`() = withServer { server ->
+        server.enqueue(jsonResponse(200, JSONArray().put(
+            JSONObject()
+                .put("changeKey", "59315b6e-59bc-4884-9def-356e1ca86ef4")
+                .put("projectId", 2)
+                .put("title", "Otro proyecto")
+                .put("status", "OPEN")
+                .put("workspaceState", "READY")
+                .put("activeSessionId", 21)
+        ).toString()))
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+
+        assertFailsWith<IllegalArgumentException> {
+            runBlocking { client.fetchDevelopmentChanges(1) }
+        }
+        assertEquals(1, server.requestCount)
+    }
 
     @Test
     fun `new change creates provisions refreshes and opens before returning session`() =
