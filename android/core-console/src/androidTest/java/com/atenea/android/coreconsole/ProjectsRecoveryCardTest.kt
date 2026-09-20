@@ -22,6 +22,7 @@ class ProjectsRecoveryCardTest {
     fun pendingRecoveryKeepsRecoveryActionAndAlsoOffersIndependentNewChange() {
         var opens = 0
         var newChanges = 0
+        var viewsChanges = 0
         var rescues = 0
         compose.setContent {
             MaterialTheme {
@@ -33,6 +34,7 @@ class ProjectsRecoveryCardTest {
                     actionsEnabled = true,
                     onDraftTitleChange = {},
                     onOpenSession = { opens += 1 },
+                    onOpenChanges = { viewsChanges += 1 },
                     onNewDevelopmentChange = { newChanges += 1 },
                     onOpenRescue = { rescues += 1 }
                 )
@@ -47,10 +49,12 @@ class ProjectsRecoveryCardTest {
         compose.onAllNodesWithText("Nueva sesion").assertCountEquals(0)
         compose.onAllNodesWithText("Rescate").assertCountEquals(0)
         compose.onNodeWithText("Nuevo cambio").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Ver cambios").assertIsDisplayed().performClick()
         compose.onNodeWithTag("project-recovery-action").assertIsDisplayed().performClick()
 
         assertEquals(1, opens)
         assertEquals(1, newChanges)
+        assertEquals(1, viewsChanges)
         assertEquals(0, rescues)
     }
 
@@ -72,6 +76,7 @@ class ProjectsRecoveryCardTest {
                     actionsEnabled = true,
                     onDraftTitleChange = {},
                     onOpenSession = {},
+                    onOpenChanges = {},
                     onNewDevelopmentChange = { newChanges += 1 },
                     onOpenRescue = {}
                 )

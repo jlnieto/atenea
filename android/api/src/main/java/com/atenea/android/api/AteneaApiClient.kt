@@ -236,6 +236,18 @@ class AteneaApiClient(
         List(items.length()) { index -> parseMobileProjectOverview(items.getJSONObject(index)) }
     }
 
+    suspend fun fetchDevelopmentChanges(projectId: Long): List<MobileDevelopmentChange> {
+        require(projectId > 0) { "El proyecto debe ser válido." }
+        return getJsonArray(
+            path = "/api/v2/projects/$projectId/development-changes",
+            authenticated = true
+        ) { items ->
+            List(items.length()) { index ->
+                parseMobileDevelopmentChange(items.getJSONObject(index), projectId)
+            }
+        }
+    }
+
     suspend fun resolveMobileWorkSession(projectId: Long, title: String? = null): ResolveMobileWorkSessionResult = postJson(
         path = "/api/mobile/projects/$projectId/sessions/resolve",
         body = JSONObject().putNullable("title", title),
@@ -1338,6 +1350,17 @@ data class MobileProjectSessionOverview(
     val recoveryPending: Boolean
 )
 
+data class MobileDevelopmentChange(
+    val changeKey: UUID,
+    val projectId: Long,
+    val title: String,
+    val status: String,
+    val workspaceState: String,
+    val activeSessionId: Long?,
+    val primaryActionLabel: String?,
+    val updatedAt: String?
+)
+
 data class ResolveMobileWorkSessionResult(
     val created: Boolean,
     val view: MobileWorkSessionConversation
@@ -2300,6 +2323,25 @@ private fun parseMobileProjectOverview(json: JSONObject): MobileProjectOverview 
             )
         }
     )
+
+private fun parseMobileDevelopmentChange(json: JSONObject, expectedProjectId: Long): MobileDevelopmentChange {
+    val projectId = json.getLong("projectId")
+    require(projectId == expectedProjectId) { "La respuesta contiene un cambio de otro proyecto." }
+    val activeSessionId = json.optNullableLong("activeSessionId")
+    require(activeSessionId == null || activeSessionId > 0) { "La respuesta contiene una sesión inválida." }
+    val title = json.getString("title")
+    require(title.isNotBlank()) { "La respuesta contiene un cambio sin título." }
+    return MobileDevelopmentChange(
+        changeKey = UUID.fromString(json.getString("changeKey")),
+        projectId = projectId,
+        title = title,
+        status = json.getString("status"),
+        workspaceState = json.getString("workspaceState"),
+        activeSessionId = activeSessionId,
+        primaryActionLabel = json.optJSONObject("primaryAction")?.optNullableString("label"),
+        updatedAt = json.optNullableString("updatedAt")
+    )
+}
 
 private fun parseResolveMobileWorkSessionResult(json: JSONObject): ResolveMobileWorkSessionResult =
     ResolveMobileWorkSessionResult(
