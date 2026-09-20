@@ -135,7 +135,9 @@ public class MobileSessionOperatorStateService {
 
         if (latestRun != null
                 && latestRun.getRecoveryNextAction()
-                        == AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR) {
+                        == AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR
+                && (!"CHANGE_WORKSPACE_OWNERSHIP_CONFLICT".equals(latestRun.getFailureCode())
+                    || !agentRunService.isRemoteRetryEligible(latestRun.getId()))) {
             return state(
                     true,
                     MobileSessionOperatorState.OWNERSHIP_REVIEW_REQUIRED,

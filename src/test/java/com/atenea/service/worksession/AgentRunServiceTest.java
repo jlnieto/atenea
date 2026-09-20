@@ -20,6 +20,9 @@ import com.atenea.codexoperations.CodexExecutionProfileSnapshotService;
 import com.atenea.mobilepush.MobilePushDispatchService;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationKind;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationState;
 import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceOperationRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
@@ -762,6 +765,94 @@ class AgentRunServiceTest {
     }
 
     @Test
+    void inspectedOwnershipAdvanceRetriesSameTurnWithCurrentBinding() {
+        WorkSessionEntity session = changeBoundSession();
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        AgentRunEntity source = ownershipConflictRun(session);
+        DevelopmentChangeWorkspaceOperationEntity inspection = matchingInspection(source, change);
+        stubInspectedOwnership(source, change, inspection);
+        stubChangeAdmission(session, change);
+        when(agentRunRepository.findByIdForUpdate(source.getId()))
+                .thenReturn(Optional.of(source));
+        when(agentRunRepository.findFirstByRetryOfRunIdOrderByCreatedAtAsc(source.getId()))
+                .thenReturn(Optional.empty());
+
+        assertTrue(agentRunService.isRemoteRetryEligible(source.getId()));
+        AgentRunEntity retry = agentRunService.createRemoteRetryRun(source.getId());
+
+        assertEquals(source, retry.getRetryOfRun());
+        assertEquals(session, retry.getSession());
+        assertEquals(source.getOriginTurn(), retry.getOriginTurn());
+        assertEquals(change.getSourceRevision(), retry.getChangeSourceRevision());
+        assertEquals(change.getSourceFingerprintSha256(), retry.getChangeSourceFingerprintSha256());
+        assertEquals(AgentRunStatus.QUEUED, retry.getStatus());
+        verify(sessionTurnRepository, never()).save(any(SessionTurnEntity.class));
+    }
+
+    @Test
+    void ownershipConflictRequiresExactSucceededInspectionAfterFailure() {
+        WorkSessionEntity session = changeBoundSession();
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        AgentRunEntity source = ownershipConflictRun(session);
+        DevelopmentChangeWorkspaceOperationEntity inspection = matchingInspection(source, change);
+        stubInspectedOwnership(source, change, inspection);
+
+        assertTrue(agentRunService.isRemoteRetryEligible(source.getId()));
+
+        inspection.setState(DevelopmentChangeWorkspaceOperationState.BLOCKED);
+        assertFalse(agentRunService.isRemoteRetryEligible(source.getId()));
+        inspection.setState(DevelopmentChangeWorkspaceOperationState.SUCCEEDED);
+        inspection.setCompletedAt(source.getFinishedAt());
+        assertFalse(agentRunService.isRemoteRetryEligible(source.getId()));
+        inspection.setCompletedAt(source.getFinishedAt().plusSeconds(1));
+        inspection.setExpectedSourceFingerprintSha256("a".repeat(64));
+        assertFalse(agentRunService.isRemoteRetryEligible(source.getId()));
+        inspection.setExpectedSourceFingerprintSha256(source.getChangeSourceFingerprintSha256());
+        inspection.setResultSourceFingerprintSha256("b".repeat(64));
+        assertFalse(agentRunService.isRemoteRetryEligible(source.getId()));
+        inspection.setResultSourceFingerprintSha256(change.getSourceFingerprintSha256());
+        inspection.setOperationKind(DevelopmentChangeWorkspaceOperationKind.PROVISION);
+        assertFalse(agentRunService.isRemoteRetryEligible(source.getId()));
+    }
+
+    @Test
+    void ownershipConflictRejectsFurtherDriftAndUnrelatedFailure() {
+        WorkSessionEntity session = changeBoundSession();
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        AgentRunEntity source = ownershipConflictRun(session);
+        DevelopmentChangeWorkspaceOperationEntity inspection = matchingInspection(source, change);
+        stubInspectedOwnership(source, change, inspection);
+
+        change.setSourceRevision(change.getSourceRevision() + 1);
+        assertFalse(agentRunService.isRemoteRetryEligible(source.getId()));
+        change.setSourceRevision(4);
+        change.setWorkspaceState(DevelopmentChangeWorkspaceState.BLOCKED);
+        assertFalse(agentRunService.isRemoteRetryEligible(source.getId()));
+        change.setWorkspaceState(DevelopmentChangeWorkspaceState.READY);
+        source.setRemoteExecutionId(UUID.randomUUID().toString());
+        assertFalse(agentRunService.isRemoteRetryEligible(source.getId()));
+        source.setRemoteExecutionId(null);
+        source.setFailureCode("OTHER_OWNERSHIP_CONFLICT");
+        assertFalse(agentRunService.isRemoteRetryEligible(source.getId()));
+    }
+
+    @Test
+    void ownershipConflictWithoutDurableInspectionCannotCreateRetry() {
+        WorkSessionEntity session = changeBoundSession();
+        AgentRunEntity source = ownershipConflictRun(session);
+        when(agentRunRepository.findByIdForUpdate(source.getId()))
+                .thenReturn(Optional.of(source));
+        when(developmentChangeRepository.findByChangeKey(source.getDevelopmentChangeKey()))
+                .thenReturn(Optional.of(session.getDevelopmentChange()));
+
+        assertThrows(AgentRunRecoveryConflictException.class,
+                () -> agentRunService.createRemoteRetryRun(source.getId()));
+
+        verify(agentRunRepository, never()).save(any(AgentRunEntity.class));
+        verify(sessionTurnRepository, never()).save(any(SessionTurnEntity.class));
+    }
+
+    @Test
     void createRemoteImageRunPersistsV3AttachmentSnapshotBeforeFirstSave() {
         WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
         session.setBaseBranch(ProjectCodexIdentity.BRANCH);
@@ -1067,6 +1158,56 @@ class AgentRunServiceTest {
         run.setAttachmentBytes(0);
         run.setAttachmentManifestSha256(null);
         return run;
+    }
+
+    private AgentRunEntity ownershipConflictRun(WorkSessionEntity session) {
+        AgentRunEntity source = failedChangeRun(session);
+        source.setFailureCode("CHANGE_WORKSPACE_OWNERSHIP_CONFLICT");
+        source.setRecoveryNextAction(
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR);
+        source.setFinishedAt(Instant.parse("2026-08-23T12:01:00Z"));
+        source.setChangeWorkspaceOwnershipFingerprintSha256(
+                source.getChangeSourceFingerprintSha256());
+        session.getDevelopmentChange().setSourceRevision(4);
+        session.getDevelopmentChange().setSourceFingerprintSha256("6".repeat(64));
+        return source;
+    }
+
+    private DevelopmentChangeWorkspaceOperationEntity matchingInspection(
+            AgentRunEntity source,
+            DevelopmentChangeEntity change) {
+        DevelopmentChangeWorkspaceOperationEntity inspection =
+                new DevelopmentChangeWorkspaceOperationEntity();
+        inspection.setProject(change.getProject());
+        inspection.setDevelopmentChange(change);
+        inspection.setOperationKind(DevelopmentChangeWorkspaceOperationKind.INSPECT);
+        inspection.setState(DevelopmentChangeWorkspaceOperationState.SUCCEEDED);
+        inspection.setExpectedSourceRevision(source.getChangeSourceRevision());
+        inspection.setExpectedSourceFingerprintSha256(
+                source.getChangeSourceFingerprintSha256());
+        inspection.setExpectedCanonicalCommit(source.getChangeExpectedCanonicalCommit());
+        inspection.setResultWorkspaceState(DevelopmentChangeWorkspaceState.READY);
+        inspection.setResultSourceState(DevelopmentChangeSourceState.DIRTY);
+        inspection.setResultSourceRevision(change.getSourceRevision());
+        inspection.setResultSourceFingerprintSha256(change.getSourceFingerprintSha256());
+        inspection.setObservedCanonicalCommit(change.getObservedCanonicalCommit());
+        inspection.setReceiptSha256("7".repeat(64));
+        inspection.setCompletedAt(source.getFinishedAt().plusSeconds(1));
+        return inspection;
+    }
+
+    private void stubInspectedOwnership(
+            AgentRunEntity source,
+            DevelopmentChangeEntity change,
+            DevelopmentChangeWorkspaceOperationEntity inspection) {
+        org.mockito.Mockito.lenient().when(agentRunRepository.findById(source.getId()))
+                .thenReturn(Optional.of(source));
+        org.mockito.Mockito.lenient().when(developmentChangeRepository.findByChangeKey(
+                change.getChangeKey()))
+                .thenReturn(Optional.of(change));
+        org.mockito.Mockito.lenient().when(changeWorkspaceOperationRepository
+                .findFirstByDevelopmentChangeIdOrderByIdDesc(change.getId()))
+                .thenReturn(Optional.of(inspection));
     }
 
     private void stubChangeAdmission(
