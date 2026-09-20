@@ -343,6 +343,31 @@ class MobileSessionOperatorStateServiceTest {
     }
 
     @Test
+    void inspectedChangeOwnershipRemovesAdministrativeMobileBlocker() {
+        WorkSessionViewLatestRunResponse latestRun = latestRun(
+                "CHANGE_WORKSPACE_OWNERSHIP_CONFLICT",
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR);
+        AgentRunEntity run = new AgentRunEntity();
+        run.setId(96L);
+        run.setStatus(AgentRunStatus.FAILED);
+        run.setFailureCode("CHANGE_WORKSPACE_OWNERSHIP_CONFLICT");
+        run.setRecoveryNextAction(
+                AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR);
+        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
+        when(agentRunService.isRemoteRetryEligible(96L)).thenReturn(true);
+
+        MobileSessionOperatorStateResponse response = service.build(conversation(
+                WorkSessionStatus.OPEN,
+                RemoteCloseState.NOT_STARTED,
+                latestRun,
+                false));
+
+        assertEquals(MobileSessionOperatorState.DEFAULT, response.state());
+        assertFalse(response.surfaceEnabled());
+        assertEquals(96L, response.targetAgentRunId());
+    }
+
+    @Test
     void historicalPreV63FailureUsesExactReadOnlyOwnerDiagnosis() {
         WorkSessionEntity current = exactRemoteSession(
                 17L,
