@@ -333,6 +333,15 @@ class AteneaApiClient(
         parser = ::parseMobileWorkSessionConversation
     )
 
+    suspend fun advanceDevelopmentChangeValidation(
+        sessionId: Long
+    ): DevelopmentChangeValidation = postJson(
+        path = "/api/sessions/$sessionId/validate-change",
+        body = JSONObject(),
+        authenticated = true,
+        parser = ::parseDevelopmentChangeValidation
+    )
+
     suspend fun fetchMobileWorkSessionSummary(sessionId: Long): MobileSessionSummary = getJson(
         path = "/api/mobile/sessions/$sessionId/summary",
         authenticated = true,
@@ -1503,7 +1512,22 @@ data class MobileWorkSession(
     val closeBlockedState: String?,
     val closeBlockedReason: String?,
     val closeBlockedAction: String?,
-    val closeRetryable: Boolean
+    val closeRetryable: Boolean,
+    val developmentChangeKey: String? = null,
+    val developmentChangeValidationState: String? = null,
+    val developmentChangeSourceState: String? = null
+)
+
+data class DevelopmentChangeValidation(
+    val changeKey: String,
+    val sourceRevision: Long,
+    val sourceFingerprintSha256: String,
+    val validationState: String,
+    val state: String,
+    val currentOperation: String?,
+    val passedOperations: Int,
+    val requiredOperations: Int,
+    val summary: String
 )
 
 data class MobileAgentRun(
@@ -2588,7 +2612,25 @@ private fun parseMobileWorkSession(json: JSONObject): MobileWorkSession =
         closeBlockedState = json.optNullableString("closeBlockedState"),
         closeBlockedReason = json.optNullableString("closeBlockedReason"),
         closeBlockedAction = json.optNullableString("closeBlockedAction"),
-        closeRetryable = json.optBoolean("closeRetryable", false)
+        closeRetryable = json.optBoolean("closeRetryable", false),
+        developmentChangeKey = json.optNullableString("developmentChangeKey"),
+        developmentChangeValidationState = json.optNullableString(
+            "developmentChangeValidationState"
+        ),
+        developmentChangeSourceState = json.optNullableString("developmentChangeSourceState")
+    )
+
+private fun parseDevelopmentChangeValidation(json: JSONObject): DevelopmentChangeValidation =
+    DevelopmentChangeValidation(
+        changeKey = json.getString("changeKey"),
+        sourceRevision = json.getLong("sourceRevision"),
+        sourceFingerprintSha256 = json.getString("sourceFingerprintSha256"),
+        validationState = json.getString("validationState"),
+        state = json.getString("state"),
+        currentOperation = json.optNullableString("currentOperation"),
+        passedOperations = json.getInt("passedOperations"),
+        requiredOperations = json.getInt("requiredOperations"),
+        summary = json.optString("summary", "")
     )
 
 private fun parseMobileSessionSummary(json: JSONObject): MobileSessionSummary =

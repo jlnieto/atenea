@@ -81,6 +81,8 @@ internal fun WorkSessionConversationScreen(
     var operationError by remember { mutableStateOf<String?>(null) }
     var operationNotice by remember { mutableStateOf<String?>(null) }
     var operationPending by remember { mutableStateOf(false) }
+    var validationPending by remember { mutableStateOf(false) }
+    var validationNotice by remember { mutableStateOf<String?>(null) }
     var wasBackgrounded by remember { mutableStateOf(false) }
     var attachmentDraft by remember(sessionId) { mutableStateOf(WorkSessionAttachmentDraft()) }
     var openingAttachmentId by remember { mutableStateOf<UUID?>(null) }
@@ -636,6 +638,41 @@ internal fun WorkSessionConversationScreen(
         }
     }
 
+    fun validateChange() {
+        val id = sessionId ?: return
+        if (validationPending || conversation?.runInProgress == true) return
+        scope.launch {
+            validationPending = true
+            validationNotice = "Preparando la validación cerrada…"
+            error = null
+            try {
+                while (true) {
+                    val result = apiClient.advanceDevelopmentChangeValidation(id)
+                    validationNotice = buildString {
+                        append(result.summary)
+                        append(" (${result.passedOperations}/${result.requiredOperations})")
+                    }
+                    when (result.state) {
+                        "RUNNING", "ADVANCING" -> delay(3_000)
+                        "SUCCEEDED" -> {
+                            refresh(silent = true, includeProfile = false)
+                            break
+                        }
+                        else -> {
+                            error = result.summary
+                            refresh(silent = true, includeProfile = false)
+                            break
+                        }
+                    }
+                }
+            } catch (validationError: Exception) {
+                error = validationError.message ?: "No se pudo validar el cambio."
+            } finally {
+                validationPending = false
+            }
+        }
+    }
+
     fun confirmLegacyRemoteClose() {
         val currentState = operatorState ?: return
         val coordinator = remoteCloseCoordinator ?: return
@@ -652,6 +689,12 @@ internal fun WorkSessionConversationScreen(
     } == true
     val profileReady = profileUnavailable || profile != null
     val composerEnabled = current?.canCreateTurn == true && profileReady && !profileDirty && profileError == null
+    val changeValidationUi = developmentChangeValidationUiState(
+        session = current?.session,
+        runInProgress = current?.runInProgress == true,
+        validationPending = validationPending,
+        operationNotice = validationNotice
+    )
     ConversationSurface(
         title = current?.session?.title ?: "WorkSession $sessionId",
         status = buildString {
@@ -685,7 +728,10 @@ internal fun WorkSessionConversationScreen(
                 )
             }
         },
-        runContent = if (operatorState?.surfaceEnabled == true || runDetail != null || operationError != null) {
+        runContent = if (
+            operatorState?.surfaceEnabled == true || runDetail != null || operationError != null
+                || current?.session?.developmentChangeKey != null
+        ) {
             {
                 operatorState?.let { currentState ->
                     RemoteCloseOperatorPanel(
@@ -712,6 +758,16 @@ internal fun WorkSessionConversationScreen(
                         },
                         onRecovery = ::requestRecovery
                     )
+                }
+                if (changeValidationUi.visible) {
+                    Text(changeValidationUi.message)
+                    if (current?.session?.developmentChangeValidationState != "CURRENT") {
+                        AteneaButton(
+                            text = changeValidationUi.label,
+                            enabled = changeValidationUi.canStart,
+                            onClick = ::validateChange
+                        )
+                    }
                 }
             }
         } else null,
