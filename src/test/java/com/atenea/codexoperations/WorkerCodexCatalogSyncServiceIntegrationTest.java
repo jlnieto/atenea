@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class WorkerCodexCatalogSyncServiceIntegrationTest {
     private static final String REVISION =
-            "125b9437e38f83e04cb10996fc70d3ab44c32082009b8e897cb08bb340b13187";
+            "1372647bd09888c3305147b9a7cf6889b5b4526e04d332971f7e3a43ccb7efc7";
 
     @Autowired
     private WorkerCodexCatalogSyncService service;
@@ -61,11 +61,11 @@ class WorkerCodexCatalogSyncServiceIntegrationTest {
                 SELECT count(*) FROM worker_codex_catalog
                  WHERE worker_id = 'catalog-sync-test' AND catalog_revision = ?
                 """, Integer.class, REVISION));
-        assertEquals(1, jdbcTemplate.queryForObject("""
+        assertEquals(2, jdbcTemplate.queryForObject("""
                 SELECT count(*) FROM worker_codex_model
                  WHERE worker_id = 'catalog-sync-test' AND catalog_revision = ?
                 """, Integer.class, REVISION));
-        assertEquals(6, jdbcTemplate.queryForObject("""
+        assertEquals(11, jdbcTemplate.queryForObject("""
                 SELECT count(*) FROM worker_codex_model_effort
                  WHERE worker_id = 'catalog-sync-test' AND catalog_revision = ?
                 """, Integer.class, REVISION));
@@ -73,6 +73,11 @@ class WorkerCodexCatalogSyncServiceIntegrationTest {
                 SELECT default_effort FROM worker_codex_model
                  WHERE worker_id = 'catalog-sync-test' AND catalog_revision = ?
                    AND model_id = 'gpt-5.6-sol'
+                """, String.class, REVISION));
+        assertEquals(List.of("gpt-6-sol", "gpt-5.6-sol"), jdbcTemplate.queryForList("""
+                SELECT model_id FROM worker_codex_model
+                 WHERE worker_id = 'catalog-sync-test' AND catalog_revision = ?
+                 ORDER BY position
                 """, String.class, REVISION));
     }
 
@@ -91,9 +96,14 @@ class WorkerCodexCatalogSyncServiceIntegrationTest {
                 "codex-model-catalog-v1",
                 revision,
                 "catalog-sync-test",
-                "0.145.0",
+                "0.157.0",
                 Instant.parse("2026-07-31T23:00:00Z"),
                 List.of(new CodexModel(
+                        "gpt-6-sol",
+                        "GPT-6 Sol",
+                        List.of("low", "medium", "high", "xhigh", "max"),
+                        "high",
+                        "AVAILABLE"), new CodexModel(
                         "gpt-5.6-sol",
                         "GPT-5.6 Sol",
                         List.of("none", "low", "medium", "high", "xhigh", "max"),
