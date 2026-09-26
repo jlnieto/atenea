@@ -211,6 +211,9 @@ public class ClosedValidationOperationService {
                             session, next, source.fingerprintSha256(), entity.getId().toString()));
         } catch (RemoteWorkerException exception) {
             entity.setStatus(ValidationOperationStatus.BLOCKED);
+            entity.setExitCode(null);
+            entity.setDurationMillis(0L);
+            entity.setArtifactManifestSha256(null);
             entity.setSummary("Worker validation authority was unavailable");
             entity.setFinishedAt(Instant.now());
             entity.setUpdatedAt(entity.getFinishedAt());
@@ -288,15 +291,21 @@ public class ClosedValidationOperationService {
             default -> throw new RemoteWorkerException(
                     "Validation returned an unsupported durable state", 409);
         };
+        Instant updatedAt = Instant.now();
         entity.setStatus(status);
-        entity.setExitCode(result.exitCode());
-        entity.setDurationMillis(result.durationMillis());
-        entity.setArtifactManifestSha256(result.artifactManifestSha256());
-        entity.setSummary(safeSummary(result.summary()));
-        entity.setUpdatedAt(Instant.now());
-        if (status != ValidationOperationStatus.RUNNING) {
-            entity.setFinishedAt(entity.getUpdatedAt());
+        if (status == ValidationOperationStatus.RUNNING) {
+            entity.setExitCode(null);
+            entity.setDurationMillis(null);
+            entity.setArtifactManifestSha256(null);
+            entity.setFinishedAt(null);
+        } else {
+            entity.setExitCode(result.exitCode());
+            entity.setDurationMillis(result.durationMillis());
+            entity.setArtifactManifestSha256(result.artifactManifestSha256());
+            entity.setFinishedAt(updatedAt);
         }
+        entity.setSummary(safeSummary(result.summary()));
+        entity.setUpdatedAt(updatedAt);
         validationOperationRepository.save(entity);
     }
 
