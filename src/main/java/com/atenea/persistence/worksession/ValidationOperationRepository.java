@@ -12,7 +12,7 @@ public interface ValidationOperationRepository extends JpaRepository<ValidationO
     Optional<ValidationOperationEntity> findByIdentitySha256(String identitySha256);
 
     @EntityGraph(attributePaths = {"workSession", "workSession.project"})
-    List<ValidationOperationEntity> findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByOperationAsc(
+    List<ValidationOperationEntity> findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
             Long workSessionId,
             String sourceTreeFingerprintSha256);
 }

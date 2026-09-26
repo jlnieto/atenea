@@ -147,9 +147,10 @@ public class ClosedValidationOperationService {
         acceptanceService.observeSourceTree(sessionId, source.fingerprintSha256());
 
         List<ValidationOperationEntity> results = validationOperationRepository
-                .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByOperationAsc(
+                .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
                         sessionId, source.fingerprintSha256());
-        ValidationOperationEntity running = results.stream()
+        Map<ValidationOperationKind, ValidationOperationEntity> latest = latestByOperation(results);
+        ValidationOperationEntity running = latest.values().stream()
                 .filter(result -> result.getStatus() == ValidationOperationStatus.RUNNING)
                 .findFirst()
                 .orElse(null);
@@ -165,29 +166,38 @@ public class ClosedValidationOperationService {
                         "La validación sigue ejecutándose; su estado durable se reconciliará.");
             }
             results = validationOperationRepository
-                    .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByOperationAsc(
+                    .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
                             sessionId, source.fingerprintSha256());
+            latest = latestByOperation(results);
+            if (running.getStatus() == ValidationOperationStatus.RUNNING) {
+                return developmentChangeResponse(
+                        change, results, "RUNNING", running.getOperation().name(),
+                        running.getSummary());
+            }
         }
 
-        ValidationOperationEntity failed = results.stream()
+        ValidationOperationEntity failed = latest.values().stream()
                 .filter(result -> result.getStatus() == ValidationOperationStatus.FAILED
                         || result.getStatus() == ValidationOperationStatus.BLOCKED)
                 .findFirst()
                 .orElse(null);
-        if (failed != null) {
+        if (failed != null && (running != null
+                || failed.getStatus() == ValidationOperationStatus.BLOCKED)) {
             change.setValidationState(DevelopmentChangeProjectionState.BLOCKED);
             projectAcceptance(sessionId, source.fingerprintSha256());
             return developmentChangeResponse(
                     change, results, "FAILED", failed.getOperation().name(), failed.getSummary());
         }
 
-        Map<ValidationOperationKind, ValidationOperationEntity> byKind =
-                new EnumMap<>(ValidationOperationKind.class);
-        results.forEach(result -> byKind.put(result.getOperation(), result));
-        ValidationOperationKind next = java.util.Arrays.stream(ValidationOperationKind.values())
-                .filter(kind -> !byKind.containsKey(kind))
-                .findFirst()
-                .orElse(null);
+        ValidationOperationKind next = failed == null ? null : failed.getOperation();
+        if (failed == null) {
+            for (ValidationOperationKind kind : ValidationOperationKind.values()) {
+                if (!latest.containsKey(kind)) {
+                    next = kind;
+                    break;
+                }
+            }
+        }
         if (next == null) {
             projectAcceptance(sessionId, source.fingerprintSha256());
             change.setValidationState(DevelopmentChangeProjectionState.CURRENT);
@@ -196,7 +206,8 @@ public class ClosedValidationOperationService {
                     "Todas las validaciones obligatorias están vigentes.");
         }
 
-        ValidationOperationEntity entity = newValidationEntity(session, next, source.fingerprintSha256());
+        ValidationOperationEntity entity = newValidationEntity(
+                session, next, source.fingerprintSha256(), failed == null ? null : failed.getId());
         validationOperationRepository.saveAndFlush(entity);
         acceptanceService.markValidating(
                 sessionId,
@@ -221,7 +232,7 @@ public class ClosedValidationOperationService {
             change.setValidationState(DevelopmentChangeProjectionState.BLOCKED);
         }
         results = validationOperationRepository
-                .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByOperationAsc(
+                .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
                         sessionId, source.fingerprintSha256());
         if (entity.getStatus() == ValidationOperationStatus.FAILED
                 || entity.getStatus() == ValidationOperationStatus.BLOCKED) {
@@ -239,12 +250,14 @@ public class ClosedValidationOperationService {
     private ValidationOperationEntity newValidationEntity(
             WorkSessionEntity session,
             ValidationOperationKind operation,
-            String fingerprint
+            String fingerprint,
+            UUID retryOf
     ) {
-        String identity = sha256(
-                "development-change\0" + session.getRemoteSessionId() + "\0"
-                        + session.getWorkspaceIdentity() + "\0" + operation.name() + "\0"
-                        + operation.definitionRevision() + "\0" + fingerprint);
+        String identityMaterial = "development-change\0" + session.getRemoteSessionId() + "\0"
+                + session.getWorkspaceIdentity() + "\0" + operation.name() + "\0"
+                + operation.definitionRevision() + "\0" + fingerprint;
+        String identity = sha256(retryOf == null
+                ? identityMaterial : identityMaterial + "\0retry-of\0" + retryOf);
         Instant now = Instant.now();
         ValidationOperationEntity entity = new ValidationOperationEntity();
         entity.setId(UUID.randomUUID());
@@ -332,7 +345,7 @@ public class ClosedValidationOperationService {
             String currentOperation,
             String summary
     ) {
-        int passed = (int) results.stream()
+        int passed = (int) latestByOperation(results).values().stream()
                 .filter(result -> result.getStatus() == ValidationOperationStatus.SUCCEEDED)
                 .count();
         return new DevelopmentChangeValidationResponse(
@@ -393,15 +406,13 @@ public class ClosedValidationOperationService {
     private void projectAcceptance(Long sessionId, String fingerprint) {
         List<ValidationOperationEntity> results =
                 validationOperationRepository
-                        .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByOperationAsc(
+                        .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
                                 sessionId,
                                 fingerprint);
-        Map<ValidationOperationKind, ValidationOperationEntity> byKind =
-                new EnumMap<>(ValidationOperationKind.class);
-        results.forEach(result -> byKind.put(result.getOperation(), result));
+        Map<ValidationOperationKind, ValidationOperationEntity> byKind = latestByOperation(results);
         String projection = projectionSha256(results);
 
-        ValidationOperationEntity failed = results.stream()
+        ValidationOperationEntity failed = byKind.values().stream()
                 .filter(result -> result.getStatus() == ValidationOperationStatus.FAILED
                         || result.getStatus() == ValidationOperationStatus.BLOCKED)
                 .findFirst()
@@ -441,7 +452,7 @@ public class ClosedValidationOperationService {
     private String projectionSha256(Long sessionId, String fingerprint) {
         return projectionSha256(
                 validationOperationRepository
-                        .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByOperationAsc(
+                        .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
                                 sessionId,
                                 fingerprint));
     }
@@ -449,13 +460,22 @@ public class ClosedValidationOperationService {
     private String projectionSha256(List<ValidationOperationEntity> results) {
         Map<ValidationOperationKind, ValidationOperationStatus> states =
                 new EnumMap<>(ValidationOperationKind.class);
-        results.forEach(result -> states.put(result.getOperation(), result.getStatus()));
+        latestByOperation(results).forEach((kind, result) -> states.put(kind, result.getStatus()));
         StringBuilder canonical = new StringBuilder(profileRevision());
         for (ValidationOperationKind kind : ValidationOperationKind.values()) {
             canonical.append('\0').append(kind.name()).append('=')
                     .append(states.getOrDefault(kind, null));
         }
         return sha256(canonical.toString());
+    }
+
+    private Map<ValidationOperationKind, ValidationOperationEntity> latestByOperation(
+            List<ValidationOperationEntity> results
+    ) {
+        Map<ValidationOperationKind, ValidationOperationEntity> latest =
+                new EnumMap<>(ValidationOperationKind.class);
+        results.forEach(result -> latest.put(result.getOperation(), result));
+        return latest;
     }
 
     private String profileRevision() {
