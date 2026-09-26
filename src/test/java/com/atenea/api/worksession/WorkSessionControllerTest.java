@@ -14,6 +14,7 @@ import com.atenea.persistence.worksession.ValidationOperationKind;
 import com.atenea.persistence.worksession.ValidationOperationStatus;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
 import com.atenea.service.worksession.RetainedDraftRecoveryService;
@@ -144,6 +145,27 @@ class WorkSessionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"command\":\"docker run --privileged\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void validateChangeEndpointReturnsOnlyDurableProgressProjection() throws Exception {
+        UUID changeKey = UUID.fromString("59315b6e-59bc-4884-9def-356e1ca86ef4");
+        when(closedValidationOperationService.advanceDevelopmentChange(21L))
+                .thenReturn(new DevelopmentChangeValidationResponse(
+                        changeKey, 2, "4".repeat(64),
+                        DevelopmentChangeProjectionState.NOT_STARTED,
+                        "RUNNING", "ANDROID_BUILD", 2, 4,
+                        "Closed validation is running"));
+
+        mockMvc.perform(post("/api/sessions/21/validate-change")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.changeKey").value(changeKey.toString()))
+                .andExpect(jsonPath("$.state").value("RUNNING"))
+                .andExpect(jsonPath("$.currentOperation").value("ANDROID_BUILD"))
+                .andExpect(jsonPath("$.passedOperations").value(2))
+                .andExpect(jsonPath("$.requiredOperations").value(4));
     }
 
     @Test

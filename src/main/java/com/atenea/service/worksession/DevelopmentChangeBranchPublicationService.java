@@ -4,10 +4,12 @@ import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
 import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
 import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.worksession.WorkSessionAcceptanceState;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.remoteworker.DevelopmentChangeBranchPublication;
@@ -149,6 +151,11 @@ public class DevelopmentChangeBranchPublicationService {
                 || !Objects.equals(change.getProject().getId(), session.getProject().getId())
                 || change.getStatus() != DevelopmentChangeStatus.OPEN
                 || change.getWorkspaceState() != DevelopmentChangeWorkspaceState.READY
+                || change.getValidationState() != DevelopmentChangeProjectionState.CURRENT
+                || session.getAcceptanceState() != WorkSessionAcceptanceState.VALIDATED
+                || !Objects.equals(
+                        session.getSourceTreeFingerprintSha256(),
+                        change.getSourceFingerprintSha256())
                 || change.getSourceState() == DevelopmentChangeSourceState.STALE
                 || change.getSourceState() == DevelopmentChangeSourceState.BLOCKED
                 || session.getStatus() != WorkSessionStatus.OPEN

@@ -89,6 +89,13 @@ public class WorkSessionController {
         return closedValidationOperationService.run(sessionId, operation);
     }
 
+    @PostMapping("/api/sessions/{sessionId}/validate-change")
+    public DevelopmentChangeValidationResponse validateDevelopmentChange(
+            @PathVariable Long sessionId
+    ) {
+        return closedValidationOperationService.advanceDevelopmentChange(sessionId);
+    }
+
     @PostMapping("/api/sessions/{sessionId}/repository-role-sets/atenea-platform")
     public RepositoryRoleSetResponse ensureRepositoryRoles(@PathVariable Long sessionId) {
         return repositoryRoleSetService.ensure(sessionId);

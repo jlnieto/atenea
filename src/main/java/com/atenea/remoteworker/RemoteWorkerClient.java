@@ -784,6 +784,75 @@ public class RemoteWorkerClient {
                 validationTimeout(operation));
     }
 
+    public DurableValidationResult startValidation(
+            WorkSessionEntity session,
+            ValidationOperationKind operation,
+            String sourceTreeFingerprintSha256,
+            String operationId
+    ) {
+        Map<String, Object> body = validationBody(
+                session, operation, sourceTreeFingerprintSha256, operationId);
+        body.put("schemaVersion", 1);
+        body.put("protocolVersion", "closed-validation-broker/v1");
+        body.put("operationId", body.remove("validationId"));
+        return exchange(
+                "POST",
+                "/v1/project-workspaces/validations/start",
+                body,
+                DurableValidationResult.class,
+                operationId,
+                properties.getWorkspaceProvisionTimeout());
+    }
+
+    public DurableValidationResult inspectValidation(
+            WorkSessionEntity session,
+            String operationId
+    ) {
+        Map<String, Object> body = Map.of(
+                "schemaVersion", 1,
+                "protocolVersion", "closed-validation-broker/v1",
+                "operationId", operationId,
+                "sessionId", session.getRemoteSessionId().toString(),
+                "workspaceIdentity", session.getWorkspaceIdentity(),
+                "projectId", ProjectCodexIdentity.PROJECT_IDENTITY);
+        return exchange(
+                "POST",
+                "/v1/project-workspaces/validations/inspect",
+                body,
+                DurableValidationResult.class,
+                operationId,
+                properties.getWorkspaceProvisionTimeout());
+    }
+
+    private Map<String, Object> validationBody(
+            WorkSessionEntity session,
+            ValidationOperationKind operation,
+            String sourceTreeFingerprintSha256,
+            String validationId
+    ) {
+        if (!ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+                || session.getRemoteSessionId() == null
+                || session.getWorkspaceIdentity() == null
+                || sourceTreeFingerprintSha256 == null
+                || !sourceTreeFingerprintSha256.matches("^[0-9a-f]{64}$")) {
+            throw new RemoteWorkerException(
+                    "Persisted validation ownership or source tree fingerprint is incomplete",
+                    409);
+        }
+        return new LinkedHashMap<>(Map.ofEntries(
+                Map.entry("validationId", validationId),
+                Map.entry("sessionId", session.getRemoteSessionId().toString()),
+                Map.entry("workspaceIdentity", session.getWorkspaceIdentity()),
+                Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
+                Map.entry("repository", ProjectCodexIdentity.REPOSITORY),
+                Map.entry("branch", ProjectCodexIdentity.BRANCH),
+                Map.entry("commit", session.getCanonicalSourceCommit()),
+                Map.entry("manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256),
+                Map.entry("operation", operation.name()),
+                Map.entry("definitionRevision", operation.definitionRevision()),
+                Map.entry("sourceTreeFingerprintSha256", sourceTreeFingerprintSha256)));
+    }
+
     public RepositoryRoleSet ensureRepositoryRoles(
             WorkSessionEntity session,
             String changeIdentity
@@ -1443,6 +1512,34 @@ public class RemoteWorkerClient {
             long durationMillis,
             String artifactManifestSha256,
             String summary,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record DurableValidationResult(
+            int schemaVersion,
+            String protocolVersion,
+            String operationId,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String sourceRevision,
+            String sourceTreeFingerprintSha256,
+            String validationDefinition,
+            String definitionRevision,
+            String state,
+            String terminalCause,
+            String transportState,
+            Integer exitCode,
+            long durationMillis,
+            String artifactManifestSha256,
+            String summary,
+            String createdAt,
+            String startedAt,
+            String finishedAt,
+            String updatedAt,
+            long revision,
             boolean valuesExposed
     ) {
     }
