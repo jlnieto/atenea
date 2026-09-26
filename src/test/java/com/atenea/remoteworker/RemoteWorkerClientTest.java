@@ -882,7 +882,7 @@ class RemoteWorkerClientTest {
                     foreign.setDefaultBaseBranch("main");
                     session.getDevelopmentChange().setProject(foreign);
                 },
-                session -> session.getProject().setRepoPath("/workspace/repos/internal/foreign"),
+                session -> session.getProject().setRepoPath("   "),
                 session -> session.getDevelopmentChange().setBaseRef("refs/heads/foreign"),
                 session -> session.setRemoteCloseOperationId(null));
         for (Consumer<WorkSessionEntity> mutation : mutations) {
