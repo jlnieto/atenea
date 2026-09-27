@@ -181,8 +181,10 @@ public class ClosedValidationOperationService {
                         || result.getStatus() == ValidationOperationStatus.BLOCKED)
                 .findFirst()
                 .orElse(null);
-        if (failed != null && (running != null
-                || failed.getStatus() == ValidationOperationStatus.BLOCKED)) {
+        // A terminal failure discovered while polling a RUNNING operation must
+        // be shown to the operator first. A later explicit request may start a
+        // new durable attempt, including when the old terminal state is BLOCKED.
+        if (failed != null && running != null) {
             change.setValidationState(DevelopmentChangeProjectionState.BLOCKED);
             projectAcceptance(sessionId, source.fingerprintSha256());
             return developmentChangeResponse(
