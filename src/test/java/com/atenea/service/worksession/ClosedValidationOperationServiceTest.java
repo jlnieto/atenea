@@ -190,11 +190,13 @@ class ClosedValidationOperationServiceTest {
     }
 
     @Test
-    void queuedChangeValidationKeepsRunningColumnsNullUntilDurableTerminalResult() {
+    void queuedChangeValidationReportsTerminalBlockBeforeExplicitRetry() {
         configureChangeOwnedSession();
+        int[] starts = {0};
         when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
                 .thenAnswer(invocation -> durableResult(
-                        invocation.getArgument(3), invocation.getArgument(1), "QUEUED", 0));
+                        invocation.getArgument(3), invocation.getArgument(1),
+                        starts[0]++ == 0 ? "QUEUED" : "SUCCEEDED", 7));
         when(remoteWorkerClient.inspectValidation(any(), anyString()))
                 .thenAnswer(invocation -> durableResult(
                         invocation.getArgument(1), ValidationOperationKind.BACKEND_TEST,
@@ -216,11 +218,17 @@ class ClosedValidationOperationServiceTest {
         verify(remoteWorkerClient, times(1))
                 .startValidation(any(), any(), anyString(), anyString());
 
-        var blocked = service.advanceDevelopmentChange(41L);
-        assertEquals("FAILED", blocked.state());
-        assertEquals(1, operations.size());
+        var retry = service.advanceDevelopmentChange(41L);
+        assertEquals("ADVANCING", retry.state());
+        assertEquals(1, retry.passedOperations());
+        assertEquals(2, operations.size());
         assertEquals(ValidationOperationStatus.BLOCKED, operations.getFirst().getStatus());
-        verify(remoteWorkerClient, times(1))
+        assertEquals(ValidationOperationStatus.SUCCEEDED, operations.getLast().getStatus());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                operations.getFirst().getId(), operations.getLast().getId());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                operations.getFirst().getIdentitySha256(), operations.getLast().getIdentitySha256());
+        verify(remoteWorkerClient, times(2))
                 .startValidation(any(), any(), anyString(), anyString());
     }
 
@@ -283,10 +291,12 @@ class ClosedValidationOperationServiceTest {
     }
 
     @Test
-    void unavailableWorkerPersistsTerminalBlockWithDuration() {
+    void unavailableWorkerBlockIsAuditedBeforeExplicitRetry() {
         configureChangeOwnedSession();
         when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
-                .thenThrow(new RemoteWorkerException("worker unavailable", 503));
+                .thenThrow(new RemoteWorkerException("worker unavailable", 503))
+                .thenAnswer(invocation -> durableResult(
+                        invocation.getArgument(3), invocation.getArgument(1), "SUCCEEDED", 7));
 
         var response = service.advanceDevelopmentChange(41L);
         ValidationOperationEntity operation = operations.getFirst();
@@ -295,6 +305,14 @@ class ClosedValidationOperationServiceTest {
         assertEquals(0L, operation.getDurationMillis());
         assertNull(operation.getExitCode());
         assertNotNull(operation.getFinishedAt());
+
+        var retry = service.advanceDevelopmentChange(41L);
+        assertEquals("ADVANCING", retry.state());
+        assertEquals(2, operations.size());
+        assertEquals(ValidationOperationStatus.BLOCKED, operation.getStatus());
+        assertEquals(ValidationOperationStatus.SUCCEEDED, operations.getLast().getStatus());
+        verify(remoteWorkerClient, times(2))
+                .startValidation(any(), any(), anyString(), anyString());
     }
 
     private DevelopmentChangeEntity configureChangeOwnedSession() {
