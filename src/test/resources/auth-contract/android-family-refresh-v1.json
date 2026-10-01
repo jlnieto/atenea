@@ -1,0 +1,5 @@
+{
+  "refreshToken": "refresh-1",
+  "sessionProtocolVersion": "FAMILY_V1",
+  "singleFlightRefresh": true
+}

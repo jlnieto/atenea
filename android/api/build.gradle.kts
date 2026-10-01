@@ -11,6 +11,8 @@ android {
         minSdk = 26
     }
 
+    sourceSets.getByName("test").resources.srcDir("../../src/test/resources/auth-contract")
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

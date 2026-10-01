@@ -100,6 +100,7 @@ class FreshWorkSessionServiceTest {
         project.setId(1L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
         source = new WorkSessionEntity();
         source.setId(17L);
         source.setProject(project);

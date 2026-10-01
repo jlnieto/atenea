@@ -276,6 +276,7 @@ class AttachmentCapabilityServiceTest {
         project.setId(7L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
 
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(12L);

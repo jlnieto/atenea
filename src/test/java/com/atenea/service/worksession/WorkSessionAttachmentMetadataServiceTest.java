@@ -295,6 +295,7 @@ class WorkSessionAttachmentMetadataServiceTest {
         WorkSessionEntity session = remoteSession(sessionId, projectId);
         session.getProject().setName(ProjectCodexIdentity.PROJECT_NAME);
         session.getProject().setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        session.getProject().setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
         session.setBaseBranch(ProjectCodexIdentity.BRANCH);
         session.setRemoteSessionId(remoteSessionId);
         session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);

@@ -788,6 +788,7 @@ class MobileSessionOperatorStateServiceTest {
         project.setId(1L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(id);
         session.setProject(project);

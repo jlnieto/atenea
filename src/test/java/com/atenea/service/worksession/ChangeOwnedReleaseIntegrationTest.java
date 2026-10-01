@@ -52,6 +52,7 @@ class ChangeOwnedReleaseIntegrationTest {
     @Autowired WorkSessionRepository sessions;
     @Autowired DevelopmentChangeRepository changes;
     @Autowired ProjectRepository projects;
+    @Autowired WorkerNodeRepository workers;
     @Autowired RemoteWorkerProperties workerProperties;
     @Autowired ObjectMapper mapper;
     @MockBean GitRepositoryService git;
@@ -63,12 +64,32 @@ class ChangeOwnedReleaseIntegrationTest {
     private HttpServer worker;
     private WorkSessionEntity session;
     private DevelopmentChangeEntity change;
+    private boolean createdWorker;
     private final AtomicInteger releases = new AtomicInteger();
     private final AtomicReference<JsonNode> request = new AtomicReference<>();
 
     @BeforeEach
     void setUp() throws Exception {
         Instant now = Instant.now();
+        createdWorker = false;
+        if (workers.findById(ProjectCodexIdentity.WORKER_ID).isEmpty()) {
+            WorkerNodeEntity node = new WorkerNodeEntity();
+            node.setId(ProjectCodexIdentity.WORKER_ID);
+            node.setProtocolVersion(RemoteWorkerProperties.PROTOCOL);
+            node.setEndpoint("http://127.0.0.1:1");
+            node.setEnabled(true);
+            node.setHealthy(true);
+            node.setNormalCapacity(4);
+            node.setHeavyCapacity(2);
+            node.setNormalInUse(0);
+            node.setHeavyInUse(0);
+            node.setCapabilities(ProjectCodexIdentity.WORKLOAD_KIND);
+            node.setLastHeartbeatAt(now);
+            node.setCreatedAt(now);
+            node.setUpdatedAt(now);
+            workers.saveAndFlush(node);
+            createdWorker = true;
+        }
         ProjectEntity project = projects.findByName("Atenea").orElseGet(() -> {
             ProjectEntity created = new ProjectEntity();
             created.setName("Atenea");
@@ -162,6 +183,7 @@ class ChangeOwnedReleaseIntegrationTest {
         if (worker != null) worker.stop(0);
         if (session != null && session.getId() != null) sessions.deleteById(session.getId());
         if (change != null && change.getId() != null) changes.deleteById(change.getId());
+        if (createdWorker) workers.deleteById(ProjectCodexIdentity.WORKER_ID);
     }
 
     @ParameterizedTest

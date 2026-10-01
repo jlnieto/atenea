@@ -184,6 +184,7 @@ class RemoteSessionConcurrencyIntegrationTest {
         change.setStatus(DevelopmentChangeStatus.OPEN);
         change.setBaseRef("refs/heads/main");
         change.setBaseCommit("1".repeat(40));
+        change.setObservedCanonicalCommit(change.getBaseCommit());
         change.setWorkspaceBranch("atenea/change-" + changeKey);
         change.setWorkspaceIdentity("remote:synthetic-worker-01:change:" + changeKey);
         change.setSelectedWorkerId("synthetic-worker-01");
