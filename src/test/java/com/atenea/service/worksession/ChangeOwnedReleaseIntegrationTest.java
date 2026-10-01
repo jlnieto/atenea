@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -62,9 +63,11 @@ class ChangeOwnedReleaseIntegrationTest {
     @TempDir Path temporary;
 
     private HttpServer worker;
+    private ProjectEntity project;
     private WorkSessionEntity session;
     private DevelopmentChangeEntity change;
     private boolean createdWorker;
+    private boolean createdProject;
     private final AtomicInteger releases = new AtomicInteger();
     private final AtomicReference<JsonNode> request = new AtomicReference<>();
 
@@ -72,6 +75,7 @@ class ChangeOwnedReleaseIntegrationTest {
     void setUp() throws Exception {
         Instant now = Instant.now();
         createdWorker = false;
+        createdProject = false;
         if (workers.findById(ProjectCodexIdentity.WORKER_ID).isEmpty()) {
             WorkerNodeEntity node = new WorkerNodeEntity();
             node.setId(ProjectCodexIdentity.WORKER_ID);
@@ -90,7 +94,8 @@ class ChangeOwnedReleaseIntegrationTest {
             workers.saveAndFlush(node);
             createdWorker = true;
         }
-        ProjectEntity project = projects.findByName("Atenea").orElseGet(() -> {
+        project = projects.findByName("Atenea").orElseGet(() -> {
+            createdProject = true;
             ProjectEntity created = new ProjectEntity();
             created.setName("Atenea");
             created.setRepoPath("/repos/atenea");
@@ -180,10 +185,51 @@ class ChangeOwnedReleaseIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        if (worker != null) worker.stop(0);
-        if (session != null && session.getId() != null) sessions.deleteById(session.getId());
-        if (change != null && change.getId() != null) changes.deleteById(change.getId());
-        if (createdWorker) workers.deleteById(ProjectCodexIdentity.WORKER_ID);
+        if (worker != null) { worker.stop(0); worker = null; }
+        if (session != null && session.getId() != null) { sessions.deleteById(session.getId()); session = null; }
+        if (change != null && change.getId() != null) { changes.deleteById(change.getId()); change = null; }
+        if (createdWorker) { workers.deleteById(ProjectCodexIdentity.WORKER_ID); createdWorker = false; }
+        // This non-transactional fixture must not leave a canonical project
+        // behind for a later test, or remove one it merely reused.
+        if (createdProject && project != null && project.getId() != null) {
+            projects.deleteById(project.getId());
+            createdProject = false;
+        }
+    }
+
+    @Test
+    void fixtureCleanupRemovesOnlyItsOwnProjectAndKeepsUnrelatedData() {
+        Long fixtureProjectId = project.getId();
+        boolean ownedProject = createdProject;
+        ProjectEntity unrelated = new ProjectEntity();
+        unrelated.setName("Unrelated release fixture " + UUID.randomUUID());
+        unrelated.setRepoPath("/synthetic/" + UUID.randomUUID());
+        unrelated.setDefaultBaseBranch("main");
+        unrelated.setCreatedAt(Instant.now());
+        unrelated.setUpdatedAt(unrelated.getCreatedAt());
+        unrelated = projects.saveAndFlush(unrelated);
+        try {
+            cleanUp();
+            cleanUp();
+            assertEquals(!ownedProject, projects.existsById(fixtureProjectId));
+            assertTrue(projects.existsById(unrelated.getId()));
+        } finally {
+            projects.deleteById(unrelated.getId());
+        }
+    }
+
+    @Test
+    void fixtureCleanupPreservesAPreexistingCanonicalProject() {
+        Long retainedId = project.getId();
+        boolean originallyCreated = createdProject;
+        // Exercise cleanup with the same ownership state as a reused project.
+        createdProject = false;
+        try {
+            cleanUp();
+            assertTrue(projects.existsById(retainedId));
+        } finally {
+            if (originallyCreated) projects.deleteById(retainedId);
+        }
     }
 
     @ParameterizedTest
