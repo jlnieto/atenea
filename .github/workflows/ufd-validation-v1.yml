@@ -1,0 +1,31 @@
+name: Atenea UFD validation v1
+on:
+  push:
+    branches-ignore: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ufd-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  ufd-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Configure code authority
+        run: git remote add github https://github.com/jlnieto/atenea.git
+      - name: Execute the committed UFD plan without overrides
+        env:
+          GH_TOKEN: ${{ secrets.ATENEA_UFD_READ_TOKEN || github.token }}
+        run: ./scripts/validate-change
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: atenea-ufd-${{ github.sha }}
+          path: target/ufd/*.json
+          if-no-files-found: error
+          retention-days: 30

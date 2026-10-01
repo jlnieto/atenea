@@ -769,6 +769,11 @@ internal fun WorkSessionConversationScreen(
                         )
                     }
                 }
+                if (current?.session?.developmentChangeKey != null) {
+                    MobileDeliveryPanel(apiClient, sessionId,
+                        validated = current.session.developmentChangeValidationState == "CURRENT",
+                        runInProgress = current.runInProgress)
+                }
             }
         } else null,
         profileContent = if (!profileUnavailable) {

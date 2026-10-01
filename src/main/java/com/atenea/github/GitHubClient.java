@@ -71,6 +71,120 @@ public class GitHubClient {
         return toPullRequest(response);
     }
 
+    /** Only the immutable, successful push run for this exact published head is evidence. */
+    public void requireUfdValidation(GitHubRepositoryRef repository, String sha, String branch) {
+        ensureConfigured();
+        requireSha(sha);
+        String repo = repository.owner() + "/" + repository.repo();
+        JsonNode runs = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                "/repos/" + repo + "/actions/workflows/ufd-validation-v1.yml/runs?head_sha="
+                        + sha + "&branch=" + encode(branch) + "&event=push&per_page=100"), null);
+        JsonNode latest = null;
+        for (JsonNode run : runs.path("workflow_runs")) {
+            if (sha.equals(run.path("head_sha").asText())
+                    && branch.equals(run.path("head_branch").asText())
+                    && repo.equals(run.path("head_repository").path("full_name").asText())
+                    && ".github/workflows/ufd-validation-v1.yml".equals(run.path("path").asText())
+                    && "push".equals(run.path("event").asText())
+                    && (latest == null || run.path("id").asLong() > latest.path("id").asLong())) latest = run;
+        }
+        if (latest != null && "completed".equals(latest.path("status").asText())
+                && "success".equals(latest.path("conclusion").asText())) return;
+        if (latest != null && "completed".equals(latest.path("status").asText())) {
+            throw new GitHubIntegrationException("UFD_FAILED: la validación del commit publicado ha fallado");
+        }
+        throw new GitHubIntegrationException("UFD_PENDING: validación GitHub pendiente para este commit; vuelve a consultar sin crear otra PR");
+    }
+
+    public String canonicalMain(GitHubRepositoryRef repository) {
+        ensureConfigured();
+        String sha = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                "/repos/" + repository.owner() + "/" + repository.repo() + "/git/ref/heads/main"), null)
+                .path("object").path("sha").asText();
+        requireSha(sha);
+        return sha;
+    }
+
+    /** No caller-selected PR/head/base and no protection bypass. Lost responses reconcile by GET. */
+    public String integrateExact(GitHubRepositoryRef repository, long number, String headBranch, String headSha) {
+        ensureConfigured();
+        requireSha(headSha);
+        String path = "/repos/" + repository.owner() + "/" + repository.repo() + "/pulls/" + number;
+        JsonNode pr = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(path), null);
+        requireExactPullRequest(repository, number, headBranch, headSha, pr);
+        if (pr.path("merged").asBoolean()) {
+            String sha = pr.path("merge_commit_sha").asText();
+            requireSha(sha);
+            return sha;
+        }
+        if (!"open".equals(pr.path("state").asText())) {
+            throw new GitHubIntegrationException("PR_CLOSED: la PR está cerrada sin integrar");
+        }
+        requireUfdValidation(repository, headSha, headBranch);
+        if (pr.path("draft").asBoolean()) {
+            String nodeId = pr.path("node_id").asText();
+            if (nodeId.isBlank()) throw new GitHubIntegrationException("PR_IDENTITY_INVALID");
+            JsonNode ready = sendJsonRequest("POST", properties.getApiBaseUrl().resolve("/graphql"),
+                    "{\"query\":\"mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}\",\"variables\":{\"id\":"
+                            + jsonString(nodeId) + "}}");
+            JsonNode draft = ready.path("data").path("markPullRequestReadyForReview").path("pullRequest").path("isDraft");
+            if (ready.has("errors") || !draft.isBoolean() || draft.asBoolean()) {
+                throw new GitHubIntegrationException("PR_READY_REJECTED");
+            }
+            throw new GitHubIntegrationException("CI_PENDING: PR preparada para revisión; comprobando protecciones");
+        }
+        if (!pr.path("mergeable").asBoolean() || !"clean".equals(pr.path("mergeable_state").asText())) {
+            throw new GitHubIntegrationException("CI_PENDING: GitHub todavía no autoriza integrar este commit");
+        }
+        JsonNode checks = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                "/repos/" + repository.owner() + "/" + repository.repo() + "/commits/" + headSha
+                        + "/check-runs?per_page=100&filter=latest"), null);
+        if (checks.path("total_count").asInt(-1) < 0 || checks.path("total_count").asInt() > 100) {
+            throw new GitHubIntegrationException("CI_EVIDENCE_INCOMPLETE");
+        }
+        for (JsonNode check : checks.path("check_runs")) {
+            if ("completed".equals(check.path("status").asText())
+                    && !java.util.Set.of("success", "neutral", "skipped").contains(check.path("conclusion").asText())) {
+                throw new GitHubIntegrationException("CI_FAILED: una comprobación ha fallado");
+            }
+            if (!"completed".equals(check.path("status").asText())) {
+                throw new GitHubIntegrationException("CI_PENDING: una comprobación no ha terminado correctamente");
+            }
+        }
+        JsonNode statuses = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                "/repos/" + repository.owner() + "/" + repository.repo() + "/commits/" + headSha + "/status"), null);
+        if (java.util.Set.of("failure", "error").contains(statuses.path("state").asText())) {
+            throw new GitHubIntegrationException("CI_FAILED: un estado de integración ha fallado");
+        }
+        if (statuses.path("total_count").asInt(-1) < 0
+                || (statuses.path("total_count").asInt() > 0 && !"success".equals(statuses.path("state").asText()))) {
+            throw new GitHubIntegrationException("CI_PENDING: estado de integración pendiente");
+        }
+        JsonNode merged = sendJsonRequest("PUT", properties.getApiBaseUrl().resolve(path + "/merge"),
+                "{\"sha\":" + jsonString(headSha) + ",\"merge_method\":\"merge\"}");
+        if (!merged.path("merged").asBoolean()) throw new GitHubIntegrationException("MERGE_REJECTED");
+        String sha = merged.path("sha").asText();
+        requireSha(sha);
+        return sha;
+    }
+
+    private void requireExactPullRequest(GitHubRepositoryRef repository, long number, String branch, String sha, JsonNode pr) {
+        String repo = repository.owner() + "/" + repository.repo();
+        if (number <= 0 || number != pr.path("number").asLong()
+                || !repo.equals(pr.path("base").path("repo").path("full_name").asText())
+                || !repo.equals(pr.path("head").path("repo").path("full_name").asText())
+                || !"main".equals(pr.path("base").path("ref").asText())
+                || !branch.equals(pr.path("head").path("ref").asText())
+                || !sha.equals(pr.path("head").path("sha").asText())
+                || !("https://github.com/" + repo + "/pull/" + number).equals(pr.path("html_url").asText())) {
+            throw new GitHubIntegrationException("PR_OWNERSHIP_MISMATCH");
+        }
+    }
+
+    private static void requireSha(String value) {
+        if (value == null || !value.matches("[0-9a-f]{40}")) throw new GitHubIntegrationException("COMMIT_IDENTITY_INVALID");
+    }
+
     public List<GitHubPullRequest> findOpenPullRequests(
             GitHubRepositoryRef repository,
             String headBranch,

@@ -136,6 +136,7 @@ class WorkSessionGitHubServiceTest {
         assertEquals("https://github.com/acme/atenea/pull/42", response.pullRequestUrl());
         assertEquals(WorkSessionPullRequestStatus.OPEN, response.pullRequestStatus());
         assertEquals("abc123", response.finalCommitSha());
+        verify(gitHubClient,never()).requireUfdValidation(any(),anyString(),anyString());
         assertTrue(prBodyCaptor.getValue().contains("## Summary"));
         assertTrue(prBodyCaptor.getValue().contains("## What changed"));
         assertTrue(prBodyCaptor.getValue().contains("## How to review"));
