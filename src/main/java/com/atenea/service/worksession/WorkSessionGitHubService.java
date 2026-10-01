@@ -108,6 +108,11 @@ public class WorkSessionGitHubService {
         }
 
         GitHubRepositoryRef repository = resolveRepository(session, repoPath);
+        // The UFD pilot is Atenea App-owned, not a new requirement for
+        // legacy sessions belonging to other registered repositories.
+        if ("jlnieto".equals(repository.owner()) && "atenea".equals(repository.repo())) {
+            gitHubClient.requireUfdValidation(repository, localHead, workspaceBranch);
+        }
         String pullRequestTitle = generatePullRequestTitle(session, commitMessage);
         GitHubPullRequest pullRequest = gitHubClient.createPullRequest(
                 repository,
@@ -130,6 +135,12 @@ public class WorkSessionGitHubService {
         return workSessionService.toResponse(workSessionRepository.save(session));
     }
 
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public WorkSessionResponse publishForDelivery(Long sessionId) {
+        // A pending GitHub check must not roll back the delivery outbox transaction.
+        return publishSession(sessionId, null);
+    }
+
     private WorkSessionResponse publishChangeOwned(
             WorkSessionEntity session,
             PublishWorkSessionRequest request) {
@@ -148,6 +159,7 @@ public class WorkSessionGitHubService {
         String requestedTitle = normalizeNullableText(
                 request == null ? null : request.commitMessage());
         String pullRequestTitle = requestedTitle == null ? session.getTitle() : requestedTitle;
+        gitHubClient.requireUfdValidation(repository, identity.headSha(), identity.headBranch());
         List<GitHubPullRequest> candidates = gitHubClient.findOpenPullRequests(
                 repository, identity.headBranch(), identity.baseBranch());
         if (candidates.size() > 1) {

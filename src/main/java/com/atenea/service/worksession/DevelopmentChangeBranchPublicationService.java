@@ -138,7 +138,7 @@ public class DevelopmentChangeBranchPublicationService {
                 result.publicationReceiptSha256());
     }
 
-    private DevelopmentChangeEntity requireExactOwner(WorkSessionEntity session) {
+    public DevelopmentChangeEntity requireExactOwner(WorkSessionEntity session) {
         DevelopmentChangeEntity change = session.getDevelopmentChange();
         String expectedBranch = change == null || change.getChangeKey() == null
                 ? null : "atenea/change-" + change.getChangeKey();

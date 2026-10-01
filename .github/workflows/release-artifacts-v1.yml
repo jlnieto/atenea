@@ -1,0 +1,69 @@
+name: Atenea immutable release artifacts v1
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: atenea_test
+          POSTGRES_USER: atenea
+          POSTGRES_PASSWORD: atenea
+        ports: [5432:5432]
+        options: --health-cmd "pg_isready -U atenea -d atenea_test" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Backend tests in the job-owned database
+        run: ./scripts/ci-backend-test.sh
+      - name: Build immutable main image
+        run: |
+          docker build --label org.opencontainers.image.revision="$GITHUB_SHA" -t "atenea-app:$GITHUB_SHA" .
+          mkdir -p target/release-app
+          docker save "atenea-app:$GITHUB_SHA" -o target/release-app/image.tar
+          python3 scripts/release-manifest-v1.py APP_PROD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: atenea-release-app_prod-${{ github.sha }}
+          path: target/release-app/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build unsigned stable APK (no production or signing credentials)
+        env:
+          ATENEA_ANDROID_UPDATE_MANIFEST_URL: ${{ secrets.ATENEA_ANDROID_UPDATE_MANIFEST_URL }}
+          ATENEA_FIREBASE_API_KEY: ${{ vars.ATENEA_FIREBASE_API_KEY }}
+          ATENEA_FIREBASE_PROJECT_ID: ${{ vars.ATENEA_FIREBASE_PROJECT_ID }}
+          ATENEA_FIREBASE_APP_ID: ${{ vars.ATENEA_FIREBASE_APP_ID }}
+          ATENEA_FIREBASE_GCM_SENDER_ID: ${{ vars.ATENEA_FIREBASE_GCM_SENDER_ID }}
+        run: |
+          test -n "$ATENEA_ANDROID_UPDATE_MANIFEST_URL"
+          test -n "$ATENEA_FIREBASE_API_KEY"
+          test -n "$ATENEA_FIREBASE_PROJECT_ID"
+          test -n "$ATENEA_FIREBASE_APP_ID"
+          test -n "$ATENEA_FIREBASE_GCM_SENDER_ID"
+          ./scripts/android-build.sh :app:assembleRelease :app:testDebugUnitTest :api:testDebugUnitTest :secure:testDebugUnitTest :core-console:testDebugUnitTest :voice-runtime:testDebugUnitTest
+          mkdir -p target/release-android
+          cp android/app/build/outputs/apk/release/app-release-unsigned.apk target/release-android/app-unsigned.apk
+          python3 scripts/release-manifest-v1.py ANDROID_STABLE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: atenea-release-android_stable-${{ github.sha }}
+          path: target/release-android/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

@@ -341,6 +341,37 @@ class AteneaApiClient(
         parser = ::parseDevelopmentChangeValidation
     )
 
+    suspend fun fetchDelivery(sessionId: Long): MobileDeliveryState = getJson(
+        path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true
+    ) { json ->
+        val items = json.getJSONArray("operations")
+        MobileDeliveryState(json.getBoolean("enabled"), List(items.length()) { parseMobileDeliveryOperation(items.getJSONObject(it)) })
+    }
+
+    suspend fun createDeliveryPullRequest(sessionId: Long): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/pr", body = JSONObject(), authenticated = true,
+        parser = ::parseMobileDeliveryOperation
+    )
+
+    suspend fun integrateDelivery(sessionId: Long): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/integrate", body = JSONObject(), authenticated = true,
+        parser = ::parseMobileDeliveryOperation
+    )
+
+    suspend fun prepareRelease(sessionId: Long, target: MobileDeliveryTarget): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/release-plan", body = JSONObject().put("target", target.name),
+        authenticated = true, parser = ::parseMobileDeliveryOperation
+    )
+
+    suspend fun authorizeRelease(id: UUID, totp: String): UUID = postJson(
+        path = "/api/mobile/delivery/$id/authorize", body = JSONObject().put("totp", totp), authenticated = true
+    ) { UUID.fromString(it.getString("authorization")) }
+
+    suspend fun confirmRelease(id: UUID, authorization: UUID): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/delivery/$id/confirm", body = JSONObject().put("authorization", authorization.toString()),
+        authenticated = true, parser = ::parseMobileDeliveryOperation
+    )
+
     suspend fun fetchMobileWorkSessionSummary(sessionId: Long): MobileSessionSummary = getJson(
         path = "/api/mobile/sessions/$sessionId/summary",
         authenticated = true,

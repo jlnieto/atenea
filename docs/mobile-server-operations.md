@@ -17,6 +17,11 @@ Atenea debe permitir completar el ciclo real de trabajo aunque el operador sólo
 
 ## Estado implementado hoy
 
+El nuevo control de entrega durable desde Android está descrito en
+[mobile-delivery-v1.md](mobile-delivery-v1.md). Añade integración de la PR y
+publicación de App/Platform/APK con ejecutor independiente de App. Requiere
+bootstrap operativo: añadir código no lo habilita automáticamente en PROD.
+
 El runtime actual ya cubre el flujo de `WorkSession` hasta pull request:
 
 - `SessionCodexOrchestrator` envía turns a Codex App Server y conserva `externalThreadId`.
@@ -115,7 +120,10 @@ El backend ya puede sincronizar y cerrar:
 6. borrar rama local y remota de sesión
 7. verificar branch final y worktree limpio
 
-Lo que no está implementado todavía es fusionar la pull request desde Atenea. Hoy el merge debe hacerse fuera de Atenea, normalmente desde GitHub, y después ejecutar `sync_work_session_pull_request` y `close_work_session`.
+El flujo histórico exige fusionar fuera de Atenea. El panel de entrega nuevo
+añade merge exacto y durable para la PR change-owned App, tras revisar el
+cambio y confirmar desde móvil. No sustituye el sync/cierre reconciliado ni
+añade merge multi-repositorio a las capacidades Core históricas.
 
 ## Sincronizar el `main` canónico con el mirror operativo
 
