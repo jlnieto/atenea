@@ -1068,6 +1068,7 @@ class AgentRunServiceTest {
         project.setId(projectId);
         project.setName("Atenea");
         project.setRepoPath(repoPath);
+        project.setDefaultBaseBranch("main");
         project.setCreatedAt(Instant.parse("2026-03-25T10:00:00Z"));
         project.setUpdatedAt(Instant.parse("2026-03-25T10:00:00Z"));
 

@@ -152,7 +152,7 @@ class ClosedValidationOperationServiceTest {
                 org.mockito.ArgumentMatchers.eq(41L),
                 org.mockito.ArgumentMatchers.eq(TREE),
                 anyString(),
-                org.mockito.ArgumentMatchers.eq("atenea-required-validation-v1"));
+                org.mockito.ArgumentMatchers.eq("atenea-required-validation-v2"));
         verify(acceptanceService, times(0))
                 .markIntegrationReady(anyLong(), anyString(), anyString(), anyString());
     }
@@ -211,7 +211,7 @@ class ClosedValidationOperationServiceTest {
         assertNull(operation.getFinishedAt());
 
         var terminal = service.advanceDevelopmentChange(41L);
-        assertEquals("FAILED", terminal.state());
+        assertEquals("BLOCKED", terminal.state());
         assertEquals(ValidationOperationStatus.BLOCKED, operation.getStatus());
         assertEquals(0L, operation.getDurationMillis());
         assertNotNull(operation.getFinishedAt());
@@ -291,6 +291,83 @@ class ClosedValidationOperationServiceTest {
     }
 
     @Test
+    void databaseInfrastructureFailureIsAuditedAndExplainedWithoutBlamingCandidate() {
+        configureChangeOwnedSession();
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> durableResult(invocation.getArgument(3),
+                        invocation.getArgument(1), "INFRASTRUCTURE_FAILED", 7,
+                        "BACKEND_TEST/TEST_DATABASE: TEST_DATABASE_SETUP_FAILED"));
+
+        var result = service.advanceDevelopmentChange(41L);
+
+        assertEquals("BLOCKED", result.state());
+        assertEquals(0, result.passedOperations());
+        assertEquals(4, result.requiredOperations());
+        assertEquals(ValidationOperationStatus.BLOCKED, operations.getFirst().getStatus());
+        org.junit.jupiter.api.Assertions.assertTrue(result.summary().contains("TEST_DATABASE_SETUP_FAILED"));
+        org.junit.jupiter.api.Assertions.assertTrue(result.summary().contains("PostgreSQL de pruebas"));
+        org.junit.jupiter.api.Assertions.assertTrue(result.summary().contains("no se ha validado"));
+    }
+
+    @Test
+    void oldBackendSuccessIsRetainedButCannotSatisfyTheNewDefinition() {
+        configureChangeOwnedSession();
+        ValidationOperationEntity old = new ValidationOperationEntity();
+        old.setId(UUID.randomUUID());
+        old.setWorkSession(session);
+        old.setOperation(ValidationOperationKind.BACKEND_TEST);
+        old.setStatus(ValidationOperationStatus.SUCCEEDED);
+        old.setSourceTreeFingerprintSha256(TREE);
+        old.setDefinitionRevision("atenea-backend-test-v1");
+        old.setStartedAt(java.time.Instant.now().minusSeconds(60));
+        operations.add(old);
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> durableResult(invocation.getArgument(3),
+                        invocation.getArgument(1), "SUCCEEDED", 7));
+
+        var result = service.advanceDevelopmentChange(41L);
+
+        assertEquals("ADVANCING", result.state());
+        assertEquals(1, result.passedOperations());
+        assertEquals(2, operations.size());
+        assertEquals("atenea-backend-test-v1", old.getDefinitionRevision());
+        assertEquals(ValidationOperationStatus.SUCCEEDED, old.getStatus());
+        assertEquals("atenea-backend-test-v2", operations.getLast().getDefinitionRevision());
+        verify(remoteWorkerClient).startValidation(any(),
+                org.mockito.ArgumentMatchers.eq(ValidationOperationKind.BACKEND_TEST), anyString(), anyString());
+    }
+
+    @Test
+    void oldAndroidSuccessCannotSatisfyTheColdCacheDefinition() {
+        configureChangeOwnedSession();
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> durableResult(invocation.getArgument(3),
+                        invocation.getArgument(1), "SUCCEEDED", 7));
+        service.advanceDevelopmentChange(41L);
+        service.advanceDevelopmentChange(41L);
+        ValidationOperationEntity old = new ValidationOperationEntity();
+        old.setId(UUID.randomUUID());
+        old.setWorkSession(session);
+        old.setOperation(ValidationOperationKind.ANDROID_BUILD);
+        old.setStatus(ValidationOperationStatus.SUCCEEDED);
+        old.setSourceTreeFingerprintSha256(TREE);
+        old.setDefinitionRevision("atenea-android-build-v1");
+        old.setStartedAt(Instant.now().minusSeconds(60));
+        operations.add(old);
+
+        var result = service.advanceDevelopmentChange(41L);
+
+        assertEquals("ADVANCING", result.state());
+        assertEquals(3, result.passedOperations());
+        assertEquals(4, operations.size());
+        assertEquals("atenea-android-build-v1", old.getDefinitionRevision());
+        assertEquals(ValidationOperationStatus.SUCCEEDED, old.getStatus());
+        assertEquals("atenea-android-build-v2", operations.getLast().getDefinitionRevision());
+        verify(remoteWorkerClient).startValidation(any(),
+                org.mockito.ArgumentMatchers.eq(ValidationOperationKind.ANDROID_BUILD), anyString(), anyString());
+    }
+
+    @Test
     void unavailableWorkerBlockIsAuditedBeforeExplicitRetry() {
         configureChangeOwnedSession();
         when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
@@ -300,7 +377,7 @@ class ClosedValidationOperationServiceTest {
 
         var response = service.advanceDevelopmentChange(41L);
         ValidationOperationEntity operation = operations.getFirst();
-        assertEquals("FAILED", response.state());
+        assertEquals("BLOCKED", response.state());
         assertEquals(ValidationOperationStatus.BLOCKED, operation.getStatus());
         assertEquals(0L, operation.getDurationMillis());
         assertNull(operation.getExitCode());
@@ -346,6 +423,12 @@ class ClosedValidationOperationServiceTest {
     private RemoteWorkerClient.DurableValidationResult durableResult(
             String id, ValidationOperationKind kind, String state, long durationMillis
     ) {
+        return durableResult(id, kind, state, durationMillis, "Closed validation " + state);
+    }
+
+    private RemoteWorkerClient.DurableValidationResult durableResult(
+            String id, ValidationOperationKind kind, String state, long durationMillis, String summary
+    ) {
         boolean candidateFailed = "CANDIDATE_FAILED".equals(state);
         boolean terminal = "SUCCEEDED".equals(state) || candidateFailed;
         Integer exitCode = "SUCCEEDED".equals(state) ? Integer.valueOf(0)
@@ -355,11 +438,12 @@ class ClosedValidationOperationServiceTest {
                 session.getRemoteSessionId().toString(),
                 session.getWorkspaceIdentity(), ProjectCodexIdentity.PROJECT_IDENTITY,
                 COMMIT, TREE, kind.name(), kind.definitionRevision(),
-                state, "OWNERSHIP_FAILED".equals(state) ? "OWNERSHIP"
+                state, "INFRASTRUCTURE_FAILED".equals(state) ? "INFRASTRUCTURE"
+                        : "OWNERSHIP_FAILED".equals(state) ? "OWNERSHIP"
                         : candidateFailed ? "CANDIDATE" : "NONE",
                 "CONFIRMED", exitCode,
                 durationMillis, terminal ? "5".repeat(64) : null,
-                "Closed validation " + state,
+                summary,
                 "2026-09-25T10:00:00Z", "2026-09-25T10:00:00Z",
                 terminal ? "2026-09-25T10:00:01Z" : null,
                 "2026-09-25T10:00:01Z", 2, false);

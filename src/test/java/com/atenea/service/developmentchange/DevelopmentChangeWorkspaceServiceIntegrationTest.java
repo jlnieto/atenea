@@ -470,7 +470,7 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         verify(gateway, never()).execute(any());
 
         properties.setWorkspaceOperationsEnabled(true);
-        project.setRepoPath("/foreign/repository");
+        project.setName("Foreign project");
         project.setUpdatedAt(Instant.now());
         projectRepository.saveAndFlush(project);
         DevelopmentChangeRejectedException foreignProject = assertThrows(

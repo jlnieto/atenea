@@ -24,7 +24,11 @@ class AteneaApiClient(
     private val sessionUpdater: (MobileAuthSession) -> Unit = {}
 ) {
     private val normalizedBaseUrl = baseUrl.trimEnd('/')
-    private val refreshMutex = Mutex()
+    companion object {
+        // Activity recreation and FCM use separate clients backed by the same
+        // session store. Rotation must be single-flight across those clients.
+        private val refreshMutex = Mutex()
+    }
 
     fun currentOperatorRole(): String? = operatorRoleProvider()
 
@@ -43,12 +47,7 @@ class AteneaApiClient(
 
     suspend fun refresh(refreshToken: String): MobileAuthSession = postJson(
         path = "/api/mobile/auth/refresh",
-        body = JSONObject()
-            .put("refreshToken", refreshToken)
-            .put("clientType", "ANDROID")
-            .put("deviceLabel", "Atenea Android")
-            .put("sessionProtocolVersion", SESSION_PROTOCOL)
-            .put("singleFlightRefresh", true),
+        body = buildFamilyRefreshBody(refreshToken),
         authenticated = false,
         parser = ::parseMobileAuthSession
     )
@@ -918,6 +917,7 @@ class AteneaApiClient(
         headers: Map<String, String>,
         allowRefresh: Boolean
     ): String = withContext(Dispatchers.IO) {
+        val attemptedAccessToken = if (authenticated) accessTokenProvider() else null
         val connection = (URL("$normalizedBaseUrl$path").openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15000
@@ -929,7 +929,7 @@ class AteneaApiClient(
             }
             headers.forEach { (name, value) -> setRequestProperty(name, value) }
             if (authenticated) {
-                val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
+                val token = attemptedAccessToken?.takeIf { it.isNotBlank() }
                     ?: throw AteneaApiException(401, "No hay sesión activa.")
                 setRequestProperty("Authorization", "Bearer $token")
             }
@@ -946,7 +946,7 @@ class AteneaApiClient(
             if (connection.responseCode == 401 && authenticated && allowRefresh) {
                 val refreshToken = refreshTokenProvider()?.takeIf { it.isNotBlank() }
                 if (refreshToken != null) {
-                    refreshSession(refreshToken)
+                    refreshSession(refreshToken, attemptedAccessToken)
                     return@withContext requestBody(
                         path = path,
                         method = method,
@@ -973,6 +973,7 @@ class AteneaApiClient(
         authenticated: Boolean,
         allowRefresh: Boolean
     ): BinaryApiResponse = withContext(Dispatchers.IO) {
+        val attemptedAccessToken = if (authenticated) accessTokenProvider() else null
         val connection = (URL("$normalizedBaseUrl$path").openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15000
@@ -983,7 +984,7 @@ class AteneaApiClient(
                 setRequestProperty("Content-Type", "application/json")
             }
             if (authenticated) {
-                val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
+                val token = attemptedAccessToken?.takeIf { it.isNotBlank() }
                     ?: throw AteneaApiException(401, "No hay sesión activa.")
                 setRequestProperty("Authorization", "Bearer $token")
             }
@@ -999,7 +1000,7 @@ class AteneaApiClient(
             if (connection.responseCode == 401 && authenticated && allowRefresh) {
                 val refreshToken = refreshTokenProvider()?.takeIf { it.isNotBlank() }
                 if (refreshToken != null) {
-                    refreshSession(refreshToken)
+                    refreshSession(refreshToken, attemptedAccessToken)
                     return@withContext requestBytes(
                         path = path,
                         method = method,
@@ -1044,6 +1045,7 @@ class AteneaApiClient(
         allowRefresh: Boolean
     ): String = withContext(Dispatchers.IO) {
         val boundary = "AteneaBoundary${System.currentTimeMillis()}"
+        val attemptedAccessToken = accessTokenProvider()
         val requestStartedAt = System.nanoTime()
         fun elapsedMs(): Long = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - requestStartedAt)
         val multipart = multipartParts(boundary, fieldName, fileName, contentType, bytes)
@@ -1057,7 +1059,7 @@ class AteneaApiClient(
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
             headers.forEach { (name, value) -> setRequestProperty(name, value) }
-            val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
+            val token = attemptedAccessToken?.takeIf { it.isNotBlank() }
                 ?: throw AteneaApiException(401, "No hay sesión activa.")
             setRequestProperty("Authorization", "Bearer $token")
         }
@@ -1075,7 +1077,7 @@ class AteneaApiClient(
             if (connection.responseCode == 401 && allowRefresh) {
                 val refreshToken = refreshTokenProvider()?.takeIf { it.isNotBlank() }
                 if (refreshToken != null) {
-                    refreshSession(refreshToken)
+                    refreshSession(refreshToken, attemptedAccessToken)
                     return@withContext requestMultipartBody(
                         path = path,
                         fieldName = fieldName,
@@ -1102,12 +1104,13 @@ class AteneaApiClient(
         maxBytes: Long,
         allowRefresh: Boolean
     ): BinaryApiResponse = withContext(Dispatchers.IO) {
+        val attemptedAccessToken = accessTokenProvider()
         val connection = (URL("$normalizedBaseUrl$path").openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 15000
             readTimeout = 120000
             setRequestProperty("Accept", "image/png, image/jpeg, image/webp")
-            val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
+            val token = attemptedAccessToken?.takeIf { it.isNotBlank() }
                 ?: throw AteneaApiException(401, "No hay sesión activa.")
             setRequestProperty("Authorization", "Bearer $token")
         }
@@ -1117,7 +1120,7 @@ class AteneaApiClient(
                 val refreshToken = refreshTokenProvider()?.takeIf { it.isNotBlank() }
                 if (refreshToken != null) {
                     connection.errorStream?.close()
-                    refreshSession(refreshToken)
+                    refreshSession(refreshToken, attemptedAccessToken)
                     return@withContext requestAuthenticatedBinary(path, maxBytes, allowRefresh = false)
                 }
             }
@@ -1136,14 +1139,28 @@ class AteneaApiClient(
         }
     }
 
-    private suspend fun refreshSession(refreshToken: String) = refreshMutex.withLock {
-        if (refreshTokenProvider()?.takeIf { it.isNotBlank() } != refreshToken) {
+    private suspend fun refreshSession(refreshToken: String, attemptedAccessToken: String?) = refreshMutex.withLock {
+        if (accessTokenProvider() != attemptedAccessToken ||
+            refreshTokenProvider()?.takeIf { it.isNotBlank() } != refreshToken) {
             return@withLock
         }
         try {
-            sessionUpdater(refresh(refreshToken))
+            val renewed = refresh(refreshToken)
+            // Never overwrite a logout or a new login completed in flight.
+            if (accessTokenProvider() == attemptedAccessToken && refreshTokenProvider() == refreshToken) {
+                sessionUpdater(renewed)
+            }
         } catch (exception: AteneaApiException) {
-            throw AteneaApiException(exception.status, "La sesión ha caducado. Vuelve a entrar en Atenea.")
+            if (exception.status == 401 && exception.message in setOf(
+                    "Invalid refresh token", "Refresh token expired", "Session expired",
+                    "Refresh token already revoked", "Session is revoked",
+                    "Refresh token replay detected", "Operator account is inactive"
+                )) {
+                throw AteneaApiException(401, "La sesión ha caducado o se ha revocado. Vuelve a entrar en Atenea.")
+            }
+            // A temporary server failure, forbidden operation or protocol
+            // mismatch is not evidence that the stored session has expired.
+            throw exception
         }
     }
 }
@@ -2195,6 +2212,13 @@ private data class BinaryApiResponse(
 private const val DEFAULT_ATTACHMENT_DOWNLOAD_LIMIT_BYTES = 16L * 1024L * 1024L
 private const val MAX_ATTACHMENT_DOWNLOAD_LIMIT_BYTES = 32L * 1024L * 1024L
 private const val SESSION_PROTOCOL = "FAMILY_V1"
+
+internal fun buildFamilyRefreshBody(refreshToken: String): JSONObject = JSONObject()
+    .put("refreshToken", refreshToken)
+    // Metadata belongs to login/adoption, never to family rotation. The
+    // backend supplies its defaults when adopting an existing legacy token.
+    .put("sessionProtocolVersion", SESSION_PROTOCOL)
+    .put("singleFlightRefresh", true)
 
 class AteneaApiException(
     val status: Int,

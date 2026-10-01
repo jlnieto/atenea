@@ -188,7 +188,9 @@ public class ClosedValidationOperationService {
             change.setValidationState(DevelopmentChangeProjectionState.BLOCKED);
             projectAcceptance(sessionId, source.fingerprintSha256());
             return developmentChangeResponse(
-                    change, results, "FAILED", failed.getOperation().name(), failed.getSummary());
+                    change, results,
+                    failed.getStatus() == ValidationOperationStatus.BLOCKED ? "BLOCKED" : "FAILED",
+                    failed.getOperation().name(), failed.getSummary());
         }
 
         ValidationOperationKind next = failed == null ? null : failed.getOperation();
@@ -244,6 +246,8 @@ public class ClosedValidationOperationService {
                 ? "RUNNING"
                 : entity.getStatus() == ValidationOperationStatus.SUCCEEDED
                 ? "ADVANCING"
+                : entity.getStatus() == ValidationOperationStatus.BLOCKED
+                ? "BLOCKED"
                 : "FAILED";
         return developmentChangeResponse(
                 change, results, state, entity.getOperation().name(), entity.getSummary());
@@ -476,12 +480,14 @@ public class ClosedValidationOperationService {
     ) {
         Map<ValidationOperationKind, ValidationOperationEntity> latest =
                 new EnumMap<>(ValidationOperationKind.class);
-        results.forEach(result -> latest.put(result.getOperation(), result));
+        results.stream()
+                .filter(result -> result.getOperation().definitionRevision().equals(result.getDefinitionRevision()))
+                .forEach(result -> latest.put(result.getOperation(), result));
         return latest;
     }
 
     private String profileRevision() {
-        return "atenea-required-validation-v1";
+        return "atenea-required-validation-v2";
     }
 
     private void requireExactIdleSession(WorkSessionEntity session) {
@@ -518,6 +524,25 @@ public class ClosedValidationOperationService {
             return "Validation finished without a summary";
         }
         String normalized = value.replaceAll("[\\r\\n\\t]+", " ").trim();
+        if (normalized.matches("^(BACKEND_TEST|WEB_BUILD|ANDROID_BUILD|PLAYWRIGHT_ACCEPTANCE)/[A-Z_]+: [A-Z_]+$")) {
+            String code = normalized.substring(normalized.indexOf(": ") + 2);
+            String description = switch (code) {
+                case "TEST_DATABASE_SETUP_FAILED" -> "No se pudo preparar PostgreSQL de pruebas. El código del ticket no se ha validado.";
+                case "TEST_RUNTIME_UNAVAILABLE", "TEST_CONTAINER_CREATE_FAILED", "TEST_CONTAINER_START_FAILED" ->
+                        "El entorno aislado de pruebas no está disponible. El código del ticket no se ha validado.";
+                case "INSTALLED_TOOLCHAIN_INVALID", "TEST_TOOLCHAIN_BUILD_FAILED", "TEST_IMAGE_INVALID", "TEST_CACHE_INCOMPLETE" ->
+                        "Falta preparar o verificar las herramientas y dependencias de test. El código del ticket no se ha validado.";
+                case "SANDBOX_SETUP_FAILED" -> "El aislamiento de la validación no pudo arrancar. No es un fallo demostrado del código del ticket.";
+                case "TEST_RUNTIME_CLEANUP_FAILED" -> "El entorno temporal no pudo retirarse correctamente. La validación queda bloqueada y conserva su diagnóstico.";
+                case "UNSUPPORTED_DEPENDENCY_MANIFEST" -> "Las dependencias del cambio no coinciden con el entorno de test autorizado.";
+                case "COMPILATION_FAILED" -> "La compilación del cambio ha fallado.";
+                case "TESTS_FAILED" -> "Hay tests del cambio que han fallado. Se ha conservado el diagnóstico de la validación.";
+                case "RESOURCE_LIMIT" -> "La validación alcanzó su límite de tiempo o recursos.";
+                case "EXECUTION_FAILED" -> "La validación terminó con error sin confirmar un fallo del código. Se ha conservado el diagnóstico.";
+                default -> null;
+            };
+            if (description != null) return "[" + code + "] " + description;
+        }
         return normalized.substring(0, Math.min(normalized.length(), 500));
     }
 

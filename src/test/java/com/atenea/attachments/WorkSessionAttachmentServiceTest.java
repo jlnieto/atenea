@@ -628,6 +628,7 @@ class WorkSessionAttachmentServiceTest {
                 projectId,
                 ProjectCodexIdentity.PROJECT_NAME);
         session.getProject().setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        session.getProject().setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
         session.setBaseBranch(ProjectCodexIdentity.BRANCH);
         UUID remoteSessionId = UUID.fromString("a1c3af50-af6e-4cc2-85d6-a491c50cddcc");
         session.setRemoteSessionId(remoteSessionId);
