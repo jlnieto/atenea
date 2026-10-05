@@ -3,6 +3,7 @@ package com.atenea.android.coreconsole
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -175,6 +176,7 @@ internal fun AteneaShell(
         }
     ) {
         Scaffold(
+            containerColor = if (immersiveWorkSurface) ConversationColors.background else MaterialTheme.colorScheme.background,
             topBar = {
                 if (!immersiveWorkSurface) {
                     AteneaTopChrome(
@@ -191,6 +193,7 @@ internal fun AteneaShell(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding)
                     .then(
                         if (immersiveWorkSurface) {
                             Modifier

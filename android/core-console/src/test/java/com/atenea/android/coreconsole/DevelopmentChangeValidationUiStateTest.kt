@@ -27,7 +27,16 @@ class DevelopmentChangeValidationUiStateTest {
 
         assertTrue(state.visible)
         assertFalse(state.canStart)
+        assertTrue(state.current)
         assertEquals("Cambio validado para la revisión actual.", state.message)
+    }
+
+    @Test
+    fun `new stale revision exposes validation again regardless of older evidence`() {
+        val state = developmentChangeValidationUiState(session(validationState = "STALE"), false, false, null)
+        assertFalse(state.current)
+        assertTrue(state.canStart)
+        assertEquals("El código cambió desde la última validación.", state.message)
     }
 
     @Test

@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -100,6 +101,30 @@ private val OperatorTypography = Typography(
 fun AteneaOperatorTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = OperatorLightColors,
+        typography = OperatorTypography,
+        shapes = OperatorShapes,
+        content = content
+    )
+}
+
+@Composable
+internal fun ConversationTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = ConversationColors.action,
+            onPrimary = ConversationColors.background,
+            background = ConversationColors.background,
+            onBackground = ConversationColors.primaryText,
+            surface = ConversationColors.background,
+            onSurface = ConversationColors.primaryText,
+            surfaceVariant = ConversationColors.composerBar,
+            onSurfaceVariant = ConversationColors.secondaryText,
+            surfaceContainer = ConversationColors.composerBar,
+            surfaceContainerHigh = ConversationColors.codeBackground,
+            outline = ConversationColors.secondaryBorder,
+            outlineVariant = ConversationColors.codeBorder,
+            error = ConversationColors.error
+        ),
         typography = OperatorTypography,
         shapes = OperatorShapes,
         content = content

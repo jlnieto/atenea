@@ -11,6 +11,20 @@ de aceptación descritos al final.
 
 ## Uso previsto
 
+La conversación reserva el espacio para los mensajes y el cuadro de instrucciones.
+**Cambio** abre la validación, PR, integración y publicación de la misma WorkSession;
+volver a la conversación conserva el borrador y la posición del historial.
+El menú **⋮** contiene el detalle de ejecución, el perfil de la próxima ejecución,
+la ayuda de adjuntos y Actualizar. Cambiar de vista no inicia ni duplica operaciones.
+
+En **Cambio → Consultar resultado** se consulta exclusivamente la evidencia
+persistida de validación mediante `GET /api/sessions/{id}/validation-evidence`:
+fase, resumen, exit code e identidad durable del intento. No llama al worker,
+no observa/promueve la fuente y no ejecuta ni reintenta pruebas. Un intento de
+una fuente anterior se muestra como histórico y no cuenta para validar la actual.
+Si un fallo antiguo sólo conservó un resumen genérico, no se inventa su causa.
+**Validar cambio** sigue siendo una acción explícita distinta de consultar.
+
 1. Continuar el cambio y su WorkSession actuales. Pedir la implementación y
    dejar terminar Codex.
 2. Pulsar **Validar cambio**. Sólo una observación durable CURRENT y una
@@ -115,6 +129,15 @@ y publicación siguen necesitando autorización explícita para ese bootstrap.
 No hay un backend App DEV permanente en este procedimiento.
 
 ## Prueba de aceptación antes de depender sólo del móvil
+
+Antes de publicar el ajuste de conversación, ejecutar los tests focales del
+backend y cliente API de `validation-evidence`, y los tests Compose de
+`ConversationWorkspaceLayoutTest` y `WorkSessionAttachmentComposerTest`.
+En una ventana pequeña, con fuente ampliada y teclado abierto, los mensajes y
+el composer deben seguir visibles sin paneles operativos ni insets duplicados.
+Comprobar también rotación, volver de Cambio conservando el borrador y leer
+historial mientras llegan mensajes sin un salto automático. Consultar un fallo
+debe conservar las operation IDs y no iniciar otro intento de validación.
 
 Usar el ticket/WorkSession existentes, no crear un prompt duplicado. Confirmar
 que los nuevos botones están disponibles, que Validar pasa en el runtime
