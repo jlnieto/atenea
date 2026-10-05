@@ -5,6 +5,14 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import android.graphics.Bitmap
+import androidx.core.graphics.ColorUtils
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -112,6 +120,55 @@ class ConversationWorkspaceLayoutTest {
         val composer = compose.onNodeWithTag("conversation-composer").fetchSemanticsNode().boundsInRoot
         assertEquals(surface.top, toolbar.top, 1f)
         assertEquals(surface.bottom, composer.bottom, 1f)
+    }
+
+    @Test
+    fun lightScaffoldKeepsConversationAndValidationTextReadable() {
+        val attempt = DevelopmentChangeValidationAttempt(
+            UUID.fromString("0cc7815a-f703-46ee-938a-8ef4d00e68a2"), 21, "BACKEND_TEST", "BLOCKED",
+            "4".repeat(64), "atenea-backend-test-v2", 2,
+            "PostgreSQL de pruebas no disponible.", null, null)
+        val evidence = DevelopmentChangeValidationEvidence(UUID.randomUUID(), 21, 2, "4".repeat(64),
+            "BLOCKED", 0, 4, listOf(attempt), attempt)
+        compose.setContent {
+            AteneaOperatorTheme {
+                Scaffold(containerColor = ConversationColors.background) { padding ->
+                    Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
+                        Fixture(change = {
+                            WorkSessionChangePanel(21, "Ticket original",
+                                DevelopmentChangeValidationUiState(true, true, "Validar cambio", "La validación necesita atención."),
+                                evidence, false, null, {}, {}, { Text("Entrega") })
+                        })
+                    }
+                }
+            }
+        }
+        assertReadableText("Monitorizar degradación de Apache cada 5 minutos")
+        saveContrastScreenshot("contrast-chat.png")
+        compose.onNodeWithText("Cambio").performClick()
+        assertReadableText("La validación necesita atención.")
+        assertReadableText("0/4 comprobaciones de la revisión 2")
+        assertReadableText(attempt.summary)
+        saveContrastScreenshot("contrast-change.png")
+    }
+
+    private fun assertReadableText(text: String) {
+        val pixels = compose.onNodeWithText(text).assertIsDisplayed().captureToImage().toPixelMap()
+        var readablePixels = 0
+        for (y in 0 until pixels.height) for (x in 0 until pixels.width) {
+            if (ColorUtils.calculateContrast(pixels[x, y].toArgb(), ConversationColors.background.toArgb()) >= 4.5) {
+                readablePixels++
+            }
+        }
+        assertTrue("El texto '$text' debe dibujar glifos con contraste legible sobre el fondo oscuro",
+            readablePixels > pixels.width * pixels.height / 100)
+    }
+
+    private fun saveContrastScreenshot(name: String) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        java.io.File(context.getExternalFilesDir(null), name).outputStream().use {
+            compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
     }
 
     @Test
