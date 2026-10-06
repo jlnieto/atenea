@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ValidationOperationRepository extends JpaRepository<ValidationOperationEntity, UUID> {
 
+    Optional<ValidationOperationEntity> findFirstByWorkSessionIdOrderByStartedAtDescIdDesc(Long workSessionId);
+
     @EntityGraph(attributePaths = {"workSession", "workSession.project"})
     Optional<ValidationOperationEntity> findByIdentitySha256(String identitySha256);
 

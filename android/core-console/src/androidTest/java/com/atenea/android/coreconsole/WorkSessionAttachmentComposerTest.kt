@@ -42,14 +42,14 @@ class WorkSessionAttachmentComposerTest {
             )
         }
 
-        compose.onNodeWithText("Imágenes · 0/4 seleccionadas").assertIsDisplayed()
+        compose.onNodeWithText("Imágenes · 0/4 seleccionadas").assertDoesNotExist()
         compose.onNodeWithContentDescription("Adjuntar imágenes").assertIsDisplayed().assertIsEnabled().performClick()
         compose.onNodeWithContentDescription("Enviar").assertIsDisplayed().assertIsEnabled()
         org.junit.Assert.assertEquals(1, attachClicks)
     }
 
     @Test
-    fun blockedStateShowsReasonAndNextActionAndDisablesAttach() {
+    fun blockedStateKeepsChatUsableAndMovesReasonToAttachmentHelp() {
         compose.setContent {
             ConversationSurface(
                 title = "Fixture",
@@ -72,10 +72,15 @@ class WorkSessionAttachmentComposerTest {
             )
         }
 
-        compose.onNodeWithText("Imágenes no disponibles").assertIsDisplayed()
-        compose.onNodeWithText("Esta WorkSession se creó antes de activar imágenes.").assertIsDisplayed()
-        compose.onNodeWithText("Abre una WorkSession nueva de Atenea.").assertIsDisplayed()
+        compose.onNodeWithText("Imágenes no disponibles").assertDoesNotExist()
+        compose.onNodeWithText("Esta WorkSession se creó antes de activar imágenes.").assertDoesNotExist()
         compose.onNodeWithContentDescription("Adjuntar imágenes").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Enviar").assertIsEnabled()
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
+        compose.onNodeWithText("Adjuntos").performClick()
+        compose.onNodeWithText("Esta WorkSession se creó antes de activar imágenes.").assertIsDisplayed()
+        compose.onNodeWithText("Puedes continuar en esta misma conversación sin adjuntos.").assertIsDisplayed()
+        compose.onNodeWithText("Abre una WorkSession nueva de Atenea.").assertDoesNotExist()
     }
 
     @Test

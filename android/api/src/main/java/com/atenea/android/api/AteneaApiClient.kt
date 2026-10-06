@@ -341,6 +341,13 @@ class AteneaApiClient(
         parser = ::parseDevelopmentChangeValidation
     )
 
+    suspend fun fetchDevelopmentChangeValidationEvidence(sessionId: Long): DevelopmentChangeValidationEvidence = getJson(
+        path = "/api/sessions/$sessionId/validation-evidence",
+        authenticated = true
+    ) { json ->
+        parseDevelopmentChangeValidationEvidence(json).also { require(it.workSessionId == sessionId) }
+    }
+
     suspend fun fetchDelivery(sessionId: Long): MobileDeliveryState = getJson(
         path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true
     ) { json ->

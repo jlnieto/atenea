@@ -2,6 +2,7 @@ package com.atenea.service.worksession;
 
 import com.atenea.api.worksession.ValidationOperationResponse;
 import com.atenea.api.worksession.DevelopmentChangeValidationResponse;
+import com.atenea.api.worksession.DevelopmentChangeValidationEvidenceResponse;
 import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState;
 import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
@@ -29,6 +30,7 @@ import java.util.EnumMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,6 +56,40 @@ public class ClosedValidationOperationService {
         this.validationOperationRepository = validationOperationRepository;
         this.remoteWorkerClient = remoteWorkerClient;
         this.acceptanceService = acceptanceService;
+    }
+
+    @Transactional(readOnly = true)
+    public DevelopmentChangeValidationEvidenceResponse getDevelopmentChangeEvidence(Long sessionId) {
+        // No lock, worker call, source observation, projection promotion or retry on this path.
+        WorkSessionEntity session = workSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        if (change == null || session.getProject() == null || change.getProject() == null
+                || session.getProject().getId() == null
+                || !Objects.equals(session.getProject().getId(), change.getProject().getId())
+                || session.getWorkspaceIdentity() == null
+                || !Objects.equals(session.getWorkspaceIdentity(), change.getWorkspaceIdentity())
+                || session.getWorkspaceBranch() == null
+                || !Objects.equals(session.getWorkspaceBranch(), change.getWorkspaceBranch())
+                || session.getSelectedWorkerId() == null
+                || !Objects.equals(session.getSelectedWorkerId(), change.getSelectedWorkerId())) {
+            throw new WorkSessionOperationBlockedException("Validation evidence requires the bound DevelopmentChange");
+        }
+        String fingerprint = change.getSourceFingerprintSha256();
+        List<ValidationOperationEntity> results = fingerprint == null ? List.of()
+                : validationOperationRepository
+                        .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(sessionId, fingerprint);
+        Map<ValidationOperationKind, ValidationOperationEntity> latest = latestByOperation(results);
+        List<ValidationOperationResponse> evidence = latest.values().stream().map(this::response).toList();
+        ValidationOperationResponse lastAttempt = validationOperationRepository
+                .findFirstByWorkSessionIdOrderByStartedAtDescIdDesc(sessionId)
+                .map(this::response).orElse(null);
+        int passed = (int) latest.values().stream()
+                .filter(value -> value.getStatus() == ValidationOperationStatus.SUCCEEDED).count();
+        return new DevelopmentChangeValidationEvidenceResponse(
+                change.getChangeKey(), sessionId, change.getSourceRevision(), fingerprint,
+                change.getValidationState(), passed, ValidationOperationKind.values().length,
+                evidence, lastAttempt);
     }
 
     @Transactional

@@ -6,7 +6,8 @@ internal data class DevelopmentChangeValidationUiState(
     val visible: Boolean,
     val canStart: Boolean,
     val label: String,
-    val message: String
+    val message: String,
+    val current: Boolean = false
 )
 
 internal fun developmentChangeValidationUiState(
@@ -34,6 +35,7 @@ internal fun developmentChangeValidationUiState(
         visible = true,
         canStart = dirty && !current && !runInProgress && !validationPending,
         label = if (validationPending) "Validando…" else "Validar cambio",
-        message = message
+        message = message,
+        current = current
     )
 }

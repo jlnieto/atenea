@@ -1,10 +1,15 @@
 package com.atenea.android.coreconsole
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +20,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
@@ -25,11 +32,31 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -55,6 +82,7 @@ import androidx.compose.ui.unit.sp
 import com.atenea.android.api.MobileConversationTurn
 import com.atenea.android.api.SessionTurnAttachment
 import java.util.UUID
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun ConversationSurface(
@@ -76,7 +104,11 @@ internal fun ConversationSurface(
     commandContent: @Composable (() -> Unit)? = null,
     runContent: @Composable (() -> Unit)? = null,
     profileContent: @Composable (() -> Unit)? = null,
+    changeContent: @Composable (() -> Unit)? = null,
+    changeNeedsAttention: Boolean = false,
+    surfaceKey: String = "conversation",
     composerEnabled: Boolean = true,
+    composerNotice: String? = null,
     composerInputLocked: Boolean = false,
     attachmentDraft: WorkSessionAttachmentDraft? = null,
     onAttachImages: (() -> Unit)? = null,
@@ -85,189 +117,233 @@ internal fun ConversationSurface(
     onResetAttachmentSubmission: (() -> Unit)? = null,
     onOpenHistoricalAttachment: ((SessionTurnAttachment) -> Unit)? = null
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ConversationColors.background)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-    ) {
-        ConversationTopBar(
-            pending = pending,
-            onBack = onBack,
-            onOpenCore = onOpenCore,
-            onRefresh = onRefresh
-        )
-
+    var pane by rememberSaveable(surfaceKey) { mutableStateOf(ConversationPane.CHAT) }
+    var showAttachmentHelp by remember { mutableStateOf(false) }
+    val transcriptState = rememberLazyListState()
+    val userDragging by transcriptState.interactionSource.collectIsDraggedAsState()
+    val scope = rememberCoroutineScope()
+    var followTranscript by rememberSaveable(surfaceKey) { mutableStateOf(true) }
+    var userScrollPending by remember(surfaceKey) { mutableStateOf(false) }
+    var lastSeenContent by rememberSaveable(surfaceKey) { mutableStateOf<String?>(null) }
+    val latestContent = turns.lastOrNull()?.let { "${it.id}:${it.messageText.length}:${it.messageText.hashCode()}" }
+    BackHandler(enabled = pane != ConversationPane.CHAT) { pane = ConversationPane.CHAT }
+    ConversationSystemBars()
+    ConversationTheme {
         Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .fillMaxSize()
+                .background(ConversationColors.background)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .testTag("conversation-surface")
         ) {
-            runContent?.invoke()
-            error?.let {
-                Text(
-                    it,
-                    modifier = Modifier.padding(bottom = 2.dp),
-                    color = ConversationColors.error,
-                    style = ConversationTypography.meta
-                )
+            ConversationTopBar(
+                title = if (pane == ConversationPane.CHAT) title else pane.title,
+                status = if (pane == ConversationPane.CHAT) status else title,
+                pending = pending,
+                onBack = { if (pane == ConversationPane.CHAT) onBack() else pane = ConversationPane.CHAT },
+                onOpenCore = onOpenCore,
+                onRefresh = onRefresh,
+                showChange = changeContent != null,
+                changeNeedsAttention = changeNeedsAttention,
+                onChange = { pane = if (pane == ConversationPane.CHANGE) ConversationPane.CHAT else ConversationPane.CHANGE },
+                onActivity = runContent?.let { { pane = ConversationPane.ACTIVITY } },
+                onProfile = profileContent?.let { { pane = ConversationPane.PROFILE } },
+                onAttachments = attachmentDraft?.let { { showAttachmentHelp = true } }
+            )
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .testTag("conversation-content")
+            ) {
+                if (pane == ConversationPane.CHAT) {
+                    LaunchedEffect(transcriptState) {
+                        snapshotFlow { Triple(userDragging, transcriptState.isScrollInProgress, transcriptState.canScrollForward) }
+                            .collect { (dragging, scrolling, canForward) ->
+                                if (dragging) {
+                                    userScrollPending = true
+                                    followTranscript = false
+                                } else if (userScrollPending && !scrolling) {
+                                    followTranscript = !canForward
+                                    userScrollPending = false
+                                }
+                            }
+                    }
+                    LaunchedEffect(latestContent, commandContent != null, error) {
+                        if (followTranscript) {
+                            val count = turns.size.coerceAtLeast(1) + (if (commandContent == null) 0 else 1) + (if (error == null) 0 else 1)
+                            if (count > 0) transcriptState.scrollToItem(count - 1)
+                            lastSeenContent = latestContent
+                        }
+                    }
+                    LazyColumn(
+                        state = transcriptState,
+                        modifier = Modifier.fillMaxSize().testTag("conversation-transcript"),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        if (turns.isEmpty()) {
+                            item { Text("Escribe una instrucción para continuar.", color = ConversationColors.secondaryText) }
+                        }
+                        items(turns, key = { it.id }) { turn ->
+                            SelectionContainer { ConversationTurn(turn, onOpenHistoricalAttachment) }
+                        }
+                        commandContent?.let { command -> item(key = "pending-command") { command() } }
+                        error?.let { message -> item(key = "conversation-error") {
+                            SelectionContainer { Text(message, color = ConversationColors.error) }
+                        } }
+                    }
+                    if (!followTranscript && latestContent != lastSeenContent) {
+                        TextButton(
+                            modifier = Modifier.align(Alignment.BottomCenter).background(ConversationColors.composerBar),
+                            onClick = { scope.launch {
+                                followTranscript = true
+                                val count = turns.size.coerceAtLeast(1) + (if (commandContent == null) 0 else 1) + (if (error == null) 0 else 1)
+                                if (count > 0) transcriptState.scrollToItem(count - 1)
+                                lastSeenContent = latestContent
+                            } }
+                        ) { Text("Ir a los mensajes nuevos") }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        when (pane) {
+                            ConversationPane.CHANGE -> if (changeContent != null) changeContent()
+                                else Text("No se ha podido cargar el cambio. Usa Actualizar en el menú.")
+                            ConversationPane.ACTIVITY -> if (runContent != null) runContent()
+                                else Text("No hay un detalle de ejecución disponible.")
+                            ConversationPane.PROFILE -> if (profileContent != null) profileContent()
+                                else Text("El perfil de ejecución no está disponible en esta sesión.")
+                            ConversationPane.CHAT -> Unit
+                        }
+                        error?.let { message ->
+                            SelectionContainer { Text(message, color = ConversationColors.error) }
+                        }
+                    }
+                }
             }
-            commandContent?.invoke()
-            if (turns.isEmpty()) {
-                Text(
-                    "Sin mensajes visibles todavia.",
-                    modifier = Modifier.padding(vertical = 18.dp),
-                    color = ConversationColors.secondaryText,
-                    style = ConversationTypography.body
-                )
-            } else {
-                ConversationTranscript(
-                    turns = turns,
-                    onOpenAttachment = onOpenHistoricalAttachment,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+
+            if (pane == ConversationPane.CHAT) {
+                composerNotice?.let { notice ->
+                    TextButton(onClick = { pane = ConversationPane.PROFILE }, enabled = profileContent != null) {
+                        Text(notice, maxLines = 1, overflow = TextOverflow.Ellipsis, style = ConversationTypography.meta)
+                    }
+                }
+                ConversationComposer(
+                    input = input,
+                    pending = pending,
+                    placeholder = placeholder,
+                    recording = recording,
+                    audioLevels = audioLevels,
+                    enabled = composerEnabled,
+                    onInputChange = onInputChange,
+                    onSend = onSend,
+                    onMicrophoneClick = onMicrophoneClick,
+                    inputLocked = composerInputLocked,
+                    attachmentDraft = attachmentDraft,
+                    onAttachImages = onAttachImages,
+                    onRemoveImage = onRemoveImage,
+                    onRetryImage = onRetryImage,
+                    onResetAttachmentSubmission = onResetAttachmentSubmission
                 )
             }
         }
-
-        profileContent?.invoke()
-        ConversationComposer(
-            input = input,
-            pending = pending,
-            placeholder = placeholder,
-            recording = recording,
-            audioLevels = audioLevels,
-            enabled = composerEnabled,
-            onInputChange = onInputChange,
-            onSend = onSend,
-            onMicrophoneClick = onMicrophoneClick,
-            inputLocked = composerInputLocked,
-            attachmentDraft = attachmentDraft,
-            onAttachImages = onAttachImages,
-            onRemoveImage = onRemoveImage,
-            onRetryImage = onRetryImage,
-            onResetAttachmentSubmission = onResetAttachmentSubmission
-        )
-    }
-}
-
-@Composable
-private fun ConversationTranscript(
-    turns: List<MobileConversationTurn>,
-    onOpenAttachment: ((SessionTurnAttachment) -> Unit)?,
-    modifier: Modifier = Modifier
-) {
-    val scrollState = rememberScrollState()
-
-    LaunchedEffect(turns) {
-        scrollState.scrollTo(scrollState.maxValue)
-    }
-
-    Column(
-        modifier = modifier
-            .verticalScroll(scrollState)
-            .padding(top = 10.dp, bottom = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        turns.forEachIndexed { index, turn ->
-            if (index > 0) {
-                Spacer(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(ConversationColors.messageDivider)
-                )
-            }
-            ConversationTurn(turn, onOpenAttachment)
+        if (showAttachmentHelp) {
+            AlertDialog(
+                onDismissRequest = { showAttachmentHelp = false },
+                title = { Text(if (attachmentDraft?.isReady == true) "Adjuntar imágenes" else "Adjuntos no disponibles") },
+                text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(attachmentDraft?.capabilityFailure?.message
+                        ?: attachmentDraft?.capability?.message?.takeIf { it.isNotBlank() }
+                        ?: "PNG, JPEG o WebP. Usa el clip para seleccionar imágenes.")
+                    if (attachmentDraft?.isReady != true) Text("Puedes continuar en esta misma conversación sin adjuntos.")
+                } },
+                confirmButton = { TextButton(onClick = { showAttachmentHelp = false }) { Text("Entendido") } }
+            )
         }
     }
 }
 
 @Composable
 private fun ConversationTopBar(
+    title: String,
+    status: String?,
     pending: Boolean,
     onBack: () -> Unit,
     onOpenCore: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    showChange: Boolean,
+    changeNeedsAttention: Boolean,
+    onChange: () -> Unit,
+    onActivity: (() -> Unit)?,
+    onProfile: (() -> Unit)?,
+    onAttachments: (() -> Unit)?
 ) {
-    Column(
+    var menuOpen by remember { mutableStateOf(false) }
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(ConversationColors.background)
+            .heightIn(min = 56.dp)
+            .testTag("conversation-toolbar"),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(30.dp)
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ConversationTextAction(
-                "Volver a sesión",
-                ConversationActionIcon.Back,
-                onBack,
-                modifier = Modifier.weight(1f)
-            )
-            ConversationTextAction(
-                "Abrir Core",
-                ConversationActionIcon.Core,
-                onOpenCore,
-                modifier = Modifier.weight(1f),
-                alignCenter = true
-            )
-            ConversationTextAction(
-                if (pending) "Actualizando" else "Actualizar",
-                ConversationActionIcon.Refresh,
-                onRefresh,
-                enabled = !pending,
-                modifier = Modifier.weight(1f),
-                alignEnd = true
-            )
+        IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "Volver" }) {
+            ConversationActionGlyph(ConversationActionIcon.Back, ConversationColors.primaryText)
         }
-        Spacer(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(ConversationColors.divider)
-        )
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            status?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = ConversationTypography.meta, color = ConversationColors.secondaryText,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (showChange) TextButton(
+            onClick = onChange,
+            modifier = Modifier.semantics {
+                contentDescription = if (changeNeedsAttention) "Cambio, necesita atención" else "Cambio"
+            }
+        ) { Text(if (changeNeedsAttention) "Cambio !" else "Cambio") }
+        Box {
+            IconButton(onClick = { menuOpen = true }, modifier = Modifier.semantics { contentDescription = "Opciones de conversación" }) {
+                Text("⋮", style = MaterialTheme.typography.titleLarge)
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                onProfile?.let { action -> DropdownMenuItem(text = { Text("Configuración de Codex") }, onClick = { menuOpen = false; action() }) }
+                onActivity?.let { action -> DropdownMenuItem(text = { Text("Detalle de ejecución") }, onClick = { menuOpen = false; action() }) }
+                onAttachments?.let { action -> DropdownMenuItem(text = { Text("Adjuntos") }, onClick = { menuOpen = false; action() }) }
+                DropdownMenuItem(text = { Text(if (pending) "Actualizando…" else "Actualizar") }, enabled = !pending,
+                    onClick = { menuOpen = false; onRefresh() })
+                DropdownMenuItem(text = { Text("Abrir Core") }, onClick = { menuOpen = false; onOpenCore() })
+            }
+        }
     }
 }
 
 @Composable
-private fun ConversationTextAction(
-    text: String,
-    icon: ConversationActionIcon,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    modifier: Modifier = Modifier,
-    alignCenter: Boolean = false,
-    alignEnd: Boolean = false
-) {
-    val color = if (enabled) ConversationColors.action else ConversationColors.mutedText
-    Row(
-        modifier = modifier.clickable(enabled = enabled, onClick = onClick),
-        horizontalArrangement = when {
-            alignCenter -> Arrangement.Center
-            alignEnd -> Arrangement.End
-            else -> Arrangement.Start
-        },
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ConversationActionGlyph(icon, color)
-        Spacer(Modifier.width(4.dp))
-        Text(
-            text,
-            color = color,
-            style = ConversationTypography.action,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = if (alignEnd) TextAlign.End else TextAlign.Start
-        )
+private fun ConversationSystemBars() {
+    val activity = LocalContext.current.findConversationActivity()
+    DisposableEffect(activity) {
+        val controller = activity?.let { WindowInsetsControllerCompat(it.window, it.window.decorView) }
+        val statusLight = controller?.isAppearanceLightStatusBars
+        val navigationLight = controller?.isAppearanceLightNavigationBars
+        controller?.isAppearanceLightStatusBars = false
+        controller?.isAppearanceLightNavigationBars = false
+        onDispose {
+            statusLight?.let { controller?.isAppearanceLightStatusBars = it }
+            navigationLight?.let { controller?.isAppearanceLightNavigationBars = it }
+        }
     }
+}
+
+private tailrec fun Context.findConversationActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findConversationActivity()
+    else -> null
 }
 
 @Composable
@@ -471,9 +547,10 @@ private fun ConversationComposer(
         modifier = Modifier
             .fillMaxWidth()
             .background(ConversationColors.composerBar)
+            .testTag("conversation-composer")
             .padding(horizontal = 0.dp, vertical = 6.dp)
     ) {
-        attachmentDraft?.let { draft ->
+        attachmentDraft?.takeIf { it.images.isNotEmpty() || it.isSubmissionLocked }?.let { draft ->
             AttachmentComposerState(
                 draft = draft,
                 onRemoveImage = onRemoveImage,
@@ -491,6 +568,7 @@ private fun ConversationComposer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 56.dp, max = 156.dp)
+                    .testTag("conversation-input")
                     .background(ConversationColors.composerField)
                     .padding(
                         start = if (attachmentDraft != null) 54.dp else 10.dp,
@@ -529,7 +607,7 @@ private fun ConversationComposer(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(start = 4.dp, bottom = 8.dp)
-                        .size(40.dp)
+                        .size(48.dp)
                         .border(1.dp, ConversationColors.secondaryBorder, CircleShape)
                         .clickable(enabled = attachEnabled) { onAttachImages?.invoke() }
                         .semantics { contentDescription = "Adjuntar imágenes" },
@@ -542,7 +620,7 @@ private fun ConversationComposer(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 4.dp, bottom = 8.dp)
-                    .size(40.dp)
+                    .size(48.dp)
                     .border(1.dp, actionBorder, CircleShape)
                     .background(actionBackground, CircleShape)
                     .clickable(enabled = actionEnabled) {
@@ -760,7 +838,7 @@ private enum class ConversationActionIcon {
 
 @Composable
 private fun ConversationActionGlyph(icon: ConversationActionIcon, color: Color) {
-    Canvas(modifier = Modifier.size(12.dp)) {
+    Canvas(modifier = Modifier.size(24.dp)) {
         val strokeWidth = 1.8.dp.toPx()
         fun p(x: Float, y: Float) = Offset(size.width * x / 24f, size.height * y / 24f)
         when (icon) {
@@ -1214,8 +1292,8 @@ private fun renderInlineMarkdown(text: String) = buildAnnotatedString {
 
 internal object ConversationTypography {
     val body = TextStyle(
-        fontSize = 14.sp,
-        lineHeight = 20.sp
+        fontSize = 16.sp,
+        lineHeight = 24.sp
     )
     val code = TextStyle(
         fontFamily = FontFamily.Monospace,
@@ -1223,34 +1301,34 @@ internal object ConversationTypography {
         lineHeight = 18.sp
     )
     val meta = TextStyle(
-        fontSize = 11.sp,
-        lineHeight = 16.sp
+        fontSize = 12.sp,
+        lineHeight = 18.sp
     )
     val timestamp = TextStyle(
         fontSize = 10.sp,
         lineHeight = 15.sp
     )
     val action = TextStyle(
-        fontSize = 9.sp,
-        lineHeight = 12.sp,
+        fontSize = 13.sp,
+        lineHeight = 18.sp,
         fontWeight = FontWeight.SemiBold
     )
     val input = TextStyle(
-        fontSize = 14.sp,
-        lineHeight = 20.sp
+        fontSize = 16.sp,
+        lineHeight = 24.sp
     )
 }
 
 internal object ConversationColors {
-    val background = Color(0xFF3F3F3F)
-    val composerBar = Color(0xFF363636)
-    val composerField = Color(0xFF585858)
+    val background = Color(0xFF151918)
+    val composerBar = Color(0xFF1C2220)
+    val composerField = Color(0xFF222A27)
     val divider = Color(0xFFF0F0F0)
     val primaryText = Color(0xFFE7ECE9)
     val secondaryText = Color(0xFFB0BAB6)
-    val mutedText = Color(0xFF838D89)
-    val placeholder = Color(0xFF98A29E)
-    val action = Color(0xFF179489)
+    val mutedText = Color(0xFFA2ADA7)
+    val placeholder = Color(0xFFABB8B1)
+    val action = Color(0xFF66D8C6)
     val disabledAction = Color(0xFF16211F)
     val sendBackground = Color(0xFF253433)
     val sendBorder = Color(0xFFF1F5F3)

@@ -169,7 +169,8 @@ internal fun CodexRunProgressCard(
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text("EJECUCIÓN ACTUAL", color = ConversationColors.mutedText, style = ConversationTypography.meta)
+                Text(if (state in setOf("COMPLETED", "SUCCEEDED", "FAILED", "CANCELLED")) "ÚLTIMA EJECUCIÓN" else "EJECUCIÓN EN CURSO",
+                    color = ConversationColors.mutedText, style = ConversationTypography.meta)
                 Text(codexProgressLabel(state), color = ConversationColors.primaryText, fontWeight = FontWeight.Bold)
             }
             Text(state, color = ConversationColors.action, style = ConversationTypography.meta, fontWeight = FontWeight.Bold)
