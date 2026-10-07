@@ -455,63 +455,70 @@ private fun RenderedParagraph(text: String, operator: Boolean) {
     val lines = remember(text) { text.lines() }
     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
         lines.forEachIndexed { index, line ->
+            // Both branches must have an explicit composition group. An early return after
+            // Spacer leaves Row on the unconditional path and corrupts node insertion indices
+            // when Compose 1.7.6 precomposes/reuses a paragraph containing blank lines.
             if (line.trim().isBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
-                return@forEachIndexed
-            }
-
-            val trimmed = line.trimStart()
-            val headingLevel = when {
-                trimmed.startsWith("### ") -> 3
-                trimmed.startsWith("## ") -> 2
-                trimmed.startsWith("# ") -> 1
-                else -> 0
-            }
-            val quote = trimmed.startsWith("> ")
-            val bullet = trimmed.matches(Regex("^[-*]\\s+.*"))
-            val numbered = trimmed.matches(Regex("^\\d+\\.\\s+.*"))
-            val content = when {
-                headingLevel > 0 -> trimmed.replace(Regex("^#{1,3}\\s+"), "")
-                quote -> trimmed.replace(Regex("^>\\s+"), "")
-                bullet -> trimmed.replace(Regex("^[-*]\\s+"), "")
-                numbered -> trimmed.replace(Regex("^\\d+\\.\\s+"), "")
-                else -> line
-            }
-            val prefix = when {
-                quote -> "> "
-                bullet -> "- "
-                numbered -> "${Regex("^(\\d+)\\.").find(trimmed)?.groupValues?.getOrNull(1).orEmpty()}. "
-                else -> ""
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = if (headingLevel > 0 && index > 0) 4.dp else 0.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                if (prefix.isNotBlank()) {
-                    Text(
-                        prefix,
-                        color = ConversationColors.action,
-                        style = ConversationTypography.body
-                    )
-                }
-                Text(
-                    renderInlineMarkdown(content),
-                    color = when {
-                        headingLevel > 0 -> ConversationColors.action
-                        quote -> ConversationColors.quoteText
-                        operator -> ConversationColors.operatorText
-                        else -> ConversationColors.primaryText
-                    },
-                    style = ConversationTypography.body.copy(
-                        fontWeight = if (headingLevel > 0) FontWeight.Bold else FontWeight.Normal
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
+            } else {
+                RenderedParagraphLine(line, index, operator)
             }
         }
+    }
+}
+
+@Composable
+private fun RenderedParagraphLine(line: String, index: Int, operator: Boolean) {
+    val trimmed = line.trimStart()
+    val headingLevel = when {
+        trimmed.startsWith("### ") -> 3
+        trimmed.startsWith("## ") -> 2
+        trimmed.startsWith("# ") -> 1
+        else -> 0
+    }
+    val quote = trimmed.startsWith("> ")
+    val bullet = trimmed.matches(Regex("^[-*]\\s+.*"))
+    val numbered = trimmed.matches(Regex("^\\d+\\.\\s+.*"))
+    val content = when {
+        headingLevel > 0 -> trimmed.replace(Regex("^#{1,3}\\s+"), "")
+        quote -> trimmed.replace(Regex("^>\\s+"), "")
+        bullet -> trimmed.replace(Regex("^[-*]\\s+"), "")
+        numbered -> trimmed.replace(Regex("^\\d+\\.\\s+"), "")
+        else -> line
+    }
+    val prefix = when {
+        quote -> "> "
+        bullet -> "- "
+        numbered -> "${Regex("^(\\d+)\\.").find(trimmed)?.groupValues?.getOrNull(1).orEmpty()}. "
+        else -> ""
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = if (headingLevel > 0 && index > 0) 4.dp else 0.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        if (prefix.isNotBlank()) {
+            Text(
+                prefix,
+                color = ConversationColors.action,
+                style = ConversationTypography.body
+            )
+        }
+        Text(
+            renderInlineMarkdown(content),
+            color = when {
+                headingLevel > 0 -> ConversationColors.action
+                quote -> ConversationColors.quoteText
+                operator -> ConversationColors.operatorText
+                else -> ConversationColors.primaryText
+            },
+            style = ConversationTypography.body.copy(
+                fontWeight = if (headingLevel > 0) FontWeight.Bold else FontWeight.Normal
+            ),
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
