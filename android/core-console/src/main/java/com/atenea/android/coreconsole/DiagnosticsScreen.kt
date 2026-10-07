@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -18,11 +19,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import com.atenea.android.api.AteneaApiClient
-import com.atenea.android.api.MobileUpload
+import com.atenea.android.api.AteneaApiException
+import com.atenea.android.api.MobileDiagnosticReceipt
 import com.atenea.android.voiceruntime.AteneaDiagnostics
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun DiagnosticsScreen(
@@ -33,7 +40,22 @@ internal fun DiagnosticsScreen(
     var snapshot by remember { mutableStateOf(AteneaDiagnostics.runtimeSnapshot(context)) }
     var diagnosticUploading by remember { mutableStateOf(false) }
     var diagnosticMessage by remember { mutableStateOf<String?>(null) }
-    var diagnosticUpload by remember { mutableStateOf<MobileUpload?>(null) }
+    var diagnosticReceipt by remember { mutableStateOf<MobileDiagnosticReceipt?>(null) }
+    var receiptError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(apiClient) {
+        try {
+            val saved = apiClient.fetchLatestMobileDiagnostic()
+            if (diagnosticReceipt == null && !diagnosticUploading) diagnosticReceipt = saved
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if (diagnosticReceipt == null && !diagnosticUploading &&
+                (error !is AteneaApiException || error.status != 404)) {
+                receiptError = "No se pudo consultar el último diagnóstico guardado."
+            }
+        }
+    }
 
     fun refreshSnapshot() {
         snapshot = AteneaDiagnostics.runtimeSnapshot(context)
@@ -98,21 +120,23 @@ internal fun DiagnosticsScreen(
                 text = if (diagnosticUploading) "Enviando..." else "Enviar diagnostico",
                 enabled = !diagnosticUploading,
                 onClick = {
+                    if (diagnosticUploading) return@AteneaButton
+                    diagnosticUploading = true
+                    diagnosticMessage = null
                     scope.launch {
-                        diagnosticUploading = true
-                        diagnosticMessage = null
-                        diagnosticUpload = null
                         try {
                             AteneaDiagnostics.info("diagnostics", "manual_report_requested")
-                            val report = AteneaDiagnostics.createReport("manual_diagnostics_upload")
-                            diagnosticUpload = apiClient.uploadMobileFile(
-                                fileName = report.fileName,
-                                contentType = report.contentType,
-                                bytes = report.bytes
-                            )
-                            diagnosticMessage = "Diagnostico subido."
+                            val report = withContext(Dispatchers.IO) {
+                                AteneaDiagnostics.createReport("manual_diagnostics_upload")
+                            }
+                            diagnosticReceipt = apiClient.uploadMobileDiagnostic(report.bytes)
+                            receiptError = null
+                            diagnosticMessage = "Diagnóstico enviado y guardado."
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
                         } catch (error: Exception) {
-                            diagnosticMessage = error.message ?: "No se pudo enviar el diagnostico."
+                            diagnosticMessage = "No se ha confirmado un diagnóstico nuevo. " +
+                                (error.message ?: "No se pudo enviar el diagnóstico.")
                         } finally {
                             diagnosticUploading = false
                         }
@@ -122,11 +146,32 @@ internal fun DiagnosticsScreen(
             diagnosticMessage?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall)
             }
-            diagnosticUpload?.let { upload ->
-                MetricLine("Fichero", upload.originalFilename)
-                MetricLine("Ruta", upload.storedPath)
+            receiptError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            diagnosticReceipt?.let { DiagnosticReceiptPanel(it) }
+        }
+    }
+}
+
+@Composable
+internal fun DiagnosticReceiptPanel(receipt: MobileDiagnosticReceipt) {
+    val clipboard = LocalClipboardManager.current
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AteneaSpacing.medium)) {
+        SelectionContainer {
+            Column(verticalArrangement = Arrangement.spacedBy(AteneaSpacing.medium)) {
+                Text("Último diagnóstico guardado", style = MaterialTheme.typography.titleSmall)
+                MetricLine("ID", receipt.id.toString())
+                MetricLine("Recibido", receipt.receivedAt.formatDateTimeForDisplay())
+                MetricLine("App", "${receipt.appVersionName} / ${receipt.appVersionCode}")
+                MetricLine("Dispositivo", receipt.deviceModel)
+                MetricLine("Tamaño", receipt.sizeBytes.toLong().formatBytes())
+                Text("SHA-256: ${receipt.sha256}", style = MaterialTheme.typography.bodySmall)
+                Text("Guardado en Atenea; localizable por este ID o por la consulta autenticada del último informe.",
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
+        AteneaOutlinedButton(text = "Copiar ID del diagnóstico", onClick = {
+            clipboard.setText(AnnotatedString(receipt.id.toString()))
+        })
     }
 }
 

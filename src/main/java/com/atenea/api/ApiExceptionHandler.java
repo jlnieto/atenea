@@ -19,6 +19,7 @@ import com.atenea.service.core.CoreVoiceTranscriptionException;
 import com.atenea.service.core.CoreVoiceUnavailableException;
 import com.atenea.service.core.CoreSpeechSynthesisException;
 import com.atenea.service.mobile.MobileUploadException;
+import com.atenea.service.mobile.MobileDiagnosticException;
 import com.atenea.service.project.DuplicateProjectNameException;
 import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotDirectoryException;
@@ -361,6 +362,12 @@ public class ApiExceptionHandler {
             AgentRunRecoveryConflictException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(MobileDiagnosticException.class)
+    public ResponseEntity<ApiErrorResponse> handleMobileDiagnostic(MobileDiagnosticException exception) {
+        return ResponseEntity.status(exception.status()).body(
+                new ApiErrorResponse(exception.getMessage(), List.of(exception.code())));
     }
 
     @ExceptionHandler(MobileUploadException.class)
