@@ -646,6 +646,40 @@ class AteneaApiClient(
         }
     }
 
+    suspend fun uploadMobileDiagnostic(bytes: ByteArray): MobileDiagnosticReceipt {
+        require(bytes.size in 1..MAX_DIAGNOSTIC_REPORT_BYTES)
+        return postMultipartFile(
+            path = "/api/mobile/diagnostics",
+            fieldName = "file",
+            fileName = "atenea-diagnostics.json",
+            contentType = "application/json",
+            bytes = bytes,
+            onProgress = null,
+            parser = ::parseMobileDiagnosticReceipt
+        ).also { it.verifyContent(bytes) }
+    }
+
+    suspend fun fetchLatestMobileDiagnostic(): MobileDiagnosticReceipt = getJson(
+        path = "/api/mobile/diagnostics/latest", authenticated = true, parser = ::parseMobileDiagnosticReceipt
+    )
+
+    suspend fun fetchMobileDiagnostics(limit: Int = 10): List<MobileDiagnosticReceipt> {
+        require(limit in 1..20)
+        return getJsonArray(path = "/api/mobile/diagnostics?limit=$limit", authenticated = true) { reports ->
+            List(reports.length()) { index -> parseMobileDiagnosticReceipt(reports.getJSONObject(index)) }
+        }
+    }
+
+    suspend fun fetchMobileDiagnostic(id: UUID): MobileDiagnosticReceipt = getJson(
+        path = "/api/mobile/diagnostics/$id", authenticated = true, parser = ::parseMobileDiagnosticReceipt
+    ).also { require(it.id == id) }
+
+    suspend fun downloadMobileDiagnostic(receipt: MobileDiagnosticReceipt): ByteArray = requestAuthenticatedBinary(
+        path = "/api/mobile/diagnostics/${receipt.id}/content", maxBytes = MAX_DIAGNOSTIC_REPORT_BYTES.toLong(),
+        allowRefresh = true, accept = "application/json",
+        oversizedMessage = "El diagnóstico supera el límite de descarga permitido."
+    ).bytes.also { receipt.verifyContent(it) }
+
     suspend fun uploadMobileFile(
         fileName: String,
         contentType: String,
@@ -1140,14 +1174,16 @@ class AteneaApiClient(
     private suspend fun requestAuthenticatedBinary(
         path: String,
         maxBytes: Long,
-        allowRefresh: Boolean
+        allowRefresh: Boolean,
+        accept: String = "image/png, image/jpeg, image/webp",
+        oversizedMessage: String = "La imagen supera el límite permitido para abrirla."
     ): BinaryApiResponse = withContext(Dispatchers.IO) {
         val attemptedAccessToken = accessTokenProvider()
         val connection = (URL("$normalizedBaseUrl$path").openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 15000
             readTimeout = 120000
-            setRequestProperty("Accept", "image/png, image/jpeg, image/webp")
+            setRequestProperty("Accept", accept)
             val token = attemptedAccessToken?.takeIf { it.isNotBlank() }
                 ?: throw AteneaApiException(401, "No hay sesión activa.")
             setRequestProperty("Authorization", "Bearer $token")
@@ -1159,17 +1195,18 @@ class AteneaApiClient(
                 if (refreshToken != null) {
                     connection.errorStream?.close()
                     refreshSession(refreshToken, attemptedAccessToken)
-                    return@withContext requestAuthenticatedBinary(path, maxBytes, allowRefresh = false)
+                    return@withContext requestAuthenticatedBinary(path, maxBytes, allowRefresh = false,
+                        accept = accept, oversizedMessage = oversizedMessage)
                 }
             }
             if (connection.responseCode !in 200..299) {
                 throw buildApiException(connection.responseCode, connection.readResponseBody())
             }
             if (connection.contentLengthLong > maxBytes) {
-                throw AteneaApiException(413, "La imagen supera el límite permitido para abrirla.")
+                throw AteneaApiException(413, oversizedMessage)
             }
             BinaryApiResponse(
-                bytes = connection.inputStream.use { it.readBytesBounded(maxBytes) },
+                bytes = connection.inputStream.use { it.readBytesBounded(maxBytes, oversizedMessage) },
                 contentType = connection.contentType
             )
         } finally {
@@ -3315,7 +3352,10 @@ private fun HttpURLConnection.readResponseBody(): String {
     }
 }
 
-private fun InputStream.readBytesBounded(maxBytes: Long): ByteArray {
+private fun InputStream.readBytesBounded(
+    maxBytes: Long,
+    oversizedMessage: String = "La imagen supera el límite permitido para abrirla."
+): ByteArray {
     val output = ByteArrayOutputStream(minOf(maxBytes, 64L * 1024L).toInt())
     val buffer = ByteArray(64 * 1024)
     var total = 0L
@@ -3324,7 +3364,7 @@ private fun InputStream.readBytesBounded(maxBytes: Long): ByteArray {
         if (read < 0) break
         total += read
         if (total > maxBytes) {
-            throw AteneaApiException(413, "La imagen supera el límite permitido para abrirla.")
+            throw AteneaApiException(413, oversizedMessage)
         }
         output.write(buffer, 0, read)
     }
