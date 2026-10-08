@@ -1,6 +1,7 @@
 package com.atenea.android.coreconsole
 
 import com.atenea.android.api.MobileDeliveryOperation
+import com.atenea.android.api.MobileDeliveryIntegration
 import com.atenea.android.api.MobileDeliveryState
 import com.atenea.android.api.MobileDeliveryTarget
 import kotlinx.coroutines.CompletableDeferred
@@ -26,6 +27,51 @@ class MobileDeliveryUiStateTest {
         assertFalse(deliveryErrorLabel("UFD_NOT_STARTED").contains("está ejecutando"))
         assertFalse(deliveryErrorLabel("UFD_DISPATCH_UNCONFIRMED").contains("está ejecutando"))
         assertTrue(deliveryErrorLabel("UFD_CONTROLLER_UNAVAILABLE").contains("detenido"))
+        assertTrue(deliveryErrorLabel("PR_MERGE_CONFLICTS").contains("conflictos"))
+        assertFalse(deliveryErrorLabel("PR_MERGE_CONFLICTS").contains("ejecutando"))
+        assertTrue(deliveryIntegrationLabel("UNKNOWN").contains("calculando"))
+        assertTrue(deliveryErrorLabel("GITHUB_CHECKS_FAILED").contains("han fallado"))
+    }
+    @Test
+    fun `conflict observation disables integration and polling remains read only`() = runBlocking<Unit> {
+        val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
+        try {
+            var reads = 0
+            val result = MobileDeliveryIntegration(21, "1".repeat(40), "CONFLICTS", false, null)
+            val state = MobileDeliveryUiState(21, scope) {
+                reads++; MobileDeliveryState(true, listOf(operation()), result)
+            }
+            state.refresh(); state.refresh()
+            assertEquals(2, reads)
+            assertFalse(state.integration!!.allowsRequest)
+            assertTrue(deliveryIntegrationLabel(state.integration!!.mergeState).contains("conflictos"))
+        } finally { scope.cancel() }
+    }
+    @Test
+    fun `transport failure discards old mergeability instead of enabling a stale confirmation`() = runBlocking<Unit> {
+        val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
+        try {
+            var fail = false
+            val state = MobileDeliveryUiState(21, scope) {
+                if (fail) error("offline")
+                MobileDeliveryState(true, listOf(operation()), MobileDeliveryIntegration(21, "1".repeat(40), "MERGEABLE", true, null))
+            }
+            state.refresh(); assertTrue(state.integration!!.allowsRequest)
+            fail = true; state.refresh()
+            assertFalse(state.available); assertNull(state.integration)
+            assertEquals(1, state.operations.size)
+        } finally { scope.cancel() }
+    }
+    @Test
+    fun `foreign integration receipt cannot be adopted`() = runBlocking<Unit> {
+        val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
+        try {
+            val state = MobileDeliveryUiState(21, scope) {
+                MobileDeliveryState(true, listOf(operation()), MobileDeliveryIntegration(22, "1".repeat(40), "MERGEABLE", true, null))
+            }
+            state.refresh()
+            assertFalse(state.available); assertNull(state.integration)
+        } finally { scope.cancel() }
     }
     @Test
     fun `refresh preserves same durable operation identity without creating one`() = runBlocking<Unit> {

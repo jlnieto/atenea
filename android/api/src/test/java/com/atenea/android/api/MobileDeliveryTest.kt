@@ -5,6 +5,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryTest {
@@ -27,5 +28,24 @@ class MobileDeliveryTest {
         assertTrue(plan("ROLLED_BACK").terminal); assertTrue(plan("ROLLBACK_FAILED").terminal)
         assertFalse(plan("APPLYING").terminal)
         assertFalse(plan("QUARANTINED").terminal)
+    }
+    @Test fun legacyBackendDoesNotInventPermissionToIntegrate() {
+        val state = parseMobileDeliveryState(JSONObject("{\"enabled\":true,\"operations\":[]}"))
+        assertNull(state.integration)
+    }
+    @Test fun mergeObservationIsStrictAndFailsClosedForConflictOrUnknownState() {
+        val root = JSONObject().put("enabled",true).put("operations",org.json.JSONArray())
+        val observed = JSONObject().put("sessionId",21).put("sourceCommit","1".repeat(40))
+            .put("mergeState","CONFLICTS").put("canRequestIntegration",true)
+        root.put("integration",observed)
+        assertFalse(parseMobileDeliveryState(root).integration!!.allowsRequest)
+        observed.put("mergeState","MERGEABLE")
+        assertTrue(parseMobileDeliveryState(root).integration!!.allowsRequest)
+        observed.put("canRequestIntegration","true")
+        assertFalse(parseMobileDeliveryState(root).integration!!.allowsRequest)
+        observed.put("canRequestIntegration",true).put("sourceCommit","not-a-commit")
+        assertFalse(parseMobileDeliveryState(root).integration!!.allowsRequest)
+        observed.put("sourceCommit","1".repeat(40)).put("mergeState","NEW_UNKNOWN_STATE")
+        assertFalse(parseMobileDeliveryState(root).integration!!.allowsRequest)
     }
 }

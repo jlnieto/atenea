@@ -4,6 +4,10 @@ El objetivo es trabajar sin portátil después de una instalación inicial:
 implementar en una conversación, validar, revisar/integrar y publicar desde
 Atenea. Terminar un AgentRun **no** valida, integra ni despliega.
 
+La aceptación completa y el trabajo pendiente para eliminar la intervención
+desde CLI se siguen en
+[Operación completa desde el móvil](mobile-only-operations-plan.md).
+
 Este cambio añade el control móvil y el protocolo de publicación. No instala
 servicios, habilita flags, configura secretos de GitHub ni publica una APK.
 No debe declararse operativo en PROD hasta completar el bootstrap y la prueba

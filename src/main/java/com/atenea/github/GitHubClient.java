@@ -211,6 +211,16 @@ public class GitHubClient {
         return sha;
     }
 
+    /** Read-only observation of the exact server-owned PR; never marks a draft ready. */
+    public GitHubMergeState observeMergeState(GitHubRepositoryRef repository, long number, String headBranch, String headSha) {
+        ensureConfigured();
+        requireSha(headSha);
+        JsonNode pr = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                "/repos/" + repository.owner() + "/" + repository.repo() + "/pulls/" + number), null);
+        requireExactPullRequest(repository, number, headBranch, headSha, pr);
+        return GitHubMergeState.observe(pr);
+    }
+
     /** No caller-selected PR/head/base and no protection bypass. Lost responses reconcile by GET. */
     public String integrateExact(GitHubRepositoryRef repository, long number, String headBranch, String headSha) {
         ensureConfigured();
@@ -226,6 +236,9 @@ public class GitHubClient {
         if (!"open".equals(pr.path("state").asText())) {
             throw new GitHubIntegrationException("PR_CLOSED: la PR está cerrada sin integrar");
         }
+        if (GitHubMergeState.observe(pr) == GitHubMergeState.CONFLICTS) {
+            throw new GitHubIntegrationException("PR_MERGE_CONFLICTS: hay conflictos que resolver antes de integrar");
+        }
         requireUfdValidation(repository, headSha, headBranch);
         if (pr.path("draft").asBoolean()) {
             String nodeId = pr.path("node_id").asText();
@@ -239,8 +252,12 @@ public class GitHubClient {
             }
             throw new GitHubIntegrationException("CI_PENDING: PR preparada para revisión; comprobando protecciones");
         }
-        if (!pr.path("mergeable").asBoolean() || !"clean".equals(pr.path("mergeable_state").asText())) {
-            throw new GitHubIntegrationException("CI_PENDING: GitHub todavía no autoriza integrar este commit");
+        if (GitHubMergeState.observe(pr) == GitHubMergeState.UNKNOWN) {
+            throw new GitHubIntegrationException("PR_MERGEABILITY_PENDING: GitHub aún calcula si esta PR puede integrarse");
+        }
+        if (GitHubMergeState.observe(pr) != GitHubMergeState.MERGEABLE
+                || !"clean".equals(pr.path("mergeable_state").asText())) {
+            throw new GitHubIntegrationException("PR_PROTECTED: las protecciones no permiten integrar este commit");
         }
         JsonNode checks = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
                 "/repos/" + repository.owner() + "/" + repository.repo() + "/commits/" + headSha

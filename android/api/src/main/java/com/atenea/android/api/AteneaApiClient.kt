@@ -349,11 +349,9 @@ class AteneaApiClient(
     }
 
     suspend fun fetchDelivery(sessionId: Long): MobileDeliveryState = getJson(
-        path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true
-    ) { json ->
-        val items = json.getJSONArray("operations")
-        MobileDeliveryState(json.getBoolean("enabled"), List(items.length()) { parseMobileDeliveryOperation(items.getJSONObject(it)) })
-    }
+        path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true,
+        parser = ::parseMobileDeliveryState
+    )
 
     suspend fun createDeliveryPullRequest(sessionId: Long): MobileDeliveryOperation = postJson(
         path = "/api/mobile/sessions/$sessionId/delivery/pr", body = JSONObject(), authenticated = true,

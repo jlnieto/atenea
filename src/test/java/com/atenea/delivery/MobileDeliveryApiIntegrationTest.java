@@ -113,9 +113,12 @@ class MobileDeliveryApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(true))
                 .andExpect(jsonPath("$.operations[0].id").value(op.id().toString()))
                 .andExpect(jsonPath("$.operations[0].state").value("PREPARING"))
+                .andExpect(jsonPath("$.integration.mergeState").value("NOT_PUBLISHED"))
+                .andExpect(jsonPath("$.integration.canRequestIntegration").value(false))
                 .andExpect(jsonPath("$.operations[0].path").doesNotExist()).andExpect(jsonPath("$.operations[0].token").doesNotExist());
         verifyNoInteractions(factors,grants);
         verify(executor,never()).inspect(any());
+        verifyNoInteractions(github,publication);
     }
     @Test void unpreparedPlanCannotConsumeTotpAndUnknownArgumentsAreRejected() throws Exception {
         var op=store.create(sessionId,admin.getId(),"RELEASE",DeliveryTarget.APP_PROD,"1".repeat(40),"PREPARING",mapper.createObjectNode());

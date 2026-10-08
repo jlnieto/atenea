@@ -25,9 +25,11 @@ public class MobileDeliveryController {
     @GetMapping("/api/mobile/sessions/{sessionId}/delivery")
     public DeliveryState list(@PathVariable Long sessionId,
             @AuthenticationPrincipal AuthenticatedOperator actor) {
-        return new DeliveryState(service.isEnabled(),service.list(sessionId, actor));
+        return new DeliveryState(service.isEnabled(),service.list(sessionId, actor),
+                service.observeIntegration(sessionId, actor));
     }
-    public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations) { }
+    public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations,
+            MobileDeliveryService.IntegrationObservation integration) { }
 
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/pr")
     public DeliveryOperation.DeliveryView publish(@PathVariable Long sessionId,

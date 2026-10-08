@@ -6,7 +6,30 @@ import java.util.UUID
 enum class MobileDeliveryTarget(val label: String) {
     APP_PROD("Backend PROD"), AX42_PLATFORM("Worker AX42"), ANDROID_STABLE("Android estable")
 }
-data class MobileDeliveryState(val enabled: Boolean, val operations: List<MobileDeliveryOperation>)
+data class MobileDeliveryState(val enabled: Boolean, val operations: List<MobileDeliveryOperation>,
+    val integration: MobileDeliveryIntegration? = null)
+
+data class MobileDeliveryIntegration(
+    val sessionId: Long,
+    val sourceCommit: String?,
+    val mergeState: String,
+    val canRequestIntegration: Boolean,
+    val errorCode: String?
+) {
+    val allowsRequest: Boolean get() = canRequestIntegration && mergeState == "MERGEABLE"
+        && sourceCommit?.matches(Regex("[0-9a-f]{40}")) == true && errorCode == null
+}
+
+internal fun parseMobileDeliveryState(json: JSONObject): MobileDeliveryState {
+    val items = json.getJSONArray("operations")
+    val integration = json.optJSONObject("integration")?.let { value ->
+        MobileDeliveryIntegration(value.getLong("sessionId"), value.nullableDeliveryString("sourceCommit"),
+            value.getString("mergeState"), value.opt("canRequestIntegration") == true,
+            value.nullableDeliveryString("errorCode"))
+    }
+    return MobileDeliveryState(json.getBoolean("enabled"),
+        List(items.length()) { parseMobileDeliveryOperation(items.getJSONObject(it)) }, integration)
+}
 
 data class MobileDeliveryOperation(
     val id: UUID,

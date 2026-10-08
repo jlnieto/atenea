@@ -19,6 +19,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.MobileDeliveryOperation
+import com.atenea.android.api.MobileDeliveryIntegration
 import com.atenea.android.api.MobileDeliveryState
 import com.atenea.android.api.MobileDeliveryTarget
 import kotlinx.coroutines.delay
@@ -36,6 +37,8 @@ internal class MobileDeliveryUiState(
         this(sessionId, scope, { api.fetchDelivery(sessionId) })
     var operations by mutableStateOf(emptyList<MobileDeliveryOperation>())
         private set
+    var integration by mutableStateOf<MobileDeliveryIntegration?>(null)
+        private set
     var available by mutableStateOf(false)
         private set
     var loaded by mutableStateOf(false)
@@ -51,7 +54,9 @@ internal class MobileDeliveryUiState(
         try {
             val state = load()
             require(state.operations.all { it.sessionId == sessionId })
+            require(state.integration?.sessionId?.let { it == sessionId } ?: true)
             operations = state.operations
+            integration = state.integration
             available = state.enabled
             loaded = true
             loadError = null
@@ -60,6 +65,7 @@ internal class MobileDeliveryUiState(
         } catch (failure: Exception) {
             // Keep durable IDs visible, but never authorize actions from a stale capability response.
             available = false
+            integration = null
             loadError = "No se pudo consultar la publicación. ${failure.message.orEmpty()}"
         }
     }
@@ -134,13 +140,17 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
         pr?.pullRequestUrl?.takeIf { it.matches(Regex("https://github\\.com/jlnieto/atenea/pull/[1-9][0-9]*")) }?.let { url ->
             TextButton(onClick = { uriHandler.openUri(url) }) { Text("Revisar PR") }
         }
+        if (pr?.state == "SUCCEEDED" && integration?.state != "SUCCEEDED") {
+            Text(deliveryIntegrationLabel(state.integration?.mergeState))
+        }
         state.loadError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (pr?.state != "SUCCEEDED") {
             AteneaButton("Crear PR", enabled = available && validated && !runInProgress && !busy && !active,
                 onClick = { act { api.createDeliveryPullRequest(sessionId) } })
         } else if (integration?.state != "SUCCEEDED") {
-            AteneaButton("Integrar cambio", enabled = available && validated && !runInProgress && !busy && !active,
+            AteneaButton("Integrar cambio", enabled = available && validated && !runInProgress && !busy && !active
+                    && state.integration?.allowsRequest == true,
                 onClick = { confirmMerge = true })
         }
         if (integration?.state == "SUCCEEDED") {
@@ -159,7 +169,8 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
     if (confirmMerge) {
         AlertDialog(onDismissRequest = { confirmMerge = false }, title = { Text("Integrar este cambio") },
             text = { Text("Atenea comprobará el commit validado y las protecciones de GitHub. Integrar no despliega a PROD.") },
-            confirmButton = { TextButton(onClick = {
+            confirmButton = { TextButton(enabled = available && validated && !runInProgress && !busy && !active
+                    && state.integration?.allowsRequest == true, onClick = {
                 confirmMerge = false; act { api.integrateDelivery(sessionId) }
             }) { Text("Integrar") } },
             dismissButton = { TextButton(onClick = { confirmMerge = false }) { Text("Cancelar") } })
@@ -189,6 +200,17 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
     }
 }
 
+internal fun deliveryIntegrationLabel(mergeState: String?): String = when (mergeState) {
+    "CONFLICTS" -> "La PR tiene conflictos con main. Hay que resolverlos antes de integrar."
+    "UNKNOWN" -> "GitHub está calculando si la PR puede integrarse; no significa que esté ejecutando pruebas."
+    "PROTECTED" -> "Las protecciones de GitHub todavía no permiten integrar esta PR."
+    "STALE_SOURCE" -> "El código cambió después de publicar. Esta revisión necesita validación y actualización de la PR."
+    "MERGEABLE" -> "La rama no tiene conflictos. Al integrar, Atenea volverá a comprobar la revisión y las pruebas."
+    "MERGED" -> "GitHub observa la PR integrada. Atenea debe reconciliar el resultado antes de publicar."
+    "CLOSED" -> "La PR está cerrada sin integrar."
+    else -> "No se pudo confirmar el estado de integración. Consulta de nuevo antes de continuar."
+}
+
 internal fun deliveryKindLabel(operation: MobileDeliveryOperation): String = when (operation.kind) {
     "PUBLISH_PR" -> "PR"; "INTEGRATE" -> "Integración"; else -> operation.target.label
 }
@@ -202,6 +224,10 @@ internal fun deliveryStateLabel(state: String): String = when (state) {
 }
 
 internal fun deliveryErrorLabel(code: String): String = when (code) {
+    "PR_MERGE_CONFLICTS" -> "La PR tiene conflictos con main. No se ha integrado; hay que resolverlos."
+    "PR_MERGEABILITY_PENDING" -> "GitHub está calculando la integración de la PR; no está ejecutando pruebas por esta consulta."
+    "PR_PROTECTED" -> "Las protecciones de GitHub impiden integrar esta PR."
+    "GITHUB_CHECKS_FAILED" -> "Las comprobaciones de este commit han fallado. Hay que corregir el código antes de continuar."
     "UFD_QUEUED" -> "GitHub ha registrado las comprobaciones y están en cola. Atenea seguirá esperando; no necesitas repetir la acción."
     "UFD_REQUESTED" -> "Atenea ha solicitado las comprobaciones del commit a GitHub. Está esperando que arranquen; no necesitas repetir la acción."
     "UFD_DISPATCH_UNCONFIRMED" -> "Atenea no ha podido confirmar el inicio. Consulta la misma operación; no se enviará otra solicitud automáticamente."
