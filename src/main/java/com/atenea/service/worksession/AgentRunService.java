@@ -138,11 +138,28 @@ public class AgentRunService {
             AgentRunEntity retryOfRun,
             TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection
     ) {
+        return createRemoteQueuedRun(session, originTurn, workloadClass, retryOfRun, attachmentSelection, null);
+    }
+
+    /** Internal closed exception to published-session admission, never a mobile prompt parameter. */
+    @Transactional
+    public AgentRunEntity createSourceUpdateResolverRun(WorkSessionEntity session,
+            SessionTurnEntity originTurn, UUID sourceUpdateId) {
+        if (sourceUpdateId == null || originTurn.getActor() != SessionTurnActor.ATENEA || originTurn.isInternal()
+                || originTurn.getSession() == null || !Objects.equals(originTurn.getSession().getId(), session.getId())) {
+            throw invalidChangeBinding();
+        }
+        return createRemoteQueuedRun(session, originTurn, WorkloadClass.NORMAL, null, null, sourceUpdateId);
+    }
+
+    private AgentRunEntity createRemoteQueuedRun(WorkSessionEntity session, SessionTurnEntity originTurn,
+            WorkloadClass workloadClass, AgentRunEntity retryOfRun,
+            TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection, UUID sourceUpdateId) {
         Instant now = Instant.now();
         lockCodexActivation(session.getSelectedWorkerId());
         ensureNoNonTerminalRun(session.getId());
         workSessionAcceptanceService.invalidateForNewRun(session);
-        ChangeBinding changeBinding = changeBinding(session);
+        ChangeBinding changeBinding = changeBinding(session, sourceUpdateId, originTurn.getId());
         requireCompatibleRetryBinding(retryOfRun, changeBinding);
         if (session.getRemoteSessionId() == null
                 || (!"synthetic-routing-v1".equals(session.getRemoteWorkloadKind())
@@ -551,9 +568,10 @@ public class AgentRunService {
                 || BeautipsProjectCodexIdentity.matchesPinnedSession(session);
     }
 
-    private ChangeBinding changeBinding(WorkSessionEntity session) {
+    private ChangeBinding changeBinding(WorkSessionEntity session, UUID sourceUpdateId, Long originTurnId) {
         DevelopmentChangeEntity linked = session.getDevelopmentChange();
         if (linked == null) {
+            if (sourceUpdateId != null) throw invalidChangeBinding();
             return null;
         }
         if (linked.getChangeKey() == null) {
@@ -575,6 +593,17 @@ public class AgentRunService {
         String expectedWorkspace = "remote:" + change.getSelectedWorkerId()
                 + ":change:" + change.getChangeKey();
         String expectedWorkspaceBranch = "atenea/change-" + change.getChangeKey();
+        boolean resolverAdmitted = sourceUpdateId != null && Long.valueOf(1).equals(jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM mobile_source_update_operation op
+                WHERE op.id=? AND op.session_id=? AND op.state='READY_TO_RESOLVE'
+                  AND op.resolver_turn_id=? AND op.resolver_run_id IS NULL
+                  AND op.prepared_revision=? AND op.publication_receipt_sha256=?
+                  AND op.command_json->'owner'->>'changeKey'=?
+                  AND op.command_json->'owner'->>'sourceCommit'=?
+                  AND op.preparation_json->>'preparedFingerprintSha256'=?
+                """, Long.class, sourceUpdateId, session.getId(), originTurnId, change.getSourceRevision(),
+                session.getPublicationReceiptSha256(), change.getChangeKey().toString(),
+                change.getObservedCanonicalCommit(), change.getSourceFingerprintSha256()));
         if (session.getId() == null
                 || session.getProject() == null
                 || session.getProject().getId() == null
@@ -589,7 +618,10 @@ public class AgentRunService {
                 || change.getWorkspaceOperationRevision() < 1
                 || change.getWorkspaceUpdatedAt() == null
                 || activeWorkspaceOperation
-                || session.getPublishedChangeKey() != null
+                || (session.getPublishedChangeKey() != null && !resolverAdmitted)
+                || (sourceUpdateId != null && (!resolverAdmitted
+                    || !Objects.equals(session.getPublishedChangeKey(), change.getChangeKey())
+                    || !Objects.equals(session.getFinalCommitSha(), change.getObservedCanonicalCommit())))
                 || !workerAdmitted
                 || linkedSessions.size() != 1
                 || !Objects.equals(linkedSessions.getFirst().getId(), session.getId())

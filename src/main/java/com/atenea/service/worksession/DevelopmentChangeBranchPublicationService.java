@@ -145,7 +145,8 @@ public class DevelopmentChangeBranchPublicationService {
         String expectedWorkspace = change == null || change.getChangeKey() == null
                 ? null : "remote:" + ProjectCodexIdentity.WORKER_ID
                     + ":change:" + change.getChangeKey();
-        if (change == null
+        if (sessionRepository.existsActiveSourceUpdateBySessionId(session.getId())
+                || change == null
                 || change.getProject() == null
                 || session.getProject() == null
                 || !Objects.equals(change.getProject().getId(), session.getProject().getId())

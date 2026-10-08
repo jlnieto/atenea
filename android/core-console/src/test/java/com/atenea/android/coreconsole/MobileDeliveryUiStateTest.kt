@@ -4,6 +4,7 @@ import com.atenea.android.api.MobileDeliveryOperation
 import com.atenea.android.api.MobileDeliveryIntegration
 import com.atenea.android.api.MobileDeliveryState
 import com.atenea.android.api.MobileDeliveryTarget
+import com.atenea.android.api.MobileSourceUpdate
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,42 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
+    @Test fun `resolver action is closed and old completion never enables integration`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var update: MobileSourceUpdate?=null
+            var online=true
+            val state=MobileDeliveryUiState(21,scope) {
+                if (!online) error("offline")
+                MobileDeliveryState(true,listOf(operation().copy(state="SUCCEEDED")),MobileDeliveryIntegration(21,"1".repeat(40),"CONFLICTS",false,null),true,update)
+            }
+            state.refresh()
+            assertTrue(state.canResolveConflicts(true,false))
+            assertFalse(state.canResolveConflicts(false,false)); assertFalse(state.canResolveConflicts(true,true))
+            update=MobileSourceUpdate(UUID.randomUUID(),21,"RESOLVING","2".repeat(40),4,105,null)
+            state.refresh(); assertFalse(state.canResolveConflicts(true,false))
+            val id=state.sourceUpdate!!.id
+            update=update!!.copy(state="RESOLVER_COMPLETED")
+            state.refresh(); assertEquals(id,state.sourceUpdate!!.id)
+            assertFalse(state.integration!!.allowsRequest)
+            assertTrue(sourceUpdateLabel("RESOLVER_COMPLETED").contains("Falta validar"))
+            online=false; state.refresh()
+            assertEquals(id,state.sourceUpdate!!.id); assertFalse(state.sourceUpdateEnabled)
+            assertFalse(state.canResolveConflicts(true,false))
+        } finally { scope.cancel() }
+    }
+    @Test fun `foreign source update is rejected and legacy capability does not authorize resolver`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            val foreign=MobileSourceUpdate(UUID.randomUUID(),22,"RESOLVING","2".repeat(40),4,105,null)
+            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,listOf(operation()),null,true,foreign) }
+            state.refresh(); assertFalse(state.available); assertNull(state.sourceUpdate)
+            val legacy=MobileDeliveryUiState(21,scope) {
+                MobileDeliveryState(true,listOf(operation()),MobileDeliveryIntegration(21,"1".repeat(40),"CONFLICTS",false,null))
+            }
+            legacy.refresh(); assertFalse(legacy.canResolveConflicts(true,false))
+        } finally { scope.cancel() }
+    }
     @Test
     fun `a requested or missing run is not presented as running checks`() {
         assertTrue(deliveryErrorLabel("UFD_REQUESTED").contains("esperando que arranquen"))

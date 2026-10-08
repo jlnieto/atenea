@@ -22,6 +22,7 @@ import com.atenea.android.api.MobileDeliveryOperation
 import com.atenea.android.api.MobileDeliveryIntegration
 import com.atenea.android.api.MobileDeliveryState
 import com.atenea.android.api.MobileDeliveryTarget
+import com.atenea.android.api.MobileSourceUpdate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -39,6 +40,10 @@ internal class MobileDeliveryUiState(
         private set
     var integration by mutableStateOf<MobileDeliveryIntegration?>(null)
         private set
+    var sourceUpdate by mutableStateOf<MobileSourceUpdate?>(null)
+        private set
+    var sourceUpdateEnabled by mutableStateOf(false)
+        private set
     var available by mutableStateOf(false)
         private set
     var loaded by mutableStateOf(false)
@@ -50,13 +55,21 @@ internal class MobileDeliveryUiState(
     var actionError by mutableStateOf<String?>(null)
         private set
 
+    fun canResolveConflicts(validated: Boolean, runInProgress: Boolean): Boolean =
+        available && sourceUpdateEnabled && sourceUpdate == null && integration?.mergeState == "CONFLICTS"
+            && validated && !runInProgress && !busy
+            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
+
     suspend fun refresh() {
         try {
             val state = load()
             require(state.operations.all { it.sessionId == sessionId })
             require(state.integration?.sessionId?.let { it == sessionId } ?: true)
+            require(state.sourceUpdate?.sessionId?.let { it == sessionId } ?: true)
             operations = state.operations
             integration = state.integration
+            sourceUpdate = state.sourceUpdate
+            sourceUpdateEnabled = state.sourceUpdateEnabled
             available = state.enabled
             loaded = true
             loadError = null
@@ -66,6 +79,7 @@ internal class MobileDeliveryUiState(
             // Keep durable IDs visible, but never authorize actions from a stale capability response.
             available = false
             integration = null
+            sourceUpdateEnabled = false
             loadError = "No se pudo consultar la publicación. ${failure.message.orEmpty()}"
         }
     }
@@ -143,6 +157,14 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
         if (pr?.state == "SUCCEEDED" && integration?.state != "SUCCEEDED") {
             Text(deliveryIntegrationLabel(state.integration?.mergeState))
         }
+        state.sourceUpdate?.let { update ->
+            Text(sourceUpdateLabel(update.state))
+            update.errorCode?.let { Text("Recuperación detenida: $it. La misma operación y conversación se conservan.") }
+        }
+        if (state.integration?.mergeState == "CONFLICTS" && state.sourceUpdate == null) {
+            AteneaButton("Resolver conflictos", enabled = state.canResolveConflicts(validated, runInProgress),
+                onClick = { act { api.resolveDeliveryConflicts(sessionId) } })
+        }
         state.loadError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (pr?.state != "SUCCEEDED") {
@@ -198,6 +220,16 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                 }) { Text("Publicar") }
             }, dismissButton = { TextButton(onClick = { confirmation = null; totp = "" }) { Text("Cancelar") } })
     }
+}
+
+internal fun sourceUpdateLabel(state: String): String = when (state) {
+    "QUEUED", "PREPARE_CLAIMED" -> "Preparando conflictos en esta WorkSession…"
+    "UNCERTAIN" -> "Comprobando la misma preparación; no repitas la acción."
+    "READY_TO_RESOLVE" -> "Preparación lista; Atenea está iniciando el resolver."
+    "RESOLVING" -> "Codex está resolviendo los conflictos en esta conversación."
+    "RESOLVER_COMPLETED" -> "Codex terminó. Falta validar la nueva revisión y actualizar la misma PR."
+    "READY_TO_FINALIZE" -> "Preparación terminada. Falta validar la nueva revisión y actualizar la misma PR."
+    else -> "La recuperación necesita atención. No se ha integrado ni publicado el cambio."
 }
 
 internal fun deliveryIntegrationLabel(mergeState: String?): String = when (mergeState) {

@@ -28,6 +28,11 @@ public class DeliveryStore {
         jdbc.execute("SELECT pg_advisory_xact_lock(814205002)");
         Long active = jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE status NOT IN ('SUCCEEDED','FAILED','CANCELLED')",Long.class);
         if (active == null || active != 0L) throw new DeliveryRejectedException("ACTIVE_AGENT_RUN");
+        Long preparation = jdbc.queryForObject("""
+                SELECT count(*) FROM mobile_source_update_operation
+                WHERE state IN ('QUEUED','PREPARE_CLAIMED','UNCERTAIN','ATTENTION','READY_TO_RESOLVE','RESOLVING')
+                """, Long.class);
+        if (preparation == null || preparation != 0L) throw new DeliveryRejectedException("SOURCE_UPDATE_IN_PROGRESS");
     }
     public java.util.Optional<DeliveryOperation> activeRelease() {
         return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE kind='RELEASE' "

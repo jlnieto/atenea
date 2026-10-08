@@ -1085,6 +1085,48 @@ class AgentRunServiceTest {
         return session;
     }
 
+    @Test
+    void publishedSessionStillRejectsOrdinaryPrompt() {
+        var session = changeBoundSession();
+        stubChangeAdmission(session, session.getDevelopmentChange());
+        session.setPublishedChangeKey(session.getDevelopmentChange().getChangeKey());
+        assertThrows(IllegalStateException.class, () -> agentRunService.createRemoteQueuedRun(session, operatorTurn(session), WorkloadClass.NORMAL));
+        verify(agentRunRepository, never()).save(any());
+    }
+
+    @Test
+    void onlyExactDurableServerTurnCanResolvePublishedSession() {
+        var session = changeBoundSession();
+        stubChangeAdmission(session, session.getDevelopmentChange());
+        session.setPublishedChangeKey(session.getDevelopmentChange().getChangeKey());
+        session.setPublicationReceiptSha256("8".repeat(64));
+        session.setFinalCommitSha(session.getDevelopmentChange().getObservedCanonicalCommit());
+        var turn = operatorTurn(session); turn.setActor(SessionTurnActor.ATENEA);
+        org.mockito.Mockito.lenient().when(jdbcTemplate.queryForObject(org.mockito.ArgumentMatchers.contains("mobile_source_update_operation"), eq(Long.class), any(Object[].class))).thenReturn(1L);
+        when(agentRunRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var run = agentRunService.createSourceUpdateResolverRun(session, turn, UUID.randomUUID());
+        assertEquals(session.getId(), run.getSession().getId());
+        assertEquals(turn.getId(), run.getOriginTurn().getId());
+        assertEquals(session.getDevelopmentChange().getSourceRevision(), run.getChangeSourceRevision());
+        assertEquals(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND, run.getWorkloadKind());
+    }
+
+    @Test
+    void arbitraryResolverIdCannotBypassPublishedGuard() {
+        var session = changeBoundSession(); session.setPublishedChangeKey(session.getDevelopmentChange().getChangeKey());
+        stubChangeAdmission(session, session.getDevelopmentChange());
+        var turn = operatorTurn(session); turn.setActor(SessionTurnActor.ATENEA);
+        assertThrows(IllegalStateException.class, () -> agentRunService.createSourceUpdateResolverRun(session, turn, UUID.randomUUID()));
+        verify(agentRunRepository, never()).save(any());
+    }
+
+    @Test
+    void operatorTurnIsNotRecoveryAuthority() {
+        var session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
+        assertThrows(IllegalStateException.class, () -> agentRunService.createSourceUpdateResolverRun(session, operatorTurn(session), UUID.randomUUID()));
+        org.mockito.Mockito.verifyNoInteractions(developmentChangeRepository);
+    }
+
     private WorkSessionEntity changeBoundSession() {
         WorkSessionEntity session = buildSession(12L, 7L, ProjectCodexIdentity.REPO_PATH);
         UUID changeKey = UUID.fromString("df99f1a1-1f14-4ca8-a405-58cd5b91bf2f");

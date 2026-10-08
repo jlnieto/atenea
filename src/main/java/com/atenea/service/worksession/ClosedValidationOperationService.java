@@ -527,6 +527,10 @@ public class ClosedValidationOperationService {
     }
 
     private void requireExactIdleSession(WorkSessionEntity session) {
+        if (workSessionRepository.existsActiveSourceUpdateBySessionId(session.getId())) {
+            throw new WorkSessionOperationBlockedException(
+                    "Pinned conflict recovery must finish before validating the new revision; previous results are historical");
+        }
         if (session.getStatus() != WorkSessionStatus.OPEN
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !ProjectCodexIdentity.hasCanonicalSourceObservation(session)

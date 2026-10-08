@@ -7,7 +7,28 @@ enum class MobileDeliveryTarget(val label: String) {
     APP_PROD("Backend PROD"), AX42_PLATFORM("Worker AX42"), ANDROID_STABLE("Android estable")
 }
 data class MobileDeliveryState(val enabled: Boolean, val operations: List<MobileDeliveryOperation>,
-    val integration: MobileDeliveryIntegration? = null)
+    val integration: MobileDeliveryIntegration? = null,
+    val sourceUpdateEnabled: Boolean = false, val sourceUpdate: MobileSourceUpdate? = null)
+
+data class MobileSourceUpdate(val id: UUID, val sessionId: Long, val state: String,
+    val targetMainCommit: String, val sourceRevision: Long?, val resolverRunId: Long?, val errorCode: String?)
+
+internal fun parseMobileSourceUpdate(json: JSONObject): MobileSourceUpdate {
+    val state = json.getString("state")
+    require(state in setOf("QUEUED", "PREPARE_CLAIMED", "UNCERTAIN", "ATTENTION", "READY_TO_RESOLVE",
+        "RESOLVING", "RESOLVER_COMPLETED", "READY_TO_FINALIZE", "FAILED", "BLOCKED"))
+    val main = json.getString("targetMainCommit")
+    require(main.matches(Regex("[0-9a-f]{40}")))
+    fun positive(key: String): Long? = if (json.isNull(key)) null else {
+        val value = json.get(key)
+        require(value is Long || value is Int)
+        (value as Number).toLong().also { require(it > 0) }
+    }
+    val id = UUID.fromString(json.getString("id"))
+    require(id.toString() == json.getString("id"))
+    return MobileSourceUpdate(id, positive("sessionId")!!,
+        state, main, positive("sourceRevision"), positive("resolverRunId"), json.nullableDeliveryString("errorCode"))
+}
 
 data class MobileDeliveryIntegration(
     val sessionId: Long,
@@ -27,8 +48,10 @@ internal fun parseMobileDeliveryState(json: JSONObject): MobileDeliveryState {
             value.getString("mergeState"), value.opt("canRequestIntegration") == true,
             value.nullableDeliveryString("errorCode"))
     }
+    require(!json.has("sourceUpdate") || json.isNull("sourceUpdate") || json.opt("sourceUpdate") is JSONObject)
     return MobileDeliveryState(json.getBoolean("enabled"),
-        List(items.length()) { parseMobileDeliveryOperation(items.getJSONObject(it)) }, integration)
+        List(items.length()) { parseMobileDeliveryOperation(items.getJSONObject(it)) }, integration,
+        json.opt("sourceUpdateEnabled") == true, json.optJSONObject("sourceUpdate")?.let(::parseMobileSourceUpdate))
 }
 
 data class MobileDeliveryOperation(

@@ -40,11 +40,15 @@ operación. Conserva HEAD y la base original; prepara los archivos editables
 sin publicar un commit ni validar la nueva fuente. Tampoco está integrada o
 desplegada.
 
-Siguiente paso: conectar en App la intención durable de resolución con esta
-preparación, un resolver en la misma WorkSession y una revisión nueva que exija
-sus propias validaciones. Después corresponde la publicación autorizada del
-commit que incorpora main en la misma rama y PR. No resolver manualmente PR 47
-para sustituir estas capacidades.
+Tercera unidad implementada y probada en App: intención durable de resolución,
+preparación recuperable y un único resolver en la misma WorkSession. Registra
+la revisión preparada y la fuente resultante; las validaciones anteriores quedan
+como historial. Android incorpora la acción cerrada Resolver conflictos y su
+estado dentro del panel existente. No está integrada ni desplegada.
+
+Siguiente paso: finalización y publicación autorizadas del commit que incorpora
+main en la misma rama y PR, con validación propia de la revisión nueva. No
+resolver manualmente PR 47 para sustituir estas capacidades.
 
 ## Reglas para terminar sin ampliar el alcance
 
@@ -230,12 +234,37 @@ discrepancia bloquea con `SOURCE_UPDATE_REF_MOVED`; no se elige otro main ni se
 fuerza un ref. Un lock Git de propietario desconocido también bloquea sin
 borrarlo. Estas precondiciones se comprobarán antes de la aceptación real.
 
-Pendiente: orquestación App del resolver, registro de una revisión nueva,
-finalización y publicación del commit que incorpora main sin reescribir
-historia, validación nueva y actualización de la misma PR. No se ha ejercitado
-la operación contra WS21 ni modificado PR47; no hay despliegue o aceptación
-móvil de esta entrega. El siguiente subtrabajo es la unidad 3, no otra reparación
-manual del ticket ni un rediseño de UI.
+2026-10-08: tercera unidad de la entrega 1 implementada en App, rama
+`feature/mobile-conflict-recovery`. PASS: 113 tests backend focales mediante
+`scripts/test.sh` en PostgreSQL 16 efímero, migración V86 incluida; 18 tests
+Android API y estado del panel; `git diff --check`.
+
+La petición móvil es vacía: App fija main, publicación predecesora, operador,
+ownership e identidades de operación antes del efecto. Un doble toque devuelve
+la misma intención; una respuesta perdida se consulta y reconcilia con los
+mismos identificadores. La preparación y los resultados del resolver se
+persisten con revisiones distintas; el registro de publicación anterior y las
+validaciones históricas permanecen intactos. Sólo el turno ATENEA ligado a esa
+intención puede admitir un nuevo AgentRun en una WorkSession publicada.
+
+Mientras la preparación o resolución están pendientes no se puede promover
+una validación histórica, publicar, cerrar esa WorkSession ni iniciar otra
+operación de su workspace. La admisión de runs y validaciones queda serializada
+con la barrera de publicación existente. Si hay atención pendiente, el resolver
+ya admitido conserva su vía de reconciliación y cierre terminal; no se crea otro.
+La respuesta HTTP tiene límite de tamaño y plazo, incluido un cuerpo incompleto.
+
+Terminar Codex no demuestra que los conflictos estén resueltos ni permite
+integrar. Un fallo se conserva y no lanza otro resolver automáticamente. La
+recuperación explícita de un resolver fallido y las pruebas combinadas de
+interrupciones pertenecen a la unidad 5; esta unidad no ofrece una reparación
+manual ni una segunda ejecución implícita.
+
+Pendiente: unidad 4, finalización y publicación del commit que incorpora main
+sin reescribir historia, validación nueva y actualización de la misma PR.
+Después corresponden la integración conjunta y el despliegue autorizado.
+No se ha ejercitado la operación contra WS21 ni modificado PR47; no hay
+despliegue o aceptación móvil de esta entrega.
 
 ## Autorización de efectos reales
 

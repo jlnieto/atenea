@@ -20,16 +20,27 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class MobileDeliveryController {
     private final MobileDeliveryService service;
-    public MobileDeliveryController(MobileDeliveryService service) { this.service = service; }
+    private final SourceUpdateService sourceUpdates;
+    public MobileDeliveryController(MobileDeliveryService service, SourceUpdateService sourceUpdates) {
+        this.service = service; this.sourceUpdates = sourceUpdates;
+    }
 
     @GetMapping("/api/mobile/sessions/{sessionId}/delivery")
     public DeliveryState list(@PathVariable Long sessionId,
             @AuthenticationPrincipal AuthenticatedOperator actor) {
         return new DeliveryState(service.isEnabled(),service.list(sessionId, actor),
-                service.observeIntegration(sessionId, actor));
+                service.observeIntegration(sessionId, actor), sourceUpdates.isEnabled(), sourceUpdates.observe(sessionId, actor));
     }
     public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations,
-            MobileDeliveryService.IntegrationObservation integration) { }
+            MobileDeliveryService.IntegrationObservation integration, boolean sourceUpdateEnabled,
+            SourceUpdateOperation.View sourceUpdate) { }
+
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/resolve-conflicts")
+    public SourceUpdateOperation.View resolveConflicts(@PathVariable Long sessionId,
+            @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request, Set.of());
+        return sourceUpdates.request(sessionId, actor);
+    }
 
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/pr")
     public DeliveryOperation.DeliveryView publish(@PathVariable Long sessionId,

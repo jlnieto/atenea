@@ -1,0 +1,103 @@
+package com.atenea.delivery;
+
+import com.atenea.remoteworker.DevelopmentChangeSourceUpdateCommand;
+import com.atenea.remoteworker.DevelopmentChangeSourceUpdateGateway.Preparation;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public class SourceUpdateStore {
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper mapper;
+    public SourceUpdateStore(JdbcTemplate jdbc, ObjectMapper mapper) { this.jdbc = jdbc; this.mapper = mapper; }
+    public Optional<SourceUpdateOperation> latest(Long sessionId) {
+        return jdbc.query("SELECT * FROM mobile_source_update_operation WHERE session_id=? ORDER BY created_at DESC LIMIT 1",
+                this::row, sessionId).stream().findFirst();
+    }
+    public SourceUpdateOperation get(UUID id, boolean lock) {
+        return jdbc.query("SELECT * FROM mobile_source_update_operation WHERE id=?" + (lock ? " FOR UPDATE" : ""),
+                this::row, id).stream().findFirst().orElseThrow(() -> new DeliveryRejectedException("SOURCE_UPDATE_NOT_FOUND"));
+    }
+    public SourceUpdateOperation create(Long sessionId, Long operatorId, DevelopmentChangeSourceUpdateCommand command,
+            String originalSourceCommit, String originalFingerprint) {
+        var owner = command.owner();
+        jdbc.update("""
+                INSERT INTO mobile_source_update_operation
+                (id,idempotency_key,session_id,operator_id,publication_receipt_sha256,state,command_json,
+                    original_source_commit,original_fingerprint_sha256)
+                VALUES (?,?,?,?,?,'QUEUED',?::jsonb,?,?)
+                """, owner.operationId(), owner.idempotencyKey(), sessionId, operatorId,
+                command.publicationReceiptSha256(), json(command), originalSourceCommit, originalFingerprint);
+        return get(owner.operationId(), false);
+    }
+    public void requireIdle() {
+        jdbc.execute("SELECT pg_advisory_xact_lock(814205002)");
+        Long active = jdbc.queryForObject("""
+                SELECT (SELECT count(*) FROM agent_run WHERE status NOT IN ('SUCCEEDED','FAILED','CANCELLED'))
+                     + (SELECT count(*) FROM validation_operation WHERE status='RUNNING')
+                     + (SELECT count(*) FROM mobile_delivery_operation WHERE state NOT IN
+                         ('SUCCEEDED','ROLLED_BACK','FAILED','BLOCKED','ROLLBACK_FAILED'))
+                """, Long.class);
+        if (active == null || active != 0) throw new DeliveryRejectedException("SOURCE_UPDATE_EXECUTION_ACTIVE");
+    }
+    public boolean lease(UUID id, String expectedState, Duration duration) {
+        return jdbc.update("""
+                UPDATE mobile_source_update_operation SET lease_until=now()+(? * interval '1 second'),
+                    state=CASE WHEN state='QUEUED' THEN 'PREPARE_CLAIMED' ELSE state END,updated_at=now()
+                WHERE id=? AND state=? AND lease_until<=now()
+                """, duration.toSeconds(), id, expectedState) == 1;
+    }
+    public List<UUID> pending() {
+        return jdbc.query("""
+                SELECT id FROM mobile_source_update_operation WHERE
+                    state IN ('QUEUED','PREPARE_CLAIMED','UNCERTAIN','READY_TO_RESOLVE','RESOLVING')
+                    AND lease_until<=now() ORDER BY updated_at LIMIT 10
+                """, (rs, index) -> rs.getObject("id", UUID.class));
+    }
+    public void state(UUID id, String state, String code) {
+        jdbc.update("UPDATE mobile_source_update_operation SET state=?,error_code=?,updated_at=now(),lease_until=now() WHERE id=?",
+                state, code, id);
+    }
+    public void prepared(UUID id, Preparation preparation, long revision, String state) {
+        jdbc.update("""
+                UPDATE mobile_source_update_operation SET preparation_json=?::jsonb,prepared_revision=?,state=?,
+                    error_code=NULL,updated_at=now(),lease_until=now() WHERE id=?
+                """, json(preparation), revision, state, id);
+    }
+    public void turn(UUID id, Long turnId) {
+        jdbc.update("UPDATE mobile_source_update_operation SET resolver_turn_id=? WHERE id=?", turnId, id);
+    }
+    public void run(UUID id, Long runId) {
+        jdbc.update("UPDATE mobile_source_update_operation SET resolver_run_id=?,state='RESOLVING',updated_at=now(),lease_until=now() WHERE id=?",
+                runId, id);
+    }
+    public void completed(UUID id, long revision, String fingerprint) {
+        jdbc.update("""
+                UPDATE mobile_source_update_operation SET state='RESOLVER_COMPLETED',result_revision=?,result_fingerprint_sha256=?,
+                    error_code=NULL,updated_at=now(),lease_until=now() WHERE id=?
+                """, revision, fingerprint, id);
+    }
+    private String json(Object value) {
+        try { return mapper.writeValueAsString(value); }
+        catch (java.io.IOException invalid) { throw new IllegalStateException("Invalid source update evidence", invalid); }
+    }
+    private SourceUpdateOperation row(ResultSet rs, int index) throws SQLException {
+        try {
+            String prep = rs.getString("preparation_json");
+            return new SourceUpdateOperation(rs.getObject("id", UUID.class), rs.getLong("session_id"), rs.getLong("operator_id"),
+                    rs.getString("state"), rs.getString("original_source_commit"), rs.getString("original_fingerprint_sha256"),
+                    mapper.readValue(rs.getString("command_json"), DevelopmentChangeSourceUpdateCommand.class),
+                    prep == null ? null : mapper.readValue(prep, Preparation.class), rs.getObject("prepared_revision", Long.class),
+                    rs.getObject("resolver_turn_id", Long.class), rs.getObject("resolver_run_id", Long.class),
+                    rs.getObject("result_revision", Long.class), rs.getString("result_fingerprint_sha256"),
+                    rs.getString("error_code"), rs.getTimestamp("updated_at").toInstant());
+        } catch (java.io.IOException invalid) { throw new SQLException("Invalid source update evidence", invalid); }
+    }
+}

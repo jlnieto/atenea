@@ -7,6 +7,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
+import kotlinx.coroutines.runBlocking
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.MockResponse
 
 class MobileDeliveryTest {
     private val id=UUID.randomUUID()
@@ -32,6 +36,43 @@ class MobileDeliveryTest {
     @Test fun legacyBackendDoesNotInventPermissionToIntegrate() {
         val state = parseMobileDeliveryState(JSONObject("{\"enabled\":true,\"operations\":[]}"))
         assertNull(state.integration)
+        assertFalse(state.sourceUpdateEnabled)
+    }
+
+    private fun sourceUpdate() = JSONObject().put("id", id.toString()).put("sessionId",21)
+        .put("state","RESOLVING").put("targetMainCommit","1".repeat(40))
+        .put("sourceRevision",4).put("resolverRunId",105)
+
+    @Test fun sourceUpdateUsesDurableIdentityAndRejectsInvalidStateOrCoercedIds() {
+        val parsed=parseMobileSourceUpdate(sourceUpdate())
+        assertEquals(id,parsed.id); assertEquals(105L,parsed.resolverRunId)
+        assertEquals(4L,parsed.sourceRevision)
+        for ((key,value) in listOf("state" to "SUCCEEDED", "sessionId" to "21", "sourceRevision" to "4",
+                "targetMainCommit" to "/path", "resolverRunId" to false)) {
+            assertFailsWith<IllegalArgumentException> { parseMobileSourceUpdate(sourceUpdate().put(key,value)) }
+        }
+    }
+    @Test fun malformedSourceUpdateCannotBeInterpretedAsPermissionToStartAnotherOne() {
+        val root=JSONObject().put("enabled",true).put("operations",org.json.JSONArray())
+            .put("sourceUpdateEnabled",true).put("sourceUpdate","invalid")
+        assertFailsWith<IllegalArgumentException> { parseMobileDeliveryState(root) }
+        root.put("sourceUpdate",sourceUpdate()).put("sourceUpdateEnabled","true")
+        assertFalse(parseMobileDeliveryState(root).sourceUpdateEnabled)
+    }
+    @Test fun mobileResolverRequestIsEmptyClosedAndBoundToSameSession() {
+        val server=MockWebServer(); server.start()
+        try {
+            val client=AteneaApiClient(server.url("/").toString().trimEnd('/'), { "synthetic-access" })
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(sourceUpdate().toString()))
+            assertEquals(id,runBlocking { client.resolveDeliveryConflicts(21) }.id)
+            val request=server.takeRequest()
+            assertEquals("POST",request.method)
+            assertEquals("/api/mobile/sessions/21/delivery/resolve-conflicts",request.path)
+            assertEquals("{}",request.body.readUtf8())
+            assertEquals("Bearer synthetic-access",request.getHeader("Authorization"))
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(sourceUpdate().put("sessionId",22).toString()))
+            assertFailsWith<IllegalArgumentException> { runBlocking { client.resolveDeliveryConflicts(21) } }
+        } finally { server.shutdown() }
     }
     @Test fun mergeObservationIsStrictAndFailsClosedForConflictOrUnknownState() {
         val root = JSONObject().put("enabled",true).put("operations",org.json.JSONArray())

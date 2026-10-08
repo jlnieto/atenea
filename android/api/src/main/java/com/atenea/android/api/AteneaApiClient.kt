@@ -363,6 +363,10 @@ class AteneaApiClient(
         parser = ::parseMobileDeliveryOperation
     )
 
+    suspend fun resolveDeliveryConflicts(sessionId: Long): MobileSourceUpdate = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/resolve-conflicts", body = JSONObject(), authenticated = true
+    ) { json -> parseMobileSourceUpdate(json).also { require(it.sessionId == sessionId) } }
+
     suspend fun prepareRelease(sessionId: Long, target: MobileDeliveryTarget): MobileDeliveryOperation = postJson(
         path = "/api/mobile/sessions/$sessionId/delivery/release-plan", body = JSONObject().put("target", target.name),
         authenticated = true, parser = ::parseMobileDeliveryOperation
