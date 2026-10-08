@@ -20,6 +20,24 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
+    @Test fun `failed resolver retry requires current online intent and never enables integration`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var update=MobileSourceUpdate(UUID.randomUUID(),21,"FAILED","2".repeat(40),4,105,"SOURCE_UPDATE_RESOLVER_FAILED")
+            var online=true
+            val state=MobileDeliveryUiState(21,scope) {
+                if (!online) error("offline")
+                MobileDeliveryState(true,listOf(operation().copy(state="SUCCEEDED")),
+                    MobileDeliveryIntegration(21,"1".repeat(40),"CONFLICTS",false,null),true,update)
+            }
+            state.refresh();assertTrue(state.canRetryResolver(false));assertFalse(state.canRetryResolver(true))
+            assertFalse(state.canResolveConflicts(true,false));assertFalse(state.canUpdatePullRequest(true,false));assertFalse(state.integration!!.allowsRequest)
+            update=update.copy(state="RESOLVING",resolverRunId=106);state.refresh();assertFalse(state.canRetryResolver(false))
+            update=update.copy(state="FAILED",resolverRunId=null);state.refresh();assertFalse(state.canRetryResolver(false))
+            update=update.copy(resolverRunId=106);state.refresh();assertTrue(state.canRetryResolver(false))
+            online=false;state.refresh();assertFalse(state.canRetryResolver(false))
+        } finally { scope.cancel() }
+    }
     @Test fun `same PR update needs new validation and online durable receipt`() = runBlocking<Unit> {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {

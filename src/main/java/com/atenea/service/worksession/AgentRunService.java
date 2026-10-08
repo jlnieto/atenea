@@ -226,6 +226,20 @@ public class AgentRunService {
 
     @Transactional
     public AgentRunEntity createRemoteRetryRun(Long sourceRunId) {
+        return createRemoteRetryRun(sourceRunId, null);
+    }
+
+    /** Only admitted by the durable, administrator-authorized resolver retry. */
+    @Transactional
+    public AgentRunEntity createSourceUpdateResolverRetryRun(Long sourceRunId, UUID sourceUpdateId) {
+        if (sourceUpdateId == null || !Long.valueOf(1).equals(jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM mobile_source_resolver_retry r JOIN mobile_source_update_operation op ON op.id=r.operation_id
+                WHERE r.operation_id=? AND r.source_run_id=? AND r.run_id IS NULL AND op.state='RETRY_REQUESTED'
+                """, Long.class, sourceUpdateId, sourceRunId))) throw invalidChangeBinding();
+        return createRemoteRetryRun(sourceRunId, sourceUpdateId);
+    }
+
+    private AgentRunEntity createRemoteRetryRun(Long sourceRunId, UUID sourceUpdateId) {
         AgentRunEntity source = agentRunRepository.findByIdForUpdate(sourceRunId)
                 .orElseThrow(() -> new AgentRunNotFoundException(sourceRunId));
         if (source.getStatus() != AgentRunStatus.FAILED
@@ -248,7 +262,7 @@ public class AgentRunService {
                 source.getOriginTurn(),
                 source.getWorkloadClass(),
                 source,
-                attachmentSelection);
+                attachmentSelection, sourceUpdateId);
     }
 
     public void requireRemoteRetryEligible(AgentRunEntity source) {
@@ -604,6 +618,19 @@ public class AgentRunService {
                 """, Long.class, sourceUpdateId, session.getId(), originTurnId, change.getSourceRevision(),
                 session.getPublicationReceiptSha256(), change.getChangeKey().toString(),
                 change.getObservedCanonicalCommit(), change.getSourceFingerprintSha256()));
+        if (sourceUpdateId != null && !resolverAdmitted) {
+            resolverAdmitted = Long.valueOf(1).equals(jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM mobile_source_update_operation op JOIN mobile_source_resolver_retry r ON r.operation_id=op.id
+                JOIN agent_run failed ON failed.id=r.source_run_id
+                WHERE op.id=? AND op.session_id=? AND op.state='RETRY_REQUESTED' AND r.run_id IS NULL
+                  AND op.resolver_turn_id=? AND failed.origin_turn_id=op.resolver_turn_id AND failed.status='FAILED'
+                  AND op.prepared_revision=? AND op.publication_receipt_sha256=?
+                  AND op.command_json->'owner'->>'changeKey'=? AND op.command_json->'owner'->>'sourceCommit'=?
+                  AND op.preparation_json->>'preparedFingerprintSha256'=?
+                """,Long.class, sourceUpdateId, session.getId(), originTurnId, change.getSourceRevision(),
+                session.getPublicationReceiptSha256(),change.getChangeKey().toString(),change.getObservedCanonicalCommit(),
+                change.getSourceFingerprintSha256()));
+        }
         if (session.getId() == null
                 || session.getProject() == null
                 || session.getProject().getId() == null

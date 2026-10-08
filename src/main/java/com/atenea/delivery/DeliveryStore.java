@@ -32,7 +32,7 @@ public class DeliveryStore {
         if (active == null || active != 0L) throw new DeliveryRejectedException("ACTIVE_AGENT_RUN");
         Long preparation = jdbc.queryForObject("""
                 SELECT count(*) FROM mobile_source_update_operation
-                WHERE state IN ('QUEUED','PREPARE_CLAIMED','UNCERTAIN','ATTENTION','READY_TO_RESOLVE','RESOLVING')
+                WHERE state IN ('QUEUED','PREPARE_CLAIMED','UNCERTAIN','ATTENTION','READY_TO_RESOLVE','RETRY_REQUESTED','RESOLVING')
                 """, Long.class);
         if (preparation == null || preparation != 0L) throw new DeliveryRejectedException("SOURCE_UPDATE_IN_PROGRESS");
         Long finalization = jdbc.queryForObject("SELECT count(*) FROM mobile_source_finalization WHERE state <> 'PUBLISHED'",Long.class);

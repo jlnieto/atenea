@@ -145,6 +145,7 @@ class SourceUpdateIntegrationTest {
         tx.executeWithoutResult(ignored -> {
             jdbc.update("DELETE FROM mobile_source_finalization WHERE session_id=?",sessionId);
             jdbc.update("DELETE FROM mobile_delivery_operation WHERE session_id=?",sessionId);
+            jdbc.update("DELETE FROM mobile_source_resolver_retry WHERE operation_id IN (SELECT id FROM mobile_source_update_operation WHERE session_id=?)",sessionId);
             jdbc.update("DELETE FROM mobile_source_update_operation WHERE session_id=?",sessionId);
             jdbc.update("DELETE FROM validation_operation WHERE work_session_id=?",sessionId);
             jdbc.update("DELETE FROM agent_run WHERE session_id=?",sessionId);
@@ -175,6 +176,158 @@ class SourceUpdateIntegrationTest {
     }
     private void expire(UUID id) {
         jdbc.update("UPDATE mobile_source_update_operation SET lease_until=now()-interval '1 second' WHERE id=?",id);
+    }
+
+    private SourceUpdateOperation failedResolver() {
+        var op=resolving();
+        tx.executeWithoutResult(ignored -> {
+            var run=runs.findById(op.resolverRunId()).orElseThrow();run.setStatus(AgentRunStatus.FAILED);
+            run.setProcessOutcome(AgentRunProcessOutcome.FAILED);run.setFinishedAt(Instant.now());runs.saveAndFlush(run);
+        });
+        expire(op.id());service.reconcile(op.id());return store.get(op.id(),false);
+    }
+
+    @Test void explicitResolverRetryRetainsOriginalTurnPreparationAndFailedRun() {
+        var original=failedResolver();
+        var retried=service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+        assertEquals("RESOLVING",retried.state());assertNotEquals(original.resolverRunId(),retried.resolverRunId());
+        var again=service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+        assertEquals(retried.resolverRunId(),again.resolverRunId());
+        assertEquals(original.resolverRunId(),jdbc.queryForObject("SELECT resolver_run_id FROM mobile_source_update_operation WHERE id=?",Long.class,original.id()));
+        assertEquals(original.resolverRunId(),jdbc.queryForObject("SELECT retry_of_run_id FROM agent_run WHERE id=?",Long.class,retried.resolverRunId()));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM session_turn WHERE session_id=?",Long.class,sessionId));
+        assertEquals(2L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        assertEquals(original.preparation(),store.get(original.id(),false).preparation());
+        verify(coordinator,times(1)).dispatchAfterCommit(retried.resolverRunId());
+        assertEquals("SUCCEEDED",jdbc.queryForObject("SELECT status FROM validation_operation WHERE id=?",String.class,validationId));
+        assertEquals("STALE",jdbc.queryForObject("SELECT validation_state FROM development_change WHERE id=?",String.class,changeId));
+    }
+
+    @Test void lostRetryDispatchCallbackKeepsOneCommittedQueuedRunAndDoesNotRedispatchOnRead() {
+        var original=failedResolver();
+        doThrow(new IllegalStateException("synthetic lost callback")).when(coordinator).dispatchAfterCommit(argThat(id->!id.equals(original.resolverRunId())));
+        assertThrows(IllegalStateException.class,()->service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor));
+        var retained=service.observe(sessionId,actor);
+        assertEquals("RESOLVING",retained.state());
+        assertEquals(retained.resolverRunId(),service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor).resolverRunId());
+        assertEquals("QUEUED",jdbc.queryForObject("SELECT status FROM agent_run WHERE id=?",String.class,retained.resolverRunId()));
+        assertEquals(2L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        verify(coordinator,times(1)).dispatchAfterCommit(retained.resolverRunId());
+    }
+
+    @Test void failedRetryRequiresAnotherExplicitRequestAndStaleTapCannotCreateThirdRun() {
+        var original=failedResolver();var second=service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+        tx.executeWithoutResult(ignored->{var run=runs.findById(second.resolverRunId()).orElseThrow();
+            run.setStatus(AgentRunStatus.FAILED);run.setProcessOutcome(AgentRunProcessOutcome.FAILED);run.setFinishedAt(Instant.now());runs.saveAndFlush(run);});
+        expire(original.id());service.reconcile(original.id());service.reconcile(original.id());
+        assertEquals("FAILED",store.get(original.id(),false).state());
+        assertEquals(second.resolverRunId(),service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor).resolverRunId());
+        assertEquals(2L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        var third=service.retryResolver(sessionId,original.id(),second.resolverRunId(),actor);
+        assertNotEquals(second.resolverRunId(),third.resolverRunId());
+        assertEquals(2L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_resolver_retry WHERE operation_id=?",Long.class,original.id()));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM session_turn WHERE session_id=?",Long.class,sessionId));
+    }
+
+    @Test void partialEditsAfterFailedResolverAreNotResetOrAdmittedAsExactRetry() {
+        var original=failedResolver();
+        doAnswer(call->{var session=call.getArgument(0,WorkSessionEntity.class);
+            return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(),"atenea",published,"f".repeat(64),1,0,0,false);}).when(remoteClient).fingerprintSourceTree(any());
+        assertTrue(assertThrows(DeliveryRejectedException.class,
+            ()->service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor)).getMessage().contains("SOURCE_UPDATE_RETRY_SOURCE_CHANGED"));
+        assertEquals("FAILED",store.get(original.id(),false).state());
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_resolver_retry WHERE operation_id=?",Long.class,original.id()));
+    }
+
+    @Test void retryAuthorityIsClosedAndDoesNotBypassDeterministicBlocker() throws Exception {
+        var original=failedResolver();
+        String path="/api/mobile/sessions/"+sessionId+"/delivery/source-updates/"+original.id()+"/resolver-runs/"+original.resolverRunId()+"/retry";
+        mvc.perform(post(path).with(auth()).contentType(MediaType.APPLICATION_JSON).content("{\"command\":\"override\"}")).andExpect(status().isConflict());
+        assertThrows(DeliveryRejectedException.class,()->service.retryResolver(sessionId,UUID.randomUUID(),original.resolverRunId(),actor));
+        tx.executeWithoutResult(ignored->{var run=runs.findById(original.resolverRunId()).orElseThrow();
+            run.setFailureCode("DETERMINISTIC_BLOCKER");run.setRecoveryNextAction(AgentRunRecoveryNextAction.CONTACT_PLATFORM_ADMINISTRATOR);runs.saveAndFlush(run);});
+        assertThrows(com.atenea.service.worksession.AgentRunRecoveryConflictException.class,
+            ()->service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor));
+        jdbc.update("UPDATE operator_account SET codex_operations_role='ROUTINE_OPERATOR' WHERE id=?",operatorId);
+        assertThrows(DeliveryRejectedException.class,()->service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+    }
+
+    @Test void retryAuditIsImmutableAndOrdinaryRetryCannotBypassClosedResolverAdmission() {
+        var original=failedResolver();
+        assertThrows(IllegalStateException.class,()->agentRuns.createRemoteRetryRun(original.resolverRunId()));
+        var retry=service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update(
+            "UPDATE mobile_source_resolver_retry SET operator_id=operator_id+1 WHERE operation_id=?",original.id()));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update(
+            "UPDATE mobile_source_resolver_retry SET run_id=? WHERE operation_id=?",original.resolverRunId(),original.id()));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update(
+            "UPDATE mobile_source_update_operation SET resolver_run_id=? WHERE id=?",retry.resolverRunId(),original.id()));
+        assertThrows(com.atenea.service.worksession.WorkSessionOperationBlockedException.class,()->validations.advanceDevelopmentChange(sessionId));
+    }
+
+    @Test void concurrentRetryRequestsAdoptOneRunAndOneAuditRow() throws Exception {
+        var original=failedResolver();
+        var threads=java.util.concurrent.Executors.newFixedThreadPool(2);
+        var start=new java.util.concurrent.CountDownLatch(1);
+        try {
+            java.util.concurrent.Callable<SourceUpdateOperation.View> call=()->{
+                start.await();return service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+            };
+            var first=threads.submit(call);var second=threads.submit(call);start.countDown();
+            assertEquals(first.get(10,java.util.concurrent.TimeUnit.SECONDS).resolverRunId(),second.get(10,java.util.concurrent.TimeUnit.SECONDS).resolverRunId());
+            assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_resolver_retry WHERE operation_id=?",Long.class,original.id()));
+            assertEquals(2L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        } finally { threads.shutdownNow(); }
+    }
+
+    @Test void mobileRetryAndReopeningKeepSameOperationAndNeverDuplicatePrompt() throws Exception {
+        var original=failedResolver();
+        String path="/api/mobile/sessions/"+sessionId+"/delivery/source-updates/"+original.id()+"/resolver-runs/"+original.resolverRunId()+"/retry";
+        mvc.perform(post(path).with(auth()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(original.id().toString())).andExpect(jsonPath("$.state").value("RESOLVING"));
+        var admitted=store.get(original.id(),false).resolverRunId();
+        mvc.perform(get("/api/mobile/sessions/{id}/delivery",sessionId).with(auth()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.sourceUpdate.resolverRunId").value(admitted));
+        mvc.perform(post(path).with(auth()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.resolverRunId").value(admitted));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM session_turn WHERE session_id=?",Long.class,sessionId));
+        verify(coordinator,times(1)).dispatchAfterCommit(admitted);
+    }
+
+    @Test void successfulRetriedResolverRequiresFreshValidationBeforeSamePrPublication() {
+        var original=failedResolver();var retried=service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+        tx.executeWithoutResult(ignored->{
+            var run=runs.findById(retried.resolverRunId()).orElseThrow();run.setRemoteExecutionId(UUID.randomUUID().toString());
+            advance.advance(run,new RemoteWorkerClient.SourceIdentity(run.getDevelopmentChangeKey().toString(),sessionId,
+                run.getRemoteSessionId().toString(),run.getWorkspaceIdentity(),run.getRemoteExecutionId(),published,"9".repeat(64),true),Instant.now());
+            run.setStatus(AgentRunStatus.SUCCEEDED);run.setProcessOutcome(AgentRunProcessOutcome.SUCCEEDED);
+            run.setFinishedAt(Instant.now());runs.saveAndFlush(run);
+        });
+        expire(original.id());service.reconcile(original.id());
+        assertEquals("RESOLVER_COMPLETED",store.get(original.id(),false).state());
+        assertEquals(5L,store.get(original.id(),false).resultRevision());
+        assertThrows(com.atenea.service.worksession.WorkSessionPublishConflictException.class,()->publisher.publish(sessionId));
+        validateFixtureSource();simulateFinalizer();delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        assertEquals(finalized().publishedHeadSha(),publisher.publish(sessionId).headSha());
+        assertEquals("PUBLISHED",store.get(original.id(),false).state());
+        assertEquals("FAILED",jdbc.queryForObject("SELECT status FROM agent_run WHERE id=?",String.class,original.resolverRunId()));
+        assertEquals(base,jdbc.queryForObject("SELECT base_commit FROM development_change WHERE id=?",String.class,changeId));
+        assertEquals("https://github.com/jlnieto/atenea/pull/47",jdbc.queryForObject("SELECT pull_request_url FROM work_session WHERE id=?",String.class,sessionId));
+    }
+
+    @Test void activeRunMovedHeadOrForeignAttemptCannotStartRetry() {
+        var original=failedResolver();
+        assertThrows(com.atenea.service.worksession.WorkSessionNotFoundException.class,()->service.retryResolver(sessionId+1,original.id(),original.resolverRunId(),actor));
+        assertThrows(DeliveryRejectedException.class,()->service.retryResolver(sessionId,original.id(),original.resolverRunId()+1,actor));
+        jdbc.update("UPDATE work_session SET final_commit_sha=? WHERE id=?","f".repeat(40),sessionId);
+        assertThrows(DeliveryRejectedException.class,()->service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor));
+        jdbc.update("UPDATE work_session SET final_commit_sha=? WHERE id=?",published,sessionId);
+        jdbc.update("UPDATE agent_run SET status='RUNNING',process_outcome=NULL,finished_at=NULL WHERE id=?",original.resolverRunId());
+        assertThrows(DeliveryRejectedException.class,()->service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
     }
     private org.springframework.test.web.servlet.request.RequestPostProcessor auth() {
         return authentication(new UsernamePasswordAuthenticationToken(actor,null,List.of(new SimpleGrantedAuthority("ROLE_OPERATOR"))));

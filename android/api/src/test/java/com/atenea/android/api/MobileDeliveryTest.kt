@@ -43,6 +43,20 @@ class MobileDeliveryTest {
         .put("state","RESOLVING").put("targetMainCommit","1".repeat(40))
         .put("sourceRevision",4).put("resolverRunId",105)
 
+    @Test fun retryUsesExactFailedAttemptEmptyBodyAndRejectsForeignOperation() {
+        val server=MockWebServer();server.start()
+        try {
+            val client=AteneaApiClient(server.url("/").toString().trimEnd('/'), { "synthetic-access" })
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(sourceUpdate().put("resolverRunId",106).toString()))
+            assertEquals(106L,runBlocking { client.retryDeliveryResolver(21,id,105) }.resolverRunId)
+            val request=server.takeRequest()
+            assertEquals("/api/mobile/sessions/21/delivery/source-updates/$id/resolver-runs/105/retry",request.path)
+            assertEquals("{}",request.body.readUtf8());assertEquals("Bearer synthetic-access",request.getHeader("Authorization"))
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(sourceUpdate().put("id",UUID.randomUUID().toString()).toString()))
+            assertFailsWith<IllegalArgumentException> { runBlocking { client.retryDeliveryResolver(21,id,105) } }
+        } finally { server.shutdown() }
+    }
+
     @Test fun sourceUpdateUsesDurableIdentityAndRejectsInvalidStateOrCoercedIds() {
         val parsed=parseMobileSourceUpdate(sourceUpdate())
         assertEquals(id,parsed.id); assertEquals(105L,parsed.resolverRunId)

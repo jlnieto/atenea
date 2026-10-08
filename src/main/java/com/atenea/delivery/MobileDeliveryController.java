@@ -48,6 +48,13 @@ public class MobileDeliveryController {
         exact(request, Set.of());
         return service.request(sessionId, actor, "PUBLISH_PR", DeliveryTarget.APP_PROD);
     }
+
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/source-updates/{operationId}/resolver-runs/{runId}/retry")
+    public SourceUpdateOperation.View retryResolver(@PathVariable Long sessionId, @PathVariable UUID operationId,
+            @PathVariable Long runId, @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request,Set.of());
+        return sourceUpdates.retryResolver(sessionId,operationId,runId,actor);
+    }
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/integrate")
     public DeliveryOperation.DeliveryView integrate(@PathVariable Long sessionId,
             @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {

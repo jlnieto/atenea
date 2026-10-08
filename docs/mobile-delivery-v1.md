@@ -134,6 +134,20 @@ No hay un backend App DEV permanente en este procedimiento.
 
 ## Prueba de aceptación antes de depender sólo del móvil
 
+La recuperación de conflictos en desarrollo incorpora Reintentar resolución
+para un resolver FAILED de la preparación actual. La petición identifica
+únicamente la WorkSession, la operación y el intento ya observados, con cuerpo
+vacío. App fija el binding y comprueba la fuente efectiva; conserva el turno y
+el run fallido, y registra la autorización y el nuevo run por separado. Una
+respuesta perdida o un doble toque sobre el mismo intento recuperan ese
+registro, no otra ejecución. Consultar sigue siendo read-only.
+
+Esta recuperación no admite archivos parciales distintos ni un main nuevo
+por defecto. Los conserva y rechaza el reintento exacto: falta completar la
+transición autorizada a una nueva fuente o preparación. Tampoco habilita
+integración o publicación sin nueva validación. No está desplegada ni aceptada
+en el móvil todavía.
+
 Antes de publicar el ajuste de conversación, ejecutar los tests focales del
 backend y cliente API de `validation-evidence`, y los tests Compose de
 `ConversationWorkspaceLayoutTest` y `WorkSessionAttachmentComposerTest`.

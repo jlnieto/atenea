@@ -18,7 +18,7 @@ public class SourceUpdateStore {
     private final ObjectMapper mapper;
     public SourceUpdateStore(JdbcTemplate jdbc, ObjectMapper mapper) { this.jdbc = jdbc; this.mapper = mapper; }
     public Optional<SourceUpdateOperation> latest(Long sessionId) {
-        return jdbc.query("SELECT * FROM mobile_source_update_operation WHERE session_id=? ORDER BY created_at DESC LIMIT 1",
+        return jdbc.query("SELECT * FROM mobile_source_update_operation WHERE session_id=? ORDER BY created_at DESC,id DESC LIMIT 1",
                 this::row, sessionId).stream().findFirst();
     }
     public SourceUpdateOperation get(UUID id, boolean lock) {
@@ -95,9 +95,33 @@ public class SourceUpdateStore {
                     rs.getString("state"), rs.getString("original_source_commit"), rs.getString("original_fingerprint_sha256"),
                     mapper.readValue(rs.getString("command_json"), DevelopmentChangeSourceUpdateCommand.class),
                     prep == null ? null : mapper.readValue(prep, Preparation.class), rs.getObject("prepared_revision", Long.class),
-                    rs.getObject("resolver_turn_id", Long.class), rs.getObject("resolver_run_id", Long.class),
+                    rs.getObject("resolver_turn_id", Long.class), currentResolver(rs.getObject("id",UUID.class),rs.getObject("resolver_run_id", Long.class)),
                     rs.getObject("result_revision", Long.class), rs.getString("result_fingerprint_sha256"),
                     rs.getString("error_code"), rs.getTimestamp("updated_at").toInstant());
         } catch (java.io.IOException invalid) { throw new SQLException("Invalid source update evidence", invalid); }
+    }
+
+    private Long currentResolver(UUID operationId, Long original) {
+        return jdbc.query("SELECT run_id FROM mobile_source_resolver_retry WHERE operation_id=? AND run_id IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 1",
+            (rs,index)->rs.getLong(1),operationId).stream().findFirst().orElse(original);
+    }
+
+    public Optional<Long> retryRun(UUID operationId, Long sourceRunId) {
+        return jdbc.query("SELECT run_id FROM mobile_source_resolver_retry WHERE operation_id=? AND source_run_id=? AND run_id IS NOT NULL",
+            (rs,index)->rs.getLong(1),operationId,sourceRunId).stream().findFirst();
+    }
+
+    public UUID authorizeRetry(UUID operationId, Long sourceRunId, Long actor) {
+        UUID id=UUID.randomUUID();
+        jdbc.update("INSERT INTO mobile_source_resolver_retry(id,operation_id,source_run_id,operator_id) VALUES (?,?,?,?)",id,operationId,sourceRunId,actor);
+        state(operationId,"RETRY_REQUESTED",null);
+        return id;
+    }
+
+    public void retried(UUID retryId, Long runId, UUID operationId) {
+        if (jdbc.update("UPDATE mobile_source_resolver_retry SET run_id=? WHERE id=? AND operation_id=? AND run_id IS NULL",runId,retryId,operationId)!=1) {
+            throw new DeliveryRejectedException("SOURCE_UPDATE_RETRY_EVIDENCE_MISMATCH");
+        }
+        state(operationId,"RESOLVING",null);
     }
 }

@@ -95,6 +95,54 @@ public class SourceUpdateService {
 
     public boolean isEnabled() { return delivery.isEnabled() && worker.isEnabled(); }
 
+    /** A repeated request for the same failed attempt never admits another run. */
+    public SourceUpdateOperation.View retryResolver(Long sessionId, UUID operationId, Long sourceRunId, AuthenticatedOperator actor) {
+        administrator(actor.operatorId());
+        if (!isEnabled()) throw rejected("SOURCE_UPDATE_DISABLED");
+        Long admitted=transaction.execute(ignored -> {
+            var session=session(sessionId,true);
+            var op=store.get(operationId,true);
+            if (!Objects.equals(op.sessionId(),sessionId) || !Objects.equals(store.latest(sessionId).orElseThrow().id(),operationId)) {
+                throw rejected("SOURCE_UPDATE_OWNER_MISMATCH");
+            }
+            var retained=store.retryRun(operationId,sourceRunId);
+            if (retained.isPresent()) return null;
+            var change=requireStructure(session,op.command());
+            if (!op.state().equals("FAILED") || !Objects.equals(op.resolverRunId(),sourceRunId)
+                    || op.preparation()==null || op.resolverTurnId()==null
+                    || change.getSourceRevision()!=op.preparedRevision()
+                    || !Objects.equals(change.getObservedCanonicalCommit(),op.command().owner().sourceCommit())
+                    || !Objects.equals(change.getSourceFingerprintSha256(),op.preparation().preparedFingerprintSha256())) {
+                throw rejected("SOURCE_UPDATE_RETRY_EVIDENCE_MISMATCH");
+            }
+            var failed=runs.findByIdForUpdate(sourceRunId).orElseThrow(() -> rejected("SOURCE_UPDATE_RESOLVER_MISSING"));
+            if (failed.getStatus()!=AgentRunStatus.FAILED || !Objects.equals(failed.getSession().getId(),sessionId)
+                    || !Objects.equals(failed.getOriginTurn().getId(),op.resolverTurnId())) throw rejected("SOURCE_UPDATE_RETRY_EVIDENCE_MISMATCH");
+            store.requireIdle();
+            agentRuns.requireRemoteRetryEligible(failed);
+            if (!routing.refreshKnownWorker(ProjectCodexIdentity.WORKER_ID,"development-change-source-update/v1")) {
+                throw rejected("SOURCE_UPDATE_CAPABILITY_UNAVAILABLE");
+            }
+            // Observation is bounded and read-only. Never restore/reset partially edited files.
+            var observed=sourceObserver.fingerprintSourceTree(session);
+            if (observed==null || !"observed".equals(observed.state()) || observed.valuesExposed()
+                    || !Objects.equals(observed.sessionId(),session.getRemoteSessionId().toString())
+                    || !Objects.equals(observed.workspaceIdentity(),session.getWorkspaceIdentity())
+                    || !Objects.equals(observed.projectId(),ProjectCodexIdentity.PROJECT_IDENTITY)
+                    || !Objects.equals(observed.headCommit(),failed.getRepositoryCommit())
+                    || !Objects.equals(observed.fingerprintSha256(),failed.getChangeSourceFingerprintSha256())) {
+                throw rejected("SOURCE_UPDATE_RETRY_SOURCE_CHANGED");
+            }
+            var retryId=store.authorizeRetry(operationId,sourceRunId,actor.operatorId());
+            var run=agentRuns.createSourceUpdateResolverRetryRun(sourceRunId,operationId);
+            store.retried(retryId,run.getId(),operationId);
+            return run.getId();
+        });
+        // Lost callback is recovered by the normal queued-run coordinator.
+        if (admitted!=null) coordinator.dispatchAfterCommit(admitted);
+        return store.get(operationId,false).view();
+    }
+
     public SourceUpdateOperation.View request(Long sessionId, AuthenticatedOperator actor) {
         administrator(actor.operatorId());
         if (!delivery.isEnabled() || !worker.isEnabled()) throw rejected("SOURCE_UPDATE_DISABLED");

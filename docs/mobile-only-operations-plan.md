@@ -52,9 +52,14 @@ actualización de la misma PR. La acción móvil Actualizar la misma PR conserva
 WorkSession, rama y número; GitHub/UFD comprueban el nuevo head antes de integrar.
 No está integrada ni desplegada.
 
-Siguiente paso: unidad 5, pruebas combinadas de interrupciones y recuperación
-explícita del resolver fallido, seguidas de integración conjunta. No resolver
-manualmente PR 47 para sustituir estas capacidades.
+Unidad 5 en curso: reintento explícito del resolver fallido con fuente intacta
+y pruebas combinadas de interrupciones implementados localmente. Conserva el
+intento fallido, el mismo prompt y la preparación. No está integrada ni desplegada.
+
+Siguiente paso: cerrar la recuperación ante un nuevo avance de main y los
+cambios parciales del resolver, conservando la historia y sin reset implícito.
+Después, integración conjunta. No resolver manualmente PR 47 para sustituir
+estas capacidades.
 
 ## Reglas para terminar sin ampliar el alcance
 
@@ -299,6 +304,27 @@ explícita del resolver fallido, las pruebas combinadas con cambios de refs y
 la transición a otra preparación siguen formando parte de ese cierre.
 WS21 y PR47 permanecen fuera de estas pruebas. No hay despliegue ni aceptación
 móvil de la entrega 1.
+
+2026-10-09: primera parte de la unidad 5 implementada localmente. PASS: 151
+tests backend focales con PostgreSQL 16 efímero y Flyway V88; 21 tests Android
+API/panel; 30 tests Platform de finalización, incluidos dos recorridos nuevos
+de interrupción combinada y main concurrente; `git diff --check`.
+
+Reintentar resolución es una autorización explícita del administrador para
+un intento fallido concreto. V88 añade un registro inmutable por reintento,
+sin reemplazar el run original, el turno, el recibo de preparación ni la
+publicación anterior. Reutiliza el coordinador, el perfil y el prompt existentes.
+La consulta y una petición repetida no admiten otro run; dos solicitudes
+simultáneas conservan un único reintento. Un callback perdido deja un run QUEUED
+committeado para el coordinador normal. Terminar ese run sigue exigiendo nueva
+validación antes de actualizar la misma PR.
+
+El reintento verifica ownership y fuente efectiva antes de admitirlo. Un
+bloqueo determinista no resuelto, otra ejecución activa o archivos cambiados
+lo rechazan sin reset ni reparación manual. Esta primera parte sólo recupera
+la fuente intacta del intento fallido. Falta autorizar y observar una fuente
+parcial nueva y encadenar otra preparación cuando avance main; ambos casos
+siguen pendientes antes de integrar la entrega.
 
 ## Autorización de efectos reales
 

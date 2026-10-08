@@ -65,6 +65,11 @@ internal class MobileDeliveryUiState(
             && validated && !runInProgress && !busy
             && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
 
+    fun canRetryResolver(runInProgress: Boolean): Boolean =
+        available && sourceUpdateEnabled && sourceUpdate?.state == "FAILED" && sourceUpdate?.resolverRunId != null
+            && !runInProgress && !busy
+            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
+
     suspend fun refresh() {
         try {
             val state = load()
@@ -165,6 +170,12 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
         state.sourceUpdate?.let { update ->
             Text(sourceUpdateLabel(update.state))
             update.errorCode?.let { Text("Recuperación detenida: $it. La misma operación y conversación se conservan.") }
+            val resolverRunId = update.resolverRunId
+            if (update.state == "FAILED" && resolverRunId != null) {
+                Text("Reintentar comprueba la misma fuente y conserva el intento fallido. Consultar no ejecuta otro resolver.")
+                AteneaButton("Reintentar resolución", enabled = state.canRetryResolver(runInProgress),
+                    onClick = { act { api.retryDeliveryResolver(sessionId, update.id, resolverRunId) } })
+            }
         }
         if (state.integration?.mergeState == "CONFLICTS" && state.sourceUpdate == null) {
             AteneaButton("Resolver conflictos", enabled = state.canResolveConflicts(validated, runInProgress),
@@ -234,6 +245,7 @@ internal fun sourceUpdateLabel(state: String): String = when (state) {
     "QUEUED", "PREPARE_CLAIMED" -> "Preparando conflictos en esta WorkSession…"
     "UNCERTAIN" -> "Comprobando la misma preparación; no repitas la acción."
     "READY_TO_RESOLVE" -> "Preparación lista; Atenea está iniciando el resolver."
+    "RETRY_REQUESTED" -> "Reintento autorizado de la misma resolución."
     "RESOLVING" -> "Codex está resolviendo los conflictos en esta conversación."
     "RESOLVER_COMPLETED" -> "Codex terminó. Falta validar la nueva revisión y actualizar la misma PR."
     "READY_TO_FINALIZE" -> "Preparación terminada. Falta validar la nueva revisión y actualizar la misma PR."

@@ -372,6 +372,11 @@ class AteneaApiClient(
         authenticated = true, parser = ::parseMobileDeliveryOperation
     )
 
+    suspend fun retryDeliveryResolver(sessionId: Long, operationId: UUID, runId: Long): MobileSourceUpdate = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/source-updates/$operationId/resolver-runs/$runId/retry",
+        body = JSONObject(), authenticated = true
+    ) { json -> parseMobileSourceUpdate(json).also { require(it.sessionId == sessionId && it.id == operationId) } }
+
     suspend fun authorizeRelease(id: UUID, totp: String): UUID = postJson(
         path = "/api/mobile/delivery/$id/authorize", body = JSONObject().put("totp", totp), authenticated = true
     ) { UUID.fromString(it.getString("authorization")) }

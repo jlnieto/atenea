@@ -16,7 +16,7 @@ data class MobileSourceUpdate(val id: UUID, val sessionId: Long, val state: Stri
 internal fun parseMobileSourceUpdate(json: JSONObject): MobileSourceUpdate {
     val state = json.getString("state")
     require(state in setOf("QUEUED", "PREPARE_CLAIMED", "UNCERTAIN", "ATTENTION", "READY_TO_RESOLVE",
-        "RESOLVING", "RESOLVER_COMPLETED", "READY_TO_FINALIZE", "FAILED", "BLOCKED", "PUBLISHED"))
+        "RESOLVING", "RESOLVER_COMPLETED", "READY_TO_FINALIZE", "FAILED", "BLOCKED", "PUBLISHED", "RETRY_REQUESTED"))
     val main = json.getString("targetMainCommit")
     require(main.matches(Regex("[0-9a-f]{40}")))
     fun positive(key: String): Long? = if (json.isNull(key)) null else {
