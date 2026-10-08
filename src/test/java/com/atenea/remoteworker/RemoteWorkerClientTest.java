@@ -814,7 +814,7 @@ class RemoteWorkerClientTest {
                     foreign.setDefaultBaseBranch("main");
                     session.getDevelopmentChange().setProject(foreign);
                 },
-                session -> session.getProject().setRepoPath("/workspace/repos/internal/foreign"),
+                session -> session.getProject().setDefaultBaseBranch("foreign"),
                 session -> session.getDevelopmentChange().setBaseRef("refs/heads/foreign"),
                 session -> session.setRemoteCloseOperationId(null));
         for (Consumer<WorkSessionEntity> mutation : mutations) {
@@ -1708,6 +1708,7 @@ class RemoteWorkerClientTest {
     private AgentRunEntity projectRun(String threadId) {
         UUID remoteSessionId = UUID.fromString("4bb26a65-0a0a-4ae0-b8e0-b41e03a695bf");
         ProjectEntity project = new ProjectEntity();
+        project.setDefaultBaseBranch("main");
         project.setId(1L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);

@@ -50,6 +50,7 @@ class ClosedValidationOperationServiceTest {
     @BeforeEach
     void setUp() {
         ProjectEntity project = new ProjectEntity();
+        project.setDefaultBaseBranch("main");
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
         session = new WorkSessionEntity();

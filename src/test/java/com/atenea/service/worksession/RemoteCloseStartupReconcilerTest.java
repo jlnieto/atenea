@@ -67,6 +67,7 @@ class RemoteCloseStartupReconcilerTest {
     private WorkSessionEntity session(Long id, RemoteCloseState state) {
         UUID remoteSessionId = UUID.randomUUID();
         ProjectEntity project = new ProjectEntity();
+        project.setDefaultBaseBranch("main");
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
         WorkSessionEntity session = new WorkSessionEntity();

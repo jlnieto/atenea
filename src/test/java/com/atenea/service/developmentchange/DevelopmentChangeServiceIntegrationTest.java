@@ -86,6 +86,8 @@ class DevelopmentChangeServiceIntegrationTest {
     private ProjectEntity project;
     private OperatorEntity operator;
     private AuthenticatedOperator actor;
+    private long sessionsBefore;
+    private long runsBefore;
 
     @BeforeEach
     void setUp() {
@@ -95,6 +97,8 @@ class DevelopmentChangeServiceIntegrationTest {
         properties.setWorkspaceReconciliationEnabled(true);
         remoteWorkerProperties.setWorkerId("synthetic-worker-01");
         registerWorker();
+        sessionsBefore = workSessionRepository.count();
+        runsBefore = agentRunRepository.count();
         String identity = UUID.randomUUID().toString();
         project = projectRepository.saveAndFlush(canonicalProject());
         operator = operator(identity + "@atenea.test");
@@ -199,8 +203,8 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals(0, changeRepository.count());
         assertEquals(0, operationRepository.count());
         assertEquals(0, workspaceOperationRepository.count());
-        assertEquals(0, workSessionRepository.count());
-        assertEquals(0, agentRunRepository.count());
+        assertEquals(sessionsBefore, workSessionRepository.count());
+        assertEquals(runsBefore, agentRunRepository.count());
     }
 
     @Test
@@ -220,8 +224,8 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals(0, changeRepository.count());
         assertEquals(0, operationRepository.count());
         assertEquals(0, workspaceOperationRepository.count());
-        assertEquals(0, workSessionRepository.count());
-        assertEquals(0, agentRunRepository.count());
+        assertEquals(sessionsBefore, workSessionRepository.count());
+        assertEquals(runsBefore, agentRunRepository.count());
         verify(canonicalSourceAdmissionService, never()).observeRemoteBase(foreign);
     }
 

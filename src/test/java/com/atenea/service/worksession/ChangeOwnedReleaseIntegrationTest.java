@@ -52,6 +52,7 @@ class ChangeOwnedReleaseIntegrationTest {
     @Autowired WorkSessionRepository sessions;
     @Autowired DevelopmentChangeRepository changes;
     @Autowired ProjectRepository projects;
+    @Autowired WorkerNodeRepository workers;
     @Autowired RemoteWorkerProperties workerProperties;
     @Autowired ObjectMapper mapper;
     @MockBean GitRepositoryService git;
@@ -63,12 +64,26 @@ class ChangeOwnedReleaseIntegrationTest {
     private HttpServer worker;
     private WorkSessionEntity session;
     private DevelopmentChangeEntity change;
+    private boolean workerCreated;
     private final AtomicInteger releases = new AtomicInteger();
     private final AtomicReference<JsonNode> request = new AtomicReference<>();
 
     @BeforeEach
     void setUp() throws Exception {
         Instant now = Instant.now();
+        workerCreated = !workers.existsById(ProjectCodexIdentity.WORKER_ID);
+        if (workerCreated) {
+            WorkerNodeEntity registered = new WorkerNodeEntity();
+            registered.setId(ProjectCodexIdentity.WORKER_ID);
+            registered.setProtocolVersion(RemoteWorkerProperties.PROTOCOL);
+            registered.setEndpoint("http://127.0.0.1:1");
+            registered.setEnabled(true);
+            registered.setHealthy(true);
+            registered.setCapabilities(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
+            registered.setCreatedAt(now);
+            registered.setUpdatedAt(now);
+            workers.saveAndFlush(registered);
+        }
         ProjectEntity project = projects.findByName("Atenea").orElseGet(() -> {
             ProjectEntity created = new ProjectEntity();
             created.setName("Atenea");
@@ -162,6 +177,7 @@ class ChangeOwnedReleaseIntegrationTest {
         if (worker != null) worker.stop(0);
         if (session != null && session.getId() != null) sessions.deleteById(session.getId());
         if (change != null && change.getId() != null) changes.deleteById(change.getId());
+        if (workerCreated) workers.deleteById(ProjectCodexIdentity.WORKER_ID);
     }
 
     @ParameterizedTest

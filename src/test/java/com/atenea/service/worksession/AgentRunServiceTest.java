@@ -974,6 +974,7 @@ class AgentRunServiceTest {
 
     private static WorkSessionEntity buildSession(Long sessionId, Long projectId, String repoPath) {
         ProjectEntity project = new ProjectEntity();
+        project.setDefaultBaseBranch("main");
         project.setId(projectId);
         project.setName("Atenea");
         project.setRepoPath(repoPath);

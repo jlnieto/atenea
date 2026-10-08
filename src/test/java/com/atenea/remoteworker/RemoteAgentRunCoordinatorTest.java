@@ -732,6 +732,7 @@ class RemoteAgentRunCoordinatorTest {
     private AgentRunEntity projectRun() {
         UUID remoteSessionId = UUID.fromString("4bb26a65-0a0a-4ae0-b8e0-b41e03a695bf");
         ProjectEntity project = new ProjectEntity();
+        project.setDefaultBaseBranch("main");
         project.setId(7L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
@@ -830,6 +831,7 @@ class RemoteAgentRunCoordinatorTest {
         project.setId(run.getSession().getProject().getId());
         project.setName(run.getSession().getProject().getName());
         project.setRepoPath(run.getSession().getProject().getRepoPath());
+        project.setDefaultBaseBranch(run.getSession().getProject().getDefaultBaseBranch());
         WorkSessionEntity blocker = new WorkSessionEntity();
         blocker.setId(id);
         blocker.setProject(project);
