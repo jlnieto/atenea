@@ -33,9 +33,18 @@ pendientes, y bloqueo de integración en Android ante conflictos o evidencia
 no disponible. No está integrada ni desplegada y aún no constituye aceptación
 en el Samsung.
 
-Siguiente paso: definir e implementar en Platform el contrato cerrado para
-preparar y recuperar la incorporación del main retenido al workspace del mismo
-cambio. No resolver manualmente PR 47 para sustituir esta capacidad.
+Segunda unidad implementada y probada en Platform: contrato
+`development-change-source-update/v1`, preparación con main y publicación
+predecesora retenidos, consulta sin efectos y recuperación de la misma
+operación. Conserva HEAD y la base original; prepara los archivos editables
+sin publicar un commit ni validar la nueva fuente. Tampoco está integrada o
+desplegada.
+
+Siguiente paso: conectar en App la intención durable de resolución con esta
+preparación, un resolver en la misma WorkSession y una revisión nueva que exija
+sus propias validaciones. Después corresponde la publicación autorizada del
+commit que incorpora main en la misma rama y PR. No resolver manualmente PR 47
+para sustituir estas capacidades.
 
 ## Reglas para terminar sin ampliar el alcance
 
@@ -200,6 +209,33 @@ antes de abrir cualquier PR de esta entrega.
 La PR 47 y su fuente original no se han actualizado, integrado ni desplegado
 durante este inicio. El entorno efímero de tests se elimina tras conservar sus
 resultados; App, Platform instalados y bases de datos compartidas no se modifican.
+
+2026-10-08: segunda unidad de la entrega 1 implementada en Platform, rama
+`feature/mobile-conflict-recovery`. PASS: 32 tests nuevos de preparación,
+recuperación, idempotencia, ownership, referencias movidas, autenticación,
+exclusión de ejecuciones y retención de objetos ante Git GC; 29 tests existentes
+del workspace/publicador; 32 tests focales del worker y admisión v4. Installer,
+schemas Draft 2020-12, `bash -n` y `git diff --check` PASS.
+
+La intención y los árboles se guardan antes de modificar el workspace. La
+recuperación de una preparación parcial sólo admite los bytes originales o
+preparados y no pisa ediciones posteriores. Un ref privado conserva el árbol
+frente a Git GC; no se mueve ninguna rama. La consulta nunca materializa, y
+un replay terminado conserva las ediciones del resolver.
+
+Precondición de preparación: el main retenido debe coincidir con GitHub y con
+el mirror canónico, y la rama publicada con el head predecesor. Esta operación
+no hace un fetch ni promueve configuración canónica de forma implícita. Una
+discrepancia bloquea con `SOURCE_UPDATE_REF_MOVED`; no se elige otro main ni se
+fuerza un ref. Un lock Git de propietario desconocido también bloquea sin
+borrarlo. Estas precondiciones se comprobarán antes de la aceptación real.
+
+Pendiente: orquestación App del resolver, registro de una revisión nueva,
+finalización y publicación del commit que incorpora main sin reescribir
+historia, validación nueva y actualización de la misma PR. No se ha ejercitado
+la operación contra WS21 ni modificado PR47; no hay despliegue o aceptación
+móvil de esta entrega. El siguiente subtrabajo es la unidad 3, no otra reparación
+manual del ticket ni un rediseño de UI.
 
 ## Autorización de efectos reales
 
