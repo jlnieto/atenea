@@ -3,10 +3,13 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
+# Controller regression imports must not dirty the immutable UFD checkout.
+sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("controller", Path(__file__).with_name("ufd-dispatch-v1.py"))
 controller = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(controller)

@@ -23,7 +23,7 @@ jobs:
       - name: Configure code authority
         run: git remote add github https://github.com/jlnieto/atenea.git
       - name: Closed dispatch controller regressions
-        run: python3 scripts/test-ufd-dispatch-v1.py
+        run: python3 -B scripts/test-ufd-dispatch-v1.py
       - name: Execute the committed UFD plan without overrides
         env:
           GH_TOKEN: ${{ secrets.ATENEA_UFD_READ_TOKEN || github.token }}
@@ -46,7 +46,7 @@ jobs:
           path: controller
           persist-credentials: false
       - name: Closed dispatch controller regressions
-        run: python3 controller/scripts/test-ufd-dispatch-v1.py
+        run: python3 -B controller/scripts/test-ufd-dispatch-v1.py
       - name: Verify closed request from the immutable main controller
         id: request
         env:
