@@ -19,6 +19,15 @@ import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
     @Test
+    fun `a requested or missing run is not presented as running checks`() {
+        assertTrue(deliveryErrorLabel("UFD_REQUESTED").contains("esperando que arranquen"))
+        assertFalse(deliveryErrorLabel("UFD_REQUESTED").contains("está ejecutando"))
+        assertTrue(deliveryErrorLabel("UFD_QUEUED").contains("están en cola"))
+        assertFalse(deliveryErrorLabel("UFD_NOT_STARTED").contains("está ejecutando"))
+        assertFalse(deliveryErrorLabel("UFD_DISPATCH_UNCONFIRMED").contains("está ejecutando"))
+        assertTrue(deliveryErrorLabel("UFD_CONTROLLER_UNAVAILABLE").contains("detenido"))
+    }
+    @Test
     fun `refresh preserves same durable operation identity without creating one`() = runBlocking<Unit> {
         val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
         try {

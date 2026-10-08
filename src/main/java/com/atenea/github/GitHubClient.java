@@ -13,10 +13,14 @@ import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Base64;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class GitHubClient {
+    private static final String UFD_WORKFLOW = ".github/workflows/ufd-validation-v1.yml";
+    private static final String UFD_DISPATCH = "atenea-ufd-owned-head-v1";
 
     private static final Pattern HTTPS_REMOTE = Pattern.compile("^https://github\\.com/([^/]+)/([^/.]+?)(?:\\.git)?$");
     private static final Pattern SSH_REMOTE = Pattern.compile("^git@github\\.com:([^/]+)/([^/.]+?)(?:\\.git)?$");
@@ -71,7 +75,7 @@ public class GitHubClient {
         return toPullRequest(response);
     }
 
-    /** Only the immutable, successful push run for this exact published head is evidence. */
+    /** A push run, or the closed main-controller run bound to the exact owned head. */
     public void requireUfdValidation(GitHubRepositoryRef repository, String sha, String branch) {
         ensureConfigured();
         requireSha(sha);
@@ -79,21 +83,123 @@ public class GitHubClient {
         JsonNode runs = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
                 "/repos/" + repo + "/actions/workflows/ufd-validation-v1.yml/runs?head_sha="
                         + sha + "&branch=" + encode(branch) + "&event=push&per_page=100"), null);
+        if (!runs.path("workflow_runs").isArray() || runs.path("workflow_runs").size() >= 100) {
+            throw new GitHubIntegrationException("UFD_EVIDENCE_INCOMPLETE");
+        }
         JsonNode latest = null;
         for (JsonNode run : runs.path("workflow_runs")) {
             if (sha.equals(run.path("head_sha").asText())
                     && branch.equals(run.path("head_branch").asText())
                     && repo.equals(run.path("head_repository").path("full_name").asText())
-                    && ".github/workflows/ufd-validation-v1.yml".equals(run.path("path").asText())
+                    && UFD_WORKFLOW.equals(run.path("path").asText())
                     && "push".equals(run.path("event").asText())
                     && (latest == null || run.path("id").asLong() > latest.path("id").asLong())) latest = run;
         }
-        if (latest != null && "completed".equals(latest.path("status").asText())
+        if (latest == null && ownedHead(repository, branch)) {
+            latest = ownedHeadUfdRun(repository, sha, branch);
+        }
+        if (latest == null) {
+            JsonNode workflow = content(repository, UFD_WORKFLOW, sha);
+            if (workflow.isMissingNode()) {
+                throw new GitHubIntegrationException("UFD_WORKFLOW_MISSING: la rama publicada no contiene el disparador UFD");
+            }
+            throw new GitHubIntegrationException("UFD_NOT_STARTED: GitHub aún no ha registrado la comprobación de este commit");
+        }
+        if ("completed".equals(latest.path("status").asText())
                 && "success".equals(latest.path("conclusion").asText())) return;
-        if (latest != null && "completed".equals(latest.path("status").asText())) {
+        if ("completed".equals(latest.path("status").asText())) {
             throw new GitHubIntegrationException("UFD_FAILED: la validación del commit publicado ha fallado");
         }
+        if (List.of("queued", "waiting", "requested", "pending").contains(latest.path("status").asText())) {
+            throw new GitHubIntegrationException("UFD_QUEUED: GitHub ha registrado el run, pendiente de ejecución");
+        }
+        if (!"in_progress".equals(latest.path("status").asText())) {
+            throw new GitHubIntegrationException("UFD_EVIDENCE_INCOMPLETE");
+        }
         throw new GitHubIntegrationException("UFD_PENDING: validación GitHub pendiente para este commit; vuelve a consultar sin crear otra PR");
+    }
+
+    public record UfdDispatchRequest(UUID requestId, String headSha, String headBranch, String authoritySha) { }
+
+    public UfdDispatchRequest prepareOwnedHeadUfd(String sha, String branch) {
+        requireSha(sha);
+        GitHubRepositoryRef repository = new GitHubRepositoryRef("jlnieto", "atenea");
+        if (!ownedHead(repository, branch)) throw new GitHubIntegrationException("UFD_IDENTITY_REJECTED");
+        String authority = canonicalMain(repository);
+        JsonNode file = content(repository, UFD_WORKFLOW, authority);
+        if (file.isMissingNode()) throw new GitHubIntegrationException("UFD_CONTROLLER_UNAVAILABLE");
+        JsonNode workflow = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                "/repos/jlnieto/atenea/actions/workflows/ufd-validation-v1.yml"), null, true);
+        if (!"active".equals(workflow.path("state").asText())
+                || !UFD_WORKFLOW.equals(workflow.path("path").asText())
+                || !"base64".equals(file.path("encoding").asText())
+                || !new String(Base64.getMimeDecoder().decode(file.path("content").asText()), StandardCharsets.UTF_8)
+                        .contains(UFD_DISPATCH)) {
+            throw new GitHubIntegrationException("UFD_CONTROLLER_UNAVAILABLE");
+        }
+        return new UfdDispatchRequest(ufdRequestId(sha, branch), sha, branch, authority);
+    }
+
+    /** Called only after the delivery outbox has durably claimed this one send. */
+    public void dispatchOwnedHeadUfd(UfdDispatchRequest request) {
+        requireSha(request.headSha()); requireSha(request.authoritySha());
+        if (!ownedHead(new GitHubRepositoryRef("jlnieto", "atenea"), request.headBranch())
+                || !ufdRequestId(request.headSha(), request.headBranch()).equals(request.requestId())) {
+            throw new GitHubIntegrationException("UFD_IDENTITY_REJECTED");
+        }
+        var payload = objectMapper.createObjectNode();
+        payload.put("event_type", UFD_DISPATCH);
+        payload.putObject("client_payload").put("requestId", request.requestId().toString())
+                .put("headSha", request.headSha()).put("headBranch", request.headBranch())
+                .put("authoritySha", request.authoritySha());
+        sendJsonRequest("POST", properties.getApiBaseUrl().resolve("/repos/jlnieto/atenea/dispatches"), payload.toString());
+    }
+
+    public static UUID ufdRequestId(String sha, String branch) {
+        return UUID.nameUUIDFromBytes((UFD_DISPATCH + "|jlnieto/atenea|" + branch + "|" + sha)
+                .getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static boolean ownedHead(GitHubRepositoryRef repository, String branch) {
+        return "jlnieto".equals(repository.owner()) && "atenea".equals(repository.repo())
+                && branch != null && branch.matches("atenea/change-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+    }
+
+    private JsonNode ownedHeadUfdRun(GitHubRepositoryRef repository, String sha, String branch) {
+        String title = "Atenea UFD owned-head " + ufdRequestId(sha, branch) + " " + sha;
+        JsonNode latest = null;
+        // An immutable run is discoverable even if the dispatch HTTP reply was lost.
+        // Bound pagination: incomplete evidence is never a PASS or an endless pending.
+        for (int page = 1; page <= 10; page++) {
+            JsonNode runs = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                    "/repos/jlnieto/atenea/actions/workflows/ufd-validation-v1.yml/runs?event=repository_dispatch&per_page=100&page=" + page), null);
+            if (!runs.path("workflow_runs").isArray()) throw new GitHubIntegrationException("UFD_EVIDENCE_INCOMPLETE");
+            for (JsonNode run : runs.path("workflow_runs")) {
+                if (title.equals(run.path("display_title").asText())
+                        && "main".equals(run.path("head_branch").asText())
+                        && "jlnieto/atenea".equals(run.path("head_repository").path("full_name").asText())
+                        && UFD_WORKFLOW.equals(run.path("path").asText())
+                        && "repository_dispatch".equals(run.path("event").asText())
+                        && (latest == null || run.path("id").asLong() > latest.path("id").asLong())) latest = run;
+            }
+            if (runs.path("workflow_runs").size() < 100) break;
+            if (page == 10) throw new GitHubIntegrationException("UFD_EVIDENCE_INCOMPLETE");
+        }
+        if (latest != null) {
+            String authority = latest.path("head_sha").asText(); requireSha(authority);
+            String main = canonicalMain(repository);
+            JsonNode comparison = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                    "/repos/jlnieto/atenea/compare/" + authority + "..." + main), null);
+            if (!List.of("identical", "ahead").contains(comparison.path("status").asText())) {
+                throw new GitHubIntegrationException("UFD_IDENTITY_REJECTED");
+            }
+        }
+        return latest;
+    }
+
+    private JsonNode content(GitHubRepositoryRef repository, String path, String ref) {
+        return sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                "/repos/" + repository.owner() + "/" + repository.repo() + "/contents/" + path + "?ref=" + ref), null, true);
     }
 
     public String canonicalMain(GitHubRepositoryRef repository) {
@@ -261,6 +367,10 @@ public class GitHubClient {
     }
 
     private JsonNode sendJsonRequest(String method, URI uri, String body) {
+        return sendJsonRequest(method, uri, body, false);
+    }
+
+    private JsonNode sendJsonRequest(String method, URI uri, String body, boolean missingAllowed) {
         try {
             String token = configuredToken();
             if (token == null) {
@@ -284,8 +394,10 @@ public class GitHubClient {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                if (response.statusCode() == 204) return objectMapper.nullNode();
                 return objectMapper.readTree(response.body());
             }
+            if (missingAllowed && response.statusCode() == 404) return objectMapper.missingNode();
 
             throw classifyError(response.statusCode(), response.body());
         } catch (GitHubIntegrationException exception) {

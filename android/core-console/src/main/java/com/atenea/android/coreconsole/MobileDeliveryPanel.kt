@@ -202,6 +202,12 @@ internal fun deliveryStateLabel(state: String): String = when (state) {
 }
 
 internal fun deliveryErrorLabel(code: String): String = when (code) {
+    "UFD_QUEUED" -> "GitHub ha registrado las comprobaciones y están en cola. Atenea seguirá esperando; no necesitas repetir la acción."
+    "UFD_REQUESTED" -> "Atenea ha solicitado las comprobaciones del commit a GitHub. Está esperando que arranquen; no necesitas repetir la acción."
+    "UFD_DISPATCH_UNCONFIRMED" -> "Atenea no ha podido confirmar el inicio. Consulta la misma operación; no se enviará otra solicitud automáticamente."
+    "UFD_NOT_STARTED" -> "GitHub no ha confirmado el inicio de las comprobaciones de este commit. No se ha creado otra PR ni se ha omitido la validación."
+    "UFD_CONTROLLER_UNAVAILABLE" -> "El workflow autorizado de main no está disponible. La publicación se ha detenido antes de solicitar las comprobaciones."
+    "UFD_IDENTITY_REJECTED", "UFD_EVIDENCE_INCOMPLETE" -> "La evidencia GitHub no coincide con el commit publicado. La publicación está detenida; no repitas la acción."
     "CI_PENDING", "RELEASE_BUILD_PENDING" -> "GitHub está ejecutando las comprobaciones. Atenea seguirá esperando; no necesitas repetir la acción."
     "PLAN_EXPIRED" -> "El plan ha caducado sin publicar. Prepara uno nuevo."
     "CANONICAL_MAIN_MOVED" -> "Main ha cambiado desde este plan. Atenea ha detenido la publicación para no elegir otro commit."

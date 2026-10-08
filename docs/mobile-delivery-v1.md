@@ -142,9 +142,32 @@ debe conservar las operation IDs y no iniciar otro intento de validación.
 Usar el ticket/WorkSession existentes, no crear un prompt duplicado. Confirmar
 que los nuevos botones están disponibles, que Validar pasa en el runtime
 desplegado, que el SHA publicado tiene UFD en GitHub y que la PR corresponde
-al cambio. Si la rama antigua no incluye el workflow UFD, detenerse y
-actualizarla mediante el procedimiento normal de integración/revalidación;
-no considerar un PASS local como un workflow GitHub inexistente.
+al cambio. Si una rama change-owned antigua no incluye el workflow UFD pero
+conserva su harness/engine-lock, la misma operación durable solicita
+`atenea-ufd-owned-head-v1` mediante `repository_dispatch`. El workflow se toma
+de `main` y comprueba el SHA exacto publicado, la rama/UUID del cambio, la
+autoridad main retenida y el harness idéntico al de su merge-base. Ejecuta
+`./scripts/validate-change` de ese checkout: ni cambia la base o el código,
+ni sustituye/reduce el plan UFD. No hay comandos/rutas/repositorios elegibles
+por el móvil y no se concede autoridad PROD al job.
+
+La intención y el claim de envío se guardan en `mobile_delivery_operation`
+antes de llamar a GitHub. Una respuesta perdida/reinicio se resuelve buscando
+el run ligado a requestId+SHA; nunca reenviando a ciegas. Un envío no
+confirmado conserva ese claim también ante una nueva intención para el mismo
+head: se consulta toda la historia durable, no sólo las últimas filas de la UI.
+Un inicio no
+confirmado durante diez minutos queda bloqueado, no «ejecutándose» para
+siempre. Un run sólo vale si es del workflow/repo esperado en `main`, con
+autoridad ancestro del main canónico y la identidad exacta del head. Un PASS
+local sigue sin sustituir UFD GitHub. Workflow ausente/deshabilitado, autoridad
+movida, harness alterado, CI fallido o evidencia ajena no autorizan crear PR.
+
+`repository_dispatch` necesita Contents: write, ya requerido por el publicador;
+las lecturas de runs siguen usando Actions: read. No requiere Actions: write,
+Checks: write ni cambiar el token dedicado de lectura del ejecutor Platform.
+Referencias: [evento repository_dispatch](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#repository_dispatch)
+y [API de dispatch](https://docs.github.com/en/rest/repos/repos#create-a-repository-dispatch-event).
 
 Desde el móvil: crear/adoptar PR, revisar, integrar, preparar y confirmar un
 despliegue aprobado. Cerrar la app mientras publica y volver a abrirla:

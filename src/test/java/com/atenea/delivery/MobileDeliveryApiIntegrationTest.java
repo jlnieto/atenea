@@ -127,4 +127,18 @@ class MobileDeliveryApiIntegrationTest {
                 .andExpect(status().isConflict());
         verifyNoInteractions(factors,grants);
     }
+    @Test void oldUfdClaimIsFoundBeyondUiWindowAndOnlyForExactOwnedHead() {
+        String head="1".repeat(40),branch="atenea/change-59315b6e-59bc-4884-9def-356e1ca86ef4";
+        var evidence=mapper.createObjectNode();
+        evidence.putObject("ufdDispatch").put("headSha",head).put("headBranch",branch)
+                .put("requestId",GitHubClient.ufdRequestId(head,branch).toString()).put("authoritySha","2".repeat(40))
+                .put("status","UNCONFIRMED").put("claimedAt",1);
+        var old=store.create(sessionId,admin.getId(),"PUBLISH_PR",DeliveryTarget.APP_PROD,null,"BLOCKED",evidence);
+        jdbc.update("UPDATE mobile_delivery_operation SET created_at=now()-interval '1 hour' WHERE id=?",old.id());
+        for (int i=0;i<31;i++) store.create(sessionId,admin.getId(),"PUBLISH_PR",DeliveryTarget.APP_PROD,null,"BLOCKED",mapper.createObjectNode());
+        assertFalse(store.list(sessionId).stream().anyMatch(op->op.id().equals(old.id())));
+        assertEquals(old.id(),store.ownedHeadUfdRequest(sessionId,head,branch).orElseThrow().id());
+        assertTrue(store.ownedHeadUfdRequest(sessionId,"3".repeat(40),branch).isEmpty());
+        assertTrue(store.ownedHeadUfdRequest(sessionId,head,branch+"-foreign").isEmpty());
+    }
 }
