@@ -1,6 +1,8 @@
 package com.atenea.api.worksession;
 
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -14,6 +16,7 @@ import com.atenea.persistence.worksession.ValidationOperationKind;
 import com.atenea.persistence.worksession.ValidationOperationStatus;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
 import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
 import com.atenea.service.worksession.RetainedDraftRecoveryService;
@@ -144,6 +147,75 @@ class WorkSessionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"command\":\"docker run --privileged\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void validationEvidenceReadsOnlyThePersistedAttemptWithoutStartingOrAdvancingValidation() throws Exception {
+        UUID changeKey = UUID.fromString("59315b6e-59bc-4884-9def-356e1ca86ef4");
+        UUID operationId = UUID.fromString("0cc7815a-f703-46ee-938a-8ef4d00e68a2");
+        var failed = new ValidationOperationResponse(operationId, 21L,
+                ValidationOperationKind.BACKEND_TEST, ValidationOperationStatus.BLOCKED,
+                "4".repeat(64), "atenea-backend-test-v2", 2, 100L, null,
+                "[TEST_DATABASE_SETUP_FAILED] No se pudo preparar PostgreSQL de pruebas.",
+                Instant.parse("2026-10-05T10:00:00Z"), Instant.parse("2026-10-05T10:00:00.100Z"));
+        when(closedValidationOperationService.getDevelopmentChangeEvidence(21L)).thenReturn(
+                new DevelopmentChangeValidationEvidenceResponse(changeKey, 21L, 2, "4".repeat(64),
+                        DevelopmentChangeProjectionState.BLOCKED, 0, 4, List.of(failed), failed));
+
+        mockMvc.perform(get("/api/sessions/21/validation-evidence"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workSessionId").value(21))
+                .andExpect(jsonPath("$.changeKey").value(changeKey.toString()))
+                .andExpect(jsonPath("$.validationState").value("BLOCKED"))
+                .andExpect(jsonPath("$.passedOperations").value(0))
+                .andExpect(jsonPath("$.operations[0].id").value(operationId.toString()))
+                .andExpect(jsonPath("$.lastAttempt.exitCode").value(2))
+                .andExpect(jsonPath("$.lastAttempt.summary").value(failed.summary()))
+                .andExpect(jsonPath("$.command").doesNotExist())
+                .andExpect(jsonPath("$.path").doesNotExist());
+        verify(closedValidationOperationService).getDevelopmentChangeEvidence(21L);
+        verifyNoMoreInteractions(closedValidationOperationService);
+    }
+
+    @Test
+    void validationEvidenceCannotFallBackToMutationForMissingSession() throws Exception {
+        when(closedValidationOperationService.getDevelopmentChangeEvidence(99L))
+                .thenThrow(new WorkSessionNotFoundException(99L));
+        mockMvc.perform(get("/api/sessions/99/validation-evidence"))
+                .andExpect(status().isNotFound());
+        verify(closedValidationOperationService).getDevelopmentChangeEvidence(99L);
+        verifyNoMoreInteractions(closedValidationOperationService);
+    }
+
+    @Test
+    void validationEvidenceRequiresBoundChangeOwnership() throws Exception {
+        when(closedValidationOperationService.getDevelopmentChangeEvidence(21L))
+                .thenThrow(new WorkSessionOperationBlockedException("Ownership mismatch"));
+        mockMvc.perform(get("/api/sessions/21/validation-evidence"))
+                .andExpect(status().isUnprocessableEntity());
+        verify(closedValidationOperationService).getDevelopmentChangeEvidence(21L);
+        verifyNoMoreInteractions(closedValidationOperationService);
+    }
+
+    @Test
+    void validateChangeEndpointReturnsOnlyDurableProgressProjection() throws Exception {
+        UUID changeKey = UUID.fromString("59315b6e-59bc-4884-9def-356e1ca86ef4");
+        when(closedValidationOperationService.advanceDevelopmentChange(21L))
+                .thenReturn(new DevelopmentChangeValidationResponse(
+                        changeKey, 2, "4".repeat(64),
+                        DevelopmentChangeProjectionState.NOT_STARTED,
+                        "RUNNING", "ANDROID_BUILD", 2, 4,
+                        "Closed validation is running"));
+
+        mockMvc.perform(post("/api/sessions/21/validate-change")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.changeKey").value(changeKey.toString()))
+                .andExpect(jsonPath("$.state").value("RUNNING"))
+                .andExpect(jsonPath("$.currentOperation").value("ANDROID_BUILD"))
+                .andExpect(jsonPath("$.passedOperations").value(2))
+                .andExpect(jsonPath("$.requiredOperations").value(4));
     }
 
     @Test

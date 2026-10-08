@@ -657,7 +657,13 @@ public class WorkSessionService {
                 snapshot,
                 session.getRemoteCloseState(),
                 session.getRemoteCloseErrorCode(),
-                remoteCloseNextAction(session.getRemoteCloseState())
+                remoteCloseNextAction(session.getRemoteCloseState()),
+                session.getDevelopmentChange() == null
+                        ? null : session.getDevelopmentChange().getChangeKey(),
+                session.getDevelopmentChange() == null
+                        ? null : session.getDevelopmentChange().getValidationState(),
+                session.getDevelopmentChange() == null
+                        ? null : session.getDevelopmentChange().getSourceState()
         );
     }
 

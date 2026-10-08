@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HexFormat;
@@ -39,6 +40,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -73,6 +75,9 @@ class OperatorSessionSecurityIntegrationTest {
 
     @Autowired
     private OperatorRepository operatorRepository;
+
+    @Autowired
+    private com.atenea.auth.OperatorAuthProperties authProperties;
 
     @BeforeEach
     void clearSessions() {
@@ -127,6 +132,39 @@ class OperatorSessionSecurityIntegrationTest {
         assertFalse(serialized.contains("token"));
         assertFalse(serialized.contains("hash"));
         assertFalse(serialized.contains("useragent"));
+    }
+
+    @Test
+    void androidContractRenewsTwiceAfterExpiredAccessWithoutRecreatingFamily() throws Exception {
+        JsonNode session = loginFamily("ANDROID", "Atenea Android");
+        String familyId = accessPayload(session).path("sid").asText();
+        long absoluteExpiry = Instant.parse(session.path("refreshTokenExpiresAt").asText()).getEpochSecond();
+        ObjectNode contract;
+        try (var input = new ClassPathResource("auth-contract/android-family-refresh-v1.json").getInputStream()) {
+            contract = (ObjectNode) objectMapper.readTree(input);
+        }
+        assertFalse(contract.has("clientType"));
+        assertFalse(contract.has("deviceLabel"));
+        Duration originalTtl = authProperties.getJwt().getAccessTokenTtl();
+        try {
+            for (int cycle = 0; cycle < 2; cycle++) {
+                authProperties.getJwt().setAccessTokenTtl(Duration.ofSeconds(-10));
+                ObjectNode request = contract.deepCopy()
+                        .put("refreshToken", session.path("refreshToken").asText());
+                JsonNode expired = json(refreshRequest(request.toString(), 200));
+                authenticatedMe(expired.path("accessToken").asText(), 401);
+                authProperties.getJwt().setAccessTokenTtl(originalTtl);
+                session = json(refreshRequest(contract.deepCopy()
+                        .put("refreshToken", expired.path("refreshToken").asText()).toString(), 200));
+                authenticatedMe(session.path("accessToken").asText(), 200);
+                assertEquals(familyId, accessPayload(session).path("sid").asText());
+                assertEquals(absoluteExpiry,
+                        Instant.parse(session.path("refreshTokenExpiresAt").asText()).getEpochSecond());
+            }
+        } finally {
+            authProperties.getJwt().setAccessTokenTtl(originalTtl);
+        }
+        assertEquals(1, familyCount());
     }
 
     @Test

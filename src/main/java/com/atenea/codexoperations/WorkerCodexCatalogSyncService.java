@@ -91,7 +91,7 @@ public class WorkerCodexCatalogSyncService {
                 ) VALUES (?, ?, ?, ?, ?, ?)
                 """, catalog.workerId(), catalog.catalogRevision(), catalog.schemaVersion(),
                 catalog.codexVersion(), Timestamp.from(catalog.generatedAt()), Timestamp.from(observedAt));
-        List<CodexModel> models = sortedModels(catalog);
+        List<CodexModel> models = catalog.models();
         for (int modelPosition = 0; modelPosition < models.size(); modelPosition++) {
             CodexModel model = models.get(modelPosition);
             jdbcTemplate.update("""
@@ -178,7 +178,7 @@ public class WorkerCodexCatalogSyncService {
                 || !catalog.codexVersion().equals(header.get("codex_version"))) {
             throw new IllegalStateException("Persisted worker Codex catalog conflicts with observation");
         }
-        List<CodexModel> models = sortedModels(catalog);
+        List<CodexModel> models = catalog.models();
         List<PersistedModel> persistedModels = jdbcTemplate.query("""
                 SELECT model_id, display_name, default_effort, availability, position
                   FROM worker_codex_model

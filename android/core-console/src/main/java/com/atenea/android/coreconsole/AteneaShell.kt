@@ -3,6 +3,7 @@ package com.atenea.android.coreconsole
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -175,6 +176,7 @@ internal fun AteneaShell(
         }
     ) {
         Scaffold(
+            containerColor = if (immersiveWorkSurface) ConversationColors.background else MaterialTheme.colorScheme.background,
             topBar = {
                 if (!immersiveWorkSurface) {
                     AteneaTopChrome(
@@ -191,6 +193,7 @@ internal fun AteneaShell(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding)
                     .then(
                         if (immersiveWorkSurface) {
                             Modifier
@@ -221,10 +224,25 @@ internal fun AteneaShell(
                             selectedSessionId = sessionId
                             selectedDestination = AteneaDestination.CONVERSATION
                         },
+                        onOpenChanges = { projectId ->
+                            selectedProjectId = projectId
+                            selectedSessionId = null
+                            selectedDestination = AteneaDestination.CHANGES
+                        },
                         onOpenRescue = { projectId ->
                             selectedProjectId = projectId
                             selectedDestination = AteneaDestination.RESCUE
                         }
+                    )
+                    AteneaDestination.CHANGES -> DevelopmentChangesScreen(
+                        apiClient = apiClient,
+                        projectId = selectedProjectId,
+                        onOpenConversation = { projectId, sessionId ->
+                            selectedProjectId = projectId
+                            selectedSessionId = sessionId
+                            selectedDestination = AteneaDestination.CONVERSATION
+                        },
+                        onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS }
                     )
                     AteneaDestination.SESSION -> WorkSessionScreen(
                         apiClient = apiClient,
@@ -340,6 +358,7 @@ private enum class AteneaDestination(
 ) {
     HOME("Inicio", "Inicio"),
     PROJECTS("Proyectos", "Proyectos"),
+    CHANGES("Cambios", "Cambios"),
     SESSION("Sesión", "Sesión"),
     CONVERSATION("Conversación", "Conversación"),
     RESCUE("Rescate", "Rescate"),
@@ -388,6 +407,7 @@ private class AteneaNavigationStore(context: Context) {
     }
 
     private fun AteneaDestination.validFor(projectId: Long?, sessionId: Long?): AteneaDestination = when (this) {
+        AteneaDestination.CHANGES -> if (projectId != null) this else AteneaDestination.PROJECTS
         AteneaDestination.SESSION -> if (projectId != null && sessionId != null) this else AteneaDestination.PROJECTS
         AteneaDestination.CONVERSATION -> if (sessionId != null) this else AteneaDestination.PROJECTS
         AteneaDestination.RESCUE -> if (projectId != null) this else AteneaDestination.PROJECTS

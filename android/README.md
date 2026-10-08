@@ -170,6 +170,43 @@ Result:
 BUILD SUCCESSFUL
 ```
 
+## Conversation scroll regression
+
+The transcript must keep explicit composable branches for blank and nonblank
+paragraph lines. Do not reintroduce an early `return@forEachIndexed` after a
+`Spacer`: with the current Compose 1.7.6 runtime, offscreen precomposition/reuse
+can insert a node at an invalid index and close the app.
+
+`ConversationRealScrollTest` uses real Android input events and the real frame
+clock, not `ComposeTestRule`. Its six-turn fixture preserves an anonymized
+transcript's paragraph/code/blank-line shape and contains no account, session,
+run, attachment or production credentials. The fixture activity never accesses
+the backend or sends a prompt. The original renderer reproduces
+`ArrayIndexOutOfBoundsException: src.length=16 srcPos=15 dst.length=16 dstPos=16 length=-1`
+through `AndroidPrefetchScheduler` on Android 14; the corrected renderer must
+complete the same gestures without closing the activity or changing its draft.
+
+From the repository root, build the local test APK:
+
+```bash
+./scripts/android-build.sh :core-console:assembleDebugAndroidTest
+```
+
+On an isolated Android 14 emulator (not the installed production app):
+
+```bash
+adb install -r android/core-console/build/outputs/apk/androidTest/debug/core-console-debug-androidTest.apk
+adb shell am instrument -w -r \
+  -e class com.atenea.android.coreconsole.ConversationRealScrollTest,com.atenea.android.coreconsole.ConversationScrollRegressionTest,com.atenea.android.coreconsole.ConversationWorkspaceLayoutTest \
+  com.atenea.android.coreconsole.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Require `OK (12 tests)` with no failures or process crash; the `adb` process exit
+code alone does not prove instrumentation passed. The two synthetic Compose
+scroll tests alone are insufficient: they passed on the original renderer too.
+Before publishing, retain the real-clock regression and check scrolling both
+directions, unchanged draft, readable code/markdown and returning from `Cambio`.
+
 ## Native shell rule
 
 Do not place new screens directly in `CoreConsoleApp.kt`.

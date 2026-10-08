@@ -113,6 +113,29 @@ public class RemoteWorkerClient {
                 Duration.ofMinutes(5));
     }
 
+    public CodexReleaseReconciliation reconcileInstalledCodexReleases(UUID idempotencyKey) {
+        Map<String, Object> body = Map.of(
+                "operation", "RECONCILE_INSTALLED_CODEX_RELEASES",
+                "idempotencyKey", idempotencyKey.toString());
+        return exchange(
+                "POST", "/v1/codex/update/reconcile-installed", body,
+                CodexReleaseReconciliation.class, idempotencyKey.toString(),
+                Duration.ofMinutes(5));
+    }
+
+    public JsonNode activateReconciledCodexReleases(UUID idempotencyKey) {
+        Map<String, Object> body = Map.of(
+                "operation", "ACTIVATE_RECONCILED_CODEX_RELEASES",
+                "idempotencyKey", idempotencyKey.toString());
+        return exchange("POST", "/v1/codex/update/activate-recovery", body,
+                JsonNode.class, idempotencyKey.toString(), Duration.ofSeconds(45));
+    }
+
+    public JsonNode inspectRecoveryActivation(UUID idempotencyKey) {
+        return exchange("GET", "/v1/codex/update/activate-recovery/" + idempotencyKey,
+                null, JsonNode.class);
+    }
+
     public CodexUpdateActivation activateCodexUpdate(
             UUID planId, UUID candidateId, UUID authorizationId, UUID idempotencyKey) {
         Map<String, Object> body = Map.of(
@@ -759,6 +782,75 @@ public class RemoteWorkerClient {
                 ValidationResult.class,
                 validationId,
                 validationTimeout(operation));
+    }
+
+    public DurableValidationResult startValidation(
+            WorkSessionEntity session,
+            ValidationOperationKind operation,
+            String sourceTreeFingerprintSha256,
+            String operationId
+    ) {
+        Map<String, Object> body = validationBody(
+                session, operation, sourceTreeFingerprintSha256, operationId);
+        body.put("schemaVersion", 1);
+        body.put("protocolVersion", "closed-validation-broker/v1");
+        body.put("operationId", body.remove("validationId"));
+        return exchange(
+                "POST",
+                "/v1/project-workspaces/validations/start",
+                body,
+                DurableValidationResult.class,
+                operationId,
+                properties.getWorkspaceProvisionTimeout());
+    }
+
+    public DurableValidationResult inspectValidation(
+            WorkSessionEntity session,
+            String operationId
+    ) {
+        Map<String, Object> body = Map.of(
+                "schemaVersion", 1,
+                "protocolVersion", "closed-validation-broker/v1",
+                "operationId", operationId,
+                "sessionId", session.getRemoteSessionId().toString(),
+                "workspaceIdentity", session.getWorkspaceIdentity(),
+                "projectId", ProjectCodexIdentity.PROJECT_IDENTITY);
+        return exchange(
+                "POST",
+                "/v1/project-workspaces/validations/inspect",
+                body,
+                DurableValidationResult.class,
+                operationId,
+                properties.getWorkspaceProvisionTimeout());
+    }
+
+    private Map<String, Object> validationBody(
+            WorkSessionEntity session,
+            ValidationOperationKind operation,
+            String sourceTreeFingerprintSha256,
+            String validationId
+    ) {
+        if (!ProjectCodexIdentity.hasCanonicalSourceObservation(session)
+                || session.getRemoteSessionId() == null
+                || session.getWorkspaceIdentity() == null
+                || sourceTreeFingerprintSha256 == null
+                || !sourceTreeFingerprintSha256.matches("^[0-9a-f]{64}$")) {
+            throw new RemoteWorkerException(
+                    "Persisted validation ownership or source tree fingerprint is incomplete",
+                    409);
+        }
+        return new LinkedHashMap<>(Map.ofEntries(
+                Map.entry("validationId", validationId),
+                Map.entry("sessionId", session.getRemoteSessionId().toString()),
+                Map.entry("workspaceIdentity", session.getWorkspaceIdentity()),
+                Map.entry("projectId", ProjectCodexIdentity.PROJECT_IDENTITY),
+                Map.entry("repository", ProjectCodexIdentity.REPOSITORY),
+                Map.entry("branch", ProjectCodexIdentity.BRANCH),
+                Map.entry("commit", session.getCanonicalSourceCommit()),
+                Map.entry("manifestSha256", ProjectCodexIdentity.MANIFEST_SHA256),
+                Map.entry("operation", operation.name()),
+                Map.entry("definitionRevision", operation.definitionRevision()),
+                Map.entry("sourceTreeFingerprintSha256", sourceTreeFingerprintSha256)));
     }
 
     public RepositoryRoleSet ensureRepositoryRoles(
@@ -1425,6 +1517,34 @@ public class RemoteWorkerClient {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)
+    public record DurableValidationResult(
+            int schemaVersion,
+            String protocolVersion,
+            String operationId,
+            String sessionId,
+            String workspaceIdentity,
+            String projectId,
+            String sourceRevision,
+            String sourceTreeFingerprintSha256,
+            String validationDefinition,
+            String definitionRevision,
+            String state,
+            String terminalCause,
+            String transportState,
+            Integer exitCode,
+            long durationMillis,
+            String artifactManifestSha256,
+            String summary,
+            String createdAt,
+            String startedAt,
+            String finishedAt,
+            String updatedAt,
+            long revision,
+            boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
     public record RepositoryRoleSet(
             String sessionId,
             String workspaceIdentity,
@@ -1469,6 +1589,45 @@ public class RemoteWorkerClient {
             String previousLinkFingerprint,
             boolean linksChanged,
             boolean valuesExposed
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record CodexReleaseReconciliation(
+            String schemaVersion,
+            String operation,
+            String workerId,
+            UUID idempotencyKey,
+            String state,
+            UUID planId,
+            UUID currentInventoryId,
+            UUID candidateInventoryId,
+            String currentVersion,
+            String candidateVersion,
+            String currentReleaseDigestSha256,
+            String candidateReleaseDigestSha256,
+            String candidateCatalogRevision,
+            String currentInstallationState,
+            String currentLinkState,
+            String currentCompatibilityState,
+            String candidateInstallationState,
+            String candidateLinkState,
+            String candidateCompatibilityState,
+            String previousState,
+            String previousCompatibilityState,
+            String structureVerification,
+            String permissionVerification,
+            String metadataVerification,
+            String versionVerification,
+            String hashVerification,
+            String zeroNonTerminalRuns,
+            String currentLinkFingerprint,
+            boolean linksChanged,
+            String inventorySha256,
+            String planSha256,
+            String registrySha256,
+            boolean valuesExposed,
+            Instant completedAt
     ) {
     }
 

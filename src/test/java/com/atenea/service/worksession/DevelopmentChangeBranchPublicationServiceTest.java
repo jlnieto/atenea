@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState;
 import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
@@ -17,6 +18,7 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
+import com.atenea.persistence.worksession.WorkSessionAcceptanceState;
 import com.atenea.remoteworker.DevelopmentChangeBranchPublication;
 import com.atenea.remoteworker.DevelopmentChangeBranchPublicationCommand;
 import com.atenea.remoteworker.DevelopmentChangeBranchPublicationGateway;
@@ -101,6 +103,19 @@ class DevelopmentChangeBranchPublicationServiceTest {
         verify(sessionRepository, never()).saveAndFlush(any());
     }
 
+    @Test
+    void publicationFailsClosedWhenCurrentSourceHasNotBeenValidated() {
+        WorkSessionEntity session = session();
+        session.getDevelopmentChange().setValidationState(
+                DevelopmentChangeProjectionState.NOT_STARTED);
+        when(sessionRepository.findLockedWithProjectAndDevelopmentChangeById(12L))
+                .thenReturn(Optional.of(session));
+
+        assertThrows(WorkSessionPublishConflictException.class, () -> service.publish(12L));
+
+        verify(gateway, never()).publish(any());
+    }
+
     private static WorkSessionEntity session() {
         UUID changeKey = UUID.fromString("8bf60472-3c0e-49aa-99bf-6dc3c7e60eaf");
         ProjectEntity project = new ProjectEntity();
@@ -126,6 +141,7 @@ class DevelopmentChangeBranchPublicationServiceTest {
         change.setWorkspaceOwnershipFingerprintSha256("b".repeat(64));
         change.setWorkspaceState(DevelopmentChangeWorkspaceState.READY);
         change.setSourceState(DevelopmentChangeSourceState.DIRTY);
+        change.setValidationState(DevelopmentChangeProjectionState.CURRENT);
 
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(12L);
@@ -140,6 +156,8 @@ class DevelopmentChangeBranchPublicationServiceTest {
         session.setBaseBranch(ProjectCodexIdentity.BRANCH);
         session.setCanonicalSourceRef(change.getBaseRef());
         session.setCanonicalSourceCommit(change.getBaseCommit());
+        session.setAcceptanceState(WorkSessionAcceptanceState.VALIDATED);
+        session.setSourceTreeFingerprintSha256(change.getSourceFingerprintSha256());
         session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
         session.setUpdatedAt(Instant.now());
         return session;

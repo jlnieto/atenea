@@ -136,6 +136,7 @@ class WorkSessionGitHubServiceTest {
         assertEquals("https://github.com/acme/atenea/pull/42", response.pullRequestUrl());
         assertEquals(WorkSessionPullRequestStatus.OPEN, response.pullRequestStatus());
         assertEquals("abc123", response.finalCommitSha());
+        verify(gitHubClient,never()).requireUfdValidation(any(),anyString(),anyString());
         assertTrue(prBodyCaptor.getValue().contains("## Summary"));
         assertTrue(prBodyCaptor.getValue().contains("## What changed"));
         assertTrue(prBodyCaptor.getValue().contains("## How to review"));
@@ -301,6 +302,8 @@ class WorkSessionGitHubServiceTest {
         var identity = publishedIdentity(session);
         GitHubRepositoryRef repository = new GitHubRepositoryRef("jlnieto", "atenea");
         GitHubPullRequest existing = exactPullRequest(session, identity, 42L);
+        session.setPullRequestUrl(existing.htmlUrl());
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.OPEN);
 
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
         when(agentRunRepository.existsBySessionIdAndStatus(12L, AgentRunStatus.RUNNING)).thenReturn(false);
@@ -315,12 +318,40 @@ class WorkSessionGitHubServiceTest {
         when(workSessionService.toResponse(any(WorkSessionEntity.class)))
                 .thenAnswer(invocation -> responseFor(invocation.getArgument(0)));
 
-        WorkSessionResponse response = workSessionGitHubService.publishSession(
-                12L, new PublishWorkSessionRequest(null));
+        WorkSessionResponse response = workSessionGitHubService.publishForDelivery(12L);
 
         assertEquals(existing.htmlUrl(), response.pullRequestUrl());
+        verify(gitHubClient).requireUfdValidation(repository,identity.headSha(),identity.headBranch());
         verify(gitHubClient, never()).createPullRequest(
                 any(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test void existingChangePrCannotBeReplacedWhenClosedOrMissing() throws Exception {
+        var session=buildChangeSession(createRepoPath());
+        session.setPullRequestUrl("https://github.com/jlnieto/atenea/pull/47");
+        var identity=publishedIdentity(session);
+        var repository=new GitHubRepositoryRef("jlnieto","atenea");
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(changeBranchPublicationService.publish(12L)).thenReturn(identity);
+        when(gitHubClient.resolveRepository("https://github.com/jlnieto/atenea.git")).thenReturn(repository);
+        when(gitHubClient.findOpenPullRequests(repository,identity.headBranch(),identity.baseBranch())).thenReturn(List.of());
+        assertThrows(WorkSessionPublishConflictException.class,()->workSessionGitHubService.publishSession(12L,new PublishWorkSessionRequest(null)));
+        verify(gitHubClient,never()).createPullRequest(any(),anyString(),anyString(),anyString(),anyString());
+    }
+
+    @Test void differentPrForSameBranchCannotReplaceRetainedPrIdentity() throws Exception {
+        var session=buildChangeSession(createRepoPath());
+        session.setPullRequestUrl("https://github.com/jlnieto/atenea/pull/47");
+        var identity=publishedIdentity(session);
+        var repository=new GitHubRepositoryRef("jlnieto","atenea");
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(changeBranchPublicationService.publish(12L)).thenReturn(identity);
+        when(gitHubClient.resolveRepository("https://github.com/jlnieto/atenea.git")).thenReturn(repository);
+        when(gitHubClient.findOpenPullRequests(repository,identity.headBranch(),identity.baseBranch()))
+            .thenReturn(List.of(exactPullRequest(session,identity,48L)));
+        assertThrows(WorkSessionPublishConflictException.class,()->workSessionGitHubService.publishSession(12L,new PublishWorkSessionRequest(null)));
+        assertEquals("https://github.com/jlnieto/atenea/pull/47",session.getPullRequestUrl());
+        verify(gitHubClient,never()).createPullRequest(any(),anyString(),anyString(),anyString(),anyString());
     }
 
     @Test

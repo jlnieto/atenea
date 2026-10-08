@@ -137,6 +137,13 @@ public class WorkSessionAcceptanceService {
         workSessionRepository.save(session);
     }
 
+    /** Invalidate authority as soon as the durable preparation intent is accepted. */
+    @Transactional
+    public void invalidateForSourceUpdate(WorkSessionEntity session) {
+        invalidateForNewRun(session);
+        session.setAcceptanceNextAction("Wait for pinned conflict recovery; previous validation is historical");
+    }
+
     private WorkSessionEntity locked(Long sessionId) {
         return workSessionRepository.findLockedWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));

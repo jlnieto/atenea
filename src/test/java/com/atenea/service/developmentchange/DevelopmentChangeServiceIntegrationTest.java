@@ -86,8 +86,13 @@ class DevelopmentChangeServiceIntegrationTest {
     private ProjectEntity project;
     private OperatorEntity operator;
     private AuthenticatedOperator actor;
-    private long sessionsBefore;
-    private long runsBefore;
+    private long initialChanges;
+    private long initialOperations;
+    private long initialWorkspaceOperations;
+    private long initialSessions;
+    private long initialRuns;
+    private long initialCreatedAudits;
+    private long initialChangeAudits;
 
     @BeforeEach
     void setUp() {
@@ -97,8 +102,6 @@ class DevelopmentChangeServiceIntegrationTest {
         properties.setWorkspaceReconciliationEnabled(true);
         remoteWorkerProperties.setWorkerId("synthetic-worker-01");
         registerWorker();
-        sessionsBefore = workSessionRepository.count();
-        runsBefore = agentRunRepository.count();
         String identity = UUID.randomUUID().toString();
         project = projectRepository.saveAndFlush(canonicalProject());
         operator = operator(identity + "@atenea.test");
@@ -112,6 +115,17 @@ class DevelopmentChangeServiceIntegrationTest {
         when(gitRepositoryService.exactLocalHeadExists(
                 org.mockito.ArgumentMatchers.eq(project.getRepoPath()), anyString()))
                 .thenReturn(false);
+        initialChanges = changeRepository.count();
+        initialOperations = operationRepository.count();
+        initialWorkspaceOperations = workspaceOperationRepository.count();
+        initialSessions = workSessionRepository.count();
+        initialRuns = agentRunRepository.count();
+        initialCreatedAudits = auditRepository.findAll().stream()
+                .filter(event -> "DEVELOPMENT_CHANGE_CREATED".equals(event.getEventType()))
+                .count();
+        initialChangeAudits = auditRepository.findAll().stream()
+                .filter(event -> event.getEventType().startsWith("DEVELOPMENT_CHANGE_"))
+                .count();
     }
 
     @Test
@@ -130,8 +144,8 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals(DevelopmentChangeActionKind.WAIT_FOR_ENABLEMENT,
                 failure.response().nextAction().kind());
         assertEquals(auditsBefore + 1, auditRepository.count());
-        assertEquals(0, changeRepository.count());
-        assertEquals(0, operationRepository.count());
+        assertEquals(initialChanges, changeRepository.count());
+        assertEquals(initialOperations, operationRepository.count());
         verify(gitRepositoryService, never()).resolveExactHeadCommit(anyString(), anyString());
     }
 
@@ -148,8 +162,8 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals(V2FailureCategory.VALIDATION, failure.response().failureCategory());
         assertEquals("DEVELOPMENT_CHANGE_REQUEST_INVALID", failure.response().failureCode());
         assertEquals(auditsBefore + 1, auditRepository.count());
-        assertEquals(0, changeRepository.count());
-        assertEquals(0, operationRepository.count());
+        assertEquals(initialChanges, changeRepository.count());
+        assertEquals(initialOperations, operationRepository.count());
         verify(gitRepositoryService, never()).resolveExactHeadCommit(anyString(), anyString());
     }
 
@@ -178,9 +192,9 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals("refs/heads/main", created.developmentChange().baseRef());
         assertEquals(BASE_COMMIT, created.developmentChange().baseCommit());
         assertEquals(7, created.developmentChange().projectPolicyRevision());
-        assertEquals(1, changeRepository.count());
-        assertEquals(1, operationRepository.count());
-        assertEquals(1, auditRepository.findAll().stream()
+        assertEquals(initialChanges + 1, changeRepository.count());
+        assertEquals(initialOperations + 1, operationRepository.count());
+        assertEquals(initialCreatedAudits + 1, auditRepository.findAll().stream()
                 .filter(event -> "DEVELOPMENT_CHANGE_CREATED".equals(event.getEventType()))
                 .count());
         verify(gitRepositoryService, never()).resolveExactHeadCommit(anyString(), anyString());
@@ -200,11 +214,11 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals(V2FailureCategory.OWNERSHIP, failure.response().failureCategory());
         assertEquals("DEVELOPMENT_CHANGE_CANONICAL_SOURCE_REJECTED",
                 failure.response().failureCode());
-        assertEquals(0, changeRepository.count());
-        assertEquals(0, operationRepository.count());
-        assertEquals(0, workspaceOperationRepository.count());
-        assertEquals(sessionsBefore, workSessionRepository.count());
-        assertEquals(runsBefore, agentRunRepository.count());
+        assertEquals(initialChanges, changeRepository.count());
+        assertEquals(initialOperations, operationRepository.count());
+        assertEquals(initialWorkspaceOperations, workspaceOperationRepository.count());
+        assertEquals(initialSessions, workSessionRepository.count());
+        assertEquals(initialRuns, agentRunRepository.count());
     }
 
     @Test
@@ -221,11 +235,11 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals(V2FailureCategory.OWNERSHIP, failure.response().failureCategory());
         assertEquals("DEVELOPMENT_CHANGE_PROJECT_IDENTITY_MISMATCH",
                 failure.response().failureCode());
-        assertEquals(0, changeRepository.count());
-        assertEquals(0, operationRepository.count());
-        assertEquals(0, workspaceOperationRepository.count());
-        assertEquals(sessionsBefore, workSessionRepository.count());
-        assertEquals(runsBefore, agentRunRepository.count());
+        assertEquals(initialChanges, changeRepository.count());
+        assertEquals(initialOperations, operationRepository.count());
+        assertEquals(initialWorkspaceOperations, workspaceOperationRepository.count());
+        assertEquals(initialSessions, workSessionRepository.count());
+        assertEquals(initialRuns, agentRunRepository.count());
         verify(canonicalSourceAdmissionService, never()).observeRemoteBase(foreign);
     }
 
@@ -245,8 +259,8 @@ class DevelopmentChangeServiceIntegrationTest {
         assertEquals(created.operationId(), replayed.operationId());
         assertEquals(created.receiptSha256(), replayed.receiptSha256());
         assertFalse(replayed.developmentChange().mutationsEnabled());
-        assertEquals(1, changeRepository.count());
-        assertEquals(1, operationRepository.count());
+        assertEquals(initialChanges + 1, changeRepository.count());
+        assertEquals(initialOperations + 1, operationRepository.count());
     }
 
     @Test
@@ -262,8 +276,8 @@ class DevelopmentChangeServiceIntegrationTest {
 
         assertEquals(BASE_COMMIT, created.developmentChange().baseCommit());
         assertEquals(auditsBefore + 1, auditRepository.count());
-        assertEquals(1, changeRepository.count());
-        assertEquals(1, operationRepository.count());
+        assertEquals(initialChanges + 1, changeRepository.count());
+        assertEquals(initialOperations + 1, operationRepository.count());
         verify(gitRepositoryService, never()).exactLocalHeadExists(anyString(), anyString());
     }
 
@@ -291,9 +305,11 @@ class DevelopmentChangeServiceIntegrationTest {
                         new CreateDevelopmentChangeRequest("Different title")));
         assertEquals("DEVELOPMENT_CHANGE_IDEMPOTENCY_CONFLICT",
                 reused.response().failureCode());
-        assertEquals(created.developmentChange().changeKey(),
-                changeRepository.findAll().getFirst().getChangeKey());
-        assertEquals(1, changeRepository.count());
+        var projectChanges = changeRepository.findAllByProjectIdOrderByUpdatedAtDescIdDesc(
+                project.getId());
+        assertEquals(1, projectChanges.size());
+        assertEquals(created.developmentChange().changeKey(), projectChanges.getFirst().getChangeKey());
+        assertEquals(initialChanges + 1, changeRepository.count());
     }
 
     @Test
@@ -336,8 +352,8 @@ class DevelopmentChangeServiceIntegrationTest {
                 paused.developmentChange().status());
         assertEquals(DevelopmentChangeStatus.ABANDONED,
                 abandoned.developmentChange().status());
-        assertEquals(3, operationRepository.count());
-        assertEquals(3, auditRepository.findAll().stream()
+        assertEquals(initialOperations + 3, operationRepository.count());
+        assertEquals(initialChangeAudits + 3, auditRepository.findAll().stream()
                 .filter(event -> event.getEventType().startsWith("DEVELOPMENT_CHANGE_"))
                 .count());
     }

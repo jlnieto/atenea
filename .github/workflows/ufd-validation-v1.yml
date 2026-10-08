@@ -1,0 +1,78 @@
+name: Atenea UFD validation v1
+run-name: ${{ github.event_name == 'repository_dispatch' && format('Atenea UFD owned-head {0} {1}', github.event.client_payload.requestId, github.event.client_payload.headSha) || github.event.head_commit.message }}
+on:
+  push:
+    branches-ignore: [main]
+  repository_dispatch:
+    types: [atenea-ufd-owned-head-v1]
+permissions:
+  contents: read
+concurrency:
+  group: ufd-${{ github.event.client_payload.headBranch || github.ref }}
+  cancel-in-progress: false
+jobs:
+  ufd-validation:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Configure code authority
+        run: git remote add github https://github.com/jlnieto/atenea.git
+      - name: Closed dispatch controller regressions
+        run: python3 -B scripts/test-ufd-dispatch-v1.py
+      - name: Execute the committed UFD plan without overrides
+        env:
+          GH_TOKEN: ${{ secrets.ATENEA_UFD_READ_TOKEN || github.token }}
+        run: ./scripts/validate-change
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: atenea-ufd-${{ github.sha }}
+          path: target/ufd/*.json
+          if-no-files-found: error
+          retention-days: 30
+  ufd-owned-head:
+    if: github.event_name == 'repository_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: controller
+          persist-credentials: false
+      - name: Closed dispatch controller regressions
+        run: python3 -B controller/scripts/test-ufd-dispatch-v1.py
+      - name: Verify closed request from the immutable main controller
+        id: request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 controller/scripts/ufd-dispatch-v1.py request
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ steps.request.outputs.headSha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Verify exact publication and unchanged legacy validation harness
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 controller/scripts/ufd-dispatch-v1.py verify
+      - name: Execute the original committed UFD plan without overrides
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ secrets.ATENEA_UFD_READ_TOKEN || github.token }}
+        run: ./scripts/validate-change
+      - name: Bind the successful result to the durable request
+        run: python3 controller/scripts/ufd-dispatch-v1.py receipt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: atenea-ufd-owned-head-${{ github.event.client_payload.requestId }}-${{ github.event.client_payload.headSha }}
+          path: source/target/ufd/*.json
+          if-no-files-found: error
+          retention-days: 30

@@ -111,6 +111,7 @@ class ProjectCodexAttachmentManifestServiceTest {
         project.setId(7L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
         UUID remoteSessionId = UUID.fromString("4bb26a65-0a0a-4ae0-b8e0-b41e03a695bf");
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(41L);

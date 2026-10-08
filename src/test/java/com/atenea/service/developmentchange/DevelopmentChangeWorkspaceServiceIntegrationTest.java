@@ -473,6 +473,17 @@ class DevelopmentChangeWorkspaceServiceIntegrationTest {
         project.setDefaultBaseBranch("foreign");
         project.setUpdatedAt(Instant.now());
         projectRepository.saveAndFlush(project);
+        DevelopmentChangeRejectedException foreignBranch = assertThrows(
+                DevelopmentChangeRejectedException.class,
+                () -> service.inspect(
+                        actor, project.getId(), change.getChangeKey(), UUID.randomUUID()));
+        assertEquals("DEVELOPMENT_CHANGE_WORKSPACE_POLICY_DRIFT",
+                foreignBranch.response().failureCode());
+
+        project.setDefaultBaseBranch("main");
+        project.setName("Foreign project");
+        project.setUpdatedAt(Instant.now());
+        projectRepository.saveAndFlush(project);
         DevelopmentChangeRejectedException foreignProject = assertThrows(
                 DevelopmentChangeRejectedException.class,
                 () -> service.inspect(

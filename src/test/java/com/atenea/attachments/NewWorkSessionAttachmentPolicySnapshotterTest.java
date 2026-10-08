@@ -100,6 +100,7 @@ class NewWorkSessionAttachmentPolicySnapshotterTest {
         project.setId(7L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
 
         UUID remoteSessionId = UUID.randomUUID();
         WorkSessionEntity session = new WorkSessionEntity();

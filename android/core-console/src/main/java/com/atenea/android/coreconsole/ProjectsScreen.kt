@@ -31,6 +31,7 @@ internal fun ProjectsScreen(
     apiClient: AteneaApiClient,
     onOpenSession: (Long, Long) -> Unit,
     onOpenConversation: (Long, Long) -> Unit,
+    onOpenChanges: (Long) -> Unit,
     onOpenRescue: (Long) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -112,6 +113,7 @@ internal fun ProjectsScreen(
                     draftTitleByProject = draftTitleByProject + (project.projectId to value)
                 },
                 onOpenSession = { openSession(project) },
+                onOpenChanges = { onOpenChanges(project.projectId) },
                 onNewDevelopmentChange = { newChangeViewModel.open(project.projectId) },
                 onOpenRescue = { onOpenRescue(project.projectId) }
             )
@@ -181,6 +183,7 @@ internal fun ProjectOverviewCard(
     actionsEnabled: Boolean,
     onDraftTitleChange: (String) -> Unit,
     onOpenSession: () -> Unit,
+    onOpenChanges: () -> Unit,
     onNewDevelopmentChange: () -> Unit,
     onOpenRescue: () -> Unit
 ) {
@@ -191,6 +194,12 @@ internal fun ProjectOverviewCard(
         project.description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         project.defaultBaseBranch?.let { MetricLine("Base", it) }
         AteneaButton(
+            text = "Ver cambios",
+            modifier = Modifier.fillMaxWidth().testTag("project-development-changes-action"),
+            enabled = actionsEnabled,
+            onClick = onOpenChanges
+        )
+        AteneaOutlinedButton(
             text = if (newChangePending) "Preparando cambio..." else "Nuevo cambio",
             modifier = Modifier
                 .fillMaxWidth()

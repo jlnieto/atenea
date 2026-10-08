@@ -77,11 +77,11 @@ class RemoteSessionServiceIntegrationTest {
     private DevelopmentChangeEntity change;
     private OperatorEntity operator;
     private AuthenticatedOperator actor;
-    private long sessionsBefore;
+    private long initialSessions;
+    private long initialOperations;
 
     @BeforeEach
     void setUp() {
-        sessionsBefore = workSessionRepository.count();
         developmentChangeProperties.setMutationsEnabled(true);
         developmentChangeProperties.setSessionBindingEnabled(true);
         betaProperties.setOpenOrResolveEnabled(true);
@@ -97,6 +97,8 @@ class RemoteSessionServiceIntegrationTest {
         enablePolicy(RemoteWorkBetaPolicy.CAPABILITY, project, 3);
         change = change(project, DevelopmentChangeStatus.OPEN,
                 DevelopmentChangeWorkspaceState.READY);
+        initialSessions = workSessionRepository.count();
+        initialOperations = operationRepository.count();
     }
 
     @Test
@@ -120,8 +122,8 @@ class RemoteSessionServiceIntegrationTest {
         assertEquals(created.remoteSessionId(), replayed.remoteSessionId());
         assertFalse(created.replayed());
         assertTrue(replayed.replayed());
-        assertEquals(sessionsBefore + 1, workSessionRepository.count());
-        assertEquals(1, operationRepository.count());
+        assertEquals(initialSessions + 1, workSessionRepository.count());
+        assertEquals(initialOperations + 1, operationRepository.count());
 
         WorkSessionEntity persisted = workSessionRepository
                 .findWithProjectAndDevelopmentChangeById(created.sessionId()).orElseThrow();
@@ -151,7 +153,7 @@ class RemoteSessionServiceIntegrationTest {
 
         assertEquals(RemoteSessionResolution.RESOLVED, resolved.resolution());
         assertEquals(exact.getId(), resolved.sessionId());
-        assertEquals(sessionsBefore + 1, workSessionRepository.count());
+        assertEquals(initialSessions + 1, workSessionRepository.count());
 
         exact.setDevelopmentChange(null);
         workSessionRepository.saveAndFlush(exact);
@@ -163,7 +165,7 @@ class RemoteSessionServiceIntegrationTest {
                         new OpenOrResolveRemoteSessionRequest(change.getVersion())));
         assertEquals("REMOTE_SESSION_PAUSED_RESOLVE_ONLY",
                 pausedWithoutExact.response().failureCode());
-        assertEquals(sessionsBefore + 1, workSessionRepository.count());
+        assertEquals(initialSessions + 1, workSessionRepository.count());
     }
 
     @Test
@@ -222,7 +224,7 @@ class RemoteSessionServiceIntegrationTest {
                         actor, project.getId(), change.getChangeKey(), key,
                         new OpenOrResolveRemoteSessionRequest(created.changeRevision())));
         assertEquals("REMOTE_SESSION_IDEMPOTENCY_CONFLICT", conflict.response().failureCode());
-        assertEquals(sessionsBefore + 1, workSessionRepository.count());
+        assertEquals(initialSessions + 1, workSessionRepository.count());
     }
 
     @Test

@@ -1,6 +1,13 @@
 package com.atenea.service.worksession;
 
 import com.atenea.api.worksession.ValidationOperationResponse;
+import com.atenea.api.worksession.DevelopmentChangeValidationResponse;
+import com.atenea.api.worksession.DevelopmentChangeValidationEvidenceResponse;
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
 import com.atenea.persistence.worksession.ExecutionTarget;
@@ -23,6 +30,7 @@ import java.util.EnumMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +56,40 @@ public class ClosedValidationOperationService {
         this.validationOperationRepository = validationOperationRepository;
         this.remoteWorkerClient = remoteWorkerClient;
         this.acceptanceService = acceptanceService;
+    }
+
+    @Transactional(readOnly = true)
+    public DevelopmentChangeValidationEvidenceResponse getDevelopmentChangeEvidence(Long sessionId) {
+        // No lock, worker call, source observation, projection promotion or retry on this path.
+        WorkSessionEntity session = workSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        if (change == null || session.getProject() == null || change.getProject() == null
+                || session.getProject().getId() == null
+                || !Objects.equals(session.getProject().getId(), change.getProject().getId())
+                || session.getWorkspaceIdentity() == null
+                || !Objects.equals(session.getWorkspaceIdentity(), change.getWorkspaceIdentity())
+                || session.getWorkspaceBranch() == null
+                || !Objects.equals(session.getWorkspaceBranch(), change.getWorkspaceBranch())
+                || session.getSelectedWorkerId() == null
+                || !Objects.equals(session.getSelectedWorkerId(), change.getSelectedWorkerId())) {
+            throw new WorkSessionOperationBlockedException("Validation evidence requires the bound DevelopmentChange");
+        }
+        String fingerprint = change.getSourceFingerprintSha256();
+        List<ValidationOperationEntity> results = fingerprint == null ? List.of()
+                : validationOperationRepository
+                        .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(sessionId, fingerprint);
+        Map<ValidationOperationKind, ValidationOperationEntity> latest = latestByOperation(results);
+        List<ValidationOperationResponse> evidence = latest.values().stream().map(this::response).toList();
+        ValidationOperationResponse lastAttempt = validationOperationRepository
+                .findFirstByWorkSessionIdOrderByStartedAtDescIdDesc(sessionId)
+                .map(this::response).orElse(null);
+        int passed = (int) latest.values().stream()
+                .filter(value -> value.getStatus() == ValidationOperationStatus.SUCCEEDED).count();
+        return new DevelopmentChangeValidationEvidenceResponse(
+                change.getChangeKey(), sessionId, change.getSourceRevision(), fingerprint,
+                change.getValidationState(), passed, ValidationOperationKind.values().length,
+                evidence, lastAttempt);
     }
 
     @Transactional
@@ -120,6 +162,248 @@ public class ClosedValidationOperationService {
         return response(entity);
     }
 
+    @Transactional
+    public DevelopmentChangeValidationResponse advanceDevelopmentChange(Long sessionId) {
+        WorkSessionEntity session = workSessionRepository
+                .findLockedWithProjectAndDevelopmentChangeById(sessionId)
+                .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        DevelopmentChangeEntity change = requireExactDevelopmentChange(session);
+        RemoteWorkerClient.SourceTreeFingerprint source = remoteWorkerClient.fingerprintSourceTree(session);
+        validateSourceObservation(session, source);
+        if (!source.fingerprintSha256().equals(change.getSourceFingerprintSha256())) {
+            acceptanceService.observeSourceTree(sessionId, source.fingerprintSha256());
+            change.setValidationState(DevelopmentChangeProjectionState.STALE);
+            return developmentChangeResponse(
+                    change,
+                    List.of(),
+                    "STALE",
+                    null,
+                    "El código cambió después de la última observación durable.");
+        }
+        acceptanceService.observeSourceTree(sessionId, source.fingerprintSha256());
+
+        List<ValidationOperationEntity> results = validationOperationRepository
+                .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
+                        sessionId, source.fingerprintSha256());
+        Map<ValidationOperationKind, ValidationOperationEntity> latest = latestByOperation(results);
+        ValidationOperationEntity running = latest.values().stream()
+                .filter(result -> result.getStatus() == ValidationOperationStatus.RUNNING)
+                .findFirst()
+                .orElse(null);
+        if (running != null) {
+            try {
+                applyDurableResult(
+                        running,
+                        session,
+                        remoteWorkerClient.inspectValidation(session, running.getId().toString()));
+            } catch (RemoteWorkerException exception) {
+                return developmentChangeResponse(
+                        change, results, "RUNNING", running.getOperation().name(),
+                        "La validación sigue ejecutándose; su estado durable se reconciliará.");
+            }
+            results = validationOperationRepository
+                    .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
+                            sessionId, source.fingerprintSha256());
+            latest = latestByOperation(results);
+            if (running.getStatus() == ValidationOperationStatus.RUNNING) {
+                return developmentChangeResponse(
+                        change, results, "RUNNING", running.getOperation().name(),
+                        running.getSummary());
+            }
+        }
+
+        ValidationOperationEntity failed = latest.values().stream()
+                .filter(result -> result.getStatus() == ValidationOperationStatus.FAILED
+                        || result.getStatus() == ValidationOperationStatus.BLOCKED)
+                .findFirst()
+                .orElse(null);
+        // A terminal failure discovered while polling a RUNNING operation must
+        // be shown to the operator first. A later explicit request may start a
+        // new durable attempt, including when the old terminal state is BLOCKED.
+        if (failed != null && running != null) {
+            change.setValidationState(DevelopmentChangeProjectionState.BLOCKED);
+            projectAcceptance(sessionId, source.fingerprintSha256());
+            return developmentChangeResponse(
+                    change, results,
+                    failed.getStatus() == ValidationOperationStatus.BLOCKED ? "BLOCKED" : "FAILED",
+                    failed.getOperation().name(), failed.getSummary());
+        }
+
+        ValidationOperationKind next = failed == null ? null : failed.getOperation();
+        if (failed == null) {
+            for (ValidationOperationKind kind : ValidationOperationKind.values()) {
+                if (!latest.containsKey(kind)) {
+                    next = kind;
+                    break;
+                }
+            }
+        }
+        if (next == null) {
+            projectAcceptance(sessionId, source.fingerprintSha256());
+            change.setValidationState(DevelopmentChangeProjectionState.CURRENT);
+            return developmentChangeResponse(
+                    change, results, "SUCCEEDED", null,
+                    "Todas las validaciones obligatorias están vigentes.");
+        }
+
+        ValidationOperationEntity entity = newValidationEntity(
+                session, next, source.fingerprintSha256(), failed == null ? null : failed.getId());
+        validationOperationRepository.saveAndFlush(entity);
+        acceptanceService.markValidating(
+                sessionId,
+                source.fingerprintSha256(),
+                projectionSha256(sessionId, source.fingerprintSha256()),
+                profileRevision());
+        try {
+            applyDurableResult(
+                    entity,
+                    session,
+                    remoteWorkerClient.startValidation(
+                            session, next, source.fingerprintSha256(), entity.getId().toString()));
+        } catch (RemoteWorkerException exception) {
+            entity.setStatus(ValidationOperationStatus.BLOCKED);
+            entity.setExitCode(null);
+            entity.setDurationMillis(0L);
+            entity.setArtifactManifestSha256(null);
+            entity.setSummary("Worker validation authority was unavailable");
+            entity.setFinishedAt(Instant.now());
+            entity.setUpdatedAt(entity.getFinishedAt());
+            validationOperationRepository.save(entity);
+            change.setValidationState(DevelopmentChangeProjectionState.BLOCKED);
+        }
+        results = validationOperationRepository
+                .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
+                        sessionId, source.fingerprintSha256());
+        if (entity.getStatus() == ValidationOperationStatus.FAILED
+                || entity.getStatus() == ValidationOperationStatus.BLOCKED) {
+            projectAcceptance(sessionId, source.fingerprintSha256());
+        }
+        String state = entity.getStatus() == ValidationOperationStatus.RUNNING
+                ? "RUNNING"
+                : entity.getStatus() == ValidationOperationStatus.SUCCEEDED
+                ? "ADVANCING"
+                : entity.getStatus() == ValidationOperationStatus.BLOCKED
+                ? "BLOCKED"
+                : "FAILED";
+        return developmentChangeResponse(
+                change, results, state, entity.getOperation().name(), entity.getSummary());
+    }
+
+    private ValidationOperationEntity newValidationEntity(
+            WorkSessionEntity session,
+            ValidationOperationKind operation,
+            String fingerprint,
+            UUID retryOf
+    ) {
+        String identityMaterial = "development-change\0" + session.getRemoteSessionId() + "\0"
+                + session.getWorkspaceIdentity() + "\0" + operation.name() + "\0"
+                + operation.definitionRevision() + "\0" + fingerprint;
+        String identity = sha256(retryOf == null
+                ? identityMaterial : identityMaterial + "\0retry-of\0" + retryOf);
+        Instant now = Instant.now();
+        ValidationOperationEntity entity = new ValidationOperationEntity();
+        entity.setId(UUID.randomUUID());
+        entity.setWorkSession(session);
+        entity.setOperation(operation);
+        entity.setStatus(ValidationOperationStatus.RUNNING);
+        entity.setSourceTreeFingerprintSha256(fingerprint);
+        entity.setDefinitionRevision(operation.definitionRevision());
+        entity.setIdentitySha256(identity);
+        entity.setSummary("Bounded validation is queued");
+        entity.setStartedAt(now);
+        entity.setCreatedAt(now);
+        entity.setUpdatedAt(now);
+        return entity;
+    }
+
+    private void applyDurableResult(
+            ValidationOperationEntity entity,
+            WorkSessionEntity session,
+            RemoteWorkerClient.DurableValidationResult result
+    ) {
+        if (result.schemaVersion() != 1
+                || !"closed-validation-broker/v1".equals(result.protocolVersion())
+                || !entity.getId().toString().equals(result.operationId())
+                || !session.getRemoteSessionId().toString().equals(result.sessionId())
+                || !session.getWorkspaceIdentity().equals(result.workspaceIdentity())
+                || !ProjectCodexIdentity.PROJECT_IDENTITY.equals(result.projectId())
+                || !entity.getOperation().name().equals(result.validationDefinition())
+                || !entity.getDefinitionRevision().equals(result.definitionRevision())
+                || !entity.getSourceTreeFingerprintSha256().equals(
+                        result.sourceTreeFingerprintSha256())
+                || result.valuesExposed()
+                || result.durationMillis() < 0) {
+            throw new RemoteWorkerException(
+                    "Durable validation ownership response is incomplete or conflicting", 409);
+        }
+        ValidationOperationStatus status = switch (result.state()) {
+            case "QUEUED", "RUNNING", "CANCELLING", "RECONCILING" ->
+                    ValidationOperationStatus.RUNNING;
+            case "SUCCEEDED" -> ValidationOperationStatus.SUCCEEDED;
+            case "CANDIDATE_FAILED" -> ValidationOperationStatus.FAILED;
+            case "INFRASTRUCTURE_FAILED", "POLICY_FAILED", "VALIDATION_FAILED",
+                    "OWNERSHIP_FAILED", "CANCELLED" -> ValidationOperationStatus.BLOCKED;
+            default -> throw new RemoteWorkerException(
+                    "Validation returned an unsupported durable state", 409);
+        };
+        Instant updatedAt = Instant.now();
+        entity.setStatus(status);
+        if (status == ValidationOperationStatus.RUNNING) {
+            entity.setExitCode(null);
+            entity.setDurationMillis(null);
+            entity.setArtifactManifestSha256(null);
+            entity.setFinishedAt(null);
+        } else {
+            entity.setExitCode(result.exitCode());
+            entity.setDurationMillis(result.durationMillis());
+            entity.setArtifactManifestSha256(result.artifactManifestSha256());
+            entity.setFinishedAt(updatedAt);
+        }
+        entity.setSummary(safeSummary(result.summary()));
+        entity.setUpdatedAt(updatedAt);
+        validationOperationRepository.save(entity);
+    }
+
+    private DevelopmentChangeEntity requireExactDevelopmentChange(WorkSessionEntity session) {
+        DevelopmentChangeEntity change = session.getDevelopmentChange();
+        if (change == null
+                || change.getStatus() != DevelopmentChangeStatus.OPEN
+                || change.getWorkspaceState() != DevelopmentChangeWorkspaceState.READY
+                || (change.getSourceState() != DevelopmentChangeSourceState.DIRTY
+                    && !(change.getSourceState() == DevelopmentChangeSourceState.CLEAN
+                        && workSessionRepository.existsReadyCleanSourceUpdateBySessionId(session.getId())))
+                || !change.getWorkspaceIdentity().equals(session.getWorkspaceIdentity())
+                || !change.getWorkspaceBranch().equals(session.getWorkspaceBranch())
+                || !change.getSelectedWorkerId().equals(session.getSelectedWorkerId())) {
+            throw new WorkSessionOperationBlockedException(
+                    "Validation requires an exact OPEN/READY/DIRTY DevelopmentChange");
+        }
+        requireExactIdleSession(session);
+        return change;
+    }
+
+    private DevelopmentChangeValidationResponse developmentChangeResponse(
+            DevelopmentChangeEntity change,
+            List<ValidationOperationEntity> results,
+            String state,
+            String currentOperation,
+            String summary
+    ) {
+        int passed = (int) latestByOperation(results).values().stream()
+                .filter(result -> result.getStatus() == ValidationOperationStatus.SUCCEEDED)
+                .count();
+        return new DevelopmentChangeValidationResponse(
+                change.getChangeKey(),
+                change.getSourceRevision(),
+                change.getSourceFingerprintSha256(),
+                change.getValidationState(),
+                state,
+                currentOperation,
+                passed,
+                ValidationOperationKind.values().length,
+                safeSummary(summary));
+    }
+
     private void applyResult(
             ValidationOperationEntity entity,
             WorkSessionEntity session,
@@ -166,15 +450,13 @@ public class ClosedValidationOperationService {
     private void projectAcceptance(Long sessionId, String fingerprint) {
         List<ValidationOperationEntity> results =
                 validationOperationRepository
-                        .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByOperationAsc(
+                        .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
                                 sessionId,
                                 fingerprint);
-        Map<ValidationOperationKind, ValidationOperationEntity> byKind =
-                new EnumMap<>(ValidationOperationKind.class);
-        results.forEach(result -> byKind.put(result.getOperation(), result));
+        Map<ValidationOperationKind, ValidationOperationEntity> byKind = latestByOperation(results);
         String projection = projectionSha256(results);
 
-        ValidationOperationEntity failed = results.stream()
+        ValidationOperationEntity failed = byKind.values().stream()
                 .filter(result -> result.getStatus() == ValidationOperationStatus.FAILED
                         || result.getStatus() == ValidationOperationStatus.BLOCKED)
                 .findFirst()
@@ -214,7 +496,7 @@ public class ClosedValidationOperationService {
     private String projectionSha256(Long sessionId, String fingerprint) {
         return projectionSha256(
                 validationOperationRepository
-                        .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByOperationAsc(
+                        .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
                                 sessionId,
                                 fingerprint));
     }
@@ -222,7 +504,7 @@ public class ClosedValidationOperationService {
     private String projectionSha256(List<ValidationOperationEntity> results) {
         Map<ValidationOperationKind, ValidationOperationStatus> states =
                 new EnumMap<>(ValidationOperationKind.class);
-        results.forEach(result -> states.put(result.getOperation(), result.getStatus()));
+        latestByOperation(results).forEach((kind, result) -> states.put(kind, result.getStatus()));
         StringBuilder canonical = new StringBuilder(profileRevision());
         for (ValidationOperationKind kind : ValidationOperationKind.values()) {
             canonical.append('\0').append(kind.name()).append('=')
@@ -231,11 +513,27 @@ public class ClosedValidationOperationService {
         return sha256(canonical.toString());
     }
 
+    private Map<ValidationOperationKind, ValidationOperationEntity> latestByOperation(
+            List<ValidationOperationEntity> results
+    ) {
+        Map<ValidationOperationKind, ValidationOperationEntity> latest =
+                new EnumMap<>(ValidationOperationKind.class);
+        results.stream()
+                .filter(result -> result.getOperation().definitionRevision().equals(result.getDefinitionRevision()))
+                .forEach(result -> latest.put(result.getOperation(), result));
+        return latest;
+    }
+
     private String profileRevision() {
-        return "atenea-required-validation-v1";
+        return "atenea-required-validation-v2";
     }
 
     private void requireExactIdleSession(WorkSessionEntity session) {
+        if (workSessionRepository.existsActiveSourceUpdateBySessionId(session.getId())
+                || workSessionRepository.existsActiveSourceFinalizationBySessionId(session.getId())) {
+            throw new WorkSessionOperationBlockedException(
+                    "Pinned conflict recovery must finish before validating the new revision; previous results are historical");
+        }
         if (session.getStatus() != WorkSessionStatus.OPEN
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !ProjectCodexIdentity.hasCanonicalSourceObservation(session)
@@ -269,6 +567,25 @@ public class ClosedValidationOperationService {
             return "Validation finished without a summary";
         }
         String normalized = value.replaceAll("[\\r\\n\\t]+", " ").trim();
+        if (normalized.matches("^(BACKEND_TEST|WEB_BUILD|ANDROID_BUILD|PLAYWRIGHT_ACCEPTANCE)/[A-Z_]+: [A-Z_]+$")) {
+            String code = normalized.substring(normalized.indexOf(": ") + 2);
+            String description = switch (code) {
+                case "TEST_DATABASE_SETUP_FAILED" -> "No se pudo preparar PostgreSQL de pruebas. El código del ticket no se ha validado.";
+                case "TEST_RUNTIME_UNAVAILABLE", "TEST_CONTAINER_CREATE_FAILED", "TEST_CONTAINER_START_FAILED" ->
+                        "El entorno aislado de pruebas no está disponible. El código del ticket no se ha validado.";
+                case "INSTALLED_TOOLCHAIN_INVALID", "TEST_TOOLCHAIN_BUILD_FAILED", "TEST_IMAGE_INVALID", "TEST_CACHE_INCOMPLETE" ->
+                        "Falta preparar o verificar las herramientas y dependencias de test. El código del ticket no se ha validado.";
+                case "SANDBOX_SETUP_FAILED" -> "El aislamiento de la validación no pudo arrancar. No es un fallo demostrado del código del ticket.";
+                case "TEST_RUNTIME_CLEANUP_FAILED" -> "El entorno temporal no pudo retirarse correctamente. La validación queda bloqueada y conserva su diagnóstico.";
+                case "UNSUPPORTED_DEPENDENCY_MANIFEST" -> "Las dependencias del cambio no coinciden con el entorno de test autorizado.";
+                case "COMPILATION_FAILED" -> "La compilación del cambio ha fallado.";
+                case "TESTS_FAILED" -> "Hay tests del cambio que han fallado. Se ha conservado el diagnóstico de la validación.";
+                case "RESOURCE_LIMIT" -> "La validación alcanzó su límite de tiempo o recursos.";
+                case "EXECUTION_FAILED" -> "La validación terminó con error sin confirmar un fallo del código. Se ha conservado el diagnóstico.";
+                default -> null;
+            };
+            if (description != null) return "[" + code + "] " + description;
+        }
         return normalized.substring(0, Math.min(normalized.length(), 500));
     }
 

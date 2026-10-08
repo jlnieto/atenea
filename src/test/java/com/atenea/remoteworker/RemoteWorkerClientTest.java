@@ -269,6 +269,32 @@ class RemoteWorkerClientTest {
         server.createContext("/v1/project-workspaces/validations", exchange -> {
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
             JsonNode request = requestBody.get();
+            if (exchange.getRequestURI().getPath().endsWith("/start")) {
+                byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
+                        java.util.Map.entry("schemaVersion", 1),
+                        java.util.Map.entry("protocolVersion", "closed-validation-broker/v1"),
+                        java.util.Map.entry("operationId", request.get("operationId").asText()),
+                        java.util.Map.entry("sessionId", request.get("sessionId").asText()),
+                        java.util.Map.entry("workspaceIdentity", request.get("workspaceIdentity").asText()),
+                        java.util.Map.entry("projectId", request.get("projectId").asText()),
+                        java.util.Map.entry("sourceRevision", request.get("commit").asText()),
+                        java.util.Map.entry("sourceTreeFingerprintSha256", request.get("sourceTreeFingerprintSha256").asText()),
+                        java.util.Map.entry("validationDefinition", request.get("operation").asText()),
+                        java.util.Map.entry("definitionRevision", request.get("definitionRevision").asText()),
+                        java.util.Map.entry("state", "QUEUED"),
+                        java.util.Map.entry("terminalCause", "NONE"),
+                        java.util.Map.entry("transportState", "CONFIRMED"),
+                        java.util.Map.entry("durationMillis", 0),
+                        java.util.Map.entry("summary", "Closed validation is queued for admission"),
+                        java.util.Map.entry("createdAt", "2026-09-25T10:00:00Z"),
+                        java.util.Map.entry("updatedAt", "2026-09-25T10:00:00Z"),
+                        java.util.Map.entry("revision", 1),
+                        java.util.Map.entry("valuesExposed", false)));
+                exchange.sendResponseHeaders(202, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.close();
+                return;
+            }
             byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
                     java.util.Map.entry("validationId", request.get("validationId").asText()),
                     java.util.Map.entry("sessionId", request.get("sessionId").asText()),
@@ -350,6 +376,48 @@ class RemoteWorkerClientTest {
                     java.util.Map.entry("previousLinkFingerprint", "6".repeat(64)),
                     java.util.Map.entry("linksChanged", false),
                     java.util.Map.entry("valuesExposed", false)));
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.createContext("/v1/codex/update/reconcile-installed", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            JsonNode request = requestBody.get();
+            byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
+                    java.util.Map.entry("schemaVersion", "codex-release-reconcile-v1"),
+                    java.util.Map.entry("operation", request.get("operation").asText()),
+                    java.util.Map.entry("workerId", "ax42-01"),
+                    java.util.Map.entry("idempotencyKey", request.get("idempotencyKey").asText()),
+                    java.util.Map.entry("state", "RECONCILED"),
+                    java.util.Map.entry("planId", "15414500-0000-4000-8000-000000000001"),
+                    java.util.Map.entry("currentInventoryId", "15414500-0000-4000-8000-000000000002"),
+                    java.util.Map.entry("candidateInventoryId", "15414500-0000-4000-8000-000000000003"),
+                    java.util.Map.entry("currentVersion", "0.154.0"),
+                    java.util.Map.entry("candidateVersion", "0.145.0"),
+                    java.util.Map.entry("currentReleaseDigestSha256", "1".repeat(64)),
+                    java.util.Map.entry("candidateReleaseDigestSha256", "2".repeat(64)),
+                    java.util.Map.entry("candidateCatalogRevision", "3".repeat(64)),
+                    java.util.Map.entry("currentInstallationState", "INSTALLED"),
+                    java.util.Map.entry("currentLinkState", "CURRENT"),
+                    java.util.Map.entry("currentCompatibilityState", "UNKNOWN"),
+                    java.util.Map.entry("candidateInstallationState", "STAGED"),
+                    java.util.Map.entry("candidateLinkState", "NONE"),
+                    java.util.Map.entry("candidateCompatibilityState", "COMPATIBLE"),
+                    java.util.Map.entry("previousState", "ABSENT"),
+                    java.util.Map.entry("previousCompatibilityState", "UNKNOWN"),
+                    java.util.Map.entry("structureVerification", "PASS"),
+                    java.util.Map.entry("permissionVerification", "PASS"),
+                    java.util.Map.entry("metadataVerification", "PASS"),
+                    java.util.Map.entry("versionVerification", "PASS"),
+                    java.util.Map.entry("hashVerification", "PASS"),
+                    java.util.Map.entry("zeroNonTerminalRuns", "PASS"),
+                    java.util.Map.entry("currentLinkFingerprint", "4".repeat(64)),
+                    java.util.Map.entry("linksChanged", true),
+                    java.util.Map.entry("inventorySha256", "5".repeat(64)),
+                    java.util.Map.entry("planSha256", "6".repeat(64)),
+                    java.util.Map.entry("registrySha256", "7".repeat(64)),
+                    java.util.Map.entry("valuesExposed", false),
+                    java.util.Map.entry("completedAt", "2026-09-17T23:00:00Z")));
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
             exchange.close();
@@ -815,6 +883,7 @@ class RemoteWorkerClientTest {
                     session.getDevelopmentChange().setProject(foreign);
                 },
                 session -> session.getProject().setDefaultBaseBranch("foreign"),
+                session -> session.getProject().setRepoPath("   "),
                 session -> session.getDevelopmentChange().setBaseRef("refs/heads/foreign"),
                 session -> session.setRemoteCloseOperationId(null));
         for (Consumer<WorkSessionEntity> mutation : mutations) {
@@ -996,6 +1065,26 @@ class RemoteWorkerClientTest {
         assertNull(body.get("path"));
         assertNull(body.get("command"));
         assertNull(body.get("service"));
+    }
+
+    @Test
+    void codexReleaseReconciliationSendsNoPathVersionCommandOrSymlinkAuthority() {
+        UUID idempotencyKey = UUID.randomUUID();
+
+        RemoteWorkerClient.CodexReleaseReconciliation result =
+                client.reconcileInstalledCodexReleases(idempotencyKey);
+
+        JsonNode body = requestBody.get();
+        assertEquals(Set.of("operation", "idempotencyKey"),
+                objectMapper.convertValue(body, java.util.Map.class).keySet());
+        assertEquals("RECONCILE_INSTALLED_CODEX_RELEASES", body.get("operation").asText());
+        assertEquals(idempotencyKey.toString(), body.get("idempotencyKey").asText());
+        assertEquals("RECONCILED", result.state());
+        assertEquals("ABSENT", result.previousState());
+        for (String forbidden : List.of(
+                "path", "source", "destination", "version", "command", "symlink")) {
+            assertNull(body.get(forbidden));
+        }
     }
 
     @Test
@@ -1454,6 +1543,33 @@ class RemoteWorkerClientTest {
     }
 
     @Test
+    void durableValidationStartAddsOnlyVersionedIdentityAndNoExecutionAuthority() {
+        AgentRunEntity run = projectRun(null);
+        WorkSessionEntity session = run.getSession();
+        session.setWorkspaceIdentity(
+                "remote:ax42-01:change:59315b6e-59bc-4884-9def-356e1ca86ef4");
+        String operationId = "0cc7815a-f703-46ee-938a-8ef4d00e68a2";
+
+        RemoteWorkerClient.DurableValidationResult result = client.startValidation(
+                session,
+                com.atenea.persistence.worksession.ValidationOperationKind.BACKEND_TEST,
+                "4".repeat(64),
+                operationId);
+
+        JsonNode body = requestBody.get();
+        assertEquals(13, body.size());
+        assertEquals("closed-validation-broker/v1", body.get("protocolVersion").asText());
+        assertEquals(operationId, body.get("operationId").asText());
+        assertEquals(session.getWorkspaceIdentity(), body.get("workspaceIdentity").asText());
+        assertNull(body.get("validationId"));
+        assertNull(body.get("command"));
+        assertNull(body.get("path"));
+        assertNull(body.get("slot"));
+        assertNull(body.get("credential"));
+        assertEquals("QUEUED", result.state());
+    }
+
+    @Test
     void repositoryRolesUseOnlyPersistedSessionAndGeneratedChangeIdentity() {
         AgentRunEntity run = projectRun(null);
         WorkSessionEntity session = run.getSession();
@@ -1712,6 +1828,7 @@ class RemoteWorkerClientTest {
         project.setId(1L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
         WorkSessionEntity session = new WorkSessionEntity();
         session.setId(41L);
         session.setProject(project);

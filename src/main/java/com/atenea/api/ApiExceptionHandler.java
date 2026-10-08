@@ -19,6 +19,7 @@ import com.atenea.service.core.CoreVoiceTranscriptionException;
 import com.atenea.service.core.CoreVoiceUnavailableException;
 import com.atenea.service.core.CoreSpeechSynthesisException;
 import com.atenea.service.mobile.MobileUploadException;
+import com.atenea.service.mobile.MobileDiagnosticException;
 import com.atenea.service.project.DuplicateProjectNameException;
 import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotDirectoryException;
@@ -67,6 +68,27 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(org.springframework.dao.DataAccessException.class)
+    public ResponseEntity<ApiErrorResponse> handleDatabaseGuard(org.springframework.dao.DataAccessException exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.sql.SQLException sql && "55000".equals(sql.getSQLState())
+                    && sql.getMessage() != null && sql.getMessage().contains("ATENEA_RELEASE_IN_PROGRESS")) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorResponse(
+                        "Hay una publicación en curso. Espera a que termine antes de iniciar otra tarea.",
+                        List.of("ATENEA_RELEASE_IN_PROGRESS")));
+            }
+        }
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiErrorResponse(
+                "No se pudo completar la operación de datos.", List.of()));
+    }
+
+    @ExceptionHandler(com.atenea.delivery.DeliveryRejectedException.class)
+    public ResponseEntity<ApiErrorResponse> handleDeliveryRejected(com.atenea.delivery.DeliveryRejectedException exception) {
+        HttpStatus status = exception.code().equals("PLATFORM_ADMINISTRATOR_REQUIRED")
+                ? HttpStatus.FORBIDDEN : HttpStatus.CONFLICT;
+        return ResponseEntity.status(status).body(new ApiErrorResponse(exception.getMessage(), List.of(exception.code())));
+    }
 
     @ExceptionHandler(DevelopmentChangeNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleDevelopmentChangeNotFound(
@@ -340,6 +362,12 @@ public class ApiExceptionHandler {
             AgentRunRecoveryConflictException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(MobileDiagnosticException.class)
+    public ResponseEntity<ApiErrorResponse> handleMobileDiagnostic(MobileDiagnosticException exception) {
+        return ResponseEntity.status(exception.status()).body(
+                new ApiErrorResponse(exception.getMessage(), List.of(exception.code())));
     }
 
     @ExceptionHandler(MobileUploadException.class)

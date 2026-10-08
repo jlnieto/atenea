@@ -24,7 +24,11 @@ class AteneaApiClient(
     private val sessionUpdater: (MobileAuthSession) -> Unit = {}
 ) {
     private val normalizedBaseUrl = baseUrl.trimEnd('/')
-    private val refreshMutex = Mutex()
+    companion object {
+        // Activity recreation and FCM use separate clients backed by the same
+        // session store. Rotation must be single-flight across those clients.
+        private val refreshMutex = Mutex()
+    }
 
     fun currentOperatorRole(): String? = operatorRoleProvider()
 
@@ -43,12 +47,7 @@ class AteneaApiClient(
 
     suspend fun refresh(refreshToken: String): MobileAuthSession = postJson(
         path = "/api/mobile/auth/refresh",
-        body = JSONObject()
-            .put("refreshToken", refreshToken)
-            .put("clientType", "ANDROID")
-            .put("deviceLabel", "Atenea Android")
-            .put("sessionProtocolVersion", SESSION_PROTOCOL)
-            .put("singleFlightRefresh", true),
+        body = buildFamilyRefreshBody(refreshToken),
         authenticated = false,
         parser = ::parseMobileAuthSession
     )
@@ -236,6 +235,18 @@ class AteneaApiClient(
         List(items.length()) { index -> parseMobileProjectOverview(items.getJSONObject(index)) }
     }
 
+    suspend fun fetchDevelopmentChanges(projectId: Long): List<MobileDevelopmentChange> {
+        require(projectId > 0) { "El proyecto debe ser válido." }
+        return getJsonArray(
+            path = "/api/v2/projects/$projectId/development-changes",
+            authenticated = true
+        ) { items ->
+            List(items.length()) { index ->
+                parseMobileDevelopmentChange(items.getJSONObject(index), projectId)
+            }
+        }
+    }
+
     suspend fun resolveMobileWorkSession(projectId: Long, title: String? = null): ResolveMobileWorkSessionResult = postJson(
         path = "/api/mobile/projects/$projectId/sessions/resolve",
         body = JSONObject().putNullable("title", title),
@@ -319,6 +330,65 @@ class AteneaApiClient(
         path = "/api/mobile/sessions/$sessionId/conversation",
         authenticated = true,
         parser = ::parseMobileWorkSessionConversation
+    )
+
+    suspend fun advanceDevelopmentChangeValidation(
+        sessionId: Long
+    ): DevelopmentChangeValidation = postJson(
+        path = "/api/sessions/$sessionId/validate-change",
+        body = JSONObject(),
+        authenticated = true,
+        parser = ::parseDevelopmentChangeValidation
+    )
+
+    suspend fun fetchDevelopmentChangeValidationEvidence(sessionId: Long): DevelopmentChangeValidationEvidence = getJson(
+        path = "/api/sessions/$sessionId/validation-evidence",
+        authenticated = true
+    ) { json ->
+        parseDevelopmentChangeValidationEvidence(json).also { require(it.workSessionId == sessionId) }
+    }
+
+    suspend fun fetchDelivery(sessionId: Long): MobileDeliveryState = getJson(
+        path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true,
+        parser = ::parseMobileDeliveryState
+    )
+
+    suspend fun createDeliveryPullRequest(sessionId: Long): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/pr", body = JSONObject(), authenticated = true,
+        parser = ::parseMobileDeliveryOperation
+    )
+
+    suspend fun integrateDelivery(sessionId: Long): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/integrate", body = JSONObject(), authenticated = true,
+        parser = ::parseMobileDeliveryOperation
+    )
+
+    suspend fun resolveDeliveryConflicts(sessionId: Long): MobileSourceUpdate = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/resolve-conflicts", body = JSONObject(), authenticated = true
+    ) { json -> parseMobileSourceUpdate(json).also { require(it.sessionId == sessionId) } }
+
+    suspend fun prepareRelease(sessionId: Long, target: MobileDeliveryTarget): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/release-plan", body = JSONObject().put("target", target.name),
+        authenticated = true, parser = ::parseMobileDeliveryOperation
+    )
+
+    suspend fun retryDeliveryResolver(sessionId: Long, operationId: UUID, runId: Long): MobileSourceUpdate = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/source-updates/$operationId/resolver-runs/$runId/retry",
+        body = JSONObject(), authenticated = true
+    ) { json -> parseMobileSourceUpdate(json).also { require(it.sessionId == sessionId && it.id == operationId) } }
+
+    suspend fun recoverDeliverySource(sessionId: Long, operationId: UUID): MobileSourceUpdate = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/source-updates/$operationId/recover",
+        body = JSONObject(), authenticated = true
+    ) { json -> parseMobileSourceUpdate(json).also { require(it.sessionId == sessionId && it.id == operationId) } }
+
+    suspend fun authorizeRelease(id: UUID, totp: String): UUID = postJson(
+        path = "/api/mobile/delivery/$id/authorize", body = JSONObject().put("totp", totp), authenticated = true
+    ) { UUID.fromString(it.getString("authorization")) }
+
+    suspend fun confirmRelease(id: UUID, authorization: UUID): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/delivery/$id/confirm", body = JSONObject().put("authorization", authorization.toString()),
+        authenticated = true, parser = ::parseMobileDeliveryOperation
     )
 
     suspend fun fetchMobileWorkSessionSummary(sessionId: Long): MobileSessionSummary = getJson(
@@ -587,6 +657,40 @@ class AteneaApiClient(
             parseOperationsIncident(items.getJSONObject(index))
         }
     }
+
+    suspend fun uploadMobileDiagnostic(bytes: ByteArray): MobileDiagnosticReceipt {
+        require(bytes.size in 1..MAX_DIAGNOSTIC_REPORT_BYTES)
+        return postMultipartFile(
+            path = "/api/mobile/diagnostics",
+            fieldName = "file",
+            fileName = "atenea-diagnostics.json",
+            contentType = "application/json",
+            bytes = bytes,
+            onProgress = null,
+            parser = ::parseMobileDiagnosticReceipt
+        ).also { it.verifyContent(bytes) }
+    }
+
+    suspend fun fetchLatestMobileDiagnostic(): MobileDiagnosticReceipt = getJson(
+        path = "/api/mobile/diagnostics/latest", authenticated = true, parser = ::parseMobileDiagnosticReceipt
+    )
+
+    suspend fun fetchMobileDiagnostics(limit: Int = 10): List<MobileDiagnosticReceipt> {
+        require(limit in 1..20)
+        return getJsonArray(path = "/api/mobile/diagnostics?limit=$limit", authenticated = true) { reports ->
+            List(reports.length()) { index -> parseMobileDiagnosticReceipt(reports.getJSONObject(index)) }
+        }
+    }
+
+    suspend fun fetchMobileDiagnostic(id: UUID): MobileDiagnosticReceipt = getJson(
+        path = "/api/mobile/diagnostics/$id", authenticated = true, parser = ::parseMobileDiagnosticReceipt
+    ).also { require(it.id == id) }
+
+    suspend fun downloadMobileDiagnostic(receipt: MobileDiagnosticReceipt): ByteArray = requestAuthenticatedBinary(
+        path = "/api/mobile/diagnostics/${receipt.id}/content", maxBytes = MAX_DIAGNOSTIC_REPORT_BYTES.toLong(),
+        allowRefresh = true, accept = "application/json",
+        oversizedMessage = "El diagnóstico supera el límite de descarga permitido."
+    ).bytes.also { receipt.verifyContent(it) }
 
     suspend fun uploadMobileFile(
         fileName: String,
@@ -897,6 +1001,7 @@ class AteneaApiClient(
         headers: Map<String, String>,
         allowRefresh: Boolean
     ): String = withContext(Dispatchers.IO) {
+        val attemptedAccessToken = if (authenticated) accessTokenProvider() else null
         val connection = (URL("$normalizedBaseUrl$path").openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15000
@@ -908,7 +1013,7 @@ class AteneaApiClient(
             }
             headers.forEach { (name, value) -> setRequestProperty(name, value) }
             if (authenticated) {
-                val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
+                val token = attemptedAccessToken?.takeIf { it.isNotBlank() }
                     ?: throw AteneaApiException(401, "No hay sesión activa.")
                 setRequestProperty("Authorization", "Bearer $token")
             }
@@ -925,7 +1030,7 @@ class AteneaApiClient(
             if (connection.responseCode == 401 && authenticated && allowRefresh) {
                 val refreshToken = refreshTokenProvider()?.takeIf { it.isNotBlank() }
                 if (refreshToken != null) {
-                    refreshSession(refreshToken)
+                    refreshSession(refreshToken, attemptedAccessToken)
                     return@withContext requestBody(
                         path = path,
                         method = method,
@@ -952,6 +1057,7 @@ class AteneaApiClient(
         authenticated: Boolean,
         allowRefresh: Boolean
     ): BinaryApiResponse = withContext(Dispatchers.IO) {
+        val attemptedAccessToken = if (authenticated) accessTokenProvider() else null
         val connection = (URL("$normalizedBaseUrl$path").openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15000
@@ -962,7 +1068,7 @@ class AteneaApiClient(
                 setRequestProperty("Content-Type", "application/json")
             }
             if (authenticated) {
-                val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
+                val token = attemptedAccessToken?.takeIf { it.isNotBlank() }
                     ?: throw AteneaApiException(401, "No hay sesión activa.")
                 setRequestProperty("Authorization", "Bearer $token")
             }
@@ -978,7 +1084,7 @@ class AteneaApiClient(
             if (connection.responseCode == 401 && authenticated && allowRefresh) {
                 val refreshToken = refreshTokenProvider()?.takeIf { it.isNotBlank() }
                 if (refreshToken != null) {
-                    refreshSession(refreshToken)
+                    refreshSession(refreshToken, attemptedAccessToken)
                     return@withContext requestBytes(
                         path = path,
                         method = method,
@@ -1023,6 +1129,7 @@ class AteneaApiClient(
         allowRefresh: Boolean
     ): String = withContext(Dispatchers.IO) {
         val boundary = "AteneaBoundary${System.currentTimeMillis()}"
+        val attemptedAccessToken = accessTokenProvider()
         val requestStartedAt = System.nanoTime()
         fun elapsedMs(): Long = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - requestStartedAt)
         val multipart = multipartParts(boundary, fieldName, fileName, contentType, bytes)
@@ -1036,7 +1143,7 @@ class AteneaApiClient(
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
             headers.forEach { (name, value) -> setRequestProperty(name, value) }
-            val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
+            val token = attemptedAccessToken?.takeIf { it.isNotBlank() }
                 ?: throw AteneaApiException(401, "No hay sesión activa.")
             setRequestProperty("Authorization", "Bearer $token")
         }
@@ -1054,7 +1161,7 @@ class AteneaApiClient(
             if (connection.responseCode == 401 && allowRefresh) {
                 val refreshToken = refreshTokenProvider()?.takeIf { it.isNotBlank() }
                 if (refreshToken != null) {
-                    refreshSession(refreshToken)
+                    refreshSession(refreshToken, attemptedAccessToken)
                     return@withContext requestMultipartBody(
                         path = path,
                         fieldName = fieldName,
@@ -1079,14 +1186,17 @@ class AteneaApiClient(
     private suspend fun requestAuthenticatedBinary(
         path: String,
         maxBytes: Long,
-        allowRefresh: Boolean
+        allowRefresh: Boolean,
+        accept: String = "image/png, image/jpeg, image/webp",
+        oversizedMessage: String = "La imagen supera el límite permitido para abrirla."
     ): BinaryApiResponse = withContext(Dispatchers.IO) {
+        val attemptedAccessToken = accessTokenProvider()
         val connection = (URL("$normalizedBaseUrl$path").openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 15000
             readTimeout = 120000
-            setRequestProperty("Accept", "image/png, image/jpeg, image/webp")
-            val token = accessTokenProvider()?.takeIf { it.isNotBlank() }
+            setRequestProperty("Accept", accept)
+            val token = attemptedAccessToken?.takeIf { it.isNotBlank() }
                 ?: throw AteneaApiException(401, "No hay sesión activa.")
             setRequestProperty("Authorization", "Bearer $token")
         }
@@ -1096,18 +1206,19 @@ class AteneaApiClient(
                 val refreshToken = refreshTokenProvider()?.takeIf { it.isNotBlank() }
                 if (refreshToken != null) {
                     connection.errorStream?.close()
-                    refreshSession(refreshToken)
-                    return@withContext requestAuthenticatedBinary(path, maxBytes, allowRefresh = false)
+                    refreshSession(refreshToken, attemptedAccessToken)
+                    return@withContext requestAuthenticatedBinary(path, maxBytes, allowRefresh = false,
+                        accept = accept, oversizedMessage = oversizedMessage)
                 }
             }
             if (connection.responseCode !in 200..299) {
                 throw buildApiException(connection.responseCode, connection.readResponseBody())
             }
             if (connection.contentLengthLong > maxBytes) {
-                throw AteneaApiException(413, "La imagen supera el límite permitido para abrirla.")
+                throw AteneaApiException(413, oversizedMessage)
             }
             BinaryApiResponse(
-                bytes = connection.inputStream.use { it.readBytesBounded(maxBytes) },
+                bytes = connection.inputStream.use { it.readBytesBounded(maxBytes, oversizedMessage) },
                 contentType = connection.contentType
             )
         } finally {
@@ -1115,14 +1226,28 @@ class AteneaApiClient(
         }
     }
 
-    private suspend fun refreshSession(refreshToken: String) = refreshMutex.withLock {
-        if (refreshTokenProvider()?.takeIf { it.isNotBlank() } != refreshToken) {
+    private suspend fun refreshSession(refreshToken: String, attemptedAccessToken: String?) = refreshMutex.withLock {
+        if (accessTokenProvider() != attemptedAccessToken ||
+            refreshTokenProvider()?.takeIf { it.isNotBlank() } != refreshToken) {
             return@withLock
         }
         try {
-            sessionUpdater(refresh(refreshToken))
+            val renewed = refresh(refreshToken)
+            // Never overwrite a logout or a new login completed in flight.
+            if (accessTokenProvider() == attemptedAccessToken && refreshTokenProvider() == refreshToken) {
+                sessionUpdater(renewed)
+            }
         } catch (exception: AteneaApiException) {
-            throw AteneaApiException(exception.status, "La sesión ha caducado. Vuelve a entrar en Atenea.")
+            if (exception.status == 401 && exception.message in setOf(
+                    "Invalid refresh token", "Refresh token expired", "Session expired",
+                    "Refresh token already revoked", "Session is revoked",
+                    "Refresh token replay detected", "Operator account is inactive"
+                )) {
+                throw AteneaApiException(401, "La sesión ha caducado o se ha revocado. Vuelve a entrar en Atenea.")
+            }
+            // A temporary server failure, forbidden operation or protocol
+            // mismatch is not evidence that the stored session has expired.
+            throw exception
         }
     }
 }
@@ -1338,6 +1463,17 @@ data class MobileProjectSessionOverview(
     val recoveryPending: Boolean
 )
 
+data class MobileDevelopmentChange(
+    val changeKey: UUID,
+    val projectId: Long,
+    val title: String,
+    val status: String,
+    val workspaceState: String,
+    val activeSessionId: Long?,
+    val primaryActionLabel: String?,
+    val updatedAt: String?
+)
+
 data class ResolveMobileWorkSessionResult(
     val created: Boolean,
     val view: MobileWorkSessionConversation
@@ -1480,7 +1616,22 @@ data class MobileWorkSession(
     val closeBlockedState: String?,
     val closeBlockedReason: String?,
     val closeBlockedAction: String?,
-    val closeRetryable: Boolean
+    val closeRetryable: Boolean,
+    val developmentChangeKey: String? = null,
+    val developmentChangeValidationState: String? = null,
+    val developmentChangeSourceState: String? = null
+)
+
+data class DevelopmentChangeValidation(
+    val changeKey: String,
+    val sourceRevision: Long,
+    val sourceFingerprintSha256: String,
+    val validationState: String,
+    val state: String,
+    val currentOperation: String?,
+    val passedOperations: Int,
+    val requiredOperations: Int,
+    val summary: String
 )
 
 data class MobileAgentRun(
@@ -2149,6 +2300,13 @@ private const val DEFAULT_ATTACHMENT_DOWNLOAD_LIMIT_BYTES = 16L * 1024L * 1024L
 private const val MAX_ATTACHMENT_DOWNLOAD_LIMIT_BYTES = 32L * 1024L * 1024L
 private const val SESSION_PROTOCOL = "FAMILY_V1"
 
+internal fun buildFamilyRefreshBody(refreshToken: String): JSONObject = JSONObject()
+    .put("refreshToken", refreshToken)
+    // Metadata belongs to login/adoption, never to family rotation. The
+    // backend supplies its defaults when adopting an existing legacy token.
+    .put("sessionProtocolVersion", SESSION_PROTOCOL)
+    .put("singleFlightRefresh", true)
+
 class AteneaApiException(
     val status: Int,
     override val message: String
@@ -2300,6 +2458,25 @@ private fun parseMobileProjectOverview(json: JSONObject): MobileProjectOverview 
             )
         }
     )
+
+private fun parseMobileDevelopmentChange(json: JSONObject, expectedProjectId: Long): MobileDevelopmentChange {
+    val projectId = json.getLong("projectId")
+    require(projectId == expectedProjectId) { "La respuesta contiene un cambio de otro proyecto." }
+    val activeSessionId = json.optNullableLong("activeSessionId")
+    require(activeSessionId == null || activeSessionId > 0) { "La respuesta contiene una sesión inválida." }
+    val title = json.getString("title")
+    require(title.isNotBlank()) { "La respuesta contiene un cambio sin título." }
+    return MobileDevelopmentChange(
+        changeKey = UUID.fromString(json.getString("changeKey")),
+        projectId = projectId,
+        title = title,
+        status = json.getString("status"),
+        workspaceState = json.getString("workspaceState"),
+        activeSessionId = activeSessionId,
+        primaryActionLabel = json.optJSONObject("primaryAction")?.optNullableString("label"),
+        updatedAt = json.optNullableString("updatedAt")
+    )
+}
 
 private fun parseResolveMobileWorkSessionResult(json: JSONObject): ResolveMobileWorkSessionResult =
     ResolveMobileWorkSessionResult(
@@ -2546,7 +2723,25 @@ private fun parseMobileWorkSession(json: JSONObject): MobileWorkSession =
         closeBlockedState = json.optNullableString("closeBlockedState"),
         closeBlockedReason = json.optNullableString("closeBlockedReason"),
         closeBlockedAction = json.optNullableString("closeBlockedAction"),
-        closeRetryable = json.optBoolean("closeRetryable", false)
+        closeRetryable = json.optBoolean("closeRetryable", false),
+        developmentChangeKey = json.optNullableString("developmentChangeKey"),
+        developmentChangeValidationState = json.optNullableString(
+            "developmentChangeValidationState"
+        ),
+        developmentChangeSourceState = json.optNullableString("developmentChangeSourceState")
+    )
+
+private fun parseDevelopmentChangeValidation(json: JSONObject): DevelopmentChangeValidation =
+    DevelopmentChangeValidation(
+        changeKey = json.getString("changeKey"),
+        sourceRevision = json.getLong("sourceRevision"),
+        sourceFingerprintSha256 = json.getString("sourceFingerprintSha256"),
+        validationState = json.getString("validationState"),
+        state = json.getString("state"),
+        currentOperation = json.optNullableString("currentOperation"),
+        passedOperations = json.getInt("passedOperations"),
+        requiredOperations = json.getInt("requiredOperations"),
+        summary = json.optString("summary", "")
     )
 
 private fun parseMobileSessionSummary(json: JSONObject): MobileSessionSummary =
@@ -3169,7 +3364,10 @@ private fun HttpURLConnection.readResponseBody(): String {
     }
 }
 
-private fun InputStream.readBytesBounded(maxBytes: Long): ByteArray {
+private fun InputStream.readBytesBounded(
+    maxBytes: Long,
+    oversizedMessage: String = "La imagen supera el límite permitido para abrirla."
+): ByteArray {
     val output = ByteArrayOutputStream(minOf(maxBytes, 64L * 1024L).toInt())
     val buffer = ByteArray(64 * 1024)
     var total = 0L
@@ -3178,7 +3376,7 @@ private fun InputStream.readBytesBounded(maxBytes: Long): ByteArray {
         if (read < 0) break
         total += read
         if (total > maxBytes) {
-            throw AteneaApiException(413, "La imagen supera el límite permitido para abrirla.")
+            throw AteneaApiException(413, oversizedMessage)
         }
         output.write(buffer, 0, read)
     }

@@ -362,6 +362,44 @@ El informe se genera desde `AteneaDiagnostics` e incluye:
 - razones históricas de salida de proceso;
 - eventos recientes de app, voz, WebRTC, conversación y diagnóstico.
 
+### Envío y recuperación de informes
+
+`Enviar diagnostico` usa un canal propio, independiente de los adjuntos:
+
+- `POST /api/mobile/diagnostics`: multipart `file`, únicamente un informe JSON UTF-8 de Atenea, máximo 4 MiB.
+- `GET /api/mobile/diagnostics/latest`: recibo del último informe recibido del operador autenticado.
+- `GET /api/mobile/diagnostics?limit=10`: los últimos recibos (límite entre 1 y 20).
+- `GET /api/mobile/diagnostics/{id}`: localizar un recibo por su ID.
+- `GET /api/mobile/diagnostics/{id}/content`: recuperar los bytes originales del informe.
+
+Todas las operaciones requieren la autenticación de operador existente. Solo permiten acceder a los informes
+del propio operador; conocer el UUID no concede acceso. Las lecturas no crean informes, WorkSessions ni AgentRuns.
+No hay enlaces públicos, rutas de host elegidas por el cliente, comandos ni dispatch al worker.
+
+V85 almacena el informe y su recibo en `mobile_diagnostic_report` de PostgreSQL. Se conservan el operador,
+fecha de recepción, fecha de generación, versión de app, dispositivo, tamaño, SHA-256 y bytes originales,
+incluyendo el stacktrace de `lastCrash`. No se depende del filesystem efímero del backend ni de un nuevo volumen.
+La identidad se calcula en servidor a partir del operador y checksum; repetir los mismos bytes devuelve el
+recibo original sin insertar otro informe. PostgreSQL arbitra los reintentos concurrentes mediante una restricción única.
+La descarga verifica tamaño y checksum; metadatos y contenido se devuelven con `Cache-Control: no-store`.
+
+Android verifica el recibo contra los bytes enviados antes de mostrar éxito. En Diagnóstico aparece
+`Último diagnóstico guardado`, su ID, fecha, versión, dispositivo y checksum, con `Copiar ID del diagnóstico`.
+Reabrir la pantalla consulta el último recibo de servidor sin reenviar nada. Un fallo de envío no se presenta
+como éxito ni borra el recibo anterior. No se usa ni se reabre el endpoint global `/api/mobile/uploads`:
+su rechazo cuando están habilitados los adjuntos por WorkSession debe conservarse.
+
+Para investigar un cierre: enviar una vez desde Sistema → Diagnóstico y comunicar el ID, o pedir al operador
+autorizado que consulte `latest` y descargue `contentPath`. Usar las credenciales soportadas ya existentes,
+sin compartir tokens en el chat; no hace falta SSH, rutas físicas ni crear una conversación para el informe.
+Integrar y desplegar esta capacidad con V85, y publicar la APK actualizada, requieren autorización aparte.
+
+Validación focal: `MobileDiagnosticServiceTest`, `MobileDiagnosticIntegrationTest`,
+`V85DiagnosticReportMigrationTest` y el test existente `MobileUploadServiceTest` para el rechazo de la subida global.
+En Android: `MobileDiagnosticReceiptTest`, `MobileDiagnosticApiTest`, los tests API existentes de descarga de adjuntos
+y `DiagnosticReceiptPanelTest` en un dispositivo/emulador. El smoke móvil debe comprobar envío sin WorkSession,
+recibo recuperable tras reabrir, descarga con checksum correcto y ausencia de efectos sobre el ticket.
+
 Para depurar cierres de conversación, la pantalla de WorkSession registra al cargar:
 
 - `sessionId`;

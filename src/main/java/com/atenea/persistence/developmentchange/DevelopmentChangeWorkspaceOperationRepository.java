@@ -37,6 +37,10 @@ public interface DevelopmentChangeWorkspaceOperationRepository
                     Long developmentChangeId,
                     DevelopmentChangeWorkspaceOperationState state);
 
+    @EntityGraph(attributePaths = {"project", "developmentChange"})
+    Optional<DevelopmentChangeWorkspaceOperationEntity>
+            findFirstByDevelopmentChangeIdOrderByIdDesc(Long developmentChangeId);
+
     @EntityGraph(attributePaths = {"operator", "project", "developmentChange"})
     List<DevelopmentChangeWorkspaceOperationEntity>
             findAllByStateInOrderByRequestedAtAsc(

@@ -1,14 +1,22 @@
 package com.atenea.service.worksession;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 import com.atenea.persistence.project.ProjectEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeStatus;
+import com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.ValidationOperationEntity;
@@ -20,6 +28,7 @@ import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteWorkerClient;
+import com.atenea.remoteworker.RemoteWorkerException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +62,7 @@ class ClosedValidationOperationServiceTest {
         project.setDefaultBaseBranch("main");
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
+        project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
         session = new WorkSessionEntity();
         session.setId(41L);
         session.setProject(project);
@@ -67,7 +77,8 @@ class ClosedValidationOperationServiceTest {
         session.setCanonicalSourceObservationSha256("2".repeat(64));
         session.setCanonicalSourceObservedAt(Instant.parse("2026-07-30T12:00:00Z"));
 
-        when(workSessionRepository.findLockedWithProjectById(41L)).thenReturn(Optional.of(session));
+        lenient().when(workSessionRepository.findLockedWithProjectById(41L))
+                .thenReturn(Optional.of(session));
         when(remoteWorkerClient.fingerprintSourceTree(session)).thenReturn(new RemoteWorkerClient.SourceTreeFingerprint(
                 "observed",
                 session.getRemoteSessionId().toString(),
@@ -79,7 +90,7 @@ class ClosedValidationOperationServiceTest {
                 0,
                 0,
                 false));
-        when(validationOperationRepository.findByIdentitySha256(anyString())).thenAnswer(invocation ->
+        lenient().when(validationOperationRepository.findByIdentitySha256(anyString())).thenAnswer(invocation ->
                 operations.stream()
                         .filter(value -> value.getIdentitySha256().equals(invocation.getArgument(0)))
                         .findFirst());
@@ -90,9 +101,9 @@ class ClosedValidationOperationServiceTest {
         });
         when(validationOperationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(validationOperationRepository
-                .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByOperationAsc(41L, TREE))
+                .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(41L, TREE))
                 .thenAnswer(invocation -> List.copyOf(operations));
-        when(remoteWorkerClient.runValidation(any(), any(), anyString(), anyString()))
+        lenient().when(remoteWorkerClient.runValidation(any(), any(), anyString(), anyString()))
                 .thenAnswer(invocation -> {
                     ValidationOperationKind kind = invocation.getArgument(1);
                     String id = invocation.getArgument(3);
@@ -142,8 +153,300 @@ class ClosedValidationOperationServiceTest {
                 org.mockito.ArgumentMatchers.eq(41L),
                 org.mockito.ArgumentMatchers.eq(TREE),
                 anyString(),
-                org.mockito.ArgumentMatchers.eq("atenea-required-validation-v1"));
+                org.mockito.ArgumentMatchers.eq("atenea-required-validation-v2"));
         verify(acceptanceService, times(0))
                 .markIntegrationReady(anyLong(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void changeValidationAdvancesDurablyAndProjectsCurrentOnlyAfterAllChecks() {
+        DevelopmentChangeEntity change = configureChangeOwnedSession();
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> {
+                    ValidationOperationKind kind = invocation.getArgument(1);
+                    String id = invocation.getArgument(3);
+                    return durableResult(id, kind, "SUCCEEDED", 7);
+                });
+
+        service.advanceDevelopmentChange(41L);
+        service.advanceDevelopmentChange(41L);
+        service.advanceDevelopmentChange(41L);
+        service.advanceDevelopmentChange(41L);
+        var result = service.advanceDevelopmentChange(41L);
+
+        assertEquals("SUCCEEDED", result.state());
+        assertEquals(4, result.passedOperations());
+        assertEquals(DevelopmentChangeProjectionState.CURRENT, change.getValidationState());
+        verify(remoteWorkerClient, times(4))
+                .startValidation(any(), any(), anyString(), anyString());
+
+        when(remoteWorkerClient.fingerprintSourceTree(session)).thenReturn(
+                new RemoteWorkerClient.SourceTreeFingerprint(
+                        "observed", session.getRemoteSessionId().toString(),
+                        session.getWorkspaceIdentity(), ProjectCodexIdentity.PROJECT_IDENTITY,
+                        COMMIT, "6".repeat(64), 0, 2, 0, false));
+        var stale = service.advanceDevelopmentChange(41L);
+        assertEquals("STALE", stale.state());
+        assertEquals(DevelopmentChangeProjectionState.STALE, change.getValidationState());
+    }
+
+    @Test
+    void queuedChangeValidationReportsTerminalBlockBeforeExplicitRetry() {
+        configureChangeOwnedSession();
+        int[] starts = {0};
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> durableResult(
+                        invocation.getArgument(3), invocation.getArgument(1),
+                        starts[0]++ == 0 ? "QUEUED" : "SUCCEEDED", 7));
+        when(remoteWorkerClient.inspectValidation(any(), anyString()))
+                .thenAnswer(invocation -> durableResult(
+                        invocation.getArgument(1), ValidationOperationKind.BACKEND_TEST,
+                        "OWNERSHIP_FAILED", 0));
+
+        var queued = service.advanceDevelopmentChange(41L);
+        ValidationOperationEntity operation = operations.getFirst();
+        assertEquals("RUNNING", queued.state());
+        assertEquals(ValidationOperationStatus.RUNNING, operation.getStatus());
+        assertNull(operation.getExitCode());
+        assertNull(operation.getDurationMillis());
+        assertNull(operation.getFinishedAt());
+
+        var terminal = service.advanceDevelopmentChange(41L);
+        assertEquals("BLOCKED", terminal.state());
+        assertEquals(ValidationOperationStatus.BLOCKED, operation.getStatus());
+        assertEquals(0L, operation.getDurationMillis());
+        assertNotNull(operation.getFinishedAt());
+        verify(remoteWorkerClient, times(1))
+                .startValidation(any(), any(), anyString(), anyString());
+
+        var retry = service.advanceDevelopmentChange(41L);
+        assertEquals("ADVANCING", retry.state());
+        assertEquals(1, retry.passedOperations());
+        assertEquals(2, operations.size());
+        assertEquals(ValidationOperationStatus.BLOCKED, operations.getFirst().getStatus());
+        assertEquals(ValidationOperationStatus.SUCCEEDED, operations.getLast().getStatus());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                operations.getFirst().getId(), operations.getLast().getId());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                operations.getFirst().getIdentitySha256(), operations.getLast().getIdentitySha256());
+        verify(remoteWorkerClient, times(2))
+                .startValidation(any(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void pollingRunningValidationDoesNotStartAnotherOperation() {
+        configureChangeOwnedSession();
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> durableResult(
+                        invocation.getArgument(3), invocation.getArgument(1), "QUEUED", 0));
+        when(remoteWorkerClient.inspectValidation(any(), anyString()))
+                .thenAnswer(invocation -> durableResult(
+                        invocation.getArgument(1), ValidationOperationKind.BACKEND_TEST,
+                        "RUNNING", 0));
+
+        assertEquals("RUNNING", service.advanceDevelopmentChange(41L).state());
+        assertEquals("RUNNING", service.advanceDevelopmentChange(41L).state());
+        assertEquals(1, operations.size());
+        verify(remoteWorkerClient, times(1))
+                .startValidation(any(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void manualRetryKeepsFailedAuditAndOnlyLatestAttemptCountsForAcceptance() {
+        DevelopmentChangeEntity change = configureChangeOwnedSession();
+        int[] backendStarts = {0};
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> {
+                    ValidationOperationKind kind = invocation.getArgument(1);
+                    String state = kind == ValidationOperationKind.BACKEND_TEST
+                            && backendStarts[0]++ == 0 ? "CANDIDATE_FAILED" : "SUCCEEDED";
+                    return durableResult(invocation.getArgument(3), kind, state, 7);
+                });
+
+        var failed = service.advanceDevelopmentChange(41L);
+        assertEquals("FAILED", failed.state());
+        assertEquals(1, operations.size());
+        assertEquals(ValidationOperationStatus.FAILED, operations.getFirst().getStatus());
+
+        var retry = service.advanceDevelopmentChange(41L);
+        assertEquals("ADVANCING", retry.state());
+        assertEquals(1, retry.passedOperations());
+        assertEquals(2, operations.size());
+        assertEquals(ValidationOperationStatus.FAILED, operations.getFirst().getStatus());
+        assertEquals(ValidationOperationStatus.SUCCEEDED, operations.getLast().getStatus());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                operations.getFirst().getId(), operations.getLast().getId());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                operations.getFirst().getIdentitySha256(), operations.getLast().getIdentitySha256());
+
+        service.advanceDevelopmentChange(41L);
+        service.advanceDevelopmentChange(41L);
+        service.advanceDevelopmentChange(41L);
+        var complete = service.advanceDevelopmentChange(41L);
+        assertEquals("SUCCEEDED", complete.state());
+        assertEquals(4, complete.passedOperations());
+        assertEquals(DevelopmentChangeProjectionState.CURRENT, change.getValidationState());
+        assertEquals(5, operations.size());
+        verify(remoteWorkerClient, times(5))
+                .startValidation(any(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void databaseInfrastructureFailureIsAuditedAndExplainedWithoutBlamingCandidate() {
+        configureChangeOwnedSession();
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> durableResult(invocation.getArgument(3),
+                        invocation.getArgument(1), "INFRASTRUCTURE_FAILED", 7,
+                        "BACKEND_TEST/TEST_DATABASE: TEST_DATABASE_SETUP_FAILED"));
+
+        var result = service.advanceDevelopmentChange(41L);
+
+        assertEquals("BLOCKED", result.state());
+        assertEquals(0, result.passedOperations());
+        assertEquals(4, result.requiredOperations());
+        assertEquals(ValidationOperationStatus.BLOCKED, operations.getFirst().getStatus());
+        org.junit.jupiter.api.Assertions.assertTrue(result.summary().contains("TEST_DATABASE_SETUP_FAILED"));
+        org.junit.jupiter.api.Assertions.assertTrue(result.summary().contains("PostgreSQL de pruebas"));
+        org.junit.jupiter.api.Assertions.assertTrue(result.summary().contains("no se ha validado"));
+    }
+
+    @Test
+    void oldBackendSuccessIsRetainedButCannotSatisfyTheNewDefinition() {
+        configureChangeOwnedSession();
+        ValidationOperationEntity old = new ValidationOperationEntity();
+        old.setId(UUID.randomUUID());
+        old.setWorkSession(session);
+        old.setOperation(ValidationOperationKind.BACKEND_TEST);
+        old.setStatus(ValidationOperationStatus.SUCCEEDED);
+        old.setSourceTreeFingerprintSha256(TREE);
+        old.setDefinitionRevision("atenea-backend-test-v1");
+        old.setStartedAt(java.time.Instant.now().minusSeconds(60));
+        operations.add(old);
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> durableResult(invocation.getArgument(3),
+                        invocation.getArgument(1), "SUCCEEDED", 7));
+
+        var result = service.advanceDevelopmentChange(41L);
+
+        assertEquals("ADVANCING", result.state());
+        assertEquals(1, result.passedOperations());
+        assertEquals(2, operations.size());
+        assertEquals("atenea-backend-test-v1", old.getDefinitionRevision());
+        assertEquals(ValidationOperationStatus.SUCCEEDED, old.getStatus());
+        assertEquals("atenea-backend-test-v2", operations.getLast().getDefinitionRevision());
+        verify(remoteWorkerClient).startValidation(any(),
+                org.mockito.ArgumentMatchers.eq(ValidationOperationKind.BACKEND_TEST), anyString(), anyString());
+    }
+
+    @Test
+    void oldAndroidSuccessCannotSatisfyTheColdCacheDefinition() {
+        configureChangeOwnedSession();
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> durableResult(invocation.getArgument(3),
+                        invocation.getArgument(1), "SUCCEEDED", 7));
+        service.advanceDevelopmentChange(41L);
+        service.advanceDevelopmentChange(41L);
+        ValidationOperationEntity old = new ValidationOperationEntity();
+        old.setId(UUID.randomUUID());
+        old.setWorkSession(session);
+        old.setOperation(ValidationOperationKind.ANDROID_BUILD);
+        old.setStatus(ValidationOperationStatus.SUCCEEDED);
+        old.setSourceTreeFingerprintSha256(TREE);
+        old.setDefinitionRevision("atenea-android-build-v1");
+        old.setStartedAt(Instant.now().minusSeconds(60));
+        operations.add(old);
+
+        var result = service.advanceDevelopmentChange(41L);
+
+        assertEquals("ADVANCING", result.state());
+        assertEquals(3, result.passedOperations());
+        assertEquals(4, operations.size());
+        assertEquals("atenea-android-build-v1", old.getDefinitionRevision());
+        assertEquals(ValidationOperationStatus.SUCCEEDED, old.getStatus());
+        assertEquals("atenea-android-build-v2", operations.getLast().getDefinitionRevision());
+        verify(remoteWorkerClient).startValidation(any(),
+                org.mockito.ArgumentMatchers.eq(ValidationOperationKind.ANDROID_BUILD), anyString(), anyString());
+    }
+
+    @Test
+    void unavailableWorkerBlockIsAuditedBeforeExplicitRetry() {
+        configureChangeOwnedSession();
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenThrow(new RemoteWorkerException("worker unavailable", 503))
+                .thenAnswer(invocation -> durableResult(
+                        invocation.getArgument(3), invocation.getArgument(1), "SUCCEEDED", 7));
+
+        var response = service.advanceDevelopmentChange(41L);
+        ValidationOperationEntity operation = operations.getFirst();
+        assertEquals("BLOCKED", response.state());
+        assertEquals(ValidationOperationStatus.BLOCKED, operation.getStatus());
+        assertEquals(0L, operation.getDurationMillis());
+        assertNull(operation.getExitCode());
+        assertNotNull(operation.getFinishedAt());
+
+        var retry = service.advanceDevelopmentChange(41L);
+        assertEquals("ADVANCING", retry.state());
+        assertEquals(2, operations.size());
+        assertEquals(ValidationOperationStatus.BLOCKED, operation.getStatus());
+        assertEquals(ValidationOperationStatus.SUCCEEDED, operations.getLast().getStatus());
+        verify(remoteWorkerClient, times(2))
+                .startValidation(any(), any(), anyString(), anyString());
+    }
+
+    private DevelopmentChangeEntity configureChangeOwnedSession() {
+        UUID changeKey = UUID.fromString("59315b6e-59bc-4884-9def-356e1ca86ef4");
+        session.getProject().setId(1L);
+        DevelopmentChangeEntity change = new DevelopmentChangeEntity();
+        change.setChangeKey(changeKey);
+        change.setProject(session.getProject());
+        change.setStatus(DevelopmentChangeStatus.OPEN);
+        change.setWorkspaceState(DevelopmentChangeWorkspaceState.READY);
+        change.setSourceState(DevelopmentChangeSourceState.DIRTY);
+        change.setSourceRevision(2);
+        change.setSourceFingerprintSha256(TREE);
+        change.setWorkspaceBranch("atenea/change-" + changeKey);
+        change.setWorkspaceIdentity("remote:ax42-01:change:" + changeKey);
+        change.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        session.setDevelopmentChange(change);
+        session.setWorkspaceBranch(change.getWorkspaceBranch());
+        session.setWorkspaceIdentity(change.getWorkspaceIdentity());
+        session.setSelectedWorkerId(change.getSelectedWorkerId());
+        when(workSessionRepository.findLockedWithProjectAndDevelopmentChangeById(41L))
+                .thenReturn(Optional.of(session));
+        when(remoteWorkerClient.fingerprintSourceTree(session)).thenReturn(
+                new RemoteWorkerClient.SourceTreeFingerprint(
+                        "observed", session.getRemoteSessionId().toString(),
+                        session.getWorkspaceIdentity(), ProjectCodexIdentity.PROJECT_IDENTITY,
+                        COMMIT, TREE, 0, 1, 0, false));
+        return change;
+    }
+
+    private RemoteWorkerClient.DurableValidationResult durableResult(
+            String id, ValidationOperationKind kind, String state, long durationMillis
+    ) {
+        return durableResult(id, kind, state, durationMillis, "Closed validation " + state);
+    }
+
+    private RemoteWorkerClient.DurableValidationResult durableResult(
+            String id, ValidationOperationKind kind, String state, long durationMillis, String summary
+    ) {
+        boolean candidateFailed = "CANDIDATE_FAILED".equals(state);
+        boolean terminal = "SUCCEEDED".equals(state) || candidateFailed;
+        Integer exitCode = "SUCCEEDED".equals(state) ? Integer.valueOf(0)
+                : candidateFailed ? Integer.valueOf(1) : null;
+        return new RemoteWorkerClient.DurableValidationResult(
+                1, "closed-validation-broker/v1", id,
+                session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(), ProjectCodexIdentity.PROJECT_IDENTITY,
+                COMMIT, TREE, kind.name(), kind.definitionRevision(),
+                state, "INFRASTRUCTURE_FAILED".equals(state) ? "INFRASTRUCTURE"
+                        : "OWNERSHIP_FAILED".equals(state) ? "OWNERSHIP"
+                        : candidateFailed ? "CANDIDATE" : "NONE",
+                "CONFIRMED", exitCode,
+                durationMillis, terminal ? "5".repeat(64) : null,
+                summary,
+                "2026-09-25T10:00:00Z", "2026-09-25T10:00:00Z",
+                terminal ? "2026-09-25T10:00:01Z" : null,
+                "2026-09-25T10:00:01Z", 2, false);
     }
 }
