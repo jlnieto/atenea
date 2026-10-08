@@ -20,6 +20,26 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
+    @Test fun `same PR update needs new validation and online durable receipt`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var online=true
+            var update=MobileSourceUpdate(UUID.randomUUID(),21,"RESOLVER_COMPLETED","2".repeat(40),5,105,null)
+            val state=MobileDeliveryUiState(21,scope) {
+                if (!online) error("offline")
+                MobileDeliveryState(true,listOf(operation().copy(state="SUCCEEDED")),
+                    MobileDeliveryIntegration(21,"1".repeat(40),"STALE_SOURCE",false,null),true,update)
+            }
+            state.refresh()
+            assertFalse(state.canUpdatePullRequest(false,false)); assertFalse(state.canUpdatePullRequest(true,true))
+            assertTrue(state.canUpdatePullRequest(true,false)); assertFalse(state.integration!!.allowsRequest)
+            update=update.copy(state="PUBLISHED"); state.refresh()
+            assertFalse(state.canUpdatePullRequest(true,false))
+            assertTrue(sourceUpdateLabel("PUBLISHED").contains("GitHub"))
+            update=update.copy(state="READY_TO_FINALIZE"); state.refresh(); assertTrue(state.canUpdatePullRequest(true,false))
+            online=false;state.refresh();assertFalse(state.canUpdatePullRequest(true,false))
+        } finally { scope.cancel() }
+    }
     @Test fun `resolver action is closed and old completion never enables integration`() = runBlocking<Unit> {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {

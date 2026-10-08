@@ -24,7 +24,8 @@ import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Component;
 
 @Component
-public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentChangeSourceUpdateGateway {
+public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentChangeSourceUpdateGateway,
+        DevelopmentChangeSourceFinalizationGateway {
     private static final int MAX_RESPONSE = 262144;
     private static final Set<String> ERRORS = Set.of("SOURCE_UPDATE_REJECTED", "SOURCE_UPDATE_REF_MOVED",
             "SOURCE_UPDATE_DIRTY_WORKSPACE", "SOURCE_UPDATE_LATER_EDIT", "SOURCE_UPDATE_EXECUTION_ACTIVE",
@@ -42,16 +43,28 @@ public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentCha
     @Override
     public Preparation exchange(DevelopmentChangeSourceUpdateCommand command,
             DevelopmentChangeSourceUpdateCommand.Action action) {
+        var body = request(command, action);
+        return validate(send(body, command.owner().idempotencyKey(), "source-updates/" + action.path), mapper.valueToTree(body));
+    }
+
+    @Override
+    public Result finalizeSource(DevelopmentChangeSourceFinalizationCommand command,
+            DevelopmentChangeSourceFinalizationCommand.Action action) {
+        var body = finalizationRequest(command, action);
+        JsonNode response = send(body, command.owner().idempotencyKey(), "source-finalizations/" + action.name().toLowerCase(java.util.Locale.ROOT));
+        return validateFinalization(response, mapper.valueToTree(body));
+    }
+
+    private JsonNode send(TreeMap<String, Object> body, java.util.UUID key, String path) {
         try {
-            var body = request(command, action);
             String token = Files.readString(Path.of(properties.getTokenFile())).trim();
             if (token.length() < 32) throw new IOException("Worker token unavailable");
             String endpoint = properties.getEndpoint().replaceAll("/+$", "");
             var request = HttpRequest.newBuilder(URI.create(endpoint
-                            + "/v1/development-changes/source-updates/" + action.path))
+                            + "/v1/development-changes/" + path))
                     .timeout(properties.getWorkspaceProvisionTimeout())
                     .header("Authorization", "Bearer " + token)
-                    .header("Idempotency-Key", command.owner().idempotencyKey().toString())
+                    .header("Idempotency-Key", key.toString())
                     .header("Content-Type", "application/json").header("Accept", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofByteArray(mapper.writeValueAsBytes(body))).build();
             long started = System.nanoTime();
@@ -71,7 +84,7 @@ public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentCha
                             code, uncertain ? RemoteWorkerFailureCategory.TRANSPORT : RemoteWorkerFailureCategory.OWNERSHIP,
                             uncertain, AgentRunRecoveryNextAction.REQUEST_RECONCILIATION, null);
                 }
-                return validate(mapper.readTree(bytes), mapper.valueToTree(body));
+                return mapper.readTree(bytes);
             }
         } catch (RemoteWorkerException failure) {
             throw failure;
@@ -83,6 +96,55 @@ public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentCha
         } catch (RuntimeException failure) {
             throw protocol();
         }
+    }
+
+    TreeMap<String, Object> finalizationRequest(DevelopmentChangeSourceFinalizationCommand command,
+            DevelopmentChangeSourceFinalizationCommand.Action action) {
+        var owner = command.owner();
+        var cleanOwner = new DevelopmentChangeBranchPublicationCommand(owner.operationId(), owner.idempotencyKey(),
+                owner.changeKey(), owner.databaseProjectId(), owner.projectIdentity(), owner.repository(), owner.repositoryBranch(),
+                owner.baseCommit(), owner.sourceCommit(), owner.workspaceBranch(), owner.workspaceIdentity(), owner.workerId(),
+                owner.sourceRevision(), null);
+        var body = request(new DevelopmentChangeSourceUpdateCommand(cleanOwner, command.targetMainCommit(),
+                command.publicationReceiptSha256()), DevelopmentChangeSourceUpdateCommand.Action.INSPECT);
+        body.remove("requestFingerprintSha256");
+        body.put("protocolVersion", "development-change-source-finalization/v1");
+        body.put("operation", action.name());
+        body.put("effect", action == DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE ? "FINALIZE_VALIDATED_SOURCE" : "OBSERVE_ONLY");
+        body.put("sourceFingerprintSha256", owner.sourceFingerprintSha256());
+        body.put("preparationOperationId", command.preparationOperationId().toString());
+        body.put("preparationReceiptSha256", command.preparationReceiptSha256());
+        body.put("validationProjectionSha256", command.validationProjectionSha256());
+        try {
+            body.put("requestFingerprintSha256", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(mapper.writeValueAsBytes(body))));
+        } catch (Exception unavailable) { throw new IllegalStateException(unavailable); }
+        return body;
+    }
+
+    Result validateFinalization(JsonNode response, JsonNode request) {
+        if (response == null || !response.isObject()) throw protocol();
+        var expected = new HashSet<String>();
+        request.fieldNames().forEachRemaining(key -> {
+            expected.add(key);
+            JsonNode actual = response.get(key), wanted = request.get(key);
+            if (actual == null || !(wanted.isIntegralNumber() ? actual.isIntegralNumber()
+                    && actual.longValue() == wanted.longValue() : wanted.equals(actual))) throw protocol();
+        });
+        expected.addAll(Set.of("state", "publishedHeadSha", "expectedTreeSha", "finalizationReceiptSha256", "valuesExposed"));
+        var keys = new HashSet<String>(); response.fieldNames().forEachRemaining(keys::add);
+        if (!expected.equals(keys) || !response.path("valuesExposed").isBoolean()
+                || response.path("valuesExposed").booleanValue() || !response.path("state").isTextual()) throw protocol();
+        FinalizationState state;
+        try { state = FinalizationState.valueOf(response.path("state").textValue()); }
+        catch (IllegalArgumentException invalid) { throw protocol(); }
+        String head = nullableHash(response.get("publishedHeadSha"), "[0-9a-f]{40}|[0-9a-f]{64}");
+        String tree = nullableHash(response.get("expectedTreeSha"), "[0-9a-f]{40}|[0-9a-f]{64}");
+        String receipt = nullableHash(response.get("finalizationReceiptSha256"), "[0-9a-f]{64}");
+        if (state == FinalizationState.ABSENT ? head != null || tree != null || receipt != null
+                : head == null || tree == null) throw protocol();
+        if (state == FinalizationState.PUBLISHED ? receipt == null : receipt != null) throw protocol();
+        if (request.path("operation").asText().equals("FINALIZE") && state != FinalizationState.PUBLISHED) throw protocol();
+        return new Result(state, head, tree, receipt);
     }
 
     private byte[] boundedResponse(InputStream stream, long started) throws IOException {

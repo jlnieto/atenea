@@ -19,7 +19,9 @@ public class DeliveryStore {
         return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE session_id=? ORDER BY created_at DESC LIMIT 30", this::row, sessionId);
     }
     public DeliveryOperation get(UUID id, boolean lock) {
-        var rows = jdbc.query("SELECT * FROM mobile_delivery_operation WHERE id=?" + (lock ? " FOR UPDATE" : ""), this::row, id);
+        // IDs never change. This still serializes state writers while allowing
+        // a REQUIRES_NEW publication intent to retain an FK to this operation.
+        var rows = jdbc.query("SELECT * FROM mobile_delivery_operation WHERE id=?" + (lock ? " FOR NO KEY UPDATE" : ""), this::row, id);
         if (rows.size() != 1) throw new DeliveryRejectedException("OPERATION_NOT_FOUND");
         return rows.getFirst();
     }
@@ -33,6 +35,8 @@ public class DeliveryStore {
                 WHERE state IN ('QUEUED','PREPARE_CLAIMED','UNCERTAIN','ATTENTION','READY_TO_RESOLVE','RESOLVING')
                 """, Long.class);
         if (preparation == null || preparation != 0L) throw new DeliveryRejectedException("SOURCE_UPDATE_IN_PROGRESS");
+        Long finalization = jdbc.queryForObject("SELECT count(*) FROM mobile_source_finalization WHERE state <> 'PUBLISHED'",Long.class);
+        if (finalization == null || finalization != 0L) throw new DeliveryRejectedException("SOURCE_FINALIZATION_IN_PROGRESS");
     }
     public java.util.Optional<DeliveryOperation> activeRelease() {
         return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE kind='RELEASE' "

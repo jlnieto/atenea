@@ -52,10 +52,16 @@ class SourceUpdateIntegrationTest {
     @Autowired AgentRunService agentRuns;
     @Autowired DevelopmentChangeAgentRunSourceAdvanceService advance;
     @Autowired com.atenea.service.worksession.ClosedValidationOperationService validations;
+    @Autowired SourceFinalizationService finalizations;
+    @Autowired MobileDeliveryService delivery;
+    @Autowired DeliveryStore deliveries;
+    @Autowired com.atenea.service.worksession.DevelopmentChangeBranchPublicationService publisher;
+    @Autowired com.atenea.service.worksession.WorkSessionGitHubService githubPublication;
     @Autowired JdbcTemplate jdbc;
     @Autowired PlatformTransactionManager manager;
     @Autowired MockMvc mvc;
     @MockBean DevelopmentChangeSourceUpdateGateway gateway;
+    @MockBean DevelopmentChangeSourceFinalizationGateway finalizationGateway;
     @MockBean RemoteRoutingSelector routing;
     @MockBean RemoteWorkerClient remoteClient;
     @MockBean RemoteAgentRunCoordinator coordinator;
@@ -78,6 +84,11 @@ class SourceUpdateIntegrationTest {
         when(github.extractPullRequestNumber(anyString())).thenReturn(47L);
         when(github.observeMergeState(any(), eq(47L), anyString(), eq(published))).thenReturn(GitHubMergeState.CONFLICTS);
         when(github.canonicalMain(any())).thenReturn(main);
+        when(remoteClient.fingerprintSourceTree(any())).thenAnswer(call -> {
+            var session=call.getArgument(0,WorkSessionEntity.class);
+            return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(),"atenea",published,preparedFingerprint,0,0,0,false);
+        });
         tx.executeWithoutResult(ignored -> {
             var now=Instant.now();
             createdWorker=jdbc.update("""
@@ -132,6 +143,8 @@ class SourceUpdateIntegrationTest {
     }
     @AfterEach void cleanup() {
         tx.executeWithoutResult(ignored -> {
+            jdbc.update("DELETE FROM mobile_source_finalization WHERE session_id=?",sessionId);
+            jdbc.update("DELETE FROM mobile_delivery_operation WHERE session_id=?",sessionId);
             jdbc.update("DELETE FROM mobile_source_update_operation WHERE session_id=?",sessionId);
             jdbc.update("DELETE FROM validation_operation WHERE work_session_id=?",sessionId);
             jdbc.update("DELETE FROM agent_run WHERE session_id=?",sessionId);
@@ -318,7 +331,7 @@ class SourceUpdateIntegrationTest {
         service.reconcile(op.id());
         assertEquals("READY_TO_FINALIZE",store.get(op.id(),false).state());
         assertEquals("CLEAN",jdbc.queryForObject("SELECT source_state FROM development_change WHERE id=?",String.class,changeId));
-        assertEquals(oldFingerprint,jdbc.queryForObject("SELECT source_fingerprint_sha256 FROM development_change WHERE id=?",String.class,changeId));
+        assertEquals(preparedFingerprint,jdbc.queryForObject("SELECT source_fingerprint_sha256 FROM development_change WHERE id=?",String.class,changeId));
         assertEquals("STALE",jdbc.queryForObject("SELECT validation_state FROM development_change WHERE id=?",String.class,changeId));
     }
     @Test void preparationClaimIsCommittedBeforeAuthenticatedWorkerEffect() {
@@ -360,5 +373,190 @@ class SourceUpdateIntegrationTest {
         mvc.perform(post("/api/mobile/sessions/{id}/delivery/resolve-conflicts",sessionId).with(auth())
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
         verifyNoInteractions(gateway);
+    }
+
+    private SourceUpdateOperation finalizable(boolean clean) {
+        var op=queued();
+        when(gateway.exchange(op.command(),Action.PREPARE)).thenReturn(new Preparation(State.READY_TO_FINALIZE,
+            "7".repeat(40),List.of(),clean ? null : preparedFingerprint,"8".repeat(64)));
+        service.reconcile(op.id());
+        validateFixtureSource();
+        return store.get(op.id(),false);
+    }
+    private void validateFixtureSource() {
+        tx.executeWithoutResult(ignored -> {
+            var session=sessions.findWithProjectAndDevelopmentChangeById(sessionId).orElseThrow();
+            String fingerprint=session.getDevelopmentChange().getSourceFingerprintSha256();
+            session.setAcceptanceState(WorkSessionAcceptanceState.VALIDATED);
+            session.setSourceTreeFingerprintSha256(fingerprint); session.setSourceTreeObservedAt(Instant.now());
+            session.setValidationProjectionSha256("c".repeat(64)); session.setValidatedAt(Instant.now());
+            session.setValidationDefinitionRevision("synthetic-v1");
+            session.getDevelopmentChange().setValidationState(DevelopmentChangeProjectionState.CURRENT);
+            changes.saveAndFlush(session.getDevelopmentChange()); sessions.saveAndFlush(session);
+            for (String kind:List.of("BACKEND_TEST","ANDROID_BUILD","WEB_BUILD","PLAYWRIGHT_ACCEPTANCE")) {
+                jdbc.update("""
+                    INSERT INTO validation_operation (id,work_session_id,operation,status,source_tree_fingerprint_sha256,
+                        definition_revision,identity_sha256,exit_code,duration_millis,started_at,finished_at,created_at,updated_at)
+                    VALUES (?, ?, ?, 'SUCCEEDED', ?, ?, ?, 0, 1, now(), now(), now(), now())
+                    """,UUID.randomUUID(),sessionId,kind,fingerprint,ValidationOperationKind.valueOf(kind).definitionRevision(),UUID.randomUUID().toString().replace("-","").repeat(2));
+            }
+        });
+    }
+    private DevelopmentChangeSourceFinalizationGateway.Result finalized() {
+        return new DevelopmentChangeSourceFinalizationGateway.Result(DevelopmentChangeSourceFinalizationGateway.FinalizationState.PUBLISHED,
+            "d".repeat(40),"e".repeat(40),"f".repeat(64));
+    }
+    private void simulateFinalizer() {
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.INSPECT)))
+            .thenReturn(new DevelopmentChangeSourceFinalizationGateway.Result(DevelopmentChangeSourceFinalizationGateway.FinalizationState.ABSENT,null,null,null));
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE))).thenAnswer(call -> {
+            var command=call.getArgument(0,DevelopmentChangeSourceFinalizationCommand.class);
+            var separate=new TransactionTemplate(manager);
+            separate.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            assertEquals("CLAIMED",separate.execute(ignored->jdbc.queryForObject("SELECT state FROM mobile_source_finalization WHERE id=?",String.class,command.owner().operationId())));
+            assertEquals(base,command.owner().baseCommit()); assertEquals(published,command.owner().sourceCommit());
+            assertEquals(main,command.targetMainCommit()); assertEquals("c".repeat(64),command.validationProjectionSha256());
+            return finalized();
+        });
+    }
+    @Test void newValidatedRevisionUpdatesExistingPublicationAndKeepsPredecessorHistory() {
+        var op=finalizable(false); simulateFinalizer();
+        var authorization=delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        var result=publisher.publish(sessionId);
+        assertEquals(finalized().publishedHeadSha(),result.headSha()); assertEquals(4L,result.sourceRevision());
+        assertEquals("PUBLISHED",store.get(op.id(),false).state());
+        assertEquals(published,jdbc.queryForObject("SELECT predecessor_json->>'head' FROM mobile_source_finalization WHERE preparation_id=?",String.class,op.id()));
+        assertEquals(receipt,jdbc.queryForObject("SELECT predecessor_json->>'receipt' FROM mobile_source_finalization WHERE preparation_id=?",String.class,op.id()));
+        assertEquals(authorization.id(),jdbc.queryForObject("SELECT delivery_operation_id FROM mobile_source_finalization WHERE preparation_id=?",UUID.class,op.id()));
+        assertEquals(base,jdbc.queryForObject("SELECT base_commit FROM development_change WHERE id=?",String.class,changeId));
+        assertEquals("https://github.com/jlnieto/atenea/pull/47",jdbc.queryForObject("SELECT pull_request_url FROM work_session WHERE id=?",String.class,sessionId));
+        assertEquals(5L,jdbc.queryForObject("SELECT count(*) FROM validation_operation WHERE work_session_id=?",Long.class,sessionId));
+        assertEquals(result,publisher.publish(sessionId));
+        verify(finalizationGateway,times(1)).finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE));
+    }
+    @Test void cleanPreparedSourceHasNewValidationAndCanUpdateSamePrWithoutResolver() {
+        var op=finalizable(true); simulateFinalizer();
+        delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        var result=publisher.publish(sessionId);
+        assertNull(result.sourceFingerprintSha256()); assertEquals(4L,result.sourceRevision());
+        assertNull(op.resolverRunId()); assertEquals("PUBLISHED",store.get(op.id(),false).state());
+        assertEquals(preparedFingerprint,jdbc.queryForObject("SELECT published_source_fingerprint_sha256 FROM work_session WHERE id=?",String.class,sessionId));
+    }
+    @Test void oldSucceededDeliveryReceiptDoesNotReplaceNewRevisionPublication() {
+        var op=finalizable(false);
+        UUID old=UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO mobile_delivery_operation (id,session_id,operator_id,kind,target,execution_id,state,evidence_json,created_at,updated_at)
+            VALUES (?, ?, ?, 'PUBLISH_PR','APP_PROD',?,'SUCCEEDED',?::jsonb,now(),now())
+            """,old,sessionId,operatorId,UUID.randomUUID(),"{\"headCommit\":\""+published+"\"}");
+        var requested=delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        assertNotEquals(old,requested.id()); assertEquals("QUEUED",requested.state());
+        assertEquals(requested.id(),delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD).id());
+        assertEquals("READY_TO_FINALIZE",store.get(op.id(),false).state());
+        verifyNoInteractions(finalizationGateway);
+    }
+    @Test void fourCurrentChecksAreRequiredAndHistoricalValidationCannotAuthorizeFinalization() {
+        finalizable(false);
+        jdbc.update("DELETE FROM validation_operation WHERE work_session_id=? AND operation='ANDROID_BUILD'",sessionId);
+        delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        assertEquals("SOURCE_FINALIZATION_CURRENT_VALIDATION_REQUIRED",assertThrows(DeliveryRejectedException.class,()->publisher.publish(sessionId)).code());
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_finalization WHERE session_id=?",Long.class,sessionId));
+        verifyNoInteractions(finalizationGateway);
+    }
+    @Test void publicationRequiresExplicitAdministrativeDeliveryIntent() {
+        finalizable(false);
+        assertEquals("SOURCE_FINALIZATION_AUTHORIZATION_REQUIRED",assertThrows(DeliveryRejectedException.class,()->publisher.publish(sessionId)).code());
+        verifyNoInteractions(finalizationGateway);
+    }
+    @Test void movedMainFailsBeforeAnyFinalizationIntentOrEffect() {
+        finalizable(false); delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        when(github.canonicalMain(any())).thenReturn("a".repeat(40));
+        assertEquals("SOURCE_FINALIZATION_MAIN_MOVED",assertThrows(DeliveryRejectedException.class,()->publisher.publish(sessionId)).code());
+        verifyNoInteractions(finalizationGateway);
+    }
+    @Test void lostFinalizationReplyIsInspectedAndAdoptedWithoutSecondEffect() {
+        finalizable(false); delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD); simulateFinalizer();
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE)))
+            .thenThrow(new RemoteWorkerException("synthetic lost reply",new java.io.IOException()));
+        assertThrows(RemoteWorkerException.class,()->publisher.publish(sessionId));
+        assertEquals("UNCERTAIN",jdbc.queryForObject("SELECT state FROM mobile_source_finalization WHERE session_id=?",String.class,sessionId));
+        assertThrows(com.atenea.service.worksession.WorkSessionOperationBlockedException.class,()->validations.advanceDevelopmentChange(sessionId));
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.INSPECT))).thenReturn(finalized());
+        assertEquals(finalized().publishedHeadSha(),publisher.publish(sessionId).headSha());
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_finalization WHERE session_id=?",Long.class,sessionId));
+        verify(finalizationGateway,times(1)).finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE));
+    }
+    @Test void resolverOutputRequiresOwnFourChecksBeforePublishingNewRevisionInSameSession() {
+        var op=resolving();
+        tx.executeWithoutResult(ignored->{
+            var run=runs.findById(op.resolverRunId()).orElseThrow();run.setRemoteExecutionId(UUID.randomUUID().toString());
+            advance.advance(run,new RemoteWorkerClient.SourceIdentity(run.getDevelopmentChangeKey().toString(),sessionId,
+                run.getRemoteSessionId().toString(),run.getWorkspaceIdentity(),run.getRemoteExecutionId(),published,"9".repeat(64),true),Instant.now());
+            run.setStatus(AgentRunStatus.SUCCEEDED);run.setProcessOutcome(AgentRunProcessOutcome.SUCCEEDED);run.setFinishedAt(Instant.now());runs.saveAndFlush(run);
+        });
+        expire(op.id());service.reconcile(op.id());
+        assertEquals("RESOLVER_COMPLETED",store.get(op.id(),false).state());
+        assertThrows(DeliveryRejectedException.class,()->delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD));
+        validateFixtureSource();simulateFinalizer();
+        delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        var result=publisher.publish(sessionId);
+        assertEquals(5L,result.sourceRevision());assertEquals("9".repeat(64),result.sourceFingerprintSha256());
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        assertEquals(base,jdbc.queryForObject("SELECT base_commit FROM development_change WHERE id=?",String.class,changeId));
+    }
+    @Test void cleanPreparedSourceCanCompleteCurrentValidationWithoutPromotingOldBase() {
+        finalizable(true);
+        tx.executeWithoutResult(ignored->{
+            var session=sessions.findById(sessionId).orElseThrow();
+            session.setAcceptanceState(WorkSessionAcceptanceState.VALIDATING);session.setValidatedAt(null);sessions.saveAndFlush(session);
+        });
+        var result=validations.advanceDevelopmentChange(sessionId);
+        assertEquals(4,result.passedOperations());
+        assertEquals("CURRENT",jdbc.queryForObject("SELECT validation_state FROM development_change WHERE id=?",String.class,changeId));
+        assertEquals(published,jdbc.queryForObject("SELECT canonical_source_commit FROM work_session WHERE id=?",String.class,sessionId));
+        assertEquals(base,jdbc.queryForObject("SELECT base_commit FROM development_change WHERE id=?",String.class,changeId));
+        verifyNoInteractions(finalizationGateway);
+    }
+    @Test void finalizationIntentAndHistoryAreImmutableAndRejectOtherExecutionAdmission() {
+        finalizable(false); delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD); simulateFinalizer();
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE)))
+            .thenThrow(new RemoteWorkerException("synthetic timeout",new java.io.IOException()));
+        assertThrows(RemoteWorkerException.class,()->publisher.publish(sessionId));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE mobile_source_finalization SET predecessor_json='{}'::jsonb WHERE session_id=?",sessionId));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE validation_operation SET status='RUNNING',exit_code=NULL,finished_at=NULL WHERE id=?",validationId));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE work_session SET status='CLOSED' WHERE id=?",sessionId));
+        assertEquals("UNCERTAIN",jdbc.queryForObject("SELECT state FROM mobile_source_finalization WHERE session_id=?",String.class,sessionId));
+    }
+    @Test void publicationIntentCanCommitWhileOutboxOwnsNonKeyStateLock() {
+        finalizable(false);
+        var authorization=delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        simulateFinalizer();
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE)))
+            .thenAnswer(call->{
+                // A nested publication may have a parent transaction. Inspect
+                // from another committed transaction, not its own uncommitted view.
+                var separate=new TransactionTemplate(manager);
+                separate.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                String state=separate.execute(ignored->jdbc.queryForObject("SELECT state FROM mobile_source_finalization WHERE session_id=?",String.class,sessionId));
+                assertEquals("CLAIMED",state);
+                return finalized();
+            });
+        tx.executeWithoutResult(ignored->{
+            deliveries.get(authorization.id(),true);
+            assertEquals(finalized().publishedHeadSha(),publisher.publish(sessionId).headSha());
+        });
+        assertEquals("PUBLISHED",jdbc.queryForObject("SELECT state FROM mobile_source_finalization WHERE session_id=?",String.class,sessionId));
+    }
+    @Test void existingOpenPrPublicationUsesNewHeadForUfdAndNeverCreatesAnotherPr() {
+        finalizable(false);simulateFinalizer();delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        var repo=new com.atenea.github.GitHubRepositoryRef("jlnieto","atenea");
+        var branch=jdbc.queryForObject("SELECT workspace_branch FROM work_session WHERE id=?",String.class,sessionId);
+        when(github.resolveRepository(ProjectCodexIdentity.REPOSITORY)).thenReturn(repo);
+        when(github.findOpenPullRequests(repo,branch,"main")).thenReturn(List.of(new com.atenea.github.GitHubPullRequest(
+            47L,"https://github.com/jlnieto/atenea/pull/47","open",false,"jlnieto/atenea","main","jlnieto/atenea",branch,finalized().publishedHeadSha(),true)));
+        assertEquals(finalized().publishedHeadSha(),githubPublication.publishForDelivery(sessionId).finalCommitSha());
+        verify(github).requireUfdValidation(repo,finalized().publishedHeadSha(),branch);
+        verify(github,never()).createPullRequest(any(),anyString(),anyString(),anyString(),anyString());
+        assertEquals("https://github.com/jlnieto/atenea/pull/47",jdbc.queryForObject("SELECT pull_request_url FROM work_session WHERE id=?",String.class,sessionId));
     }
 }

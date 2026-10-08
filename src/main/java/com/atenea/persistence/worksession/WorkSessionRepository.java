@@ -19,6 +19,17 @@ public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, 
             """, nativeQuery = true)
     boolean existsActiveSourceUpdateBySessionId(@Param("sessionId") Long sessionId);
 
+    @Query(value = "SELECT EXISTS (SELECT 1 FROM mobile_source_finalization WHERE session_id=:sessionId AND state <> 'PUBLISHED')", nativeQuery=true)
+    boolean existsActiveSourceFinalizationBySessionId(@Param("sessionId") Long sessionId);
+
+    @Query(value = """
+        SELECT EXISTS (SELECT 1 FROM mobile_source_update_operation op JOIN work_session ws ON ws.id=op.session_id
+            JOIN development_change dc ON dc.id=ws.development_change_id WHERE ws.id=:sessionId
+            AND op.state='READY_TO_FINALIZE' AND op.preparation_json->>'preparedFingerprintSha256' IS NULL
+            AND op.prepared_revision=dc.source_revision AND op.command_json->'owner'->>'sourceCommit'=dc.observed_canonical_commit)
+        """,nativeQuery=true)
+    boolean existsReadyCleanSourceUpdateBySessionId(@Param("sessionId") Long sessionId);
+
     boolean existsByProjectIdAndStatus(Long projectId, WorkSessionStatus status);
 
     boolean existsByProjectIdAndStatusIn(Long projectId, Collection<WorkSessionStatus> statuses);

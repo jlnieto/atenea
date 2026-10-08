@@ -68,6 +68,7 @@ public class SourceUpdateService {
     private final DevelopmentChangeSourceUpdateGateway gateway;
     private final GitHubClient github;
     private final RemoteWorkerProperties worker;
+    private final com.atenea.remoteworker.RemoteWorkerClient sourceObserver;
     private final TransactionTemplate transaction;
 
     public SourceUpdateService(SourceUpdateStore store, WorkSessionRepository sessions,
@@ -76,11 +77,12 @@ public class SourceUpdateService {
             AgentRunService agentRuns, RemoteAgentRunCoordinator coordinator, WorkSessionAcceptanceService acceptance,
             DevelopmentChangeBranchPublicationService ownership, MobileDeliveryService delivery,
             RemoteRoutingSelector routing, DevelopmentChangeSourceUpdateGateway gateway, GitHubClient github,
-            RemoteWorkerProperties worker, PlatformTransactionManager manager) {
+            RemoteWorkerProperties worker, com.atenea.remoteworker.RemoteWorkerClient sourceObserver, PlatformTransactionManager manager) {
         this.store=store; this.sessions=sessions; this.changes=changes; this.workspaceOperations=workspaceOperations;
         this.operators=operators; this.runs=runs; this.turns=turns; this.agentRuns=agentRuns;
         this.coordinator=coordinator; this.acceptance=acceptance; this.ownership=ownership; this.delivery=delivery;
         this.routing=routing; this.gateway=gateway; this.github=github; this.worker=worker;
+        this.sourceObserver=sourceObserver;
         transaction = new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -205,10 +207,26 @@ public class SourceUpdateService {
             }
             change.setSourceRevision(Math.addExact(change.getSourceRevision(), 1));
             change.setObservedCanonicalCommit(op.command().owner().sourceCommit());
+            session.setCanonicalSourceRef("refs/heads/main");
+            session.setCanonicalSourceCommit(op.command().owner().sourceCommit());
+            session.setCanonicalSourceObservationSha256(preparation.receiptSha256());
+            session.setCanonicalSourceObservedAt(Instant.now());
             change.setSourceState(preparation.preparedFingerprintSha256() == null
                     ? DevelopmentChangeSourceState.CLEAN : DevelopmentChangeSourceState.DIRTY);
             if (preparation.preparedFingerprintSha256() != null) {
                 change.setSourceFingerprintSha256(preparation.preparedFingerprintSha256());
+            } else {
+                var observed=sourceObserver.fingerprintSourceTree(session);
+                if (observed==null || !"observed".equals(observed.state()) || observed.valuesExposed()
+                        || !Objects.equals(observed.sessionId(),session.getRemoteSessionId().toString())
+                        || !Objects.equals(observed.workspaceIdentity(),session.getWorkspaceIdentity())
+                        || !Objects.equals(observed.projectId(),ProjectCodexIdentity.PROJECT_IDENTITY)
+                        || !Objects.equals(observed.headCommit(),op.command().owner().sourceCommit())
+                        || observed.fingerprintSha256()==null || !observed.fingerprintSha256().matches("[0-9a-f]{64}")
+                        || observed.stagedChangeCount()!=0 || observed.unstagedChangeCount()!=0 || observed.untrackedChangeCount()!=0) {
+                    throw rejected("SOURCE_UPDATE_CLEAN_OBSERVATION_MISMATCH");
+                }
+                change.setSourceFingerprintSha256(observed.fingerprintSha256());
             }
             change.setWorkspaceUpdatedAt(Instant.now());
             invalidate(change, session);
@@ -217,6 +235,7 @@ public class SourceUpdateService {
                     ? "READY_TO_RESOLVE" : "READY_TO_FINALIZE");
         });
     }
+
 
     private void startResolver(SourceUpdateOperation claimed) {
         Long runId;

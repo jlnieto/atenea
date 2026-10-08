@@ -34,6 +34,12 @@ public class DevelopmentChangeBranchPublicationService {
     private final AgentRunRepository agentRunRepository;
     private final DevelopmentChangeBranchPublicationGateway gateway;
     private final TransactionTemplate transaction;
+    private com.atenea.delivery.SourceFinalizationService finalizations;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setFinalizations(com.atenea.delivery.SourceFinalizationService finalizations) {
+        this.finalizations = finalizations;
+    }
 
     public DevelopmentChangeBranchPublicationService(
             WorkSessionRepository sessionRepository,
@@ -50,6 +56,10 @@ public class DevelopmentChangeBranchPublicationService {
     public PublishedIdentity publish(Long sessionId) {
         DevelopmentChangeBranchPublicationCommand command = Objects.requireNonNull(
                 transaction.execute(ignored -> commandFor(sessionId)));
+        if (finalizations != null) {
+            var recovered = finalizations.publish(sessionId, command);
+            if (recovered.isPresent()) return recovered.get();
+        }
         DevelopmentChangeBranchPublication result = gateway.publish(command);
         if (result == null) {
             throw conflict(sessionId, "platform returned no publication identity");

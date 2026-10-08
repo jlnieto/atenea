@@ -33,6 +33,53 @@ class DevelopmentChangeSourceUpdateWorkerClientTest {
         node.putArray("conflictFiles").add("src/test/java/Example.java");
         return node;
     }
+    DevelopmentChangeSourceFinalizationCommand finalization() {
+        var old=command.owner();
+        return new DevelopmentChangeSourceFinalizationCommand(new DevelopmentChangeBranchPublicationCommand(old.operationId(),old.idempotencyKey(),
+            old.changeKey(),old.databaseProjectId(),old.projectIdentity(),old.repository(),old.repositoryBranch(),old.baseCommit(),old.sourceCommit(),
+            old.workspaceBranch(),old.workspaceIdentity(),old.workerId(),4,"a".repeat(64)),command.targetMainCommit(),command.publicationReceiptSha256(),
+            UUID.randomUUID(),"b".repeat(64),"c".repeat(64));
+    }
+    @Test void finalizationContractBindsPreparationValidationAndNewRevision() throws Exception {
+        var command=finalization();
+        var body=client.finalizationRequest(command,DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE);
+        assertEquals(24,body.size()); assertEquals("development-change-source-finalization/v1",body.get("protocolVersion"));
+        assertEquals(command.preparationOperationId().toString(),body.get("preparationOperationId"));
+        String hash=(String)body.remove("requestFingerprintSha256");
+        assertEquals(hash,HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(mapper.writeValueAsBytes(body))));
+        var request=mapper.valueToTree(client.finalizationRequest(command,DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE));
+        ObjectNode response=request.deepCopy(); response.put("state","PUBLISHED").put("publishedHeadSha","d".repeat(40))
+            .put("expectedTreeSha","e".repeat(40)).put("finalizationReceiptSha256","f".repeat(64)).put("valuesExposed",false);
+        assertEquals("d".repeat(40),client.validateFinalization(response,request).publishedHeadSha());
+        for (String field:java.util.List.of("preparationOperationId","validationProjectionSha256","sourceRevision","valuesExposed","extra")) {
+            var invalid=response.deepCopy().put(field,"foreign");
+            assertThrows(RemoteWorkerException.class,()->client.validateFinalization(invalid,request));
+        }
+        assertThrows(RemoteWorkerException.class,()->client.validateFinalization(response.deepCopy().putNull("finalizationReceiptSha256"),request));
+    }
+    @Test void finalizationFixedEndpointAuthenticatesAndEchoesExactIntent(@TempDir Path temporary) throws Exception {
+        Path token=temporary.resolve("synthetic.token"); Files.writeString(token,"x".repeat(40));
+        properties.setTokenFile(token.toString());
+        var command=finalization();
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        properties.setEndpoint("http://127.0.0.1:"+server.getAddress().getPort());
+        var calls=new AtomicInteger();
+        server.createContext("/v1/development-changes/source-finalizations/inspect",exchange->{
+            assertEquals("Bearer "+"x".repeat(40),exchange.getRequestHeaders().getFirst("Authorization"));
+            assertEquals(command.owner().idempotencyKey().toString(),exchange.getRequestHeaders().getFirst("Idempotency-Key"));
+            ObjectNode body=(ObjectNode)mapper.readTree(exchange.getRequestBody());
+            assertEquals("OBSERVE_ONLY",body.path("effect").asText());
+            body.put("state","ABSENT").putNull("publishedHeadSha").putNull("expectedTreeSha").putNull("finalizationReceiptSha256").put("valuesExposed",false);
+            byte[] reply=mapper.writeValueAsBytes(body); exchange.sendResponseHeaders(200,reply.length);
+            exchange.getResponseBody().write(reply);exchange.close();calls.incrementAndGet();
+        });
+        server.start();
+        try {
+            assertEquals(DevelopmentChangeSourceFinalizationGateway.FinalizationState.ABSENT,
+                client.finalizeSource(command,DevelopmentChangeSourceFinalizationCommand.Action.INSPECT).state());
+            assertEquals(1,calls.get());
+        } finally { server.stop(0); }
+    }
     @Test void fingerprintMatchesCanonicalSortedCompactProtocolAndIntentSurvivesInspection() throws Exception {
         var prepare = client.request(command, DevelopmentChangeSourceUpdateCommand.Action.PREPARE);
         String fingerprint = (String) prepare.remove("requestFingerprintSha256");

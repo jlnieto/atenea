@@ -46,9 +46,15 @@ la revisión preparada y la fuente resultante; las validaciones anteriores queda
 como historial. Android incorpora la acción cerrada Resolver conflictos y su
 estado dentro del panel existente. No está integrada ni desplegada.
 
-Siguiente paso: finalización y publicación autorizadas del commit que incorpora
-main en la misma rama y PR, con validación propia de la revisión nueva. No
-resolver manualmente PR 47 para sustituir estas capacidades.
+Cuarta unidad implementada y probada en App y Platform: finalización autorizada
+de la fuente validada, commit que incorpora main sin reescribir historia y
+actualización de la misma PR. La acción móvil Actualizar la misma PR conserva
+WorkSession, rama y número; GitHub/UFD comprueban el nuevo head antes de integrar.
+No está integrada ni desplegada.
+
+Siguiente paso: unidad 5, pruebas combinadas de interrupciones y recuperación
+explícita del resolver fallido, seguidas de integración conjunta. No resolver
+manualmente PR 47 para sustituir estas capacidades.
 
 ## Reglas para terminar sin ampliar el alcance
 
@@ -260,11 +266,39 @@ recuperación explícita de un resolver fallido y las pruebas combinadas de
 interrupciones pertenecen a la unidad 5; esta unidad no ofrece una reparación
 manual ni una segunda ejecución implícita.
 
-Pendiente: unidad 4, finalización y publicación del commit que incorpora main
-sin reescribir historia, validación nueva y actualización de la misma PR.
-Después corresponden la integración conjunta y el despliegue autorizado.
-No se ha ejercitado la operación contra WS21 ni modificado PR47; no hay
-despliegue o aceptación móvil de esta entrega.
+2026-10-08: cuarta unidad implementada en ambas ramas
+`feature/mobile-conflict-recovery`. PASS: 141 tests backend focales en
+PostgreSQL 16 efímero, migración V87 incluida; 19 tests Android API/panel;
+220 tests Platform y del validador, con cinco tests previos de operaciones
+root omitidos al ejecutarse como usuario sin privilegios; installer,
+schemas Draft 2020-12, `bash -n` y `git diff --check`.
+
+La nueva intención exige autorización administrativa de publicación y las
+cuatro comprobaciones con sus definiciones vigentes para la fuente actual.
+V87 conserva por separado preparación, publicación predecesora, validación y
+recibo final. Una respuesta perdida consulta la misma intención antes de
+reanudar. Las barreras impiden validar, admitir nuevas ejecuciones, cerrar la
+sesión o operar su workspace mientras esa publicación es incierta.
+
+Platform sella y retiene el candidato antes de mover la rama. El commit tiene
+dos padres exactos: head publicado anterior y main fijado. Sólo permite push
+fast-forward normal, sin force, conservando base, registros anteriores y
+archivos resueltos. App no crea una PR sustituta si la original desaparece o
+cambia de identidad. Integrar exige evidencia de GitHub/UFD para el nuevo head,
+no la finalización de Codex ni un resultado histórico.
+
+La observación del worker y el validador consumen la misma autoridad de
+preparación sellada para reconocer el head predecesor al validar archivos
+resueltos. La base de creación permanece inmutable. Un registro inválido
+bloquea sin elegir otro commit ni recurrir a una regla más permisiva. Para una
+preparación limpia, App consulta el fingerprint real en vez de conservar el
+hash histórico o implementar el algoritmo del worker.
+
+Pendiente: unidad 5 y después despliegue/aceptación autorizados. La recuperación
+explícita del resolver fallido, las pruebas combinadas con cambios de refs y
+la transición a otra preparación siguen formando parte de ese cierre.
+WS21 y PR47 permanecen fuera de estas pruebas. No hay despliegue ni aceptación
+móvil de la entrega 1.
 
 ## Autorización de efectos reales
 

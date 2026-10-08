@@ -11,7 +11,7 @@ public record SourceUpdateOperation(UUID id, Long sessionId, Long operatorId, St
         DevelopmentChangeSourceUpdateCommand command, Preparation preparation, Long preparedRevision,
         Long resolverTurnId, Long resolverRunId, Long resultRevision, String resultFingerprintSha256,
         String errorCode, Instant updatedAt) {
-    static final Set<String> TERMINAL = Set.of("RESOLVER_COMPLETED", "READY_TO_FINALIZE", "FAILED", "BLOCKED");
+    static final Set<String> TERMINAL = Set.of("RESOLVER_COMPLETED", "READY_TO_FINALIZE", "FAILED", "BLOCKED", "PUBLISHED");
     public View view() {
         return new View(id, sessionId, state, command.targetMainCommit(), resultRevision == null ? preparedRevision : resultRevision,
                 resolverRunId, errorCode, updatedAt);

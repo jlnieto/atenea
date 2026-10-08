@@ -60,6 +60,11 @@ internal class MobileDeliveryUiState(
             && validated && !runInProgress && !busy
             && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
 
+    fun canUpdatePullRequest(validated: Boolean, runInProgress: Boolean): Boolean =
+        available && sourceUpdateEnabled && sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
+            && validated && !runInProgress && !busy
+            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
+
     suspend fun refresh() {
         try {
             val state = load()
@@ -167,7 +172,10 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
         }
         state.loadError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (pr?.state != "SUCCEEDED") {
+        if (state.sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")) {
+            AteneaButton("Actualizar la misma PR", enabled = state.canUpdatePullRequest(validated, runInProgress),
+                onClick = { act { api.createDeliveryPullRequest(sessionId) } })
+        } else if (pr?.state != "SUCCEEDED") {
             AteneaButton("Crear PR", enabled = available && validated && !runInProgress && !busy && !active,
                 onClick = { act { api.createDeliveryPullRequest(sessionId) } })
         } else if (integration?.state != "SUCCEEDED") {
@@ -229,6 +237,7 @@ internal fun sourceUpdateLabel(state: String): String = when (state) {
     "RESOLVING" -> "Codex está resolviendo los conflictos en esta conversación."
     "RESOLVER_COMPLETED" -> "Codex terminó. Falta validar la nueva revisión y actualizar la misma PR."
     "READY_TO_FINALIZE" -> "Preparación terminada. Falta validar la nueva revisión y actualizar la misma PR."
+    "PUBLISHED" -> "La misma PR contiene la revisión nueva. GitHub debe validar este head antes de integrar."
     else -> "La recuperación necesita atención. No se ha integrado ni publicado el cambio."
 }
 

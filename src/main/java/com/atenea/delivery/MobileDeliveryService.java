@@ -105,8 +105,11 @@ public class MobileDeliveryService {
                     throw new DeliveryRejectedException("CLOSED_REQUEST_REQUIRED");
                 }
                 if ("PUBLISH_PR".equals(kind)) {
-                    if (session.getPullRequestStatus() != null && session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED) {
-                        var receipt = store.list(sessionId).stream().filter(op -> op.kind().equals(kind) && op.state().equals("SUCCEEDED")).findFirst();
+                    if (session.getPullRequestStatus() != null && session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED
+                            && Objects.equals(session.getDevelopmentChange().getSourceRevision(), session.getPublishedSourceRevision())
+                            && Objects.equals(session.getDevelopmentChange().getSourceFingerprintSha256(),session.getPublishedSourceFingerprintSha256())) {
+                        var receipt = store.list(sessionId).stream().filter(op -> op.kind().equals(kind) && op.state().equals("SUCCEEDED")
+                            && Objects.equals(op.evidence().path("headCommit").asText(),session.getFinalCommitSha())).findFirst();
                         if (receipt.isPresent()) return receipt.get().view();
                         published(session);
                         if (session.getPullRequestStatus() == WorkSessionPullRequestStatus.DECLINED) {
