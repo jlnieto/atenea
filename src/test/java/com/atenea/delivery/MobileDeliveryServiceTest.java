@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -129,6 +130,138 @@ class MobileDeliveryServiceTest {
         when(publication.publishForDelivery(21L)).thenThrow(new GitHubIntegrationException("UFD_FAILED: failed tests"));
         service.reconcile();
         verify(store).update(op,"BLOCKED","GITHUB_REJECTED",null,op.evidence());
+    }
+
+    private AtomicReference<DeliveryOperation> durableOutbox(DeliveryOperation initial) {
+        var saved = new AtomicReference<>(initial);
+        when(store.pending()).thenReturn(List.of(id));
+        when(store.get(eq(id), anyBoolean())).thenAnswer(ignored -> saved.get());
+        doAnswer(call -> {
+            DeliveryOperation previous = call.getArgument(0);
+            saved.set(new DeliveryOperation(previous.id(),previous.sessionId(),previous.operatorId(),previous.kind(),
+                    previous.target(),previous.sourceCommit(),previous.executionId(),call.getArgument(1),
+                    call.getArgument(3),call.getArgument(4),call.getArgument(2),previous.createdAt(),Instant.now()));
+            return null;
+        }).when(store).update(any(), anyString(), nullable(String.class), nullable(String.class), any());
+        return saved;
+    }
+    private GitHubClient.UfdDispatchRequest dispatchFixture() {
+        publishedFixture();
+        String head = session.getFinalCommitSha(), branch = session.getPublishedHeadBranch();
+        var request = new GitHubClient.UfdDispatchRequest(GitHubClient.ufdRequestId(head,branch),head,branch,"3".repeat(40));
+        when(github.prepareOwnedHeadUfd(head,branch)).thenReturn(request);
+        when(publication.publishForDelivery(21L)).thenThrow(new GitHubIntegrationException("UFD_WORKFLOW_MISSING: legacy head"));
+        return request;
+    }
+    @Test void legacyPublicationCommitsIntentAndClaimBeforeOneDispatchAndNeverResendsOnPoll() {
+        var request = dispatchFixture();
+        var saved = durableOutbox(operation("PUBLISH_PR","WAITING_CI"));
+        var claimCommitted = new java.util.concurrent.atomic.AtomicBoolean();
+        doAnswer(ignored -> { claimCommitted.set(true); return null; }).when(tm).commit(any());
+        doAnswer(ignored -> {
+            assertTrue(claimCommitted.get(), "HTTP must be outside the committed claim transaction");
+            assertEquals("CLAIMED", saved.get().evidence().path("ufdDispatch").path("status").asText());
+            assertEquals(request.requestId().toString(), saved.get().evidence().path("ufdDispatch").path("requestId").asText());
+            return null;
+        }).when(github).dispatchOwnedHeadUfd(request);
+        service.reconcile(); // Prepare is durable, but it has not sent HTTP.
+        assertEquals("PREPARED",saved.get().evidence().path("ufdDispatch").path("status").asText());
+        verify(github,never()).dispatchOwnedHeadUfd(any());
+        claimCommitted.set(false);
+        service.reconcile(); // Claim commits before HTTP, then record acceptance.
+        assertEquals("ACCEPTED",saved.get().evidence().path("ufdDispatch").path("status").asText());
+        service.reconcile(); service.reconcile();
+        verify(github,times(1)).prepareOwnedHeadUfd(anyString(),anyString());
+        verify(github,times(1)).dispatchOwnedHeadUfd(request);
+        assertEquals("WAITING_CI",saved.get().state());
+        verifyNoInteractions(factors,grants);
+    }
+    @Test void lostDispatchResponseAndRestartRetainIdentityWithoutSecondSend() {
+        var request=dispatchFixture();
+        var saved=durableOutbox(operation("PUBLISH_PR","WAITING_CI"));
+        doThrow(new GitHubIntegrationException("lost response")).when(github).dispatchOwnedHeadUfd(request);
+        service.reconcile(); service.reconcile();
+        assertEquals("UNCONFIRMED",saved.get().evidence().path("ufdDispatch").path("status").asText());
+        // Reconstruct service as after an App restart, keeping the durable outbox.
+        service=new MobileDeliveryService(store,sessions,runs,operators,owner,publication,github,executor,factors,grants,mapper,tm);
+        service.reconcile(); service.reconcile();
+        verify(github,times(1)).dispatchOwnedHeadUfd(request);
+        assertEquals(request.requestId().toString(),saved.get().evidence().path("ufdDispatch").path("requestId").asText());
+    }
+    @Test void claimedBeforeCrashButNoReceiptCannotResendAndEventuallyBlocks() {
+        var request=dispatchFixture();
+        var initial=operation("PUBLISH_PR","WAITING_CI");
+        var evidence=mapper.createObjectNode();
+        evidence.set("ufdDispatch",mapper.valueToTree(request));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)evidence.path("ufdDispatch"))
+                .put("status","CLAIMED").put("claimedAt",Instant.now().minusSeconds(601).getEpochSecond());
+        var saved=durableOutbox(new DeliveryOperation(initial.id(),21L,7L,initial.kind(),initial.target(),initial.sourceCommit(),
+                execution,initial.state(),null,evidence,null,initial.createdAt(),initial.updatedAt()));
+        service.reconcile();
+        assertEquals("BLOCKED",saved.get().state()); assertEquals("UFD_NOT_STARTED",saved.get().errorCode());
+        verify(github,never()).dispatchOwnedHeadUfd(any());
+    }
+    @Test void candidateChangedAfterPrepareIsBlockedBeforeDispatch() {
+        dispatchFixture(); var saved=durableOutbox(operation("PUBLISH_PR","WAITING_CI"));
+        service.reconcile(); session.setFinalCommitSha("9".repeat(40)); service.reconcile();
+        assertEquals("BLOCKED",saved.get().state()); assertEquals("UFD_IDENTITY_REJECTED",saved.get().errorCode());
+        verify(github,never()).dispatchOwnedHeadUfd(any());
+    }
+    @Test void missingMainControllerDoesNotWaitForNonexistentCi() {
+        dispatchFixture();
+        when(github.prepareOwnedHeadUfd(anyString(),anyString())).thenThrow(new GitHubIntegrationException("UFD_CONTROLLER_UNAVAILABLE"));
+        var saved=durableOutbox(operation("PUBLISH_PR","WAITING_CI"));
+        service.reconcile();
+        assertEquals("BLOCKED",saved.get().state()); assertEquals("UFD_CONTROLLER_UNAVAILABLE",saved.get().errorCode());
+        verify(github,never()).dispatchOwnedHeadUfd(any());
+    }
+    @Test void failedClaimCommitCannotSendHttp() {
+        dispatchFixture(); durableOutbox(operation("PUBLISH_PR","WAITING_CI"));
+        service.reconcile();
+        doThrow(new RuntimeException("commit failed")).when(tm).commit(any());
+        service.reconcile();
+        verify(github,never()).dispatchOwnedHeadUfd(any());
+    }
+    @Test void confirmedUfdCompletesOriginalOperationAndKeepsDispatchAudit() {
+        dispatchFixture(); var saved=durableOutbox(operation("PUBLISH_PR","WAITING_CI"));
+        service.reconcile(); service.reconcile();
+        var response=mock(com.atenea.api.worksession.WorkSessionResponse.class);
+        when(response.pullRequestUrl()).thenReturn(session.getPullRequestUrl());
+        when(response.finalCommitSha()).thenReturn(session.getFinalCommitSha());
+        doReturn(response).when(publication).publishForDelivery(21L);
+        service.reconcile();
+        assertEquals(id,saved.get().id()); assertEquals("SUCCEEDED",saved.get().state());
+        assertEquals("ACCEPTED",saved.get().evidence().path("ufdDispatch").path("status").asText());
+        assertEquals(session.getPullRequestUrl(),saved.get().evidence().path("pullRequestUrl").asText());
+        verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
+        verify(github,times(1)).dispatchOwnedHeadUfd(any());
+    }
+    @Test void sourceRevisionMovedAfterSendIsBlockedBeforePublishingPr() {
+        dispatchFixture(); var saved=durableOutbox(operation("PUBLISH_PR","WAITING_CI"));
+        service.reconcile(); service.reconcile();
+        session.getDevelopmentChange().setSourceRevision(3L);
+        clearInvocations(publication);
+        service.reconcile();
+        assertEquals("BLOCKED",saved.get().state());
+        assertEquals("PUBLISHED_OWNERSHIP_MISMATCH",saved.get().errorCode());
+        verifyNoInteractions(publication);
+        verify(github,times(1)).dispatchOwnedHeadUfd(any());
+    }
+    @Test void newIntentForSameHeadAdoptsEarlierClaimInsteadOfRedispatching() {
+        var request=dispatchFixture();
+        var earlier=operation("PUBLISH_PR","BLOCKED");
+        var evidence=mapper.createObjectNode(); evidence.set("ufdDispatch",mapper.valueToTree(request));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)evidence.path("ufdDispatch"))
+                .put("status","UNCONFIRMED").put("claimedAt",Instant.now().minusSeconds(601).getEpochSecond());
+        earlier=new DeliveryOperation(UUID.randomUUID(),21L,7L,earlier.kind(),earlier.target(),null,UUID.randomUUID(),
+                "BLOCKED",null,evidence,"UFD_NOT_STARTED",earlier.createdAt(),earlier.updatedAt());
+        when(store.ownedHeadUfdRequest(21L,request.headSha(),request.headBranch())).thenReturn(Optional.of(earlier));
+        var saved=durableOutbox(operation("PUBLISH_PR","QUEUED"));
+        service.reconcile(); service.reconcile();
+        assertEquals("BLOCKED",saved.get().state());
+        assertEquals(request.requestId().toString(),saved.get().evidence().path("ufdDispatch").path("requestId").asText());
+        verify(github,never()).prepareOwnedHeadUfd(anyString(),anyString());
+        verify(github,never()).dispatchOwnedHeadUfd(any());
     }
     private void publishedFixture() {
         DevelopmentChangeEntity change = new DevelopmentChangeEntity(); change.setChangeKey(UUID.randomUUID());

@@ -20,6 +20,7 @@ import com.atenea.service.worksession.DevelopmentChangeBranchPublicationService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -162,11 +163,98 @@ public class MobileDeliveryService {
         if (!executor.enabled()) return;
         for (UUID id : store.pending()) {
             try {
-                transaction.executeWithoutResult(ignored -> advance(store.get(id, true)));
+                GitHubClient.UfdDispatchRequest dispatch = transaction.execute(ignored -> {
+                    DeliveryOperation op = store.get(id, true);
+                    if (!op.terminal() && "PREPARED".equals(op.evidence().path("ufdDispatch").path("status").asText())) {
+                        return claimUfdDispatch(op);
+                    }
+                    advance(op);
+                    return null;
+                });
+                // The claim has COMMITTED before HTTP. A crash/lost reply is observed,
+                // never blindly re-dispatched by a poll, App restart or duplicate tap.
+                if (dispatch != null) sendClaimedUfdDispatch(id, dispatch);
             } catch (RuntimeException ignored) {
                 // A transport/DB ambiguity is not failure and never creates a new identity.
                 // The durable outbox is inspected/replayed on the next pass or App restart.
             }
+        }
+    }
+
+    private GitHubClient.UfdDispatchRequest claimUfdDispatch(DeliveryOperation op) {
+        try {
+            administrator(op.operatorId());
+            WorkSessionEntity session = session(op.sessionId(), false);
+            owned(session); idle(op.sessionId()); publishedHead(session);
+            requireDispatchHead(op, session);
+        } catch (DeliveryRejectedException rejected) {
+            store.update(op, "BLOCKED", rejected.code(), null, op.evidence());
+            return null;
+        }
+        JsonNode record = op.evidence().path("ufdDispatch");
+        if (!record.isObject() || !record.path("headSha").asText().matches("[0-9a-f]{40}")
+                || !record.path("authoritySha").asText().matches("[0-9a-f]{40}")
+                || !GitHubClient.ufdRequestId(record.path("headSha").asText(), record.path("headBranch").asText())
+                        .toString().equals(record.path("requestId").asText())) {
+            store.update(op, "BLOCKED", "UFD_IDENTITY_REJECTED", null, op.evidence());
+            return null;
+        }
+        var request = new GitHubClient.UfdDispatchRequest(UUID.fromString(record.path("requestId").asText()),
+                record.path("headSha").asText(), record.path("headBranch").asText(), record.path("authoritySha").asText());
+        ObjectNode evidence = op.evidence().deepCopy();
+        ((ObjectNode) evidence.path("ufdDispatch")).put("status", "CLAIMED")
+                .put("claimedAt", Instant.now().getEpochSecond());
+        store.update(op, "WAITING_CI", "UFD_REQUESTED", null, evidence);
+        return request;
+    }
+
+    private void sendClaimedUfdDispatch(UUID id, GitHubClient.UfdDispatchRequest request) {
+        boolean accepted;
+        try { github.dispatchOwnedHeadUfd(request); accepted = true; }
+        catch (GitHubIntegrationException error) { accepted = false; }
+        final boolean confirmed = accepted;
+        transaction.executeWithoutResult(ignored -> {
+            DeliveryOperation op = store.get(id, true);
+            if (op.terminal() || !request.requestId().toString().equals(op.evidence().path("ufdDispatch").path("requestId").asText())) return;
+            ObjectNode evidence = op.evidence().deepCopy();
+            ((ObjectNode) evidence.path("ufdDispatch")).put("status", confirmed ? "ACCEPTED" : "UNCONFIRMED");
+            store.update(op, "WAITING_CI", confirmed ? "UFD_REQUESTED" : "UFD_DISPATCH_UNCONFIRMED", null, evidence);
+        });
+    }
+
+    private void prepareUfdDispatch(DeliveryOperation op, WorkSessionEntity session) {
+        publishedHead(session);
+        var previous = store.ownedHeadUfdRequest(op.sessionId(), session.getFinalCommitSha(), session.getPublishedHeadBranch());
+        if (previous.isPresent()) {
+            ObjectNode retained = op.evidence().deepCopy();
+            retained.set("ufdDispatch", previous.get().evidence().path("ufdDispatch").deepCopy());
+            store.update(op, "WAITING_CI", "UFD_DISPATCH_UNCONFIRMED", null, retained);
+            return;
+        }
+        GitHubClient.UfdDispatchRequest request = github.prepareOwnedHeadUfd(
+                session.getFinalCommitSha(), session.getPublishedHeadBranch());
+        ObjectNode evidence = op.evidence().deepCopy();
+        evidence.set("ufdDispatch", mapper.valueToTree(request));
+        ((ObjectNode) evidence.path("ufdDispatch")).put("status", "PREPARED");
+        store.update(op, "WAITING_CI", "UFD_REQUESTED", null, evidence);
+    }
+
+    private void requireDispatchHead(DeliveryOperation op, WorkSessionEntity session) {
+        JsonNode record = op.evidence().path("ufdDispatch");
+        if (!"PUBLISH_PR".equals(op.kind()) || op.target() != DeliveryTarget.APP_PROD
+                || !Objects.equals(session.getFinalCommitSha(), record.path("headSha").asText())
+                || !Objects.equals(session.getPublishedHeadBranch(), record.path("headBranch").asText())) {
+            throw new DeliveryRejectedException("UFD_IDENTITY_REJECTED");
+        }
+    }
+
+    private void waitForUfd(DeliveryOperation op, String code) {
+        // Missing/ambiguous initiation is not "GitHub is running" forever.
+        long claimedAt = op.evidence().path("ufdDispatch").path("claimedAt").asLong(op.createdAt().getEpochSecond());
+        if (Instant.now().getEpochSecond() - claimedAt > 600 && !"CI_PENDING".equals(code)) {
+            store.update(op, "BLOCKED", "UFD_NOT_STARTED", null, op.evidence());
+        } else {
+            store.update(op, "WAITING_CI", code, null, op.evidence());
         }
     }
 
@@ -183,12 +271,19 @@ public class MobileDeliveryService {
                 administrator(op.operatorId());
                 WorkSessionEntity session = session(op.sessionId(), op.kind().equals("INTEGRATE"));
                 owned(session); idle(session.getId());
+                if (op.evidence().has("ufdDispatch")) {
+                    publishedHead(session); requireDispatchHead(op, session);
+                }
                 if (op.kind().equals("PUBLISH_PR")) {
                     // Publication owns its own short identity transactions; do not lock its
                     // WorkSession across its REQUIRES_NEW gateway receipt persistence.
                     var response = publication.publishForDelivery(op.sessionId());
-                    store.update(op, "SUCCEEDED", null, null, mapper.createObjectNode()
-                            .put("pullRequestUrl", response.pullRequestUrl()).put("headCommit", response.finalCommitSha()));
+                    ObjectNode receipt = op.evidence().deepCopy();
+                    receipt.put("pullRequestUrl", response.pullRequestUrl()).put("headCommit", response.finalCommitSha());
+                    if (receipt.path("ufdDispatch").isObject()) {
+                        ((ObjectNode) receipt.path("ufdDispatch")).put("resultObserved", "PASSED");
+                    }
+                    store.update(op, "SUCCEEDED", null, null, receipt);
                 } else {
                     published(session);
                     if (!Objects.equals(op.sourceCommit(), session.getFinalCommitSha())) throw new DeliveryRejectedException("PUBLISHED_HEAD_MOVED");
@@ -202,12 +297,31 @@ public class MobileDeliveryService {
                 }
             } catch (GitHubIntegrationException error) {
                 String message = error.getMessage();
-                if (message != null && (message.startsWith("UFD_PENDING:") || message.startsWith("CI_PENDING:"))) {
+                if (message != null && message.startsWith("UFD_WORKFLOW_MISSING:")) {
+                    if (op.evidence().has("ufdDispatch")) {
+                        waitForUfd(op, "UFD_REQUESTED");
+                    } else if ("PUBLISH_PR".equals(op.kind())) {
+                        try { prepareUfdDispatch(op, session(op.sessionId(), false)); }
+                        catch (GitHubIntegrationException unavailable) {
+                            if ("UFD_CONTROLLER_UNAVAILABLE".equals(unavailable.getMessage())) {
+                                store.update(op, "BLOCKED", "UFD_CONTROLLER_UNAVAILABLE", null, op.evidence());
+                            } else throw unavailable;
+                        } catch (DeliveryRejectedException rejected) {
+                            store.update(op, "BLOCKED", rejected.code(), null, op.evidence());
+                        }
+                    } else store.update(op, "BLOCKED", "UFD_NOT_STARTED", null, op.evidence());
+                } else if (message != null && message.startsWith("UFD_NOT_STARTED:")) {
+                    waitForUfd(op, "UFD_NOT_STARTED");
+                } else if (message != null && message.startsWith("UFD_QUEUED:")) {
+                    store.update(op, "WAITING_CI", "UFD_QUEUED", null, op.evidence());
+                } else if (message != null && (message.startsWith("UFD_PENDING:") || message.startsWith("CI_PENDING:"))) {
                     store.update(op, "WAITING_CI", "CI_PENDING", null, op.evidence());
                 } else if (message != null && List.of("PR_OWNERSHIP_MISMATCH", "PR_CLOSED:",
                         "COMMIT_IDENTITY_INVALID", "CI_EVIDENCE_INCOMPLETE", "PR_READY_REJECTED", "MERGE_REJECTED",
                         "UFD_FAILED:", "CI_FAILED:").stream().anyMatch(message::startsWith)) {
                     store.update(op, "BLOCKED", "GITHUB_REJECTED", null, op.evidence());
+                } else if (message != null && List.of("UFD_IDENTITY_REJECTED", "UFD_EVIDENCE_INCOMPLETE").contains(message)) {
+                    store.update(op, "BLOCKED", message, null, op.evidence());
                 } else {
                     // The merge might have committed remotely before the response was lost.
                     // Keep its exact identity, observe GitHub again, never fabricate failure.
@@ -252,6 +366,10 @@ public class MobileDeliveryService {
         }
     }
     private void published(WorkSessionEntity session) {
+        publishedHead(session);
+        if (session.getPullRequestUrl() == null) throw new DeliveryRejectedException("PUBLISHED_OWNERSHIP_MISMATCH");
+    }
+    private void publishedHead(WorkSessionEntity session) {
         var change = session.getDevelopmentChange();
         if (change == null || !change.getChangeKey().equals(session.getPublishedChangeKey())
                 || !Objects.equals(change.getSourceRevision(), session.getPublishedSourceRevision())
@@ -260,7 +378,7 @@ public class MobileDeliveryService {
                 || !"jlnieto/atenea".equals(session.getPublishedRepository())
                 || !"main".equals(session.getPublishedBaseBranch())
                 || !Objects.equals(session.getWorkspaceBranch(), session.getPublishedHeadBranch())
-                || session.getPullRequestUrl() == null || session.getFinalCommitSha() == null
+                || session.getFinalCommitSha() == null
                 || !session.getFinalCommitSha().matches("[0-9a-f]{40}")) {
             throw new DeliveryRejectedException("PUBLISHED_OWNERSHIP_MISMATCH");
         }

@@ -37,6 +37,14 @@ public class DeliveryStore {
         return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE session_id=? AND kind='INTEGRATE' "
                 + "AND state='SUCCEEDED' AND source_commit=? ORDER BY created_at DESC LIMIT 1", this::row, sessionId, head).stream().findFirst();
     }
+    public java.util.Optional<DeliveryOperation> ownedHeadUfdRequest(Long sessionId, String head, String branch) {
+        // Search the complete durable history, not the UI's last 30 operations.
+        // A new publication intent must not resend a previously claimed head.
+        return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE session_id=? AND kind='PUBLISH_PR' "
+                + "AND evidence_json->'ufdDispatch'->>'headSha'=? "
+                + "AND evidence_json->'ufdDispatch'->>'headBranch'=? ORDER BY created_at LIMIT 1",
+                this::row, sessionId, head, branch).stream().findFirst();
+    }
     public DeliveryOperation create(Long sessionId, Long actor, String kind, DeliveryTarget target,
             String source, String state, JsonNode evidence) {
         UUID id = UUID.randomUUID();
