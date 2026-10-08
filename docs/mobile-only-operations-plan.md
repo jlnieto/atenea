@@ -305,7 +305,7 @@ la transición a otra preparación siguen formando parte de ese cierre.
 WS21 y PR47 permanecen fuera de estas pruebas. No hay despliegue ni aceptación
 móvil de la entrega 1.
 
-2026-10-09: primera parte de la unidad 5 implementada localmente. PASS: 151
+2026-10-09: primera parte de la unidad 5 implementada localmente. PASS: 174
 tests backend focales con PostgreSQL 16 efímero y Flyway V88; 21 tests Android
 API/panel; 30 tests Platform de finalización, incluidos dos recorridos nuevos
 de interrupción combinada y main concurrente; `git diff --check`.
@@ -314,7 +314,9 @@ Reintentar resolución es una autorización explícita del administrador para
 un intento fallido concreto. V88 añade un registro inmutable por reintento,
 sin reemplazar el run original, el turno, el recibo de preparación ni la
 publicación anterior. Reutiliza el coordinador, el perfil y el prompt existentes.
-La consulta y una petición repetida no admiten otro run; dos solicitudes
+La acción genérica de reintento no se ofrece para esos resolvers ni admite
+una vía alternativa sin la autorización específica. La consulta y una petición
+repetida no admiten otro run; dos solicitudes
 simultáneas conservan un único reintento. Un callback perdido deja un run QUEUED
 committeado para el coordinador normal. Terminar ese run sigue exigiendo nueva
 validación antes de actualizar la misma PR.

@@ -247,6 +247,9 @@ public class AgentRunService {
             throw new AgentRunRecoveryConflictException(
                     "Only an exact failed remote AgentRun may be retried");
         }
+        if (sourceUpdateId == null && ownsSourceUpdateResolver(source)) {
+            throw new AgentRunRecoveryConflictException("Use the authorized conflict recovery action for this resolver");
+        }
         requireRemoteRetryEligible(source);
         AgentRunEntity existing = agentRunRepository
                 .findFirstByRetryOfRunIdOrderByCreatedAtAsc(sourceRunId)
@@ -298,12 +301,21 @@ public class AgentRunService {
         if (source == null || !source.getStatus().isTerminal()) {
             return false;
         }
+        if (ownsSourceUpdateResolver(source)) return false;
         try {
             requireRemoteRetryEligible(source);
             return true;
         } catch (AgentRunRecoveryConflictException exception) {
             return false;
         }
+    }
+
+    private boolean ownsSourceUpdateResolver(AgentRunEntity source) {
+        if (source.getSession()==null || source.getSession().getPublishedChangeKey()==null) return false;
+        return Long.valueOf(1).equals(jdbcTemplate.queryForObject("""
+            SELECT count(*) FROM mobile_source_update_operation op WHERE op.session_id=?
+                AND (op.resolver_run_id=? OR EXISTS (SELECT 1 FROM mobile_source_resolver_retry r WHERE r.operation_id=op.id AND r.run_id=?))
+            """,Long.class,source.getSession().getId(),source.getId(),source.getId()));
     }
 
     private boolean matchingBlockerHasReleasedReceipt(AgentRunEntity source) {

@@ -257,8 +257,10 @@ class SourceUpdateIntegrationTest {
 
     @Test void retryAuditIsImmutableAndOrdinaryRetryCannotBypassClosedResolverAdmission() {
         var original=failedResolver();
-        assertThrows(IllegalStateException.class,()->agentRuns.createRemoteRetryRun(original.resolverRunId()));
+        assertFalse(agentRuns.isRemoteRetryEligible(original.resolverRunId()));
+        assertThrows(com.atenea.service.worksession.AgentRunRecoveryConflictException.class,()->agentRuns.createRemoteRetryRun(original.resolverRunId()));
         var retry=service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+        assertFalse(agentRuns.isRemoteRetryEligible(retry.resolverRunId()));
         assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update(
             "UPDATE mobile_source_resolver_retry SET operator_id=operator_id+1 WHERE operation_id=?",original.id()));
         assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update(
