@@ -211,6 +211,37 @@ public class GitHubClient {
         return sha;
     }
 
+    /** Read-only proof for a pinned publication recovery, not selection of a new source. */
+    public void requireIntegratedChangeInSource(GitHubRepositoryRef repository, long number,
+            String branch, String publishedHead, String integratedMerge, String selectedMain) {
+        ensureConfigured(); requireSha(publishedHead); requireSha(integratedMerge); requireSha(selectedMain);
+        String root = "/repos/" + repository.owner() + "/" + repository.repo();
+        JsonNode pr = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(root + "/pulls/" + number), null);
+        requireExactPullRequest(repository, number, branch, publishedHead, pr);
+        if (!pr.path("merged").asBoolean() || !"closed".equals(pr.path("state").asText())
+                || !integratedMerge.equals(pr.path("merge_commit_sha").asText())) {
+            throw new GitHubIntegrationException("RELEASE_INTEGRATION_EVIDENCE_MISMATCH");
+        }
+        if (integratedMerge.equals(selectedMain)) return;
+        JsonNode comparison = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                root + "/compare/" + integratedMerge + "..." + selectedMain + "?per_page=100"), null);
+        JsonNode commits = comparison.path("commits");
+        int count = comparison.path("ahead_by").asInt(-1);
+        if (!"ahead".equals(comparison.path("status").asText())
+                || !integratedMerge.equals(comparison.path("base_commit").path("sha").asText())
+                || !integratedMerge.equals(comparison.path("merge_base_commit").path("sha").asText())
+                || comparison.path("behind_by").asInt(-1) != 0) {
+            throw new GitHubIntegrationException("RELEASE_CHANGE_NOT_INCLUDED");
+        }
+        // Do not accept truncated or contradictory ancestry evidence.
+        if (count < 1 || count > 100 || comparison.path("total_commits").asInt(-1) != count
+                || !commits.isArray() || commits.size() != count
+                || !selectedMain.equals(commits.path(count - 1).path("sha").asText())) {
+            throw new GitHubIntegrationException("RELEASE_ANCESTRY_EVIDENCE_INCOMPLETE");
+        }
+        for (JsonNode commit : commits) requireSha(commit.path("sha").asText());
+    }
+
     /** Read-only observation of the exact server-owned PR; never marks a draft ready. */
     public GitHubMergeState observeMergeState(GitHubRepositoryRef repository, long number, String headBranch, String headSha) {
         ensureConfigured();

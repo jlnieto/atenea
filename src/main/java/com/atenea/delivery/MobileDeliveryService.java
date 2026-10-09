@@ -14,10 +14,12 @@ import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.WorkSessionAcceptanceState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.service.worksession.DevelopmentChangeBranchPublicationService;
+import com.atenea.service.worksession.WorkSessionAcceptanceService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -41,6 +43,7 @@ public class MobileDeliveryService {
     private final OperatorRepository operators;
     private final DevelopmentChangeBranchPublicationService ownership;
     private final WorkSessionGitHubService publication;
+    private final WorkSessionAcceptanceService acceptance;
     private final GitHubClient github;
     private final ReleaseControlClient executor;
     private final OperatorRecoveryService factors;
@@ -50,11 +53,13 @@ public class MobileDeliveryService {
 
     public MobileDeliveryService(DeliveryStore store, WorkSessionRepository sessions, AgentRunRepository runs,
             OperatorRepository operators, DevelopmentChangeBranchPublicationService ownership,
-            WorkSessionGitHubService publication, GitHubClient github, ReleaseControlClient executor,
+            WorkSessionGitHubService publication, WorkSessionAcceptanceService acceptance,
+            GitHubClient github, ReleaseControlClient executor,
             OperatorRecoveryService factors, PrivilegedActionAuthorizationService grants,
             ObjectMapper mapper, PlatformTransactionManager transactionManager) {
         this.store = store; this.sessions = sessions; this.runs = runs; this.operators = operators;
         this.ownership = ownership; this.publication = publication; this.github = github;
+        this.acceptance = acceptance;
         this.executor = executor; this.factors = factors; this.grants = grants; this.mapper = mapper;
         this.transaction = new TransactionTemplate(transactionManager);
     }
@@ -65,6 +70,47 @@ public class MobileDeliveryService {
         return store.list(sessionId).stream().map(DeliveryOperation::view).toList();
     }
     public boolean isEnabled() { return executor.enabled(); }
+
+    /** Explicit alternative when canonical main advanced after this ticket was integrated. */
+    public DeliveryOperation.DeliveryView requestReleaseRecovery(Long sessionId, AuthenticatedOperator actor) {
+        enabled(); administrator(actor.operatorId());
+        return Objects.requireNonNull(transaction.execute(ignored -> {
+            WorkSessionEntity session = session(sessionId, true);
+            owned(session); idle(sessionId); published(session);
+            if (session.getAcceptanceState() != WorkSessionAcceptanceState.INTEGRATION_READY
+                    || session.getPullRequestStatus() != WorkSessionPullRequestStatus.MERGED) {
+                throw new DeliveryRejectedException("EXACT_CHANGE_NOT_INTEGRATED");
+            }
+            store.lockReleaseIntent();
+            var active = store.activeRelease();
+            if (active.isPresent()) {
+                DeliveryOperation retained = active.get();
+                if (retained.sessionId().equals(sessionId) && retained.operatorId().equals(actor.operatorId())
+                        && ReleaseRecoverySource.from(retained) != null) {
+                    requireRecoveryIdentity(retained, session);
+                    return retained.view(); // Retain its pinned source even if main moved again.
+                }
+                throw new DeliveryRejectedException("RELEASE_IN_PROGRESS");
+            }
+            DeliveryOperation integrated = store.integrated(sessionId, session.getFinalCommitSha())
+                    .orElseThrow(() -> new DeliveryRejectedException("EXACT_CHANGE_NOT_INTEGRATED"));
+            if (!"INTEGRATE".equals(integrated.kind()) || !"SUCCEEDED".equals(integrated.state())
+                    || integrated.target() != DeliveryTarget.APP_PROD || !integrated.sessionId().equals(sessionId)
+                    || !Objects.equals(integrated.sourceCommit(), session.getFinalCommitSha())) {
+                throw new DeliveryRejectedException("RELEASE_SOURCE_EVIDENCE_MISMATCH");
+            }
+            String selected = recoveryCanonicalMain();
+            ReleaseRecoverySource proof = ReleaseRecoverySource.create(integrated, selected);
+            var completed = store.completedRecovery(sessionId, actor.operatorId(), integrated.id(), selected);
+            if (completed.isPresent()) {
+                requireRecoveryIdentity(completed.get(), session);
+                return completed.get().view();
+            }
+            requireRecoveryAncestry(session, proof);
+            return store.create(sessionId, actor.operatorId(), "RELEASE", DeliveryTarget.APP_PROD, selected,
+                    "PLANNING", mapper.createObjectNode().set(ReleaseRecoverySource.FIELD, proof.json(mapper))).view();
+        }));
+    }
 
     public IntegrationObservation observeIntegration(Long sessionId, AuthenticatedOperator actor) {
         administrator(actor.operatorId());
@@ -151,6 +197,22 @@ public class MobileDeliveryService {
         enabled(); administrator(actor.operator().operatorId());
         DeliveryOperation plan = store.get(id, false);
         ready(plan, actor);
+        if (ReleaseRecoverySource.from(plan) != null) {
+            String blocked = transaction.execute(ignored -> {
+                DeliveryOperation retained = store.get(id, true);
+                ready(retained, actor);
+                WorkSessionEntity session = session(retained.sessionId(), true);
+                owned(session); idle(session.getId()); published(session);
+                try { requireRecoverySource(retained, session); }
+                catch (DeliveryRejectedException rejected) {
+                    if (!"CANONICAL_MAIN_MOVED".equals(rejected.code())) throw rejected;
+                    store.update(retained, "BLOCKED", rejected.code(), retained.planSha256(), retained.evidence());
+                    return rejected.code();
+                }
+                return null;
+            });
+            if (blocked != null) throw new DeliveryRejectedException(blocked);
+        }
         try {
             return grants.issueVerified(factors.verifyTotpStepUp(actor.operator(), actor.sessionFamilyId(), binding(plan), totp));
         } catch (com.atenea.auth.OperatorAuthenticationException exception) {
@@ -168,11 +230,19 @@ public class MobileDeliveryService {
             ready(plan, actor);
             WorkSessionEntity session = session(plan.sessionId(), true);
             owned(session); idle(session.getId());
-            if (plan.target() != DeliveryTarget.AX42_PLATFORM) {
-                published(session);
-                if (!plan.sourceCommit().equals(github.canonicalMain(APP))) throw new DeliveryRejectedException("CANONICAL_MAIN_MOVED");
-            } else if (!plan.sourceCommit().equals(github.canonicalMain(PLATFORM))) {
-                throw new DeliveryRejectedException("CANONICAL_MAIN_MOVED");
+            boolean recovery = ReleaseRecoverySource.from(plan) != null;
+            try {
+                if (plan.target() != DeliveryTarget.AX42_PLATFORM) {
+                    published(session);
+                    if (recovery) requireRecoverySource(plan, session);
+                    else if (!plan.sourceCommit().equals(github.canonicalMain(APP))) throw new DeliveryRejectedException("CANONICAL_MAIN_MOVED");
+                } else if (!plan.sourceCommit().equals(github.canonicalMain(PLATFORM))) {
+                    throw new DeliveryRejectedException("CANONICAL_MAIN_MOVED");
+                }
+            } catch (DeliveryRejectedException rejected) {
+                if (!recovery || !"CANONICAL_MAIN_MOVED".equals(rejected.code())) throw rejected;
+                store.update(plan, "BLOCKED", rejected.code(), plan.planSha256(), plan.evidence());
+                return store.get(id, false).view();
             }
             try {
                 return grants.consumeForAcceptance(authorization, actor, binding(plan), () -> {
@@ -317,8 +387,14 @@ public class MobileDeliveryService {
                     if (!Objects.equals(op.sourceCommit(), session.getFinalCommitSha())) throw new DeliveryRejectedException("PUBLISHED_HEAD_MOVED");
                     long number = github.extractPullRequestNumber(session.getPullRequestUrl());
                     String merge = github.integrateExact(APP, number, session.getPublishedHeadBranch(), op.sourceCommit());
+                    // GitHub may already have merged before a lost reply or DB rollback.
+                    // Promote the exact validated projection and its timestamp together,
+                    // in the same transaction as the retained integration receipt.
+                    if (session.getAcceptanceState() == WorkSessionAcceptanceState.VALIDATED) {
+                        acceptance.markIntegrationReady(session.getId(), session.getSourceTreeFingerprintSha256(),
+                                session.getValidationProjectionSha256(), session.getValidationDefinitionRevision());
+                    }
                     session.setPullRequestStatus(WorkSessionPullRequestStatus.MERGED);
-                    session.setIntegrationReadyAt(Instant.now());
                     sessions.saveAndFlush(session);
                     store.update(op, "SUCCEEDED", null, null, mapper.createObjectNode()
                             .put("pullRequestUrl", session.getPullRequestUrl()).put("mergeCommit", merge));
@@ -395,8 +471,55 @@ public class MobileDeliveryService {
                      : sessions.findWithProjectAndDevelopmentChangeById(id))
                 .orElseThrow(() -> new DeliveryRejectedException("WORK_SESSION_NOT_FOUND"));
     }
+
+    private ReleaseRecoverySource requireRecoveryIdentity(DeliveryOperation plan, WorkSessionEntity session) {
+        ReleaseRecoverySource proof = ReleaseRecoverySource.from(plan);
+        if (proof == null) throw new DeliveryRejectedException("RELEASE_SOURCE_EVIDENCE_MISMATCH");
+        DeliveryOperation integrated = store.get(proof.integrationOperationId(), false);
+        if (session.getAcceptanceState() != WorkSessionAcceptanceState.INTEGRATION_READY
+                || session.getPullRequestStatus() != WorkSessionPullRequestStatus.MERGED
+                || !"INTEGRATE".equals(integrated.kind()) || !"SUCCEEDED".equals(integrated.state())
+                || integrated.target() != DeliveryTarget.APP_PROD || !integrated.sessionId().equals(session.getId())
+                || !proof.publishedHeadCommit().equals(session.getFinalCommitSha())
+                || !proof.publishedHeadCommit().equals(integrated.sourceCommit())
+                || !proof.integratedMergeCommit().equals(integrated.evidence().path("mergeCommit").asText())) {
+            throw new DeliveryRejectedException("RELEASE_SOURCE_EVIDENCE_MISMATCH");
+        }
+        return proof;
+    }
+
+    private void requireRecoverySource(DeliveryOperation plan, WorkSessionEntity session) {
+        ReleaseRecoverySource proof = requireRecoveryIdentity(plan, session);
+        if (!proof.selectedMainCommit().equals(recoveryCanonicalMain())) {
+            throw new DeliveryRejectedException("CANONICAL_MAIN_MOVED");
+        }
+        requireRecoveryAncestry(session, proof);
+    }
+
+    private String recoveryCanonicalMain() {
+        try { return github.canonicalMain(APP); }
+        catch (GitHubIntegrationException unavailable) { throw new DeliveryRejectedException("GITHUB_UNAVAILABLE"); }
+    }
+
+    private void requireRecoveryAncestry(WorkSessionEntity session, ReleaseRecoverySource proof) {
+        try {
+            github.requireIntegratedChangeInSource(APP, github.extractPullRequestNumber(session.getPullRequestUrl()),
+                    session.getPublishedHeadBranch(), proof.publishedHeadCommit(), proof.integratedMergeCommit(), proof.selectedMainCommit());
+        } catch (GitHubIntegrationException rejected) {
+            String code = rejected.getMessage();
+            throw new DeliveryRejectedException(List.of("RELEASE_CHANGE_NOT_INCLUDED", "RELEASE_INTEGRATION_EVIDENCE_MISMATCH",
+                    "RELEASE_ANCESTRY_EVIDENCE_INCOMPLETE", "PR_OWNERSHIP_MISMATCH", "COMMIT_IDENTITY_INVALID").contains(code)
+                    ? code : "GITHUB_UNAVAILABLE");
+        }
+    }
     private void owned(WorkSessionEntity session) {
-        try { ownership.requireExactOwner(session); }
+        try {
+            if (session.getAcceptanceState() == WorkSessionAcceptanceState.INTEGRATION_READY) {
+                ownership.requireExactIntegratedOwner(session);
+            } else {
+                ownership.requireExactOwner(session);
+            }
+        }
         catch (com.atenea.service.worksession.WorkSessionPublishConflictException exception) {
             throw new DeliveryRejectedException("VALIDATED_OWNERSHIP_REQUIRED");
         }

@@ -11,6 +11,7 @@ import com.atenea.persistence.worksession.ExecutionTarget;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionAcceptanceState;
 import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.remoteworker.DevelopmentChangeBranchPublication;
 import com.atenea.remoteworker.DevelopmentChangeBranchPublicationCommand;
@@ -149,6 +150,25 @@ public class DevelopmentChangeBranchPublicationService {
     }
 
     public DevelopmentChangeEntity requireExactOwner(WorkSessionEntity session) {
+        return requireExactOwner(session, false);
+    }
+
+    /** Read/continue delivery after integration; never authority to republish a branch. */
+    public DevelopmentChangeEntity requireExactIntegratedOwner(WorkSessionEntity session) {
+        if (session.getAcceptanceState() != WorkSessionAcceptanceState.INTEGRATION_READY
+                || session.getPullRequestStatus() != WorkSessionPullRequestStatus.MERGED
+                || session.getIntegrationReadyAt() == null
+                || session.getValidatedAt() == null
+                || session.getSourceTreeObservedAt() == null
+                || !sha256(session.getValidationProjectionSha256())
+                || session.getValidationDefinitionRevision() == null
+                || session.getValidationDefinitionRevision().isBlank()) {
+            throw conflict(session.getId(), "exact integrated acceptance projection is required");
+        }
+        return requireExactOwner(session, true);
+    }
+
+    private DevelopmentChangeEntity requireExactOwner(WorkSessionEntity session, boolean integrated) {
         DevelopmentChangeEntity change = session.getDevelopmentChange();
         String expectedBranch = change == null || change.getChangeKey() == null
                 ? null : "atenea/change-" + change.getChangeKey();
@@ -163,7 +183,8 @@ public class DevelopmentChangeBranchPublicationService {
                 || change.getStatus() != DevelopmentChangeStatus.OPEN
                 || change.getWorkspaceState() != DevelopmentChangeWorkspaceState.READY
                 || change.getValidationState() != DevelopmentChangeProjectionState.CURRENT
-                || session.getAcceptanceState() != WorkSessionAcceptanceState.VALIDATED
+                || session.getAcceptanceState() != (integrated
+                        ? WorkSessionAcceptanceState.INTEGRATION_READY : WorkSessionAcceptanceState.VALIDATED)
                 || !Objects.equals(
                         session.getSourceTreeFingerprintSha256(),
                         change.getSourceFingerprintSha256())

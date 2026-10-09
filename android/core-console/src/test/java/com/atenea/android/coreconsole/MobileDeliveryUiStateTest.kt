@@ -20,6 +20,38 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
+    @Test fun `release recovery requires durable integration current capability and no active operation`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var operations=listOf(operation().copy(kind="INTEGRATE",state="SUCCEEDED"))
+            var supported=false
+            var online=true
+            val state=MobileDeliveryUiState(21,scope) {
+                if (!online) error("offline")
+                MobileDeliveryState(true,operations,releaseRecoveryEnabled=supported)
+            }
+            state.refresh(); assertFalse(state.canPrepareReleaseRecovery(true,false))
+            supported=true; state.refresh(); assertTrue(state.canPrepareReleaseRecovery(true,false))
+            assertFalse(state.canPrepareReleaseRecovery(false,false)); assertFalse(state.canPrepareReleaseRecovery(true,true))
+            operations=operations+operation().copy(kind="RELEASE",state="READY"); state.refresh()
+            assertFalse(state.canPrepareReleaseRecovery(true,false))
+            operations=operations.take(1); online=false; state.refresh()
+            assertFalse(state.releaseRecoveryEnabled); assertFalse(state.canPrepareReleaseRecovery(true,false))
+        } finally { scope.cancel() }
+    }
+    @Test fun `pending integration and failed rollback cannot become publication recovery`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var operations=listOf(operation().copy(kind="INTEGRATE",state="WAITING_CI"))
+            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,operations,releaseRecoveryEnabled=true) }
+            state.refresh(); assertFalse(state.canPrepareReleaseRecovery(true,false))
+            operations=listOf(operation().copy(kind="INTEGRATE",state="SUCCEEDED"),operation().copy(kind="RELEASE",state="ROLLBACK_FAILED"))
+            state.refresh(); assertFalse(state.canPrepareReleaseRecovery(true,false))
+            assertTrue(deliveryErrorLabel("RELEASE_CHANGE_NOT_INCLUDED").contains("No se ha publicado"))
+            assertTrue(deliveryErrorLabel("ALREADY_CURRENT").contains("ya ejecuta esta versión"))
+            assertTrue(deliveryErrorLabel("ALREADY_CURRENT").contains("No se ha iniciado otra publicación"))
+        } finally { scope.cancel() }
+    }
     @Test fun `recovery is explicit blocks active runs and does not bypass validation for publication`() = runBlocking<Unit> {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {

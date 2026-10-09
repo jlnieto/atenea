@@ -30,11 +30,12 @@ public class MobileDeliveryController {
     public DeliveryState list(@PathVariable Long sessionId,
             @AuthenticationPrincipal AuthenticatedOperator actor) {
         return new DeliveryState(service.isEnabled(),service.list(sessionId, actor),
-                service.observeIntegration(sessionId, actor), sourceUpdates.isEnabled(), sourceUpdates.observe(sessionId, actor));
+                service.observeIntegration(sessionId, actor), sourceUpdates.isEnabled(), sourceUpdates.observe(sessionId, actor),
+                service.isEnabled());
     }
     public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations,
             MobileDeliveryService.IntegrationObservation integration, boolean sourceUpdateEnabled,
-            SourceUpdateOperation.View sourceUpdate) { }
+            SourceUpdateOperation.View sourceUpdate, boolean releaseRecoveryEnabled) { }
 
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/resolve-conflicts")
     public SourceUpdateOperation.View resolveConflicts(@PathVariable Long sessionId,
@@ -79,6 +80,12 @@ public class MobileDeliveryController {
         try { target = DeliveryTarget.valueOf(request.path("target").textValue()); }
         catch (RuntimeException exception) { throw new DeliveryRejectedException("CLOSED_REQUEST_REQUIRED"); }
         return service.request(sessionId, actor, "RELEASE", target);
+    }
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/release-recovery-plan")
+    public DeliveryOperation.DeliveryView recoveryPlan(@PathVariable Long sessionId,
+            @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request, Set.of());
+        return service.requestReleaseRecovery(sessionId, actor);
     }
     @PostMapping("/api/mobile/delivery/{id}/authorize")
     public PrivilegedActionAuthorizationGrant authorize(@PathVariable UUID id, Authentication authentication,

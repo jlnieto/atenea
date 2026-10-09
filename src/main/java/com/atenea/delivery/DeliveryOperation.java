@@ -20,10 +20,11 @@ public record DeliveryOperation(UUID id, Long sessionId, Long operatorId, String
                 evidence.path("mergeCommit").isTextual() ? evidence.path("mergeCommit").asText() : null,
                 evidence.path("effectiveSourceCommit").isTextual() ? evidence.path("effectiveSourceCommit").asText() : null,
                 evidence.path("resultSha256").isTextual() ? evidence.path("resultSha256").asText() : null,
-                createdAt, updatedAt);
+                createdAt, updatedAt, ReleaseRecoverySource.from(this));
     }
     public record DeliveryView(UUID id, UUID operationId, Long sessionId, String kind,
             DeliveryTarget target, String sourceCommit, String state, String planSha256, String errorCode,
             Long versionCode, String versionName, Long expiresAt, String pullRequestUrl,
-            String mergeCommit, String effectiveSourceCommit, String resultSha256, Instant createdAt, Instant updatedAt) { }
+            String mergeCommit, String effectiveSourceCommit, String resultSha256, Instant createdAt, Instant updatedAt,
+            ReleaseRecoverySource releaseRecovery) { }
 }

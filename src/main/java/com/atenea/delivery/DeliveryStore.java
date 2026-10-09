@@ -46,6 +46,12 @@ public class DeliveryStore {
         return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE session_id=? AND kind='INTEGRATE' "
                 + "AND state='SUCCEEDED' AND source_commit=? ORDER BY created_at DESC LIMIT 1", this::row, sessionId, head).stream().findFirst();
     }
+    public java.util.Optional<DeliveryOperation> completedRecovery(Long sessionId, Long actor, UUID integration, String source) {
+        return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE session_id=? AND operator_id=? "
+                + "AND kind='RELEASE' AND target='APP_PROD' AND state='SUCCEEDED' AND source_commit=? "
+                + "AND evidence_json->'releaseRecovery'->>'integrationOperationId'=? ORDER BY created_at DESC LIMIT 1",
+                this::row, sessionId, actor, source, integration.toString()).stream().findFirst();
+    }
     public java.util.Optional<DeliveryOperation> ownedHeadUfdRequest(Long sessionId, String head, String branch) {
         // Search the complete durable history, not the UI's last 30 operations.
         // A new publication intent must not resend a previously claimed head.
@@ -65,10 +71,22 @@ public class DeliveryStore {
         return get(id, false);
     }
     public void update(DeliveryOperation op, String state, String code, String planSha, JsonNode evidence) {
+        JsonNode retained = retainRecoverySource(op, evidence);
         jdbc.update("""
                 UPDATE mobile_delivery_operation SET state=?,error_code=?,plan_sha256=?,evidence_json=?::jsonb,
                   updated_at=now(),finished_at=CASE WHEN ? THEN now() ELSE NULL END WHERE id=?
-                """, state, code, planSha, evidence.toString(), DeliveryOperation.TERMINAL.contains(state), op.id());
+                """, state, code, planSha, retained.toString(), DeliveryOperation.TERMINAL.contains(state), op.id());
+    }
+    static JsonNode retainRecoverySource(DeliveryOperation op, JsonNode observed) {
+        if (!observed.isObject()) throw new DeliveryRejectedException("RELEASE_EVIDENCE_MISMATCH");
+        if (observed.has(ReleaseRecoverySource.FIELD)
+                && !observed.path(ReleaseRecoverySource.FIELD).equals(op.evidence().path(ReleaseRecoverySource.FIELD))) {
+            throw new DeliveryRejectedException("RELEASE_SOURCE_EVIDENCE_MISMATCH");
+        }
+        if (ReleaseRecoverySource.from(op) == null) return observed;
+        com.fasterxml.jackson.databind.node.ObjectNode retained = observed.deepCopy();
+        retained.set(ReleaseRecoverySource.FIELD, op.evidence().path(ReleaseRecoverySource.FIELD).deepCopy());
+        return retained;
     }
     public List<UUID> pending() {
         return jdbc.query("""
