@@ -14,10 +14,12 @@ import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.persistence.worksession.WorkSessionAcceptanceState;
 import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.service.worksession.DevelopmentChangeBranchPublicationService;
+import com.atenea.service.worksession.WorkSessionAcceptanceService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -41,6 +43,7 @@ public class MobileDeliveryService {
     private final OperatorRepository operators;
     private final DevelopmentChangeBranchPublicationService ownership;
     private final WorkSessionGitHubService publication;
+    private final WorkSessionAcceptanceService acceptance;
     private final GitHubClient github;
     private final ReleaseControlClient executor;
     private final OperatorRecoveryService factors;
@@ -50,11 +53,13 @@ public class MobileDeliveryService {
 
     public MobileDeliveryService(DeliveryStore store, WorkSessionRepository sessions, AgentRunRepository runs,
             OperatorRepository operators, DevelopmentChangeBranchPublicationService ownership,
-            WorkSessionGitHubService publication, GitHubClient github, ReleaseControlClient executor,
+            WorkSessionGitHubService publication, WorkSessionAcceptanceService acceptance,
+            GitHubClient github, ReleaseControlClient executor,
             OperatorRecoveryService factors, PrivilegedActionAuthorizationService grants,
             ObjectMapper mapper, PlatformTransactionManager transactionManager) {
         this.store = store; this.sessions = sessions; this.runs = runs; this.operators = operators;
         this.ownership = ownership; this.publication = publication; this.github = github;
+        this.acceptance = acceptance;
         this.executor = executor; this.factors = factors; this.grants = grants; this.mapper = mapper;
         this.transaction = new TransactionTemplate(transactionManager);
     }
@@ -317,8 +322,14 @@ public class MobileDeliveryService {
                     if (!Objects.equals(op.sourceCommit(), session.getFinalCommitSha())) throw new DeliveryRejectedException("PUBLISHED_HEAD_MOVED");
                     long number = github.extractPullRequestNumber(session.getPullRequestUrl());
                     String merge = github.integrateExact(APP, number, session.getPublishedHeadBranch(), op.sourceCommit());
+                    // GitHub may already have merged before a lost reply or DB rollback.
+                    // Promote the exact validated projection and its timestamp together,
+                    // in the same transaction as the retained integration receipt.
+                    if (session.getAcceptanceState() == WorkSessionAcceptanceState.VALIDATED) {
+                        acceptance.markIntegrationReady(session.getId(), session.getSourceTreeFingerprintSha256(),
+                                session.getValidationProjectionSha256(), session.getValidationDefinitionRevision());
+                    }
                     session.setPullRequestStatus(WorkSessionPullRequestStatus.MERGED);
-                    session.setIntegrationReadyAt(Instant.now());
                     sessions.saveAndFlush(session);
                     store.update(op, "SUCCEEDED", null, null, mapper.createObjectNode()
                             .put("pullRequestUrl", session.getPullRequestUrl()).put("mergeCommit", merge));
@@ -396,7 +407,13 @@ public class MobileDeliveryService {
                 .orElseThrow(() -> new DeliveryRejectedException("WORK_SESSION_NOT_FOUND"));
     }
     private void owned(WorkSessionEntity session) {
-        try { ownership.requireExactOwner(session); }
+        try {
+            if (session.getAcceptanceState() == WorkSessionAcceptanceState.INTEGRATION_READY) {
+                ownership.requireExactIntegratedOwner(session);
+            } else {
+                ownership.requireExactOwner(session);
+            }
+        }
         catch (com.atenea.service.worksession.WorkSessionPublishConflictException exception) {
             throw new DeliveryRejectedException("VALIDATED_OWNERSHIP_REQUIRED");
         }

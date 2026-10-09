@@ -116,6 +116,48 @@ class DevelopmentChangeBranchPublicationServiceTest {
         verify(gateway, never()).publish(any());
     }
 
+    @Test
+    void exactIntegratedOwnerCanContinueDeliveryButCannotRepublishTheBranch() {
+        WorkSessionEntity session = session();
+        integrated(session);
+        assertEquals(session.getDevelopmentChange(), service.requireExactIntegratedOwner(session));
+        when(sessionRepository.findLockedWithProjectAndDevelopmentChangeById(12L))
+                .thenReturn(Optional.of(session));
+        assertThrows(WorkSessionPublishConflictException.class, () -> service.publish(12L));
+        verify(gateway, never()).publish(any());
+    }
+
+    @Test
+    void integratedOwnerRejectsMissingAcceptanceEvidenceUnmergedPrAndChangedOwnership() {
+        WorkSessionEntity session = session();
+        integrated(session);
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.OPEN);
+        assertThrows(WorkSessionPublishConflictException.class, () -> service.requireExactIntegratedOwner(session));
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.MERGED);
+        session.setIntegrationReadyAt(null);
+        assertThrows(WorkSessionPublishConflictException.class, () -> service.requireExactIntegratedOwner(session));
+        integrated(session);
+        session.setSourceTreeFingerprintSha256("e".repeat(64));
+        assertThrows(WorkSessionPublishConflictException.class, () -> service.requireExactIntegratedOwner(session));
+        session.setSourceTreeFingerprintSha256(session.getDevelopmentChange().getSourceFingerprintSha256());
+        session.getDevelopmentChange().setValidationState(DevelopmentChangeProjectionState.STALE);
+        assertThrows(WorkSessionPublishConflictException.class, () -> service.requireExactIntegratedOwner(session));
+        when(sessionRepository.findLockedWithProjectAndDevelopmentChangeById(12L))
+                .thenReturn(Optional.of(session));
+        assertThrows(WorkSessionPublishConflictException.class, () -> service.publish(12L));
+        verify(gateway, never()).publish(any());
+    }
+
+    private static void integrated(WorkSessionEntity session) {
+        session.setAcceptanceState(WorkSessionAcceptanceState.INTEGRATION_READY);
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.MERGED);
+        session.setSourceTreeObservedAt(Instant.now());
+        session.setValidatedAt(Instant.now());
+        session.setIntegrationReadyAt(Instant.now());
+        session.setValidationProjectionSha256("f".repeat(64));
+        session.setValidationDefinitionRevision("test-v1");
+    }
+
     private static WorkSessionEntity session() {
         UUID changeKey = UUID.fromString("8bf60472-3c0e-49aa-99bf-6dc3c7e60eaf");
         ProjectEntity project = new ProjectEntity();

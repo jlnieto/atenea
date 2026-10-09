@@ -15,9 +15,11 @@ import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.worksession.WorkSessionAcceptanceState;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.service.worksession.DevelopmentChangeBranchPublicationService;
+import com.atenea.service.worksession.WorkSessionAcceptanceService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -38,6 +40,7 @@ class MobileDeliveryServiceTest {
     private final OperatorRepository operators = mock(OperatorRepository.class);
     private final DevelopmentChangeBranchPublicationService owner = mock(DevelopmentChangeBranchPublicationService.class);
     private final WorkSessionGitHubService publication = mock(WorkSessionGitHubService.class);
+    private final WorkSessionAcceptanceService acceptance = new WorkSessionAcceptanceService(sessions);
     private final GitHubClient github = mock(GitHubClient.class);
     private final ReleaseControlClient executor = mock(ReleaseControlClient.class);
     private final OperatorRecoveryService factors = mock(OperatorRecoveryService.class);
@@ -58,7 +61,9 @@ class MobileDeliveryServiceTest {
         session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
         when(sessions.findLockedWithProjectAndDevelopmentChangeById(21L)).thenReturn(Optional.of(session));
         when(sessions.findWithProjectAndDevelopmentChangeById(21L)).thenReturn(Optional.of(session));
-        service = new MobileDeliveryService(store,sessions,runs,operators,owner,publication,github,executor,factors,grants,mapper,tm);
+        when(sessions.findLockedWithProjectById(21L)).thenReturn(Optional.of(session));
+        when(sessions.save(any())).thenAnswer(call -> call.getArgument(0));
+        service = new MobileDeliveryService(store,sessions,runs,operators,owner,publication,acceptance,github,executor,factors,grants,mapper,tm);
     }
     private DeliveryOperation operation(String kind, String state) {
         return new DeliveryOperation(id,21L,7L,kind,DeliveryTarget.APP_PROD,"1".repeat(40),execution,state,
@@ -144,6 +149,48 @@ class MobileDeliveryServiceTest {
         assertEquals(op.id(), saved.get().id());
         verify(store, never()).create(any(), any(), any(), any(), any(), any(), any());
     }
+    @Test void mergePromotesExactAcceptanceBeforeFlushingAndCompletesSameOperation() {
+        publishedFixture();
+        var op = operation("INTEGRATE", "WAITING_CI"); var saved = durableOutbox(op);
+        when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
+        when(github.integrateExact(any(), eq(42L), eq(session.getPublishedHeadBranch()), eq(session.getFinalCommitSha())))
+                .thenReturn("3".repeat(40));
+        doAnswer(call -> {
+            assertEquals(WorkSessionAcceptanceState.INTEGRATION_READY, session.getAcceptanceState());
+            assertNotNull(session.getIntegrationReadyAt());
+            assertEquals("6".repeat(64), session.getValidationProjectionSha256());
+            assertEquals(WorkSessionPullRequestStatus.MERGED, session.getPullRequestStatus());
+            return session;
+        }).when(sessions).saveAndFlush(session);
+        service.reconcile(); service.reconcile();
+        assertEquals(op.id(), saved.get().id());
+        assertEquals("SUCCEEDED", saved.get().state());
+        assertEquals("3".repeat(40), saved.get().evidence().path("mergeCommit").asText());
+        verify(github, times(1)).integrateExact(any(), anyLong(), anyString(), anyString());
+        verify(sessions, times(1)).saveAndFlush(session);
+        verify(store, never()).create(any(), any(), any(), any(), any(), any(), any());
+        verify(executor, never()).execute(any(), any(), any());
+        verify(executor, never()).plan(any(), any(), any());
+        verifyNoInteractions(factors, grants);
+    }
+    @Test void integratedReadinessKeepsExactOwnerAndCanonicalMainGuardsForRelease() {
+        publishedFixture();
+        session.setAcceptanceState(WorkSessionAcceptanceState.INTEGRATION_READY);
+        session.setIntegrationReadyAt(Instant.now());
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.MERGED);
+        var receipt = operation("INTEGRATE", "SUCCEEDED");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) receipt.evidence()).put("mergeCommit", "3".repeat(40));
+        when(store.integrated(21L, session.getFinalCommitSha())).thenReturn(Optional.of(receipt));
+        when(github.canonicalMain(any())).thenReturn("4".repeat(40));
+        assertEquals("CANONICAL_MAIN_MOVED", assertThrows(DeliveryRejectedException.class,
+                () -> service.request(21L, actor, "RELEASE", DeliveryTarget.APP_PROD)).code());
+        verify(owner).requireExactIntegratedOwner(session);
+        verify(owner, never()).requireExactOwner(session);
+        verify(store, never()).create(any(), any(), any(), any(), any(), any(), any());
+        verify(executor, never()).execute(any(), any(), any());
+        verify(executor, never()).plan(any(), any(), any());
+        verifyNoInteractions(factors, grants);
+    }
     @Test void readOnlyMergeObservationKeepsPublicationAndFactorsUntouched() {
         publishedFixture();
         when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
@@ -227,7 +274,7 @@ class MobileDeliveryServiceTest {
         service.reconcile(); service.reconcile();
         assertEquals("UNCONFIRMED",saved.get().evidence().path("ufdDispatch").path("status").asText());
         // Reconstruct service as after an App restart, keeping the durable outbox.
-        service=new MobileDeliveryService(store,sessions,runs,operators,owner,publication,github,executor,factors,grants,mapper,tm);
+        service=new MobileDeliveryService(store,sessions,runs,operators,owner,publication,acceptance,github,executor,factors,grants,mapper,tm);
         service.reconcile(); service.reconcile();
         verify(github,times(1)).dispatchOwnedHeadUfd(request);
         assertEquals(request.requestId().toString(),saved.get().evidence().path("ufdDispatch").path("requestId").asText());
@@ -313,6 +360,9 @@ class MobileDeliveryServiceTest {
         session.setDevelopmentChange(change); session.setPublishedChangeKey(change.getChangeKey());
         session.setPublishedSourceRevision(2L); session.setPublishedSourceFingerprintSha256(change.getSourceFingerprintSha256());
         session.setSourceTreeFingerprintSha256(change.getSourceFingerprintSha256());
+        session.setSourceTreeObservedAt(Instant.now()); session.setAcceptanceState(WorkSessionAcceptanceState.VALIDATED);
+        session.setValidationProjectionSha256("6".repeat(64)); session.setValidationDefinitionRevision("test-v1");
+        session.setValidatedAt(Instant.now());
         session.setPublishedRepository("jlnieto/atenea"); session.setPublishedBaseBranch("main");
         session.setWorkspaceBranch("atenea/change-"+change.getChangeKey()); session.setPublishedHeadBranch(session.getWorkspaceBranch());
         session.setFinalCommitSha("1".repeat(40)); session.setPullRequestUrl("https://github.com/jlnieto/atenea/pull/42");
