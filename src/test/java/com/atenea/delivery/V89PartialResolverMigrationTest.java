@@ -61,6 +61,8 @@ class V89PartialResolverMigrationTest {
             assertEquals(0,flyway("89").migrate().migrationsExecuted);
             assertEquals(1,flyway("90").migrate().migrationsExecuted);
             assertEquals(0,flyway("90").migrate().migrationsExecuted);
+            assertEquals(1,flyway("91").migrate().migrationsExecuted);
+            assertEquals(0,flyway("91").migrate().migrationsExecuted);
             try (var connection=connection();var statement=connection.createStatement();var rows=statement.executeQuery(
                 "SELECT source_revision,observed_fingerprint_sha256,workspace_dirty,observation_json,source_run_id,run_id FROM mobile_source_resolver_retry")) {
                 assertTrue(rows.next());assertEquals(4L,rows.getLong(1));assertEquals(fingerprint,rows.getString(2));

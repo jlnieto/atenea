@@ -57,8 +57,25 @@ class MobileDeliveryTest {
         } finally { server.shutdown() }
     }
 
+    @Test fun recoveryUsesSameOperationEmptyAuthenticatedRequestAndRejectsForeignIdentity() {
+        val server=MockWebServer();server.start()
+        try {
+            val client=AteneaApiClient(server.url("/").toString().trimEnd('/'), { "synthetic-access" })
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(sourceUpdate().put("state","UNCERTAIN").toString()))
+            assertEquals(id,runBlocking { client.recoverDeliverySource(21,id) }.id)
+            val request=server.takeRequest()
+            assertEquals("/api/mobile/sessions/21/delivery/source-updates/$id/recover",request.path)
+            assertEquals("{}",request.body.readUtf8());assertEquals("Bearer synthetic-access",request.getHeader("Authorization"))
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(sourceUpdate().put("sessionId",22).toString()))
+            assertFailsWith<IllegalArgumentException> { runBlocking { client.recoverDeliverySource(21,id) } }
+        } finally { server.shutdown() }
+    }
+
     @Test fun sourceUpdateUsesDurableIdentityAndRejectsInvalidStateOrCoercedIds() {
         val parsed=parseMobileSourceUpdate(sourceUpdate())
+        assertFalse(parsed.recoveryAvailable)
+        assertTrue(parseMobileSourceUpdate(sourceUpdate().put("recoveryAvailable",true)).recoveryAvailable)
+        assertFalse(parseMobileSourceUpdate(sourceUpdate().put("recoveryAvailable","true")).recoveryAvailable)
         assertEquals(id,parsed.id); assertEquals(105L,parsed.resolverRunId)
         assertEquals(4L,parsed.sourceRevision)
         for ((key,value) in listOf("state" to "SUCCEEDED", "sessionId" to "21", "sourceRevision" to "4",

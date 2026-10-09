@@ -29,6 +29,33 @@ public class SourceUpdateStore {
         // Hibernate follow-on locking can load the joined change before acquiring the session lock.
         jdbc.query("SELECT id FROM work_session WHERE id=? FOR NO KEY UPDATE",(rs,index)->rs.getLong(1),sessionId);
     }
+    public boolean recoveryAuthorized(UUID preparationId, String kind) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM mobile_source_recovery_authorization WHERE preparation_id=? AND kind=?)",
+            Boolean.class, preparationId, kind));
+    }
+    public Long recoveryOperator(UUID preparationId, String kind) {
+        return jdbc.queryForObject("SELECT operator_id FROM mobile_source_recovery_authorization WHERE preparation_id=? AND kind=?",
+            Long.class,preparationId,kind);
+    }
+    public boolean leased(UUID operationId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT lease_until>now() FROM mobile_source_update_operation WHERE id=?",Boolean.class,operationId));
+    }
+    public boolean finalizationNeedsRecovery(UUID preparationId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM mobile_source_finalization WHERE preparation_id=? AND state IN ('UNCERTAIN','ATTENTION'))",
+            Boolean.class,preparationId));
+    }
+    public void authorizeRecovery(UUID preparationId, String kind, Long actor) {
+        jdbc.update("""
+            INSERT INTO mobile_source_recovery_authorization
+                (preparation_id,kind,operator_id,prior_state,prior_delivery_state,prior_error_code)
+            SELECT p.id,?,?,CASE WHEN ?='FINALIZATION' THEN f.state ELSE p.state END,
+                CASE WHEN ?='FINALIZATION' THEN d.state ELSE NULL END,
+                CASE WHEN ?='FINALIZATION' THEN d.error_code ELSE p.error_code END
+            FROM mobile_source_update_operation p LEFT JOIN mobile_source_finalization f ON f.preparation_id=p.id
+                LEFT JOIN mobile_delivery_operation d ON d.id=f.delivery_operation_id
+            WHERE p.id=? ON CONFLICT DO NOTHING
+            """,kind,actor,kind,kind,kind,preparationId);
+    }
     public SourceUpdateOperation create(Long sessionId, Long operatorId, DevelopmentChangeSourceUpdateCommand command,
             String originalSourceCommit, String originalFingerprint) {
         var owner = command.owner();

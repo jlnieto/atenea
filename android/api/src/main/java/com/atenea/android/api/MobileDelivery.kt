@@ -11,7 +11,8 @@ data class MobileDeliveryState(val enabled: Boolean, val operations: List<Mobile
     val sourceUpdateEnabled: Boolean = false, val sourceUpdate: MobileSourceUpdate? = null)
 
 data class MobileSourceUpdate(val id: UUID, val sessionId: Long, val state: String,
-    val targetMainCommit: String, val sourceRevision: Long?, val resolverRunId: Long?, val errorCode: String?)
+    val targetMainCommit: String, val sourceRevision: Long?, val resolverRunId: Long?, val errorCode: String?,
+    val recoveryAvailable: Boolean = false)
 
 internal fun parseMobileSourceUpdate(json: JSONObject): MobileSourceUpdate {
     val state = json.getString("state")
@@ -27,7 +28,8 @@ internal fun parseMobileSourceUpdate(json: JSONObject): MobileSourceUpdate {
     val id = UUID.fromString(json.getString("id"))
     require(id.toString() == json.getString("id"))
     return MobileSourceUpdate(id, positive("sessionId")!!,
-        state, main, positive("sourceRevision"), positive("resolverRunId"), json.nullableDeliveryString("errorCode"))
+        state, main, positive("sourceRevision"), positive("resolverRunId"), json.nullableDeliveryString("errorCode"),
+        json.opt("recoveryAvailable") == true)
 }
 
 data class MobileDeliveryIntegration(

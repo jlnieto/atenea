@@ -20,6 +20,21 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
+    @Test fun `recovery is explicit blocks active runs and does not bypass validation for publication`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var update=MobileSourceUpdate(UUID.randomUUID(),21,"ATTENTION","2".repeat(40),null,null,"SOURCE_UPDATE_REF_MOVED",true)
+            var operation=operation().copy(kind="PUBLISH_PR",state="BLOCKED")
+            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,listOf(operation),null,true,update) }
+            state.refresh();assertTrue(state.canRecoverSource(false,false));assertFalse(state.canRecoverSource(false,true))
+            update=update.copy(state="FAILED",resolverRunId=105);state.refresh();assertFalse(state.canRecoverSource(true,false))
+            update=update.copy(state="READY_TO_FINALIZE",resolverRunId=null);state.refresh()
+            assertFalse(state.canRecoverSource(false,false));assertTrue(state.canRecoverSource(true,false))
+            operation=operation.copy(state="QUEUED");state.refresh();assertFalse(state.canRecoverSource(true,false))
+            update=update.copy(state="PUBLISHED");operation=operation.copy(state="BLOCKED");state.refresh()
+            assertFalse(state.canRecoverSource(true,false))
+        } finally { scope.cancel() }
+    }
     @Test fun `failed resolver retry requires current online intent and never enables integration`() = runBlocking<Unit> {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {

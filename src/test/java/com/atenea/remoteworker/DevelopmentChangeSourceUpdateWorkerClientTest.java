@@ -59,6 +59,21 @@ class DevelopmentChangeSourceUpdateWorkerClientTest {
         assertThrows(RemoteWorkerException.class,()->client.validate(response.deepCopy().put("predecessorPreparationReceiptSha256","d".repeat(64)),request));
         assertThrows(IllegalArgumentException.class,()->new DevelopmentChangeSourceUpdateCommand(owner,"b".repeat(40),command.publicationReceiptSha256()));
     }
+    @Test void recoveryKeepsOriginalKeyTargetAndEvidenceAndCannotReturnUnfinishedPublication() {
+        var preparation=client.request(command,DevelopmentChangeSourceUpdateCommand.Action.RECOVER);
+        assertEquals("RECOVER",preparation.get("operation"));assertEquals("RESUME_PINNED_SOURCE",preparation.get("effect"));
+        assertEquals(command.owner().idempotencyKey().toString(),preparation.get("idempotencyKey"));
+        assertEquals(command.targetMainCommit(),preparation.get("targetMainCommit"));assertEquals(21,preparation.size());
+        var finalization=finalization();
+        var request=mapper.valueToTree(client.finalizationRequest(finalization,DevelopmentChangeSourceFinalizationCommand.Action.RECOVER));
+        ObjectNode reply=request.deepCopy();reply.put("state","PREPARED").put("publishedHeadSha","d".repeat(40))
+            .put("expectedTreeSha","e".repeat(40)).putNull("finalizationReceiptSha256").put("valuesExposed",false);
+        assertThrows(RemoteWorkerException.class,()->client.validateFinalization(reply,request));
+        reply.put("state","PUBLISHED").put("finalizationReceiptSha256","f".repeat(64));
+        assertEquals("d".repeat(40),client.validateFinalization(reply,request).publishedHeadSha());
+        assertFalse(request.has("observedMainCommit"));assertEquals(24,request.size());
+    }
+
     @Test void finalizationContractBindsPreparationValidationAndNewRevision() throws Exception {
         var command=finalization();
         var body=client.finalizationRequest(command,DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE);

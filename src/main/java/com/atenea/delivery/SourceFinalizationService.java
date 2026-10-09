@@ -60,7 +60,8 @@ public class SourceFinalizationService {
         if (intent.result() != null) return Optional.of(identity(intent.command(), intent.result()));
         try {
             Result result = gateway.finalizeSource(intent.command(), Action.INSPECT);
-            if (result.state() != FinalizationState.PUBLISHED) result = gateway.finalizeSource(intent.command(), Action.FINALIZE);
+            if (result.state() != FinalizationState.PUBLISHED) result = gateway.finalizeSource(intent.command(),
+                updates.recoveryAuthorized(intent.command().preparationOperationId(),"FINALIZATION") ? Action.RECOVER : Action.FINALIZE);
             Result confirmed = result;
             return Optional.of(Objects.requireNonNull(transaction.execute(ignored -> persist(intent, confirmed))));
         } catch (RuntimeException failure) {
@@ -75,6 +76,43 @@ public class SourceFinalizationService {
         }
     }
 
+    /** Requeues the original delivery outbox; no second PR, prompt or publication intent. */
+    public boolean recover(Long sessionId, UUID preparationId, com.atenea.auth.AuthenticatedOperator actor) {
+        var operator=operators.findById(actor.operatorId()).orElseThrow();
+        if (!operator.isActive() || operator.getCodexOperationsRole()!=CodexOperationsRole.PLATFORM_ADMINISTRATOR)
+            throw reject("PLATFORM_ADMINISTRATOR_REQUIRED");
+        return Boolean.TRUE.equals(transaction.execute(ignored -> {
+            updates.lockSessionBeforeReadingSource(sessionId);
+            var session=sessions.findLockedWithProjectAndDevelopmentChangeById(sessionId).orElseThrow();
+            var update=updates.latest(sessionId).orElseThrow();
+            if (!Objects.equals(update.id(),preparationId)) throw reject("SOURCE_UPDATE_OWNER_MISMATCH");
+            var rows=jdbc.query("SELECT id,command_json,delivery_operation_id,state FROM mobile_source_finalization WHERE preparation_id=? FOR UPDATE",
+                (rs,index)->new Recovery(rs.getObject(1,UUID.class),read(rs.getString(2),DevelopmentChangeSourceFinalizationCommand.class),
+                    rs.getObject(3,UUID.class),rs.getString(4)),preparationId);
+            if (rows.isEmpty()) return false;
+            var retained=rows.getFirst();
+            if (updates.recoveryAuthorized(preparationId,"FINALIZATION") && retained.state().equals("UNCERTAIN")
+                    && Boolean.TRUE.equals(jdbc.queryForObject("SELECT state='QUEUED' FROM mobile_delivery_operation WHERE id=?",
+                        Boolean.class,retained.deliveryId()))) return true;
+            if (!java.util.Set.of("ATTENTION","UNCERTAIN").contains(retained.state())) {
+                if (updates.recoveryAuthorized(preparationId,"FINALIZATION")) return true;
+                throw reject("SOURCE_RECOVERY_FINALIZATION_NOT_PENDING");
+            }
+            requireSnapshot(session,retained.command(),retained.command().owner());
+            requireIdle();
+            Long active=jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation WHERE id<>? AND state NOT IN ('SUCCEEDED','ROLLED_BACK','FAILED','BLOCKED','ROLLBACK_FAILED')",
+                Long.class,retained.deliveryId());
+            if (active==null || active!=0) throw reject("SOURCE_FINALIZATION_EXECUTION_ACTIVE");
+            if (!routing.refreshKnownWorker(ProjectCodexIdentity.WORKER_ID,"development-change-source-recovery/v1"))
+                throw reject("SOURCE_FINALIZATION_CAPABILITY_UNAVAILABLE");
+            if (!updates.recoveryAuthorized(preparationId,"FINALIZATION"))
+                updates.authorizeRecovery(preparationId,"FINALIZATION",actor.operatorId());
+            jdbc.update("UPDATE mobile_source_finalization SET state='UNCERTAIN',lease_until=now(),updated_at=now() WHERE id=?",retained.id());
+            jdbc.update("UPDATE mobile_delivery_operation SET state='QUEUED',updated_at=now() WHERE id=?",retained.deliveryId());
+            return true;
+        }));
+    }
+
     private Intent prepare(Long sessionId, DevelopmentChangeBranchPublicationCommand validated) {
         var session = sessions.findLockedWithProjectAndDevelopmentChangeById(sessionId).orElseThrow();
         var update = updates.latest(sessionId).orElse(null);
@@ -86,6 +124,11 @@ public class SourceFinalizationService {
         Intent intent;
         if (!retained.isEmpty()) {
             intent=retained.getFirst();
+            if (updates.recoveryAuthorized(update.id(),"FINALIZATION")) {
+                var actor=operators.findById(updates.recoveryOperator(update.id(),"FINALIZATION")).orElseThrow();
+                if (!actor.isActive() || actor.getCodexOperationsRole()!=CodexOperationsRole.PLATFORM_ADMINISTRATOR)
+                    throw reject("PLATFORM_ADMINISTRATOR_REQUIRED");
+            }
             requireSnapshot(session, intent.command(), validated);
             if (intent.result() != null) {
                 if (!Objects.equals(session.getFinalCommitSha(), intent.result().publishedHeadSha())
@@ -227,4 +270,5 @@ public class SourceFinalizationService {
     private record Authorization(UUID operation,Long actor) { }
     private record Predecessor(String head,Long revision,String fingerprint,String receipt,String pullRequestUrl) { }
     private record Intent(DevelopmentChangeSourceFinalizationCommand command,Result result,Predecessor predecessor) { }
+    private record Recovery(UUID id,DevelopmentChangeSourceFinalizationCommand command,UUID deliveryId,String state) { }
 }

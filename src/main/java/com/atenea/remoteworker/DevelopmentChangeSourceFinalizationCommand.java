@@ -14,5 +14,5 @@ public record DevelopmentChangeSourceFinalizationCommand(DevelopmentChangeBranch
                 || !hash(validationProjectionSha256)) throw new IllegalArgumentException("Invalid finalization evidence");
     }
     private static boolean hash(String value) { return value != null && value.matches("[0-9a-f]{64}"); }
-    public enum Action { FINALIZE, INSPECT }
+    public enum Action { FINALIZE, INSPECT, RECOVER }
 }

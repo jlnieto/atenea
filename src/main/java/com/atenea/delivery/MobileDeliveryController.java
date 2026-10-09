@@ -21,8 +21,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class MobileDeliveryController {
     private final MobileDeliveryService service;
     private final SourceUpdateService sourceUpdates;
-    public MobileDeliveryController(MobileDeliveryService service, SourceUpdateService sourceUpdates) {
-        this.service = service; this.sourceUpdates = sourceUpdates;
+    private final SourceFinalizationService finalizations;
+    public MobileDeliveryController(MobileDeliveryService service, SourceUpdateService sourceUpdates, SourceFinalizationService finalizations) {
+        this.service = service; this.sourceUpdates = sourceUpdates; this.finalizations=finalizations;
     }
 
     @GetMapping("/api/mobile/sessions/{sessionId}/delivery")
@@ -47,6 +48,15 @@ public class MobileDeliveryController {
             @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
         exact(request, Set.of());
         return service.request(sessionId, actor, "PUBLISH_PR", DeliveryTarget.APP_PROD);
+    }
+
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/source-updates/{operationId}/recover")
+    public SourceUpdateOperation.View recoverSource(@PathVariable Long sessionId, @PathVariable UUID operationId,
+            @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request,Set.of());
+        if (!sourceUpdates.isEnabled()) throw new DeliveryRejectedException("SOURCE_UPDATE_DISABLED");
+        return finalizations.recover(sessionId,operationId,actor)
+            ? sourceUpdates.observe(sessionId,actor) : sourceUpdates.recoverPreparation(sessionId,operationId,actor);
     }
 
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/source-updates/{operationId}/resolver-runs/{runId}/retry")

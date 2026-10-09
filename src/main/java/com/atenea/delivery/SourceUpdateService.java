@@ -90,10 +90,40 @@ public class SourceUpdateService {
     public SourceUpdateOperation.View observe(Long sessionId, AuthenticatedOperator actor) {
         administrator(actor.operatorId());
         session(sessionId, false);
-        return store.latest(sessionId).map(SourceUpdateOperation::view).orElse(null);
+        return store.latest(sessionId).map(op -> op.view().withRecoveryAvailable(
+            (java.util.Set.of("ATTENTION","BLOCKED","UNCERTAIN").contains(op.state())
+                && op.preparation()==null && op.resolverRunId()==null)
+            || store.finalizationNeedsRecovery(op.id()))).orElse(null);
     }
 
     public boolean isEnabled() { return delivery.isEnabled() && worker.isEnabled(); }
+
+    /** Explicit reauthorization of the latest pending preparation; the intent remains immutable. */
+    public SourceUpdateOperation.View recoverPreparation(Long sessionId, UUID operationId, AuthenticatedOperator actor) {
+        administrator(actor.operatorId());
+        if (!isEnabled()) throw rejected("SOURCE_UPDATE_DISABLED");
+        return transaction.execute(ignored -> {
+            store.lockSessionBeforeReadingSource(sessionId);
+            var session=session(sessionId,true);
+            var op=store.get(operationId,true);
+            if (!Objects.equals(op.sessionId(),sessionId) || !Objects.equals(store.latest(sessionId).orElseThrow().id(),operationId))
+                throw rejected("SOURCE_UPDATE_OWNER_MISMATCH");
+            requireStructure(session,op.command());
+            if (store.recoveryAuthorized(op.id(),"PREPARATION")
+                    && (!java.util.Set.of("ATTENTION","BLOCKED","UNCERTAIN").contains(op.state())
+                        || (op.state().equals("UNCERTAIN") && (op.errorCode()==null || store.leased(op.id())))))
+                return op.view();
+            if (!java.util.Set.of("ATTENTION","BLOCKED","UNCERTAIN").contains(op.state())
+                    || op.preparation()!=null || op.resolverRunId()!=null)
+                throw rejected("SOURCE_RECOVERY_PREPARATION_NOT_PENDING");
+            store.requireIdle();
+            if (!routing.refreshKnownWorker(ProjectCodexIdentity.WORKER_ID,"development-change-source-recovery/v1"))
+                throw rejected("SOURCE_UPDATE_CAPABILITY_UNAVAILABLE");
+            if (!store.recoveryAuthorized(op.id(),"PREPARATION")) store.authorizeRecovery(op.id(),"PREPARATION",actor.operatorId());
+            store.state(op.id(),"UNCERTAIN",null);
+            return store.get(op.id(),false).view();
+        });
+    }
 
     /** A repeated request for the same failed attempt never admits another run. */
     public SourceUpdateOperation.View retryResolver(Long sessionId, UUID operationId, Long sourceRunId, AuthenticatedOperator actor) {
@@ -250,6 +280,8 @@ public class SourceUpdateService {
         if (claimed.state().equals("RESOLVING")) { finish(claimed); return; }
         if (claimed.state().equals("READY_TO_RESOLVE")) { startResolver(claimed); return; }
         try {
+            boolean recover=store.recoveryAuthorized(claimed.id(),"PREPARATION");
+            if (recover) administrator(store.recoveryOperator(claimed.id(),"PREPARATION"));
             Preparation preparation = gateway.exchange(claimed.command(), claimed.state().equals("QUEUED")
                     ? Action.PREPARE : Action.INSPECT);
             if (preparation.state() == State.ABSENT) {
@@ -257,10 +289,10 @@ public class SourceUpdateService {
                     mark(claimed, "BLOCKED", claimed.errorCode());
                     return;
                 }
-                preparation = gateway.exchange(claimed.command(), Action.PREPARE);
+                preparation = gateway.exchange(claimed.command(), recover ? Action.RECOVER : Action.PREPARE);
             }
             if (preparation.state() == State.PREPARED) {
-                preparation = gateway.exchange(claimed.command(), Action.RECONCILE);
+                preparation = gateway.exchange(claimed.command(), recover ? Action.RECOVER : Action.RECONCILE);
             }
             if (preparation.state() != State.NEEDS_RESOLUTION && preparation.state() != State.READY_TO_FINALIZE) {
                 mark(claimed, "ATTENTION", "SOURCE_UPDATE_PREPARATION_INCOMPLETE");

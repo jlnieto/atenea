@@ -72,6 +72,13 @@ internal class MobileDeliveryUiState(
             && !runInProgress && !busy
             && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
 
+    fun canRecoverSource(validated: Boolean, runInProgress: Boolean): Boolean =
+        available && sourceUpdateEnabled && sourceUpdate?.recoveryAvailable == true && !runInProgress && !busy
+            && ((sourceUpdate?.state in setOf("ATTENTION", "BLOCKED", "UNCERTAIN") && sourceUpdate?.resolverRunId == null)
+                || (validated && sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
+                    && operations.any { it.kind == "PUBLISH_PR" && it.state in setOf("BLOCKED", "FAILED") }))
+            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
+
     suspend fun refresh() {
         try {
             val state = load()
@@ -172,6 +179,11 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
         state.sourceUpdate?.let { update ->
             Text(sourceUpdateLabel(update.state))
             update.errorCode?.let { Text("Recuperación detenida: $it. La misma operación y conversación se conservan.") }
+            if (state.canRecoverSource(validated,runInProgress)) {
+                Text("Recuperar termina la operación retenida; no cambia su main ni descarta archivos.")
+                AteneaButton("Recuperar operación", enabled = true,
+                    onClick = { act { api.recoverDeliverySource(sessionId,update.id) } })
+            }
             val resolverRunId = update.resolverRunId
             if (update.state == "FAILED" && resolverRunId != null) {
                 Text("Reintentar comprueba la misma fuente y conserva el intento fallido. Consultar no ejecuta otro resolver.")

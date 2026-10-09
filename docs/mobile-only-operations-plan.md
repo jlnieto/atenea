@@ -62,10 +62,15 @@ preparación completada, antes de publicar sus archivos o después de actualizar
 la misma PR. Conserva archivos, historial y recibos; exige validación vigente.
 No está integrada ni desplegada.
 
-Siguiente paso: cerrar la revisión de interrupciones cuando main avanza con una
-preparación pendiente o una publicación incierta. Esos estados siguen fijados a
-su intención original y no se sustituyen automáticamente. Después, integración
-conjunta. No resolver manualmente PR 47 para sustituir estas capacidades.
+Las dos fronteras restantes tienen recuperación explícita implementada:
+Recuperar operación conserva la intención original y termina contra su main
+retenido, incluso si el primer envío al worker no llegó. No sustituye la
+preparación ni abandona una publicación incierta.
+
+Siguiente paso: revisión e integración conjunta de App y Platform, seguidas de
+un despliegue autorizado y aceptación desde el Samsung con WS21/PR47. La entrega
+1 no se declara completa antes de esa aceptación. No resolver manualmente PR47
+para sustituir estas capacidades.
 
 ## Reglas para terminar sin ampliar el alcance
 
@@ -377,11 +382,46 @@ Después de publicar, el predecesor es el nuevo head publicado de la misma rama.
 Los tests incluyen tres generaciones, GC, doble solicitud, interrupción antes
 de materializar y rechazo de archivos, hashes y refs ajenos sin reset.
 
-Límite pendiente: una preparación QUEUED/PREPARE_CLAIMED/UNCERTAIN no adopta otro
-main; una publicación no confirmada PUBLISHED impide otra preparación. Falta
-cerrar la recuperación explícita de esas fronteras sin borrar evidencia ni
-relajar la comprobación del main retenido. La entrega 1 aún no está lista para
-integración conjunta o aceptación móvil. WS21 y PR47 no se han operado.
+Una preparación QUEUED/PREPARE_CLAIMED/UNCERTAIN no adopta otro main; una
+publicación no confirmada PUBLISHED impide otra preparación. La siguiente unidad
+añade la recuperación explícita de estas fronteras. WS21 y PR47 no se han operado.
+
+2026-10-09: recuperación del main retenido implementada localmente en App y
+Platform. V91 registra la autorización del administrador, el estado y error
+anteriores sin reemplazar la intención, recibos, operador original ni claves.
+El endpoint móvil usa la misma WorkSession y preparation ID con cuerpo vacío.
+La disponibilidad del botón procede de la evidencia del servidor; un fallo de
+CI no inventa una publicación pendiente recuperable.
+
+La capability `development-change-source-recovery/v1` habilita RECOVER en los
+contratos existentes. Platform observa el SHA exacto de GitHub y mirror y
+verifica la cadena base → main retenido → main observado. Antes del efecto
+persiste esa observación en un journal privado sellado. Las referencias se
+vuelven a comprobar contra ese SHA observado, nunca contra un main elegido
+dinámicamente durante el efecto. Un nuevo avance se rechaza y conserva toda la
+evidencia para otra recuperación explícita.
+
+Para preparación, recupera sólo la misma intención y los bytes originales o
+preparados. Para publicación, termina el mismo candidato con sus dos padres
+originales y push normal; si el push ya ocurrió, sella el recibo sin repetirlo.
+App vuelve a poner en cola la operación de publicación original. Dos toques no
+duplican autorizaciones ni reinician un lease activo. Se verifican de nuevo
+los permisos del autorizante antes del efecto; la publicación sigue exigiendo
+cuatro checks actuales. Archivos nuevos, ownership/refs ajenos o un mirror
+desalineado se rechazan, sin reset ni force push.
+
+Flujo tras recuperación: terminar la operación retenida; si main volvió a
+avanzar, Actualizar base con main; resolver si hace falta; validar la nueva
+revisión; Actualizar la misma PR; esperar GitHub/UFD antes de integrar. No hay
+integración, publicación de APK ni despliegue implícitos. La aceptación móvil de
+este recorrido sigue pendiente.
+
+Validación focal de esta unidad: 97 tests backend PASS en PostgreSQL 16 efímero,
+Flyway V91 y upgrade V90 → V91 sin modificar el historial de reintentos;
+13 tests Platform nuevos de recuperación, 32 de preparación, 30 de
+finalización, 10 de continuación y 21 del validador PASS (5 exclusivos de root
+omitidos); installer, schemas Draft 2020-12, `bash -n` y `git diff --check` PASS.
+La validación UFD posterior al commit conserva su propio plan e informes.
 
 ## Autorización de efectos reales
 

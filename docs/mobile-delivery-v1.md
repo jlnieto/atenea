@@ -158,8 +158,15 @@ reemplazar sus recibos. La fuente nueva exige otra validación de cuatro checks.
 
 Una preparación todavía pendiente conserva su intención original. Una
 publicación incierta bloquea la continuación: no se descarta evidencia ni se
-elige otro main implícitamente. El cierre de recuperación de esas fronteras
-sigue pendiente. No está desplegada ni aceptada en el móvil todavía.
+elige otro main implícitamente. Recuperar operación reautoriza la intención
+original mediante V91 y reanuda su preparación o publicación, sin crear otra
+operación ni PR. Platform exige que GitHub y mirror coincidan en un descendiente
+exacto del main retenido y sella la comprobación antes del efecto. Si el push
+ya ocurrió, sólo completa su recibo; nunca fuerza ni repite una publicación
+confirmada. Después se puede incorporar el main nuevo con otra preparación y
+validación. El botón sólo aparece para una operación pendiente reconocida por
+el servidor, no por cualquier fallo CI. No está desplegada ni aceptada en el
+móvil todavía.
 
 Antes de publicar el ajuste de conversación, ejecutar los tests focales del
 backend y cliente API de `validation-evidence`, y los tests Compose de

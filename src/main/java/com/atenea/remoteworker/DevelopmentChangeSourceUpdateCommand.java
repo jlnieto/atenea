@@ -32,7 +32,8 @@ public record DevelopmentChangeSourceUpdateCommand(
     public enum Action {
         PREPARE("PREPARE_PINNED_MAIN", "prepare"),
         INSPECT("OBSERVE_ONLY", "inspect"),
-        RECONCILE("OBSERVE_OR_RESUME_EXACT", "reconcile");
+        RECONCILE("OBSERVE_OR_RESUME_EXACT", "reconcile"),
+        RECOVER("RESUME_PINNED_SOURCE", "recover");
         final String effect;
         final String path;
         Action(String effect, String path) { this.effect = effect; this.path = path; }

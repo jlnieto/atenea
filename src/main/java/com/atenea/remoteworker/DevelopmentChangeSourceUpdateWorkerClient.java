@@ -110,7 +110,11 @@ public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentCha
         body.remove("requestFingerprintSha256");
         body.put("protocolVersion", "development-change-source-finalization/v1");
         body.put("operation", action.name());
-        body.put("effect", action == DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE ? "FINALIZE_VALIDATED_SOURCE" : "OBSERVE_ONLY");
+        body.put("effect", switch (action) {
+            case FINALIZE -> "FINALIZE_VALIDATED_SOURCE";
+            case INSPECT -> "OBSERVE_ONLY";
+            case RECOVER -> "RESUME_PINNED_SOURCE";
+        });
         body.put("sourceFingerprintSha256", owner.sourceFingerprintSha256());
         body.put("preparationOperationId", command.preparationOperationId().toString());
         body.put("preparationReceiptSha256", command.preparationReceiptSha256());
@@ -143,7 +147,7 @@ public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentCha
         if (state == FinalizationState.ABSENT ? head != null || tree != null || receipt != null
                 : head == null || tree == null) throw protocol();
         if (state == FinalizationState.PUBLISHED ? receipt == null : receipt != null) throw protocol();
-        if (request.path("operation").asText().equals("FINALIZE") && state != FinalizationState.PUBLISHED) throw protocol();
+        if (Set.of("FINALIZE","RECOVER").contains(request.path("operation").asText()) && state != FinalizationState.PUBLISHED) throw protocol();
         return new Result(state, head, tree, receipt);
     }
 
@@ -220,6 +224,7 @@ public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentCha
         State state;
         try { state = State.valueOf(response.path("state").textValue()); }
         catch (IllegalArgumentException invalid) { throw protocol(); }
+        if (request.path("operation").asText().equals("RECOVER") && !Set.of(State.NEEDS_RESOLUTION,State.READY_TO_FINALIZE).contains(state)) throw protocol();
         String tree = nullableHash(response.get("preparedTreeSha"), "[0-9a-f]{40}|[0-9a-f]{64}");
         String fingerprint = nullableHash(response.get("preparedFingerprintSha256"), "[0-9a-f]{64}");
         String receipt = nullableHash(response.get("receiptSha256"), "[0-9a-f]{64}");

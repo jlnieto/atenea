@@ -144,6 +144,7 @@ class SourceUpdateIntegrationTest {
     }
     @AfterEach void cleanup() {
         tx.executeWithoutResult(ignored -> {
+            jdbc.update("DELETE FROM mobile_source_recovery_authorization WHERE preparation_id IN (SELECT id FROM mobile_source_update_operation WHERE session_id=?)",sessionId);
             jdbc.update("DELETE FROM mobile_source_finalization WHERE session_id=?",sessionId);
             jdbc.update("DELETE FROM mobile_delivery_operation WHERE session_id=?",sessionId);
             jdbc.update("DELETE FROM mobile_source_resolver_retry WHERE operation_id IN (SELECT id FROM mobile_source_update_operation WHERE session_id=?)",sessionId);
@@ -164,6 +165,84 @@ class SourceUpdateIntegrationTest {
     private SourceUpdateOperation queued() {
         var view=service.request(sessionId, actor);
         return store.get(view.id(), false);
+    }
+
+    @Test void explicitPreparationRecoveryKeepsSameIntentAndReadsNeverAuthorizeIt() {
+        var op=queued();store.state(op.id(),"ATTENTION","SOURCE_UPDATE_REF_MOVED");
+        when(github.canonicalMain(any())).thenReturn("a".repeat(40));
+        assertEquals(op.id(),service.observe(sessionId,actor).id());
+        assertTrue(service.observe(sessionId,actor).recoveryAvailable());
+        assertFalse(store.recoveryAuthorized(op.id(),"PREPARATION"));
+        assertEquals(op.id(),service.recoverPreparation(sessionId,op.id(),actor).id());
+        assertEquals(op.id(),service.recoverPreparation(sessionId,op.id(),actor).id());
+        when(gateway.exchange(op.command(),Action.INSPECT)).thenReturn(new Preparation(State.ABSENT,null,List.of(),null,null));
+        when(gateway.exchange(op.command(),Action.RECOVER)).thenReturn(prepared());
+        service.reconcile(op.id());
+        assertEquals("READY_TO_RESOLVE",store.get(op.id(),false).state());
+        assertFalse(service.observe(sessionId,actor).recoveryAvailable());
+        assertEquals(op.command(),store.get(op.id(),false).command());
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_recovery_authorization",Long.class));
+        assertEquals("SOURCE_UPDATE_REF_MOVED",jdbc.queryForObject("SELECT prior_error_code FROM mobile_source_recovery_authorization",String.class));
+        verify(gateway,times(1)).exchange(op.command(),Action.RECOVER);
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE mobile_source_recovery_authorization SET created_at=now()"));
+    }
+
+    @Test void preparedWorkerJournalRecoveryDoesNotPrepareAnotherTarget() {
+        var op=queued();store.state(op.id(),"ATTENTION","SOURCE_UPDATE_REF_MOVED");
+        service.recoverPreparation(sessionId,op.id(),actor);
+        when(gateway.exchange(op.command(),Action.INSPECT)).thenReturn(new Preparation(State.PREPARED,"7".repeat(40),List.of(),null,"8".repeat(64)));
+        when(gateway.exchange(op.command(),Action.RECOVER)).thenReturn(prepared());
+        service.reconcile(op.id());
+        assertEquals(main,store.get(op.id(),false).command().targetMainCommit());
+        verify(gateway,never()).exchange(any(),eq(Action.PREPARE));
+        verify(gateway,never()).exchange(any(),eq(Action.RECONCILE));
+    }
+
+    @Test void concurrentRecoveryRequestsRetainOneAuthorizationAndCannotStealLiveLease() throws Exception {
+        var op=queued();store.state(op.id(),"ATTENTION","SOURCE_UPDATE_REF_MOVED");
+        var pool=java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var first=pool.submit(()->service.recoverPreparation(sessionId,op.id(),actor));
+            var second=pool.submit(()->service.recoverPreparation(sessionId,op.id(),actor));
+            assertEquals(op.id(),first.get().id());assertEquals(op.id(),second.get().id());
+        } finally { pool.shutdownNow(); }
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_recovery_authorization",Long.class));
+        jdbc.update("UPDATE mobile_source_update_operation SET error_code='SOURCE_UPDATE_RESPONSE_UNCERTAIN',lease_until=now()+interval '5 minutes' WHERE id=?",op.id());
+        var lease=jdbc.queryForObject("SELECT lease_until FROM mobile_source_update_operation WHERE id=?",java.sql.Timestamp.class,op.id());
+        service.recoverPreparation(sessionId,op.id(),actor);
+        assertEquals(lease,jdbc.queryForObject("SELECT lease_until FROM mobile_source_update_operation WHERE id=?",java.sql.Timestamp.class,op.id()));
+        verifyNoInteractions(gateway);
+    }
+
+    @Test void revokedRecoveryAdministratorStopsBeforeAnyRemoteEffect() {
+        var op=queued();store.state(op.id(),"ATTENTION","SOURCE_UPDATE_REF_MOVED");service.recoverPreparation(sessionId,op.id(),actor);
+        tx.executeWithoutResult(ignored->{var operator=operators.findById(operatorId).orElseThrow();operator.setActive(false);operators.saveAndFlush(operator);});
+        service.reconcile(op.id());
+        assertEquals("ATTENTION",store.get(op.id(),false).state());verifyNoInteractions(gateway);
+    }
+
+    @Test void recoveryRejectsForeignSessionOrdinaryOperatorAndResolverFailure() {
+        var op=queued();store.state(op.id(),"ATTENTION","SOURCE_UPDATE_REF_MOVED");
+        assertThrows(RuntimeException.class,()->service.recoverPreparation(sessionId+1000,op.id(),actor));
+        tx.executeWithoutResult(ignored->{var operator=operators.findById(operatorId).orElseThrow();
+            operator.setCodexOperationsRole(CodexOperationsRole.ROUTINE_OPERATOR);operators.saveAndFlush(operator);});
+        assertEquals("PLATFORM_ADMINISTRATOR_REQUIRED",assertThrows(DeliveryRejectedException.class,
+            ()->service.recoverPreparation(sessionId,op.id(),actor)).code());
+        assertFalse(store.recoveryAuthorized(op.id(),"PREPARATION"));
+        verifyNoInteractions(gateway);
+    }
+
+    @Test void recoveryEndpointRejectsCallerMainPathsAndCommands() throws Exception {
+        var op=queued();store.state(op.id(),"ATTENTION","SOURCE_UPDATE_REF_MOVED");
+        var authentication=new UsernamePasswordAuthenticationToken(actor,null,List.of(new SimpleGrantedAuthority("ROLE_OPERATOR")));
+        mvc.perform(post("/api/mobile/sessions/{sessionId}/delivery/source-updates/{id}/recover",sessionId,op.id())
+            .with(authentication(authentication)).contentType(MediaType.APPLICATION_JSON).content("{\"main\":\"arbitrary\"}"))
+            .andExpect(status().is4xxClientError());
+        mvc.perform(post("/api/mobile/sessions/{sessionId}/delivery/source-updates/{id}/recover",sessionId,op.id())
+            .with(authentication(authentication)).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(op.id().toString()));
+        assertTrue(store.recoveryAuthorized(op.id(),"PREPARATION"));
     }
     private Preparation prepared() {
         return new Preparation(State.NEEDS_RESOLUTION,"7".repeat(40),List.of("src/test/java/Example.java"),preparedFingerprint,"8".repeat(64));
@@ -680,6 +759,38 @@ class SourceUpdateIntegrationTest {
             assertEquals(main,command.targetMainCommit()); assertEquals("c".repeat(64),command.validationProjectionSha256());
             return finalized();
         });
+    }
+
+    @Test void recoveryOfRejectedPublicationRequeuesOriginalDeliveryAndSealsSameIntent() {
+        var op=finalizable(false);simulateFinalizer();
+        var authorization=delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE)))
+            .thenThrow(new RemoteWorkerException("synthetic moved main",409,"SOURCE_UPDATE_REF_MOVED",RemoteWorkerFailureCategory.OWNERSHIP,
+                false,AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,null));
+        assertThrows(DeliveryRejectedException.class,()->publisher.publish(sessionId));
+        String before=jdbc.queryForObject("SELECT command_json::text FROM mobile_source_finalization WHERE preparation_id=?",String.class,op.id());
+        jdbc.update("UPDATE mobile_delivery_operation SET state='BLOCKED' WHERE id=?",authorization.id());
+        when(github.canonicalMain(any())).thenReturn("a".repeat(40));
+        assertTrue(finalizations.recover(sessionId,op.id(),actor));
+        assertTrue(finalizations.recover(sessionId,op.id(),actor));
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.RECOVER))).thenReturn(finalized());
+        assertEquals(finalized().publishedHeadSha(),publisher.publish(sessionId).headSha());
+        assertEquals(before,jdbc.queryForObject("SELECT command_json::text FROM mobile_source_finalization WHERE preparation_id=?",String.class,op.id()));
+        assertEquals(authorization.id(),jdbc.queryForObject("SELECT delivery_operation_id FROM mobile_source_finalization WHERE preparation_id=?",UUID.class,op.id()));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation WHERE session_id=?",Long.class,sessionId));
+        assertEquals("PUBLISHED",store.get(op.id(),false).state());
+        verify(finalizationGateway,times(1)).finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.RECOVER));
+    }
+
+    @Test void publicationRecoveryStillRequiresAllFourCurrentChecks() {
+        var op=finalizable(false);simulateFinalizer();delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE)))
+            .thenThrow(new IllegalStateException("synthetic transport interruption"));
+        assertThrows(IllegalStateException.class,()->publisher.publish(sessionId));
+        jdbc.update("DELETE FROM validation_operation WHERE work_session_id=? AND operation='ANDROID_BUILD'",sessionId);
+        assertEquals("SOURCE_FINALIZATION_CURRENT_VALIDATION_REQUIRED",assertThrows(DeliveryRejectedException.class,
+            ()->finalizations.recover(sessionId,op.id(),actor)).code());
+        assertFalse(store.recoveryAuthorized(op.id(),"FINALIZATION"));
     }
     @Test void newValidatedRevisionUpdatesExistingPublicationAndKeepsPredecessorHistory() {
         var op=finalizable(false); simulateFinalizer();
