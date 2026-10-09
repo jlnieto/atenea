@@ -3,6 +3,7 @@ package com.atenea.mobilepush;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -164,6 +165,27 @@ class MobilePushDispatchServiceTest {
 
         verify(fcmPushSender).send(any());
         verify(mobilePushNotificationLogRepository).save(any());
+    }
+
+    @Test
+    void operationsDegradationDispatchesEveryInvocationWithConcreteErrors() {
+        OperatorPushDeviceEntity device = buildDevice();
+        when(operatorPushDeviceRepository.findByActiveTrueOrderByUpdatedAtDesc()).thenReturn(List.of(device));
+        List<String> errors = List.of(
+                "Apache: systemctl is-active apache2 = inactive",
+                "Web Cliente: DOWN - timeout");
+
+        mobilePushDispatchService.notifyOperationsDegradation(3L, "dedicado-principal", errors);
+        mobilePushDispatchService.notifyOperationsDegradation(3L, "dedicado-principal", errors);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<FcmPushSender.FcmPushMessage>> messagesCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(fcmPushSender, times(2)).send(messagesCaptor.capture());
+        FcmPushSender.FcmPushMessage message = messagesCaptor.getAllValues().getFirst().getFirst();
+        assertEquals("Degradación detectada en dedicado-principal", message.title());
+        assertEquals(String.join("\n", errors), message.body());
+        verify(mobilePushNotificationLogRepository, never()).existsByEventKey(any());
     }
 
     private static WorkSessionEntity buildSession(Long id, String projectName, String title) {

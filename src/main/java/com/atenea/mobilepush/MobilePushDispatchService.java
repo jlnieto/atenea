@@ -144,6 +144,30 @@ public class MobilePushDispatchService {
         );
     }
 
+    public void notifyOperationsDegradation(Long hostId, String hostName, List<String> errors) {
+        List<OperatorPushDeviceEntity> devices = operatorPushDeviceRepository.findByActiveTrueOrderByUpdatedAtDesc();
+        if (devices.isEmpty()) {
+            return;
+        }
+        String title = "Degradación detectada en " + hostName;
+        String body = String.join("\n", errors);
+        try {
+            List<FcmPushSender.FcmPushMessage> fcmMessages = devices.stream()
+                    .map(device -> new FcmPushSender.FcmPushMessage(
+                            device.getPushToken(),
+                            title,
+                            body,
+                            Map.of(
+                                    "type", "OPERATIONS_DEGRADATION",
+                                    "hostId", hostId,
+                                    "errors", body)))
+                    .toList();
+            fcmPushSender.send(fcmMessages);
+        } catch (Exception exception) {
+            log.warn("Could not send operations degradation push hostId={}: {}", hostId, exception.getMessage());
+        }
+    }
+
     private void sendOnce(
             String eventKey,
             String eventType,

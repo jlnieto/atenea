@@ -276,6 +276,55 @@ class OperationsServiceTest {
         verify(operationsIncidentRepository).save(any(OperationsIncidentEntity.class));
     }
 
+    @Test
+    void monitoringCheckReturnsConcreteApacheAndWebsiteErrors() {
+        ManagedHostEntity host = host();
+        ManagedServiceEntity service = service(host);
+        ManagedWebsiteEntity website = website(host);
+
+        when(managedHostRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(host));
+        when(managedServiceRepository.findFirstByHostIdAndServiceTypeAndActiveTrueOrderByNameAsc(
+                3L,
+                ManagedServiceType.WEB_SERVER)).thenReturn(Optional.of(service));
+        when(operationsActionRunRepository.save(any(OperationsActionRunEntity.class))).thenAnswer(invocation -> {
+            OperationsActionRunEntity run = invocation.getArgument(0);
+            if (run.getId() == null) {
+                run.setId(51L);
+            }
+            return run;
+        });
+        when(operationsRemoteExecutor.execute(eq(host), eq("sudo /usr/local/sbin/atenea-apache-status"), any()))
+                .thenReturn(new RemoteCommandResult(1, "Apache inactive", "systemctl reported inactive"));
+        when(managedWebsiteRepository.findByHostIdAndActiveTrueOrderByNameAsc(3L)).thenReturn(List.of(website));
+        when(operationsWebsiteCheckService.check(website))
+                .thenReturn(new WebsiteCheckResponse(
+                        30L,
+                        "Cliente",
+                        "https://cliente.test",
+                        200,
+                        200,
+                        3200,
+                        2500,
+                        10000,
+                        "DEGRADED",
+                        false,
+                        "Slow response 3200ms above 2500ms threshold"));
+        when(operationsIncidentRepository.findFirstByHostIdAndServiceIdAndStatusInOrderByLastActivityAtDesc(
+                eq(3L),
+                eq(9L),
+                any())).thenReturn(Optional.empty());
+        when(operationsIncidentRepository.save(any(OperationsIncidentEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        OperationsMonitoringResult result = operationsService.checkApacheAndWebsites(3L);
+
+        assertEquals(List.of(
+                "Apache: systemctl reported inactive",
+                "Web Cliente (https://cliente.test): DEGRADED - Slow response 3200ms above 2500ms threshold"),
+                result.errors());
+        verify(operationsIncidentRepository).save(any(OperationsIncidentEntity.class));
+    }
+
     private ManagedHostEntity host() {
         ManagedHostEntity host = new ManagedHostEntity();
         host.setId(3L);

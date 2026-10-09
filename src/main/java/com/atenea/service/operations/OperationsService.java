@@ -29,6 +29,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -120,6 +121,33 @@ public class OperationsService {
                 toServiceResponse(service),
                 toActionRunResponse(run),
                 incident == null ? null : toIncidentResponse(incident));
+    }
+
+    @Transactional
+    public OperationsMonitoringResult checkApacheAndWebsites(Long hostId) {
+        ManagedHostEntity host = requireHost(hostId);
+        ManagedServiceEntity service = resolveService(hostId, "apache");
+        OperationsActionRunEntity apacheRun = executeRemote(host, service, null, "SERVICE_CHECK",
+                serviceCheckCommand(service), Duration.ofSeconds(20));
+        List<WebsiteCheckResponse> websiteChecks = checkWebsites(hostId);
+        List<String> errors = new ArrayList<>();
+
+        if (apacheRun.getStatus() == OperationsActionRunStatus.FAILED) {
+            String detail = firstNonBlank(
+                    apacheRun.getStderrSummary(),
+                    apacheRun.getStdoutSummary(),
+                    apacheRun.getExitCode() == null
+                            ? "fallo al ejecutar el diagnóstico remoto"
+                            : "código de salida " + apacheRun.getExitCode());
+            errors.add("Apache: " + detail);
+        }
+        websiteChecks.stream()
+                .filter(check -> !check.healthy())
+                .map(this::monitoringWebsiteError)
+                .forEach(errors::add);
+
+        syncMonitoringIncident(host, service, apacheRun, websiteChecks, errors);
+        return new OperationsMonitoringResult(host.getId(), host.getName(), errors);
     }
 
     @Transactional
@@ -311,6 +339,32 @@ public class OperationsService {
                 severity,
                 "Webs lentas o caídas",
                 summary);
+    }
+
+    private void syncMonitoringIncident(
+            ManagedHostEntity host,
+            ManagedServiceEntity service,
+            OperationsActionRunEntity apacheRun,
+            List<WebsiteCheckResponse> websiteChecks,
+            List<String> errors
+    ) {
+        if (errors.isEmpty()) {
+            resolveServiceIncidentIfHealthy(host, service);
+            return;
+        }
+        boolean critical = apacheRun.getStatus() == OperationsActionRunStatus.FAILED
+                || websiteChecks.stream().anyMatch(check -> "DOWN".equals(check.state()));
+        openOrUpdateIncident(
+                host,
+                service,
+                critical ? OperationsSeverity.CRITICAL : OperationsSeverity.WARNING,
+                "Apache o webs degradados",
+                String.join(" ", errors));
+    }
+
+    private String monitoringWebsiteError(WebsiteCheckResponse check) {
+        String detail = firstNonBlank(check.error(), "estado " + check.state());
+        return "Web " + check.name() + " (" + check.url() + "): " + check.state() + " - " + detail;
     }
 
     private OperationsSeverity severityFromWebsiteChecks(List<WebsiteCheckResponse> websiteChecks) {

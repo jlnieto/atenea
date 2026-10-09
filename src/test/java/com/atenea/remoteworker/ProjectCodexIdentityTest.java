@@ -35,6 +35,18 @@ class ProjectCodexIdentityTest {
         assertFalse(ProjectCodexIdentity.matches(missingRepository));
     }
 
+    @Test
+    void rejectsMissingOrForeignDefaultBranchAndBlankRepository() {
+        ProjectEntity project = canonicalProject("/repos/atenea");
+        project.setDefaultBaseBranch(null);
+        assertFalse(ProjectCodexIdentity.matches(project));
+        project.setDefaultBaseBranch("foreign");
+        assertFalse(ProjectCodexIdentity.matches(project));
+        project.setDefaultBaseBranch(ProjectCodexIdentity.BRANCH);
+        project.setRepoPath(" ");
+        assertFalse(ProjectCodexIdentity.matches(project));
+    }
+
     private ProjectEntity canonicalProject(String repoPath) {
         ProjectEntity project = new ProjectEntity();
         project.setName(ProjectCodexIdentity.PROJECT_NAME);

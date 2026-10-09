@@ -785,6 +785,7 @@ class MobileSessionOperatorStateServiceTest {
             Instant createdAt
     ) {
         ProjectEntity project = new ProjectEntity();
+        project.setDefaultBaseBranch("main");
         project.setId(1L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);

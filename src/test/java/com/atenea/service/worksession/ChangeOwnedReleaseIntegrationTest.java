@@ -87,7 +87,7 @@ class ChangeOwnedReleaseIntegrationTest {
             node.setHeavyCapacity(2);
             node.setNormalInUse(0);
             node.setHeavyInUse(0);
-            node.setCapabilities(ProjectCodexIdentity.WORKLOAD_KIND);
+            node.setCapabilities(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);
             node.setLastHeartbeatAt(now);
             node.setCreatedAt(now);
             node.setUpdatedAt(now);

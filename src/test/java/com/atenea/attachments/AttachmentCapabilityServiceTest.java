@@ -273,6 +273,7 @@ class AttachmentCapabilityServiceTest {
 
     private WorkSessionEntity exactRealSession() {
         ProjectEntity project = new ProjectEntity();
+        project.setDefaultBaseBranch("main");
         project.setId(7L);
         project.setName(ProjectCodexIdentity.PROJECT_NAME);
         project.setRepoPath(ProjectCodexIdentity.REPO_PATH);
