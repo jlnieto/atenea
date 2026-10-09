@@ -191,6 +191,122 @@ class MobileDeliveryServiceTest {
         verify(executor, never()).plan(any(), any(), any());
         verifyNoInteractions(factors, grants);
     }
+
+    @Test void explicitRecoveryPinsApprovedMainAndItsOriginalIntegrationWithoutAnyDeployment() {
+        var integrated = integratedRecoveryFixture();
+        when(store.create(eq(21L),eq(7L),eq("RELEASE"),eq(DeliveryTarget.APP_PROD),eq("4".repeat(40)),eq("PLANNING"),any()))
+                .thenAnswer(call -> new DeliveryOperation(id,21L,7L,"RELEASE",DeliveryTarget.APP_PROD,
+                        call.getArgument(4),execution,"PLANNING",null,call.getArgument(6),null,Instant.now(),Instant.now()));
+        var result = service.requestReleaseRecovery(21L, actor);
+        assertEquals("4".repeat(40), result.sourceCommit());
+        assertEquals("3".repeat(40), result.releaseRecovery().integratedMergeCommit());
+        assertEquals(integrated.id(), result.releaseRecovery().integrationOperationId());
+        assertEquals("PLANNING", result.state());
+        verify(github).requireIntegratedChangeInSource(any(),eq(42L),eq(session.getPublishedHeadBranch()),
+                eq(session.getFinalCommitSha()),eq("3".repeat(40)),eq("4".repeat(40)));
+        verify(executor,never()).plan(any(),any(),any()); verify(executor,never()).execute(any(),any(),any());
+        verifyNoInteractions(factors,grants,publication);
+    }
+    @Test void recoveryWithoutDurableIntegrationOrWithoutAncestryCannotCreateAPlan() {
+        var integrated=integratedRecoveryFixture();
+        when(store.integrated(21L,session.getFinalCommitSha())).thenReturn(Optional.empty());
+        assertEquals("EXACT_CHANGE_NOT_INTEGRATED",assertThrows(DeliveryRejectedException.class,
+                ()->service.requestReleaseRecovery(21L,actor)).code());
+        when(store.integrated(21L,session.getFinalCommitSha())).thenReturn(Optional.of(integrated));
+        doThrow(new GitHubIntegrationException("RELEASE_CHANGE_NOT_INCLUDED")).when(github)
+                .requireIntegratedChangeInSource(any(),anyLong(),anyString(),anyString(),anyString(),anyString());
+        assertEquals("RELEASE_CHANGE_NOT_INCLUDED",assertThrows(DeliveryRejectedException.class,
+                ()->service.requestReleaseRecovery(21L,actor)).code());
+        verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
+        verifyNoInteractions(factors,grants,publication);
+    }
+    @Test void duplicateRecoveryKeepsSameActivePlanEvenIfMainHasMovedAgain() {
+        var integrated=integratedRecoveryFixture();
+        var plan=recoveryPlan(integrated,"PREPARING");
+        when(store.activeRelease()).thenReturn(Optional.of(plan));
+        assertEquals(id,service.requestReleaseRecovery(21L,actor).id());
+        assertEquals("4".repeat(40),service.requestReleaseRecovery(21L,actor).sourceCommit());
+        verify(github,never()).canonicalMain(any());
+        verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
+        verify(executor,never()).execute(any(),any(),any());
+    }
+    @Test void lostReplyAfterCompletedRecoveryReturnsSameReceiptInsteadOfAnotherPublication() {
+        var integrated=integratedRecoveryFixture();
+        var plan=recoveryPlan(integrated,"SUCCEEDED");
+        when(store.completedRecovery(21L,7L,integrated.id(),"4".repeat(40))).thenReturn(Optional.of(plan));
+        assertEquals(id,service.requestReleaseRecovery(21L,actor).id());
+        verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
+        verify(executor,never()).execute(any(),any(),any());
+    }
+    @Test void movedMainBlocksRecoveryBeforeAnyFactorOrGrantIsConsumed() {
+        var integrated=integratedRecoveryFixture();
+        var saved=durableOutbox(recoveryPlan(integrated,"READY"));
+        when(github.canonicalMain(any())).thenReturn("5".repeat(40));
+        var auth=new AuthenticatedSession(actor,UUID.randomUUID(),Instant.now(),List.of());
+        assertEquals("CANONICAL_MAIN_MOVED",assertThrows(DeliveryRejectedException.class,
+                ()->service.authorize(id,auth,"123456")).code());
+        assertEquals("BLOCKED",saved.get().state());
+        assertEquals("4".repeat(40),saved.get().sourceCommit());
+        assertNotNull(saved.get().view().releaseRecovery());
+        verifyNoInteractions(factors,grants);
+        verify(executor,never()).execute(any(),any(),any());
+    }
+    @Test void movedMainAtConfirmationCannotConsumeGrantOrSelectAnotherSource() {
+        var integrated=integratedRecoveryFixture();
+        var saved=durableOutbox(recoveryPlan(integrated,"READY"));
+        when(github.canonicalMain(any())).thenReturn("5".repeat(40));
+        var result=service.confirm(id,new AuthenticatedSession(actor,UUID.randomUUID(),Instant.now(),List.of()),UUID.randomUUID());
+        assertEquals("BLOCKED",result.state()); assertEquals("CANONICAL_MAIN_MOVED",result.errorCode());
+        assertEquals("4".repeat(40),saved.get().sourceCommit());
+        verifyNoInteractions(grants,factors); verify(executor,never()).execute(any(),any(),any());
+    }
+    @Test void confirmationBindsExistingGrantToSelectedMainAndOnlyQueuesTheSameExecution() {
+        var integrated=integratedRecoveryFixture(); var plan=recoveryPlan(integrated,"READY"); var saved=durableOutbox(plan);
+        var auth=new AuthenticatedSession(actor,UUID.randomUUID(),Instant.now(),List.of()); var authorization=UUID.randomUUID();
+        when(grants.consumeForAcceptance(eq(authorization),eq(auth),any(),any())).thenAnswer(call -> {
+            com.atenea.auth.action.PrivilegedActionBinding binding=call.getArgument(2);
+            var expected=com.atenea.auth.action.PrivilegedActionBinding.fromCanonical("PUBLISH_ATENEA_RELEASE",
+                    "APP_PROD|"+plan.sourceCommit(),plan.id()+"|"+plan.planSha256());
+            assertArrayEquals(expected.targetFingerprint(),binding.targetFingerprint());
+            assertArrayEquals(expected.planFingerprint(),binding.planFingerprint());
+            com.atenea.auth.action.PrivilegedActionAcceptance<?> acceptance=call.getArgument(3); return acceptance.accept();
+        });
+        var result=service.confirm(id,auth,authorization);
+        assertEquals("CONFIRMED",result.state()); assertEquals(id,result.id()); assertEquals(execution,result.operationId());
+        assertEquals(plan.evidence().path("releaseRecovery"),saved.get().evidence().path("releaseRecovery"));
+        verify(store).lockAdmissionAndRequireIdle();
+        verify(github).requireIntegratedChangeInSource(any(),anyLong(),anyString(),anyString(),anyString(),eq("4".repeat(40)));
+        verify(executor,never()).execute(any(),any(),any());
+    }
+    @Test void contradictoryRecoveryReceiptCannotAuthorizeAndRoutineRoleHasNoRecoveryAuthority() {
+        var integrated=integratedRecoveryFixture(); var plan=recoveryPlan(integrated,"READY"); durableOutbox(plan);
+        when(store.get(integrated.id(),false)).thenReturn(operation("INTEGRATE","SUCCEEDED"));
+        assertEquals("RELEASE_SOURCE_EVIDENCE_MISMATCH",assertThrows(DeliveryRejectedException.class,
+                ()->service.authorize(id,new AuthenticatedSession(actor,UUID.randomUUID(),Instant.now(),List.of()),"123456")).code());
+        verifyNoInteractions(factors,grants);
+        operator.setCodexOperationsRole(CodexOperationsRole.ROUTINE_OPERATOR);
+        assertEquals("PLATFORM_ADMINISTRATOR_REQUIRED",assertThrows(DeliveryRejectedException.class,
+                ()->service.requestReleaseRecovery(21L,actor)).code());
+    }
+
+    private DeliveryOperation integratedRecoveryFixture() {
+        publishedFixture(); session.setAcceptanceState(WorkSessionAcceptanceState.INTEGRATION_READY);
+        session.setIntegrationReadyAt(Instant.now()); session.setPullRequestStatus(WorkSessionPullRequestStatus.MERGED);
+        var integrated=new DeliveryOperation(UUID.randomUUID(),21L,7L,"INTEGRATE",DeliveryTarget.APP_PROD,
+                session.getFinalCommitSha(),UUID.randomUUID(),"SUCCEEDED",null,
+                mapper.createObjectNode().put("mergeCommit","3".repeat(40)),null,Instant.now(),Instant.now());
+        when(store.integrated(21L,session.getFinalCommitSha())).thenReturn(Optional.of(integrated));
+        when(store.get(integrated.id(),false)).thenReturn(integrated);
+        when(github.canonicalMain(any())).thenReturn("4".repeat(40));
+        when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
+        return integrated;
+    }
+    private DeliveryOperation recoveryPlan(DeliveryOperation integrated, String state) {
+        var evidence=mapper.createObjectNode().put("expiresAt",Long.MAX_VALUE);
+        evidence.set("releaseRecovery",ReleaseRecoverySource.create(integrated,"4".repeat(40)).json(mapper));
+        return new DeliveryOperation(id,21L,7L,"RELEASE",DeliveryTarget.APP_PROD,"4".repeat(40),execution,state,
+                "2".repeat(64),evidence,null,Instant.now(),Instant.now());
+    }
     @Test void readOnlyMergeObservationKeepsPublicationAndFactorsUntouched() {
         publishedFixture();
         when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
@@ -231,7 +347,8 @@ class MobileDeliveryServiceTest {
             DeliveryOperation previous = call.getArgument(0);
             saved.set(new DeliveryOperation(previous.id(),previous.sessionId(),previous.operatorId(),previous.kind(),
                     previous.target(),previous.sourceCommit(),previous.executionId(),call.getArgument(1),
-                    call.getArgument(3),call.getArgument(4),call.getArgument(2),previous.createdAt(),Instant.now()));
+                    call.getArgument(3),DeliveryStore.retainRecoverySource(previous,call.getArgument(4)),
+                    call.getArgument(2),previous.createdAt(),Instant.now()));
             return null;
         }).when(store).update(any(), anyString(), nullable(String.class), nullable(String.class), any());
         return saved;

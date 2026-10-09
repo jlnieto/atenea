@@ -37,11 +37,51 @@ class MobileDeliveryTest {
         val state = parseMobileDeliveryState(JSONObject("{\"enabled\":true,\"operations\":[]}"))
         assertNull(state.integration)
         assertFalse(state.sourceUpdateEnabled)
+        assertFalse(state.releaseRecoveryEnabled)
     }
 
     private fun sourceUpdate() = JSONObject().put("id", id.toString()).put("sessionId",21)
         .put("state","RESOLVING").put("targetMainCommit","1".repeat(40))
         .put("sourceRevision",4).put("resolverRunId",105)
+
+    private fun recoveryPlan() = JSONObject().put("id",id.toString()).put("operationId",UUID.randomUUID().toString())
+        .put("sessionId",21).put("kind","RELEASE").put("target","APP_PROD").put("sourceCommit","1".repeat(40))
+        .put("state","READY").put("planSha256","2".repeat(64)).put("expiresAt",100)
+        .put("releaseRecovery",JSONObject().put("protocol","integrated-release-recovery/v1")
+            .put("integrationOperationId",UUID.randomUUID().toString()).put("publishedHeadCommit","3".repeat(40))
+            .put("integratedMergeCommit","4".repeat(40)).put("selectedMainCommit","1".repeat(40)))
+
+    @Test fun publicationRecoverySendsOnlyEmptyAuthenticatedIntentAndRejectsForeignSession() {
+        val server=MockWebServer(); server.start()
+        try {
+            val client=AteneaApiClient(server.url("/").toString().trimEnd('/'), { "synthetic-access" })
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(recoveryPlan().toString()))
+            val plan=runBlocking { client.prepareReleaseRecovery(21) }
+            assertEquals("1".repeat(40),plan.sourceCommit)
+            assertEquals("4".repeat(40),plan.releaseRecovery!!.integratedMergeCommit)
+            val request=server.takeRequest()
+            assertEquals("/api/mobile/sessions/21/delivery/release-recovery-plan",request.path)
+            assertEquals("{}",request.body.readUtf8()); assertEquals("Bearer synthetic-access",request.getHeader("Authorization"))
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(recoveryPlan().put("sessionId",22).toString()))
+            assertFailsWith<IllegalArgumentException> { runBlocking { client.prepareReleaseRecovery(21) } }
+        } finally { server.shutdown() }
+    }
+    @Test fun recoveryProofCannotBeContradictoryUnversionedOrContainArbitraryPaths() {
+        for ((key,value) in listOf("protocol" to "foreign/v1", "selectedMainCommit" to "5".repeat(40),
+                "integratedMergeCommit" to "/arbitrary/path", "integrationOperationId" to "foreign")) {
+            val plan=recoveryPlan(); plan.getJSONObject("releaseRecovery").put(key,value)
+            assertFailsWith<IllegalArgumentException> { parseMobileDeliveryOperation(plan) }
+        }
+        val plan=recoveryPlan(); plan.getJSONObject("releaseRecovery").put("command","foreign")
+        assertFailsWith<IllegalArgumentException> { parseMobileDeliveryOperation(plan) }
+        assertFailsWith<IllegalArgumentException> { parseMobileDeliveryOperation(recoveryPlan().put("releaseRecovery","foreign")) }
+    }
+    @Test fun publicationRecoveryCapabilityRequiresActualBooleanFromCurrentBackend() {
+        val state=JSONObject().put("enabled",true).put("operations",org.json.JSONArray())
+        assertFalse(parseMobileDeliveryState(state).releaseRecoveryEnabled)
+        assertFalse(parseMobileDeliveryState(state.put("releaseRecoveryEnabled","true")).releaseRecoveryEnabled)
+        assertTrue(parseMobileDeliveryState(state.put("releaseRecoveryEnabled",true)).releaseRecoveryEnabled)
+    }
 
     @Test fun retryUsesExactFailedAttemptEmptyBodyAndRejectsForeignOperation() {
         val server=MockWebServer();server.start()

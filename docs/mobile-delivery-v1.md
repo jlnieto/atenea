@@ -60,6 +60,41 @@ Android exige la integración durable del propio cambio y que su merge siga
 siendo el SHA canónico de main; si main avanzó se detiene, no se elige otro
 commit silenciosamente.
 
+### Recuperar la publicación de un ticket ya integrado
+
+Si main avanzó después del merge, **Preparar Backend PROD actualizado** es una
+acción explícita diferente de la preparación normal. Su petición es vacía:
+el móvil no elige commits, ramas, repositorios, rutas ni comandos. App exige
+la integración durable de esta misma WorkSession, su aceptación
+INTEGRATION_READY y la identidad publicada exacta; deriva el SHA actual de
+github/main y comprueba por lecturas autenticadas que contiene el merge del
+ticket. Una PR ajena, un merge distinto o una historia divergente se rechazan.
+
+El plan conserva operation/execution IDs, el recibo de integración original,
+su head y merge, y el SHA seleccionado. El móvil muestra esa versión y permite
+revisar en GitHub los cambios posteriores al ticket. Incluye esos cambios
+aprobados de main, no sólo el diff original del ticket. Preparar no publica:
+el ejecutor existente aún exige el artefacto inmutable y su CI, y Confirmar
+mantiene TOTP y el grant vinculado al plan/hash y commit seleccionados.
+
+Antes de autorizar y confirmar se vuelven a comprobar la identidad y la
+ancestría. Si main volvió a avanzar, el plan no confirmado queda BLOCKED con
+CANONICAL_MAIN_MOVED, sin consumir el factor/grant ni elegir otra versión.
+Otra preparación es una nueva intención explícita. Un doble toque mientras
+el plan está activo, una respuesta perdida o una consulta conservan la misma
+identidad; una publicación ya completada de ese mismo SHA devuelve su recibo.
+La evidencia de origen se conserva cuando llegan los recibos del ejecutor.
+
+La comparación GitHub debe ser completa y está acotada a 100 commits; ante
+truncamiento se bloquea, no se presume inclusión. Esta recuperación sólo
+prepara Backend PROD de Atenea; no altera la selección normal de Platform ni
+Android, no reabre ni reintegra la PR y no crea otra WorkSession o AgentRun.
+
+Se conserva también la salvaguarda ALREADY_CURRENT del publicador: si esa
+versión ya está ejecutándose, no se vuelve a desplegar ni se fabrica un recibo
+de publicación móvil. Instalar esta mejora no demuestra, por sí solo, que el
+ticket haya completado su aceptación de publicación desde el móvil.
+
 ## Qué es nuevo y qué se reutiliza
 
 Se reutilizan la conversación, la validación cerrada, la publicación

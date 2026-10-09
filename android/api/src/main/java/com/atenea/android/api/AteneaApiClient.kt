@@ -372,6 +372,14 @@ class AteneaApiClient(
         authenticated = true, parser = ::parseMobileDeliveryOperation
     )
 
+    suspend fun prepareReleaseRecovery(sessionId: Long): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/release-recovery-plan", body = JSONObject(),
+        authenticated = true
+    ) { json -> parseMobileDeliveryOperation(json).also {
+        require(it.sessionId == sessionId && it.kind == "RELEASE" && it.target == MobileDeliveryTarget.APP_PROD
+            && it.releaseRecovery != null)
+    } }
+
     suspend fun retryDeliveryResolver(sessionId: Long, operationId: UUID, runId: Long): MobileSourceUpdate = postJson(
         path = "/api/mobile/sessions/$sessionId/delivery/source-updates/$operationId/resolver-runs/$runId/retry",
         body = JSONObject(), authenticated = true

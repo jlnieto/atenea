@@ -44,6 +44,8 @@ internal class MobileDeliveryUiState(
         private set
     var sourceUpdateEnabled by mutableStateOf(false)
         private set
+    var releaseRecoveryEnabled by mutableStateOf(false)
+        private set
     var available by mutableStateOf(false)
         private set
     var loaded by mutableStateOf(false)
@@ -79,6 +81,11 @@ internal class MobileDeliveryUiState(
                     && operations.any { it.kind == "PUBLISH_PR" && it.state in setOf("BLOCKED", "FAILED") }))
             && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
 
+    fun canPrepareReleaseRecovery(validated: Boolean, runInProgress: Boolean): Boolean =
+        available && releaseRecoveryEnabled && validated && !runInProgress && !busy
+            && operations.firstOrNull { it.kind == "INTEGRATE" }?.state == "SUCCEEDED"
+            && operations.none { !it.terminal || it.state == "ROLLBACK_FAILED" }
+
     suspend fun refresh() {
         try {
             val state = load()
@@ -89,6 +96,7 @@ internal class MobileDeliveryUiState(
             integration = state.integration
             sourceUpdate = state.sourceUpdate
             sourceUpdateEnabled = state.sourceUpdateEnabled
+            releaseRecoveryEnabled = state.releaseRecoveryEnabled
             available = state.enabled
             loaded = true
             loadError = null
@@ -99,6 +107,7 @@ internal class MobileDeliveryUiState(
             available = false
             integration = null
             sourceUpdateEnabled = false
+            releaseRecoveryEnabled = false
             loadError = "No se pudo consultar la publicación. ${failure.message.orEmpty()}"
         }
     }
@@ -169,6 +178,11 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
             operation.errorCode?.let { Text(deliveryErrorLabel(it)) }
             operation.effectiveSourceCommit?.let { Text("Commit efectivo: ${it.take(12)}") }
             operation.resultSha256?.let { Text("APK SHA-256: $it") }
+            operation.releaseRecovery?.let { proof ->
+                Text("Publicación recuperada: contiene el merge ${proof.integratedMergeCommit.take(12)} del ticket.")
+                TextButton(onClick = { uriHandler.openUri("https://github.com/jlnieto/atenea/compare/" +
+                    "${proof.integratedMergeCommit}...${proof.selectedMainCommit}") }) { Text("Revisar versión a publicar") }
+            }
         }
         pr?.pullRequestUrl?.takeIf { it.matches(Regex("https://github\\.com/jlnieto/atenea/pull/[1-9][0-9]*")) }?.let { url ->
             TextButton(onClick = { uriHandler.openUri(url) }) { Text("Revisar PR") }
@@ -220,6 +234,12 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                         onClick = { act { api.prepareRelease(sessionId, target) } })
                 }
             }
+            if (state.releaseRecoveryEnabled) {
+                Text("Si main avanzó después del ticket, puedes preparar la versión actual aprobada. " +
+                    "Atenea comprobará que contiene tu cambio; preparar no publica.")
+                AteneaButton("Preparar Backend PROD actualizado", enabled = state.canPrepareReleaseRecovery(validated, runInProgress),
+                    onClick = { act { api.prepareReleaseRecovery(sessionId) } })
+            }
         }
     }
     if (confirmMerge) {
@@ -236,6 +256,10 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
         AlertDialog(onDismissRequest = { confirmation = null; totp = "" },
             title = { Text("Publicar ${plan.target.label}") }, text = {
                 Column {
+                    plan.releaseRecovery?.let { proof ->
+                        Text("Esta versión incluye el ticket integrado en ${proof.integratedMergeCommit.take(12)} " +
+                            "y los cambios posteriores aprobados en main. No vuelve a integrar la PR.")
+                    }
                     Text("Commit ${plan.sourceCommit}. " +
                         (plan.versionName?.let { "Versión $it (${plan.versionCode}). " } ?: "") +
                         "La operación continuará aunque App se reinicie. Introduce el código de tu autenticador para esta publicación.")
@@ -305,6 +329,9 @@ internal fun deliveryErrorLabel(code: String): String = when (code) {
     "CI_PENDING", "RELEASE_BUILD_PENDING" -> "GitHub está ejecutando las comprobaciones. Atenea seguirá esperando; no necesitas repetir la acción."
     "PLAN_EXPIRED" -> "El plan ha caducado sin publicar. Prepara uno nuevo."
     "CANONICAL_MAIN_MOVED" -> "Main ha cambiado desde este plan. Atenea ha detenido la publicación para no elegir otro commit."
+    "ALREADY_CURRENT" -> "El backend ya ejecuta esta versión. No se ha iniciado otra publicación ni creado un nuevo recibo de despliegue."
+    "RELEASE_CHANGE_NOT_INCLUDED", "RELEASE_INTEGRATION_EVIDENCE_MISMATCH", "RELEASE_SOURCE_EVIDENCE_MISMATCH",
+    "RELEASE_ANCESTRY_EVIDENCE_INCOMPLETE" -> "Atenea no pudo comprobar que esta versión contiene el ticket integrado. No se ha publicado."
     "RELEASE_TRANSPORT_UNAVAILABLE", "GITHUB_UNAVAILABLE" -> "No se pudo confirmar el estado del servidor. Atenea conserva la misma operación y vuelve a consultarlo."
     "GITHUB_REJECTED", "RELEASE_BUILD_FAILED" -> "GitHub ha rechazado una comprobación o la integración. No se ha saltado la validación; consulta la PR."
     "ACTIVE_AGENT_RUN", "ACTIVE_WORKLOAD", "WORKER_NOT_IDLE_OR_HEALTHY" -> "Hay trabajo activo o el worker no está preparado. No se ha iniciado otra publicación."

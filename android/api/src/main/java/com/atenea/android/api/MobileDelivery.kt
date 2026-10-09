@@ -8,7 +8,8 @@ enum class MobileDeliveryTarget(val label: String) {
 }
 data class MobileDeliveryState(val enabled: Boolean, val operations: List<MobileDeliveryOperation>,
     val integration: MobileDeliveryIntegration? = null,
-    val sourceUpdateEnabled: Boolean = false, val sourceUpdate: MobileSourceUpdate? = null)
+    val sourceUpdateEnabled: Boolean = false, val sourceUpdate: MobileSourceUpdate? = null,
+    val releaseRecoveryEnabled: Boolean = false)
 
 data class MobileSourceUpdate(val id: UUID, val sessionId: Long, val state: String,
     val targetMainCommit: String, val sourceRevision: Long?, val resolverRunId: Long?, val errorCode: String?,
@@ -53,8 +54,12 @@ internal fun parseMobileDeliveryState(json: JSONObject): MobileDeliveryState {
     require(!json.has("sourceUpdate") || json.isNull("sourceUpdate") || json.opt("sourceUpdate") is JSONObject)
     return MobileDeliveryState(json.getBoolean("enabled"),
         List(items.length()) { parseMobileDeliveryOperation(items.getJSONObject(it)) }, integration,
-        json.opt("sourceUpdateEnabled") == true, json.optJSONObject("sourceUpdate")?.let(::parseMobileSourceUpdate))
+        json.opt("sourceUpdateEnabled") == true, json.optJSONObject("sourceUpdate")?.let(::parseMobileSourceUpdate),
+        json.opt("releaseRecoveryEnabled") == true)
 }
+
+data class MobileReleaseRecovery(val integrationOperationId: UUID, val publishedHeadCommit: String,
+    val integratedMergeCommit: String, val selectedMainCommit: String)
 
 data class MobileDeliveryOperation(
     val id: UUID,
@@ -72,7 +77,8 @@ data class MobileDeliveryOperation(
     val pullRequestUrl: String?,
     val mergeCommit: String?,
     val effectiveSourceCommit: String?,
-    val resultSha256: String?
+    val resultSha256: String?,
+    val releaseRecovery: MobileReleaseRecovery? = null
 ) {
     val terminal: Boolean get() = state in setOf("SUCCEEDED", "ROLLED_BACK", "FAILED", "BLOCKED", "ROLLBACK_FAILED")
     fun canConfirm(nowSeconds: Long): Boolean = kind == "RELEASE" && state == "READY"
@@ -95,6 +101,23 @@ internal fun parseMobileDeliveryOperation(json: JSONObject): MobileDeliveryOpera
     pullRequestUrl = json.nullableDeliveryString("pullRequestUrl"),
     mergeCommit = json.nullableDeliveryString("mergeCommit"),
     effectiveSourceCommit = json.nullableDeliveryString("effectiveSourceCommit"),
-    resultSha256 = json.nullableDeliveryString("resultSha256")
+    resultSha256 = json.nullableDeliveryString("resultSha256"),
+    releaseRecovery = parseReleaseRecovery(json)
 )
+
+private fun parseReleaseRecovery(operation: JSONObject): MobileReleaseRecovery? {
+    if (!operation.has("releaseRecovery") || operation.isNull("releaseRecovery")) return null
+    require(operation.opt("releaseRecovery") is JSONObject)
+    val value = operation.getJSONObject("releaseRecovery")
+    require(value.keys().asSequence().toSet() == setOf("protocol", "integrationOperationId",
+        "publishedHeadCommit", "integratedMergeCommit", "selectedMainCommit"))
+    require(value.getString("protocol") == "integrated-release-recovery/v1")
+    require(operation.getString("kind") == "RELEASE" && operation.getString("target") == "APP_PROD")
+    fun sha(key: String) = value.getString(key).also { require(it.matches(Regex("[0-9a-f]{40}"))) }
+    val selected = sha("selectedMainCommit")
+    require(selected == operation.getString("sourceCommit"))
+    val id = UUID.fromString(value.getString("integrationOperationId"))
+    require(id.toString() == value.getString("integrationOperationId"))
+    return MobileReleaseRecovery(id, sha("publishedHeadCommit"), sha("integratedMergeCommit"), selected)
+}
 private fun JSONObject.nullableDeliveryString(key: String): String? = if (isNull(key)) null else getString(key)

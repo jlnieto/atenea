@@ -211,6 +211,49 @@ class MobileDeliveryApiIntegrationTest {
                 +"AND integration_ready_at IS NOT NULL",Integer.class,sessionId));
     }
 
+    @Test void recoveryDoubleTapCreatesOnePinnedPlanAndRetainsProofAcrossExecutorReceipts() throws Exception {
+        publishedValidatedFixture();
+        WorkSessionEntity session=sessions.findById(sessionId).orElseThrow();
+        session.setAcceptanceState(WorkSessionAcceptanceState.INTEGRATION_READY);
+        session.setIntegrationReadyAt(Instant.now()); session.setPullRequestStatus(WorkSessionPullRequestStatus.MERGED);
+        sessions.saveAndFlush(session);
+        var integrated=store.create(sessionId,admin.getId(),"INTEGRATE",DeliveryTarget.APP_PROD,"1".repeat(40),
+                "SUCCEEDED",mapper.createObjectNode().put("mergeCommit","3".repeat(40)));
+        when(github.canonicalMain(any())).thenReturn("4".repeat(40));
+        when(github.extractPullRequestNumber(anyString())).thenReturn(42L);
+        String response=mvc.perform(post("/api/mobile/sessions/{id}/delivery/release-recovery-plan",sessionId).with(auth(admin))
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.state").value("PLANNING"))
+                .andExpect(jsonPath("$.sourceCommit").value("4".repeat(40)))
+                .andExpect(jsonPath("$.releaseRecovery.integratedMergeCommit").value("3".repeat(40)))
+                .andExpect(jsonPath("$.releaseRecovery.integrationOperationId").value(integrated.id().toString()))
+                .andReturn().getResponse().getContentAsString();
+        UUID id=UUID.fromString(mapper.readTree(response).path("id").asText());
+        when(github.canonicalMain(any())).thenReturn("5".repeat(40));
+        mvc.perform(post("/api/mobile/sessions/{id}/delivery/release-recovery-plan",sessionId).with(auth(admin))
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.sourceCommit").value("4".repeat(40)));
+        var before=store.get(id,false);
+        store.update(before,"READY",null,"2".repeat(64),mapper.createObjectNode().put("expiresAt",Long.MAX_VALUE));
+        var after=store.get(id,false);
+        assertEquals(before.evidence().path("releaseRecovery"),after.evidence().path("releaseRecovery"));
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation WHERE kind='RELEASE'",Integer.class));
+        verify(executor,never()).execute(any(),any(),any()); verifyNoInteractions(factors,grants);
+    }
+
+    @Test void recoveryRejectsRoutineRoleAndCallerSelectedSourcePathsCommandsOrTarget() throws Exception {
+        mvc.perform(post("/api/mobile/sessions/{id}/delivery/release-recovery-plan",sessionId).with(auth(routine))
+                .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
+        for (String key:List.of("sourceCommit","command","path","host","target","version")) {
+            mvc.perform(post("/api/mobile/sessions/{id}/delivery/release-recovery-plan",sessionId).with(auth(admin))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\""+key+"\":\"foreign\"}"))
+                    .andExpect(status().isConflict());
+        }
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation",Integer.class));
+        verify(executor,never()).execute(any(),any(),any()); verifyNoInteractions(factors,grants);
+    }
+
     private void publishedValidatedFixture() {
         WorkSessionEntity session=sessions.findById(sessionId).orElseThrow();
         Instant now=Instant.now();
