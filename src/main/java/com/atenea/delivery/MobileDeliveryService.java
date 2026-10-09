@@ -50,6 +50,8 @@ public class MobileDeliveryService {
     private final PrivilegedActionAuthorizationService grants;
     private final ObjectMapper mapper;
     private final TransactionTemplate transaction;
+    // Positive immutable ancestry proofs only. Runtime/health/role/owner are read on every poll.
+    private final java.util.Map<String, Long> observedAncestry = new java.util.LinkedHashMap<>();
 
     public MobileDeliveryService(DeliveryStore store, WorkSessionRepository sessions, AgentRunRepository runs,
             OperatorRepository operators, DevelopmentChangeBranchPublicationService ownership,
@@ -70,6 +72,61 @@ public class MobileDeliveryService {
         return store.list(sessionId).stream().map(DeliveryOperation::view).toList();
     }
     public boolean isEnabled() { return executor.enabled(); }
+
+    /** Read-only installed state; does not adopt operator effects into the mobile outbox. */
+    public DeploymentObservation observeDeployment(Long sessionId, AuthenticatedOperator actor) {
+        administrator(actor.operatorId());
+        WorkSessionEntity session = session(sessionId, false);
+        if (session.getAcceptanceState() != WorkSessionAcceptanceState.INTEGRATION_READY
+                || session.getPullRequestStatus() != WorkSessionPullRequestStatus.MERGED) {
+            return DeploymentObservation.unavailable(sessionId, "NOT_INTEGRATED", null);
+        }
+        try {
+            enabled(); owned(session); published(session);
+            DeliveryOperation integrated = store.integrated(sessionId, session.getFinalCommitSha())
+                    .orElseThrow(() -> new DeliveryRejectedException("EXACT_CHANGE_NOT_INTEGRATED"));
+            if (!"INTEGRATE".equals(integrated.kind()) || !"SUCCEEDED".equals(integrated.state())
+                    || integrated.target() != DeliveryTarget.APP_PROD || !sessionId.equals(integrated.sessionId())
+                    || !session.getFinalCommitSha().equals(integrated.sourceCommit())) {
+                throw new DeliveryRejectedException("RELEASE_SOURCE_EVIDENCE_MISMATCH");
+            }
+            var observed = ReleaseControlClient.verifyAppObservation(executor.observeApp());
+            var proof = ReleaseRecoverySource.create(integrated, observed.sourceCommit());
+            String key = sessionId + "|" + session.getPullRequestUrl() + "|" + session.getPublishedHeadBranch() + "|" + proof;
+            synchronized (observedAncestry) {
+                long now = Instant.now().getEpochSecond();
+                if (observedAncestry.getOrDefault(key, 0L) <= now) {
+                    requireRecoveryAncestry(session, proof);
+                    if (observedAncestry.size() >= 128) observedAncestry.remove(observedAncestry.keySet().iterator().next());
+                    observedAncestry.put(key, now + 60);
+                }
+            }
+            var mobile = store.find(observed.planId());
+            String origin = "OPERATOR";
+            if (mobile.isPresent()) {
+                var release = mobile.get();
+                if (!"RELEASE".equals(release.kind()) || release.target() != DeliveryTarget.APP_PROD
+                        || !observed.operationId().equals(release.executionId())
+                        || !observed.sourceCommit().equals(release.sourceCommit())) {
+                    throw new DeliveryRejectedException("APP_OBSERVATION_EVIDENCE_MISMATCH");
+                }
+                origin = "MOBILE";
+            }
+            return new DeploymentObservation(sessionId, observed.healthy() ? "DEPLOYED" : "UNHEALTHY", origin,
+                    observed.sourceCommit(), proof.integratedMergeCommit(), observed.healthy(), observed.observedAt(),
+                    observed.planId(), observed.operationId(), observed.receiptSha256(), null);
+        } catch (DeliveryRejectedException rejected) {
+            return DeploymentObservation.unavailable(sessionId,
+                    "RELEASE_CHANGE_NOT_INCLUDED".equals(rejected.code()) ? "NOT_INCLUDED" : "UNAVAILABLE", rejected.code());
+        }
+    }
+    public record DeploymentObservation(Long sessionId, String status, String origin, String sourceCommit,
+            String integratedMergeCommit, boolean healthy, Long observedAt, UUID planId, UUID operationId,
+            String receiptSha256, String errorCode) {
+        static DeploymentObservation unavailable(Long id, String status, String error) {
+            return new DeploymentObservation(id, status, null, null, null, false, null, null, null, null, error);
+        }
+    }
 
     /** Explicit alternative when canonical main advanced after this ticket was integrated. */
     public DeliveryOperation.DeliveryView requestReleaseRecovery(Long sessionId, AuthenticatedOperator actor) {

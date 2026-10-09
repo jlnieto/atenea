@@ -254,6 +254,32 @@ class MobileDeliveryApiIntegrationTest {
         verify(executor,never()).execute(any(),any(),any()); verifyNoInteractions(factors,grants);
     }
 
+    @Test void pollingInstalledOperatorReleasePreservesDatabaseHistoryAndDoesNotAdoptPublication() throws Exception {
+        publishedValidatedFixture();
+        var session=sessions.findById(sessionId).orElseThrow();
+        session.setAcceptanceState(WorkSessionAcceptanceState.INTEGRATION_READY);
+        session.setIntegrationReadyAt(Instant.now()); session.setPullRequestStatus(WorkSessionPullRequestStatus.MERGED);
+        sessions.saveAndFlush(session);
+        var integrated=store.create(sessionId,admin.getId(),"INTEGRATE",DeliveryTarget.APP_PROD,"1".repeat(40),
+                "SUCCEEDED",mapper.createObjectNode().put("mergeCommit","3".repeat(40)));
+        UUID plan=UUID.randomUUID(),execution=UUID.randomUUID();
+        when(executor.observeApp()).thenReturn(mapper.createObjectNode().put("protocol","atenea-app-observation/v1")
+                .put("target","APP_PROD").put("state","OBSERVED").put("sourceCommit","4".repeat(40))
+                .put("imageSha256","5".repeat(64)).put("healthy",true).put("observedAt",Instant.now().getEpochSecond())
+                .put("planId",plan.toString()).put("operationId",execution.toString()).put("receiptSha256","6".repeat(64)).put("finishedAt",1L));
+        when(github.extractPullRequestNumber(anyString())).thenReturn(42L);
+        for (int i=0;i<2;i++) mvc.perform(get("/api/mobile/sessions/{id}/delivery",sessionId).with(auth(admin)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.deployment.status").value("DEPLOYED"))
+                .andExpect(jsonPath("$.deployment.origin").value("OPERATOR"))
+                .andExpect(jsonPath("$.deployment.planId").value(plan.toString()))
+                .andExpect(jsonPath("$.operations[0].kind").value("INTEGRATE"));
+        assertEquals(integrated,store.get(integrated.id(),false));
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation WHERE kind='RELEASE'",Integer.class));
+        verify(executor,never()).execute(any(),any(),any()); verify(executor,never()).plan(any(),any(),any());
+        verifyNoInteractions(factors,grants,publication);
+        mvc.perform(get("/api/mobile/sessions/{id}/delivery",sessionId).with(auth(routine))).andExpect(status().isForbidden());
+    }
+
     private void publishedValidatedFixture() {
         WorkSessionEntity session=sessions.findById(sessionId).orElseThrow();
         Instant now=Instant.now();

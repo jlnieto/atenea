@@ -41,8 +41,10 @@ Si un fallo antiguo sólo conservó un resumen genérico, no se inventa su causa
    no incorpora un visor diff ni entrega el token del backend. La confirmación solicita
    integrar sólo esa PR y ese commit. Atenea comprueba UFD, checks y
    mergeability; no fuerza protecciones. Integrar no despliega.
-5. Pulsar **Preparar Backend PROD**, **Preparar Worker AX42** o **Preparar
-   Android estable**. Se obtiene un plan con SHA, hash y caducidad, a partir
+5. Pulsar **Preparar Backend PROD** si todavía no contiene el ticket. Con
+   recuperación habilitada, selecciona explícitamente el main aprobado que
+   contiene el merge, aunque main haya avanzado. Worker y Android están
+   separados bajo **Otras publicaciones (Worker / Android)**. Se obtiene un plan con SHA, hash y caducidad, a partir
    de un artefacto de GitHub main. Si su build está en curso, el mismo plan
    espera, sin crear otra operación ni desplegar.
 6. Pulsar **Confirmar** y usar el código del autenticador. Es una autorización
@@ -62,8 +64,9 @@ commit silenciosamente.
 
 ### Recuperar la publicación de un ticket ya integrado
 
-Si main avanzó después del merge, **Preparar Backend PROD actualizado** es una
-acción explícita diferente de la preparación normal. Su petición es vacía:
+Con recuperación habilitada, **Preparar Backend PROD** utiliza la preparación
+recovery (antes rotulada **Preparar Backend PROD actualizado**), no presenta
+dos botones equivalentes. Su petición es vacía:
 el móvil no elige commits, ramas, repositorios, rutas ni comandos. App exige
 la integración durable de esta misma WorkSession, su aceptación
 INTEGRATION_READY y la identidad publicada exacta; deriva el SHA actual de
@@ -94,6 +97,41 @@ Se conserva también la salvaguarda ALREADY_CURRENT del publicador: si esa
 versión ya está ejecutándose, no se vuelve a desplegar ni se fabrica un recibo
 de publicación móvil. Instalar esta mejora no demuestra, por sí solo, que el
 ticket haya completado su aceptación de publicación desde el móvil.
+
+### Estado de PROD observado, separado del historial
+
+La lectura normal `GET /api/mobile/sessions/{id}/delivery` incluye `deployment`.
+App consulta `OBSERVE_APP` por el socket existente del publicador VPS: imagen
+real, revisión OCI inmutable, health actual y recibo durable root-owned. El
+contrato independiente es `atenea-app-observation/v1`. App comprueba además la
+propiedad de esta revisión y que el commit observado contiene el merge exacto
+de su integración durable. No infiere despliegue de un PASS CI o de main actual.
+
+La consulta no crea planes, operaciones, grants ni recibos; no ejecuta efectos,
+no requiere que AX42 esté idle y no cambia los estados de WorkSession o
+DevelopmentChange. La prueba positiva de ancestría se conserva como máximo 60
+segundos, ligada a integración, PR, head, merge y commit instalado; health,
+runtime, rol e identidad se comprueban en cada lectura.
+
+Si el recibo raíz no tiene una operación móvil con los mismos IDs/commit,
+se muestra **Backend PROD desplegado por operador**, sin fabricar un RELEASE
+móvil SUCCEEDED. Si existe esa operación móvil exacta, se identifica como
+publicación desde Atenea. Un fallo, observación caducada o evidencia contradictoria
+no permiten declarar desplegado ni preparar otra publicación del backend.
+Una versión comprobada que no contiene el merge sí permite preparar la nueva.
+
+Después de integrar se retiran del paso principal los mensajes/acciones de
+conflictos antiguos. El historial y sus recibos siguen disponibles en **Ver
+historial y recibos**. Cuando PROD contiene el cambio y está healthy, no se
+ofrece preparar/confirmar otra vez ese backend. Worker y Android son publicaciones
+distintas: no se declaran completadas sólo porque el backend está desplegado.
+Una integración antigua tampoco completa una revisión nueva del workspace.
+
+Orden de puesta en marcha de esta ampliación (con autorización independiente):
+instalar/verificar primero el publicador **VPS** desde Platform; después App
+PROD y la APK estable. No necesita Flyway ni actualizar/reiniciar el worker.
+Si el publicador anterior no reconoce OBSERVE_APP, App indica UNAVAILABLE y
+conserva la auditoría; no inventa estado ni intenta publicar para comprobarlo.
 
 ## Qué es nuevo y qué se reutiliza
 
