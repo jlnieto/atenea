@@ -301,6 +301,67 @@ class MobileDeliveryServiceTest {
         when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
         return integrated;
     }
+    private com.fasterxml.jackson.databind.node.ObjectNode installedObservation() {
+        return mapper.createObjectNode().put("protocol","atenea-app-observation/v1").put("target","APP_PROD")
+                .put("state","OBSERVED").put("sourceCommit","4".repeat(40)).put("imageSha256","6".repeat(64))
+                .put("healthy",true).put("observedAt",Instant.now().getEpochSecond()).put("planId",id.toString())
+                .put("operationId",execution.toString()).put("receiptSha256","7".repeat(64)).put("finishedAt",1L);
+    }
+    @Test void installedOperatorReleaseContainsOwnedTicketButNeverCreatesMobilePublication() {
+        var integrated=integratedRecoveryFixture();
+        when(executor.observeApp()).thenReturn(installedObservation());
+        when(runs.existsBySessionIdAndStatusIn(anyLong(),any())).thenReturn(true);
+        for (int i=0;i<2;i++) {
+            var result=service.observeDeployment(21L,actor);
+            assertEquals("DEPLOYED",result.status()); assertEquals("OPERATOR",result.origin());
+            assertEquals("4".repeat(40),result.sourceCommit()); assertEquals(id,result.planId());
+            assertEquals("3".repeat(40),result.integratedMergeCommit());
+        }
+        verify(github,times(1)).requireIntegratedChangeInSource(any(),eq(42L),eq(session.getPublishedHeadBranch()),
+                eq(session.getFinalCommitSha()),eq("3".repeat(40)),eq("4".repeat(40)));
+        verify(github,never()).canonicalMain(any());
+        verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
+        verify(store,never()).update(any(),any(),any(),any(),any());
+        verifyNoInteractions(runs,publication,factors,grants);
+        verify(owner,times(2)).requireExactIntegratedOwner(session);
+    }
+    @Test void changedInstalledSourceNeedsAnotherProofAndMatchingMobileReceiptIsNotOperatorReceipt() {
+        var integrated=integratedRecoveryFixture();
+        var observed=installedObservation(); when(executor.observeApp()).thenReturn(observed);
+        var mobile=new DeliveryOperation(id,21L,7L,"RELEASE",DeliveryTarget.APP_PROD,"4".repeat(40),execution,
+                "SUCCEEDED",null,mapper.createObjectNode(),null,Instant.now(),Instant.now());
+        when(store.find(id)).thenReturn(Optional.of(mobile));
+        assertEquals("MOBILE",service.observeDeployment(21L,actor).origin());
+        observed.put("sourceCommit","8".repeat(40)); when(store.find(id)).thenReturn(Optional.empty());
+        assertEquals("DEPLOYED",service.observeDeployment(21L,actor).status());
+        verify(github).requireIntegratedChangeInSource(any(),eq(42L),anyString(),anyString(),eq("3".repeat(40)),eq("8".repeat(40)));
+        when(store.find(id)).thenReturn(Optional.of(mobile));
+        assertEquals("UNAVAILABLE",service.observeDeployment(21L,actor).status());
+    }
+    @Test void absentUnsupportedUnhealthyStaleOrForeignEvidenceDoesNotClaimPublished() {
+        integratedRecoveryFixture();
+        when(executor.observeApp()).thenThrow(new DeliveryRejectedException("CLOSED_REQUEST_REQUIRED"));
+        assertEquals("UNAVAILABLE",service.observeDeployment(21L,actor).status());
+        doReturn(installedObservation().put("healthy",false)).when(executor).observeApp();
+        assertEquals("UNHEALTHY",service.observeDeployment(21L,actor).status());
+        doReturn(installedObservation().put("observedAt",1L)).when(executor).observeApp();
+        assertEquals("UNAVAILABLE",service.observeDeployment(21L,actor).status());
+        session.getDevelopmentChange().setSourceRevision(99);
+        assertEquals("UNAVAILABLE",service.observeDeployment(21L,actor).status());
+        verify(store,never()).update(any(),any(),any(),any(),any());
+        verify(executor,never()).execute(any(),any(),any());
+    }
+    @Test void unintegratedForeignRoleOrInstalledCodeNotContainingMergeCannotCompleteTicket() {
+        assertEquals("NOT_INTEGRATED",service.observeDeployment(21L,actor).status());
+        verify(executor,never()).observeApp();
+        integratedRecoveryFixture(); when(executor.observeApp()).thenReturn(installedObservation());
+        doThrow(new GitHubIntegrationException("RELEASE_CHANGE_NOT_INCLUDED"))
+                .when(github).requireIntegratedChangeInSource(any(),anyLong(),anyString(),anyString(),anyString(),anyString());
+        assertEquals("NOT_INCLUDED",service.observeDeployment(21L,actor).status());
+        operator.setCodexOperationsRole(CodexOperationsRole.ROUTINE_OPERATOR);
+        assertThrows(DeliveryRejectedException.class,()->service.observeDeployment(21L,actor));
+        verifyNoInteractions(publication,factors,grants);
+    }
     private DeliveryOperation recoveryPlan(DeliveryOperation integrated, String state) {
         var evidence=mapper.createObjectNode().put("expiresAt",Long.MAX_VALUE);
         evidence.set("releaseRecovery",ReleaseRecoverySource.create(integrated,"4".repeat(40)).json(mapper));

@@ -25,6 +25,9 @@ public class DeliveryStore {
         if (rows.size() != 1) throw new DeliveryRejectedException("OPERATION_NOT_FOUND");
         return rows.getFirst();
     }
+    public java.util.Optional<DeliveryOperation> find(UUID id) {
+        return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE id=?", this::row, id).stream().findFirst();
+    }
     public void lockReleaseIntent() { jdbc.execute("SELECT pg_advisory_xact_lock(814205001)"); }
     public void lockAdmissionAndRequireIdle() {
         jdbc.execute("SELECT pg_advisory_xact_lock(814205002)");

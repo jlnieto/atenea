@@ -38,6 +38,28 @@ class MobileDeliveryTest {
         assertNull(state.integration)
         assertFalse(state.sourceUpdateEnabled)
         assertFalse(state.releaseRecoveryEnabled)
+        assertNull(state.deployment)
+    }
+
+    private fun deployment() = JSONObject().put("sessionId",21).put("status","DEPLOYED").put("origin","OPERATOR")
+        .put("sourceCommit","1".repeat(40)).put("integratedMergeCommit","2".repeat(40)).put("healthy",true)
+        .put("observedAt",100L).put("planId",id.toString()).put("operationId",UUID.randomUUID().toString())
+        .put("receiptSha256","3".repeat(64)).put("errorCode",JSONObject.NULL)
+
+    @Test fun deploymentObservationIsSeparateFromMobileReceiptAndRequiresFreshCompleteEvidence() {
+        val root=JSONObject().put("enabled",true).put("operations",org.json.JSONArray()).put("deployment",deployment())
+        val state=parseMobileDeliveryState(root)
+        assertTrue(state.operations.isEmpty()); assertEquals("OPERATOR",state.deployment!!.origin)
+        assertTrue(state.deployment!!.isDeployed(120)); assertFalse(state.deployment!!.isDeployed(161))
+        assertFalse(state.deployment!!.isDeployed(90))
+        for ((key,value) in listOf("healthy" to "true", "sessionId" to "21", "origin" to "MOBILE_SYNTHESIZED",
+                "sourceCommit" to "/path", "planId" to "foreign", "observedAt" to "100", "command" to "foreign",
+                "status" to "SUCCEEDED")) {
+            assertFailsWith<IllegalArgumentException> { parseDeploymentObservation(deployment().put(key,value)) }
+        }
+        val missing=deployment(); missing.remove("receiptSha256")
+        assertFailsWith<IllegalArgumentException> { parseDeploymentObservation(missing) }
+        assertFailsWith<IllegalArgumentException> { parseMobileDeliveryState(root.put("deployment","invalid")) }
     }
 
     private fun sourceUpdate() = JSONObject().put("id", id.toString()).put("sessionId",21)

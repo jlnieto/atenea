@@ -64,4 +64,34 @@ class ReleaseControlClientTest {
         assertThrows(DeliveryRejectedException.class, () -> MobileDeliveryController.exact(
                 mapper.createObjectNode().put("sourceCommit", source), java.util.Set.of()));
     }
+
+    private ObjectNode observation() {
+        return mapper.createObjectNode().put("protocol","atenea-app-observation/v1").put("target","APP_PROD")
+                .put("state","OBSERVED").put("sourceCommit",source).put("imageSha256",hash).put("healthy",true)
+                .put("observedAt",java.time.Instant.now().getEpochSecond()).put("planId",id.toString())
+                .put("operationId",execution.toString()).put("receiptSha256",hash).put("finishedAt",1L);
+    }
+    @Test void appObservationIsFreshClosedAndCannotBeUsedAsAPublicationReceipt() {
+        assertEquals(source,ReleaseControlClient.verifyAppObservation(observation()).sourceCommit());
+        assertFalse(ReleaseControlClient.verifyAppObservation(observation().put("healthy",false)).healthy());
+        for (String field: java.util.List.of("path","command","token","predecessor","version")) {
+            assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verifyAppObservation(observation().put(field,"foreign")));
+        }
+        for (String field: java.util.List.of("protocol","target","state","sourceCommit","imageSha256","receiptSha256","planId","operationId")) {
+            assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verifyAppObservation(observation().put(field,"foreign")));
+        }
+        assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verifyAppObservation(observation().put("healthy","true")));
+        assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verifyAppObservation(observation().put("observedAt",1L)));
+        assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verifyAppObservation(observation().put("observedAt",Long.MAX_VALUE)));
+        assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verify(observation(),id,DeliveryTarget.APP_PROD,source,hash,execution,true));
+    }
+    @Test void readOnlyObservationRequestContainsNoCallerSelectableAuthority() {
+        var client=new ReleaseControlClient(mapper,true) {
+            @Override protected com.fasterxml.jackson.databind.JsonNode exchange(java.util.Map<String,String> request) {
+                assertEquals(java.util.Map.of("operation","OBSERVE_APP"),request);
+                return observation();
+            }
+        };
+        assertEquals("OBSERVED",client.observeApp().path("state").asText());
+    }
 }

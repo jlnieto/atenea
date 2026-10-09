@@ -5,6 +5,7 @@ import com.atenea.android.api.MobileDeliveryIntegration
 import com.atenea.android.api.MobileDeliveryState
 import com.atenea.android.api.MobileDeliveryTarget
 import com.atenea.android.api.MobileSourceUpdate
+import com.atenea.android.api.MobileDeploymentObservation
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +21,69 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
+    private fun deployed() = MobileDeploymentObservation(21,"DEPLOYED","OPERATOR","4".repeat(40),"3".repeat(40),
+        true,System.currentTimeMillis()/1000,UUID.randomUUID(),UUID.randomUUID(),"5".repeat(64),null)
+
+    @Test fun `integrated deployed ticket retires conflict actions without inventing mobile publication`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            val integration=operation().copy(kind="INTEGRATE",state="SUCCEEDED",mergeCommit="3".repeat(40))
+            val update=MobileSourceUpdate(UUID.randomUUID(),21,"PUBLISHED","2".repeat(40),5,111,null)
+            val state=MobileDeliveryUiState(21,scope) {
+                MobileDeliveryState(true,listOf(integration),MobileDeliveryIntegration(21,"1".repeat(40),"MERGED",false,null),
+                    true,update,true,deployed())
+            }
+            state.refresh()
+            assertTrue(state.sourcePhaseComplete); assertTrue(state.appDeployed)
+            assertFalse(state.canResolveConflicts(true,false)); assertFalse(state.canUpdatePullRequest(true,false))
+            assertFalse(state.canRetryResolver(false)); assertFalse(state.canRecoverSource(true,false))
+            assertFalse(state.canPrepareBackend); assertFalse(state.canPrepareReleaseRecovery(true,false))
+            assertEquals(1,state.operations.size); assertEquals("INTEGRATE",state.operations.single().kind)
+            assertTrue(deploymentLabel(state.deployment,state.appDeployed).contains("por operador"))
+            assertTrue(deploymentLabel(state.deployment,state.appDeployed).contains("No fue una publicación desde el móvil"))
+        } finally { scope.cancel() }
+    }
+    @Test fun `merged PR pending durable integration does not restart old conflict resolution`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,
+                listOf(operation().copy(kind="INTEGRATE",state="WAITING_CI")),
+                MobileDeliveryIntegration(21,"1".repeat(40),"MERGED",false,null),true,
+                MobileSourceUpdate(UUID.randomUUID(),21,"PUBLISHED","2".repeat(40),5,111,null),true) }
+            state.refresh(); assertTrue(state.sourcePhaseComplete); assertFalse(state.appDeployed)
+            assertFalse(state.canResolveConflicts(true,false)); assertFalse(state.canPrepareReleaseRecovery(true,false))
+        } finally { scope.cancel() }
+    }
+    @Test fun `stale foreign failed or unhealthy observation cannot claim deployed or prepare duplicate release`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var observed=deployed()
+            var online=true
+            val state=MobileDeliveryUiState(21,scope) {
+                if (!online) error("offline")
+                MobileDeliveryState(true,listOf(operation().copy(kind="INTEGRATE",state="SUCCEEDED",mergeCommit="3".repeat(40))),
+                    releaseRecoveryEnabled=true,deployment=observed)
+            }
+            state.refresh(); assertTrue(state.appDeployed)
+            observed=deployed().copy(observedAt=1); state.refresh(); assertFalse(state.appDeployed); assertFalse(state.canPrepareBackend)
+            observed=deployed().copy(integratedMergeCommit="9".repeat(40)); state.refresh(); assertFalse(state.appDeployed)
+            observed=deployed().copy(status="UNHEALTHY",healthy=false);state.refresh();assertFalse(state.appDeployed)
+            assertFalse(state.canPrepareReleaseRecovery(true,false))
+            observed=deployed().copy(sessionId=22);state.refresh();assertFalse(state.available);assertNull(state.deployment)
+            observed=deployed(); state.refresh(); online=false;state.refresh();assertFalse(state.appDeployed);assertNull(state.deployment)
+            assertFalse(state.canPrepareReleaseRecovery(true,false))
+        } finally { scope.cancel() }
+    }
+    @Test fun `previous integration never completes a changed current revision`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            val old=operation().copy(kind="INTEGRATE",state="SUCCEEDED",mergeCommit="3".repeat(40))
+            val current=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,listOf(old),
+                MobileDeliveryIntegration(21,"1".repeat(40),"STALE_SOURCE",false,"PUBLISHED_OWNERSHIP_MISMATCH"),
+                deployment=deployed().copy(status="NOT_INTEGRATED",healthy=false)) }
+            current.refresh();assertFalse(current.integrated);assertFalse(current.sourcePhaseComplete);assertFalse(current.appDeployed)
+        } finally { scope.cancel() }
+    }
     @Test fun `release recovery requires durable integration current capability and no active operation`() = runBlocking<Unit> {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {

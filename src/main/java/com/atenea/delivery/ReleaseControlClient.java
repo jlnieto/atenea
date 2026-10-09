@@ -11,6 +11,7 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -54,6 +55,40 @@ public class ReleaseControlClient {
     public JsonNode inspect(UUID id) {
         return exchange(Map.of("operation", "INSPECT", "planId", id.toString()));
     }
+    public JsonNode observeApp() {
+        return exchange(Map.of("operation", "OBSERVE_APP"));
+    }
+
+    /** Separate read-only protocol: never accepted as an execution receipt. */
+    public static AppObservation verifyAppObservation(JsonNode value) {
+        Set<String> fields = new java.util.HashSet<>();
+        if (value != null) value.fieldNames().forEachRemaining(fields::add);
+        long now = Instant.now().getEpochSecond();
+        if (value == null || !value.isObject() || !fields.equals(Set.of("protocol", "target", "state",
+                    "sourceCommit", "imageSha256", "healthy", "observedAt", "planId", "operationId", "receiptSha256", "finishedAt"))
+                || !"atenea-app-observation/v1".equals(value.path("protocol").asText())
+                || !"APP_PROD".equals(value.path("target").asText()) || !"OBSERVED".equals(value.path("state").asText())
+                || !value.path("sourceCommit").isTextual() || !value.path("sourceCommit").asText().matches("[0-9a-f]{40}")
+                || !value.path("imageSha256").isTextual() || !value.path("imageSha256").asText().matches("[0-9a-f]{64}")
+                || !value.path("receiptSha256").isTextual() || !value.path("receiptSha256").asText().matches("[0-9a-f]{64}")
+                || !value.path("healthy").isBoolean()
+                || !value.path("observedAt").isIntegralNumber() || !value.path("observedAt").canConvertToLong()
+                || value.path("observedAt").asLong() < now - 60 || value.path("observedAt").asLong() > now + 5
+                || !value.path("finishedAt").isIntegralNumber() || !value.path("finishedAt").canConvertToLong()
+                || value.path("finishedAt").asLong() <= 0 || value.path("finishedAt").asLong() > value.path("observedAt").asLong()
+                || !canonicalUuid(value.path("planId")) || !canonicalUuid(value.path("operationId"))) {
+            throw new DeliveryRejectedException("APP_OBSERVATION_EVIDENCE_MISMATCH");
+        }
+        return new AppObservation(value.path("sourceCommit").asText(), value.path("healthy").asBoolean(),
+                value.path("observedAt").asLong(), UUID.fromString(value.path("planId").asText()),
+                UUID.fromString(value.path("operationId").asText()), value.path("receiptSha256").asText());
+    }
+    private static boolean canonicalUuid(JsonNode value) {
+        try { return value.isTextual() && UUID.fromString(value.textValue()).toString().equals(value.textValue()); }
+        catch (IllegalArgumentException invalid) { return false; }
+    }
+    public record AppObservation(String sourceCommit, boolean healthy, long observedAt,
+            UUID planId, UUID operationId, String receiptSha256) { }
     public JsonNode execute(UUID id, String fingerprint, UUID operationId) {
         return exchange(Map.of("operation", "EXECUTE", "planId", id.toString(),
                 "planSha256", fingerprint, "operationId", operationId.toString()));

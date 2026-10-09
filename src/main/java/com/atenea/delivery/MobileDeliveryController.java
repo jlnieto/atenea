@@ -31,11 +31,12 @@ public class MobileDeliveryController {
             @AuthenticationPrincipal AuthenticatedOperator actor) {
         return new DeliveryState(service.isEnabled(),service.list(sessionId, actor),
                 service.observeIntegration(sessionId, actor), sourceUpdates.isEnabled(), sourceUpdates.observe(sessionId, actor),
-                service.isEnabled());
+                service.isEnabled(), service.observeDeployment(sessionId, actor));
     }
     public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations,
             MobileDeliveryService.IntegrationObservation integration, boolean sourceUpdateEnabled,
-            SourceUpdateOperation.View sourceUpdate, boolean releaseRecoveryEnabled) { }
+            SourceUpdateOperation.View sourceUpdate, boolean releaseRecoveryEnabled,
+            MobileDeliveryService.DeploymentObservation deployment) { }
 
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/resolve-conflicts")
     public SourceUpdateOperation.View resolveConflicts(@PathVariable Long sessionId,
