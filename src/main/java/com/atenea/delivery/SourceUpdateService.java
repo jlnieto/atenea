@@ -100,6 +100,7 @@ public class SourceUpdateService {
         administrator(actor.operatorId());
         if (!isEnabled()) throw rejected("SOURCE_UPDATE_DISABLED");
         Long admitted=transaction.execute(ignored -> {
+            store.lockSessionBeforeReadingSource(sessionId);
             var session=session(sessionId,true);
             var op=store.get(operationId,true);
             if (!Objects.equals(op.sessionId(),sessionId) || !Objects.equals(store.latest(sessionId).orElseThrow().id(),operationId)) {
@@ -110,14 +111,22 @@ public class SourceUpdateService {
             var change=requireStructure(session,op.command());
             if (!op.state().equals("FAILED") || !Objects.equals(op.resolverRunId(),sourceRunId)
                     || op.preparation()==null || op.resolverTurnId()==null
-                    || change.getSourceRevision()!=op.preparedRevision()
+                    || change.getSourceRevision()<op.preparedRevision()
                     || !Objects.equals(change.getObservedCanonicalCommit(),op.command().owner().sourceCommit())
-                    || !Objects.equals(change.getSourceFingerprintSha256(),op.preparation().preparedFingerprintSha256())) {
+                    || !java.util.Set.of(DevelopmentChangeSourceState.DIRTY,DevelopmentChangeSourceState.CLEAN).contains(change.getSourceState())) {
                 throw rejected("SOURCE_UPDATE_RETRY_EVIDENCE_MISMATCH");
             }
             var failed=runs.findByIdForUpdate(sourceRunId).orElseThrow(() -> rejected("SOURCE_UPDATE_RESOLVER_MISSING"));
             if (failed.getStatus()!=AgentRunStatus.FAILED || !Objects.equals(failed.getSession().getId(),sessionId)
-                    || !Objects.equals(failed.getOriginTurn().getId(),op.resolverTurnId())) throw rejected("SOURCE_UPDATE_RETRY_EVIDENCE_MISMATCH");
+                    || !Objects.equals(failed.getOriginTurn().getId(),op.resolverTurnId())
+                    || !store.matchesResolver(op,failed)
+                    || !Objects.equals(failed.getDevelopmentChangeKey(),op.command().owner().changeKey())
+                    || !Objects.equals(failed.getChangeBaseCommit(),op.command().owner().baseCommit())
+                    || !Objects.equals(failed.getSelectedWorkerId(),op.command().owner().workerId())
+                    || !Objects.equals(failed.getWorkspaceIdentity(),op.command().owner().workspaceIdentity())
+                    || !Objects.equals(failed.getRepositoryCommit(),op.command().owner().sourceCommit())
+                    || failed.getExecutionTarget()!=ExecutionTarget.REMOTE
+                    || !ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(failed.getWorkloadKind())) throw rejected("SOURCE_UPDATE_RETRY_EVIDENCE_MISMATCH");
             store.requireIdle();
             agentRuns.requireRemoteRetryEligible(failed);
             if (!routing.refreshKnownWorker(ProjectCodexIdentity.WORKER_ID,"development-change-source-update/v1")) {
@@ -130,10 +139,19 @@ public class SourceUpdateService {
                     || !Objects.equals(observed.workspaceIdentity(),session.getWorkspaceIdentity())
                     || !Objects.equals(observed.projectId(),ProjectCodexIdentity.PROJECT_IDENTITY)
                     || !Objects.equals(observed.headCommit(),failed.getRepositoryCommit())
-                    || !Objects.equals(observed.fingerprintSha256(),failed.getChangeSourceFingerprintSha256())) {
-                throw rejected("SOURCE_UPDATE_RETRY_SOURCE_CHANGED");
+                    || observed.fingerprintSha256()==null || !observed.fingerprintSha256().matches("[0-9a-f]{64}")
+                    || observed.stagedChangeCount()<0 || observed.unstagedChangeCount()<0 || observed.untrackedChangeCount()<0) {
+                throw rejected("SOURCE_UPDATE_RETRY_OBSERVATION_MISMATCH");
             }
-            var retryId=store.authorizeRetry(operationId,sourceRunId,actor.operatorId());
+            boolean dirty=observed.stagedChangeCount()>0 || observed.unstagedChangeCount()>0 || observed.untrackedChangeCount()>0;
+            var sourceState=dirty ? DevelopmentChangeSourceState.DIRTY : DevelopmentChangeSourceState.CLEAN;
+            if (!Objects.equals(change.getSourceFingerprintSha256(),observed.fingerprintSha256()) || change.getSourceState()!=sourceState) {
+                change.setSourceRevision(Math.addExact(change.getSourceRevision(),1));
+                change.setSourceFingerprintSha256(observed.fingerprintSha256());
+                change.setSourceState(sourceState);change.setWorkspaceUpdatedAt(Instant.now());
+                invalidate(change,session);changes.saveAndFlush(change);
+            }
+            var retryId=store.authorizeRetry(operationId,sourceRunId,actor.operatorId(),change.getSourceRevision(),dirty,observed);
             var run=agentRuns.createSourceUpdateResolverRetryRun(sourceRunId,operationId);
             store.retried(retryId,run.getId(),operationId);
             return run.getId();
@@ -325,11 +343,10 @@ public class SourceUpdateService {
             var change = requireStructure(session, op.command());
             if (!Objects.equals(run.getSession().getId(), op.sessionId())
                     || !Objects.equals(run.getOriginTurn().getId(), op.resolverTurnId())
-                    || !Objects.equals(run.getChangeSourceRevision(), op.preparedRevision())
+                    || !store.matchesResolver(op,run)
                     || !Objects.equals(run.getDevelopmentChangeKey(), op.command().owner().changeKey())
                     || !Objects.equals(run.getChangeBaseCommit(), op.command().owner().baseCommit())
                     || !Objects.equals(run.getRepositoryCommit(), op.command().owner().sourceCommit())
-                    || !Objects.equals(run.getChangeSourceFingerprintSha256(), op.preparation().preparedFingerprintSha256())
                     || !Objects.equals(run.getSelectedWorkerId(), op.command().owner().workerId())
                     || !Objects.equals(run.getWorkspaceIdentity(), op.command().owner().workspaceIdentity())
                     || run.getExecutionTarget() != ExecutionTarget.REMOTE

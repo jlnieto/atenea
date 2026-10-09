@@ -142,11 +142,17 @@ el run fallido, y registra la autorización y el nuevo run por separado. Una
 respuesta perdida o un doble toque sobre el mismo intento recuperan ese
 registro, no otra ejecución. Consultar sigue siendo read-only.
 
-Esta recuperación no admite archivos parciales distintos ni un main nuevo
-por defecto. Los conserva y rechaza el reintento exacto: falta completar la
-transición autorizada a una nueva fuente o preparación. Tampoco habilita
-integración o publicación sin nueva validación. No está desplegada ni aceptada
-en el móvil todavía.
+Si el resolver fallido dejó archivos parciales, App los observa sin reset y
+registra una revisión nueva cuando cambia la fuente. V89 conserva por separado
+la observación autenticada, su hash, el estado limpio/sucio y la autorización
+de cada reintento. El móvil muestra la revisión actual; el turno, el intento
+original y la preparación siguen en el historial. Dos solicitudes simultáneas
+admiten un único run y una única revisión observada.
+
+Un HEAD u ownership distintos se rechazan sin tocar archivos. Un main nuevo
+no se elige por defecto: todavía falta la transición cerrada a otra preparación.
+La recuperación tampoco habilita integración o publicación sin nueva validación.
+No está desplegada ni aceptada en el móvil todavía.
 
 Antes de publicar el ajuste de conversación, ejecutar los tests focales del
 backend y cliente API de `validation-evidence`, y los tests Compose de

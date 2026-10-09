@@ -9,6 +9,7 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionAcceptanceState;
 import com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState;
+import com.atenea.persistence.developmentchange.DevelopmentChangeSourceState;
 import com.atenea.remoteworker.DevelopmentChangeBranchPublicationCommand;
 import com.atenea.remoteworker.DevelopmentChangeSourceFinalizationCommand;
 import com.atenea.remoteworker.DevelopmentChangeSourceFinalizationCommand.Action;
@@ -99,8 +100,9 @@ public class SourceFinalizationService {
                     || !Objects.equals(validated.sourceCommit(), source.owner().sourceCommit())
                     || update.preparation()==null || validated.sourceRevision() <= source.owner().sourceRevision()
                     || !Objects.equals(validated.sourceRevision(), update.resultRevision()==null ? update.preparedRevision() : update.resultRevision())
-                    || !Objects.equals(validated.sourceFingerprintSha256(), update.resultRevision()==null
-                        ? update.preparation().preparedFingerprintSha256() : update.resultFingerprintSha256())) throw reject("SOURCE_FINALIZATION_EVIDENCE_MISMATCH");
+                    || !Objects.equals(validated.sourceFingerprintSha256(), session.getDevelopmentChange().getSourceState()==DevelopmentChangeSourceState.CLEAN
+                        ? null : (update.resultRevision()==null ? update.preparation().preparedFingerprintSha256() : update.resultFingerprintSha256()))
+                    || (update.resultRevision()!=null && !Objects.equals(session.getDevelopmentChange().getSourceFingerprintSha256(),update.resultFingerprintSha256()))) throw reject("SOURCE_FINALIZATION_EVIDENCE_MISMATCH");
             var authorizations = jdbc.query("""
                 SELECT id,operator_id FROM mobile_delivery_operation WHERE session_id=? AND kind='PUBLISH_PR' AND target='APP_PROD'
                     AND state IN ('QUEUED','WAITING_CI') ORDER BY created_at DESC LIMIT 1

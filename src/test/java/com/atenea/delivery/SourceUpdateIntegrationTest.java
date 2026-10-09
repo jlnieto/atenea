@@ -87,7 +87,8 @@ class SourceUpdateIntegrationTest {
         when(remoteClient.fingerprintSourceTree(any())).thenAnswer(call -> {
             var session=call.getArgument(0,WorkSessionEntity.class);
             return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
-                session.getWorkspaceIdentity(),"atenea",published,preparedFingerprint,0,0,0,false);
+                session.getWorkspaceIdentity(),"atenea",published,preparedFingerprint,
+                session.getDevelopmentChange().getSourceState()==DevelopmentChangeSourceState.DIRTY ? 1 : 0,0,0,false);
         });
         tx.executeWithoutResult(ignored -> {
             var now=Instant.now();
@@ -229,16 +230,118 @@ class SourceUpdateIntegrationTest {
         assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM session_turn WHERE session_id=?",Long.class,sessionId));
     }
 
-    @Test void partialEditsAfterFailedResolverAreNotResetOrAdmittedAsExactRetry() {
+    @Test void partialEditsAfterFailedResolverAreObservedAsNewRevisionWithoutReset() {
         var original=failedResolver();
         doAnswer(call->{var session=call.getArgument(0,WorkSessionEntity.class);
             return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
                 session.getWorkspaceIdentity(),"atenea",published,"f".repeat(64),1,0,0,false);}).when(remoteClient).fingerprintSourceTree(any());
-        assertTrue(assertThrows(DeliveryRejectedException.class,
-            ()->service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor)).getMessage().contains("SOURCE_UPDATE_RETRY_SOURCE_CHANGED"));
+        var retried=service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+        assertEquals("RESOLVING",retried.state());
+        assertEquals(5L,retried.sourceRevision());
+        assertEquals(5L,jdbc.queryForObject("SELECT change_source_revision FROM agent_run WHERE id=?",Long.class,retried.resolverRunId()));
+        assertEquals("f".repeat(64),jdbc.queryForObject("SELECT change_source_fingerprint_sha256 FROM agent_run WHERE id=?",String.class,retried.resolverRunId()));
+        assertEquals(original.preparation(),store.get(original.id(),false).preparation());
+        assertEquals("FAILED",jdbc.queryForObject("SELECT status FROM agent_run WHERE id=?",String.class,original.resolverRunId()));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM session_turn WHERE session_id=?",Long.class,sessionId));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_resolver_retry WHERE operation_id=?",Long.class,original.id()));
+        assertEquals(retried.resolverRunId(),service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor).resolverRunId());
+        assertEquals(5L,jdbc.queryForObject("SELECT source_revision FROM development_change WHERE id=?",Long.class,changeId));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE mobile_source_resolver_retry SET observed_fingerprint_sha256=? WHERE operation_id=?",oldFingerprint,original.id()));
+    }
+
+    @Test void foreignOrMovedHeadObservationCannotBeAdoptedAsPartialSource() {
+        var original=failedResolver();
+        for (String head:List.of(base,"f".repeat(40))) {
+            doAnswer(call->{var session=call.getArgument(0,WorkSessionEntity.class);
+                return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
+                    session.getWorkspaceIdentity(),"atenea",head,"f".repeat(64),1,0,0,false);}).when(remoteClient).fingerprintSourceTree(any());
+            assertThrows(DeliveryRejectedException.class,()->service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor));
+        }
         assertEquals("FAILED",store.get(original.id(),false).state());
-        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        assertEquals(4L,jdbc.queryForObject("SELECT source_revision FROM development_change WHERE id=?",Long.class,changeId));
         assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_resolver_retry WHERE operation_id=?",Long.class,original.id()));
+    }
+
+    @Test void terminalRetriedRunConsumesObservedPartialBindingNotOriginalPreparedHash() {
+        var original=failedResolver();
+        doAnswer(call->{var session=call.getArgument(0,WorkSessionEntity.class);
+            return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(),"atenea",published,"f".repeat(64),1,0,0,false);}).when(remoteClient).fingerprintSourceTree(any());
+        var retry=service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+        tx.executeWithoutResult(ignored->{var run=runs.findById(retry.resolverRunId()).orElseThrow();
+            run.setStatus(AgentRunStatus.SUCCEEDED);run.setProcessOutcome(AgentRunProcessOutcome.SUCCEEDED);run.setFinishedAt(Instant.now());runs.saveAndFlush(run);});
+        expire(original.id());service.reconcile(original.id());
+        assertEquals("RESOLVER_COMPLETED",store.get(original.id(),false).state());
+        assertEquals(5L,store.get(original.id(),false).resultRevision());
+        assertEquals("f".repeat(64),store.get(original.id(),false).resultFingerprintSha256());
+        assertEquals("STALE",jdbc.queryForObject("SELECT validation_state FROM development_change WHERE id=?",String.class,changeId));
+        validateFixtureSource();simulateFinalizer();delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        assertEquals(finalized().publishedHeadSha(),publisher.publish(sessionId).headSha());
+    }
+
+    @Test void cleanPartialSourceKeepsRawObservationButUsesCleanRuntimeBindingAndFreshValidation() {
+        var original=failedResolver();
+        doAnswer(call->{var session=call.getArgument(0,WorkSessionEntity.class);
+            return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(),"atenea",published,"f".repeat(64),0,0,0,false);}).when(remoteClient).fingerprintSourceTree(any());
+        var retry=service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+        assertEquals("CLEAN",jdbc.queryForObject("SELECT source_state FROM development_change WHERE id=?",String.class,changeId));
+        assertEquals("f".repeat(64),jdbc.queryForObject("SELECT change_source_fingerprint_sha256 FROM agent_run WHERE id=?",String.class,retry.resolverRunId()));
+        assertEquals("f".repeat(64),jdbc.queryForObject("SELECT observed_fingerprint_sha256 FROM mobile_source_resolver_retry WHERE run_id=?",String.class,retry.resolverRunId()));
+        assertFalse(jdbc.queryForObject("SELECT workspace_dirty FROM mobile_source_resolver_retry WHERE run_id=?",Boolean.class,retry.resolverRunId()));
+        tx.executeWithoutResult(ignored->{var run=runs.findById(retry.resolverRunId()).orElseThrow();
+            run.setStatus(AgentRunStatus.SUCCEEDED);run.setProcessOutcome(AgentRunProcessOutcome.SUCCEEDED);run.setFinishedAt(Instant.now());runs.saveAndFlush(run);});
+        expire(original.id());service.reconcile(original.id());
+        assertEquals("RESOLVER_COMPLETED",store.get(original.id(),false).state());
+        assertThrows(DeliveryRejectedException.class,()->delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD));
+        validateFixtureSource();
+        jdbc.update("UPDATE work_session SET acceptance_state='VALIDATING',validated_at=NULL WHERE id=?",sessionId);
+        assertEquals("SUCCEEDED",validations.advanceDevelopmentChange(sessionId).state());
+        // Keep the synthetic projection expected by the separately mocked finalizer.
+        validateFixtureSource();simulateFinalizer();delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        assertNull(publisher.publish(sessionId).sourceFingerprintSha256());
+        assertEquals("PUBLISHED",store.get(original.id(),false).state());
+    }
+
+    @Test void successivePartialFailuresRetainSeparateObservationsAndOnePrompt() {
+        var original=failedResolver();
+        doAnswer(call->{var session=call.getArgument(0,WorkSessionEntity.class);
+            return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(),"atenea",published,"f".repeat(64),0,1,0,false);}).when(remoteClient).fingerprintSourceTree(any());
+        var second=service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor);
+        tx.executeWithoutResult(ignored->{var run=runs.findById(second.resolverRunId()).orElseThrow();
+            run.setStatus(AgentRunStatus.FAILED);run.setProcessOutcome(AgentRunProcessOutcome.FAILED);run.setFinishedAt(Instant.now());runs.saveAndFlush(run);});
+        expire(original.id());service.reconcile(original.id());
+        doAnswer(call->{var session=call.getArgument(0,WorkSessionEntity.class);
+            return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(),"atenea",published,"e".repeat(64),0,0,1,false);}).when(remoteClient).fingerprintSourceTree(any());
+        var third=service.retryResolver(sessionId,original.id(),second.resolverRunId(),actor);
+        assertEquals(6L,third.sourceRevision());
+        assertEquals(6L,jdbc.queryForObject("SELECT change_source_revision FROM agent_run WHERE id=?",Long.class,third.resolverRunId()));
+        assertEquals("e".repeat(64),jdbc.queryForObject("SELECT change_source_fingerprint_sha256 FROM agent_run WHERE id=?",String.class,third.resolverRunId()));
+        assertEquals(List.of("f".repeat(64),"e".repeat(64)),jdbc.queryForList(
+            "SELECT observed_fingerprint_sha256 FROM mobile_source_resolver_retry WHERE operation_id=? ORDER BY created_at,id",String.class,original.id()));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM session_turn WHERE session_id=?",Long.class,sessionId));
+        assertEquals(original.preparation(),store.get(original.id(),false).preparation());
+        assertEquals(third.resolverRunId(),service.retryResolver(sessionId,original.id(),second.resolverRunId(),actor).resolverRunId());
+        assertEquals(3L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+    }
+
+    @Test void malformedPartialObservationsDoNotChangeRevisionOrAdmitRun() {
+        var original=failedResolver();
+        var session=sessions.findWithProjectAndDevelopmentChangeById(sessionId).orElseThrow();
+        for (var observation:List.of(
+            new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),"foreign","atenea",published,"f".repeat(64),1,0,0,false),
+            new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),session.getWorkspaceIdentity(),"atenea",published,"invalid",1,0,0,false),
+            new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),session.getWorkspaceIdentity(),"atenea",published,"f".repeat(64),-1,0,0,false),
+            new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),session.getWorkspaceIdentity(),"atenea",published,"f".repeat(64),1,0,0,true))) {
+            doReturn(observation).when(remoteClient).fingerprintSourceTree(any());
+            assertEquals("SOURCE_UPDATE_RETRY_OBSERVATION_MISMATCH",assertThrows(DeliveryRejectedException.class,
+                ()->service.retryResolver(sessionId,original.id(),original.resolverRunId(),actor)).code());
+        }
+        assertEquals(4L,jdbc.queryForObject("SELECT source_revision FROM development_change WHERE id=?",Long.class,changeId));
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_resolver_retry WHERE operation_id=?",Long.class,original.id()));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
     }
 
     @Test void retryAuthorityIsClosedAndDoesNotBypassDeterministicBlocker() throws Exception {
@@ -272,6 +375,9 @@ class SourceUpdateIntegrationTest {
 
     @Test void concurrentRetryRequestsAdoptOneRunAndOneAuditRow() throws Exception {
         var original=failedResolver();
+        doAnswer(call->{var session=call.getArgument(0,WorkSessionEntity.class);
+            return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
+                session.getWorkspaceIdentity(),"atenea",published,"f".repeat(64),1,0,0,false);}).when(remoteClient).fingerprintSourceTree(any());
         var threads=java.util.concurrent.Executors.newFixedThreadPool(2);
         var start=new java.util.concurrent.CountDownLatch(1);
         try {
@@ -282,6 +388,7 @@ class SourceUpdateIntegrationTest {
             assertEquals(first.get(10,java.util.concurrent.TimeUnit.SECONDS).resolverRunId(),second.get(10,java.util.concurrent.TimeUnit.SECONDS).resolverRunId());
             assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_resolver_retry WHERE operation_id=?",Long.class,original.id()));
             assertEquals(2L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+            assertEquals(5L,jdbc.queryForObject("SELECT source_revision FROM development_change WHERE id=?",Long.class,changeId));
         } finally { threads.shutdownNow(); }
     }
 

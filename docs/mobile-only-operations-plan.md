@@ -52,12 +52,13 @@ actualización de la misma PR. La acción móvil Actualizar la misma PR conserva
 WorkSession, rama y número; GitHub/UFD comprueban el nuevo head antes de integrar.
 No está integrada ni desplegada.
 
-Unidad 5 en curso: reintento explícito del resolver fallido con fuente intacta
-y pruebas combinadas de interrupciones implementados localmente. Conserva el
-intento fallido, el mismo prompt y la preparación. No está integrada ni desplegada.
+Unidad 5 en curso: reintento explícito del resolver fallido, observación de sus
+archivos parciales y pruebas combinadas de interrupciones implementados localmente.
+Conserva el intento fallido, el mismo prompt y la preparación. No está integrada
+ni desplegada.
 
-Siguiente paso: cerrar la recuperación ante un nuevo avance de main y los
-cambios parciales del resolver, conservando la historia y sin reset implícito.
+Siguiente paso: cerrar la recuperación ante un nuevo avance de main, tanto antes
+como después de actualizar la PR, conservando la historia y sin reset implícito.
 Después, integración conjunta. No resolver manualmente PR 47 para sustituir
 estas capacidades.
 
@@ -327,6 +328,30 @@ lo rechazan sin reset ni reparación manual. Esta primera parte sólo recupera
 la fuente intacta del intento fallido. Falta autorizar y observar una fuente
 parcial nueva y encadenar otra preparación cuando avance main; ambos casos
 siguen pendientes antes de integrar la entrega.
+
+2026-10-09: recuperación de archivos parciales implementada localmente en App.
+PASS: 180 tests backend focales en PostgreSQL 16 efímero, incluidos 44 de
+preparación/reintento/finalización y el upgrade V88 a V89 con historial existente;
+`git diff --check`. Los informes se conservan fuera del checkout.
+V89 vincula cada reintento a su fuente observada, sin reemplazar la preparación,
+el primer resolver ni los registros V88. La observación fija HEAD y ownership;
+un hash o estado limpio/sucio distintos producen una revisión nueva e invalidan
+las proyecciones anteriores. No hay reset ni escrituras remotas durante esta
+observación. La admisión y el coordinador normales usan ese nuevo binding.
+
+La respuesta móvil muestra la revisión del último reintento, no la preparada
+original. Un doble toque bloquea la sesión antes de leer la fuente y recupera
+el mismo run; no duplica la observación ni el prompt. La fuente limpia conserva
+el hash de observación en App y usa ownership limpio en el protocolo del runner.
+Su validación sigue exigiendo cuatro comprobaciones actuales antes de publicar.
+
+La migración preserva los bindings V88 existentes y mantiene explícitamente
+ausente la observación HTTP histórica; no fabrica evidencia retrospectiva.
+Las pruebas cubren archivos parciales, fuente limpia, dos fallos consecutivos,
+peticiones simultáneas, rechazo de HEAD/ownership/hash ajenos, validación nueva
+y actualización de la misma PR en fixtures. Falta la transición a otra
+preparación ante un nuevo avance de main, incluidos los estados previos a
+publicar. La entrega 1 aún no está lista para integrar o aceptar en el móvil.
 
 ## Autorización de efectos reales
 
