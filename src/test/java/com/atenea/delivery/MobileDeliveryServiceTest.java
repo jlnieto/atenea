@@ -129,7 +129,51 @@ class MobileDeliveryServiceTest {
         when(store.get(id,true)).thenReturn(op);
         when(publication.publishForDelivery(21L)).thenThrow(new GitHubIntegrationException("UFD_FAILED: failed tests"));
         service.reconcile();
-        verify(store).update(op,"BLOCKED","GITHUB_REJECTED",null,op.evidence());
+        verify(store).update(op,"BLOCKED","GITHUB_CHECKS_FAILED",null,op.evidence());
+    }
+
+    @Test void mergeConflictBlocksSameIntegrationOperationInsteadOfWaitingForCi() {
+        publishedFixture();
+        var op = operation("INTEGRATE", "QUEUED"); var saved = durableOutbox(op);
+        when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
+        when(github.integrateExact(any(), eq(42L), eq(session.getPublishedHeadBranch()), eq(session.getFinalCommitSha())))
+                .thenThrow(new GitHubIntegrationException("PR_MERGE_CONFLICTS: five tests"));
+        service.reconcile();
+        assertEquals("BLOCKED", saved.get().state());
+        assertEquals("PR_MERGE_CONFLICTS", saved.get().errorCode());
+        assertEquals(op.id(), saved.get().id());
+        verify(store, never()).create(any(), any(), any(), any(), any(), any(), any());
+    }
+    @Test void readOnlyMergeObservationKeepsPublicationAndFactorsUntouched() {
+        publishedFixture();
+        when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
+        when(github.observeMergeState(any(), eq(42L), eq(session.getPublishedHeadBranch()), eq(session.getFinalCommitSha())))
+                .thenReturn(com.atenea.github.GitHubMergeState.CONFLICTS);
+        var result = service.observeIntegration(21L, actor);
+        assertEquals("CONFLICTS", result.mergeState());
+        assertFalse(result.canRequestIntegration());
+        assertEquals(session.getFinalCommitSha(), result.sourceCommit());
+        verifyNoInteractions(store, publication, executor, factors, grants);
+    }
+    @Test void movedSourceDisablesIntegrationBeforeAnyGithubRead() {
+        publishedFixture(); session.getDevelopmentChange().setSourceRevision(3L);
+        var result = service.observeIntegration(21L, actor);
+        assertEquals("STALE_SOURCE", result.mergeState()); assertFalse(result.canRequestIntegration());
+        verifyNoInteractions(github, store, publication, executor);
+    }
+    @Test void unavailableGithubCannotEnableIntegrationOrExposeItsErrorBody() {
+        publishedFixture();
+        when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(42L);
+        when(github.observeMergeState(any(), anyLong(), anyString(), anyString()))
+                .thenThrow(new GitHubIntegrationException("synthetic body must stay private"));
+        var result = service.observeIntegration(21L, actor);
+        assertEquals("UNAVAILABLE", result.mergeState());
+        assertEquals("GITHUB_UNAVAILABLE", result.errorCode()); assertFalse(result.canRequestIntegration());
+    }
+    @Test void routineOperatorCannotObservePrivilegedPublicationState() {
+        operator.setCodexOperationsRole(CodexOperationsRole.ROUTINE_OPERATOR);
+        assertThrows(DeliveryRejectedException.class, () -> service.observeIntegration(21L, actor));
+        verifyNoInteractions(github, store, owner);
     }
 
     private AtomicReference<DeliveryOperation> durableOutbox(DeliveryOperation initial) {

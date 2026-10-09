@@ -4,6 +4,10 @@ El objetivo es trabajar sin portátil después de una instalación inicial:
 implementar en una conversación, validar, revisar/integrar y publicar desde
 Atenea. Terminar un AgentRun **no** valida, integra ni despliega.
 
+La aceptación completa y el trabajo pendiente para eliminar la intervención
+desde CLI se siguen en
+[Operación completa desde el móvil](mobile-only-operations-plan.md).
+
 Este cambio añade el control móvil y el protocolo de publicación. No instala
 servicios, habilita flags, configura secretos de GitHub ni publica una APK.
 No debe declararse operativo en PROD hasta completar el bootstrap y la prueba
@@ -129,6 +133,40 @@ y publicación siguen necesitando autorización explícita para ese bootstrap.
 No hay un backend App DEV permanente en este procedimiento.
 
 ## Prueba de aceptación antes de depender sólo del móvil
+
+La recuperación de conflictos en desarrollo incorpora Reintentar resolución
+para un resolver FAILED de la preparación actual. La petición identifica
+únicamente la WorkSession, la operación y el intento ya observados, con cuerpo
+vacío. App fija el binding y comprueba la fuente efectiva; conserva el turno y
+el run fallido, y registra la autorización y el nuevo run por separado. Una
+respuesta perdida o un doble toque sobre el mismo intento recuperan ese
+registro, no otra ejecución. Consultar sigue siendo read-only.
+
+Si el resolver fallido dejó archivos parciales, App los observa sin reset y
+registra una revisión nueva cuando cambia la fuente. V89 conserva por separado
+la observación autenticada, su hash, el estado limpio/sucio y la autorización
+de cada reintento. El móvil muestra la revisión actual; el turno, el intento
+original y la preparación siguen en el historial. Dos solicitudes simultáneas
+admiten un único run y una única revisión observada.
+
+Un HEAD u ownership distintos se rechazan sin tocar archivos. Tras una
+preparación completada o la actualización de la misma PR, Actualizar base con
+main solicita una continuación v2 con predecesor y main exactos derivados por
+App. Conserva los archivos resueltos, la rama, PR y evidencia anteriores; si
+main no cambió, devuelve la misma operación. V90 enlaza las preparaciones sin
+reemplazar sus recibos. La fuente nueva exige otra validación de cuatro checks.
+
+Una preparación todavía pendiente conserva su intención original. Una
+publicación incierta bloquea la continuación: no se descarta evidencia ni se
+elige otro main implícitamente. Recuperar operación reautoriza la intención
+original mediante V91 y reanuda su preparación o publicación, sin crear otra
+operación ni PR. Platform exige que GitHub y mirror coincidan en un descendiente
+exacto del main retenido y sella la comprobación antes del efecto. Si el push
+ya ocurrió, sólo completa su recibo; nunca fuerza ni repite una publicación
+confirmada. Después se puede incorporar el main nuevo con otra preparación y
+validación. El botón sólo aparece para una operación pendiente reconocida por
+el servidor, no por cualquier fallo CI. No está desplegada ni aceptada en el
+móvil todavía.
 
 Antes de publicar el ajuste de conversación, ejecutar los tests focales del
 backend y cliente API de `validation-evidence`, y los tests Compose de

@@ -369,7 +369,9 @@ public class ClosedValidationOperationService {
         if (change == null
                 || change.getStatus() != DevelopmentChangeStatus.OPEN
                 || change.getWorkspaceState() != DevelopmentChangeWorkspaceState.READY
-                || change.getSourceState() != DevelopmentChangeSourceState.DIRTY
+                || (change.getSourceState() != DevelopmentChangeSourceState.DIRTY
+                    && !(change.getSourceState() == DevelopmentChangeSourceState.CLEAN
+                        && workSessionRepository.existsReadyCleanSourceUpdateBySessionId(session.getId())))
                 || !change.getWorkspaceIdentity().equals(session.getWorkspaceIdentity())
                 || !change.getWorkspaceBranch().equals(session.getWorkspaceBranch())
                 || !change.getSelectedWorkerId().equals(session.getSelectedWorkerId())) {
@@ -527,6 +529,11 @@ public class ClosedValidationOperationService {
     }
 
     private void requireExactIdleSession(WorkSessionEntity session) {
+        if (workSessionRepository.existsActiveSourceUpdateBySessionId(session.getId())
+                || workSessionRepository.existsActiveSourceFinalizationBySessionId(session.getId())) {
+            throw new WorkSessionOperationBlockedException(
+                    "Pinned conflict recovery must finish before validating the new revision; previous results are historical");
+        }
         if (session.getStatus() != WorkSessionStatus.OPEN
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !ProjectCodexIdentity.hasCanonicalSourceObservation(session)

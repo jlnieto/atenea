@@ -67,8 +67,12 @@ public class WorkSessionGitHubService {
 
     @Transactional
     public WorkSessionResponse publishSession(Long sessionId, PublishWorkSessionRequest request) {
+        return publishSession(sessionId,request,false);
+    }
+
+    private WorkSessionResponse publishSession(Long sessionId, PublishWorkSessionRequest request, boolean deliveryReplay) {
         WorkSessionEntity session = findSession(sessionId);
-        ensurePublishable(session);
+        ensurePublishable(session,deliveryReplay);
 
         if (session.getDevelopmentChange() != null) {
             return publishChangeOwned(session, request);
@@ -138,7 +142,7 @@ public class WorkSessionGitHubService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public WorkSessionResponse publishForDelivery(Long sessionId) {
         // A pending GitHub check must not roll back the delivery outbox transaction.
-        return publishSession(sessionId, null);
+        return publishSession(sessionId, null, true);
     }
 
     private WorkSessionResponse publishChangeOwned(
@@ -170,6 +174,9 @@ public class WorkSessionGitHubService {
         if (candidates.size() == 1) {
             pullRequest = candidates.getFirst();
         } else {
+            if (session.getPullRequestUrl() != null) {
+                throw new WorkSessionPublishConflictException(session.getId(), "existing change-owned PR disappeared; a replacement is not authorized");
+            }
             pullRequest = gitHubClient.createPullRequest(
                     repository,
                     pullRequestTitle,
@@ -183,6 +190,9 @@ public class WorkSessionGitHubService {
         }
         WorkSessionPullRequestIdentity.validateChangeOwned(
                 session, repository, pullRequest);
+        if (session.getPullRequestUrl() != null && !session.getPullRequestUrl().equals(pullRequest.htmlUrl())) {
+            throw new WorkSessionPublishConflictException(session.getId(), "existing change-owned PR identity changed");
+        }
 
         Instant now = Instant.now();
         session.setPullRequestUrl(pullRequest.htmlUrl());
@@ -290,7 +300,7 @@ public class WorkSessionGitHubService {
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
     }
 
-    private void ensurePublishable(WorkSessionEntity session) {
+    private void ensurePublishable(WorkSessionEntity session, boolean deliveryReplay) {
         if (session.getStatus() != WorkSessionStatus.OPEN) {
             throw new WorkSessionNotOpenException(session.getId(), session.getStatus());
         }
@@ -303,7 +313,8 @@ public class WorkSessionGitHubService {
             throw new AgentRunAlreadyRunningException(session.getId());
         }
 
-        if (session.getPullRequestStatus() != null && session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED) {
+        if (session.getPullRequestStatus() != null && session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED
+                && !(deliveryReplay && session.getDevelopmentChange()!=null && session.getPullRequestStatus()==WorkSessionPullRequestStatus.OPEN)) {
             throw new WorkSessionPublishConflictException(session.getId(),
                     "pull request creation requires status NOT_CREATED");
         }

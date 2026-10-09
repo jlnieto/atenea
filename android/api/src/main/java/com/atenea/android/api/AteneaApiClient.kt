@@ -349,11 +349,9 @@ class AteneaApiClient(
     }
 
     suspend fun fetchDelivery(sessionId: Long): MobileDeliveryState = getJson(
-        path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true
-    ) { json ->
-        val items = json.getJSONArray("operations")
-        MobileDeliveryState(json.getBoolean("enabled"), List(items.length()) { parseMobileDeliveryOperation(items.getJSONObject(it)) })
-    }
+        path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true,
+        parser = ::parseMobileDeliveryState
+    )
 
     suspend fun createDeliveryPullRequest(sessionId: Long): MobileDeliveryOperation = postJson(
         path = "/api/mobile/sessions/$sessionId/delivery/pr", body = JSONObject(), authenticated = true,
@@ -365,10 +363,24 @@ class AteneaApiClient(
         parser = ::parseMobileDeliveryOperation
     )
 
+    suspend fun resolveDeliveryConflicts(sessionId: Long): MobileSourceUpdate = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/resolve-conflicts", body = JSONObject(), authenticated = true
+    ) { json -> parseMobileSourceUpdate(json).also { require(it.sessionId == sessionId) } }
+
     suspend fun prepareRelease(sessionId: Long, target: MobileDeliveryTarget): MobileDeliveryOperation = postJson(
         path = "/api/mobile/sessions/$sessionId/delivery/release-plan", body = JSONObject().put("target", target.name),
         authenticated = true, parser = ::parseMobileDeliveryOperation
     )
+
+    suspend fun retryDeliveryResolver(sessionId: Long, operationId: UUID, runId: Long): MobileSourceUpdate = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/source-updates/$operationId/resolver-runs/$runId/retry",
+        body = JSONObject(), authenticated = true
+    ) { json -> parseMobileSourceUpdate(json).also { require(it.sessionId == sessionId && it.id == operationId) } }
+
+    suspend fun recoverDeliverySource(sessionId: Long, operationId: UUID): MobileSourceUpdate = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/source-updates/$operationId/recover",
+        body = JSONObject(), authenticated = true
+    ) { json -> parseMobileSourceUpdate(json).also { require(it.sessionId == sessionId && it.id == operationId) } }
 
     suspend fun authorizeRelease(id: UUID, totp: String): UUID = postJson(
         path = "/api/mobile/delivery/$id/authorize", body = JSONObject().put("totp", totp), authenticated = true

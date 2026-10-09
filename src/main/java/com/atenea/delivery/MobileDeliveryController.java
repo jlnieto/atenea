@@ -20,20 +20,50 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class MobileDeliveryController {
     private final MobileDeliveryService service;
-    public MobileDeliveryController(MobileDeliveryService service) { this.service = service; }
+    private final SourceUpdateService sourceUpdates;
+    private final SourceFinalizationService finalizations;
+    public MobileDeliveryController(MobileDeliveryService service, SourceUpdateService sourceUpdates, SourceFinalizationService finalizations) {
+        this.service = service; this.sourceUpdates = sourceUpdates; this.finalizations=finalizations;
+    }
 
     @GetMapping("/api/mobile/sessions/{sessionId}/delivery")
     public DeliveryState list(@PathVariable Long sessionId,
             @AuthenticationPrincipal AuthenticatedOperator actor) {
-        return new DeliveryState(service.isEnabled(),service.list(sessionId, actor));
+        return new DeliveryState(service.isEnabled(),service.list(sessionId, actor),
+                service.observeIntegration(sessionId, actor), sourceUpdates.isEnabled(), sourceUpdates.observe(sessionId, actor));
     }
-    public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations) { }
+    public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations,
+            MobileDeliveryService.IntegrationObservation integration, boolean sourceUpdateEnabled,
+            SourceUpdateOperation.View sourceUpdate) { }
+
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/resolve-conflicts")
+    public SourceUpdateOperation.View resolveConflicts(@PathVariable Long sessionId,
+            @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request, Set.of());
+        return sourceUpdates.request(sessionId, actor);
+    }
 
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/pr")
     public DeliveryOperation.DeliveryView publish(@PathVariable Long sessionId,
             @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
         exact(request, Set.of());
         return service.request(sessionId, actor, "PUBLISH_PR", DeliveryTarget.APP_PROD);
+    }
+
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/source-updates/{operationId}/recover")
+    public SourceUpdateOperation.View recoverSource(@PathVariable Long sessionId, @PathVariable UUID operationId,
+            @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request,Set.of());
+        if (!sourceUpdates.isEnabled()) throw new DeliveryRejectedException("SOURCE_UPDATE_DISABLED");
+        return finalizations.recover(sessionId,operationId,actor)
+            ? sourceUpdates.observe(sessionId,actor) : sourceUpdates.recoverPreparation(sessionId,operationId,actor);
+    }
+
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/source-updates/{operationId}/resolver-runs/{runId}/retry")
+    public SourceUpdateOperation.View retryResolver(@PathVariable Long sessionId, @PathVariable UUID operationId,
+            @PathVariable Long runId, @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request,Set.of());
+        return sourceUpdates.retryResolver(sessionId,operationId,runId,actor);
     }
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/integrate")
     public DeliveryOperation.DeliveryView integrate(@PathVariable Long sessionId,

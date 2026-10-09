@@ -8,6 +8,7 @@ import com.atenea.auth.action.PrivilegedActionBinding;
 import com.atenea.auth.recovery.OperatorRecoveryService;
 import com.atenea.github.GitHubClient;
 import com.atenea.github.GitHubIntegrationException;
+import com.atenea.github.GitHubMergeState;
 import com.atenea.github.GitHubRepositoryRef;
 import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.auth.OperatorRepository;
@@ -65,6 +66,30 @@ public class MobileDeliveryService {
     }
     public boolean isEnabled() { return executor.enabled(); }
 
+    public IntegrationObservation observeIntegration(Long sessionId, AuthenticatedOperator actor) {
+        administrator(actor.operatorId());
+        WorkSessionEntity session = session(sessionId, false);
+        if (session.getPullRequestUrl() == null) return new IntegrationObservation(sessionId, null, "NOT_PUBLISHED", false, null);
+        try {
+            owned(session);
+            published(session);
+            GitHubMergeState state = github.observeMergeState(APP,
+                    github.extractPullRequestNumber(session.getPullRequestUrl()),
+                    session.getPublishedHeadBranch(), session.getFinalCommitSha());
+            if (state == null) return new IntegrationObservation(sessionId, session.getFinalCommitSha(), "UNAVAILABLE", false, "GITHUB_UNAVAILABLE");
+            return new IntegrationObservation(sessionId, session.getFinalCommitSha(), state.name(),
+                    state == GitHubMergeState.MERGEABLE, null);
+        } catch (DeliveryRejectedException rejected) {
+            return new IntegrationObservation(sessionId, session.getFinalCommitSha(), "STALE_SOURCE", false, rejected.code());
+        } catch (GitHubIntegrationException unavailable) {
+            return new IntegrationObservation(sessionId, session.getFinalCommitSha(), "UNAVAILABLE", false, "GITHUB_UNAVAILABLE");
+        }
+    }
+
+    /** This permits requesting the normal checked integration, not bypassing CI or review. */
+    public record IntegrationObservation(Long sessionId, String sourceCommit, String mergeState,
+            boolean canRequestIntegration, String errorCode) { }
+
     public DeliveryOperation.DeliveryView request(Long sessionId, AuthenticatedOperator actor, String kind, DeliveryTarget target) {
         enabled();
         administrator(actor.operatorId());
@@ -80,8 +105,11 @@ public class MobileDeliveryService {
                     throw new DeliveryRejectedException("CLOSED_REQUEST_REQUIRED");
                 }
                 if ("PUBLISH_PR".equals(kind)) {
-                    if (session.getPullRequestStatus() != null && session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED) {
-                        var receipt = store.list(sessionId).stream().filter(op -> op.kind().equals(kind) && op.state().equals("SUCCEEDED")).findFirst();
+                    if (session.getPullRequestStatus() != null && session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED
+                            && Objects.equals(session.getDevelopmentChange().getSourceRevision(), session.getPublishedSourceRevision())
+                            && Objects.equals(session.getDevelopmentChange().getSourceFingerprintSha256(),session.getPublishedSourceFingerprintSha256())) {
+                        var receipt = store.list(sessionId).stream().filter(op -> op.kind().equals(kind) && op.state().equals("SUCCEEDED")
+                            && Objects.equals(op.evidence().path("headCommit").asText(),session.getFinalCommitSha())).findFirst();
                         if (receipt.isPresent()) return receipt.get().view();
                         published(session);
                         if (session.getPullRequestStatus() == WorkSessionPullRequestStatus.DECLINED) {
@@ -314,11 +342,19 @@ public class MobileDeliveryService {
                     waitForUfd(op, "UFD_NOT_STARTED");
                 } else if (message != null && message.startsWith("UFD_QUEUED:")) {
                     store.update(op, "WAITING_CI", "UFD_QUEUED", null, op.evidence());
+                } else if (message != null && message.startsWith("PR_MERGEABILITY_PENDING:")) {
+                    store.update(op, "WAITING_CI", "PR_MERGEABILITY_PENDING", null, op.evidence());
+                } else if (message != null && message.startsWith("PR_MERGE_CONFLICTS:")) {
+                    store.update(op, "BLOCKED", "PR_MERGE_CONFLICTS", null, op.evidence());
+                } else if (message != null && message.startsWith("PR_PROTECTED:")) {
+                    store.update(op, "BLOCKED", "PR_PROTECTED", null, op.evidence());
+                } else if (message != null && (message.startsWith("UFD_FAILED:") || message.startsWith("CI_FAILED:"))) {
+                    store.update(op, "BLOCKED", "GITHUB_CHECKS_FAILED", null, op.evidence());
                 } else if (message != null && (message.startsWith("UFD_PENDING:") || message.startsWith("CI_PENDING:"))) {
                     store.update(op, "WAITING_CI", "CI_PENDING", null, op.evidence());
                 } else if (message != null && List.of("PR_OWNERSHIP_MISMATCH", "PR_CLOSED:",
                         "COMMIT_IDENTITY_INVALID", "CI_EVIDENCE_INCOMPLETE", "PR_READY_REJECTED", "MERGE_REJECTED",
-                        "UFD_FAILED:", "CI_FAILED:").stream().anyMatch(message::startsWith)) {
+                        "PR_EVIDENCE_INCOMPLETE").stream().anyMatch(message::startsWith)) {
                     store.update(op, "BLOCKED", "GITHUB_REJECTED", null, op.evidence());
                 } else if (message != null && List.of("UFD_IDENTITY_REJECTED", "UFD_EVIDENCE_INCOMPLETE").contains(message)) {
                     store.update(op, "BLOCKED", message, null, op.evidence());

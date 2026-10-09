@@ -138,12 +138,30 @@ public class AgentRunService {
             AgentRunEntity retryOfRun,
             TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection
     ) {
+        return createRemoteQueuedRun(session, originTurn, workloadClass, retryOfRun, attachmentSelection, null);
+    }
+
+    /** Internal closed exception to published-session admission, never a mobile prompt parameter. */
+    @Transactional
+    public AgentRunEntity createSourceUpdateResolverRun(WorkSessionEntity session,
+            SessionTurnEntity originTurn, UUID sourceUpdateId) {
+        if (sourceUpdateId == null || originTurn.getActor() != SessionTurnActor.ATENEA || originTurn.isInternal()
+                || originTurn.getSession() == null || !Objects.equals(originTurn.getSession().getId(), session.getId())) {
+            throw invalidChangeBinding();
+        }
+        return createRemoteQueuedRun(session, originTurn, WorkloadClass.NORMAL, null, null, sourceUpdateId);
+    }
+
+    private AgentRunEntity createRemoteQueuedRun(WorkSessionEntity session, SessionTurnEntity originTurn,
+            WorkloadClass workloadClass, AgentRunEntity retryOfRun,
+            TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection, UUID sourceUpdateId) {
         Instant now = Instant.now();
         lockCodexActivation(session.getSelectedWorkerId());
         ensureNoNonTerminalRun(session.getId());
         workSessionAcceptanceService.invalidateForNewRun(session);
-        ChangeBinding changeBinding = changeBinding(session);
-        requireCompatibleRetryBinding(retryOfRun, changeBinding);
+        ChangeBinding changeBinding = changeBinding(session, sourceUpdateId, originTurn.getId());
+        if (sourceUpdateId==null || retryOfRun==null) requireCompatibleRetryBinding(retryOfRun, changeBinding);
+        else if (!authorizedObservedResolverRetry(sourceUpdateId,retryOfRun,changeBinding)) throw invalidChangeBinding();
         if (session.getRemoteSessionId() == null
                 || (!"synthetic-routing-v1".equals(session.getRemoteWorkloadKind())
                     && !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind()))
@@ -209,12 +227,29 @@ public class AgentRunService {
 
     @Transactional
     public AgentRunEntity createRemoteRetryRun(Long sourceRunId) {
+        return createRemoteRetryRun(sourceRunId, null);
+    }
+
+    /** Only admitted by the durable, administrator-authorized resolver retry. */
+    @Transactional
+    public AgentRunEntity createSourceUpdateResolverRetryRun(Long sourceRunId, UUID sourceUpdateId) {
+        if (sourceUpdateId == null || !Long.valueOf(1).equals(jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM mobile_source_resolver_retry r JOIN mobile_source_update_operation op ON op.id=r.operation_id
+                WHERE r.operation_id=? AND r.source_run_id=? AND r.run_id IS NULL AND op.state='RETRY_REQUESTED'
+                """, Long.class, sourceUpdateId, sourceRunId))) throw invalidChangeBinding();
+        return createRemoteRetryRun(sourceRunId, sourceUpdateId);
+    }
+
+    private AgentRunEntity createRemoteRetryRun(Long sourceRunId, UUID sourceUpdateId) {
         AgentRunEntity source = agentRunRepository.findByIdForUpdate(sourceRunId)
                 .orElseThrow(() -> new AgentRunNotFoundException(sourceRunId));
         if (source.getStatus() != AgentRunStatus.FAILED
                 || source.getExecutionTarget() != ExecutionTarget.REMOTE) {
             throw new AgentRunRecoveryConflictException(
                     "Only an exact failed remote AgentRun may be retried");
+        }
+        if (sourceUpdateId == null && ownsSourceUpdateResolver(source)) {
+            throw new AgentRunRecoveryConflictException("Use the authorized conflict recovery action for this resolver");
         }
         requireRemoteRetryEligible(source);
         AgentRunEntity existing = agentRunRepository
@@ -231,7 +266,7 @@ public class AgentRunService {
                 source.getOriginTurn(),
                 source.getWorkloadClass(),
                 source,
-                attachmentSelection);
+                attachmentSelection, sourceUpdateId);
     }
 
     public void requireRemoteRetryEligible(AgentRunEntity source) {
@@ -267,12 +302,21 @@ public class AgentRunService {
         if (source == null || !source.getStatus().isTerminal()) {
             return false;
         }
+        if (ownsSourceUpdateResolver(source)) return false;
         try {
             requireRemoteRetryEligible(source);
             return true;
         } catch (AgentRunRecoveryConflictException exception) {
             return false;
         }
+    }
+
+    private boolean ownsSourceUpdateResolver(AgentRunEntity source) {
+        if (source.getSession()==null || source.getSession().getPublishedChangeKey()==null) return false;
+        return Long.valueOf(1).equals(jdbcTemplate.queryForObject("""
+            SELECT count(*) FROM mobile_source_update_operation op WHERE op.session_id=?
+                AND (op.resolver_run_id=? OR EXISTS (SELECT 1 FROM mobile_source_resolver_retry r WHERE r.operation_id=op.id AND r.run_id=?))
+            """,Long.class,source.getSession().getId(),source.getId(),source.getId()));
     }
 
     private boolean matchingBlockerHasReleasedReceipt(AgentRunEntity source) {
@@ -551,9 +595,10 @@ public class AgentRunService {
                 || BeautipsProjectCodexIdentity.matchesPinnedSession(session);
     }
 
-    private ChangeBinding changeBinding(WorkSessionEntity session) {
+    private ChangeBinding changeBinding(WorkSessionEntity session, UUID sourceUpdateId, Long originTurnId) {
         DevelopmentChangeEntity linked = session.getDevelopmentChange();
         if (linked == null) {
+            if (sourceUpdateId != null) throw invalidChangeBinding();
             return null;
         }
         if (linked.getChangeKey() == null) {
@@ -575,6 +620,30 @@ public class AgentRunService {
         String expectedWorkspace = "remote:" + change.getSelectedWorkerId()
                 + ":change:" + change.getChangeKey();
         String expectedWorkspaceBranch = "atenea/change-" + change.getChangeKey();
+        boolean resolverAdmitted = sourceUpdateId != null && Long.valueOf(1).equals(jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM mobile_source_update_operation op
+                WHERE op.id=? AND op.session_id=? AND op.state='READY_TO_RESOLVE'
+                  AND op.resolver_turn_id=? AND op.resolver_run_id IS NULL
+                  AND op.prepared_revision=? AND op.publication_receipt_sha256=?
+                  AND op.command_json->'owner'->>'changeKey'=?
+                  AND op.command_json->'owner'->>'sourceCommit'=?
+                  AND op.preparation_json->>'preparedFingerprintSha256'=?
+                """, Long.class, sourceUpdateId, session.getId(), originTurnId, change.getSourceRevision(),
+                session.getPublicationReceiptSha256(), change.getChangeKey().toString(),
+                change.getObservedCanonicalCommit(), change.getSourceFingerprintSha256()));
+        if (sourceUpdateId != null && !resolverAdmitted) {
+            resolverAdmitted = Long.valueOf(1).equals(jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM mobile_source_update_operation op JOIN mobile_source_resolver_retry r ON r.operation_id=op.id
+                JOIN agent_run failed ON failed.id=r.source_run_id
+                WHERE op.id=? AND op.session_id=? AND op.state='RETRY_REQUESTED' AND r.run_id IS NULL
+                  AND op.resolver_turn_id=? AND failed.origin_turn_id=op.resolver_turn_id AND failed.status='FAILED'
+                  AND r.source_revision=? AND op.publication_receipt_sha256=?
+                  AND op.command_json->'owner'->>'changeKey'=? AND op.command_json->'owner'->>'sourceCommit'=?
+                  AND r.observed_fingerprint_sha256=?
+                """,Long.class, sourceUpdateId, session.getId(), originTurnId, change.getSourceRevision(),
+                session.getPublicationReceiptSha256(),change.getChangeKey().toString(),change.getObservedCanonicalCommit(),
+                change.getSourceFingerprintSha256()));
+        }
         if (session.getId() == null
                 || session.getProject() == null
                 || session.getProject().getId() == null
@@ -589,7 +658,10 @@ public class AgentRunService {
                 || change.getWorkspaceOperationRevision() < 1
                 || change.getWorkspaceUpdatedAt() == null
                 || activeWorkspaceOperation
-                || session.getPublishedChangeKey() != null
+                || (session.getPublishedChangeKey() != null && !resolverAdmitted)
+                || (sourceUpdateId != null && (!resolverAdmitted
+                    || !Objects.equals(session.getPublishedChangeKey(), change.getChangeKey())
+                    || !Objects.equals(session.getFinalCommitSha(), change.getObservedCanonicalCommit())))
                 || !workerAdmitted
                 || linkedSessions.size() != 1
                 || !Objects.equals(linkedSessions.getFirst().getId(), session.getId())
@@ -659,6 +731,18 @@ public class AgentRunService {
             throw new AgentRunRecoveryConflictException(
                     "The change-bound AgentRun retry no longer matches durable ownership");
         }
+    }
+
+    private boolean authorizedObservedResolverRetry(UUID operationId, AgentRunEntity failed, ChangeBinding binding) {
+        return binding!=null && java.util.Objects.equals(failed.getDevelopmentChangeKey(),binding.changeKey())
+            && java.util.Objects.equals(failed.getChangeBaseCommit(),binding.baseCommit())
+            && java.util.Objects.equals(failed.getRepositoryCommit(),binding.sourceCommit())
+            && Long.valueOf(1).equals(jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM mobile_source_resolver_retry r JOIN mobile_source_update_operation op ON op.id=r.operation_id
+                WHERE r.operation_id=? AND r.source_run_id=? AND r.run_id IS NULL AND op.state='RETRY_REQUESTED'
+                  AND r.source_revision=? AND r.workspace_dirty=?
+                  AND r.observed_fingerprint_sha256=?
+                """,Long.class,operationId,failed.getId(),binding.sourceRevision(),binding.workspaceDirty(),binding.sourceFingerprintSha256()));
     }
 
     private boolean inspectedChangeOwnershipIsReady(

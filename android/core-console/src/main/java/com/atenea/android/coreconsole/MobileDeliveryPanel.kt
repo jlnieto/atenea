@@ -19,8 +19,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.MobileDeliveryOperation
+import com.atenea.android.api.MobileDeliveryIntegration
 import com.atenea.android.api.MobileDeliveryState
 import com.atenea.android.api.MobileDeliveryTarget
+import com.atenea.android.api.MobileSourceUpdate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -36,6 +38,12 @@ internal class MobileDeliveryUiState(
         this(sessionId, scope, { api.fetchDelivery(sessionId) })
     var operations by mutableStateOf(emptyList<MobileDeliveryOperation>())
         private set
+    var integration by mutableStateOf<MobileDeliveryIntegration?>(null)
+        private set
+    var sourceUpdate by mutableStateOf<MobileSourceUpdate?>(null)
+        private set
+    var sourceUpdateEnabled by mutableStateOf(false)
+        private set
     var available by mutableStateOf(false)
         private set
     var loaded by mutableStateOf(false)
@@ -47,11 +55,40 @@ internal class MobileDeliveryUiState(
     var actionError by mutableStateOf<String?>(null)
         private set
 
+    fun canResolveConflicts(validated: Boolean, runInProgress: Boolean): Boolean =
+        available && sourceUpdateEnabled
+            && ((sourceUpdate == null && integration?.mergeState == "CONFLICTS")
+                || sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE", "PUBLISHED"))
+            && validated && !runInProgress && !busy
+            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
+
+    fun canUpdatePullRequest(validated: Boolean, runInProgress: Boolean): Boolean =
+        available && sourceUpdateEnabled && sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
+            && validated && !runInProgress && !busy
+            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
+
+    fun canRetryResolver(runInProgress: Boolean): Boolean =
+        available && sourceUpdateEnabled && sourceUpdate?.state == "FAILED" && sourceUpdate?.resolverRunId != null
+            && !runInProgress && !busy
+            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
+
+    fun canRecoverSource(validated: Boolean, runInProgress: Boolean): Boolean =
+        available && sourceUpdateEnabled && sourceUpdate?.recoveryAvailable == true && !runInProgress && !busy
+            && ((sourceUpdate?.state in setOf("ATTENTION", "BLOCKED", "UNCERTAIN") && sourceUpdate?.resolverRunId == null)
+                || (validated && sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
+                    && operations.any { it.kind == "PUBLISH_PR" && it.state in setOf("BLOCKED", "FAILED") }))
+            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
+
     suspend fun refresh() {
         try {
             val state = load()
             require(state.operations.all { it.sessionId == sessionId })
+            require(state.integration?.sessionId?.let { it == sessionId } ?: true)
+            require(state.sourceUpdate?.sessionId?.let { it == sessionId } ?: true)
             operations = state.operations
+            integration = state.integration
+            sourceUpdate = state.sourceUpdate
+            sourceUpdateEnabled = state.sourceUpdateEnabled
             available = state.enabled
             loaded = true
             loadError = null
@@ -60,6 +97,8 @@ internal class MobileDeliveryUiState(
         } catch (failure: Exception) {
             // Keep durable IDs visible, but never authorize actions from a stale capability response.
             available = false
+            integration = null
+            sourceUpdateEnabled = false
             loadError = "No se pudo consultar la publicación. ${failure.message.orEmpty()}"
         }
     }
@@ -134,13 +173,40 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
         pr?.pullRequestUrl?.takeIf { it.matches(Regex("https://github\\.com/jlnieto/atenea/pull/[1-9][0-9]*")) }?.let { url ->
             TextButton(onClick = { uriHandler.openUri(url) }) { Text("Revisar PR") }
         }
+        if (pr?.state == "SUCCEEDED" && integration?.state != "SUCCEEDED") {
+            Text(deliveryIntegrationLabel(state.integration?.mergeState))
+        }
+        state.sourceUpdate?.let { update ->
+            Text(sourceUpdateLabel(update.state))
+            update.errorCode?.let { Text("Recuperación detenida: $it. La misma operación y conversación se conservan.") }
+            if (state.canRecoverSource(validated,runInProgress)) {
+                Text("Recuperar termina la operación retenida; no cambia su main ni descarta archivos.")
+                AteneaButton("Recuperar operación", enabled = true,
+                    onClick = { act { api.recoverDeliverySource(sessionId,update.id) } })
+            }
+            val resolverRunId = update.resolverRunId
+            if (update.state == "FAILED" && resolverRunId != null) {
+                Text("Reintentar comprueba la misma fuente y conserva el intento fallido. Consultar no ejecuta otro resolver.")
+                AteneaButton("Reintentar resolución", enabled = state.canRetryResolver(runInProgress),
+                    onClick = { act { api.retryDeliveryResolver(sessionId, update.id, resolverRunId) } })
+            }
+        }
+        if ((state.integration?.mergeState == "CONFLICTS" && state.sourceUpdate == null)
+            || state.sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE", "PUBLISHED")) {
+            AteneaButton(if (state.sourceUpdate == null) "Resolver conflictos" else "Actualizar base con main", enabled = state.canResolveConflicts(validated, runInProgress),
+                onClick = { act { api.resolveDeliveryConflicts(sessionId) } })
+        }
         state.loadError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (pr?.state != "SUCCEEDED") {
+        if (state.sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")) {
+            AteneaButton("Actualizar la misma PR", enabled = state.canUpdatePullRequest(validated, runInProgress),
+                onClick = { act { api.createDeliveryPullRequest(sessionId) } })
+        } else if (pr?.state != "SUCCEEDED") {
             AteneaButton("Crear PR", enabled = available && validated && !runInProgress && !busy && !active,
                 onClick = { act { api.createDeliveryPullRequest(sessionId) } })
         } else if (integration?.state != "SUCCEEDED") {
-            AteneaButton("Integrar cambio", enabled = available && validated && !runInProgress && !busy && !active,
+            AteneaButton("Integrar cambio", enabled = available && validated && !runInProgress && !busy && !active
+                    && state.integration?.allowsRequest == true,
                 onClick = { confirmMerge = true })
         }
         if (integration?.state == "SUCCEEDED") {
@@ -159,7 +225,8 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
     if (confirmMerge) {
         AlertDialog(onDismissRequest = { confirmMerge = false }, title = { Text("Integrar este cambio") },
             text = { Text("Atenea comprobará el commit validado y las protecciones de GitHub. Integrar no despliega a PROD.") },
-            confirmButton = { TextButton(onClick = {
+            confirmButton = { TextButton(enabled = available && validated && !runInProgress && !busy && !active
+                    && state.integration?.allowsRequest == true, onClick = {
                 confirmMerge = false; act { api.integrateDelivery(sessionId) }
             }) { Text("Integrar") } },
             dismissButton = { TextButton(onClick = { confirmMerge = false }) { Text("Cancelar") } })
@@ -189,6 +256,29 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
     }
 }
 
+internal fun sourceUpdateLabel(state: String): String = when (state) {
+    "QUEUED", "PREPARE_CLAIMED" -> "Preparando conflictos en esta WorkSession…"
+    "UNCERTAIN" -> "Comprobando la misma preparación; no repitas la acción."
+    "READY_TO_RESOLVE" -> "Preparación lista; Atenea está iniciando el resolver."
+    "RETRY_REQUESTED" -> "Reintento autorizado de la misma resolución."
+    "RESOLVING" -> "Codex está resolviendo los conflictos en esta conversación."
+    "RESOLVER_COMPLETED" -> "Codex terminó. Falta validar la nueva revisión y actualizar la misma PR."
+    "READY_TO_FINALIZE" -> "Preparación terminada. Falta validar la nueva revisión y actualizar la misma PR."
+    "PUBLISHED" -> "La misma PR contiene la revisión nueva. GitHub debe validar este head antes de integrar."
+    else -> "La recuperación necesita atención. No se ha integrado ni publicado el cambio."
+}
+
+internal fun deliveryIntegrationLabel(mergeState: String?): String = when (mergeState) {
+    "CONFLICTS" -> "La PR tiene conflictos con main. Hay que resolverlos antes de integrar."
+    "UNKNOWN" -> "GitHub está calculando si la PR puede integrarse; no significa que esté ejecutando pruebas."
+    "PROTECTED" -> "Las protecciones de GitHub todavía no permiten integrar esta PR."
+    "STALE_SOURCE" -> "El código cambió después de publicar. Esta revisión necesita validación y actualización de la PR."
+    "MERGEABLE" -> "La rama no tiene conflictos. Al integrar, Atenea volverá a comprobar la revisión y las pruebas."
+    "MERGED" -> "GitHub observa la PR integrada. Atenea debe reconciliar el resultado antes de publicar."
+    "CLOSED" -> "La PR está cerrada sin integrar."
+    else -> "No se pudo confirmar el estado de integración. Consulta de nuevo antes de continuar."
+}
+
 internal fun deliveryKindLabel(operation: MobileDeliveryOperation): String = when (operation.kind) {
     "PUBLISH_PR" -> "PR"; "INTEGRATE" -> "Integración"; else -> operation.target.label
 }
@@ -202,6 +292,10 @@ internal fun deliveryStateLabel(state: String): String = when (state) {
 }
 
 internal fun deliveryErrorLabel(code: String): String = when (code) {
+    "PR_MERGE_CONFLICTS" -> "La PR tiene conflictos con main. No se ha integrado; hay que resolverlos."
+    "PR_MERGEABILITY_PENDING" -> "GitHub está calculando la integración de la PR; no está ejecutando pruebas por esta consulta."
+    "PR_PROTECTED" -> "Las protecciones de GitHub impiden integrar esta PR."
+    "GITHUB_CHECKS_FAILED" -> "Las comprobaciones de este commit han fallado. Hay que corregir el código antes de continuar."
     "UFD_QUEUED" -> "GitHub ha registrado las comprobaciones y están en cola. Atenea seguirá esperando; no necesitas repetir la acción."
     "UFD_REQUESTED" -> "Atenea ha solicitado las comprobaciones del commit a GitHub. Está esperando que arranquen; no necesitas repetir la acción."
     "UFD_DISPATCH_UNCONFIRMED" -> "Atenea no ha podido confirmar el inicio. Consulta la misma operación; no se enviará otra solicitud automáticamente."
