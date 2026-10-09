@@ -149,10 +149,17 @@ de cada reintento. El móvil muestra la revisión actual; el turno, el intento
 original y la preparación siguen en el historial. Dos solicitudes simultáneas
 admiten un único run y una única revisión observada.
 
-Un HEAD u ownership distintos se rechazan sin tocar archivos. Un main nuevo
-no se elige por defecto: todavía falta la transición cerrada a otra preparación.
-La recuperación tampoco habilita integración o publicación sin nueva validación.
-No está desplegada ni aceptada en el móvil todavía.
+Un HEAD u ownership distintos se rechazan sin tocar archivos. Tras una
+preparación completada o la actualización de la misma PR, Actualizar base con
+main solicita una continuación v2 con predecesor y main exactos derivados por
+App. Conserva los archivos resueltos, la rama, PR y evidencia anteriores; si
+main no cambió, devuelve la misma operación. V90 enlaza las preparaciones sin
+reemplazar sus recibos. La fuente nueva exige otra validación de cuatro checks.
+
+Una preparación todavía pendiente conserva su intención original. Una
+publicación incierta bloquea la continuación: no se descarta evidencia ni se
+elige otro main implícitamente. El cierre de recuperación de esas fronteras
+sigue pendiente. No está desplegada ni aceptada en el móvil todavía.
 
 Antes de publicar el ajuste de conversación, ejecutar los tests focales del
 backend y cliente API de `validation-evidence`, y los tests Compose de

@@ -34,11 +34,11 @@ public class SourceUpdateStore {
         var owner = command.owner();
         jdbc.update("""
                 INSERT INTO mobile_source_update_operation
-                (id,idempotency_key,session_id,operator_id,publication_receipt_sha256,state,command_json,
+                (id,idempotency_key,session_id,operator_id,publication_receipt_sha256,state,command_json,predecessor_id,
                     original_source_commit,original_fingerprint_sha256)
-                VALUES (?,?,?,?,?,'QUEUED',?::jsonb,?,?)
+                VALUES (?,?,?,?,?,'QUEUED',?::jsonb,?,?,?)
                 """, owner.operationId(), owner.idempotencyKey(), sessionId, operatorId,
-                command.publicationReceiptSha256(), json(command), originalSourceCommit, originalFingerprint);
+                command.publicationReceiptSha256(), json(command),command.predecessorPreparationOperationId(), originalSourceCommit, originalFingerprint);
         return get(owner.operationId(), false);
     }
     public void requireIdle() {
@@ -46,6 +46,7 @@ public class SourceUpdateStore {
         Long active = jdbc.queryForObject("""
                 SELECT (SELECT count(*) FROM agent_run WHERE status NOT IN ('SUCCEEDED','FAILED','CANCELLED'))
                      + (SELECT count(*) FROM validation_operation WHERE status='RUNNING')
+                     + (SELECT count(*) FROM mobile_source_finalization WHERE state <> 'PUBLISHED')
                      + (SELECT count(*) FROM mobile_delivery_operation WHERE state NOT IN
                          ('SUCCEEDED','ROLLED_BACK','FAILED','BLOCKED','ROLLBACK_FAILED'))
                 """, Long.class);

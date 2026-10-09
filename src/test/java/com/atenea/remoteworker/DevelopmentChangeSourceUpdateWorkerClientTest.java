@@ -40,6 +40,25 @@ class DevelopmentChangeSourceUpdateWorkerClientTest {
             old.workspaceBranch(),old.workspaceIdentity(),old.workerId(),4,"a".repeat(64)),command.targetMainCommit(),command.publicationReceiptSha256(),
             UUID.randomUUID(),"b".repeat(64),"c".repeat(64));
     }
+    @Test void continuationIsVersionedClosedAndBindsObservedSourceAndSealedPredecessor() throws Exception {
+        var old=command.owner();
+        var owner=new DevelopmentChangeBranchPublicationCommand(UUID.randomUUID(),UUID.randomUUID(),old.changeKey(),old.databaseProjectId(),
+            old.projectIdentity(),old.repository(),old.repositoryBranch(),old.baseCommit(),old.sourceCommit(),old.workspaceBranch(),
+            old.workspaceIdentity(),old.workerId(),5,"a".repeat(64));
+        var next=new DevelopmentChangeSourceUpdateCommand(owner,"b".repeat(40),command.publicationReceiptSha256(),old.operationId(),"c".repeat(64),3L);
+        var body=client.request(next,DevelopmentChangeSourceUpdateCommand.Action.PREPARE);
+        assertEquals(24,body.size());assertEquals("development-change-source-update/v2",body.get("protocolVersion"));
+        assertEquals("a".repeat(64),body.get("sourceFingerprintSha256"));assertEquals(3L,body.get("publishedSourceRevision"));
+        assertEquals(old.operationId().toString(),body.get("predecessorPreparationOperationId"));
+        String hash=(String)body.remove("requestFingerprintSha256");
+        assertEquals(hash,HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(mapper.writeValueAsBytes(body))));
+        ObjectNode request=mapper.valueToTree(client.request(next,DevelopmentChangeSourceUpdateCommand.Action.INSPECT));
+        ObjectNode response=request.deepCopy();response.put("state","ABSENT").putNull("preparedTreeSha").putNull("preparedFingerprintSha256")
+            .putNull("receiptSha256").put("valuesExposed",false).putArray("conflictFiles");
+        assertEquals(DevelopmentChangeSourceUpdateGateway.State.ABSENT,client.validate(response,request).state());
+        assertThrows(RemoteWorkerException.class,()->client.validate(response.deepCopy().put("predecessorPreparationReceiptSha256","d".repeat(64)),request));
+        assertThrows(IllegalArgumentException.class,()->new DevelopmentChangeSourceUpdateCommand(owner,"b".repeat(40),command.publicationReceiptSha256()));
+    }
     @Test void finalizationContractBindsPreparationValidationAndNewRevision() throws Exception {
         var command=finalization();
         var body=client.finalizationRequest(command,DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE);

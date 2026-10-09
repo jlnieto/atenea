@@ -75,6 +75,11 @@ class MobileDeliveryUiStateTest {
             val id=state.sourceUpdate!!.id
             update=update!!.copy(state="RESOLVER_COMPLETED")
             state.refresh(); assertEquals(id,state.sourceUpdate!!.id)
+            assertTrue(state.canResolveConflicts(true,false))
+            assertFalse(state.canResolveConflicts(false,false)); assertFalse(state.canResolveConflicts(true,true))
+            update=update!!.copy(state="PUBLISHED");state.refresh()
+            assertTrue(state.canResolveConflicts(true,false)); assertEquals(id,state.sourceUpdate!!.id)
+            update=update!!.copy(state="RESOLVER_COMPLETED");state.refresh()
             assertFalse(state.integration!!.allowsRequest)
             assertTrue(sourceUpdateLabel("RESOLVER_COMPLETED").contains("Falta validar"))
             online=false; state.refresh()

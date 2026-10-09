@@ -57,10 +57,15 @@ archivos parciales y pruebas combinadas de interrupciones implementados localmen
 Conserva el intento fallido, el mismo prompt y la preparación. No está integrada
 ni desplegada.
 
-Siguiente paso: cerrar la recuperación ante un nuevo avance de main, tanto antes
-como después de actualizar la PR, conservando la historia y sin reset implícito.
-Después, integración conjunta. No resolver manualmente PR 47 para sustituir
-estas capacidades.
+Continuación ante otro avance de main implementada localmente: parte de una
+preparación completada, antes de publicar sus archivos o después de actualizar
+la misma PR. Conserva archivos, historial y recibos; exige validación vigente.
+No está integrada ni desplegada.
+
+Siguiente paso: cerrar la revisión de interrupciones cuando main avanza con una
+preparación pendiente o una publicación incierta. Esos estados siguen fijados a
+su intención original y no se sustituyen automáticamente. Después, integración
+conjunta. No resolver manualmente PR 47 para sustituir estas capacidades.
 
 ## Reglas para terminar sin ampliar el alcance
 
@@ -352,6 +357,31 @@ peticiones simultáneas, rechazo de HEAD/ownership/hash ajenos, validación nuev
 y actualización de la misma PR en fixtures. Falta la transición a otra
 preparación ante un nuevo avance de main, incluidos los estados previos a
 publicar. La entrega 1 aún no está lista para integrar o aceptar en el móvil.
+
+2026-10-09: continuación versionada implementada localmente. PASS: 185 tests
+backend focales con PostgreSQL 16 efímero, Flyway V90 y upgrade V89 a V90;
+10 tests nuevos de continuación Platform, 32 de preparación v1, 30 de
+finalización v1, 21 del validador privilegiado (otros 5 requieren root y quedan
+omitidos), installer y `bash -n`. UFD posterior al commit se registra por separado.
+
+V90 conserva la preparación predecesora mediante una relación inmutable. App
+deriva el nuevo main, revisión y recibos; el móvil sólo solicita Actualizar base
+con main. Si main no cambió, devuelve la misma operación. La capability
+`development-change-source-update/v2` conserva el contrato v1 y añade exactamente
+el ID/recibo de preparación predecesora y la revisión publicada.
+
+Platform sella cada continuación en su propio journal y conserva un checkpoint
+privado de los archivos resueltos antes de materializar. Una autoridad activa
+sellada enlaza la preparación actual; los recibos anteriores no se reemplazan.
+Después de publicar, el predecesor es el nuevo head publicado de la misma rama.
+Los tests incluyen tres generaciones, GC, doble solicitud, interrupción antes
+de materializar y rechazo de archivos, hashes y refs ajenos sin reset.
+
+Límite pendiente: una preparación QUEUED/PREPARE_CLAIMED/UNCERTAIN no adopta otro
+main; una publicación no confirmada PUBLISHED impide otra preparación. Falta
+cerrar la recuperación explícita de esas fronteras sin borrar evidencia ni
+relajar la comprobación del main retenido. La entrega 1 aún no está lista para
+integración conjunta o aceptación móvil. WS21 y PR47 no se han operado.
 
 ## Autorización de efectos reales
 

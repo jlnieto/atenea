@@ -165,32 +165,50 @@ public class SourceUpdateService {
         administrator(actor.operatorId());
         if (!delivery.isEnabled() || !worker.isEnabled()) throw rejected("SOURCE_UPDATE_DISABLED");
         return transaction.execute(ignored -> {
+            store.lockSessionBeforeReadingSource(sessionId);
             var session = session(sessionId, true);
             var prior = store.latest(sessionId);
             if (prior.isPresent()) {
                 // A duplicate action adopts its intent even after acceptance became stale.
-                if (Objects.equals(prior.get().command().publicationReceiptSha256(), session.getPublicationReceiptSha256())) {
+                if (!java.util.Set.of("RESOLVER_COMPLETED","READY_TO_FINALIZE","PUBLISHED").contains(prior.get().state())) {
+                    if (!Objects.equals(prior.get().command().publicationReceiptSha256(),session.getPublicationReceiptSha256())) {
+                        throw rejected("SOURCE_UPDATE_PREDECESSOR_CHANGED");
+                    }
                     return prior.get().view();
                 }
-                throw rejected("SOURCE_UPDATE_PREDECESSOR_CHANGED");
-            }
-            var change = ownership.requireExactOwner(session);
-            if (!"CONFLICTS".equals(delivery.observeIntegration(sessionId, actor).mergeState())
-                    || !Objects.equals(change.getSourceRevision(), session.getPublishedSourceRevision())
-                    || session.getPublicationReceiptSha256() == null || session.getRemoteSessionId() == null) {
-                throw rejected("SOURCE_UPDATE_EXACT_CONFLICT_REQUIRED");
-            }
-            store.requireIdle();
-            if (!routing.refreshKnownWorker(ProjectCodexIdentity.WORKER_ID, "development-change-source-update/v1")) {
-                throw rejected("SOURCE_UPDATE_CAPABILITY_UNAVAILABLE");
             }
             String main = github.canonicalMain(APP);
+            if (prior.isPresent() && Objects.equals(main,prior.get().command().targetMainCommit())) return prior.get().view();
+            var change = ownership.requireExactOwner(session);
+            if (prior.isEmpty() && (!"CONFLICTS".equals(delivery.observeIntegration(sessionId, actor).mergeState())
+                    || !Objects.equals(change.getSourceRevision(), session.getPublishedSourceRevision())
+                    || session.getPublicationReceiptSha256() == null || session.getRemoteSessionId() == null)) {
+                throw rejected("SOURCE_UPDATE_EXACT_CONFLICT_REQUIRED");
+            }
+            var predecessor=prior.orElse(null);
+            if (predecessor!=null && (predecessor.preparation()==null
+                    || (!predecessor.state().equals("PUBLISHED") && (change.getSourceRevision()!=(predecessor.resultRevision()==null
+                        ? predecessor.preparedRevision() : predecessor.resultRevision())
+                        || !Objects.equals(change.getObservedCanonicalCommit(),predecessor.command().owner().sourceCommit())))
+                    || session.getPullRequestStatus()!=com.atenea.persistence.worksession.WorkSessionPullRequestStatus.OPEN
+                    || session.getPublicationReceiptSha256()==null || session.getRemoteSessionId()==null)) {
+                throw rejected("SOURCE_UPDATE_CONTINUATION_EVIDENCE_MISMATCH");
+            }
+            store.requireIdle();
+            String capability=predecessor==null ? "development-change-source-update/v1" : "development-change-source-update/v2";
+            if (!routing.refreshKnownWorker(ProjectCodexIdentity.WORKER_ID, capability)) {
+                throw rejected("SOURCE_UPDATE_CAPABILITY_UNAVAILABLE");
+            }
             var command = new DevelopmentChangeSourceUpdateCommand(new DevelopmentChangeBranchPublicationCommand(
                     UUID.randomUUID(), UUID.randomUUID(), change.getChangeKey(), change.getProject().getId(),
                     ProjectCodexIdentity.PROJECT_IDENTITY, ProjectCodexIdentity.REPOSITORY, ProjectCodexIdentity.BRANCH,
                     change.getBaseCommit(), session.getFinalCommitSha(), change.getWorkspaceBranch(),
-                    change.getWorkspaceIdentity(), change.getSelectedWorkerId(), change.getSourceRevision(), null),
-                    main, session.getPublicationReceiptSha256());
+                    change.getWorkspaceIdentity(), change.getSelectedWorkerId(), change.getSourceRevision(),
+                    predecessor!=null && !predecessor.state().equals("PUBLISHED") && change.getSourceState()==DevelopmentChangeSourceState.DIRTY
+                        ? change.getSourceFingerprintSha256() : null),
+                    main, session.getPublicationReceiptSha256(),predecessor==null ? null : predecessor.id(),
+                    predecessor==null ? null : predecessor.preparation().receiptSha256(),
+                    predecessor==null ? null : session.getPublishedSourceRevision());
             requireStructure(session, command);
             var operation = store.create(sessionId, actor.operatorId(), command,
                     change.getObservedCanonicalCommit(), change.getSourceFingerprintSha256());
@@ -397,7 +415,7 @@ public class SourceUpdateService {
                 || !Objects.equals(change.getProject().getId(), session.getProject().getId())
                 || change.getProject().getId() != owner.databaseProjectId()
                 || !Objects.equals(change.getChangeKey(), session.getPublishedChangeKey())
-                || !Objects.equals(session.getPublishedSourceRevision(), owner.sourceRevision())
+                || !Objects.equals(session.getPublishedSourceRevision(), command.publicationRevision())
                 || !Objects.equals(change.getBaseCommit(), owner.baseCommit())
                 || !Objects.equals(change.getBaseRef(), "refs/heads/main")
                 || !Objects.equals(change.getWorkspaceBranch(), owner.workspaceBranch())

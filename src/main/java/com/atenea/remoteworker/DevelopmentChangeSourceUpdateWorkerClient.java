@@ -169,7 +169,7 @@ public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentCha
         var owner = command.owner();
         var body = new TreeMap<String, Object>();
         body.put("schemaVersion", 1);
-        body.put("protocolVersion", "development-change-source-update/v1");
+        body.put("protocolVersion", command.capability());
         body.put("effect", action.effect);
         body.put("operation", action.name());
         body.put("operationId", owner.operationId().toString());
@@ -186,8 +186,13 @@ public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentCha
         body.put("workspaceIdentity", owner.workspaceIdentity());
         body.put("workerId", owner.workerId());
         body.put("sourceRevision", owner.sourceRevision());
-        body.put("sourceFingerprintSha256", null);
+        body.put("sourceFingerprintSha256", owner.sourceFingerprintSha256());
         body.put("publicationReceiptSha256", command.publicationReceiptSha256());
+        if (command.continuation()) {
+            body.put("predecessorPreparationOperationId",command.predecessorPreparationOperationId().toString());
+            body.put("predecessorPreparationReceiptSha256",command.predecessorPreparationReceiptSha256());
+            body.put("publishedSourceRevision",command.publishedSourceRevision());
+        }
         try {
             body.put("requestFingerprintSha256", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(mapper.writeValueAsBytes(body))));

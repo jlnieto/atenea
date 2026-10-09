@@ -56,7 +56,9 @@ internal class MobileDeliveryUiState(
         private set
 
     fun canResolveConflicts(validated: Boolean, runInProgress: Boolean): Boolean =
-        available && sourceUpdateEnabled && sourceUpdate == null && integration?.mergeState == "CONFLICTS"
+        available && sourceUpdateEnabled
+            && ((sourceUpdate == null && integration?.mergeState == "CONFLICTS")
+                || sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE", "PUBLISHED"))
             && validated && !runInProgress && !busy
             && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
 
@@ -177,8 +179,9 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                     onClick = { act { api.retryDeliveryResolver(sessionId, update.id, resolverRunId) } })
             }
         }
-        if (state.integration?.mergeState == "CONFLICTS" && state.sourceUpdate == null) {
-            AteneaButton("Resolver conflictos", enabled = state.canResolveConflicts(validated, runInProgress),
+        if ((state.integration?.mergeState == "CONFLICTS" && state.sourceUpdate == null)
+            || state.sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE", "PUBLISHED")) {
+            AteneaButton(if (state.sourceUpdate == null) "Resolver conflictos" else "Actualizar base con main", enabled = state.canResolveConflicts(validated, runInProgress),
                 onClick = { act { api.resolveDeliveryConflicts(sessionId) } })
         }
         state.loadError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
