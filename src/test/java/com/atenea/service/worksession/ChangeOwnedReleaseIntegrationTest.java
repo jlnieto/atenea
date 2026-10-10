@@ -7,6 +7,14 @@ import static org.mockito.Mockito.*;
 import com.atenea.github.GitHubClient;
 import com.atenea.github.GitHubPullRequest;
 import com.atenea.github.GitHubRepositoryRef;
+import com.atenea.delivery.ChangeCompletionEvidence;
+import com.atenea.delivery.DeliveryRejectedException;
+import com.atenea.delivery.DeliveryStore;
+import com.atenea.delivery.DeliveryTarget;
+import com.atenea.delivery.MobileDeliveryService;
+import com.atenea.persistence.auth.CodexOperationsRole;
+import com.atenea.persistence.auth.OperatorEntity;
+import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.developmentchange.*;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
@@ -40,6 +48,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 
 @SpringBootTest(properties = {
@@ -54,6 +63,9 @@ class ChangeOwnedReleaseIntegrationTest {
     @Autowired DevelopmentChangeRepository changes;
     @Autowired ProjectRepository projects;
     @Autowired WorkerNodeRepository workers;
+    @Autowired OperatorRepository operators;
+    @Autowired DeliveryStore deliveryStore;
+    @Autowired JdbcTemplate jdbc;
     @Autowired RemoteWorkerProperties workerProperties;
     @Autowired ObjectMapper mapper;
     @MockBean GitRepositoryService git;
@@ -66,6 +78,7 @@ class ChangeOwnedReleaseIntegrationTest {
     private ProjectEntity project;
     private WorkSessionEntity session;
     private DevelopmentChangeEntity change;
+    private OperatorEntity administrator;
     private boolean createdWorker;
     private boolean createdProject;
     private final AtomicInteger releases = new AtomicInteger();
@@ -186,8 +199,12 @@ class ChangeOwnedReleaseIntegrationTest {
     @AfterEach
     void cleanUp() {
         if (worker != null) { worker.stop(0); worker = null; }
-        if (session != null && session.getId() != null) { sessions.deleteById(session.getId()); session = null; }
+        if (session != null && session.getId() != null) {
+            jdbc.update("DELETE FROM mobile_delivery_operation WHERE session_id=?", session.getId());
+            sessions.deleteById(session.getId()); session = null;
+        }
         if (change != null && change.getId() != null) { changes.deleteById(change.getId()); change = null; }
+        if (administrator != null) { operators.deleteById(administrator.getId()); administrator = null; }
         if (createdWorker) { workers.deleteById(ProjectCodexIdentity.WORKER_ID); createdWorker = false; }
         // This non-transactional fixture must not leave a canonical project
         // behind for a later test, or remove one it merely reused.
@@ -234,10 +251,29 @@ class ChangeOwnedReleaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void terminalPublishedPrResumesClosingWithRealClientAndPostgres(boolean merged) {
+    void terminalPublishedPrWithoutCompletionIntentCannotCloseChangeOwnedSession(boolean merged) {
         when(github.getPullRequest(any(), anyLong())).thenReturn(new GitHubPullRequest(
                 999999L, session.getPullRequestUrl(), "closed", merged,
                 "jlnieto/atenea", "main", "jlnieto/atenea", session.getWorkspaceBranch(), session.getFinalCommitSha()));
+        UUID operation = session.getRemoteCloseOperationId();
+        assertEquals("DELIVERED_CHANGE_COMPLETION_REQUIRED", assertThrows(DeliveryRejectedException.class,
+                () -> service.closeSession(session.getId())).code());
+        WorkSessionEntity persisted = sessions.findById(session.getId()).orElseThrow();
+        assertEquals(WorkSessionStatus.CLOSING, persisted.getStatus());
+        assertEquals(RemoteCloseState.BLOCKED, persisted.getRemoteCloseState());
+        assertEquals(operation, persisted.getRemoteCloseOperationId());
+        assertEquals(0, releases.get());
+        assertTrue(deliveryStore.completion(session.getId()).isEmpty());
+        verifyNoInteractions(github, runReconciliation);
+        verify(git, never()).checkoutBranch(any(), any());
+        verify(git, never()).deleteLocalBranch(any(), any());
+        verify(git, never()).deleteRemoteBranch(any(), any());
+        assertEquals(DevelopmentChangeStatus.OPEN, changes.findById(change.getId()).orElseThrow().getStatus());
+    }
+
+    @Test
+    void authorizedDeliveredCompletionResumesSameRemoteCloseWithRealClientAndPostgres() throws Exception {
+        authorizeDeliveredCompletionFixture();
         UUID operation = session.getRemoteCloseOperationId();
         var response = service.closeSession(session.getId());
         var replay = service.closeSession(session.getId());
@@ -258,21 +294,77 @@ class ChangeOwnedReleaseIntegrationTest {
         assertFalse(request.get().has("commit"));
         assertNull(persisted.getCanonicalSourceCommit());
         assertNull(persisted.getCanonicalSourceObservationSha256());
-        assertEquals(merged ? WorkSessionPullRequestStatus.MERGED : WorkSessionPullRequestStatus.DECLINED,
-                persisted.getPullRequestStatus());
+        assertEquals(WorkSessionPullRequestStatus.MERGED, persisted.getPullRequestStatus());
         assertNotNull(persisted.getPublishedAt());
         assertEquals("b".repeat(40), persisted.getFinalCommitSha());
-        if (!merged) {
-            assertNull(persisted.getIntegrationReadyAt());
-            verify(git, never()).fastForwardCurrentBranchToOrigin(any(), any());
-            verify(git, never()).deleteLocalBranch(any(), any());
-            verify(git, never()).deleteRemoteBranch(any(), any());
-        }
+        assertNotNull(persisted.getIntegrationReadyAt());
+        verifyNoInteractions(github);
+        // Each returned response retains the normal operational snapshot;
+        // close must not add the legacy shared-checkout reconciliation.
+        verify(runReconciliation, times(2)).reconcileSession(session.getId());
+        verifyNoMoreInteractions(runReconciliation);
+        verify(git, never()).fastForwardCurrentBranchToOrigin(any(), any());
+        verify(git, never()).checkoutBranch(any(), any());
+        verify(git, never()).deleteLocalBranch(any(), any());
+        verify(git, never()).deleteRemoteBranch(any(), any());
         DevelopmentChangeEntity retained = changes.findById(change.getId()).orElseThrow();
         assertEquals(DevelopmentChangeStatus.OPEN, retained.getStatus());
         assertEquals(DevelopmentChangeSourceState.DIRTY, retained.getSourceState());
         assertEquals(DevelopmentChangeWorkspaceState.READY, retained.getWorkspaceState());
-        assertEquals(DevelopmentChangeProjectionState.NOT_STARTED, retained.getIntegrationState());
+        assertEquals(DevelopmentChangeProjectionState.CURRENT, retained.getIntegrationState());
+        assertEquals("APPLYING", deliveryStore.completion(session.getId()).orElseThrow().state());
+    }
+
+    private void authorizeDeliveredCompletionFixture() throws Exception {
+        Instant now = Instant.now();
+        administrator = new OperatorEntity();
+        administrator.setEmail(UUID.randomUUID() + "@atenea.test");
+        administrator.setDisplayName("Synthetic completion administrator");
+        administrator.setPasswordHash("synthetic");
+        administrator.setActive(true);
+        administrator.setCodexOperationsRole(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        administrator.setCreatedAt(now); administrator.setUpdatedAt(now);
+        administrator = operators.saveAndFlush(administrator);
+        change.setValidationState(DevelopmentChangeProjectionState.CURRENT);
+        change.setIntegrationState(DevelopmentChangeProjectionState.CURRENT);
+        change = changes.saveAndFlush(change);
+        session.setPullRequestStatus(WorkSessionPullRequestStatus.MERGED);
+        session.setAcceptanceState(WorkSessionAcceptanceState.INTEGRATION_READY);
+        session.setPublishedChangeKey(change.getChangeKey());
+        session.setPublishedSourceRevision(change.getSourceRevision());
+        session.setPublishedSourceFingerprintSha256(change.getSourceFingerprintSha256());
+        session.setPublishedRepository("jlnieto/atenea"); session.setPublishedBaseBranch("main");
+        session.setPublishedHeadBranch(change.getWorkspaceBranch());
+        session.setPublicationReceiptSha256("7".repeat(64));
+        session.setSourceTreeFingerprintSha256(change.getSourceFingerprintSha256());
+        session.setSourceTreeObservedAt(now);
+        session.setValidationProjectionSha256("8".repeat(64));
+        session.setValidationDefinitionRevision("synthetic-v1");
+        session.setValidatedAt(now); session.setIntegrationReadyAt(now);
+        session = sessions.saveAndFlush(session);
+        String merge = "4".repeat(40);
+        var integration = deliveryStore.create(session.getId(), administrator.getId(), "INTEGRATE", DeliveryTarget.APP_PROD,
+                session.getFinalCommitSha(), "SUCCEEDED", mapper.createObjectNode().put("mergeCommit", merge));
+        // A test-owned persisted fixture of the immutable intent produced by
+        // Finalizar cambio. The real close guard/client/database remain in use.
+        var binding = new ChangeCompletionEvidence("delivered-change-completion/v1", session.getId(), project.getId(),
+                change.getChangeKey(), session.getRemoteSessionId(), session.getSelectedWorkerId(), session.getRemoteWorkloadKind(),
+                session.getWorkspaceIdentity(), session.getWorkspaceBranch(), change.getBaseCommit(), change.getObservedCanonicalCommit(),
+                change.getSourceRevision(), change.getSourceFingerprintSha256(), session.getValidationProjectionSha256(),
+                session.getValidationDefinitionRevision(), session.getFinalCommitSha(), session.getPublicationReceiptSha256(),
+                session.getPullRequestUrl(), integration.id(), merge);
+        ObjectNode evidence = mapper.createObjectNode();
+        evidence.set("completion", mapper.valueToTree(binding));
+        evidence.put("completionBindingSha256", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(mapper.writeValueAsBytes(binding))));
+        evidence.putObject("workspaceInspection").put("disposition", "OWNED").put("workspaceDirty", false)
+                .put("retainedDraft", false).put("sourceCommit", session.getFinalCommitSha())
+                .put("requestFingerprintSha256", "e".repeat(64));
+        evidence.set("deploymentBeforeClose", mapper.valueToTree(new MobileDeliveryService.DeploymentObservation(
+                session.getId(), "DEPLOYED", "OPERATOR", "9".repeat(40), merge, true, now.getEpochSecond(),
+                UUID.randomUUID(), UUID.randomUUID(), "f".repeat(64), null)));
+        deliveryStore.create(session.getId(), administrator.getId(), "FINALIZE", DeliveryTarget.APP_PROD,
+                session.getFinalCommitSha(), "APPLYING", evidence);
     }
 
     private ObjectNode receipt(JsonNode body) throws Exception {
