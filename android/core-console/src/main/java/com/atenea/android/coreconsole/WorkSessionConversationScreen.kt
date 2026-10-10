@@ -713,7 +713,9 @@ internal fun WorkSessionConversationScreen(
         draftModelId != it.model.modelId || draftEffort != it.reasoningEffort
     } == true
     val profileReady = profileUnavailable || profile != null
-    val composerEnabled = current?.canCreateTurn == true && profileReady && !profileDirty
+    val deliveryState = rememberMobileDeliveryUiState(apiClient, sessionId,
+        enabled = current?.session?.developmentChangeKey != null && apiClient.currentOperatorRole() == "PLATFORM_ADMINISTRATOR")
+    val composerEnabled = current?.canCreateTurn == true && profileReady && !profileDirty && deliveryState.completion == null
         && profileError == null && !validationPending
     val changeValidationUi = developmentChangeValidationUiState(
         session = current?.session,
@@ -721,8 +723,6 @@ internal fun WorkSessionConversationScreen(
         validationPending = validationPending,
         operationNotice = validationNotice
     )
-    val deliveryState = rememberMobileDeliveryUiState(apiClient, sessionId,
-        enabled = current?.session?.developmentChangeKey != null && apiClient.currentOperatorRole() == "PLATFORM_ADMINISTRATOR")
     ConversationSurface(
         title = current?.session?.title ?: "WorkSession $sessionId",
         status = "Sesión $sessionId · " + conversationStatusLabel(current?.runInProgress == true,
@@ -796,7 +796,8 @@ internal fun WorkSessionConversationScreen(
                 loading = validationEvidenceLoading,
                 readError = validationEvidenceError,
                 onReadEvidence = { if (!validationEvidenceLoading) scope.launch { readValidationEvidence(sessionId) } },
-                onValidate = ::validateChange
+                onValidate = ::validateChange,
+                completed = deliveryState.completion != null
             ) {
                 MobileDeliveryPanel(apiClient, sessionId,
                     validated = loaded.session.developmentChangeValidationState == "CURRENT",

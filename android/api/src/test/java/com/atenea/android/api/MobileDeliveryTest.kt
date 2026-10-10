@@ -39,6 +39,33 @@ class MobileDeliveryTest {
         assertFalse(state.sourceUpdateEnabled)
         assertFalse(state.releaseRecoveryEnabled)
         assertNull(state.deployment)
+        assertFalse(state.completionEnabled)
+    }
+
+    @Test fun completionIsAnEmptyAuthenticatedIntentAndReconciliationKeepsTheSameOperation() {
+        val server=MockWebServer();server.start()
+        try {
+            val client=AteneaApiClient(server.url("/").toString().trimEnd('/'), { "synthetic-access" })
+            val value=JSONObject().put("id",id.toString()).put("operationId",UUID.randomUUID().toString())
+                .put("sessionId",21).put("kind","FINALIZE").put("target","APP_PROD").put("state","QUEUED")
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(value.toString()))
+            assertEquals(id,runBlocking { client.finalizeDelivery(21) }.id)
+            var request=server.takeRequest()
+            assertEquals("/api/mobile/sessions/21/delivery/finalize",request.path)
+            assertEquals("{}",request.body.readUtf8());assertEquals("Bearer synthetic-access",request.getHeader("Authorization"))
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(value.put("state","APPLYING").toString()))
+            assertEquals(id,runBlocking { client.finalizeDelivery(21,reconcile=true) }.id)
+            request=server.takeRequest();assertEquals("/api/mobile/sessions/21/delivery/finalize/reconcile",request.path)
+            assertEquals("{}",request.body.readUtf8())
+            server.enqueue(MockResponse().setHeader("Content-Type","application/json").setBody(value.put("sessionId",22).toString()))
+            assertFailsWith<IllegalArgumentException> { runBlocking { client.finalizeDelivery(21) } }
+        } finally { server.shutdown() }
+    }
+    @Test fun completionCapabilityRequiresActualBooleanNotLegacyOrCoercedValue() {
+        val state=JSONObject().put("enabled",true).put("operations",org.json.JSONArray())
+        assertFalse(parseMobileDeliveryState(state).completionEnabled)
+        assertFalse(parseMobileDeliveryState(state.put("completionEnabled","true")).completionEnabled)
+        assertTrue(parseMobileDeliveryState(state.put("completionEnabled",true)).completionEnabled)
     }
 
     private fun deployment() = JSONObject().put("sessionId",21).put("status","DEPLOYED").put("origin","OPERATOR")

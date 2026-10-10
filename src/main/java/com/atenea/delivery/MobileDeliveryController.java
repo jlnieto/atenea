@@ -22,8 +22,11 @@ public class MobileDeliveryController {
     private final MobileDeliveryService service;
     private final SourceUpdateService sourceUpdates;
     private final SourceFinalizationService finalizations;
-    public MobileDeliveryController(MobileDeliveryService service, SourceUpdateService sourceUpdates, SourceFinalizationService finalizations) {
+    private final MobileChangeCompletionService completion;
+    public MobileDeliveryController(MobileDeliveryService service, SourceUpdateService sourceUpdates,
+            SourceFinalizationService finalizations, MobileChangeCompletionService completion) {
         this.service = service; this.sourceUpdates = sourceUpdates; this.finalizations=finalizations;
+        this.completion=completion;
     }
 
     @GetMapping("/api/mobile/sessions/{sessionId}/delivery")
@@ -31,12 +34,26 @@ public class MobileDeliveryController {
             @AuthenticationPrincipal AuthenticatedOperator actor) {
         return new DeliveryState(service.isEnabled(),service.list(sessionId, actor),
                 service.observeIntegration(sessionId, actor), sourceUpdates.isEnabled(), sourceUpdates.observe(sessionId, actor),
-                service.isEnabled(), service.observeDeployment(sessionId, actor));
+                service.isEnabled(), service.observeDeployment(sessionId, actor), completion.isEnabled());
     }
     public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations,
             MobileDeliveryService.IntegrationObservation integration, boolean sourceUpdateEnabled,
             SourceUpdateOperation.View sourceUpdate, boolean releaseRecoveryEnabled,
-            MobileDeliveryService.DeploymentObservation deployment) { }
+            MobileDeliveryService.DeploymentObservation deployment, boolean completionEnabled) { }
+
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/finalize")
+    public DeliveryOperation.DeliveryView complete(@PathVariable Long sessionId,
+            @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request, Set.of());
+        return completion.request(sessionId, actor, false);
+    }
+
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/finalize/reconcile")
+    public DeliveryOperation.DeliveryView reconcileCompletion(@PathVariable Long sessionId,
+            @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request, Set.of());
+        return completion.request(sessionId, actor, true);
+    }
 
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/resolve-conflicts")
     public SourceUpdateOperation.View resolveConflicts(@PathVariable Long sessionId,

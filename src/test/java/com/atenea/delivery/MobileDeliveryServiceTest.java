@@ -323,7 +323,7 @@ class MobileDeliveryServiceTest {
         verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
         verify(store,never()).update(any(),any(),any(),any(),any());
         verifyNoInteractions(runs,publication,factors,grants);
-        verify(owner,times(2)).requireExactIntegratedOwner(session);
+        verify(owner,times(2)).requireExactDeliveredOwner(session);
     }
     @Test void changedInstalledSourceNeedsAnotherProofAndMatchingMobileReceiptIsNotOperatorReceipt() {
         var integrated=integratedRecoveryFixture();

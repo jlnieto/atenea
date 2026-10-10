@@ -63,6 +63,7 @@ public class DevelopmentChangeService {
     private final CanonicalSourceAdmissionService canonicalSourceAdmissionService;
     private final RemoteWorkerProperties remoteWorkerProperties;
     private final V2AuditOutboxService auditService;
+    private final com.atenea.delivery.DeliveryStore deliveryStore;
     private final TransactionTemplate transaction;
 
     public DevelopmentChangeService(
@@ -75,6 +76,7 @@ public class DevelopmentChangeService {
             CanonicalSourceAdmissionService canonicalSourceAdmissionService,
             RemoteWorkerProperties remoteWorkerProperties,
             V2AuditOutboxService auditService,
+            com.atenea.delivery.DeliveryStore deliveryStore,
             PlatformTransactionManager transactionManager) {
         this.projectRepository = projectRepository;
         this.operatorRepository = operatorRepository;
@@ -85,6 +87,7 @@ public class DevelopmentChangeService {
         this.canonicalSourceAdmissionService = canonicalSourceAdmissionService;
         this.remoteWorkerProperties = remoteWorkerProperties;
         this.auditService = auditService;
+        this.deliveryStore = deliveryStore;
         transaction = new TransactionTemplate(transactionManager);
     }
 
@@ -723,7 +726,9 @@ public class DevelopmentChangeService {
                 primaryAction,
                 change.getCreatedAt(),
                 change.getUpdatedAt(),
-                change.getVersion());
+                change.getVersion(),
+                change.getStatus() == DevelopmentChangeStatus.COMPLETED
+                        ? deliveryStore.completedSession(change.getChangeKey()) : null);
     }
 
     private String currentCanonicalCommit(DevelopmentChangeEntity change) {

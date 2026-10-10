@@ -47,6 +47,11 @@ internal class MobileDeliveryUiState(
         private set
     var releaseRecoveryEnabled by mutableStateOf(false)
         private set
+    var completionEnabled by mutableStateOf(false)
+        private set
+    val completion: MobileDeliveryOperation? get() = operations.firstOrNull { it.kind == "FINALIZE" }
+    val completed: Boolean get() = completion?.state == "SUCCEEDED"
+    val completing: Boolean get() = completion != null && !completed
     var deployment by mutableStateOf<MobileDeploymentObservation?>(null)
         private set
     val integrated: Boolean get() {
@@ -55,11 +60,11 @@ internal class MobileDeliveryUiState(
             && deployment?.status != "NOT_INTEGRATED"
             && (integration?.sourceCommit == null || integration?.sourceCommit == receipt.sourceCommit)
     }
-    val sourcePhaseComplete: Boolean get() = integrated || integration?.mergeState == "MERGED"
+    val sourcePhaseComplete: Boolean get() = completion != null || integrated || integration?.mergeState == "MERGED"
     val appDeployed: Boolean get() = available && integrated
         && operations.firstOrNull { it.kind == "INTEGRATE" }?.mergeCommit == deployment?.integratedMergeCommit
         && deployment?.isDeployed(System.currentTimeMillis() / 1000) == true
-    val canPrepareBackend: Boolean get() = !appDeployed
+    val canPrepareBackend: Boolean get() = completion == null && !appDeployed
         && (deployment == null || deployment?.status == "NOT_INCLUDED")
     var available by mutableStateOf(false)
         private set
@@ -71,6 +76,13 @@ internal class MobileDeliveryUiState(
         private set
     var actionError by mutableStateOf<String?>(null)
         private set
+
+    fun canFinalize(validated: Boolean, runInProgress: Boolean): Boolean =
+        available && completionEnabled && completion == null && appDeployed && validated && !runInProgress && !busy
+            && operations.none { !it.terminal || it.state == "ROLLBACK_FAILED" }
+
+    fun canReconcileCompletion(runInProgress: Boolean): Boolean =
+        available && completionEnabled && completion?.state == "BLOCKED" && !runInProgress && !busy
 
     fun canResolveConflicts(validated: Boolean, runInProgress: Boolean): Boolean =
         available && sourceUpdateEnabled && !sourcePhaseComplete
@@ -113,6 +125,7 @@ internal class MobileDeliveryUiState(
             sourceUpdate = state.sourceUpdate
             sourceUpdateEnabled = state.sourceUpdateEnabled
             releaseRecoveryEnabled = state.releaseRecoveryEnabled
+            completionEnabled = state.completionEnabled
             deployment = state.deployment
             available = state.enabled
             loaded = true
@@ -125,6 +138,7 @@ internal class MobileDeliveryUiState(
             integration = null
             sourceUpdateEnabled = false
             releaseRecoveryEnabled = false
+            completionEnabled = false
             deployment = null
             loadError = "No se pudo consultar la publicación. ${failure.message.orEmpty()}"
         }
@@ -176,6 +190,7 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
     val busy = state.busy
     var confirmation by remember(sessionId) { mutableStateOf<MobileDeliveryOperation?>(null) }
     var confirmMerge by remember(sessionId) { mutableStateOf(false) }
+    var confirmFinalize by remember(sessionId) { mutableStateOf(false) }
     var showHistory by remember(sessionId) { mutableStateOf(false) }
     var showOtherTargets by remember(sessionId) { mutableStateOf(false) }
     // No factor, grant or production authority is saved to disk or in the conversation.
@@ -187,11 +202,18 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
     val active = operations.any { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
     val releasePlanned = operations.any { it.kind == "RELEASE" && (!it.terminal || it.state == "ROLLBACK_FAILED") }
     Column {
-        Text("PR → Integración → Publicación")
+        Text(if (state.completed) "Cambio completado" else "PR → Integración → Publicación → Finalización")
+        if (state.completed) Text("La WorkSession está cerrada. La conversación, el código y los recibos se conservan como historial.")
+        else if (state.completing) {
+            Text(if (state.completion?.state == "BLOCKED") "La finalización necesita atención. No se ha marcado el ticket como completado."
+                else "Finalizando la misma WorkSession. Puedes salir de esta pantalla; Atenea conserva la operación.")
+            if (state.completion?.state == "BLOCKED") AteneaButton("Reconciliar finalización",
+                enabled = state.canReconcileCompletion(runInProgress), onClick = { act { api.finalizeDelivery(sessionId, reconcile = true) } })
+        }
         if (!validated && !state.sourcePhaseComplete) Text("Primero completa la validación de esta revisión. Integrar y publicar son pasos separados.")
         if (!available && state.loadError == null) Text(if (loaded) "La publicación móvil aún no está habilitada en este servidor."
             else "Consultando las capacidades de publicación…")
-        if (state.integrated) {
+        if (state.integrated || state.completed) {
             Text("Integración completada")
             Text(deploymentLabel(state.deployment, state.appDeployed))
             if (state.appDeployed) {
@@ -201,10 +223,9 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                 Text(if (showHistory) "Ocultar historial" else "Ver historial y recibos")
             }
         }
-        val visibleOperations = if (!state.integrated || showHistory) operations.take(5)
-            else operations.filter { !it.terminal || it.state == "ROLLBACK_FAILED" }.take(5)
+        val visibleOperations = visibleDeliveryOperations(operations, state.integrated || state.completed, showHistory)
         visibleOperations.forEach { operation ->
-            Text("${deliveryKindLabel(operation)} · ${deliveryStateLabel(operation.state)}" +
+            Text("${deliveryKindLabel(operation)} · ${if (operation.kind == "FINALIZE" && operation.state == "APPLYING") "Finalizando" else deliveryStateLabel(operation.state)}" +
                 (operation.sourceCommit?.take(12)?.let { " · $it" } ?: "") +
                 (operation.versionName?.let { " · $it (${operation.versionCode})" } ?: ""))
             operation.errorCode?.let { Text(deliveryErrorLabel(it)) }
@@ -255,7 +276,12 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                     && state.integration?.allowsRequest == true,
                 onClick = { confirmMerge = true })
         }
-        if (state.integrated) {
+        if (state.appDeployed && state.completion == null && state.completionEnabled) {
+            Text("El cambio ya está entregado. Finalizar cierra este ticket sin volver a desplegar.")
+            AteneaButton("Finalizar cambio", enabled = state.canFinalize(validated, runInProgress),
+                onClick = { confirmFinalize = true })
+        }
+        if (state.integrated && state.completion == null) {
             if (!state.appDeployed) {
                 TextButton(onClick = { act { /* Only the read-only refresh performed by act. */ } }, enabled = !busy) { Text("Consultar despliegue") }
             }
@@ -283,6 +309,16 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                     onClick = { act { api.prepareReleaseRecovery(sessionId) } })
             }
         }
+    }
+    if (confirmFinalize) {
+        AlertDialog(onDismissRequest = { confirmFinalize = false }, title = { Text("Finalizar este cambio") },
+            text = { Text("Atenea comprobará la validación, la integración y el despliegue sano. Cerrará esta misma WorkSession " +
+                "y marcará el ticket como completado, conservando la conversación y todos los recibos. No volverá a publicar. " +
+                "Para modificaciones posteriores abre otro cambio.") },
+            confirmButton = { TextButton(enabled = state.canFinalize(validated, runInProgress), onClick = {
+                confirmFinalize = false; act { api.finalizeDelivery(sessionId) }
+            }) { Text("Finalizar cambio") } },
+            dismissButton = { TextButton(onClick = { confirmFinalize = false }) { Text("Cancelar") } })
     }
     if (confirmMerge) {
         AlertDialog(onDismissRequest = { confirmMerge = false }, title = { Text("Integrar este cambio") },
@@ -355,8 +391,14 @@ internal fun deliveryIntegrationLabel(mergeState: String?): String = when (merge
 }
 
 internal fun deliveryKindLabel(operation: MobileDeliveryOperation): String = when (operation.kind) {
+    "FINALIZE" -> "Finalización del cambio"
     "PUBLISH_PR" -> "PR"; "INTEGRATE" -> "Integración"; else -> operation.target.label
 }
+
+internal fun visibleDeliveryOperations(operations: List<MobileDeliveryOperation>, audited: Boolean,
+    showHistory: Boolean): List<MobileDeliveryOperation> = if (!audited || showHistory) operations.take(5)
+    else operations.filter { !it.terminal || it.state == "ROLLBACK_FAILED"
+        || (it.kind == "FINALIZE" && it.state != "SUCCEEDED") }.take(5)
 internal fun deliveryStateLabel(state: String): String = when (state) {
     "QUEUED" -> "En cola"; "WAITING_CI" -> "Esperando validaciones GitHub"
     "PLANNING", "PREPARING" -> "Preparando artefacto"; "READY" -> "Preparado, pendiente de confirmar"
@@ -367,6 +409,11 @@ internal fun deliveryStateLabel(state: String): String = when (state) {
 }
 
 internal fun deliveryErrorLabel(code: String): String = when (code) {
+    "HEALTHY_DELIVERED_CHANGE_REQUIRED" -> "Atenea no pudo confirmar un despliegue sano que contenga este cambio. El ticket no se ha completado."
+    "COMPLETION_WORKSPACE_NOT_CLEAN_OR_EXACT", "COMPLETION_WORKSPACE_NOT_VERIFIED" -> "El workspace no coincide con el código entregado o tiene cambios sin publicar. Se conserva sin borrar nada."
+    "COMPLETION_WORK_IN_PROGRESS" -> "Hay trabajo pendiente en esta WorkSession. Espera a que termine antes de finalizar."
+    "COMPLETION_EVIDENCE_MISMATCH", "COMPLETION_STATE_MISMATCH", "COMPLETION_RELEASE_RECEIPT_REQUIRED" -> "La evidencia de finalización necesita revisión. Atenea conserva el ticket y la misma operación."
+    "DELIVERED_CHANGE_COMPLETION_REQUIRED" -> "Para cerrar este ticket utiliza Finalizar cambio, después de validar, integrar y publicar."
     "PR_MERGE_CONFLICTS" -> "La PR tiene conflictos con main. No se ha integrado; hay que resolverlos."
     "PR_MERGEABILITY_PENDING" -> "GitHub está calculando la integración de la PR; no está ejecutando pruebas por esta consulta."
     "PR_PROTECTED" -> "Las protecciones de GitHub impiden integrar esta PR."

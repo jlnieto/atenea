@@ -757,6 +757,7 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
 
     private CoreCommandExecutionResult closeWorkSession(Map<String, Object> parameters) {
         Long sessionId = requireLong(parameters, "workSessionId");
+        workSessionService.requireLegacyClose(sessionId);
         boolean forceClosePendingDeliverables = Boolean.TRUE.equals(parameters.get("forceClosePendingDeliverables"));
         List<SessionDeliverableType> generatedTypes = List.of();
         if (!forceClosePendingDeliverables) {

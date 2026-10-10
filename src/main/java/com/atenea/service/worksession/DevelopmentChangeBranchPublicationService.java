@@ -155,6 +155,17 @@ public class DevelopmentChangeBranchPublicationService {
 
     /** Read/continue delivery after integration; never authority to republish a branch. */
     public DevelopmentChangeEntity requireExactIntegratedOwner(WorkSessionEntity session) {
+        requireIntegratedAcceptance(session);
+        return requireExactOwner(session, true);
+    }
+
+    /** Observation only: finishing/finished sessions never gain publication authority. */
+    public DevelopmentChangeEntity requireExactDeliveredOwner(WorkSessionEntity session) {
+        requireIntegratedAcceptance(session);
+        return requireExactOwner(session, true, true);
+    }
+
+    private void requireIntegratedAcceptance(WorkSessionEntity session) {
         if (session.getAcceptanceState() != WorkSessionAcceptanceState.INTEGRATION_READY
                 || session.getPullRequestStatus() != WorkSessionPullRequestStatus.MERGED
                 || session.getIntegrationReadyAt() == null
@@ -165,11 +176,23 @@ public class DevelopmentChangeBranchPublicationService {
                 || session.getValidationDefinitionRevision().isBlank()) {
             throw conflict(session.getId(), "exact integrated acceptance projection is required");
         }
-        return requireExactOwner(session, true);
     }
 
     private DevelopmentChangeEntity requireExactOwner(WorkSessionEntity session, boolean integrated) {
+        return requireExactOwner(session, integrated, false);
+    }
+
+    private DevelopmentChangeEntity requireExactOwner(WorkSessionEntity session, boolean integrated, boolean observeDelivered) {
         DevelopmentChangeEntity change = session.getDevelopmentChange();
+        boolean released = session.getStatus() == WorkSessionStatus.CLOSED
+                && session.getRemoteCloseState() == com.atenea.persistence.worksession.RemoteCloseState.RELEASED
+                && session.getRemoteCloseOperationId() != null && sha256(session.getRemoteCloseReceiptSha256())
+                && session.getRemoteCloseRevision() >= 6 && session.getRemoteCloseReleasedAt() != null
+                && session.getClosedAt() != null;
+        boolean observableSession = session.getStatus() == WorkSessionStatus.OPEN
+                || (observeDelivered && (session.getStatus() == WorkSessionStatus.CLOSING || released));
+        boolean observableChange = change != null && (change.getStatus() == DevelopmentChangeStatus.OPEN
+                || (observeDelivered && released && change.getStatus() == DevelopmentChangeStatus.COMPLETED));
         String expectedBranch = change == null || change.getChangeKey() == null
                 ? null : "atenea/change-" + change.getChangeKey();
         String expectedWorkspace = change == null || change.getChangeKey() == null
@@ -180,7 +203,7 @@ public class DevelopmentChangeBranchPublicationService {
                 || change.getProject() == null
                 || session.getProject() == null
                 || !Objects.equals(change.getProject().getId(), session.getProject().getId())
-                || change.getStatus() != DevelopmentChangeStatus.OPEN
+                || !observableChange
                 || change.getWorkspaceState() != DevelopmentChangeWorkspaceState.READY
                 || change.getValidationState() != DevelopmentChangeProjectionState.CURRENT
                 || session.getAcceptanceState() != (integrated
@@ -190,7 +213,7 @@ public class DevelopmentChangeBranchPublicationService {
                         change.getSourceFingerprintSha256())
                 || change.getSourceState() == DevelopmentChangeSourceState.STALE
                 || change.getSourceState() == DevelopmentChangeSourceState.BLOCKED
-                || session.getStatus() != WorkSessionStatus.OPEN
+                || !observableSession
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !ProjectCodexIdentity.matches(session)
                 || !ProjectCodexIdentity.matches(change.getProject())
