@@ -21,6 +21,57 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
+    @Test fun `blocked completion reason stays visible without expanding historical receipts`() {
+        val blocked=operation().copy(kind="FINALIZE",state="BLOCKED",errorCode="COMPLETION_WORKSPACE_NOT_CLEAN_OR_EXACT")
+        val integrated=operation().copy(kind="INTEGRATE",state="SUCCEEDED")
+        assertEquals(listOf(blocked),visibleDeliveryOperations(listOf(blocked,integrated),audited=true,showHistory=false))
+        assertEquals(listOf(blocked,integrated),visibleDeliveryOperations(listOf(blocked,integrated),audited=true,showHistory=true))
+        assertTrue(visibleDeliveryOperations(listOf(blocked.copy(state="SUCCEEDED"),integrated),audited=true,showHistory=false).isEmpty())
+    }
+    @Test fun `finalize requires verified deployment validation idle and explicit server capability`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var supported=false
+            var observed=deployed()
+            var operations=listOf(operation().copy(kind="INTEGRATE",state="SUCCEEDED",mergeCommit="3".repeat(40)))
+            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,operations,
+                deployment=observed,completionEnabled=supported) }
+            state.refresh(); assertFalse(state.canFinalize(true,false))
+            supported=true; state.refresh(); assertTrue(state.canFinalize(true,false))
+            assertFalse(state.canFinalize(false,false)); assertFalse(state.canFinalize(true,true))
+            observed=observed.copy(healthy=false,status="UNHEALTHY");state.refresh();assertFalse(state.canFinalize(true,false))
+            observed=deployed();operations=operations+operation().copy(kind="RELEASE",state="READY")
+            state.refresh();assertFalse(state.canFinalize(true,false))
+        } finally { scope.cancel() }
+    }
+    @Test fun `completed ticket retires all delivery actions and remains completed offline`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var online=true
+            val completed=operation().copy(kind="FINALIZE",state="SUCCEEDED")
+            val state=MobileDeliveryUiState(21,scope) {
+                if (!online) error("offline")
+                MobileDeliveryState(true,listOf(completed),completionEnabled=true)
+            }
+            state.refresh();assertTrue(state.completed);assertFalse(state.completing)
+            assertFalse(state.canPrepareBackend);assertFalse(state.canPrepareReleaseRecovery(true,false))
+            assertFalse(state.canFinalize(true,false));assertFalse(state.canReconcileCompletion(false))
+            assertFalse(state.canResolveConflicts(true,false));assertTrue(state.sourcePhaseComplete)
+            online=false;state.refresh();assertTrue(state.completed);assertFalse(state.available)
+            assertFalse(state.canFinalize(true,false));assertFalse(state.completionEnabled)
+        } finally { scope.cancel() }
+    }
+    @Test fun `blocked completion offers reconciliation of retained intent not another completion`() = runBlocking<Unit> {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var pending=operation().copy(kind="FINALIZE",state="APPLYING")
+            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,listOf(pending),completionEnabled=true) }
+            state.refresh();assertTrue(state.completing);assertFalse(state.canFinalize(true,false))
+            assertFalse(state.canReconcileCompletion(false));assertFalse(state.canPrepareBackend)
+            pending=pending.copy(state="BLOCKED");state.refresh();assertTrue(state.canReconcileCompletion(false))
+            assertFalse(state.canReconcileCompletion(true));assertFalse(state.canFinalize(true,false))
+        } finally { scope.cancel() }
+    }
     private fun deployed() = MobileDeploymentObservation(21,"DEPLOYED","OPERATOR","4".repeat(40),"3".repeat(40),
         true,System.currentTimeMillis()/1000,UUID.randomUUID(),UUID.randomUUID(),"5".repeat(64),null)
 

@@ -9,6 +9,15 @@ import kotlin.test.assertNull
 
 class DevelopmentChangesNavigationTest {
     @Test
+    fun `completed ticket opens its preserved conversation without resolving another session`() {
+        val completed = change(sessionId = null, status = "COMPLETED").copy(completedSessionId = 21)
+        assertEquals(21L, completed.sessionForReentry(1))
+        assertNull(completed.sessionForReentry(2))
+        assertNull(completed.copy(completedSessionId = 0).sessionForReentry(1))
+        assertNull(completed.copy(activeSessionId = 19).sessionForReentry(1))
+        assertNull(completed.copy(status = "PAUSED").sessionForReentry(1))
+    }
+    @Test
     fun `open change resumes its own session instead of the project overview session`() {
         val change = change(sessionId = 21)
         val unrelatedOverviewSessionId = 19L

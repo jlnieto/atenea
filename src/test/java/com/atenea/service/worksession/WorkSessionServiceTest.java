@@ -117,6 +117,9 @@ class WorkSessionServiceTest {
     private RemoteWorkerProperties remoteWorkerProperties;
 
     @Mock
+    private com.atenea.delivery.DeliveryStore deliveryStore;
+
+    @Mock
     private PlatformTransactionManager transactionManager;
 
     @TempDir
@@ -159,6 +162,7 @@ class WorkSessionServiceTest {
                 attachmentPolicySnapshotter,
                 remoteWorkerClient,
                 remoteWorkerProperties,
+                deliveryStore,
                 transactionManager
         );
     }
@@ -1557,6 +1561,40 @@ class WorkSessionServiceTest {
         lenient().doReturn(repoPath.toString()).when(validator)
                 .normalizeConfiguredRepoPath(ProjectCodexIdentity.REPO_PATH);
         return session;
+    }
+
+    @Test
+    void changeOwnedCompletionUsesDurableRemoteCloseWithoutSharedRepositoryEffects() throws IOException {
+        WorkSessionEntity session=remoteSession(tempDir.resolve("retained-change"));
+        session.setDevelopmentChange(new com.atenea.persistence.developmentchange.DevelopmentChangeEntity());
+        session.setWorkspaceBranch("atenea/change-"+UUID.randomUUID());
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(workSessionRepository.findLockedWithProjectAndDevelopmentChangeById(12L)).thenReturn(Optional.of(session));
+        when(workSessionRepository.findLockedWithProjectById(12L)).thenReturn(Optional.of(session));
+        when(workSessionRepository.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(remoteWorkerProperties.isRemoteCloseReleaseEnabledFor("atenea")).thenReturn(true);
+        when(remoteWorkerClient.releaseWorkspace(session)).thenAnswer(call -> releasedReceipt(session));
+        assertEquals(WorkSessionStatus.CLOSED,workSessionService.closeSession(12L).status());
+        UUID operation=session.getRemoteCloseOperationId();
+        assertEquals(WorkSessionStatus.CLOSED,workSessionService.closeSession(12L).status());
+        assertEquals(operation,session.getRemoteCloseOperationId());
+        verify(remoteWorkerClient,times(1)).releaseWorkspace(session);
+        verify(deliveryStore,atLeastOnce()).requireCompletionClose(session);
+        verify(gitRepositoryService,never()).checkoutBranch(any(),any());
+        verify(gitRepositoryService,never()).deleteLocalBranch(any(),any());
+        verify(gitRepositoryService,never()).deleteRemoteBranch(any(),any());
+        verify(gitRepositoryService,never()).fetchOrigin(any());
+        org.mockito.Mockito.verifyNoInteractions(gitHubClient);
+    }
+
+    @Test
+    void legacyCloseCannotGenerateDeliverablesOrCloseAChangeOwnedTicket() {
+        WorkSessionEntity session=new WorkSessionEntity(); session.setStatus(WorkSessionStatus.OPEN);
+        session.setDevelopmentChange(new com.atenea.persistence.developmentchange.DevelopmentChangeEntity());
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
+        assertThrows(com.atenea.delivery.DeliveryRejectedException.class,() -> workSessionService.requireLegacyClose(12L));
+        assertEquals(WorkSessionStatus.OPEN,session.getStatus());
+        org.mockito.Mockito.verifyNoInteractions(remoteWorkerClient,gitRepositoryService,gitHubClient);
     }
 
     private void prepareSuccessfulCloseMocks(WorkSessionEntity session, Path repoPath) {

@@ -158,6 +158,24 @@ class DevelopmentChangeBranchPublicationServiceTest {
         session.setValidationDefinitionRevision("test-v1");
     }
 
+    @Test
+    void completionObservationsDoNotGrantPublicationAuthorityToClosingOrCompletedSessions() {
+        org.mockito.Mockito.reset(transactionManager); // This read-only path does not start a publication transaction.
+        WorkSessionEntity session=session(); integrated(session); session.setStatus(WorkSessionStatus.CLOSING);
+        assertEquals(session.getDevelopmentChange(),service.requireExactDeliveredOwner(session));
+        assertThrows(WorkSessionPublishConflictException.class,() -> service.requireExactIntegratedOwner(session));
+        session.setStatus(WorkSessionStatus.CLOSED);
+        assertThrows(WorkSessionPublishConflictException.class,() -> service.requireExactDeliveredOwner(session));
+        session.setRemoteCloseState(com.atenea.persistence.worksession.RemoteCloseState.RELEASED);
+        session.setRemoteCloseOperationId(UUID.randomUUID()); session.setRemoteCloseReceiptSha256("b".repeat(64));
+        session.setRemoteCloseRevision(6); session.setRemoteCloseReleasedAt(Instant.now()); session.setClosedAt(Instant.now());
+        session.getDevelopmentChange().setStatus(com.atenea.persistence.developmentchange.DevelopmentChangeStatus.COMPLETED);
+        assertEquals(session.getDevelopmentChange(),service.requireExactDeliveredOwner(session));
+        assertThrows(WorkSessionPublishConflictException.class,() -> service.requireExactIntegratedOwner(session));
+        assertThrows(WorkSessionPublishConflictException.class,() -> service.requireExactOwner(session));
+        verify(gateway,never()).publish(any());
+    }
+
     private static WorkSessionEntity session() {
         UUID changeKey = UUID.fromString("8bf60472-3c0e-49aa-99bf-6dc3c7e60eaf");
         ProjectEntity project = new ProjectEntity();

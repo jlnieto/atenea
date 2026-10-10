@@ -53,8 +53,56 @@ Si un fallo antiguo sólo conservó un resumen genérico, no se inventa su causa
 7. Consultar el resultado. La operación continúa fuera del proceso App y se
    reconcilia aunque se cierre el móvil o se reinicie el backend. Después de
    publicar Android, usar el actualizador interno e instalar la APK.
-8. Hacer el smoke funcional de la capacidad publicada y cerrar el cambio
-   mediante el mecanismo existente; no cerrar antes de publicar.
+8. Hacer el smoke funcional de la capacidad publicada. En **Cambio**, pulsar
+   **Finalizar cambio** y confirmar. No finalizar antes de publicar y comprobar
+   el resultado funcional.
+
+### Finalizar un cambio entregado
+
+**Finalizar cambio** es una operación distinta de cerrar una sesión antigua,
+integrar una PR o publicar. En este slice acredita la entrega de Backend PROD
+del cambio Atenea: validación CURRENT de la revisión publicada, integración
+durable exacta y observación fresca del publicador que prueba que el backend
+está sano y contiene ese merge. La publicación puede proceder del móvil o
+del operador; no se fabrica un recibo RELEASE para un despliegue externo.
+No sustituye la aceptación funcional ni certifica una APK/Platform no publicados.
+
+La petición autenticada `POST /api/mobile/sessions/{id}/delivery/finalize`
+tiene cuerpo `{}`. Requiere PLATFORM_ADMINISTRATOR efectivo y las capacidades
+existentes de entrega y cierre remoto habilitadas para Atenea. El llamante no
+elige changeKey, worker, revisión, comandos ni rutas. Flyway V92 añade FINALIZE
+a la misma cola durable; hay una sola identidad por WorkSession y por cambio,
+incluso después de quedar terminal.
+
+Antes de aceptar se comprueba también el workspace con una lectura autenticada;
+si está sucio o no es propio, no se crea la intención y la conversación sigue
+abierta para corregir el trabajo. Después se persiste la intención con su
+binding sellado y se pasa la misma WorkSession a CLOSING. Se rechazan nuevos
+AgentRuns/validaciones y se comprueba
+que no queden trabajos, preparaciones o publicaciones activas. El reconciliador
+inspecciona el workspace change-owned con OBSERVE_ONLY: debe seguir siendo
+propio, limpio, sin draft retenido y con HEAD igual al head publicado. Un diff
+histórico DIRTY frente a la base no equivale a un worktree sucio.
+
+Se consume el cierre remoto existente, con su UUID y recibo RELEASED persistidos.
+No se toca el checkout compartido, no se borra el worktree, no se generan los
+entregables del cierre Core antiguo y no se ejecuta otro prompt ni publicación.
+Sólo tras confirmar el cierre y volver a comprobar el despliegue sano se guardan
+COMPLETED, las proyecciones integration/release CURRENT y FINALIZE/SUCCEEDED.
+La conversación y todos los recibos se conservan; **Cambios → Ver conversación**
+abre la WorkSession cerrada como historial, sin resolver/crear una nueva.
+
+Una doble pulsación o una respuesta perdida devuelve la misma intención.
+Los fallos de transporte se reconcilian con el mismo cierre remoto. Un bloqueo
+real mantiene el cambio sin completar y conserva cada causa; **Reconciliar
+finalización** llama a `/delivery/finalize/reconcile` con `{}`, revalida las
+precondiciones y retoma esa intención, sin fabricar éxito ni una segunda operación.
+Si el cierre ya quedó confirmado antes de una interrupción, sólo se termina
+la persistencia pendiente. Para trabajo funcional posterior, abrir otro cambio.
+
+Puesta en marcha: integrar y validar el código, desplegar App PROD con V92 y
+publicar la APK compatible por el canal existente, con autorización independiente.
+No requiere desplegar Platform ni cerrar el ticket real durante el desarrollo.
 
 Las acciones requieren el rol efectivo PLATFORM_ADMINISTRATOR. El backend
 relee el rol, no confía en el valor almacenado por el móvil. Publicar App o

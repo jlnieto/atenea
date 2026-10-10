@@ -21,7 +21,11 @@ import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.MobileDevelopmentChange
 
 internal fun MobileDevelopmentChange.sessionForReentry(expectedProjectId: Long): Long? =
-    activeSessionId?.takeIf { projectId == expectedProjectId && status == "OPEN" && it > 0 }
+    if (projectId != expectedProjectId) null else when (status) {
+        "OPEN" -> activeSessionId?.takeIf { it > 0 }
+        "COMPLETED" -> completedSessionId?.takeIf { it > 0 && activeSessionId == null }
+        else -> null
+    }
 
 internal fun orderedDevelopmentChanges(changes: List<MobileDevelopmentChange>): List<MobileDevelopmentChange> =
     changes.filter { it.status == "OPEN" } + changes.filter { it.status != "OPEN" }
@@ -104,7 +108,7 @@ internal fun DevelopmentChangeCard(
         change.updatedAt?.let { MetricLine("Actividad", it.formatDateTimeForDisplay()) }
         if (sessionId != null) {
             AteneaButton(
-                text = "Continuar conversación",
+                text = if (change.status == "COMPLETED") "Ver conversación" else "Continuar conversación",
                 modifier = Modifier.fillMaxWidth().testTag("development-change-continue-${change.changeKey}"),
                 onClick = { onOpenConversation(sessionId) }
             )

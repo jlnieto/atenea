@@ -82,7 +82,7 @@ public class MobileDeliveryService {
             return DeploymentObservation.unavailable(sessionId, "NOT_INTEGRATED", null);
         }
         try {
-            enabled(); owned(session); published(session);
+            enabled(); observedDeliveredOwner(session); published(session);
             DeliveryOperation integrated = store.integrated(sessionId, session.getFinalCommitSha())
                     .orElseThrow(() -> new DeliveryRejectedException("EXACT_CHANGE_NOT_INTEGRATED"));
             if (!"INTEGRATE".equals(integrated.kind()) || !"SUCCEEDED".equals(integrated.state())
@@ -174,7 +174,8 @@ public class MobileDeliveryService {
         WorkSessionEntity session = session(sessionId, false);
         if (session.getPullRequestUrl() == null) return new IntegrationObservation(sessionId, null, "NOT_PUBLISHED", false, null);
         try {
-            owned(session);
+            if (session.getAcceptanceState() == WorkSessionAcceptanceState.INTEGRATION_READY) observedDeliveredOwner(session);
+            else owned(session);
             published(session);
             GitHubMergeState state = github.observeMergeState(APP,
                     github.extractPullRequestNumber(session.getPullRequestUrl()),
@@ -577,6 +578,12 @@ public class MobileDeliveryService {
                 ownership.requireExactOwner(session);
             }
         }
+        catch (com.atenea.service.worksession.WorkSessionPublishConflictException exception) {
+            throw new DeliveryRejectedException("VALIDATED_OWNERSHIP_REQUIRED");
+        }
+    }
+    private void observedDeliveredOwner(WorkSessionEntity session) {
+        try { ownership.requireExactDeliveredOwner(session); }
         catch (com.atenea.service.worksession.WorkSessionPublishConflictException exception) {
             throw new DeliveryRejectedException("VALIDATED_OWNERSHIP_REQUIRED");
         }

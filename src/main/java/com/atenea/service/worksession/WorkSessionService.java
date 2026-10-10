@@ -69,6 +69,7 @@ public class WorkSessionService {
     private final NewWorkSessionAttachmentPolicySnapshotter attachmentPolicySnapshotter;
     private final RemoteWorkerClient remoteWorkerClient;
     private final RemoteWorkerProperties remoteWorkerProperties;
+    private final com.atenea.delivery.DeliveryStore deliveryStore;
     private final TransactionTemplate closeTransaction;
     private RemoteRoutingSelector remoteRoutingSelector;
 
@@ -87,6 +88,7 @@ public class WorkSessionService {
             NewWorkSessionAttachmentPolicySnapshotter attachmentPolicySnapshotter,
             RemoteWorkerClient remoteWorkerClient,
             RemoteWorkerProperties remoteWorkerProperties,
+            com.atenea.delivery.DeliveryStore deliveryStore,
             PlatformTransactionManager transactionManager
     ) {
         this.projectRepository = projectRepository;
@@ -103,6 +105,7 @@ public class WorkSessionService {
         this.attachmentPolicySnapshotter = attachmentPolicySnapshotter;
         this.remoteWorkerClient = remoteWorkerClient;
         this.remoteWorkerProperties = remoteWorkerProperties;
+        this.deliveryStore = deliveryStore;
         this.closeTransaction = new TransactionTemplate(transactionManager);
         this.closeTransaction.setPropagationBehavior(
                 TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -338,6 +341,15 @@ public class WorkSessionService {
         return invokeRemoteClose(sessionId, invocation);
     }
 
+    @Transactional(readOnly = true)
+    public void requireLegacyClose(Long sessionId) {
+        WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
+                .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        if (session.getDevelopmentChange() != null) {
+            throw new com.atenea.delivery.DeliveryRejectedException("DELIVERED_CHANGE_COMPLETION_REQUIRED");
+        }
+    }
+
     public WorkSessionResponse reconcileRemoteClose(Long sessionId) {
         if (!remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
                 ProjectCodexIdentity.PROJECT_IDENTITY)) {
@@ -387,6 +399,7 @@ public class WorkSessionService {
                 && session.getStatus() != WorkSessionStatus.CLOSING) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
+        if (session.getDevelopmentChange() != null) deliveryStore.requireCompletionClose(session);
 
         Instant now = Instant.now();
         session.setStatus(WorkSessionStatus.CLOSING);
@@ -438,6 +451,7 @@ public class WorkSessionService {
                 || !ProjectCodexIdentity.matches(session)) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
+        if (session.getDevelopmentChange() != null) deliveryStore.requireCompletionClose(session);
         Instant now = Instant.now();
         if (session.getRemoteCloseState() == RemoteCloseState.NOT_STARTED) {
             if (!allowNewOperation) {
@@ -726,6 +740,12 @@ public class WorkSessionService {
 
     private void reconcileClose(WorkSessionEntity session) {
         Long sessionId = session.getId();
+        if (session.getDevelopmentChange() != null) {
+            // Change-owned completion retains its own remote branch/worktree.
+            // Never reconcile/delete the unrelated shared application checkout.
+            deliveryStore.requireCompletionClose(session);
+            return;
+        }
         agentRunReconciliationService.reconcileSession(sessionId);
         if (agentRunRepository.existsBySessionIdAndStatus(sessionId, AgentRunStatus.RUNNING)
                 || agentRunRepository.existsBySessionIdAndStatusIn(

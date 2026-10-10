@@ -363,6 +363,13 @@ class AteneaApiClient(
         parser = ::parseMobileDeliveryOperation
     )
 
+    suspend fun finalizeDelivery(sessionId: Long, reconcile: Boolean = false): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/finalize" + if (reconcile) "/reconcile" else "",
+        body = JSONObject(), authenticated = true
+    ) { json -> parseMobileDeliveryOperation(json).also {
+        require(it.sessionId == sessionId && it.kind == "FINALIZE" && it.target == MobileDeliveryTarget.APP_PROD)
+    } }
+
     suspend fun resolveDeliveryConflicts(sessionId: Long): MobileSourceUpdate = postJson(
         path = "/api/mobile/sessions/$sessionId/delivery/resolve-conflicts", body = JSONObject(), authenticated = true
     ) { json -> parseMobileSourceUpdate(json).also { require(it.sessionId == sessionId) } }
@@ -1479,7 +1486,8 @@ data class MobileDevelopmentChange(
     val workspaceState: String,
     val activeSessionId: Long?,
     val primaryActionLabel: String?,
-    val updatedAt: String?
+    val updatedAt: String?,
+    val completedSessionId: Long? = null
 )
 
 data class ResolveMobileWorkSessionResult(
@@ -2472,6 +2480,9 @@ private fun parseMobileDevelopmentChange(json: JSONObject, expectedProjectId: Lo
     require(projectId == expectedProjectId) { "La respuesta contiene un cambio de otro proyecto." }
     val activeSessionId = json.optNullableLong("activeSessionId")
     require(activeSessionId == null || activeSessionId > 0) { "La respuesta contiene una sesión inválida." }
+    val completedSessionId = json.optNullableLong("completedSessionId")
+    require(completedSessionId == null || (completedSessionId > 0 && json.getString("status") == "COMPLETED"
+        && activeSessionId == null)) { "La respuesta contiene un historial de sesión inválido." }
     val title = json.getString("title")
     require(title.isNotBlank()) { "La respuesta contiene un cambio sin título." }
     return MobileDevelopmentChange(
@@ -2482,7 +2493,8 @@ private fun parseMobileDevelopmentChange(json: JSONObject, expectedProjectId: Lo
         workspaceState = json.getString("workspaceState"),
         activeSessionId = activeSessionId,
         primaryActionLabel = json.optJSONObject("primaryAction")?.optNullableString("label"),
-        updatedAt = json.optNullableString("updatedAt")
+        updatedAt = json.optNullableString("updatedAt"),
+        completedSessionId = completedSessionId
     )
 }
 

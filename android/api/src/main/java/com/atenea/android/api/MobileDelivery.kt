@@ -10,7 +10,8 @@ data class MobileDeliveryState(val enabled: Boolean, val operations: List<Mobile
     val integration: MobileDeliveryIntegration? = null,
     val sourceUpdateEnabled: Boolean = false, val sourceUpdate: MobileSourceUpdate? = null,
     val releaseRecoveryEnabled: Boolean = false,
-    val deployment: MobileDeploymentObservation? = null)
+    val deployment: MobileDeploymentObservation? = null,
+    val completionEnabled: Boolean = false)
 
 data class MobileDeploymentObservation(val sessionId: Long, val status: String, val origin: String?,
     val sourceCommit: String?, val integratedMergeCommit: String?, val healthy: Boolean,
@@ -102,7 +103,8 @@ internal fun parseMobileDeliveryState(json: JSONObject): MobileDeliveryState {
         List(items.length()) { parseMobileDeliveryOperation(items.getJSONObject(it)) }, integration,
         json.opt("sourceUpdateEnabled") == true, json.optJSONObject("sourceUpdate")?.let(::parseMobileSourceUpdate),
         json.opt("releaseRecoveryEnabled") == true,
-        json.optJSONObject("deployment")?.let(::parseDeploymentObservation))
+        json.optJSONObject("deployment")?.let(::parseDeploymentObservation),
+        json.opt("completionEnabled") == true)
 }
 
 data class MobileReleaseRecovery(val integrationOperationId: UUID, val publishedHeadCommit: String,

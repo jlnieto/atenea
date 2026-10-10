@@ -20,6 +20,7 @@ internal fun WorkSessionChangePanel(
     readError: String?,
     onReadEvidence: () -> Unit,
     onValidate: () -> Unit,
+    completed: Boolean = false,
     deliveryContent: @Composable () -> Unit
 ) {
     Text(title, style = MaterialTheme.typography.titleMedium)
@@ -58,7 +59,7 @@ internal fun WorkSessionChangePanel(
     readError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     AteneaOutlinedButton("Consultar resultado", enabled = !loading, onClick = onReadEvidence)
     // Cached evidence must never hide a new validation required by the session projection.
-    if (validation.visible && !validation.current) {
+    if (!completed && validation.visible && !validation.current) {
         AteneaButton(validation.label, enabled = validation.canStart, onClick = onValidate)
     }
     Text("Consultar no ejecuta ni reintenta pruebas.", style = MaterialTheme.typography.bodySmall,

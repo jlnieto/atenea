@@ -13,6 +13,20 @@ import kotlin.test.assertFailsWith
 class AteneaApiClientDevelopmentChangeTest {
 
     @Test
+    fun `completed changes expose only their preserved history session`() = withServer { server ->
+        val value=JSONObject().put("changeKey",UUID.randomUUID().toString()).put("projectId",1)
+            .put("title","Delivered change").put("status","COMPLETED").put("workspaceState","READY")
+            .put("activeSessionId",JSONObject.NULL).put("completedSessionId",21)
+        server.enqueue(jsonResponse(200,JSONArray().put(value).toString()))
+        val client=AteneaApiClient(server.baseUrl(),{"access-token"})
+        assertEquals(21L,runBlocking { client.fetchDevelopmentChanges(1) }.single().completedSessionId)
+        assertEquals(1,server.requestCount)
+        value.put("status","OPEN")
+        server.enqueue(jsonResponse(200,JSONArray().put(value).toString()))
+        assertFailsWith<IllegalArgumentException> { runBlocking { client.fetchDevelopmentChanges(1) } }
+    }
+
+    @Test
     fun `existing changes are listed read only with their bound session`() = withServer { server ->
         val changeKey = UUID.fromString("59315b6e-59bc-4884-9def-356e1ca86ef4")
         server.enqueue(jsonResponse(200, JSONArray().put(

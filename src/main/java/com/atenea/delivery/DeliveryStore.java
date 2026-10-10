@@ -49,6 +49,71 @@ public class DeliveryStore {
         return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE session_id=? AND kind='INTEGRATE' "
                 + "AND state='SUCCEEDED' AND source_commit=? ORDER BY created_at DESC LIMIT 1", this::row, sessionId, head).stream().findFirst();
     }
+    public java.util.Optional<DeliveryOperation> completion(Long sessionId) {
+        return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE session_id=? AND kind='FINALIZE'",
+                this::row, sessionId).stream().findFirst();
+    }
+    public Long completedSession(UUID changeKey) {
+        return jdbc.query("""
+                SELECT op.session_id FROM mobile_delivery_operation op JOIN work_session ws ON ws.id=op.session_id
+                JOIN development_change dc ON dc.id=ws.development_change_id
+                WHERE op.kind='FINALIZE' AND op.state='SUCCEEDED' AND ws.status='CLOSED'
+                  AND ws.remote_close_state='RELEASED' AND dc.status='COMPLETED' AND dc.change_key=?
+                  AND op.evidence_json->'completion'->>'changeKey'=?
+                """, (rs, index) -> rs.getLong("session_id"), changeKey, changeKey.toString()).stream().findFirst().orElse(null);
+    }
+    public void lockCompletionAdmissionAndRequireIdle(Long sessionId) {
+        jdbc.execute("SELECT pg_advisory_xact_lock(814205002)");
+        if (!Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT NOT EXISTS (SELECT 1 FROM agent_run WHERE session_id=? AND status NOT IN ('SUCCEEDED','FAILED','CANCELLED'))
+                  AND NOT EXISTS (SELECT 1 FROM validation_operation WHERE work_session_id=? AND status='RUNNING')
+                  AND NOT EXISTS (SELECT 1 FROM mobile_source_update_operation WHERE session_id=?
+                    AND state IN ('QUEUED','PREPARE_CLAIMED','UNCERTAIN','ATTENTION','READY_TO_RESOLVE','RETRY_REQUESTED','RESOLVING'))
+                  AND NOT EXISTS (SELECT 1 FROM mobile_source_finalization WHERE session_id=? AND state <> 'PUBLISHED')
+                  AND NOT EXISTS (SELECT 1 FROM mobile_delivery_operation WHERE session_id=? AND kind <> 'FINALIZE'
+                    AND state NOT IN ('SUCCEEDED','ROLLED_BACK','FAILED','BLOCKED','ROLLBACK_FAILED'))
+                  AND NOT EXISTS (SELECT 1 FROM mobile_delivery_operation WHERE kind='RELEASE'
+                    AND state IN ('CONFIRMED','ACCEPTED','APPLYING','ROLLING_BACK','QUARANTINED','ROLLBACK_FAILED'))
+                """, Boolean.class, sessionId, sessionId, sessionId, sessionId, sessionId))) {
+            throw new DeliveryRejectedException("COMPLETION_WORK_IN_PROGRESS");
+        }
+    }
+    /** The legacy close/reconciler may only consume the already-authorized completion. */
+    public void requireCompletionClose(com.atenea.persistence.worksession.WorkSessionEntity session) {
+        DeliveryOperation operation = completion(session.getId())
+                .orElseThrow(() -> new DeliveryRejectedException("DELIVERED_CHANGE_COMPLETION_REQUIRED"));
+        ChangeCompletionEvidence binding = ChangeCompletionEvidence.require(operation, session, mapper);
+        if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM operator_account "
+                + "WHERE id=? AND active AND codex_operations_role='PLATFORM_ADMINISTRATOR')", Boolean.class, operation.operatorId()))) {
+            throw new DeliveryRejectedException("PLATFORM_ADMINISTRATOR_REQUIRED");
+        }
+        JsonNode observed = operation.evidence().path("workspaceInspection");
+        JsonNode deployed = operation.evidence().path("deploymentBeforeClose");
+        long now = Instant.now().getEpochSecond();
+        if (!"APPLYING".equals(operation.state()) || !"OWNED".equals(observed.path("disposition").asText())
+                || session.getDevelopmentChange().getStatus() != com.atenea.persistence.developmentchange.DevelopmentChangeStatus.OPEN
+                || session.getDevelopmentChange().getValidationState() != com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState.CURRENT
+                || session.getDevelopmentChange().getWorkspaceState() != com.atenea.persistence.developmentchange.DevelopmentChangeWorkspaceState.READY
+                || session.getDevelopmentChange().getSourceState() == com.atenea.persistence.developmentchange.DevelopmentChangeSourceState.STALE
+                || session.getDevelopmentChange().getSourceState() == com.atenea.persistence.developmentchange.DevelopmentChangeSourceState.BLOCKED
+                || session.getAcceptanceState() != com.atenea.persistence.worksession.WorkSessionAcceptanceState.INTEGRATION_READY
+                || session.getPullRequestStatus() != com.atenea.persistence.worksession.WorkSessionPullRequestStatus.MERGED
+                || !com.atenea.remoteworker.ProjectCodexIdentity.matches(session)
+                || !"ax42-01".equals(session.getSelectedWorkerId())
+                || !session.getSelectedWorkerId().equals(session.getDevelopmentChange().getSelectedWorkerId())
+                || !session.getWorkspaceBranch().equals("atenea/change-" + binding.changeKey())
+                || !session.getWorkspaceIdentity().equals("remote:ax42-01:change:" + binding.changeKey())
+                || !"DEPLOYED".equals(deployed.path("status").asText()) || !deployed.path("healthy").asBoolean(false)
+                || deployed.path("sessionId").asLong(-1) != session.getId()
+                || !binding.integratedMergeCommit().equals(deployed.path("integratedMergeCommit").asText())
+                || deployed.path("observedAt").asLong(0) < now - 60 || deployed.path("observedAt").asLong(0) > now + 5
+                || observed.path("workspaceDirty").asBoolean(true) || observed.path("retainedDraft").asBoolean(true)
+                || !session.getFinalCommitSha().equals(observed.path("sourceCommit").asText())
+                || !observed.path("requestFingerprintSha256").asText().matches("[0-9a-f]{64}")) {
+            throw new DeliveryRejectedException("COMPLETION_WORKSPACE_NOT_VERIFIED");
+        }
+        lockCompletionAdmissionAndRequireIdle(session.getId());
+    }
     public java.util.Optional<DeliveryOperation> completedRecovery(Long sessionId, Long actor, UUID integration, String source) {
         return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE session_id=? AND operator_id=? "
                 + "AND kind='RELEASE' AND target='APP_PROD' AND state='SUCCEEDED' AND source_commit=? "
@@ -74,6 +139,11 @@ public class DeliveryStore {
         return get(id, false);
     }
     public void update(DeliveryOperation op, String state, String code, String planSha, JsonNode evidence) {
+        if ("FINALIZE".equals(op.kind()) && (!op.evidence().path(ChangeCompletionEvidence.FIELD)
+                .equals(evidence.path(ChangeCompletionEvidence.FIELD)) || !op.evidence().path("completionBindingSha256")
+                .equals(evidence.path("completionBindingSha256")))) {
+            throw new DeliveryRejectedException("COMPLETION_EVIDENCE_MISMATCH");
+        }
         JsonNode retained = retainRecoverySource(op, evidence);
         jdbc.update("""
                 UPDATE mobile_delivery_operation SET state=?,error_code=?,plan_sha256=?,evidence_json=?::jsonb,
@@ -94,10 +164,14 @@ public class DeliveryStore {
     public List<UUID> pending() {
         return jdbc.query("""
                 SELECT id FROM mobile_delivery_operation
-                WHERE state NOT IN ('SUCCEEDED','ROLLED_BACK','FAILED','BLOCKED','ROLLBACK_FAILED')
+                WHERE kind <> 'FINALIZE' AND state NOT IN ('SUCCEEDED','ROLLED_BACK','FAILED','BLOCKED','ROLLBACK_FAILED')
                   AND (state <> 'READY' OR (evidence_json->>'expiresAt')::bigint <= extract(epoch from now()))
                 ORDER BY updated_at LIMIT 10
                 """, (rs, index) -> rs.getObject("id", UUID.class));
+    }
+    public List<UUID> pendingCompletions() {
+        return jdbc.query("SELECT id FROM mobile_delivery_operation WHERE kind='FINALIZE' AND state IN ('QUEUED','APPLYING') "
+                + "ORDER BY updated_at LIMIT 10", (rs, index) -> rs.getObject("id", UUID.class));
     }
     private DeliveryOperation row(ResultSet rs, int index) throws SQLException {
         try {

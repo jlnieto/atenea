@@ -36,5 +36,6 @@ public record DevelopmentChangeResponse(
         DevelopmentChangeActionResponse primaryAction,
         Instant createdAt,
         Instant updatedAt,
-        long version) {
+        long version,
+        Long completedSessionId) {
 }

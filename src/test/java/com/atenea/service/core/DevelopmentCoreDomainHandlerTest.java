@@ -750,6 +750,18 @@ class DevelopmentCoreDomainHandlerTest {
     }
 
     @Test
+    void changeOwnedCloseIsRejectedBeforeGeneratingLegacyDeliverables() {
+        org.mockito.Mockito.doThrow(new com.atenea.delivery.DeliveryRejectedException("DELIVERED_CHANGE_COMPLETION_REQUIRED"))
+                .when(workSessionService).requireLegacyClose(44L);
+        assertThrows(com.atenea.delivery.DeliveryRejectedException.class,() -> handler.execute(
+                new CoreIntentEnvelope("CLOSE_WORK_SESSION",CoreDomain.DEVELOPMENT,"close_work_session",
+                        Map.of("projectId",7L,"workSessionId",44L),BigDecimal.valueOf(0.95),CoreRiskLevel.SAFE_WRITE,true),
+                new CoreExecutionContext(101L,7L,44L,"default",true,"token-1")));
+        org.mockito.Mockito.verifyNoInteractions(sessionDeliverableService,sessionDeliverableGenerationService);
+        org.mockito.Mockito.verify(workSessionService,org.mockito.Mockito.never()).closeSessionConversationView(44L);
+    }
+
+    @Test
     void closeWorkSessionRejectsWhenPendingDeliverableFailsToGenerate() {
         when(sessionDeliverableService.getDeliverablesView(44L)).thenReturn(new SessionDeliverablesViewResponse(
                 44L,
