@@ -212,4 +212,93 @@ class MobileChangeCompletionServiceTest {
                 deployed.planId(),deployed.operationId(),deployed.receiptSha256(),null));
         assertThrows(DeliveryRejectedException.class,() -> service.request(21L,actor,false)); assertNull(durable.get());
     }
+    private MobileDeliveryService.DeploymentObservation unavailable(String code) {
+        return MobileDeliveryService.DeploymentObservation.unavailable(21L,"UNAVAILABLE",code);
+    }
+    @Test void occupiedObservationBeforeIntentNeverLocksOrClosesTheSession() {
+        when(delivery.observeDeployment(anyLong(),any())).thenReturn(unavailable("APP_OBSERVATION_BUSY"));
+        assertEquals("APP_OBSERVATION_BUSY",assertThrows(DeliveryRejectedException.class,
+                () -> service.request(21L,actor,false)).code());
+        assertNull(durable.get()); assertEquals(WorkSessionStatus.OPEN,session.getStatus());
+        verifyNoInteractions(close,workspaces);
+    }
+    @Test void occupiedObservationBeforeCloseWaitsAndRecoversSameIntentWithFreshProof() {
+        service.request(21L,actor,false);
+        when(delivery.observeDeployment(anyLong(),any())).thenReturn(unavailable("APP_OBSERVATION_BUSY"));
+        service.advance(id); service.advance(id);
+        assertEquals("APPLYING",durable.get().state());
+        assertEquals("APP_OBSERVATION_BUSY",durable.get().errorCode());
+        assertEquals(2,durable.get().evidence().path("deploymentObservationWait").path("attempts").asLong());
+        assertFalse(durable.get().evidence().has("blockedAttempts"));
+        assertEquals(DevelopmentChangeStatus.OPEN,change.getStatus()); verifyNoInteractions(close);
+        assertEquals(WorkSessionStatus.CLOSING,session.getStatus());
+        when(delivery.observeDeployment(anyLong(),any())).thenReturn(deployed);
+        service.advance(id);
+        assertEquals("SUCCEEDED",durable.get().state()); assertNull(durable.get().errorCode());
+        assertEquals(id,durable.get().id()); assertEquals(execution,durable.get().executionId());
+        verify(close,times(1)).closeSession(21L);
+        verify(store,times(1)).create(any(),any(),any(),any(),any(),any(),any());
+    }
+    @Test void occupiedPostCloseObservationNeverCompletesOrRepeatsRemoteClose() {
+        service.request(21L,actor,false);
+        when(delivery.observeDeployment(anyLong(),any())).thenReturn(deployed,unavailable("APP_OBSERVATION_BUSY"));
+        service.advance(id);
+        UUID closeId=session.getRemoteCloseOperationId();
+        assertEquals("APPLYING",durable.get().state());
+        assertEquals(WorkSessionStatus.CLOSED,session.getStatus());
+        assertEquals(DevelopmentChangeStatus.OPEN,change.getStatus());
+        when(delivery.observeDeployment(anyLong(),any())).thenReturn(deployed);
+        service.advance(id);
+        assertEquals("SUCCEEDED",durable.get().state());
+        assertEquals(closeId,session.getRemoteCloseOperationId());
+        verify(close,times(1)).closeSession(21L);
+    }
+    @Test void realObservationFailuresPreserveTheirCauseAndRemainTerminal() {
+        service.request(21L,actor,false);
+        when(delivery.observeDeployment(anyLong(),any())).thenReturn(unavailable("APP_OBSERVATION_EVIDENCE_MISMATCH"));
+        service.advance(id);
+        assertEquals("BLOCKED",durable.get().state());
+        assertEquals("APP_OBSERVATION_EVIDENCE_MISMATCH",durable.get().errorCode());
+        verifyNoInteractions(close);
+    }
+    @Test void staleOrUnhealthyProofAfterBusyStillBlocksInsteadOfCompleting() {
+        service.request(21L,actor,false);
+        when(delivery.observeDeployment(anyLong(),any())).thenReturn(unavailable("APP_OBSERVATION_BUSY"));
+        service.advance(id);
+        when(delivery.observeDeployment(anyLong(),any())).thenReturn(new MobileDeliveryService.DeploymentObservation(
+                21L,"UNHEALTHY","OPERATOR",deployed.sourceCommit(),deployed.integratedMergeCommit(),false,
+                Instant.now().getEpochSecond(),deployed.planId(),deployed.operationId(),deployed.receiptSha256(),null));
+        service.advance(id);
+        assertEquals("BLOCKED",durable.get().state());
+        assertEquals("HEALTHY_DELIVERED_CHANGE_REQUIRED",durable.get().errorCode()); verifyNoInteractions(close);
+    }
+    @Test void actualDeliveryObservationPreservesPublisherBusyAcrossClosingAndRecovery() {
+        // Exercise both services together: an always-healthy mocked observation
+        // hid the production race between mobile reads and completion reads.
+        var executor=mock(ReleaseControlClient.class);
+        var github=mock(com.atenea.github.GitHubClient.class);
+        when(executor.enabled()).thenReturn(true);
+        when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(47L);
+        var realDelivery=new MobileDeliveryService(store,sessions,mock(AgentRunRepository.class),operators,ownership,
+                mock(WorkSessionGitHubService.class),new WorkSessionAcceptanceService(sessions),github,executor,
+                mock(com.atenea.auth.recovery.OperatorRecoveryService.class),
+                mock(com.atenea.auth.action.PrivilegedActionAuthorizationService.class),mapper,manager);
+        service=new MobileChangeCompletionService(store,sessions,changes,operators,ownership,realDelivery,
+                workspaces,close,properties,mapper,manager);
+        var observation=mapper.createObjectNode().put("protocol","atenea-app-observation/v1")
+                .put("target","APP_PROD").put("state","OBSERVED").put("sourceCommit","8".repeat(40))
+                .put("imageSha256","a".repeat(64)).put("healthy",true)
+                .put("observedAt",Instant.now().getEpochSecond()).put("planId",deployed.planId().toString())
+                .put("operationId",deployed.operationId().toString()).put("receiptSha256",deployed.receiptSha256())
+                .put("finishedAt",1L);
+        when(executor.observeApp()).thenReturn(observation)
+                .thenThrow(new DeliveryRejectedException("APP_OBSERVATION_BUSY"));
+        service.request(21L,actor,false); service.advance(id);
+        assertEquals("APPLYING",durable.get().state()); assertEquals("APP_OBSERVATION_BUSY",durable.get().errorCode());
+        assertEquals(WorkSessionStatus.CLOSING,session.getStatus()); verifyNoInteractions(close);
+        doReturn(observation).when(executor).observeApp();
+        service.advance(id);
+        assertEquals("SUCCEEDED",durable.get().state()); verify(close,times(1)).closeSession(21L);
+        verify(executor,never()).execute(any(),any(),any()); verify(executor,never()).plan(any(),any(),any());
+    }
 }
