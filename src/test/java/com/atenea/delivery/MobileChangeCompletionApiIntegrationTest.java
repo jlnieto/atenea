@@ -144,6 +144,26 @@ class MobileChangeCompletionApiIntegrationTest {
         assertEquals(id,request()); verify(close,times(1)).closeSession(session.getId());
         assertEquals(2,store.list(session.getId()).size()); // Integration + completion; no new publication.
     }
+    @Test void busyObservationWaitIsDurableAndResumesWithoutAnotherCompletion() throws Exception {
+        UUID id=request();
+        var binding=store.get(id,false).evidence().path("completionBindingSha256").asText();
+        when(delivery.observeDeployment(eq(session.getId()),any())).thenReturn(
+                MobileDeliveryService.DeploymentObservation.unavailable(session.getId(),"UNAVAILABLE","APP_OBSERVATION_BUSY"));
+        completion.advance(id);
+        var waiting=store.get(id,false);
+        assertEquals("APPLYING",waiting.state()); assertEquals("APP_OBSERVATION_BUSY",waiting.errorCode());
+        assertEquals(1,waiting.evidence().path("deploymentObservationWait").path("attempts").asLong());
+        assertEquals(binding,waiting.evidence().path("completionBindingSha256").asText());
+        assertTrue(store.pendingCompletions().contains(id)); verifyNoInteractions(close);
+        assertEquals(DevelopmentChangeStatus.OPEN,changes.findById(change.getId()).orElseThrow().getStatus());
+        when(delivery.observeDeployment(eq(session.getId()),any())).thenReturn(new MobileDeliveryService.DeploymentObservation(
+                session.getId(),"DEPLOYED","OPERATOR","8".repeat(40),"4".repeat(40),true,Instant.now().getEpochSecond(),
+                UUID.randomUUID(),UUID.randomUUID(),"9".repeat(64),null));
+        completion.advance(id);
+        assertEquals("SUCCEEDED",store.get(id,false).state()); assertEquals(id,request());
+        assertEquals(2,store.list(session.getId()).size()); verify(close,times(1)).closeSession(session.getId());
+        assertEquals(binding,store.get(id,false).evidence().path("completionBindingSha256").asText());
+    }
     @Test void roleAndClosedProtocolRejectAdditionalAuthority() throws Exception {
         mvc.perform(post("/api/mobile/sessions/{id}/delivery/finalize",session.getId()).with(auth(routine))
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());

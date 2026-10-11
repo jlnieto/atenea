@@ -55,4 +55,38 @@ class ReleaseControlTransportTest {
         assertEquals("RELEASE_TRANSPORT_UNAVAILABLE",error.code());
         assertFalse(error.getMessage().contains(directory.toString()));
     }
+    @Test void concurrentClosedObservationReturnsBusyWithoutLosingItsSymbolicCause() throws Exception {
+        var address=UnixDomainSocketAddress.of(directory.resolve("busy.sock"));
+        var entered=new java.util.concurrent.CountDownLatch(1);
+        var finish=new java.util.concurrent.CountDownLatch(1);
+        try (var server=ServerSocketChannel.open(StandardProtocolFamily.UNIX);
+             var threads=Executors.newFixedThreadPool(3)) {
+            server.bind(address);
+            var publisher=threads.submit(() -> {
+                try (var first=server.accept()) {
+                    var reader=new BufferedReader(new InputStreamReader(Channels.newInputStream(first),java.nio.charset.StandardCharsets.UTF_8));
+                    assertEquals(mapper.readTree("{\"operation\":\"OBSERVE_APP\"}"),mapper.readTree(reader.readLine()));
+                    entered.countDown();
+                    try (var second=server.accept()) {
+                        var other=new BufferedReader(new InputStreamReader(Channels.newInputStream(second),java.nio.charset.StandardCharsets.UTF_8));
+                        assertEquals(mapper.readTree("{\"operation\":\"OBSERVE_APP\"}"),mapper.readTree(other.readLine()));
+                        var busy=ByteBuffer.wrap("{\"ok\":false,\"errorCode\":\"APP_OBSERVATION_BUSY\"}\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        while (busy.hasRemaining()) second.write(busy);
+                    }
+                    assertTrue(finish.await(5,TimeUnit.SECONDS));
+                    var reply=ByteBuffer.wrap("{\"ok\":true,\"result\":{\"state\":\"OBSERVED\"}}\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    while (reply.hasRemaining()) first.write(reply);
+                }
+                return null;
+            });
+            var client=new ReleaseControlClient(mapper,true,address);
+            var first=threads.submit(client::observeApp);
+            try {
+                assertTrue(entered.await(5,TimeUnit.SECONDS));
+                assertEquals("APP_OBSERVATION_BUSY",assertThrows(DeliveryRejectedException.class,client::observeApp).code());
+            } finally { finish.countDown(); }
+            assertEquals("OBSERVED",first.get(5,TimeUnit.SECONDS).path("state").asText());
+            publisher.get(5,TimeUnit.SECONDS);
+        }
+    }
 }

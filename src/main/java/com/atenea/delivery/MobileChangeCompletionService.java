@@ -153,7 +153,8 @@ public class MobileChangeCompletionService {
             var after = requireDeployment(operation.sessionId(), actor, binding);
             transaction.executeWithoutResult(ignored -> complete(id, after, workspaceAfter));
         } catch (DeliveryRejectedException rejected) {
-            block(id, rejected.code());
+            if ("APP_OBSERVATION_BUSY".equals(rejected.code())) waitForDeploymentObservation(id);
+            else block(id, rejected.code());
         } catch (WorkSessionCloseBlockedException blocked) {
             WorkSessionEntity retained = session(operation.sessionId(), false);
             if (retained.getRemoteCloseState() == RemoteCloseState.RECONCILING) return;
@@ -211,6 +212,21 @@ public class MobileChangeCompletionService {
             store.update(op, "BLOCKED", code, op.planSha256(), evidence);
         });
     }
+    private void waitForDeploymentObservation(UUID id) {
+        transaction.executeWithoutResult(ignored -> {
+            DeliveryOperation op = store.get(id, true);
+            if (op.terminal()) return;
+            ObjectNode evidence = op.evidence().deepCopy();
+            ObjectNode wait = evidence.withObject("deploymentObservationWait");
+            String now = Instant.now().toString();
+            if (!wait.has("firstObservedAt")) wait.put("firstObservedAt", now);
+            wait.put("lastObservedAt", now).put("code", "APP_OBSERVATION_BUSY")
+                    .put("attempts", wait.path("attempts").asLong(0) + 1);
+            // Busy is not healthy evidence, nor a terminal refusal. The existing
+            // scheduler rechecks fresh evidence with this exact intent/close UUID.
+            store.update(op, "APPLYING", "APP_OBSERVATION_BUSY", op.planSha256(), evidence);
+        });
+    }
     private DevelopmentChangeWorkspaceObservation requireWorkspace(ChangeCompletionEvidence binding, UUID inspectionId) {
         // Existing OBSERVE_ONLY executes a fresh inspection even with the
         // same request identity; it does not create or release a workspace.
@@ -232,6 +248,13 @@ public class MobileChangeCompletionService {
         return result;
     }
     private void requireDeploymentProof(MobileDeliveryService.DeploymentObservation result, Long id, ChangeCompletionEvidence binding) {
+        // Keep the symbolic cause instead of turning a concurrent read into a
+        // definitive unhealthy deployment. Only BUSY is retried automatically.
+        if (result != null && id.equals(result.sessionId()) && "UNAVAILABLE".equals(result.status())
+                && !result.healthy() && result.errorCode() != null
+                && result.errorCode().matches("[A-Z][A-Z0-9_]{2,79}")) {
+            throw new DeliveryRejectedException(result.errorCode());
+        }
         long now = Instant.now().getEpochSecond();
         if (result == null || !id.equals(result.sessionId()) || !"DEPLOYED".equals(result.status()) || !result.healthy()
                 || !binding.integratedMergeCommit().equals(result.integratedMergeCommit()) || result.observedAt() == null
