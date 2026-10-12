@@ -3,6 +3,8 @@ package com.atenea.persistence.worksession;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import jakarta.persistence.EntityManager;
@@ -16,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest
 @Transactional
 class CodexExecutionProfileJpaIntegrationTest {
+
+    @Autowired private DevelopmentChangeRepository fixtureChangeRepository;
 
     @Autowired
     private ProjectRepository projectRepository;
@@ -67,7 +71,7 @@ class CodexExecutionProfileJpaIntegrationTest {
         session.setLastActivityAt(now);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
-        session = workSessionRepository.save(session);
+        session = workSessionRepository.save(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
 
         SessionTurnEntity turn = new SessionTurnEntity();
         turn.setSession(session);

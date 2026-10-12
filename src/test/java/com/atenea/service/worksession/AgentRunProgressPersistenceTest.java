@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import com.atenea.persistence.worksession.AgentRunEntity;
@@ -35,6 +37,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest
 class AgentRunProgressPersistenceTest {
+
+    @Autowired private DevelopmentChangeRepository fixtureChangeRepository;
 
     private static final AtomicLong FIXTURE_SEQUENCE = new AtomicLong();
 
@@ -222,7 +226,7 @@ class AgentRunProgressPersistenceTest {
         session.setLastActivityAt(startedAt);
         session.setCreatedAt(startedAt);
         session.setUpdatedAt(startedAt);
-        session = workSessionRepository.save(session);
+        session = workSessionRepository.save(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
 
         SessionTurnEntity turn = new SessionTurnEntity();
         turn.setSession(session);

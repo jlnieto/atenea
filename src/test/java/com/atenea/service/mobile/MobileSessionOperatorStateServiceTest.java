@@ -15,7 +15,6 @@ import com.atenea.api.worksession.WorkSessionOperationalState;
 import com.atenea.api.worksession.WorkSessionResponse;
 import com.atenea.api.worksession.WorkSessionViewLatestRunResponse;
 import com.atenea.api.worksession.WorkSessionViewResponse;
-import com.atenea.codexoperations.LegacyRemoteCloseService;
 import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.worksession.AgentRunEntity;
@@ -62,8 +61,6 @@ class MobileSessionOperatorStateServiceTest {
     @Mock
     private RemoteWorkerClient remoteWorkerClient;
 
-    @Mock
-    private LegacyRemoteCloseService legacyRemoteCloseService;
 
 
     private MobileSessionOperatorStateService service;
@@ -72,7 +69,7 @@ class MobileSessionOperatorStateServiceTest {
     void setUp() {
         service = new MobileSessionOperatorStateService(agentRunRepository,
                 workSessionRepository, agentRunService, remoteWorkerProperties,
-                remoteWorkerClient, legacyRemoteCloseService);
+                remoteWorkerClient);
     }
 
 
@@ -97,50 +94,7 @@ class MobileSessionOperatorStateServiceTest {
     }
 
 
-    @Test
-    void legacyCloseActionStaysUnavailableWhileProjectGateIsOff() {
-        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
-                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(false);
 
-        MobileSessionOperatorStateResponse response = service.build(conversation(
-                WorkSessionStatus.CLOSED,
-                RemoteCloseState.UNVERIFIED_LEGACY,
-                null,
-                false));
-
-        assertFalse(response.surfaceEnabled());
-        assertEquals(MobileSessionOperatorState.LEGACY_CLOSE_REQUIRED, response.state());
-        assertEquals(MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE,
-                response.primaryAction());
-        assertFalse(response.primaryActionAvailable());
-        assertEquals(CodexOperationsRole.PLATFORM_ADMINISTRATOR,
-                response.requiredRole());
-    }
-
-    @Test
-    void exactPreflightBlockOffersOneFreshAdministrativeConfirmation() {
-        when(legacyRemoteCloseService.isExactBlockedRecoveryAvailable(17L))
-                .thenReturn(true);
-
-        MobileSessionOperatorStateResponse response = service.build(conversation(
-                WorkSessionStatus.CLOSED,
-                RemoteCloseState.BLOCKED,
-                "WORKSPACE_RELEASE_PREFLIGHT_REJECTED",
-                null,
-                false));
-
-        assertTrue(response.surfaceEnabled());
-        assertEquals(MobileSessionOperatorState.REMOTE_CLOSE_BLOCKED,
-                response.state());
-        assertEquals("No se liberó ningún recurso. Genera una nueva confirmación administrativa.",
-                response.blocker());
-        assertEquals(MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE,
-                response.primaryAction());
-        assertEquals("Volver a validar cierre", response.primaryActionLabel());
-        assertTrue(response.primaryActionAvailable());
-        assertEquals(CodexOperationsRole.PLATFORM_ADMINISTRATOR,
-                response.requiredRole());
-    }
 
     @Test
     void preflightCodeWithoutExactPersistedEligibilityOffersNoMutation() {
@@ -335,301 +289,12 @@ class MobileSessionOperatorStateServiceTest {
         assertEquals(96L, response.targetAgentRunId());
     }
 
-    @Test
-    void historicalPreV63FailureUsesExactReadOnlyOwnerDiagnosis() {
-        WorkSessionEntity current = exactRemoteSession(
-                17L,
-                "18c00753-6080-42f7-ac05-18c47b236cac",
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                Instant.parse("2026-08-03T10:03:00Z"));
-        WorkSessionEntity predecessor = exactRemoteSession(
-                16L,
-                "7151dce0-69ab-4614-86e4-f93f1af825e4",
-                WorkSessionStatus.CLOSED,
-                RemoteCloseState.UNVERIFIED_LEGACY,
-                Instant.parse("2026-08-03T10:00:00Z"));
-        clearCanonicalSourceObservation(predecessor);
-        AgentRunEntity run = historicalRun(current);
-        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
-        when(workSessionRepository.findWithProjectById(17L))
-                .thenReturn(Optional.of(current));
-        when(workSessionRepository
-                .findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
-                        1L, WorkSessionStatus.CLOSED, current.getCreatedAt()))
-                .thenReturn(Optional.of(predecessor));
-        when(workSessionRepository
-                .findFirstByProjectIdAndCreatedAtAfterOrderByCreatedAtAscIdAsc(
-                        1L, predecessor.getCreatedAt()))
-                .thenReturn(Optional.of(current));
-        when(remoteWorkerClient.diagnoseWorkspaceCapacityOwner(predecessor, current))
-                .thenReturn(new RemoteWorkerClient.WorkspaceCapacityOwner(
-                        "project-workspace-capacity-owner-v1",
-                        "OWNED",
-                        predecessor.getRemoteSessionId().toString(),
-                        predecessor.getWorkspaceIdentity(),
-                        "atenea",
-                        "ax42-01",
-                        "1".repeat(64),
-                        "2".repeat(64),
-                        false));
-        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor("atenea"))
-                .thenReturn(true);
 
-        MobileSessionOperatorStateResponse response = service.build(conversation(
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                latestRun(null, null),
-                false));
 
-        assertEquals(MobileSessionOperatorState.CLOSED_OWNER_BLOCKS_CAPACITY,
-                response.state());
-        assertEquals(MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE,
-                response.primaryAction());
-        assertEquals(16L, response.targetWorkSessionId());
-        assertEquals(96L, response.targetAgentRunId());
-    }
 
-    @Test
-    void historicalCanonicalWitnessMustBeTheImmediateNextSession() {
-        WorkSessionEntity current = exactRemoteSession(
-                17L,
-                "18c00753-6080-42f7-ac05-18c47b236cac",
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                Instant.parse("2026-08-03T10:03:00Z"));
-        WorkSessionEntity predecessor = exactRemoteSession(
-                16L,
-                "7151dce0-69ab-4614-86e4-f93f1af825e4",
-                WorkSessionStatus.CLOSED,
-                RemoteCloseState.UNVERIFIED_LEGACY,
-                Instant.parse("2026-08-03T10:00:00Z"));
-        clearCanonicalSourceObservation(predecessor);
-        WorkSessionEntity intermediate = exactRemoteSession(
-                99L,
-                "0db6b59e-63d3-44c5-8635-2b74353e93b3",
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                Instant.parse("2026-08-03T10:01:00Z"));
-        AgentRunEntity run = historicalRun(current);
-        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
-        when(workSessionRepository.findWithProjectById(17L))
-                .thenReturn(Optional.of(current));
-        when(workSessionRepository
-                .findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
-                        1L, WorkSessionStatus.CLOSED, current.getCreatedAt()))
-                .thenReturn(Optional.of(predecessor));
-        when(workSessionRepository
-                .findFirstByProjectIdAndCreatedAtAfterOrderByCreatedAtAscIdAsc(
-                        1L, predecessor.getCreatedAt()))
-                .thenReturn(Optional.of(intermediate));
-        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor("atenea"))
-                .thenReturn(true);
 
-        MobileSessionOperatorStateResponse response = service.build(conversation(
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                latestRun(null, null),
-                false));
 
-        assertEquals(MobileSessionOperatorState.DEFAULT, response.state());
-        assertFalse(response.primaryActionAvailable());
-        verifyNoInteractions(remoteWorkerClient);
-    }
 
-    @Test
-    void historicalCompatibilityRejectsPartialCanonicalHistoryWithoutWorkerIo() {
-        WorkSessionEntity current = exactRemoteSession(
-                17L,
-                "18c00753-6080-42f7-ac05-18c47b236cac",
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                Instant.parse("2026-08-03T10:03:00Z"));
-        WorkSessionEntity predecessor = exactRemoteSession(
-                16L,
-                "7151dce0-69ab-4614-86e4-f93f1af825e4",
-                WorkSessionStatus.CLOSED,
-                RemoteCloseState.UNVERIFIED_LEGACY,
-                Instant.parse("2026-08-03T10:00:00Z"));
-        predecessor.setCanonicalSourceObservationSha256(null);
-        AgentRunEntity run = historicalRun(current);
-        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
-        when(workSessionRepository.findWithProjectById(17L))
-                .thenReturn(Optional.of(current));
-        when(workSessionRepository
-                .findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
-                        1L, WorkSessionStatus.CLOSED, current.getCreatedAt()))
-                .thenReturn(Optional.of(predecessor));
-        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor("atenea"))
-                .thenReturn(true);
-
-        MobileSessionOperatorStateResponse response = service.build(conversation(
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                latestRun(null, null),
-                false));
-
-        assertEquals(MobileSessionOperatorState.DEFAULT, response.state());
-        assertFalse(response.primaryActionAvailable());
-        verifyNoInteractions(remoteWorkerClient);
-    }
-
-    @Test
-    void historicalCompatibilityDoesNotInspectOwnershipWhileGateIsOff() {
-        WorkSessionEntity current = exactRemoteSession(
-                17L,
-                "18c00753-6080-42f7-ac05-18c47b236cac",
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                Instant.parse("2026-08-03T10:03:00Z"));
-        AgentRunEntity run = historicalRun(current);
-        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
-        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor("atenea"))
-                .thenReturn(false);
-
-        MobileSessionOperatorStateResponse response = service.build(conversation(
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                latestRun(null, null),
-                false));
-
-        assertEquals(MobileSessionOperatorState.DEFAULT, response.state());
-        assertFalse(response.surfaceEnabled());
-        verifyNoInteractions(workSessionRepository, remoteWorkerClient);
-    }
-
-    @Test
-    void exactBlockedPredecessorProjectsFreshConfirmationIntoCurrentSession() {
-        WorkSessionEntity current = exactRemoteSession(
-                17L,
-                "18c00753-6080-42f7-ac05-18c47b236cac",
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                Instant.parse("2026-08-03T10:03:00Z"));
-        WorkSessionEntity predecessor = exactRemoteSession(
-                16L,
-                "7151dce0-69ab-4614-86e4-f93f1af825e4",
-                WorkSessionStatus.CLOSED,
-                RemoteCloseState.BLOCKED,
-                Instant.parse("2026-08-03T10:00:00Z"));
-        predecessor.setRemoteCloseErrorCode("WORKSPACE_RELEASE_PREFLIGHT_REJECTED");
-        AgentRunEntity run = historicalRun(current);
-        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
-        when(workSessionRepository.findWithProjectById(17L))
-                .thenReturn(Optional.of(current));
-        when(workSessionRepository
-                .findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
-                        1L, WorkSessionStatus.CLOSED, current.getCreatedAt()))
-                .thenReturn(Optional.of(predecessor));
-        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor("atenea"))
-                .thenReturn(true);
-        when(legacyRemoteCloseService.isExactBlockedRecoveryAvailable(16L))
-                .thenReturn(true);
-
-        MobileSessionOperatorStateResponse response = service.build(conversation(
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                latestRun(null, null),
-                false));
-
-        assertEquals(MobileSessionOperatorState.REMOTE_CLOSE_BLOCKED,
-                response.state());
-        assertEquals("Cierre remoto bloqueado", response.title());
-        assertEquals("No se liberó ningún recurso. Genera una nueva confirmación administrativa.",
-                response.blocker());
-        assertEquals(MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE,
-                response.primaryAction());
-        assertEquals("Volver a validar cierre", response.primaryActionLabel());
-        assertTrue(response.primaryActionAvailable());
-        assertEquals(CodexOperationsRole.PLATFORM_ADMINISTRATOR,
-                response.requiredRole());
-        assertEquals(16L, response.targetWorkSessionId());
-        assertEquals(96L, response.targetAgentRunId());
-        verifyNoInteractions(remoteWorkerClient);
-    }
-
-    @Test
-    void blockedPredecessorWithoutExactEligibilityStaysNonMutating() {
-        WorkSessionEntity current = exactRemoteSession(
-                17L,
-                "18c00753-6080-42f7-ac05-18c47b236cac",
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                Instant.parse("2026-08-03T10:03:00Z"));
-        WorkSessionEntity predecessor = exactRemoteSession(
-                16L,
-                "7151dce0-69ab-4614-86e4-f93f1af825e4",
-                WorkSessionStatus.CLOSED,
-                RemoteCloseState.BLOCKED,
-                Instant.parse("2026-08-03T10:00:00Z"));
-        predecessor.setRemoteCloseErrorCode("WORKSPACE_RELEASE_PREFLIGHT_REJECTED");
-        AgentRunEntity run = historicalRun(current);
-        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
-        when(workSessionRepository.findWithProjectById(17L))
-                .thenReturn(Optional.of(current));
-        when(workSessionRepository
-                .findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
-                        1L, WorkSessionStatus.CLOSED, current.getCreatedAt()))
-                .thenReturn(Optional.of(predecessor));
-        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor("atenea"))
-                .thenReturn(true);
-
-        MobileSessionOperatorStateResponse response = service.build(conversation(
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                latestRun(null, null),
-                false));
-
-        assertEquals(MobileSessionOperatorState.OWNERSHIP_REVIEW_REQUIRED,
-                response.state());
-        assertEquals(MobileSessionPrimaryAction.CONTACT_PLATFORM_ADMINISTRATOR,
-                response.primaryAction());
-        assertFalse(response.primaryActionAvailable());
-        assertEquals(16L, response.targetWorkSessionId());
-        assertEquals(96L, response.targetAgentRunId());
-        verifyNoInteractions(remoteWorkerClient);
-    }
-
-    @Test
-    void historicalRunOffersRetryOnlyAfterExactReleasedReceipt() {
-        WorkSessionEntity current = exactRemoteSession(
-                17L,
-                "18c00753-6080-42f7-ac05-18c47b236cac",
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                Instant.parse("2026-08-03T10:03:00Z"));
-        WorkSessionEntity predecessor = exactRemoteSession(
-                16L,
-                "7151dce0-69ab-4614-86e4-f93f1af825e4",
-                WorkSessionStatus.CLOSED,
-                RemoteCloseState.RELEASED,
-                Instant.parse("2026-08-03T10:00:00Z"));
-        predecessor.setRemoteCloseOperationId(UUID.randomUUID());
-        predecessor.setRemoteCloseReceiptSha256("3".repeat(64));
-        predecessor.setRemoteCloseReleasedAt(Instant.parse("2026-08-03T10:04:00Z"));
-        AgentRunEntity run = historicalRun(current);
-        when(agentRunRepository.findById(96L)).thenReturn(Optional.of(run));
-        when(workSessionRepository.findWithProjectById(17L))
-                .thenReturn(Optional.of(current));
-        when(workSessionRepository
-                .findFirstByProjectIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
-                        1L, WorkSessionStatus.CLOSED, current.getCreatedAt()))
-                .thenReturn(Optional.of(predecessor));
-        when(agentRunService.isRemoteRetryEligible(96L)).thenReturn(true);
-        when(remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor("atenea"))
-                .thenReturn(true);
-
-        MobileSessionOperatorStateResponse response = service.build(conversation(
-                WorkSessionStatus.OPEN,
-                RemoteCloseState.NOT_STARTED,
-                latestRun(null, null),
-                false));
-
-        assertEquals(MobileSessionOperatorState.CAPACITY_RELEASED, response.state());
-        assertEquals(MobileSessionPrimaryAction.RETRY_AGENT_RUN,
-                response.primaryAction());
-        assertTrue(response.primaryActionAvailable());
-    }
 
     private static WorkSessionConversationViewResponse conversation(
             WorkSessionStatus status,
@@ -779,29 +444,5 @@ class MobileSessionOperatorStateServiceTest {
         return session;
     }
 
-    private static void clearCanonicalSourceObservation(WorkSessionEntity session) {
-        session.setCanonicalSourceRef(null);
-        session.setCanonicalSourceCommit(null);
-        session.setCanonicalSourceObservationSha256(null);
-        session.setCanonicalSourceObservedAt(null);
-    }
 
-    private static AgentRunEntity historicalRun(WorkSessionEntity current) {
-        AgentRunEntity run = new AgentRunEntity();
-        run.setId(96L);
-        run.setSession(current);
-        run.setStatus(AgentRunStatus.FAILED);
-        run.setExecutionTarget(ExecutionTarget.REMOTE);
-        run.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
-        run.setRemoteSessionId(current.getRemoteSessionId());
-        run.setWorkspaceIdentity(current.getWorkspaceIdentity());
-        run.setWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
-        run.setProjectIdentity(ProjectCodexIdentity.PROJECT_IDENTITY);
-        run.setRepositoryUrl(ProjectCodexIdentity.REPOSITORY);
-        run.setRepositoryBranch(ProjectCodexIdentity.BRANCH);
-        run.setRepositoryCommit(current.getCanonicalSourceCommit());
-        run.setManifestSha256(ProjectCodexIdentity.MANIFEST_SHA256);
-        ReviewedInstructionBundleIdentity.apply(run, ProjectCodexIdentity.PROJECT_IDENTITY);
-        return run;
-    }
 }

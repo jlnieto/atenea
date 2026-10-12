@@ -595,7 +595,10 @@ public class SessionTurnService {
                         session.getId(),
                         acceptedTurn.getId())
                 .orElseThrow(this::conflictingImageReplay);
-        if (!ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(acceptedRun.getWorkloadKind())
+        boolean exactChangeRun = ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(acceptedRun.getWorkloadKind())
+                && session.getDevelopmentChange() != null
+                && session.getDevelopmentChange().getChangeKey().equals(acceptedRun.getDevelopmentChangeKey());
+        if (!(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(acceptedRun.getWorkloadKind()) || exactChangeRun)
                 || acceptedRun.getAttachmentCount() != acceptedIds.size()
                 || acceptedRun.getAttachmentBytes() != attachmentBytes
                 || !manifestSha256.equals(acceptedRun.getAttachmentManifestSha256())

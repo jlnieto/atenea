@@ -101,9 +101,11 @@ argumentos arbitrarios y acuse COMMIT perdido. El dump de prueba se valida con
 las herramientas PostgreSQL 16 reales. Las pruebas se destruyen con su runtime;
 no suben fixtures ni informes a PROD.
 
-Después de la limpieza física + DB viene el binding obligatorio en una nueva
-migración Flyway (NOT NULL y mismo proyecto), adaptación de fixtures legítimos
-y retiro del código/tablas legacy restantes. El backend no vuelve a servicio
+El binding obligatorio ya está implementado en V94 (NOT NULL y mismo proyecto),
+con fixtures legítimos y tests de rechazo/conservación. V94 se ejecutará sólo
+DESPUÉS de la limpieza física + DB; mientras exista una sesión independiente
+se detendrá sin adoptarla ni borrarla. Sigue pendiente el retiro de los
+clientes/flags/tablas legacy restantes. El backend no vuelve a servicio
 con una versión que pueda crear sesiones independientes. Sólo cuando el
 conjunto pase validación/CI se integra, despliega y publica la APK. Esta unidad
 no aplica Flyway, modifica runtime, purga PROD ni publica Android.

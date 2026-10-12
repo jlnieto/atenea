@@ -40,7 +40,9 @@ class ChangeOnlyEntryPointsIntegrationTest {
         for (String path: List.of("/api/projects/1/sessions", "/api/projects/1/sessions/resolve",
                 "/api/projects/1/sessions/resolve/view", "/api/projects/1/sessions/resolve/conversation-view",
                 "/api/mobile/projects/1/sessions/resolve", "/api/mobile/sessions/6/start-fresh",
-                "/api/sessions/6/recover-retained-draft", "/api/mobile/projects/1/rescue-sessions/resolve")) {
+                "/api/sessions/6/recover-retained-draft", "/api/mobile/projects/1/rescue-sessions/resolve",
+                "/api/admin/work-sessions/6/remote-close-plans",
+                "/api/admin/work-sessions/6/remote-close-reconciliations")) {
             mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}"))
                     .andExpect(status().isNotFound());
         }

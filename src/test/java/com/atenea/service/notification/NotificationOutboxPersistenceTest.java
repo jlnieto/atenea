@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.persistence.auth.OperatorEntity;
 import com.atenea.persistence.auth.OperatorPushDeviceEntity;
 import com.atenea.persistence.auth.OperatorPushDeviceRepository;
@@ -56,6 +58,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 class NotificationOutboxPersistenceTest {
+
+    @Autowired private DevelopmentChangeRepository fixtureChangeRepository;
 
     private static final AtomicLong FIXTURE_SEQUENCE = new AtomicLong();
 
@@ -419,7 +423,7 @@ class NotificationOutboxPersistenceTest {
         session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
         session.setOpenedAt(now); session.setLastActivityAt(now);
         session.setCreatedAt(now); session.setUpdatedAt(now);
-        session = sessionRepository.save(session);
+        session = sessionRepository.save(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
 
         SessionTurnEntity turn = new SessionTurnEntity();
         turn.setSession(session); turn.setActor(SessionTurnActor.OPERATOR);
@@ -467,6 +471,7 @@ class NotificationOutboxPersistenceTest {
         deviceRepository.deleteAll();
         jdbcTemplate.update("UPDATE agent_run SET retry_of_run_id = NULL WHERE retry_of_run_id IS NOT NULL");
         agentRunRepository.deleteAll(); turnRepository.deleteAll(); sessionRepository.deleteAll();
+        ChangeOwnedSessionFixtures.prune(fixtureChangeRepository);
         projectRepository.deleteAll(); operatorRepository.deleteAll();
     }
 

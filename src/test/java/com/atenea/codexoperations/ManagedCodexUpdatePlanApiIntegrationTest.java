@@ -332,6 +332,8 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
         verify(remoteWorkerClient, never()).activateCodexUpdate(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        jdbcTemplate.update("DELETE FROM work_session WHERE project_id = ?", activeProject);
+        jdbcTemplate.update("DELETE FROM development_change WHERE project_id = ?", activeProject);
         jdbcTemplate.update("DELETE FROM project WHERE id = ?", activeProject);
 
         when(remoteWorkerClient.activateCodexUpdate(
@@ -431,6 +433,8 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any());
+        jdbcTemplate.update("DELETE FROM work_session WHERE project_id = ?", rollbackActiveProject);
+        jdbcTemplate.update("DELETE FROM development_change WHERE project_id = ?", rollbackActiveProject);
         jdbcTemplate.update("DELETE FROM project WHERE id = ?", rollbackActiveProject);
 
         when(remoteWorkerClient.rollbackCodexUpdate(
@@ -705,16 +709,25 @@ class ManagedCodexUpdatePlanApiIntegrationTest {
                 VALUES (?, '/tmp/synthetic', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id
                 """, Long.class, "activation-active-" + identity);
+        Long changeId = jdbcTemplate.queryForObject("""
+                INSERT INTO development_change(change_key, project_id, title, base_ref, base_commit,
+                    workspace_branch, workspace_identity, selected_worker_id, project_policy_revision,
+                    source_fingerprint_sha256, created_at, updated_at)
+                VALUES (?::uuid, ?, 'Synthetic activation gate change', 'refs/heads/main', ?,
+                    ?, ?, ?, 1, ?, now(), now()) RETURNING id
+                """, Long.class, identity, projectId, "1".repeat(40),
+                "atenea/change-" + identity, "remote:" + WORKER_ID + ":change:" + identity,
+                WORKER_ID, "a".repeat(64));
         Long sessionId = jdbcTemplate.queryForObject("""
                 INSERT INTO work_session (
-                    project_id, status, title, base_branch, opened_at, last_activity_at,
+                    project_id, development_change_id, status, title, base_branch, opened_at, last_activity_at,
                     execution_target, selected_worker_id, workspace_identity,
                     remote_session_id, remote_workload_kind, remote_close_state)
-                VALUES (?, 'OPEN', 'Synthetic active gate', 'main', CURRENT_TIMESTAMP,
+                VALUES (?, ?, 'OPEN', 'Synthetic active gate', 'main', CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP, 'REMOTE', ?, ?, ?::uuid, 'synthetic-routing-v1',
                     'NOT_STARTED')
                 RETURNING id
-                """, Long.class, projectId, WORKER_ID, "remote:" + identity, identity);
+                """, Long.class, projectId, changeId, WORKER_ID, "remote:" + identity, identity);
         Long turnId = jdbcTemplate.queryForObject("""
                 INSERT INTO session_turn (session_id, actor, message_text)
                 VALUES (?, 'OPERATOR', 'Synthetic active execution') RETURNING id

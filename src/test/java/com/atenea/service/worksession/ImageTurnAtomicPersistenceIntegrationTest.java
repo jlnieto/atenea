@@ -11,6 +11,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.CreateSessionTurnResponse;
 import com.atenea.api.worksession.SessionTurnResponse;
@@ -38,6 +40,7 @@ import com.atenea.persistence.worksession.WorkerNodeEntity;
 import com.atenea.persistence.worksession.WorkerNodeRepository;
 import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.remoteworker.RemoteAgentRunCoordinator;
 import java.time.Instant;
 import java.util.List;
@@ -52,6 +55,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest
 class ImageTurnAtomicPersistenceIntegrationTest {
+
+    @Autowired private DevelopmentChangeRepository fixtureChangeRepository;
+    @MockBean private RemoteRoutingSelector remoteRoutingSelector;
 
     @Autowired
     private SessionTurnService sessionTurnService;
@@ -116,6 +122,8 @@ class ImageTurnAtomicPersistenceIntegrationTest {
             jdbcTemplate.update("DELETE FROM work_session WHERE id = ?", fixtureSessionId);
         }
         if (fixtureProjectId != null) {
+            jdbcTemplate.update("DELETE FROM development_change WHERE project_id = ? AND title = ?",
+                    fixtureProjectId, "Synthetic change-owned persistence fixture");
             jdbcTemplate.update("DELETE FROM project WHERE id = ?", fixtureProjectId);
         }
         if (fixtureWorkerCreated) {
@@ -381,7 +389,7 @@ class ImageTurnAtomicPersistenceIntegrationTest {
                         UUID.fromString("7b35f774-97f2-4a9e-b7db-0f18d59112ba"),
                         List.of(firstAttachment.getId())));
         AgentRunEntity firstRun = agentRunRepository.findById(first.run().id()).orElseThrow();
-        assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, firstRun.getWorkloadKind());
+        assertEquals(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND, firstRun.getWorkloadKind());
         assertEquals(1, firstRun.getAttachmentCount());
         assertEquals(firstAttachment.getSizeBytes(), firstRun.getAttachmentBytes());
         assertEquals(firstSelection.manifestSha256(), firstRun.getAttachmentManifestSha256());
@@ -391,7 +399,7 @@ class ImageTurnAtomicPersistenceIntegrationTest {
 
         String stableThreadId = "bcf43e2e-c9e8-42df-96b2-e9183462c2f4";
         session.setExternalThreadId(stableThreadId);
-        session = workSessionRepository.saveAndFlush(session);
+        session = workSessionRepository.saveAndFlush(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
 
         CreateSessionTurnResponse second = sessionTurnService.createTurn(
                 session.getId(),
@@ -400,7 +408,7 @@ class ImageTurnAtomicPersistenceIntegrationTest {
                         UUID.fromString("fb332c29-d2e4-47ff-b33a-f26643179056"),
                         List.of(secondAttachment.getId())));
         AgentRunEntity secondRun = agentRunRepository.findById(second.run().id()).orElseThrow();
-        assertEquals(ProjectCodexIdentity.IMAGE_WORKLOAD_KIND, secondRun.getWorkloadKind());
+        assertEquals(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND, secondRun.getWorkloadKind());
         assertEquals(firstRun.getWorkspaceIdentity(), secondRun.getWorkspaceIdentity());
         assertEquals(firstRun.getRemoteSessionId(), secondRun.getRemoteSessionId());
         assertEquals(stableThreadId,
@@ -416,7 +424,7 @@ class ImageTurnAtomicPersistenceIntegrationTest {
                 session.getId(),
                 new CreateSessionTurnRequest("Continue in the same thread without an image"));
         AgentRunEntity textRun = agentRunRepository.findById(textOnly.run().id()).orElseThrow();
-        assertEquals(ProjectCodexIdentity.WORKLOAD_KIND, textRun.getWorkloadKind());
+        assertEquals(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND, textRun.getWorkloadKind());
         assertEquals(firstRun.getWorkspaceIdentity(), textRun.getWorkspaceIdentity());
         assertEquals(firstRun.getRemoteSessionId(), textRun.getRemoteSessionId());
         assertEquals(stableThreadId,
@@ -490,6 +498,8 @@ class ImageTurnAtomicPersistenceIntegrationTest {
             WorkerNodeEntity worker,
             Instant now
     ) {
+        when(remoteRoutingSelector.refreshKnownWorker("ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND))
+                .thenReturn(true);
         UUID remoteSessionId = UUID.randomUUID();
         WorkSessionEntity session = new WorkSessionEntity();
         session.setProject(project);
@@ -503,7 +513,6 @@ class ImageTurnAtomicPersistenceIntegrationTest {
         session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
         session.setWorkspaceIdentity(
                 "remote:" + worker.getId() + ":work-session:" + remoteSessionId);
-        session.setAttachmentPolicyRevision("atenea-real-attachments-v1");
         session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
         session.setCanonicalSourceCommit("1".repeat(40));
         session.setCanonicalSourceObservationSha256("2".repeat(64));
@@ -513,7 +522,7 @@ class ImageTurnAtomicPersistenceIntegrationTest {
         session.setLastActivityAt(now);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
-        WorkSessionEntity saved = workSessionRepository.saveAndFlush(session);
+        WorkSessionEntity saved = workSessionRepository.saveAndFlush(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
         fixtureSessionId = saved.getId();
         return saved;
     }
@@ -561,9 +570,6 @@ class ImageTurnAtomicPersistenceIntegrationTest {
         attachment.setSha256(sha256);
         attachment.setWorkerId(worker.getId());
         attachment.setStorageIdentity(storageIdentity);
-        attachment.setStorageScope(AttachmentStorageScope.REAL_SESSION);
-        attachment.setRemoteSessionId(session.getRemoteSessionId());
-        attachment.setWorkspaceIdentity(session.getWorkspaceIdentity());
         attachment.setCreatedAt(now);
         attachment.setIndexedAt(now);
         return attachmentRepository.saveAndFlush(attachment);

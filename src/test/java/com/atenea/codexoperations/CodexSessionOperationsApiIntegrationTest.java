@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.auth.OperatorEntity;
@@ -57,6 +59,8 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 class CodexSessionOperationsApiIntegrationTest {
+
+    @Autowired private DevelopmentChangeRepository fixtureChangeRepository;
 
     private static final AtomicLong SEQUENCE = new AtomicLong();
 
@@ -274,7 +278,7 @@ class CodexSessionOperationsApiIntegrationTest {
         session.setBaseBranch("main"); session.setExecutionTarget(ExecutionTarget.LOCAL);
         session.setWorkspaceIdentity("local:api:" + value); session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
         session.setOpenedAt(now); session.setLastActivityAt(now); session.setCreatedAt(now); session.setUpdatedAt(now);
-        session = sessionRepository.save(session);
+        session = sessionRepository.save(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
         SessionTurnEntity turn = new SessionTurnEntity();
         turn.setSession(session); turn.setActor(SessionTurnActor.OPERATOR);
         turn.setMessageText("Sensitive synthetic conversation content"); turn.setCreatedAt(now);

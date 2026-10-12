@@ -29,8 +29,8 @@ public class WorkSessionEntity {
     @JoinColumn(name = "project_id", nullable = false)
     private ProjectEntity project;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "development_change_id")
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "development_change_id", nullable = false)
     private DevelopmentChangeEntity developmentChange;
 
     @Enumerated(EnumType.STRING)

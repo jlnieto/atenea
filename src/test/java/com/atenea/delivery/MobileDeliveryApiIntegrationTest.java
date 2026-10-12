@@ -7,6 +7,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import com.atenea.auth.AuthenticatedOperator;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.auth.action.PrivilegedActionAuthorizationService;
 import com.atenea.auth.recovery.OperatorRecoveryService;
 import com.atenea.github.GitHubClient;
@@ -76,7 +77,7 @@ class MobileDeliveryApiIntegrationTest {
         session.setPullRequestStatus(com.atenea.persistence.worksession.WorkSessionPullRequestStatus.NOT_CREATED);
         session.setTitle("Isolated delivery API"); session.setBaseBranch("main"); session.setWorkspaceIdentity("local:test:"+UUID.randomUUID());
         session.setOpenedAt(Instant.now()); session.setLastActivityAt(Instant.now());
-        session.setCreatedAt(Instant.now()); session.setUpdatedAt(Instant.now()); sessionId=sessions.saveAndFlush(session).getId();
+        session.setCreatedAt(Instant.now()); session.setUpdatedAt(Instant.now()); sessionId=sessions.saveAndFlush(ChangeOwnedSessionFixtures.bind(session, changes)).getId();
     }
     private OperatorEntity operator(CodexOperationsRole role) {
         OperatorEntity value=new OperatorEntity(); value.setEmail(UUID.randomUUID()+"@atenea.test");

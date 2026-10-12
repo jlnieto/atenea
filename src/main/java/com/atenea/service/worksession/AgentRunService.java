@@ -368,7 +368,10 @@ public class AgentRunService {
     private TurnAttachmentSelectionValidator.ValidatedSelection retryAttachmentSelection(
             AgentRunEntity source
     ) {
-        if (!ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(source.getWorkloadKind())) {
+        boolean imageRun = ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(source.getWorkloadKind())
+                || (ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(source.getWorkloadKind())
+                    && source.getAttachmentCount() > 0);
+        if (!imageRun) {
             if (source.getAttachmentCount() != 0
                     || source.getAttachmentBytes() != 0
                     || source.getAttachmentManifestSha256() != null) {

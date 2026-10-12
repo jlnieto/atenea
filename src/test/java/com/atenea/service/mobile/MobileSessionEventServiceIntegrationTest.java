@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.api.mobile.MobileSessionEventResponse;
 import com.atenea.api.mobile.MobileSessionEventsResponse;
 import com.atenea.codexoperations.CodexSessionOperationsProperties;
@@ -35,6 +37,8 @@ import org.springframework.boot.test.context.SpringBootTest;
         "atenea.codex-session-operations.progress-enabled=true"
 })
 class MobileSessionEventServiceIntegrationTest {
+
+    @Autowired private DevelopmentChangeRepository fixtureChangeRepository;
 
     @Autowired private MobileSessionEventService eventService;
     @Autowired private AgentRunProgressService progressService;
@@ -128,7 +132,7 @@ class MobileSessionEventServiceIntegrationTest {
         session.setLastActivityAt(startedAt.plusSeconds(30));
         session.setCreatedAt(startedAt);
         session.setUpdatedAt(startedAt.plusSeconds(30));
-        session = workSessionRepository.save(session);
+        session = workSessionRepository.save(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
 
         SessionTurnEntity operatorTurn = new SessionTurnEntity();
         operatorTurn.setSession(session);

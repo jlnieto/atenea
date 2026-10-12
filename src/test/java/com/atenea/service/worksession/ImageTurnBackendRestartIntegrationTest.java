@@ -11,6 +11,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.CreateSessionTurnResponse;
 import com.atenea.auth.AuthenticatedOperator;
@@ -40,6 +42,7 @@ import com.atenea.persistence.worksession.WorkerNodeEntity;
 import com.atenea.persistence.worksession.WorkerNodeRepository;
 import com.atenea.remoteworker.CanonicalSourceAdmissionService;
 import com.atenea.remoteworker.ProjectCodexIdentity;
+import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.remoteworker.RemoteAgentRunCoordinator;
 import java.time.Instant;
 import java.util.List;
@@ -65,6 +68,9 @@ import org.springframework.test.web.servlet.MockMvc;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ImageTurnBackendRestartIntegrationTest {
+
+    @Autowired private DevelopmentChangeRepository fixtureChangeRepository;
+    @MockBean private RemoteRoutingSelector remoteRoutingSelector;
 
     private static final UUID ATTACHMENT_ID =
             UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");
@@ -171,7 +177,7 @@ class ImageTurnBackendRestartIntegrationTest {
         resultTurn.setCreatedAt(now.plusSeconds(1));
         resultTurn = sessionTurnRepository.saveAndFlush(resultTurn);
         session.setExternalThreadId("bcf43e2e-c9e8-42df-96b2-e9183462c2f4");
-        workSessionRepository.saveAndFlush(session);
+        workSessionRepository.saveAndFlush(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
         run = agentRunService.markSucceeded(
                 run.getId(),
                 "turn-synthetic-terminal",
@@ -200,7 +206,7 @@ class ImageTurnBackendRestartIntegrationTest {
 
     @Test
     @Order(2)
-    void replayAfterBackendRestartReturnsExactAcceptanceAndLegacyJsonWithoutUploadOrDispatch()
+    void replayAfterBackendRestartReturnsExactAcceptanceWithoutUploadOrDispatch()
             throws Exception {
         WorkSessionEntity session = workSessionRepository.findById(fixtureSessionId).orElseThrow();
         WorkSessionAttachmentEntity attachment = attachmentRepository
@@ -245,6 +251,8 @@ class ImageTurnBackendRestartIntegrationTest {
             jdbcTemplate.update("DELETE FROM work_session WHERE id = ?", fixtureSessionId);
         }
         if (fixtureProjectId != null) {
+            jdbcTemplate.update("DELETE FROM development_change WHERE project_id = ? AND title = ?",
+                    fixtureProjectId, "Synthetic change-owned persistence fixture");
             jdbcTemplate.update("DELETE FROM project WHERE id = ?", fixtureProjectId);
         }
         if (fixtureWorkerCreated) {
@@ -315,6 +323,8 @@ class ImageTurnBackendRestartIntegrationTest {
             WorkerNodeEntity worker,
             Instant now
     ) {
+        when(remoteRoutingSelector.refreshKnownWorker("ax42-01", ProjectCodexIdentity.CHANGE_WORKLOAD_KIND))
+                .thenReturn(true);
         UUID remoteSessionId = UUID.randomUUID();
         WorkSessionEntity session = new WorkSessionEntity();
         session.setProject(project);
@@ -328,7 +338,6 @@ class ImageTurnBackendRestartIntegrationTest {
         session.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
         session.setWorkspaceIdentity(
                 "remote:" + worker.getId() + ":work-session:" + remoteSessionId);
-        session.setAttachmentPolicyRevision("atenea-real-attachments-v1");
         session.setCanonicalSourceRef("refs/heads/" + ProjectCodexIdentity.BRANCH);
         session.setCanonicalSourceCommit("1".repeat(40));
         session.setCanonicalSourceObservationSha256("2".repeat(64));
@@ -338,7 +347,7 @@ class ImageTurnBackendRestartIntegrationTest {
         session.setLastActivityAt(now);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
-        WorkSessionEntity saved = workSessionRepository.saveAndFlush(session);
+        WorkSessionEntity saved = workSessionRepository.saveAndFlush(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
         fixtureSessionId = saved.getId();
         return saved;
     }
@@ -363,9 +372,6 @@ class ImageTurnBackendRestartIntegrationTest {
         attachment.setSha256("a".repeat(64));
         attachment.setWorkerId(worker.getId());
         attachment.setStorageIdentity("opaque-restart-storage-identity");
-        attachment.setStorageScope(AttachmentStorageScope.REAL_SESSION);
-        attachment.setRemoteSessionId(session.getRemoteSessionId());
-        attachment.setWorkspaceIdentity(session.getWorkspaceIdentity());
         attachment.setCreatedAt(now);
         attachment.setIndexedAt(now);
         return attachmentRepository.saveAndFlush(attachment);

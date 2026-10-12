@@ -295,7 +295,7 @@ class ChangeOwnedReleaseIntegrationTest {
         assertEquals(operation, persisted.getRemoteCloseOperationId());
         assertEquals(6, persisted.getRemoteCloseRevision());
         assertEquals(1, releases.get());
-        verify(paths, atLeastOnce()).normalizeConfiguredRepoPath("/repos/atenea");
+        verify(paths, atLeastOnce()).normalizeConfiguredRepoPath(project.getRepoPath());
         assertEquals(change.getChangeKey().toString(), request.get().get("changeKey").asText());
         assertEquals(session.getId().longValue(), request.get().get("databaseWorkSessionId").longValue());
         assertFalse(request.get().has("manifestSha256"));
@@ -427,28 +427,6 @@ class ChangeOwnedReleaseIntegrationTest {
         assertTrue(retirementStore.find(session.getId()).isEmpty()); assertEquals(0,releases.get());
     }
 
-    @Test
-    void dirtyLegacyWorkspaceRetirementRetainsDraftAndDoesNotRequirePrOrDelivery() {
-        retirementFixture();
-        UUID remote=session.getRemoteSessionId();
-        session.setDevelopmentChange(null); session.setStatus(WorkSessionStatus.OPEN);
-        session.setWorkspaceIdentity("remote:ax42-01:work-session:"+remote); session.setWorkspaceBranch("atenea/session-"+remote);
-        session.setCanonicalSourceRef("refs/heads/main"); session.setCanonicalSourceCommit("1".repeat(40));
-        session.setCanonicalSourceObservationSha256("2".repeat(64)); session.setCanonicalSourceObservedAt(Instant.now());
-        session=sessions.saveAndFlush(session);
-        when(git.isWorkingTreeClean(anyString())).thenReturn(false);
-        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
-        var first=retirements.request(session.getId(),actor,UUID.randomUUID(),false);
-        retirements.reconcile();
-        var retired=sessions.findById(session.getId()).orElseThrow();
-        assertEquals(WorkSessionStatus.CLOSED,retired.getStatus()); assertEquals(RemoteCloseState.RELEASED,retired.getRemoteCloseState());
-        assertEquals(session.getFinalCommitSha(),retired.getFinalCommitSha());
-        assertEquals(first.operationId(),retired.getRemoteCloseOperationId());
-        assertFalse(service.getSession(session.getId()).repoState().workingTreeClean());
-        assertEquals("SUCCEEDED",retirementStore.find(session.getId()).orElseThrow().state()); assertEquals(1,releases.get());
-        assertEquals(DevelopmentChangeStatus.OPEN,changes.findById(change.getId()).orElseThrow().getStatus());
-        verifyNoInteractions(github); verify(git,never()).checkoutBranch(any(),any());
-    }
 
     @Test
     void retirementRejectsReceiptThatDoesNotRetainWorktreeAndDoesNotMarkAbandoned() {

@@ -3,6 +3,8 @@ package com.atenea.persistence.worksession;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
 import java.lang.reflect.Method;
@@ -21,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest
 @Transactional
 class SessionTurnAttachmentRepositoryIntegrationTest {
+
+    @Autowired private DevelopmentChangeRepository fixtureChangeRepository;
 
     @Autowired
     private ProjectRepository projectRepository;
@@ -120,7 +124,7 @@ class SessionTurnAttachmentRepositoryIntegrationTest {
         session.setLastActivityAt(now);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
-        return workSessionRepository.saveAndFlush(session);
+        return workSessionRepository.saveAndFlush(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
     }
 
     private SessionTurnEntity createTurn(WorkSessionEntity session, String message, Instant createdAt) {

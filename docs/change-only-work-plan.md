@@ -59,9 +59,30 @@ datos retenidos y evidencia root-owned/reconciliable. Tests PostgreSQL efímeros
 19 de purga + 8 de regresión de journals = 27 PASS; bash -n y diff-check PASS.
 Véase docs/change-only-data-cleanup.md. No se ejecutó la purga.
 
+Tercera unidad App: V94 exige el vínculo NOT NULL Sesión→Cambio del mismo
+proyecto; rechaza explícitamente datos antiguos sin limpiar. No adopta ni borra
+filas. El cierre administrativo legacy se retira del backend, incluidos su
+reconciliador periódico y la inferencia de una sesión histórica predecesora.
+Las pruebas de persistencia pasan a fixtures change-owned. Esta adaptación
+detectó dos guards de replay/retry de adjuntos que aún exigían workload v3;
+ahora reconocen el snapshot v4 del mismo Cambio sin duplicar turno/run y sin
+relajar el binding inmutable de adjuntos. El validador de adjuntos sigue siendo
+una autoridad independiente; no se ha ampliado su catálogo ni desplegado nada.
+
+Validación tercera unidad: backend completo 1169 PASS, sin fallos ni errores,
+incluidos cuatro tests V94 y las suites de purga/journals. Diff-check PASS.
+La validación UFD postcommit se ejecuta antes de cualquier PR del conjunto.
+
+Platform incorpora manifiesto cerrado y plan read-only de los 25 roots. El
+smoke real está BLOCKED: nueve roots sin correlación PROD y sandbox WS4/Beautips
+con tres contenedores, red y cuatro volúmenes; su rama WIP debe conservarse.
+WS6/19 requieren respaldo de archivos no committeados. No se emite un recibo
+RELEASED ni se deduce que un recurso sea descartable por no aparecer en PROD.
+Véase ops/worker/CHANGE_ONLY_CLEANUP.md en el repositorio Platform.
+
 Pendiente: productor cerrado Platform para retirar/respaldar recursos físicos y
 emitir su recibo (el purgador DB lo exige, no acepta fabricación manual),
-restricción NOT NULL final en Flyway, eliminación de ramas legacy restantes y aceptación.
+eliminación de clientes/flags/tablas legacy restantes y aceptación.
 No desactivar triggers de inmutabilidad ni hacer DELETE global como atajo.
 Integración, rollout y APK sólo cuando el conjunto esté listo. Ninguna fila,
 workspace, enlace Codex o runtime compartido ha sido modificado en esta unidad.
