@@ -75,14 +75,28 @@ La validación UFD postcommit se ejecuta antes de cualquier PR del conjunto.
 
 Platform incorpora manifiesto cerrado y plan read-only de los 25 roots. El
 smoke real está BLOCKED: nueve roots sin correlación PROD y sandbox WS4/Beautips
-con tres contenedores, red y cuatro volúmenes; su rama WIP debe conservarse.
+con tres contenedores, red y cuatro volúmenes; su rama WIP se protegió en esa
+unidad hasta recibir la autorización explícita de retirada de la unidad 4.
 WS6/19 requieren respaldo de archivos no committeados. No se emite un recibo
 RELEASED ni se deduce que un recurso sea descartable por no aparecer en PROD.
 Véase ops/worker/CHANGE_ONLY_CLEANUP.md en el repositorio Platform.
 
-Pendiente: productor cerrado Platform para retirar/respaldar recursos físicos y
-emitir su recibo (el purgador DB lo exige, no acepta fabricación manual),
-eliminación de clientes/flags/tablas legacy restantes y aceptación.
+Cuarta unidad Platform: el operador autoriza también retirar la rama WIP
+antigua de Beautips, no mantenerla activa. Correlación de los nueve recursos
+cerrada con las cinco DB App, metadata/journals y fixtures documentados.
+Productor físico cerrado implementado: backup verificable de código/datos,
+bundles, retiro por IDs/SHAs, cuarentena fuera del producto, contracción del
+índice worker conservando Apache/validaciones, journal/replay y recibo real.
+Installer instala/verifica pero no ejecuta ni delega cleanup al worker.
+Plan real READY_FOR_MAINTENANCE: 24 roots, 25 refs, 10 recursos Docker.
+Tests: 17 productor + 12 preflight PASS; installer/schema/bash/diff-check PASS.
+No se ha aplicado. El mantenimiento y la instalación de la verificación
+independiente de WS19 siguen siendo obligatorios para la retirada real.
+
+Pendiente: eliminación de clientes/flags/tablas legacy restantes; integración
+del conjunto, instalación/mantenimiento y ejecución de ambos purgadores,
+rollout, publicación Android y aceptación. El productor físico está preparado,
+pero su recibo real todavía no existe y el purgador DB sigue exigiéndolo.
 No desactivar triggers de inmutabilidad ni hacer DELETE global como atajo.
 Integración, rollout y APK sólo cuando el conjunto esté listo. Ninguna fila,
 workspace, enlace Codex o runtime compartido ha sido modificado en esta unidad.
