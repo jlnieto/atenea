@@ -15,8 +15,6 @@ import com.atenea.api.worksession.ApprovedPriceEstimateSummaryResponse;
 import com.atenea.api.worksession.CloseWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.MarkPriceEstimateBilledRequest;
-import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
-import com.atenea.api.worksession.ResolveWorkSessionRequest;
 import com.atenea.api.worksession.SessionDeliverableResponse;
 import com.atenea.api.worksession.SessionDeliverableSummaryResponse;
 import com.atenea.api.worksession.SessionDeliverablesViewResponse;
@@ -111,27 +109,6 @@ class DevelopmentCoreDomainHandlerTest {
                 projectDatabaseRefreshService);
     }
 
-    @Test
-    void createWorkSessionDelegatesToResolveConversationView() {
-        WorkSessionConversationViewResponse conversationView = conversationView(44L);
-        when(workSessionService.resolveSessionConversationView(7L, new ResolveWorkSessionRequest("Nueva sesion", null)))
-                .thenReturn(new ResolveWorkSessionConversationViewResponse(true, conversationView));
-
-        CoreCommandExecutionResult result = handler.execute(
-                new CoreIntentEnvelope(
-                        "CREATE_WORK_SESSION",
-                        CoreDomain.DEVELOPMENT,
-                        "create_work_session",
-                        Map.of("projectId", 7L, "title", "Nueva sesion"),
-                        BigDecimal.valueOf(0.90),
-                        CoreRiskLevel.READ,
-                        false),
-                new CoreExecutionContext(101L, 7L, null, "default", false, null));
-
-        assertEquals(CoreResultType.WORK_SESSION_CONVERSATION_VIEW, result.resultType());
-        assertEquals(CoreTargetType.WORK_SESSION, result.targetType());
-        assertEquals(44L, result.targetId());
-    }
 
     @Test
     void refreshProjectDatabaseDelegatesToDatabaseRefreshService() {

@@ -59,7 +59,7 @@ public class LlmCoreIntentInterpreter {
             Required JSON shape:
             {
               "domain": "DEVELOPMENT",
-              "capability": "create_work_session",
+              "capability": "get_project_overview",
               "confidence": 0.0,
               "arguments": {
                 "projectId": 0,

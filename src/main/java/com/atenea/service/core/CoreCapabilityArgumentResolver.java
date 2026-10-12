@@ -66,7 +66,6 @@ public class CoreCapabilityArgumentResolver {
 
         switch (definition.capability()) {
             case "continue_work_session" -> resolved.put("message", request.input().trim());
-            case "create_work_session" -> resolved.putIfAbsent("title", request.input().trim());
             case "generate_session_deliverable" -> resolved.put(
                     "deliverableType",
                     resolveDeliverableType(resolved, resolutionHints, request.input()).name());

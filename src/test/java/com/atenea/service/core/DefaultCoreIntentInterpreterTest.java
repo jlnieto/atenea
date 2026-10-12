@@ -39,50 +39,8 @@ class DefaultCoreIntentInterpreterTest {
         interpreter = new DefaultCoreIntentInterpreter(coreProjectResolver, coreWorkSessionResolver, operationsHostResolver);
     }
 
-    @Test
-    void interpretExtractsCleanSessionTitleFromNaturalLanguageRequest() {
-        ProjectEntity project = project(7L, "Atenea Core");
-        when(coreProjectResolver.requireById(7L)).thenReturn(project);
 
-        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
-                "abre una sesion para Atenea Core: preparar publish final",
-                CoreChannel.TEXT,
-                new CoreRequestContext(7L, null),
-                null));
 
-        assertEquals("create_work_session", result.proposal().capability());
-        assertEquals(Map.of("projectId", 7L, "title", "preparar publish final"), result.proposal().parameters());
-        verifyNoInteractions(coreWorkSessionResolver);
-    }
-
-    @Test
-    void interpretFallsBackToProjectBasedTitleWhenRequestDoesNotCarryOne() {
-        ProjectEntity project = project(7L, "Atenea Core");
-        when(coreProjectResolver.requireById(7L)).thenReturn(project);
-
-        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
-                "abre una sesion para Atenea Core",
-                CoreChannel.TEXT,
-                new CoreRequestContext(7L, null),
-                null));
-
-        assertEquals("Work on Atenea Core", result.proposal().parameters().get("title"));
-    }
-
-    @Test
-    void interpretRecognizesAccentedSpanishOpenSessionRequests() {
-        ProjectEntity project = project(7L, "Atenea Core");
-        when(coreProjectResolver.requireById(7L)).thenReturn(project);
-
-        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
-                "abre una sesión para Atenea Core",
-                CoreChannel.TEXT,
-                new CoreRequestContext(7L, null),
-                null));
-
-        assertEquals("create_work_session", result.proposal().capability());
-        assertEquals("Work on Atenea Core", result.proposal().parameters().get("title"));
-    }
 
     @Test
     void interpretTreatsProjectStatusAsProjectOverviewInsteadOfPortfolioOverview() {

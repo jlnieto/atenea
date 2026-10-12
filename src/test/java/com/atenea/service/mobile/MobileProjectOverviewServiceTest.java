@@ -11,6 +11,11 @@ import com.atenea.api.project.ProjectResponse;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.service.project.ProjectOverviewService;
+import com.atenea.persistence.worksession.WorkSessionRepository;
+import com.atenea.persistence.worksession.WorkSessionEntity;
+import com.atenea.persistence.developmentchange.DevelopmentChangeEntity;
+import com.atenea.persistence.project.ProjectEntity;
+import java.util.Optional;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -25,7 +30,8 @@ class MobileProjectOverviewServiceTest {
     private ProjectOverviewService projectOverviewService;
 
     @Mock
-    private FreshWorkSessionService freshWorkSessionService;
+    private WorkSessionRepository sessions;
+
 
     @Test
     void mobileOverviewDoesNotExposeClosedWorkSessionAsActiveSession() {
@@ -61,22 +67,13 @@ class MobileProjectOverviewServiceTest {
         assertNull(response.get(0).session());
     }
 
-    @Test
-    void mobileOverviewExposesClosedSourceOnlyWhenFreshRecoveryIsIncomplete() {
-        when(projectOverviewService.getOverview()).thenReturn(List.of(new ProjectOverviewResponse(
-                project(),
-                closedSession(17L))));
-        when(freshWorkSessionService.hasIncompleteOperationForSource(17L)).thenReturn(true);
-
-        var response = service().getOverview();
-
-        assertEquals(17L, response.get(0).session().sessionId());
-        assertEquals(WorkSessionStatus.CLOSED, response.get(0).session().status());
-        assertTrue(response.get(0).session().recoveryPending());
-    }
 
     @Test
-    void mobileOverviewKeepsCurrentSessionVisibleWithoutRecoveryProjection() {
+    void mobileOverviewKeepsOnlyTheCurrentChangeOwnedSessionVisible() {
+        var project = new ProjectEntity(); project.setId(7L);
+        var change = new DevelopmentChangeEntity(); change.setProject(project);
+        var session = new WorkSessionEntity(); session.setDevelopmentChange(change);
+        when(sessions.findWithProjectAndDevelopmentChangeById(18L)).thenReturn(Optional.of(session));
         ProjectOverviewResponse.WorkSessionOverviewResponse current = new ProjectOverviewResponse.WorkSessionOverviewResponse(
                 18L,
                 true,
@@ -107,7 +104,7 @@ class MobileProjectOverviewServiceTest {
     }
 
     private MobileProjectOverviewService service() {
-        return new MobileProjectOverviewService(projectOverviewService, freshWorkSessionService);
+        return new MobileProjectOverviewService(projectOverviewService, sessions);
     }
 
     private ProjectOverviewResponse.WorkSessionOverviewResponse closedSession(Long id) {

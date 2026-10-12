@@ -2,7 +2,6 @@ package com.atenea.api.worksession;
 
 import com.atenea.service.worksession.WorkSessionService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
-import com.atenea.service.worksession.RetainedDraftRecoveryService;
 import com.atenea.service.worksession.ClosedValidationOperationService;
 import com.atenea.service.worksession.RepositoryRoleSetService;
 import com.atenea.persistence.worksession.ValidationOperationKind;
@@ -20,55 +19,19 @@ public class WorkSessionController {
 
     private final WorkSessionService workSessionService;
     private final WorkSessionGitHubService workSessionGitHubService;
-    private final RetainedDraftRecoveryService retainedDraftRecoveryService;
     private final ClosedValidationOperationService closedValidationOperationService;
     private final RepositoryRoleSetService repositoryRoleSetService;
 
     public WorkSessionController(
             WorkSessionService workSessionService,
             WorkSessionGitHubService workSessionGitHubService,
-            RetainedDraftRecoveryService retainedDraftRecoveryService,
             ClosedValidationOperationService closedValidationOperationService,
             RepositoryRoleSetService repositoryRoleSetService
     ) {
         this.workSessionService = workSessionService;
         this.workSessionGitHubService = workSessionGitHubService;
-        this.retainedDraftRecoveryService = retainedDraftRecoveryService;
         this.closedValidationOperationService = closedValidationOperationService;
         this.repositoryRoleSetService = repositoryRoleSetService;
-    }
-
-    @PostMapping("/api/projects/{projectId}/sessions")
-    @ResponseStatus(HttpStatus.CREATED)
-    public WorkSessionResponse openSession(
-            @PathVariable Long projectId,
-            @Valid @RequestBody CreateWorkSessionRequest request
-    ) {
-        return workSessionService.openSession(projectId, request);
-    }
-
-    @PostMapping("/api/projects/{projectId}/sessions/resolve")
-    public ResolveWorkSessionResponse resolveSession(
-            @PathVariable Long projectId,
-            @Valid @RequestBody(required = false) ResolveWorkSessionRequest request
-    ) {
-        return workSessionService.resolveSession(projectId, request);
-    }
-
-    @PostMapping("/api/projects/{projectId}/sessions/resolve/view")
-    public ResolveWorkSessionViewResponse resolveSessionView(
-            @PathVariable Long projectId,
-            @Valid @RequestBody(required = false) ResolveWorkSessionRequest request
-    ) {
-        return workSessionService.resolveSessionView(projectId, request);
-    }
-
-    @PostMapping("/api/projects/{projectId}/sessions/resolve/conversation-view")
-    public ResolveWorkSessionConversationViewResponse resolveSessionConversationView(
-            @PathVariable Long projectId,
-            @Valid @RequestBody(required = false) ResolveWorkSessionRequest request
-    ) {
-        return workSessionService.resolveSessionConversationView(projectId, request);
     }
 
     @GetMapping("/api/sessions/{sessionId}")
@@ -76,10 +39,6 @@ public class WorkSessionController {
         return workSessionService.getSession(sessionId);
     }
 
-    @PostMapping("/api/sessions/{sessionId}/recover-retained-draft")
-    public RecoverDraftWorkSessionResponse recoverRetainedDraft(@PathVariable Long sessionId) {
-        return retainedDraftRecoveryService.recover(sessionId);
-    }
 
     @PostMapping("/api/sessions/{sessionId}/validations/{operation}")
     public ValidationOperationResponse runValidation(

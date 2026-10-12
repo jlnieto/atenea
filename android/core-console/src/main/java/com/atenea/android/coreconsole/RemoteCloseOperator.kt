@@ -22,7 +22,6 @@ import com.atenea.android.api.CodexRecoveryAction
 import com.atenea.android.api.LegacyRemoteCloseOperation
 import com.atenea.android.api.LegacyRemoteClosePlan
 import com.atenea.android.api.MobileSessionOperatorState
-import com.atenea.android.api.StartFreshWorkSessionResult
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,8 +32,7 @@ internal data class RemoteCloseActionUiState(
     val pending: Boolean = false,
     val requiresRefresh: Boolean = false,
     val error: String? = null,
-    val notice: String? = null,
-    val freshSessionId: Long? = null
+    val notice: String? = null
 )
 
 internal interface RemoteCloseGateway {
@@ -46,7 +44,6 @@ internal interface RemoteCloseGateway {
         idempotencyKey: String
     ): LegacyRemoteCloseOperation
     suspend fun retryRun(runId: Long, workSessionId: Long): Boolean
-    suspend fun startFresh(sessionId: Long, idempotencyKey: String): StartFreshWorkSessionResult
 }
 
 private class ApiRemoteCloseGateway(
@@ -68,10 +65,6 @@ private class ApiRemoteCloseGateway(
     override suspend fun retryRun(runId: Long, workSessionId: Long): Boolean =
         apiClient.requestCodexRecovery(runId, workSessionId, CodexRecoveryAction.RETRY).state != "REJECTED"
 
-    override suspend fun startFresh(
-        sessionId: Long,
-        idempotencyKey: String
-    ): StartFreshWorkSessionResult = apiClient.startFreshWorkSession(sessionId, idempotencyKey)
 }
 
 internal class RemoteCloseOperatorCoordinator(
@@ -88,9 +81,6 @@ internal class RemoteCloseOperatorCoordinator(
     private var acceptedIdentity: RemoteCloseIdentity? = null
     private var planIdempotencyKey: String? = null
     private var confirmationIdempotencyKey: String? = null
-    private val freshIdempotencyKey = UUID.nameUUIDFromBytes(
-        "atenea:fresh-work-session:$currentWorkSessionId".toByteArray(StandardCharsets.UTF_8)
-    ).toString()
 
     fun accept(serverState: MobileSessionOperatorState) {
         val identity = RemoteCloseIdentity.from(serverState)
@@ -137,22 +127,6 @@ internal class RemoteCloseOperatorCoordinator(
                         )
                         true
                     }
-                }
-                "START_FRESH_SESSION" -> {
-                    val sourceSessionId = serverState.targetWorkSessionId
-                        ?: throw IllegalStateException("missing-session")
-                    val result = gateway.startFresh(sourceSessionId, freshIdempotencyKey)
-                    if (result.state != "COMPLETED" ||
-                        result.sourceWorkSessionId != sourceSessionId ||
-                        result.resultWorkSessionId != result.view.session.id
-                    ) {
-                        throw IllegalStateException("mismatched-fresh-session")
-                    }
-                    mutableState.value = mutableState.value.copy(
-                        notice = "Sesión nueva preparada sobre el código actual.",
-                        freshSessionId = result.resultWorkSessionId
-                    )
-                    true
                 }
                 else -> false
             }
@@ -271,8 +245,6 @@ private fun remoteCloseActionMatchesState(state: MobileSessionOperatorState): Bo
         "CLOSED_OWNER_BLOCKS_CAPACITY",
         "REMOTE_CLOSE_BLOCKED"
     ) && state.targetWorkSessionId != null
-    "START_FRESH_SESSION" -> state.state == "SOURCE_ADVANCED" &&
-        state.targetWorkSessionId != null && state.targetAgentRunId != null
     else -> false
 }
 
@@ -376,7 +348,7 @@ internal fun RemoteCloseOperatorPanel(
         }
         if (serverState.state == "SOURCE_ADVANCED") {
             Text(
-                "Se conservarán esta sesión y su historial. La nueva sesión se abrirá vacía y no iniciará Codex hasta que escribas una instrucción nueva.",
+                "Continúa en el mismo cambio. Actualiza su base desde Cambio y vuelve a validar.",
                 color = secondary,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -449,7 +421,6 @@ internal fun remoteCloseStateLabel(state: String): String = mapOf(
 internal fun remoteCloseFallbackActionLabel(action: String): String = mapOf(
     "RECONCILE_REMOTE_CLOSE" to "Reconciliar cierre",
     "RETRY_AGENT_RUN" to "Reintentar tarea",
-    "START_FRESH_SESSION" to "Empezar desde código actual",
     "CONTACT_PLATFORM_ADMINISTRATOR" to "Contactar con administración",
     "WAIT" to "Esperar actualización",
     "NONE" to ""

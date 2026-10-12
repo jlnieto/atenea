@@ -18,8 +18,6 @@ import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.persistence.developmentchange.DevelopmentChangeProjectionState;
 import com.atenea.service.worksession.AgentRunAlreadyRunningException;
-import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
-import com.atenea.service.worksession.RetainedDraftRecoveryService;
 import com.atenea.service.worksession.ClosedValidationOperationService;
 import com.atenea.service.worksession.RepositoryRoleSetService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
@@ -53,8 +51,6 @@ class WorkSessionControllerTest {
     @Mock
     private WorkSessionGitHubService workSessionGitHubService;
 
-    @Mock
-    private RetainedDraftRecoveryService retainedDraftRecoveryService;
 
     @Mock
     private ClosedValidationOperationService closedValidationOperationService;
@@ -68,7 +64,6 @@ class WorkSessionControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new WorkSessionController(
                         workSessionService,
                         workSessionGitHubService,
-                        retainedDraftRecoveryService,
                         closedValidationOperationService,
                         repositoryRoleSetService))
                 .setControllerAdvice(new ApiExceptionHandler())
@@ -77,48 +72,18 @@ class WorkSessionControllerTest {
                 .build();
     }
 
-    @Test
-    void openSessionReturnsCreatedSession() throws Exception {
-        when(workSessionService.openSession(7L, new CreateWorkSessionRequest("Inspect project state", "main")))
-                .thenReturn(sessionResponse(WorkSessionStatus.OPEN, WorkSessionOperationalState.IDLE, null, null, null));
-
-        mockMvc.perform(post("/api/projects/7/sessions")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "title": "Inspect project state",
-                                  "baseBranch": "main"
-                                }
-                                """))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(12))
-                .andExpect(jsonPath("$.status").value("OPEN"))
-                .andExpect(jsonPath("$.pullRequestStatus").value("NOT_CREATED"));
-    }
 
     @Test
-    void recoverRetainedDraftReturnsOnlySanitizedRecoveryIdentity() throws Exception {
-        when(retainedDraftRecoveryService.recover(41L)).thenReturn(
-                new RecoverDraftWorkSessionResponse(
-                        41L,
-                        42L,
-                        "0".repeat(40),
-                        "1".repeat(40),
-                        "2".repeat(64),
-                        2,
-                        3,
-                        4,
-                        false));
-
-        mockMvc.perform(post("/api/sessions/41/recover-retained-draft"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.blockedSessionId").value(41))
-                .andExpect(jsonPath("$.replacementSessionId").value(42))
-                .andExpect(jsonPath("$.draftFingerprintSha256").value("2".repeat(64)))
-                .andExpect(jsonPath("$.valuesExposed").value(false))
-                .andExpect(jsonPath("$.path").doesNotExist())
-                .andExpect(jsonPath("$.files").doesNotExist());
+    void independentSessionCreationRoutesAreAbsent() throws Exception {
+        for (String path : List.of("/api/projects/7/sessions", "/api/projects/7/sessions/resolve",
+                "/api/projects/7/sessions/resolve/view", "/api/projects/7/sessions/resolve/conversation-view",
+                "/api/sessions/41/recover-retained-draft")) {
+            mockMvc.perform(post(path).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"title\":\"No independent work\"}")).andExpect(status().isNotFound());
+        }
+        org.mockito.Mockito.verifyNoInteractions(workSessionService);
     }
+
 
     @Test
     void validationEndpointAcceptsOnlySymbolicClosedOperation() throws Exception {
@@ -249,84 +214,10 @@ class WorkSessionControllerTest {
                 .andExpect(jsonPath("$.path").doesNotExist());
     }
 
-    @Test
-    void openSessionReturnsBadRequestWhenTitleIsBlank() throws Exception {
-        mockMvc.perform(post("/api/projects/7/sessions")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "title": "   "
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Validation failed"));
-    }
 
-    @Test
-    void openSessionReturnsConflictWhenOpenSessionAlreadyExists() throws Exception {
-        when(workSessionService.openSession(7L, new CreateWorkSessionRequest("Inspect project state", null)))
-                .thenThrow(new OpenWorkSessionAlreadyExistsException(7L));
 
-        mockMvc.perform(post("/api/projects/7/sessions")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "title": "Inspect project state"
-                                }
-                                """))
-                .andExpect(status().isConflict());
-    }
 
-    @Test
-    void openSessionReturnsUnprocessableEntityWhenRepoIsNotOperational() throws Exception {
-        when(workSessionService.openSession(7L, new CreateWorkSessionRequest("Inspect project state", null)))
-                .thenThrow(new WorkSessionOperationBlockedException("Repository is not operational"));
 
-        mockMvc.perform(post("/api/projects/7/sessions")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "title": "Inspect project state"
-                                }
-                                """))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.message").value("Repository is not operational"));
-    }
-
-    @Test
-    void resolveSessionReturnsExistingOpenSession() throws Exception {
-        when(workSessionService.resolveSession(7L, new ResolveWorkSessionRequest("Ignored title", "main")))
-                .thenReturn(new ResolveWorkSessionResponse(
-                        false,
-                        sessionResponse(WorkSessionStatus.OPEN, WorkSessionOperationalState.IDLE, "thread-1", null, null)));
-
-        mockMvc.perform(post("/api/projects/7/sessions/resolve")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "title": "Ignored title",
-                                  "baseBranch": "main"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.created").value(false))
-                .andExpect(jsonPath("$.session.externalThreadId").value("thread-1"));
-    }
-
-    @Test
-    void resolveSessionReturnsBadRequestWhenNoOpenSessionExistsAndTitleIsMissing() throws Exception {
-        when(workSessionService.resolveSession(7L, new ResolveWorkSessionRequest(null, null)))
-                .thenThrow(new IllegalArgumentException("Session title is required when no open WorkSession exists"));
-
-        mockMvc.perform(post("/api/projects/7/sessions/resolve")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Session title is required when no open WorkSession exists"));
-    }
 
     @Test
     void getSessionReturnsSession() throws Exception {
@@ -426,38 +317,6 @@ class WorkSessionControllerTest {
                 .andExpect(jsonPath("$.recentTurns[1].actor").value("CODEX"));
     }
 
-    @Test
-    void resolveSessionConversationViewReturnsProjectConversationReadyPayload() throws Exception {
-        when(workSessionService.resolveSessionConversationView(7L, new ResolveWorkSessionRequest("Ignored title", "main")))
-                .thenReturn(new ResolveWorkSessionConversationViewResponse(
-                        false,
-                        new WorkSessionConversationViewResponse(
-                                new WorkSessionViewResponse(
-                                        sessionResponse(WorkSessionStatus.OPEN, WorkSessionOperationalState.IDLE, "thread-1", null, null),
-                                        false,
-                                        true,
-                                        null,
-                                        null,
-                                        "Current status summary"),
-                                List.of(new SessionTurnResponse(
-                                        101L,
-                                        com.atenea.persistence.worksession.SessionTurnActor.OPERATOR,
-                                        "Inspect project",
-                                        Instant.parse("2026-03-25T10:05:00Z"))),
-                                20,
-                                false)));
-
-        mockMvc.perform(post("/api/projects/7/sessions/resolve/conversation-view")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "title": "Ignored title",
-                                  "baseBranch": "main"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.view.view.session.id").value(12));
-    }
 
     @Test
     void closeSessionReturnsClosedSession() throws Exception {

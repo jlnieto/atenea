@@ -65,22 +65,16 @@ class MobileSessionOperatorStateServiceTest {
     @Mock
     private LegacyRemoteCloseService legacyRemoteCloseService;
 
-    @Mock
-    private FreshWorkSessionService freshWorkSessionService;
 
     private MobileSessionOperatorStateService service;
 
     @BeforeEach
     void setUp() {
-        service = new MobileSessionOperatorStateService(
-                agentRunRepository,
-                workSessionRepository,
-                agentRunService,
-                remoteWorkerProperties,
-                remoteWorkerClient,
-                legacyRemoteCloseService,
-                freshWorkSessionService);
+        service = new MobileSessionOperatorStateService(agentRunRepository,
+                workSessionRepository, agentRunService, remoteWorkerProperties,
+                remoteWorkerClient, legacyRemoteCloseService);
     }
+
 
     @Test
     void remoteCloseReconciliationIsStateFirstAndOffersNoReplacementMutation() {
@@ -102,31 +96,6 @@ class MobileSessionOperatorStateServiceTest {
         assertEquals(CodexOperationsRole.ROUTINE_OPERATOR, response.requiredRole());
     }
 
-    @Test
-    void incompleteFreshOperationRemainsVisibleAfterItsSourceWasReleased() {
-        when(remoteWorkerProperties.isFreshSessionOnSourceAdvanceEnabledFor(
-                ProjectCodexIdentity.PROJECT_IDENTITY)).thenReturn(true);
-        when(freshWorkSessionService.hasIncompleteOperationForSource(17L))
-                .thenReturn(true);
-
-        MobileSessionOperatorStateResponse response = service.build(conversation(
-                WorkSessionStatus.CLOSED,
-                RemoteCloseState.RELEASED,
-                latestRun(null, null),
-                false));
-
-        assertEquals(MobileSessionOperatorState.SOURCE_ADVANCED, response.state());
-        assertEquals("Nueva sesión pendiente", response.title());
-        assertEquals(MobileSessionPrimaryAction.START_FRESH_SESSION,
-                response.primaryAction());
-        assertEquals("Completar sesión nueva", response.primaryActionLabel());
-        assertTrue(response.primaryActionAvailable());
-        assertEquals(CodexOperationsRole.PLATFORM_ADMINISTRATOR,
-                response.requiredRole());
-        assertEquals(17L, response.targetWorkSessionId());
-        assertEquals(96L, response.targetAgentRunId());
-        verifyNoInteractions(agentRunRepository, remoteWorkerClient);
-    }
 
     @Test
     void legacyCloseActionStaysUnavailableWhileProjectGateIsOff() {
@@ -265,7 +234,7 @@ class MobileSessionOperatorStateServiceTest {
     }
 
     @Test
-    void sourceAdvanceReplacesRetryWithOneAdministrativeFreshSessionAction() {
+    void sourceAdvanceNeverCreatesAnIndependentSuccessor() {
         WorkSessionViewLatestRunResponse latestRun = closedOwnerRun();
         AgentRunEntity run = blockedRun();
         run.setSession(exactRemoteSession(
@@ -303,13 +272,12 @@ class MobileSessionOperatorStateServiceTest {
                 false));
 
         assertEquals(MobileSessionOperatorState.SOURCE_ADVANCED, response.state());
-        assertEquals("Código actualizado", response.title());
-        assertEquals(MobileSessionPrimaryAction.START_FRESH_SESSION,
-                response.primaryAction());
-        assertEquals("Empezar desde código actual", response.primaryActionLabel());
-        assertTrue(response.primaryActionAvailable());
-        assertEquals(CodexOperationsRole.PLATFORM_ADMINISTRATOR,
-                response.requiredRole());
+        assertEquals("La base del cambio ha avanzado", response.title());
+        assertEquals(MobileSessionPrimaryAction.NONE, response.primaryAction());
+        org.junit.jupiter.api.Assertions.assertNull(response.primaryActionLabel());
+        assertFalse(response.primaryActionAvailable());
+        org.junit.jupiter.api.Assertions.assertNull(response.requiredRole());
+        assertTrue(response.blocker().contains("mismo cambio"));
         assertEquals(17L, response.targetWorkSessionId());
         assertEquals(96L, response.targetAgentRunId());
     }

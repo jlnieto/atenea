@@ -22,8 +22,7 @@ internal class WorkSessionRepository(
     private val apiClient: AteneaApiClient,
     private val projectId: Long?,
     private val sessionId: Long,
-    private val scope: CoroutineScope,
-    private val onFreshSession: (Long) -> Unit
+    private val scope: CoroutineScope
 ) {
     private val mutableState = MutableStateFlow(WorkSessionUiState(sessionId = sessionId))
     val state: StateFlow<WorkSessionUiState> = mutableState
@@ -102,13 +101,6 @@ internal class WorkSessionRepository(
         val operatorState = mutableState.value.summary?.operatorState ?: return
         scope.launch {
             if (remoteCloseCoordinator.runPrimaryAction(operatorState)) {
-                val freshSessionId = remoteCloseCoordinator.state.value.freshSessionId
-                if (freshSessionId != null) {
-                    onFreshSession(freshSessionId)
-                } else {
-                    refreshSnapshot(initial = false)
-                    runCatching { refreshEvents() }
-                }
             }
         }
     }

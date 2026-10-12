@@ -56,24 +56,6 @@ public class CoreCapabilityRegistry {
                             List.of(
                                     new CapabilityExample("vamos a trabajar en pruebas inicial",
                                             "This switches the active project context.")))),
-            Map.entry(key(CoreDomain.DEVELOPMENT, "create_work_session"),
-                    definition(
-                            CoreDomain.DEVELOPMENT,
-                            "create_work_session",
-                            CoreRiskLevel.READ,
-                            false,
-                            true,
-                            "Open or resolve the work session for a project.",
-                            "Use when the operator asks to start, open, create, or resolve a session for a project.",
-                            "Do not use for status-only questions or to continue an already active session with a concrete task.",
-                            List.of(
-                                    requiredLong("projectId", "Project where the new or reused work session should belong."),
-                                    optionalText("title", "Human title for the work session.")),
-                            List.of(
-                                    new CapabilityExample("abre una sesión para pruebas inicial",
-                                            "The operator wants to open a work session."),
-                                    new CapabilityExample("create a session for Atenea Core",
-                                            "The operator wants to start work on a project.")))),
             Map.entry(key(CoreDomain.DEVELOPMENT, "continue_work_session"),
                     definition(
                             CoreDomain.DEVELOPMENT,

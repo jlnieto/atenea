@@ -45,8 +45,7 @@ internal fun WorkSessionScreen(
     sessionId: Long?,
     onOpenConversation: () -> Unit,
     onOpenCore: () -> Unit,
-    onBackToProjects: () -> Unit,
-    onFreshSession: (Long) -> Unit
+    onBackToProjects: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     if (sessionId == null) {
@@ -58,7 +57,7 @@ internal fun WorkSessionScreen(
     }
 
     val repository = remember(apiClient, projectId, sessionId) {
-        WorkSessionRepository(apiClient, projectId, sessionId, scope, onFreshSession)
+        WorkSessionRepository(apiClient, projectId, sessionId, scope)
     }
     DisposableEffect(repository) {
         repository.start()

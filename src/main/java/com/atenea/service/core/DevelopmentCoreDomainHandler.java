@@ -9,8 +9,6 @@ import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.MarkPriceEstimateBilledRequest;
 import com.atenea.api.worksession.PublishWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.PublishWorkSessionRequest;
-import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
-import com.atenea.api.worksession.ResolveWorkSessionRequest;
 import com.atenea.api.worksession.SessionDeliverableResponse;
 import com.atenea.api.worksession.SessionDeliverableSummaryResponse;
 import com.atenea.api.worksession.SessionDeliverablesViewResponse;
@@ -92,7 +90,6 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
             case "list_projects_overview" -> listProjectsOverview();
             case "get_project_overview" -> getProjectOverview(intent.parameters());
             case "activate_project_context" -> activateProjectContext(intent.parameters(), context);
-            case "create_work_session" -> createWorkSession(intent.parameters());
             case "continue_work_session" -> continueWorkSession(intent.parameters());
             case "publish_work_session" -> publishWorkSession(intent.parameters());
             case "sync_work_session_pull_request" -> syncWorkSessionPullRequest(intent.parameters());
@@ -314,28 +311,6 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
                 "Activated project context for project " + projectId,
                 message,
                 message);
-    }
-
-    private CoreCommandExecutionResult createWorkSession(Map<String, Object> parameters) {
-        Long projectId = requireLong(parameters, "projectId");
-        String title = requireText(parameters, "title");
-        ResolveWorkSessionConversationViewResponse response = workSessionService.resolveSessionConversationView(
-                projectId,
-                new ResolveWorkSessionRequest(title, null));
-        Long sessionId = response.view().view().session().id();
-        String operatorMessage = response.created()
-                ? "He creado una WorkSession y la conversación ya está lista."
-                : "He reutilizado la WorkSession existente y la conversación ya está lista.";
-        return new CoreCommandExecutionResult(
-                CoreResultType.WORK_SESSION_CONVERSATION_VIEW,
-                CoreTargetType.WORK_SESSION,
-                sessionId,
-                response,
-                "Resolved WorkSession conversation view for project " + projectId,
-                operatorMessage,
-                response.created()
-                        ? "He creado una sesión de trabajo y la conversación ya está lista."
-                        : "He reutilizado la sesión de trabajo existente y la conversación ya está lista.");
     }
 
     private CoreCommandExecutionResult continueWorkSession(Map<String, Object> parameters) {

@@ -198,10 +198,6 @@ export interface MobileProjectSessionOverview {
   recoveryPending: boolean;
 }
 
-export interface ResolveMobileWorkSessionResult {
-  created: boolean;
-  view: MobileWorkSessionConversation;
-}
 
 export interface MobileWorkSessionConversation {
   session: MobileWorkSession;
@@ -571,7 +567,7 @@ export interface MobileSessionOperatorState {
   title: string;
   blocker?: string | null;
   primaryAction: "NONE" | "WAIT" | "RECONCILE_REMOTE_CLOSE" |
-    "RETRY_AGENT_RUN" | "START_FRESH_SESSION" |
+    "RETRY_AGENT_RUN" |
     "CONTACT_PLATFORM_ADMINISTRATOR";
   primaryActionLabel?: string | null;
   primaryActionAvailable: boolean;
@@ -581,14 +577,6 @@ export interface MobileSessionOperatorState {
   targetAgentRunId?: number | null;
 }
 
-export interface StartFreshWorkSessionResult {
-  operationId: string;
-  state: "COMPLETED";
-  sourceWorkSessionId: number;
-  resultWorkSessionId: number;
-  created: boolean;
-  view: MobileWorkSessionConversation;
-}
 
 export interface LegacyRemoteClosePlan {
   planId: string;
@@ -713,26 +701,8 @@ export interface MobileSessionEvent {
   progressSequence?: number | null;
 }
 
-export interface ResolveMobileRescueSessionResult {
-  created: boolean;
-  view: MobileRescueConversation;
-}
 
-export interface MobileRescueConversation {
-  session: MobileRescueSession;
-  turns: MobileConversationTurn[];
-}
 
-export interface MobileRescueSession {
-  id: number;
-  projectId: number;
-  projectName: string;
-  repoPath?: string | null;
-  status: string;
-  title: string;
-  canCreateTurn: boolean;
-  lastActivityAt?: string | null;
-}
 
 export interface ManagedHost {
   id: number;
@@ -901,4 +871,14 @@ export interface BillingQueueSummary {
   totalReady?: number;
   totalBilled?: number;
   totalsByCurrency?: Record<string, number>;
+}
+
+export interface MobileDevelopmentChange {
+  changeKey: string;
+  projectId: number;
+  title: string;
+  status: "OPEN" | "PAUSED" | "COMPLETED" | "ABANDONED";
+  activeSessionId?: number | null;
+  completedSessionId?: number | null;
+  archivedSessionId?: number | null;
 }

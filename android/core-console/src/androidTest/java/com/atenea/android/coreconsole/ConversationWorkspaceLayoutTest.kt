@@ -137,7 +137,7 @@ class ConversationWorkspaceLayoutTest {
                         Fixture(change = {
                             WorkSessionChangePanel(21, "Ticket original",
                                 DevelopmentChangeValidationUiState(true, true, "Validar cambio", "La validación necesita atención."),
-                                evidence, false, null, {}, {}, { Text("Entrega") })
+                                evidence, false, null, {}, {}, deliveryContent = { Text("Entrega") })
                         })
                     }
                 }
@@ -216,7 +216,7 @@ class ConversationWorkspaceLayoutTest {
             Fixture(change = {
                 WorkSessionChangePanel(21, "Ticket original",
                     DevelopmentChangeValidationUiState(true, true, "Validar cambio", "La validación necesita atención."),
-                    evidence, false, null, { reads++ }, { validations++ }, { Text("Entrega") })
+                    evidence, false, null, { reads++ }, { validations++ }, deliveryContent = { Text("Entrega") })
             })
         }
         compose.onNodeWithText("Cambio").performClick()

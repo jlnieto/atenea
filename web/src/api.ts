@@ -25,7 +25,7 @@ import {
   LegacyRemoteClosePlan,
   MobileApiCostsOverview,
   MobileProjectOverview,
-  MobileRescueConversation,
+  MobileDevelopmentChange,
   MobileSessionEvents,
   MobileSessionSummary,
   MobileUpload,
@@ -33,11 +33,8 @@ import {
   OperatorSessionInventory,
   OperationsHostStatus,
   OperationsIncident,
-  ResolveMobileRescueSessionResult,
-  ResolveMobileWorkSessionResult,
   SessionDeliverable,
   SessionDeliverablesView,
-  StartFreshWorkSessionResult,
   UploadWorkSessionAttachmentRequest,
   WorkSessionAttachment,
   WorkSessionAttachmentCapability,
@@ -319,17 +316,34 @@ export class AteneaApi {
     return this.get<MobileProjectOverview[]>("/api/mobile/projects/overview");
   }
 
-  async resolveWorkSession(projectId: number, title?: string | null): Promise<ResolveMobileWorkSessionResult> {
-    const response = await this.post<{
-      created: boolean;
-      view: WorkSessionConversationEnvelope;
-    }>(`/api/mobile/projects/${projectId}/sessions/resolve`, {
-      title: title || null
-    });
-    return {
-      created: response.created,
-      view: unwrapWorkSessionConversation(response.view)
-    };
+  changes(projectId: number) {
+    return this.get<MobileDevelopmentChange[]>(`/api/v2/projects/${projectId}/development-changes`);
+  }
+
+  async startChange(projectId: number, title: string, keys: { create: string; provision: string; session: string }) {
+    const path = `/api/v2/projects/${projectId}/development-changes`;
+    const mutation = <T>(url: string, body: unknown, key: string) =>
+      this.request<T>(url, { method: "POST", body, jsonBody: true,
+        headers: { "Idempotency-Key": key } });
+    const created = await mutation<{ developmentChange: { changeKey: string; projectId: number; status: string } }>(
+      path, { title: title.trim() }, keys.create);
+    const change = created.developmentChange;
+    if (!change || change.projectId !== projectId || change.status !== "OPEN"
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(change.changeKey))
+      throw new Error("No se pudo confirmar la identidad del nuevo cambio.");
+    const owned = `${path}/${change.changeKey}`;
+    const provision = await mutation<{ state: string; workspaceState: string; failureCode?: string }>(
+      `${owned}/workspace/provision`, {}, keys.provision);
+    if (provision.state !== "SUCCEEDED" || provision.workspaceState !== "READY")
+      throw new Error("El cambio se ha creado pero su espacio de trabajo no está listo. Continúa el mismo cambio.");
+    const detail = await this.get<{ version: number; workspaceState: string }>(owned);
+    if (detail.workspaceState !== "READY") throw new Error("El espacio de trabajo todavía no está listo.");
+    const session = await mutation<{ changeKey: string; state: string; sessionState: string; sessionId?: number }>(
+      `${owned}/work-session:open-or-resolve`, { expectedChangeRevision: detail.version }, keys.session);
+    if (session.changeKey !== change.changeKey || session.state !== "SUCCEEDED" || session.sessionState !== "OPEN"
+        || !Number.isSafeInteger(session.sessionId) || session.sessionId! <= 0)
+      throw new Error("La conversación del cambio todavía no está lista. Continúa el mismo cambio.");
+    return session.sessionId!;
   }
 
   async workSessionSummary(sessionId: number): Promise<MobileSessionSummary> {
@@ -407,19 +421,6 @@ export class AteneaApi {
 
   resumeWorkSessionClose(sessionId: number) {
     return this.post(`/api/sessions/${sessionId}/close`);
-  }
-
-  async startFreshWorkSession(
-    sessionId: number,
-    idempotencyKey: string
-  ): Promise<StartFreshWorkSessionResult> {
-    const response = await this.post<Omit<StartFreshWorkSessionResult, "view"> & {
-      view: WorkSessionConversationEnvelope;
-    }>(`/api/mobile/sessions/${sessionId}/start-fresh`, { idempotencyKey });
-    return {
-      ...response,
-      view: unwrapWorkSessionConversation(response.view)
-    };
   }
 
   createLegacyRemoteClosePlan(sessionId: number, idempotencyKey: string) {
@@ -521,20 +522,6 @@ export class AteneaApi {
 
   sessionEvents(sessionId: number, limit = 80) {
     return this.get<MobileSessionEvents>(`/api/mobile/sessions/${sessionId}/events?limit=${limit}`);
-  }
-
-  resolveRescueSession(projectId: number, title = "Rescate operativo") {
-    return this.post<ResolveMobileRescueSessionResult>(`/api/mobile/projects/${projectId}/rescue-sessions/resolve`, {
-      title
-    });
-  }
-
-  rescueConversation(sessionId: number) {
-    return this.get<MobileRescueConversation>(`/api/mobile/rescue-sessions/${sessionId}/conversation`);
-  }
-
-  createRescueTurn(sessionId: number, message: string) {
-    return this.post<{ view: MobileRescueConversation }>(`/api/mobile/rescue-sessions/${sessionId}/turns`, { message });
   }
 
   operationsHosts() {

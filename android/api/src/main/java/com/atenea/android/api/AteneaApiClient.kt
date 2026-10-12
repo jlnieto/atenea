@@ -306,13 +306,6 @@ class AteneaApiClient(
         return sessionId
     }
 
-    suspend fun resolveMobileWorkSession(projectId: Long, title: String? = null): ResolveMobileWorkSessionResult = postJson(
-        path = "/api/mobile/projects/$projectId/sessions/resolve",
-        body = JSONObject().putNullable("title", title),
-        authenticated = true,
-        parser = ::parseResolveMobileWorkSessionResult
-    )
-
     suspend fun startNewDevelopmentChange(
         projectId: Long,
         title: String,
@@ -478,16 +471,6 @@ class AteneaApiClient(
             authenticated = true
         ) { Unit }
     }
-
-    suspend fun startFreshWorkSession(
-        sessionId: Long,
-        idempotencyKey: String
-    ): StartFreshWorkSessionResult = postJson(
-        path = "/api/mobile/sessions/$sessionId/start-fresh",
-        body = JSONObject().put("idempotencyKey", idempotencyKey),
-        authenticated = true,
-        parser = ::parseStartFreshWorkSessionResult
-    )
 
     suspend fun createLegacyRemoteClosePlan(
         sessionId: Long,
@@ -687,25 +670,6 @@ class AteneaApiClient(
         authenticated = true,
         parser = ::parseCodexRecoveryResponse
     )
-
-    suspend fun resolveMobileRescueSession(projectId: Long, title: String? = "Rescate operativo"): ResolveMobileRescueSessionResult = postJson(
-        path = "/api/mobile/projects/$projectId/rescue-sessions/resolve",
-        body = JSONObject().putNullable("title", title),
-        authenticated = true,
-        parser = ::parseResolveMobileRescueSessionResult
-    )
-
-    suspend fun fetchMobileRescueConversation(sessionId: Long): MobileRescueConversation = getJson(
-        path = "/api/mobile/rescue-sessions/$sessionId/conversation",
-        authenticated = true,
-        parser = ::parseMobileRescueConversation
-    )
-
-    suspend fun createMobileRescueTurn(sessionId: Long, message: String): MobileRescueConversation = postJson(
-        path = "/api/mobile/rescue-sessions/$sessionId/turns",
-        body = JSONObject().put("message", message),
-        authenticated = true
-    ) { json -> parseMobileRescueConversation(json.getJSONObject("view")) }
 
     suspend fun fetchOperationsHosts(): List<ManagedHost> = getJsonArray(
         path = "/api/mobile/operations/hosts",
@@ -1555,10 +1519,6 @@ data class MobileDevelopmentChange(
     val retirementSessionId: Long? = null
 )
 
-data class ResolveMobileWorkSessionResult(
-    val created: Boolean,
-    val view: MobileWorkSessionConversation
-)
 
 data class NewDevelopmentChangeRequestKeys(
     val create: UUID,
@@ -1592,14 +1552,6 @@ class NewDevelopmentChangeException(
     cause: Throwable? = null
 ) : RuntimeException(message, cause)
 
-data class StartFreshWorkSessionResult(
-    val operationId: String,
-    val state: String,
-    val sourceWorkSessionId: Long,
-    val resultWorkSessionId: Long,
-    val created: Boolean,
-    val view: MobileWorkSessionConversation
-)
 
 data class MobileWorkSessionConversation(
     val session: MobileWorkSession,
@@ -1989,27 +1941,6 @@ data class MobileSessionEvent(
     val deliverableId: Long?,
     val eventId: String?,
     val progressSequence: Long?
-)
-
-data class ResolveMobileRescueSessionResult(
-    val created: Boolean,
-    val view: MobileRescueConversation
-)
-
-data class MobileRescueConversation(
-    val session: MobileRescueSession,
-    val turns: List<MobileConversationTurn>
-)
-
-data class MobileRescueSession(
-    val id: Long,
-    val projectId: Long,
-    val projectName: String,
-    val repoPath: String?,
-    val status: String,
-    val title: String,
-    val canCreateTurn: Boolean,
-    val lastActivityAt: String?
 )
 
 data class ManagedHost(
@@ -2574,11 +2505,6 @@ private fun parseMobileDevelopmentChange(json: JSONObject, expectedProjectId: Lo
     )
 }
 
-private fun parseResolveMobileWorkSessionResult(json: JSONObject): ResolveMobileWorkSessionResult =
-    ResolveMobileWorkSessionResult(
-        created = json.optBoolean("created", false),
-        view = parseMobileWorkSessionConversation(json.getJSONObject("view"))
-    )
 
 private data class CreatedDevelopmentChange(
     val changeKey: UUID
@@ -2650,15 +2576,6 @@ private suspend fun <T> newDevelopmentChangeStep(
     )
 }
 
-private fun parseStartFreshWorkSessionResult(json: JSONObject): StartFreshWorkSessionResult =
-    StartFreshWorkSessionResult(
-        operationId = json.getString("operationId"),
-        state = json.getString("state"),
-        sourceWorkSessionId = json.getLong("sourceWorkSessionId"),
-        resultWorkSessionId = json.getLong("resultWorkSessionId"),
-        created = json.optBoolean("created", false),
-        view = parseMobileWorkSessionConversation(json.getJSONObject("view"))
-    )
 
 private fun parseMobileWorkSessionConversation(json: JSONObject): MobileWorkSessionConversation {
     val view = json.optJSONObject("view") ?: json
@@ -3038,30 +2955,6 @@ private fun parseMobileSessionEvents(json: JSONObject): MobileSessionEvents {
     )
 }
 
-private fun parseResolveMobileRescueSessionResult(json: JSONObject): ResolveMobileRescueSessionResult =
-    ResolveMobileRescueSessionResult(
-        created = json.optBoolean("created", false),
-        view = parseMobileRescueConversation(json.getJSONObject("view"))
-    )
-
-private fun parseMobileRescueConversation(json: JSONObject): MobileRescueConversation {
-    val session = json.getJSONObject("session")
-    val turns = json.optJSONArray("turns") ?: JSONArray()
-    return MobileRescueConversation(
-        session = MobileRescueSession(
-            id = session.getLong("id"),
-            projectId = session.getLong("projectId"),
-            projectName = session.optString("projectName", ""),
-            repoPath = session.optNullableString("repoPath"),
-            status = session.optString("status", ""),
-            title = session.optString("title", ""),
-            canCreateTurn = session.optBoolean("canCreateTurn", false),
-            lastActivityAt = session.optNullableString("lastActivityAt")
-        ),
-        turns = List(turns.length()) { index -> parseMobileConversationTurn(turns.getJSONObject(index)) }
-    )
-}
-
 internal fun parseMobileConversationTurn(json: JSONObject): MobileConversationTurn =
     MobileConversationTurn(
         id = json.getLong("id"),
@@ -3093,6 +2986,7 @@ internal fun parseMobileConversationTurn(json: JSONObject): MobileConversationTu
             }
         }.orEmpty()
     )
+
 
 private fun parseManagedHost(json: JSONObject): ManagedHost = ManagedHost(
     id = json.getLong("id"),

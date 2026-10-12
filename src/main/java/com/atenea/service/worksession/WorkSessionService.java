@@ -1,12 +1,7 @@
 package com.atenea.service.worksession;
 
 import com.atenea.attachments.NewWorkSessionAttachmentPolicySnapshotter;
-import com.atenea.api.worksession.CreateWorkSessionRequest;
 import com.atenea.api.worksession.CloseWorkSessionConversationViewResponse;
-import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
-import com.atenea.api.worksession.ResolveWorkSessionRequest;
-import com.atenea.api.worksession.ResolveWorkSessionResponse;
-import com.atenea.api.worksession.ResolveWorkSessionViewResponse;
 import com.atenea.api.worksession.SessionTurnResponse;
 import com.atenea.api.worksession.SessionOperationalSnapshotResponse;
 import com.atenea.api.worksession.WorkSessionConversationViewResponse;
@@ -35,7 +30,6 @@ import com.atenea.remoteworker.ProjectCodexIdentity;
 import com.atenea.remoteworker.RemoteWorkerClient;
 import com.atenea.remoteworker.RemoteWorkerException;
 import com.atenea.remoteworker.RemoteWorkerProperties;
-import com.atenea.remoteworker.RemoteRoutingSelector;
 import com.atenea.service.project.WorkspaceRepositoryPathValidator;
 import com.atenea.service.git.GitRepositoryService;
 import com.atenea.service.git.GitRepositoryOperationException;
@@ -43,7 +37,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -72,7 +65,6 @@ public class WorkSessionService {
     private final com.atenea.delivery.DeliveryStore deliveryStore;
     private final com.atenea.delivery.WorkSessionRetirementStore retirements;
     private final TransactionTemplate closeTransaction;
-    private RemoteRoutingSelector remoteRoutingSelector;
 
     public WorkSessionService(
             ProjectRepository projectRepository,
@@ -114,148 +106,6 @@ public class WorkSessionService {
                 TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
-    @Autowired(required = false)
-    void setRemoteRoutingSelector(RemoteRoutingSelector remoteRoutingSelector) {
-        this.remoteRoutingSelector = remoteRoutingSelector;
-    }
-
-    @Transactional
-    public WorkSessionResponse openSession(Long projectId, CreateWorkSessionRequest request) {
-        return openSession(projectId, request, null);
-    }
-
-    private WorkSessionResponse openSession(
-            Long projectId,
-            CreateWorkSessionRequest request,
-            UUID freshStartOperationId
-    ) {
-        ProjectEntity project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new WorkSessionProjectNotFoundException(projectId));
-
-        if (workSessionRepository.existsByProjectIdAndStatus(projectId, WorkSessionStatus.OPEN)
-                || workSessionRepository.existsByProjectIdAndStatus(projectId, WorkSessionStatus.CLOSING)) {
-            throw new OpenWorkSessionAlreadyExistsException(projectId);
-        }
-
-        String normalizedRepoPath = workspaceRepositoryPathValidator.normalizeConfiguredRepoPath(project.getRepoPath());
-        String currentBranch = resolveCurrentBranch(normalizedRepoPath);
-        String normalizedBaseBranch = normalizeNullableText(request.baseBranch());
-        String projectDefaultBaseBranch = normalizeNullableText(project.getDefaultBaseBranch());
-        String baseBranch = normalizedBaseBranch != null
-                ? normalizedBaseBranch
-                : (projectDefaultBaseBranch != null ? projectDefaultBaseBranch : currentBranch);
-
-        Instant now = Instant.now();
-
-        WorkSessionEntity session = new WorkSessionEntity();
-        session.setProject(project);
-        session.setStatus(WorkSessionStatus.OPEN);
-        session.setTitle(request.title().trim());
-        session.setBaseBranch(baseBranch);
-        session.setWorkspaceBranch(null);
-        session.setExternalThreadId(null);
-        session.setExecutionTarget(ExecutionTarget.LOCAL);
-        session.setSelectedWorkerId(null);
-        session.setWorkspaceIdentity("local:pending");
-        session.setRemoteSessionId(null);
-        session.setRemoteWorkloadKind(null);
-        session.setFreshStartOperationId(freshStartOperationId);
-        session.setRemoteCloseState(RemoteCloseState.NOT_REQUIRED);
-        session.setAttachmentPolicyRevision(null);
-        session.setPullRequestUrl(null);
-        session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
-        session.setFinalCommitSha(null);
-        session.setOpenedAt(now);
-        session.setLastActivityAt(now);
-        session.setPublishedAt(null);
-        session.setCloseBlockedState(null);
-        session.setCloseBlockedReason(null);
-        session.setCloseBlockedAction(null);
-        session.setCloseRetryable(false);
-        session.setClosedAt(null);
-        session.setCreatedAt(now);
-        session.setUpdatedAt(now);
-
-        WorkSessionEntity persistedSession = workSessionRepository.save(session);
-        if (remoteRoutingSelector == null) {
-            persistedSession.setWorkspaceIdentity("local:work-session:" + persistedSession.getId());
-        } else {
-            remoteRoutingSelector.pinNewSession(persistedSession);
-        }
-        attachmentPolicySnapshotter.snapshotNewSession(persistedSession);
-        persistedSession.setWorkspaceBranch(sessionBranchService.prepareWorkspaceBranch(persistedSession, normalizedRepoPath));
-        persistedSession.setUpdatedAt(Instant.now());
-
-        return toResponse(workSessionRepository.save(persistedSession));
-    }
-
-    @Transactional
-    public ResolveWorkSessionConversationViewResponse resolveFreshSessionConversationView(
-            Long projectId,
-            String title,
-            UUID operationId
-    ) {
-        WorkSessionEntity existing = workSessionRepository
-                .findByFreshStartOperationId(operationId)
-                .orElse(null);
-        if (existing != null) {
-            if (existing.getProject() == null
-                    || !projectId.equals(existing.getProject().getId())) {
-                throw new IllegalStateException(
-                        "Fresh-start operation belongs to another project");
-            }
-            return new ResolveWorkSessionConversationViewResponse(
-                    false, getSessionConversationView(existing.getId()));
-        }
-        WorkSessionResponse created = openSession(
-                projectId,
-                new CreateWorkSessionRequest(title, null),
-                operationId);
-        return new ResolveWorkSessionConversationViewResponse(
-                true, getSessionConversationView(created.id()));
-    }
-
-    @Transactional
-    public ResolveWorkSessionResponse resolveSession(Long projectId, ResolveWorkSessionRequest request) {
-        projectRepository.findById(projectId)
-                .orElseThrow(() -> new WorkSessionProjectNotFoundException(projectId));
-
-        WorkSessionEntity openSession = nullSafe(workSessionRepository.findByProjectIdAndStatus(projectId, WorkSessionStatus.OPEN))
-                .orElseGet(() -> nullSafe(workSessionRepository.findByProjectIdAndStatus(projectId, WorkSessionStatus.CLOSING))
-                        .orElse(null));
-        if (openSession != null) {
-            if (openSession.getStatus() == WorkSessionStatus.OPEN) {
-                prepareWorkspaceBranch(openSession);
-            }
-            return new ResolveWorkSessionResponse(false, toResponse(openSession));
-        }
-
-        if (request == null || normalizeNullableText(request.title()) == null) {
-            throw new IllegalArgumentException("Session title is required when no open WorkSession exists");
-        }
-
-        WorkSessionResponse createdSession = openSession(
-                projectId,
-                new CreateWorkSessionRequest(request.title(), request.baseBranch()));
-        return new ResolveWorkSessionResponse(true, createdSession);
-    }
-
-    @Transactional
-    public ResolveWorkSessionViewResponse resolveSessionView(Long projectId, ResolveWorkSessionRequest request) {
-        ResolveWorkSessionResponse resolved = resolveSession(projectId, request);
-        WorkSessionViewResponse view = getSessionView(resolved.session().id());
-        return new ResolveWorkSessionViewResponse(resolved.created(), view);
-    }
-
-    @Transactional
-    public ResolveWorkSessionConversationViewResponse resolveSessionConversationView(
-            Long projectId,
-            ResolveWorkSessionRequest request
-    ) {
-        ResolveWorkSessionResponse resolved = resolveSession(projectId, request);
-        WorkSessionConversationViewResponse view = getSessionConversationView(resolved.session().id());
-        return new ResolveWorkSessionConversationViewResponse(resolved.created(), view);
-    }
 
     @Transactional(readOnly = true)
     public WorkSessionResponse getSession(Long sessionId) {
