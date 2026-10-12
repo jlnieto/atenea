@@ -60,3 +60,9 @@ configuración instalada conserva WS19 pero usa selection=false y canonical
 07fdf9f56333ff8002450d7bc2719ac4000fe4a7. Antes de retirarla hace falta adaptar
 Platform al propietario retenido exacto, manteniendo v4 habilitado y su borrador.
 No reactivar configuración legacy ni forzar una liberación.
+
+La adaptación cerrada de Platform añade preflight con esos mismos registros y
+hashes y reconoce la retirada durable manteniendo v4. La versión nueva pasó un
+preflight read-only sobre WS19 real; el binario instalado sigue sin actualizarse
+hasta el rollout coordinado. Una conversación CLOSED retirada sólo ofrece
+historial, no acciones de integración ni publicación.

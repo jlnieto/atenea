@@ -39,6 +39,9 @@ internal fun orderedDevelopmentChanges(changes: List<MobileDevelopmentChange>): 
 internal fun developmentChangeHistory(change: MobileDevelopmentChange): Boolean =
     change.status in setOf("COMPLETED", "ABANDONED")
 
+internal fun closedSessionHistoryOnly(status: String, completionAvailable: Boolean): Boolean =
+    status == "CLOSED" && !completionAvailable
+
 internal fun changeConversationLabel(change: MobileDevelopmentChange): String = when {
     developmentChangeHistory(change) -> "Ver conversación"
     change.retirementState != null -> "Ver conversación · retirada pendiente"

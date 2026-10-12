@@ -31,6 +31,7 @@ import com.atenea.android.api.CodexProgressReplay
 import com.atenea.android.api.CodexRecoveryAction
 import com.atenea.android.api.CodexRunDetail
 import com.atenea.android.api.MobileWorkSessionConversation
+import androidx.compose.ui.platform.LocalUriHandler
 import com.atenea.android.api.MobileSessionOperatorState
 import com.atenea.android.api.SessionTurnAttachment
 import com.atenea.android.api.DevelopmentChangeValidationEvidence
@@ -54,6 +55,7 @@ internal fun WorkSessionConversationScreen(
     onFreshSession: (Long) -> Unit
 ) {
     val context = LocalContext.current
+    val historyUriHandler = LocalUriHandler.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val promptRecorder = remember(context) { ConversationPromptRecorder(context.applicationContext) }
@@ -797,11 +799,21 @@ internal fun WorkSessionConversationScreen(
                 readError = validationEvidenceError,
                 onReadEvidence = { if (!validationEvidenceLoading) scope.launch { readValidationEvidence(sessionId) } },
                 onValidate = ::validateChange,
-                completed = deliveryState.completion != null
+                completed = loaded.session.status == "CLOSED" || deliveryState.completion != null
             ) {
-                MobileDeliveryPanel(apiClient, sessionId,
-                    validated = loaded.session.developmentChangeValidationState == "CURRENT",
-                    runInProgress = loaded.runInProgress, state = deliveryState)
+                if (closedSessionHistoryOnly(loaded.session.status, deliveryState.completion != null)) {
+                    Text("WorkSession cerrada · historial")
+                    Text("La conversación, el código y los recibos se conservan. Esta pantalla no integra ni publica el trabajo retirado.")
+                    loaded.session.pullRequestUrl?.takeIf {
+                        it.matches(Regex("https://github\\.com/jlnieto/atenea/pull/[1-9][0-9]*"))
+                    }?.let { url ->
+                        AteneaTextButton("Revisar PR", onClick = { historyUriHandler.openUri(url) })
+                    }
+                } else {
+                    MobileDeliveryPanel(apiClient, sessionId,
+                        validated = loaded.session.developmentChangeValidationState == "CURRENT",
+                        runInProgress = loaded.runInProgress, state = deliveryState)
+                }
             }
         } },
         profileContent = if (!profileUnavailable) {

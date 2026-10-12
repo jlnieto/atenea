@@ -11,6 +11,13 @@ import kotlin.test.assertFalse
 
 class DevelopmentChangesNavigationTest {
     @Test
+    fun `retired closed session exposes history without hiding retained completion recovery`() {
+        assertTrue(closedSessionHistoryOnly("CLOSED", false))
+        assertFalse(closedSessionHistoryOnly("OPEN", false))
+        assertFalse(closedSessionHistoryOnly("CLOSING", false))
+        assertFalse(closedSessionHistoryOnly("CLOSED", true))
+    }
+    @Test
     fun `completed and abandoned changes belong only to history`() {
         assertTrue(developmentChangeHistory(change(null, "COMPLETED")))
         assertTrue(developmentChangeHistory(change(null, "ABANDONED")))
