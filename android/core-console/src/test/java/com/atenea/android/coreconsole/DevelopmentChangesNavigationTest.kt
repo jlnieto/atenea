@@ -6,8 +6,42 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class DevelopmentChangesNavigationTest {
+    @Test
+    fun `retired closed session exposes history without hiding retained completion recovery`() {
+        assertTrue(closedSessionHistoryOnly("CLOSED", false))
+        assertFalse(closedSessionHistoryOnly("OPEN", false))
+        assertFalse(closedSessionHistoryOnly("CLOSING", false))
+        assertFalse(closedSessionHistoryOnly("CLOSED", true))
+    }
+    @Test
+    fun `completed and abandoned changes belong only to history`() {
+        assertTrue(developmentChangeHistory(change(null, "COMPLETED")))
+        assertTrue(developmentChangeHistory(change(null, "ABANDONED")))
+        assertFalse(developmentChangeHistory(change(null, "OPEN")))
+        assertFalse(developmentChangeHistory(change(null, "PAUSED")))
+    }
+
+    @Test
+    fun `closing or retiring conversation is not advertised as continuing work`() {
+        val closing = change(20).copy(activeSessionStatus = "CLOSING")
+        assertEquals("Ver conversación · cierre pendiente", changeConversationLabel(closing))
+        assertEquals("Ver conversación · retirada pendiente", changeConversationLabel(closing.copy(retirementState = "BLOCKED")))
+        assertEquals(20L, closing.sessionForReentry(1))
+    }
+
+    @Test
+    fun `abandoned session history opens only its archived session`() {
+        val archived = change(null, "ABANDONED").copy(archivedSessionId = 20)
+        assertEquals(20L, archived.sessionForReentry(1))
+        assertNull(archived.sessionForReentry(2))
+        assertNull(archived.copy(activeSessionId = 19).sessionForReentry(1))
+        assertNull(archived.copy(archivedSessionId = 0).sessionForReentry(1))
+        assertEquals("Ver conversación", changeConversationLabel(archived))
+    }
     @Test
     fun `completed ticket opens its preserved conversation without resolving another session`() {
         val completed = change(sessionId = null, status = "COMPLETED").copy(completedSessionId = 21)

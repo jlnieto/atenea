@@ -8,27 +8,46 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.MobileDevelopmentChange
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import java.util.UUID
 
 internal fun MobileDevelopmentChange.sessionForReentry(expectedProjectId: Long): Long? =
     if (projectId != expectedProjectId) null else when (status) {
-        "OPEN" -> activeSessionId?.takeIf { it > 0 }
+        "OPEN" -> (activeSessionId ?: retirementSessionId)?.takeIf { it > 0 }
         "COMPLETED" -> completedSessionId?.takeIf { it > 0 && activeSessionId == null }
+        "ABANDONED" -> archivedSessionId?.takeIf { it > 0 && activeSessionId == null }
         else -> null
     }
 
 internal fun orderedDevelopmentChanges(changes: List<MobileDevelopmentChange>): List<MobileDevelopmentChange> =
     changes.filter { it.status == "OPEN" } + changes.filter { it.status != "OPEN" }
+
+internal fun developmentChangeHistory(change: MobileDevelopmentChange): Boolean =
+    change.status in setOf("COMPLETED", "ABANDONED")
+
+internal fun closedSessionHistoryOnly(status: String, completionAvailable: Boolean): Boolean =
+    status == "CLOSED" && !completionAvailable
+
+internal fun changeConversationLabel(change: MobileDevelopmentChange): String = when {
+    developmentChangeHistory(change) -> "Ver conversación"
+    change.retirementState != null -> "Ver conversación · retirada pendiente"
+    change.activeSessionStatus == "CLOSING" -> "Ver conversación · cierre pendiente"
+    else -> "Continuar conversación"
+}
 
 @Composable
 internal fun DevelopmentChangesScreen(
@@ -42,6 +61,11 @@ internal fun DevelopmentChangesScreen(
     var loading by remember(projectId) { mutableStateOf(false) }
     var loaded by remember(projectId) { mutableStateOf(false) }
     var error by remember(projectId) { mutableStateOf<String?>(null) }
+    var showHistory by remember(projectId) { mutableStateOf(false) }
+    var acting by remember(projectId) { mutableStateOf(false) }
+    var pendingAbandon by remember(projectId) { mutableStateOf<MobileDevelopmentChange?>(null) }
+    val scope = rememberCoroutineScope()
+    val keys = remember(projectId) { mutableMapOf<UUID, UUID>() }
 
     LaunchedEffect(projectId, refreshRevision) {
         val id = projectId ?: return@LaunchedEffect
@@ -55,6 +79,36 @@ internal fun DevelopmentChangesScreen(
         } finally {
             loading = false
         }
+    }
+
+    LaunchedEffect(changes) {
+        if (changes.any { it.retirementState == "APPLYING" }) {
+            delay(3000)
+            refreshRevision++
+        }
+    }
+
+    pendingAbandon?.let { change ->
+        AlertDialog(onDismissRequest = { if (!acting) pendingAbandon = null },
+            title = { Text("Abandonar cambio") },
+            text = { Text("Se retirará «${change.title}» del trabajo activo. No se integrará ni publicará. El código, la conversación y los recibos se conservarán en Historial.") },
+            confirmButton = { AteneaTextButton("Abandonar", enabled = !acting, onClick = {
+                scope.launch {
+                    acting = true
+                    try {
+                        val key = keys.getOrPut(change.changeKey) { UUID.randomUUID() }
+                        val sessionId = change.activeSessionId ?: change.retirementSessionId
+                        if (sessionId == null) apiClient.abandonDevelopmentChange(change.projectId, change.changeKey, key)
+                        else if (change.retirementState == "BLOCKED") {
+                            apiClient.retireWorkSession(sessionId, apiClient.fetchRetirementKey(sessionId), reconcile = true)
+                        } else apiClient.retireWorkSession(sessionId, key)
+                        pendingAbandon = null
+                        refreshRevision++
+                    } catch (failure: Exception) { error = failure.message ?: "No se pudo retirar el cambio." }
+                    finally { acting = false }
+                }
+            }) },
+            dismissButton = { AteneaTextButton("Cancelar", enabled = !acting, onClick = { pendingAbandon = null }) })
     }
 
     if (projectId == null) {
@@ -79,16 +133,37 @@ internal fun DevelopmentChangesScreen(
                 enabled = !loading,
                 onClick = { refreshRevision++ }
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(AteneaSpacing.medium)) {
+                AteneaTextButton("Activos (${changes.count { !developmentChangeHistory(it) }})", onClick = { showHistory = false })
+                AteneaTextButton("Historial (${changes.count { developmentChangeHistory(it) }})", onClick = { showHistory = true })
+            }
+            Text(if (showHistory) "Historial · completados y abandonados" else "Trabajo activo")
             error?.let { ErrorPanel(it) }
-            if (loaded && changes.isEmpty()) {
-                Text("Este proyecto todavía no tiene cambios.")
+            if (loaded && changes.none { developmentChangeHistory(it) == showHistory }) {
+                Text(if (showHistory) "No hay cambios en el historial." else "No hay cambios pendientes.")
             }
         }
-        items(changes, key = { it.changeKey }) { change ->
+        items(changes.filter { developmentChangeHistory(it) == showHistory }, key = { it.changeKey }) { change ->
             DevelopmentChangeCard(
                 change = change,
                 projectId = projectId,
-                onOpenConversation = { sessionId -> onOpenConversation(projectId, sessionId) }
+                onOpenConversation = { sessionId -> onOpenConversation(projectId, sessionId) },
+                onAbandon = if (!developmentChangeHistory(change) && apiClient.currentOperatorRole() == "PLATFORM_ADMINISTRATOR"
+                    && change.retirementState != "APPLYING") ({ pendingAbandon = change }) else null,
+                onPrepare = if (change.status == "OPEN" && change.activeSessionId == null && !acting
+                    && change.primaryActionEnabled && change.primaryActionKind in setOf("PROVISION_WORKSPACE", "BIND_SESSION")) ({
+                        scope.launch {
+                            acting = true
+                            try {
+                                val key = keys.getOrPut(change.changeKey) { UUID.randomUUID() }
+                                val sessionKey = UUID.nameUUIDFromBytes(("open-session:$key").toByteArray())
+                                val sid = apiClient.prepareExistingDevelopmentChange(projectId, change.changeKey, key, sessionKey)
+                                onOpenConversation(projectId, sid)
+                            } catch (failure: Exception) { error = failure.message ?: "No se pudo continuar el cambio." }
+                            finally { acting = false; refreshRevision++ }
+                        }
+                    }) else null,
+                enabled = !acting
             )
         }
     }
@@ -98,7 +173,10 @@ internal fun DevelopmentChangesScreen(
 internal fun DevelopmentChangeCard(
     change: MobileDevelopmentChange,
     projectId: Long,
-    onOpenConversation: (Long) -> Unit
+    onOpenConversation: (Long) -> Unit,
+    onAbandon: (() -> Unit)? = null,
+    onPrepare: (() -> Unit)? = null,
+    enabled: Boolean = true
 ) {
     val sessionId = change.sessionForReentry(projectId)
     AteneaPanel {
@@ -108,13 +186,14 @@ internal fun DevelopmentChangeCard(
         change.updatedAt?.let { MetricLine("Actividad", it.formatDateTimeForDisplay()) }
         if (sessionId != null) {
             AteneaButton(
-                text = if (change.status == "COMPLETED") "Ver conversación" else "Continuar conversación",
+                text = changeConversationLabel(change),
                 modifier = Modifier.fillMaxWidth().testTag("development-change-continue-${change.changeKey}"),
                 onClick = { onOpenConversation(sessionId) }
             )
         } else {
             Text(
-                if (change.activeSessionId == null) "Sin WorkSession activa."
+                if (developmentChangeHistory(change)) "Historial conservado."
+                else if (change.activeSessionId == null) "Sin WorkSession activa."
                 else "Este cambio no está abierto para continuar.",
                 style = MaterialTheme.typography.bodySmall
             )
@@ -122,6 +201,9 @@ internal fun DevelopmentChangeCard(
                 Text("Siguiente acción: $action", style = MaterialTheme.typography.bodySmall)
             }
         }
+        if (change.retirementState != null) Text("Retirada: ${change.retirementState}")
+        onPrepare?.let { AteneaButton(change.primaryActionLabel ?: "Continuar cambio", enabled = enabled, onClick = it) }
+        onAbandon?.let { AteneaTextButton(if (change.retirementState == "BLOCKED") "Recuperar retirada" else "Abandonar cambio", enabled = enabled, onClick = it) }
     }
 }
 
