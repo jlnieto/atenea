@@ -50,9 +50,18 @@ installer Platform PASS, bash -n y git diff --check PASS. Los tests del contrato
 local de sesiones independiente se retiran con él y se sustituyen por rechazo
 de sus entradas, sin efectos, y las suites positivas change-owned existentes.
 
-Pendiente: purga cerrada de los targets identificados y sus dependencias,
-export/backup verificable, tratamiento de journals sellados, restricción NOT
-NULL final en Flyway, eliminación de ramas legacy restantes y aceptación.
+Segunda unidad: purgador DB de operador implementado, sin API de borrado ni
+parámetros de targets. Plan read-only PROD reconoce 17 WS/5 cambios/2 rescates
+y sus dependencias; protege WS21 y el Apache real. Backup PostgreSQL16 del mismo
+snapshot, permisos DELETE sólo para filas congeladas en transacción no publicada,
+restauración byte por byte de guards antes de COMMIT, comparación exacta de
+datos retenidos y evidencia root-owned/reconciliable. Tests PostgreSQL efímeros:
+19 de purga + 8 de regresión de journals = 27 PASS; bash -n y diff-check PASS.
+Véase docs/change-only-data-cleanup.md. No se ejecutó la purga.
+
+Pendiente: productor cerrado Platform para retirar/respaldar recursos físicos y
+emitir su recibo (el purgador DB lo exige, no acepta fabricación manual),
+restricción NOT NULL final en Flyway, eliminación de ramas legacy restantes y aceptación.
 No desactivar triggers de inmutabilidad ni hacer DELETE global como atajo.
 Integración, rollout y APK sólo cuando el conjunto esté listo. Ninguna fila,
 workspace, enlace Codex o runtime compartido ha sido modificado en esta unidad.

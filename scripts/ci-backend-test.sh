@@ -18,7 +18,7 @@ docker run --rm --network host \
   -e ATENEA_WORKSPACE_ROOT=/workspace/repos \
   maven:3.9.11-eclipse-temurin-21 /bin/bash -euc '
     apt-get update -qq
-    apt-get install -y -qq --no-install-recommends git openssh-client
+    apt-get install -y -qq --no-install-recommends git openssh-client python3 postgresql-client-16
     mvn -B -Dmaven.repo.local=/work/m2 test -DskipTests
     mvn -B -Dmaven.repo.local=/work/m2 dependency:get -Dartifact=org.apache.maven.surefire:surefire-junit-platform:3.5.4
     mvn -B -Dmaven.repo.local=/work/m2 dependency:get -Dartifact=org.junit.platform:junit-platform-launcher:1.11.4
