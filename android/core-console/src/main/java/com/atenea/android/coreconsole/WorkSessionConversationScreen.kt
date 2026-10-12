@@ -693,16 +693,6 @@ internal fun WorkSessionConversationScreen(
         }
     }
 
-    fun confirmLegacyRemoteClose() {
-        val currentState = operatorState ?: return
-        val coordinator = remoteCloseCoordinator ?: return
-        scope.launch {
-            if (coordinator.confirmLegacyReconciliation(currentState)) {
-                refresh(silent = true, includeProfile = false)
-            }
-        }
-    }
-
     val current = conversation
     val profileDirty = profile?.let {
         draftModelId != it.model.modelId || draftEffort != it.reasoningEffort
@@ -756,11 +746,8 @@ internal fun WorkSessionConversationScreen(
                     RemoteCloseOperatorPanel(
                         serverState = currentState,
                         actionState = remoteCloseActionState,
-                        currentWorkSessionId = sessionId,
                         operatorRole = apiClient.currentOperatorRole(),
                         onPrimaryAction = ::runRemoteClosePrimaryAction,
-                        onConfirm = ::confirmLegacyRemoteClose,
-                        onCancel = { remoteCloseCoordinator?.cancelConfirmation() },
                         dark = true
                     )
                 }

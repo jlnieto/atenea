@@ -225,16 +225,8 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
         }
 
         if (looksLikeClose(normalized)) {
-            WorkSessionEntity session = resolveSession(context, input);
-            return proposal(
-                    "CLOSE_WORK_SESSION",
-                    "close_work_session",
-                    Map.of(
-                            "projectId", session.getProject().getId(),
-                            "workSessionId", session.getId(),
-                            "forceClosePendingDeliverables", shouldForceClosePendingDeliverables(normalized)),
-                    BigDecimal.valueOf(0.95),
-                    "close_session_request");
+            throw new CoreCapabilityDisabledException(
+                    "Finaliza o abandona el Cambio desde su pantalla; no se cierran conversaciones por separado.");
         }
 
         if (looksLikeLatestSessionResponse(normalized)) {
@@ -632,12 +624,6 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                 || normalized.contains("cierrala");
     }
 
-    private boolean shouldForceClosePendingDeliverables(String normalized) {
-        return normalized.contains("igualmente")
-                || normalized.contains("de todos modos")
-                || normalized.contains("aunque falten entregables")
-                || normalized.contains("sin generar entregables");
-    }
 
     private boolean looksLikeDeliverablesRead(String normalized) {
         if (looksLikeClose(normalized)) {

@@ -500,6 +500,17 @@ class AgentRunServiceTest {
     }
 
     @Test
+    void mismatchedChangeBindingCannotReleaseCapacityOrQueryLegacyEvidence() {
+        AgentRunEntity source = closedOwnerBlockedRun();
+        WorkSessionEntity blocker = releasedBlocker();
+        blocker.setWorkspaceIdentity("remote:ax42-01:work-session:" + blocker.getRemoteSessionId());
+        when(workSessionRepository.findWithProjectById(16L)).thenReturn(Optional.of(blocker));
+        assertThrows(AgentRunRecoveryConflictException.class,
+                () -> agentRunService.requireRemoteRetryEligible(source));
+        org.mockito.Mockito.verifyNoInteractions(jdbcTemplate);
+    }
+
+    @Test
     void projectedReceiptWithoutExactReleasedOperationKeepsRetryUnavailable() {
         AgentRunEntity source = closedOwnerBlockedRun();
         WorkSessionEntity blocker = releasedBlocker();
@@ -1324,7 +1335,15 @@ class AgentRunServiceTest {
         blocker.setExecutionTarget(ExecutionTarget.REMOTE);
         blocker.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
         blocker.setRemoteSessionId(remoteId);
-        blocker.setWorkspaceIdentity("remote:ax42-01:work-session:" + remoteId);
+        var change = new DevelopmentChangeEntity();
+        change.setId(16L); change.setProject(blocker.getProject()); change.setChangeKey(UUID.randomUUID());
+        change.setSelectedWorkerId(ProjectCodexIdentity.WORKER_ID);
+        change.setWorkspaceIdentity("remote:ax42-01:change:" + change.getChangeKey());
+        change.setWorkspaceBranch("atenea/change-" + change.getChangeKey());
+        blocker.setDevelopmentChange(change);
+        blocker.setWorkspaceIdentity(change.getWorkspaceIdentity());
+        blocker.setWorkspaceBranch(change.getWorkspaceBranch());
+        blocker.setRemoteCloseRevision(6);
         blocker.setCanonicalSourceRef("refs/heads/main");
         blocker.setCanonicalSourceCommit("a".repeat(40));
         blocker.setCanonicalSourceObservationSha256("b".repeat(64));

@@ -101,21 +101,11 @@ internal class WorkSessionRepository(
         val operatorState = mutableState.value.summary?.operatorState ?: return
         scope.launch {
             if (remoteCloseCoordinator.runPrimaryAction(operatorState)) {
-            }
-        }
-    }
-
-    fun confirmLegacyRemoteClose() {
-        val operatorState = mutableState.value.summary?.operatorState ?: return
-        scope.launch {
-            if (remoteCloseCoordinator.confirmLegacyReconciliation(operatorState)) {
                 refreshSnapshot(initial = false)
                 runCatching { refreshEvents() }
             }
         }
     }
-
-    fun cancelLegacyRemoteClose() = remoteCloseCoordinator.cancelConfirmation()
 
     fun toggleDeliverableDetail(deliverableId: Long) {
         val current = mutableState.value

@@ -1175,16 +1175,6 @@ class WorkSessionServiceTest {
         org.mockito.Mockito.verifyNoInteractions(gitHubClient);
     }
 
-    @Test
-    void legacyCloseCannotGenerateDeliverablesOrCloseAChangeOwnedTicket() {
-        WorkSessionEntity session=new WorkSessionEntity(); session.setStatus(WorkSessionStatus.OPEN);
-        session.setDevelopmentChange(new com.atenea.persistence.developmentchange.DevelopmentChangeEntity());
-        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
-        assertThrows(com.atenea.delivery.DeliveryRejectedException.class,() -> workSessionService.requireLegacyClose(12L));
-        assertEquals(WorkSessionStatus.OPEN,session.getStatus());
-        org.mockito.Mockito.verifyNoInteractions(remoteWorkerClient,gitRepositoryService,gitHubClient);
-    }
-
     private void prepareSuccessfulCloseMocks(WorkSessionEntity session, Path repoPath) {
         when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
         lenient().when(workSessionRepository.findLockedWithProjectAndDevelopmentChangeById(12L))

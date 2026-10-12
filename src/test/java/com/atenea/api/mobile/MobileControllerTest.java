@@ -192,7 +192,7 @@ class MobileControllerTest {
                         "competitive", "low", "medium", List.of("A"), List.of("B"),
                         SessionDeliverableBillingStatus.READY, null, null,
                         Instant.parse("2026-03-29T10:00:00Z"), Instant.parse("2026-03-29T10:00:00Z")),
-                new MobileSessionActionsResponse(true, true, true, true, true, true, true),
+                new MobileSessionActionsResponse(true, true, true, true, true, true),
                 new MobileSessionInsightsResponse(
                         "Flujo de voz operativo",
                         new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),

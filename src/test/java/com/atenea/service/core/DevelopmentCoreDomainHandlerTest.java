@@ -12,7 +12,6 @@ import com.atenea.api.mobile.MobileSessionSummaryResponse;
 import com.atenea.api.project.ProjectOverviewResponse;
 import com.atenea.api.project.ProjectResponse;
 import com.atenea.api.worksession.ApprovedPriceEstimateSummaryResponse;
-import com.atenea.api.worksession.CloseWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.MarkPriceEstimateBilledRequest;
 import com.atenea.api.worksession.SessionDeliverableResponse;
@@ -434,7 +433,7 @@ class DevelopmentCoreDomainHandlerTest {
                         null,
                         Instant.parse("2026-03-30T10:04:30Z"),
                         Instant.parse("2026-03-30T10:04:30Z")),
-                new MobileSessionActionsResponse(true, true, false, false, true, true, true),
+                new MobileSessionActionsResponse(true, true, false, true, true, true),
                 new MobileSessionInsightsResponse(
                         "Se ha completado la implementación del flujo de voz",
                         new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),
@@ -494,7 +493,7 @@ class DevelopmentCoreDomainHandlerTest {
                         false),
                 new SessionDeliverablesViewResponse(55L, List.of(), false, false, null),
                 null,
-                new MobileSessionActionsResponse(true, true, false, false, true, true, false),
+                new MobileSessionActionsResponse(true, true, false, true, true, false),
                 new MobileSessionInsightsResponse(
                         "Se aplicó el parche principal",
                         new MobileSessionBlockerResponse("TECHNICAL", "Build failed because tests are still red in CI"),
@@ -562,7 +561,7 @@ class DevelopmentCoreDomainHandlerTest {
                         false),
                 new SessionDeliverablesViewResponse(56L, List.of(), false, false, null),
                 null,
-                new MobileSessionActionsResponse(true, true, false, false, true, true, false),
+                new MobileSessionActionsResponse(true, true, false, true, true, false),
                 new MobileSessionInsightsResponse(
                         "La nueva landing ya está preparada",
                         new MobileSessionBlockerResponse("BUSINESS", "Pendiente de validación del cliente sobre el copy final"),
@@ -654,146 +653,20 @@ class DevelopmentCoreDomainHandlerTest {
     }
 
     @Test
-    void closeWorkSessionGeneratesPendingDeliverablesBeforeClosing() {
-        when(sessionDeliverableService.getDeliverablesView(44L)).thenReturn(new SessionDeliverablesViewResponse(
-                44L,
-                List.of(new SessionDeliverableSummaryResponse(
-                        301L,
-                        SessionDeliverableType.WORK_TICKET,
-                        SessionDeliverableStatus.SUCCEEDED,
-                        1,
-                        "Ticket",
-                        false,
-                        null,
-                        Instant.parse("2026-03-30T10:04:00Z"),
-                        "Resumen",
-                        null)),
-                false,
-                false,
-                Instant.parse("2026-03-30T10:04:00Z")));
-        when(sessionDeliverableGenerationService.generateDeliverable(44L, SessionDeliverableType.WORK_BREAKDOWN))
-                .thenReturn(deliverableResponse(
-                        302L,
-                        44L,
-                        SessionDeliverableType.WORK_BREAKDOWN,
-                        false,
-                        null,
-                        null));
-        when(sessionDeliverableGenerationService.generateDeliverable(44L, SessionDeliverableType.PRICE_ESTIMATE))
-                .thenReturn(deliverableResponse(
-                        303L,
-                        44L,
-                        SessionDeliverableType.PRICE_ESTIMATE,
-                        false,
-                        null,
-                        null));
-        when(workSessionService.closeSessionConversationView(44L)).thenReturn(closeConversationView(44L));
-
-        CoreCommandExecutionResult result = handler.execute(
-                new CoreIntentEnvelope(
-                        "CLOSE_WORK_SESSION",
-                        CoreDomain.DEVELOPMENT,
-                        "close_work_session",
-                        Map.of("projectId", 7L, "workSessionId", 44L),
-                        BigDecimal.valueOf(0.95),
-                        CoreRiskLevel.SAFE_WRITE,
-                        true),
-                new CoreExecutionContext(101L, 7L, 44L, "default", true, "token-1"));
-
-        verify(sessionDeliverableService).getDeliverablesView(44L);
-        verify(sessionDeliverableGenerationService).generateDeliverable(44L, SessionDeliverableType.WORK_BREAKDOWN);
-        verify(sessionDeliverableGenerationService).generateDeliverable(44L, SessionDeliverableType.PRICE_ESTIMATE);
-        verify(workSessionService).closeSessionConversationView(44L);
-        assertEquals("He generado los entregables pendientes y he cerrado la sesión de trabajo correctamente.", result.speakableMessage());
-    }
-
-    @Test
-    void closeWorkSessionSkipsDeliverableGenerationWhenForced() {
-        when(workSessionService.closeSessionConversationView(44L)).thenReturn(closeConversationView(44L));
-
-        CoreCommandExecutionResult result = handler.execute(
-                new CoreIntentEnvelope(
-                        "CLOSE_WORK_SESSION",
-                        CoreDomain.DEVELOPMENT,
-                        "close_work_session",
-                        Map.of("projectId", 7L, "workSessionId", 44L, "forceClosePendingDeliverables", true),
-                        BigDecimal.valueOf(0.95),
-                        CoreRiskLevel.SAFE_WRITE,
-                        true),
-                new CoreExecutionContext(101L, 7L, 44L, "default", true, "token-1"));
-
-        verify(workSessionService).closeSessionConversationView(44L);
-        assertEquals("He cerrado la sesión de trabajo correctamente.", result.speakableMessage());
-    }
-
-    @Test
-    void changeOwnedCloseIsRejectedBeforeGeneratingLegacyDeliverables() {
-        org.mockito.Mockito.doThrow(new com.atenea.delivery.DeliveryRejectedException("DELIVERED_CHANGE_COMPLETION_REQUIRED"))
-                .when(workSessionService).requireLegacyClose(44L);
-        assertThrows(com.atenea.delivery.DeliveryRejectedException.class,() -> handler.execute(
-                new CoreIntentEnvelope("CLOSE_WORK_SESSION",CoreDomain.DEVELOPMENT,"close_work_session",
-                        Map.of("projectId",7L,"workSessionId",44L),BigDecimal.valueOf(0.95),CoreRiskLevel.SAFE_WRITE,true),
-                new CoreExecutionContext(101L,7L,44L,"default",true,"token-1")));
-        org.mockito.Mockito.verifyNoInteractions(sessionDeliverableService,sessionDeliverableGenerationService);
-        org.mockito.Mockito.verify(workSessionService,org.mockito.Mockito.never()).closeSessionConversationView(44L);
-    }
-
-    @Test
-    void closeWorkSessionRejectsWhenPendingDeliverableFailsToGenerate() {
-        when(sessionDeliverableService.getDeliverablesView(44L)).thenReturn(new SessionDeliverablesViewResponse(
-                44L,
-                List.of(),
-                false,
-                false,
-                null));
-        when(sessionDeliverableGenerationService.generateDeliverable(44L, SessionDeliverableType.WORK_TICKET))
-                .thenReturn(new SessionDeliverableResponse(
-                        401L,
-                        44L,
-                        SessionDeliverableType.WORK_TICKET,
-                        SessionDeliverableStatus.FAILED,
-                        1,
-                        "Ticket",
-                        null,
-                        null,
-                        "{}",
-                        null,
-                        "Generation failed",
-                        "gpt-5.4",
-                        "v1",
-                        false,
-                        null,
-                        null,
-                        null,
-                        null,
-                        Instant.parse("2026-03-30T10:05:00Z"),
-                        Instant.parse("2026-03-30T10:06:00Z")));
-
-        CoreCloseWorkSessionRejectedException exception = assertThrows(
-                CoreCloseWorkSessionRejectedException.class,
-                () -> handler.execute(
-                        new CoreIntentEnvelope(
-                                "CLOSE_WORK_SESSION",
-                                CoreDomain.DEVELOPMENT,
-                                "close_work_session",
-                                Map.of("projectId", 7L, "workSessionId", 44L),
-                                BigDecimal.valueOf(0.95),
-                                CoreRiskLevel.SAFE_WRITE,
-                                true),
-                        new CoreExecutionContext(101L, 7L, 44L, "default", true, "token-1")));
-
-        assertEquals(
-                "No se pudo generar correctamente el ticket de trabajo antes del cierre. La sesión sigue abierta.",
-                exception.getMessage());
+    void independentCloseCapabilityIsRejectedWithoutEffects() {
+        assertThrows(CoreCapabilityDisabledException.class, () -> handler.execute(
+                new CoreIntentEnvelope("CLOSE_WORK_SESSION", CoreDomain.DEVELOPMENT, "close_work_session",
+                        Map.of("projectId", 7L, "workSessionId", 44L), BigDecimal.valueOf(0.95),
+                        CoreRiskLevel.SAFE_WRITE, true),
+                new CoreExecutionContext(101L, 7L, 44L, "default", true, "token-1")));
+        org.mockito.Mockito.verifyNoInteractions(workSessionService, sessionDeliverableService,
+                sessionDeliverableGenerationService);
     }
 
     private static WorkSessionConversationViewResponse conversationView(Long sessionId) {
         return conversationView(sessionId, null);
     }
 
-    private static CloseWorkSessionConversationViewResponse closeConversationView(Long sessionId) {
-        return new CloseWorkSessionConversationViewResponse(conversationView(sessionId));
-    }
 
     private static WorkSessionConversationViewResponse conversationView(Long sessionId, String lastAgentResponse) {
         return conversationView(sessionId, lastAgentResponse, List.of());

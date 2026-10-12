@@ -185,7 +185,6 @@ public class DeepSeekSessionSpeechBriefingClient implements SessionSpeechBriefin
             context.put("availableActions", Map.of(
                     "canPublish", request.actions().canPublish(),
                     "canSyncPullRequest", request.actions().canSyncPullRequest(),
-                    "canClose", request.actions().canClose(),
                     "canGenerateDeliverables", request.actions().canGenerateDeliverables(),
                     "canApproveDeliverables", request.actions().canApproveDeliverables(),
                     "canMarkApprovedPriceEstimateBilled", request.actions().canMarkApprovedPriceEstimateBilled()));

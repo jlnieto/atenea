@@ -560,9 +560,8 @@ export interface MobileSessionSummary {
 export interface MobileSessionOperatorState {
   surfaceEnabled: boolean;
   state: "DEFAULT" | "RUNNING" | "CLOSING_REMOTE" | "REMOTE_CLOSE_BLOCKED" |
-    "LEGACY_CLOSE_REQUIRED" | "CLOSED_OWNER_BLOCKS_CAPACITY" |
+    "CLOSED_OWNER_BLOCKS_CAPACITY" |
     "CLOSED_OWNER_RECONCILING" | "CAPACITY_RELEASED" |
-    "SOURCE_READINESS_PENDING" | "SOURCE_ADVANCED" |
     "OWNERSHIP_REVIEW_REQUIRED" | "CLOSED";
   title: string;
   blocker?: string | null;
@@ -578,44 +577,10 @@ export interface MobileSessionOperatorState {
 }
 
 
-export interface LegacyRemoteClosePlan {
-  planId: string;
-  workSessionId: number;
-  operation: "RECONCILE_REMOTE_CLOSE";
-  state: "READY_FOR_CONFIRMATION" | "CONSUMED" | "EXPIRED";
-  requiredRole: "PLATFORM_ADMINISTRATOR";
-  ownershipFingerprintSha256: string;
-  expiresAt: string;
-  consumed: boolean;
-  expectedImpact: string;
-  valuesExposed: false;
-  createdAt: string;
-}
-
-export interface LegacyRemoteCloseOperation {
-  operationId: string;
-  planId: string;
-  workSessionId: number;
-  operation: "RECONCILE_REMOTE_CLOSE";
-  state: "REQUESTED" | "RECONCILING" | "BLOCKED" | "RELEASED";
-  revision: number;
-  ownershipFingerprintSha256: string;
-  errorCode?: string | null;
-  errorCategory?: string | null;
-  nextAction: string;
-  retryable: boolean;
-  receiptSha256?: string | null;
-  requestedAt: string;
-  updatedAt: string;
-  releasedAt?: string | null;
-  valuesExposed: false;
-}
-
 export interface MobileSessionActions {
   canCreateTurn: boolean;
   canPublish: boolean;
   canSyncPullRequest: boolean;
-  canClose: boolean;
   canGenerateDeliverables: boolean;
   canApproveDeliverables: boolean;
   canMarkApprovedPriceEstimateBilled: boolean;

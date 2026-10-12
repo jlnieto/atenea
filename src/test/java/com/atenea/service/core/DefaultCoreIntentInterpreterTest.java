@@ -1,5 +1,6 @@
 package com.atenea.service.core;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -271,28 +272,12 @@ class DefaultCoreIntentInterpreterTest {
     }
 
     @Test
-    void interpretRoutesForceCloseRequestToCoreCapabilityWithForceFlag() {
-        WorkSessionEntity session = new WorkSessionEntity();
-        session.setId(44L);
-        session.setProject(project(9L, "pruebas-inicial"));
-        when(coreWorkSessionResolver.resolveActiveSession(
-                "cierra la sesion igualmente aunque falten entregables",
-                44L,
-                9L)).thenReturn(session);
-
-        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
-                "cierra la sesion igualmente aunque falten entregables",
-                CoreChannel.TEXT,
-                new CoreRequestContext(9L, 44L),
-                null));
-
-        assertEquals("close_work_session", result.proposal().capability());
-        assertEquals(
-                Map.of(
-                        "projectId", 9L,
-                        "workSessionId", 44L,
-                        "forceClosePendingDeliverables", true),
-                result.proposal().parameters());
+    void independentCloseDirectsTheOperatorToTheChangeWithoutResolvingASession() {
+        var error = assertThrows(CoreCapabilityDisabledException.class, () -> interpreter.interpret(
+                new CreateCoreCommandRequest("cierra la sesion igualmente aunque falten entregables",
+                        CoreChannel.TEXT, new CoreRequestContext(9L, 44L), null)));
+        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("Cambio"));
+        org.mockito.Mockito.verifyNoInteractions(coreWorkSessionResolver);
     }
 
     @Test

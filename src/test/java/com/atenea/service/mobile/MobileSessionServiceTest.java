@@ -83,7 +83,8 @@ class MobileSessionServiceTest {
 
         MobileSessionSummaryResponse response = mobileSessionService.getSessionSummary(12L);
 
-        assertTrue(response.actions().canClose());
+        assertFalse(java.util.Arrays.stream(response.actions().getClass().getRecordComponents())
+                .anyMatch(component -> component.getName().equals("canClose")));
         assertFalse(response.actions().canPublish());
     }
 
@@ -98,7 +99,6 @@ class MobileSessionServiceTest {
 
         MobileSessionSummaryResponse response = mobileSessionService.getSessionSummary(12L);
 
-        assertFalse(response.actions().canClose());
         assertTrue(response.actions().canPublish());
     }
 

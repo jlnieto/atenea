@@ -50,7 +50,6 @@ import {
   CoreCommandResponse,
   CoreCommandSummary,
   CoreScope,
-  LegacyRemoteClosePlan,
   ManagedHost,
   MobileApiCostsOverview,
   MobileConversationTurn,
@@ -670,7 +669,6 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
           <div className="button-grid">
             <Button disabled={!actions.canPublish} onClick={() => runAction("publica la pr")} icon={<GitBranch />}>Publicar PR</Button>
             <Button disabled={!actions.canSyncPullRequest} onClick={() => runAction("sincroniza la pull request")} icon={<RefreshCw />}>Sync PR</Button>
-            <Button disabled={!actions.canClose} onClick={() => runAction("cierra la sesión de trabajo")} icon={<Check />}>Cerrar</Button>
             <Button disabled={!actions.canGenerateDeliverables} onClick={() => runAction("genera el ticket de trabajo")} icon={<ClipboardCheck />}>Ticket</Button>
             <Button disabled={!actions.canGenerateDeliverables} onClick={() => runAction("genera el desglose de trabajo")} icon={<ClipboardCheck />}>Desglose</Button>
             <Button disabled={!actions.canGenerateDeliverables} onClick={() => runAction("genera el presupuesto")} icon={<BarChart3 />}>Pricing</Button>
@@ -1250,8 +1248,6 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
           retryOverride={operatorState?.surfaceEnabled
             ? operatorState.state === "CAPACITY_RELEASED"
               ? "Usa «Reintentar tarea» en el estado operativo"
-              : operatorState.state === "SOURCE_ADVANCED"
-                ? "El código cambió; empieza una sesión nueva desde el estado operativo"
               : "Reconciliar el cierre antes de reintentar"
             : null}
           onRecovery={requestRecovery}
@@ -1306,29 +1302,16 @@ function RemoteCloseOperatorPanel({
   onChanged: () => void | Promise<void>;
   dark?: boolean;
 }) {
-  const [plan, setPlan] = useState<LegacyRemoteClosePlan | null>(null);
   const [pending, setPending] = useState(false);
   const [requiresRefresh, setRequiresRefresh] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const planIdempotencyKey = useRef<string | null>(null);
-  const confirmationIdempotencyKey = useRef<string | null>(null);
-  const confirmationRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setPlan(null);
     setRequiresRefresh(false);
     setNotice("");
     setError("");
-    planIdempotencyKey.current = null;
-    confirmationIdempotencyKey.current = null;
   }, [currentWorkSessionId, state.targetWorkSessionId, state.state, refreshGeneration]);
-
-  useEffect(() => {
-    if (plan) {
-      confirmationRef.current?.scrollIntoView({ block: "nearest" });
-    }
-  }, [plan]);
 
   if (!state.surfaceEnabled) {
     return null;
@@ -1336,9 +1319,8 @@ function RemoteCloseOperatorPanel({
 
   const roleAllowed = operatorHasRole(state.requiredRole);
   const actionAvailable = state.primaryActionAvailable && roleAllowed &&
-    remoteCloseActionMatchesState(state) && !requiresRefresh;
-  const legacyConfirmationRequired = state.primaryAction === "RECONCILE_REMOTE_CLOSE"
-    && ["LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY", "REMOTE_CLOSE_BLOCKED"].includes(state.state);
+    remoteCloseActionMatchesState(state) && !requiresRefresh &&
+    (state.primaryAction !== "RECONCILE_REMOTE_CLOSE" || state.targetWorkSessionId === currentWorkSessionId);
   const level = remoteCloseStateLevel(state.state);
   const actionLabel = state.primaryActionLabel || remoteCloseFallbackActionLabel(state.primaryAction);
 
@@ -1364,82 +1346,19 @@ function RemoteCloseOperatorPanel({
         return;
       }
       if (state.primaryAction === "RECONCILE_REMOTE_CLOSE" && state.targetWorkSessionId) {
-        if (legacyConfirmationRequired) {
-          planIdempotencyKey.current ||= crypto.randomUUID();
-          const nextPlan = await api.createLegacyRemoteClosePlan(
-            state.targetWorkSessionId,
-            planIdempotencyKey.current
-          );
-          if (nextPlan.state !== "READY_FOR_CONFIRMATION"
-              || nextPlan.consumed
-              || nextPlan.workSessionId !== state.targetWorkSessionId) {
-            setRequiresRefresh(true);
-            planIdempotencyKey.current = null;
-            throw new Error("stale-plan");
-          }
-          setPlan(nextPlan);
-          return;
-        }
+        if (state.targetWorkSessionId !== currentWorkSessionId) return;
         await api.resumeWorkSessionClose(state.targetWorkSessionId);
         setNotice("Reconciliación solicitada. Se mantendrá la misma operación de cierre.");
         await onChanged();
       }
     } catch (actionError) {
       if (actionError instanceof ApiError && actionError.status === 409) {
-        setPlan(null);
         setRequiresRefresh(true);
-        planIdempotencyKey.current = null;
-        confirmationIdempotencyKey.current = null;
       }
       setError(remoteCloseActionError(actionError));
     } finally {
       setPending(false);
     }
-  }
-
-  async function confirmLegacyReconciliation() {
-    if (!plan || !actionAvailable || pending || !state.targetWorkSessionId) {
-      return;
-    }
-    setPending(true);
-    setError("");
-    setNotice("");
-    try {
-      confirmationIdempotencyKey.current ||= crypto.randomUUID();
-      const operation = await api.confirmLegacyRemoteClose(
-        state.targetWorkSessionId,
-        plan,
-        confirmationIdempotencyKey.current
-      );
-      if (operation.state === "BLOCKED") {
-        setPlan(null);
-        setRequiresRefresh(true);
-        planIdempotencyKey.current = null;
-        confirmationIdempotencyKey.current = null;
-        throw new Error("blocked");
-      }
-      setPlan(null);
-      setNotice(operation.state === "RELEASED"
-        ? "Capacidad liberada. Ya puedes actualizar el estado antes de decidir si reintentas."
-        : "Reconciliación iniciada. Atenea confirmará la liberación sin repetir la operación.");
-      await onChanged();
-    } catch (actionError) {
-      if (actionError instanceof ApiError && actionError.status === 409) {
-        setPlan(null);
-        setRequiresRefresh(true);
-        planIdempotencyKey.current = null;
-        confirmationIdempotencyKey.current = null;
-      }
-      setError(remoteCloseActionError(actionError));
-    } finally {
-      setPending(false);
-    }
-  }
-
-  function cancelConfirmation() {
-    setPlan(null);
-    setError("");
-    confirmationIdempotencyKey.current = null;
   }
 
   return (
@@ -1461,12 +1380,9 @@ function RemoteCloseOperatorPanel({
         {state.state === "CAPACITY_RELEASED" && (
           <p>El reintento es una decisión explícita: no se ha vuelto a enviar ninguna instrucción.</p>
         )}
-        {state.state === "SOURCE_ADVANCED" && (
-          <p>Continúa en el mismo cambio. Actualiza su base desde Cambio y vuelve a validar.</p>
-        )}
       </div>
       <div className="remote-close-state__action">
-        {!plan && state.primaryAction !== "NONE" && state.primaryAction !== "WAIT" && (
+        {state.primaryAction !== "NONE" && state.primaryAction !== "WAIT" && (
           <Button
             variant="primary"
             disabled={!actionAvailable || pending}
@@ -1477,26 +1393,6 @@ function RemoteCloseOperatorPanel({
         )}
         {state.primaryAction === "WAIT" && <strong>Esperando confirmación segura</strong>}
       </div>
-      {plan && (
-        <div
-          className="remote-close-confirmation"
-          ref={confirmationRef}
-          role="group"
-          aria-label="Confirmar reconciliación del cierre"
-        >
-          <strong>Objetivo: WorkSession {state.targetWorkSessionId}</strong>
-          <span>
-            Sesión abierta: WorkSession {currentWorkSessionId}. Solo se liberará el ownership remoto activo del objetivo; historial, Git, runs y adjuntos se conservan.
-          </span>
-          <small>Confirmación disponible hasta {formatAbsoluteDate(plan.expiresAt)}.</small>
-          <div className="button-row">
-            <Button variant="primary" disabled={pending} onClick={confirmLegacyReconciliation}>
-              {pending ? "Confirmando…" : `Confirmar WorkSession ${state.targetWorkSessionId}`}
-            </Button>
-            <Button variant="ghost" disabled={pending} onClick={cancelConfirmation}>Cancelar</Button>
-          </div>
-        </div>
-      )}
       {error && <span className="remote-close-state__error" role="alert">{error}</span>}
       {notice && <span className="remote-close-state__notice" role="status">{notice}</span>}
     </section>
@@ -1524,8 +1420,7 @@ function remoteCloseActionMatchesState(state: MobileSessionOperatorState) {
     return state.state === "CAPACITY_RELEASED" && Boolean(state.targetAgentRunId);
   }
   if (state.primaryAction === "RECONCILE_REMOTE_CLOSE") {
-    return ["CLOSING_REMOTE", "LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY", "REMOTE_CLOSE_BLOCKED"].includes(state.state)
-      && Boolean(state.targetWorkSessionId);
+    return state.state === "CLOSING_REMOTE" && Boolean(state.targetWorkSessionId);
   }
 
   return false;
@@ -1540,7 +1435,7 @@ function operatorRoleLabel(role: NonNullable<MobileSessionOperatorState["require
 }
 
 function remoteCloseStateLevel(state: MobileSessionOperatorState["state"]): Level {
-  if (["CAPACITY_RELEASED", "SOURCE_ADVANCED"].includes(state)) return "ok";
+  if (state === "CAPACITY_RELEASED") return "ok";
   if (["REMOTE_CLOSE_BLOCKED", "OWNERSHIP_REVIEW_REQUIRED"].includes(state)) return "critical";
   return "warning";
 }
@@ -1549,12 +1444,9 @@ function remoteCloseStateLabel(state: MobileSessionOperatorState["state"]) {
   return ({
     CLOSING_REMOTE: "EN CURSO",
     REMOTE_CLOSE_BLOCKED: "BLOQUEADO",
-    LEGACY_CLOSE_REQUIRED: "CONFIRMACIÓN",
     CLOSED_OWNER_BLOCKS_CAPACITY: "BLOQUEO",
     CLOSED_OWNER_RECONCILING: "EN CURSO",
     CAPACITY_RELEASED: "LISTA",
-    SOURCE_READINESS_PENDING: "COMPROBANDO",
-    SOURCE_ADVANCED: "CÓDIGO NUEVO",
     OWNERSHIP_REVIEW_REQUIRED: "REVISIÓN",
     DEFAULT: "LISTA",
     RUNNING: "EN CURSO",
@@ -1576,7 +1468,7 @@ function remoteCloseActionError(error: unknown) {
   if (error instanceof ApiError) {
     if (error.status === 403) return "No tienes el permiso requerido para esta acción.";
     if (error.status === 404) return "La sesión ya no está disponible. Actualiza antes de continuar.";
-    if (error.status === 409) return "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación.";
+    if (error.status === 409) return "El estado cambió. Actualiza antes de continuar.";
     if (error.status === 422) return "La reconciliación no cumple las condiciones seguras. Actualiza el estado.";
   }
   return "La acción no pudo confirmarse. El estado se conserva; actualiza antes de volver a intentarlo.";

@@ -251,24 +251,6 @@ public class CoreCapabilityRegistry {
                             List.of(
                                     new CapabilityExample("marca el deliverable 501 como facturado con referencia INV-1",
                                             "This marks the approved price estimate as billed.")))),
-            Map.entry(key(CoreDomain.DEVELOPMENT, "close_work_session"),
-                    definition(
-                            CoreDomain.DEVELOPMENT,
-                            "close_work_session",
-                            CoreRiskLevel.SAFE_WRITE,
-                            true,
-                            true,
-                            "Close the active work session.",
-                            "Use when the operator explicitly asks to close the session.",
-                            "Do not use when the operator only asks for status or wants to publish.",
-                            List.of(
-                                    requiredLong("workSessionId", "Target work session identifier."),
-                                    optionalLong("projectId", "Owning project identifier when known."),
-                                    optionalBoolean("forceClosePendingDeliverables",
-                                            "When true, close without auto-generating pending core deliverables first.")),
-                            List.of(
-                                    new CapabilityExample("cierra la sesión",
-                                            "This closes the current work session.")))),
             Map.entry(key(CoreDomain.OPERATIONS, "list_hosts"),
                     definition(
                             CoreDomain.OPERATIONS,

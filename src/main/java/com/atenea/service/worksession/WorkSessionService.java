@@ -194,15 +194,6 @@ public class WorkSessionService {
         return invokeRemoteClose(sessionId, invocation);
     }
 
-    @Transactional(readOnly = true)
-    public void requireLegacyClose(Long sessionId) {
-        WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
-                .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
-        if (session.getDevelopmentChange() != null) {
-            throw new com.atenea.delivery.DeliveryRejectedException("DELIVERED_CHANGE_COMPLETION_REQUIRED");
-        }
-    }
-
     public WorkSessionResponse reconcileRemoteClose(Long sessionId) {
         if (!remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
                 ProjectCodexIdentity.PROJECT_IDENTITY)) {

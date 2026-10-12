@@ -21,8 +21,6 @@ import {
   CoreScope,
   CreateWorkSessionTurnRequest,
   ManagedHost,
-  LegacyRemoteCloseOperation,
-  LegacyRemoteClosePlan,
   MobileApiCostsOverview,
   MobileProjectOverview,
   MobileDevelopmentChange,
@@ -421,32 +419,6 @@ export class AteneaApi {
 
   resumeWorkSessionClose(sessionId: number) {
     return this.post(`/api/sessions/${sessionId}/close`);
-  }
-
-  createLegacyRemoteClosePlan(sessionId: number, idempotencyKey: string) {
-    return this.post<LegacyRemoteClosePlan>(
-      `/api/admin/work-sessions/${sessionId}/remote-close-plans`,
-      {
-        operation: "RECONCILE_REMOTE_CLOSE",
-        idempotencyKey
-      }
-    );
-  }
-
-  confirmLegacyRemoteClose(
-    sessionId: number,
-    plan: LegacyRemoteClosePlan,
-    idempotencyKey: string
-  ) {
-    return this.post<LegacyRemoteCloseOperation>(
-      `/api/admin/work-sessions/${sessionId}/remote-close-reconciliations`,
-      {
-        operation: "RECONCILE_REMOTE_CLOSE",
-        planId: plan.planId,
-        ownershipFingerprintSha256: plan.ownershipFingerprintSha256,
-        idempotencyKey
-      }
-    );
   }
 
   codexAdministratorInventory() {

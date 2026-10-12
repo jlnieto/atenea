@@ -93,8 +93,32 @@ Tests: 17 productor + 12 preflight PASS; installer/schema/bash/diff-check PASS.
 No se ha aplicado. El mantenimiento y la instalación de la verificación
 independiente de WS19 siguen siendo obligatorios para la retirada real.
 
-Pendiente: eliminación de clientes/flags/tablas legacy restantes; integración
-del conjunto, instalación/mantenimiento y ejecución de ambos purgadores,
+Quinta unidad App: retirados planes/confirmaciones de cierre legacy de Android
+y web, DTOs/parsers/callbacks/estilos y fixtures positivos de adopción. Cierre
+independiente por Core retirado del catálogo/handler; el intérprete remite a
+Finalizar/Abandonar Cambio sin resolver ni mutar una conversación. Se conserva
+reconciliación del cierre ya autorizado en la misma sesión y reintento explícito
+del run original; se rechazan targets de cierre ajenos. Los flags y protocolo
+fresh desaparecen; actualizar la base sigue siendo una operación del Cambio.
+
+V95 contrae seis tablas de rescate/fresh/legacy y dos marcadores de sucesión
+sólo si están vacíos/ausentes. Rechaza UNVERIFIED_LEGACY, datos pendientes o
+dependencias ajenas; sin DELETE ni CASCADE. El guard de cierre conserva su
+protección de operación/revisión/recibo/ownership y sólo pierde la comparación
+de la columna que desaparece. Las migraciones anteriores no se reescriben.
+La prueba de capacidad ahora exige binding Change y journal terminal de
+Finalización/Abandono del mismo owner/recibo, nunca una tabla legacy ni sólo
+un campo RELEASED. Los gates existentes de release/reconciliación se conservan:
+protegen las operaciones del Cambio y no son una compatibilidad antigua.
+
+Validación de desarrollo quinta unidad: backend focal 180 PASS; integración
+contracción/release/entrypoints 23 PASS; web responsive 11 PASS y build PASS;
+Android coordinador 9 PASS e instrumentación compilada (no ejecutada).
+Regresión completa backend 1170 PASS; comprobación focal final de capacidad
+55 PASS. Validación UFD postcommit registrada en el informe de esta unidad
+antes de cualquier PR. Sin efectos reales ni publicación.
+
+Pendiente: integración del conjunto, instalación/mantenimiento y ejecución de ambos purgadores,
 rollout, publicación Android y aceptación. El productor físico está preparado,
 pero su recibo real todavía no existe y el purgador DB sigue exigiéndolo.
 No desactivar triggers de inmutabilidad ni hacer DELETE global como atajo.

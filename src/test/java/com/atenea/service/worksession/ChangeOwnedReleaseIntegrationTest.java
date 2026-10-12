@@ -62,6 +62,7 @@ import org.springframework.test.annotation.DirtiesContext;
 @AutoConfigureMockMvc
 class ChangeOwnedReleaseIntegrationTest {
     @Autowired WorkSessionService service;
+    @Autowired AgentRunService agentRuns;
     @Autowired WorkSessionRepository sessions;
     @Autowired DevelopmentChangeRepository changes;
     @Autowired ProjectRepository projects;
@@ -362,10 +363,53 @@ class ChangeOwnedReleaseIntegrationTest {
         var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
         sessions.deleteById(session.getId()); session.setId(null);
         session.setStatus(WorkSessionStatus.CLOSED); session.setClosedAt(Instant.now());
-        session.setRemoteCloseState(RemoteCloseState.UNVERIFIED_LEGACY); session=sessions.saveAndFlush(session);
+        session.setRemoteCloseState(RemoteCloseState.RELEASED);
+        session.setRemoteCloseOperationId(UUID.randomUUID()); session.setRemoteCloseRevision(6);
+        session.setRemoteCloseReceiptSha256("c".repeat(64));
+        session.setRemoteCloseRequestedAt(Instant.now()); session.setRemoteCloseUpdatedAt(Instant.now());
+        session.setRemoteCloseReleasedAt(Instant.now()); session=sessions.saveAndFlush(session);
         assertEquals("RETIREMENT_SESSION_STATE_MISMATCH",assertThrows(DeliveryRejectedException.class,
             () -> retirements.request(session.getId(),actor,UUID.randomUUID(),false)).code());
         assertTrue(retirementStore.find(session.getId()).isEmpty()); assertEquals(0,releases.get());
+    }
+
+    @Test
+    void terminalChangeRetirementReceiptReleasesCapacityWithoutAnyLegacyTable() {
+        retirementFixture();
+        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
+        retirements.request(session.getId(),actor,UUID.randomUUID(),false);
+        retirements.reconcile();
+        assertEquals("SUCCEEDED", retirementStore.find(session.getId()).orElseThrow().state());
+        assertDoesNotThrow(() -> agentRuns.requireRemoteRetryEligible(capacityBlockedSource()));
+        assertNull(jdbc.queryForObject("SELECT to_regclass('public.remote_close_legacy_operation')::text",String.class));
+    }
+
+    @Test
+    void releasedProjectionWithoutATerminalChangeJournalDoesNotReleaseCapacity() {
+        retirementFixture();
+        sessions.deleteById(session.getId()); session.setId(null);
+        session.setStatus(WorkSessionStatus.CLOSED); session.setClosedAt(Instant.now());
+        session.setRemoteCloseState(RemoteCloseState.RELEASED);
+        session.setRemoteCloseOperationId(UUID.randomUUID()); session.setRemoteCloseRevision(6);
+        session.setRemoteCloseReceiptSha256("c".repeat(64));
+        session.setRemoteCloseRequestedAt(Instant.now()); session.setRemoteCloseUpdatedAt(Instant.now());
+        session.setRemoteCloseReleasedAt(Instant.now()); session=sessions.saveAndFlush(session);
+        change.setStatus(DevelopmentChangeStatus.ABANDONED); changes.saveAndFlush(change);
+        assertThrows(AgentRunRecoveryConflictException.class,
+                () -> agentRuns.requireRemoteRetryEligible(capacityBlockedSource()));
+        assertTrue(retirementStore.find(session.getId()).isEmpty()); assertEquals(0,releases.get());
+    }
+
+    private AgentRunEntity capacityBlockedSource() {
+        // Not persisted: this is an eligibility read, never a retry or new run.
+        WorkSessionEntity other=new WorkSessionEntity(); other.setProject(project);
+        AgentRunEntity source=new AgentRunEntity(); source.setSession(other);
+        source.setStatus(AgentRunStatus.FAILED); source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setSelectedWorkerId("ax42-01"); source.setRemoteSessionId(UUID.randomUUID());
+        source.setFailureCode("CLOSED_SESSION_OWNS_CAPACITY");
+        source.setRecoveryNextAction(AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE);
+        source.setRecoveryBlockerWorkSessionId(session.getId());
+        return source;
     }
 
     @Test

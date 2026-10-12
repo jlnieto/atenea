@@ -52,7 +52,8 @@ class ChangeOnlyEntryPointsIntegrationTest {
 
     @Test void coreCannotAdvertiseOrInvokeTheRemovedCreator() {
         assertThrows(CoreCapabilityDisabledException.class, () -> capabilities.requireEnabled(CoreDomain.DEVELOPMENT,"create_work_session"));
+        assertThrows(CoreCapabilityDisabledException.class, () -> capabilities.requireEnabled(CoreDomain.DEVELOPMENT,"close_work_session"));
         assertTrue(java.util.Arrays.stream(WorkSessionService.class.getDeclaredMethods())
-                .noneMatch(m -> List.of("openSession","resolveSession","resolveFreshSessionConversationView").contains(m.getName())));
+                .noneMatch(m -> List.of("openSession","resolveSession","resolveFreshSessionConversationView","requireLegacyClose").contains(m.getName())));
     }
 }

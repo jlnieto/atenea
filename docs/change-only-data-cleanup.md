@@ -1,8 +1,9 @@
 # Purga acotada de las pruebas del modelo anterior
 
-Estado: purgador App implementado y probado; **no ejecutable todavía en PROD**.
-Falta cerrar la retirada y respaldo de recursos físicos en Platform y su recibo
-versionado. No fabricar ese recibo ni ejecutar `--apply` para saltarse el orden.
+Estado: purgadores App/Platform implementados y probados, todavía sin instalar
+ni ejecutar. El recibo físico RELEASED real no existe aún; sólo se genera al
+terminar la retirada verificada en mantenimiento. No fabricar ese recibo ni
+ejecutar `--apply` para saltarse el orden.
 
 Esta es una transición de operador única, no una nueva API de borrado para el
 móvil, ni una compatibilidad con las sesiones anteriores. El respaldo queda
@@ -46,8 +47,10 @@ depende de un simple DELETE WHERE development_change_id IS NULL.
    `change-only-resource-cleanup-receipt-v1`: operación `change-only-20261012`,
    estado RELEASED, `preservedChangeKey` real, listas exactas ordenadas de
    `trialSessionIds`/`trialChangeKeys`, `nonTerminalExecutions=0` y
-   `archiveSha256` verificable. **El productor aún es el siguiente trabajo**;
-   no se sustituye por un fichero creado manualmente o una respuesta cliente.
+   `archiveSha256` verificable. El productor es
+   `ops/worker/change-only-resource-cleanup-v1.py` en Platform; su plan real
+   reconoce 24 roots, 25 refs y 10 recursos Docker exactos. Instalación/apply/verify
+   siguen pendientes. No sustituir el recibo por un fichero manual o un cliente.
 4. Backend PROD detenido mediante el procedimiento operativo; script revisado
    instalado en una ruta root-owned sin padres escribibles ni symlinks. No se
    modifican sus permisos para permitir un script de usuario. Sólo el operador
@@ -101,11 +104,25 @@ argumentos arbitrarios y acuse COMMIT perdido. El dump de prueba se valida con
 las herramientas PostgreSQL 16 reales. Las pruebas se destruyen con su runtime;
 no suben fixtures ni informes a PROD.
 
-El binding obligatorio ya está implementado en V94 (NOT NULL y mismo proyecto),
-con fixtures legítimos y tests de rechazo/conservación. V94 se ejecutará sólo
-DESPUÉS de la limpieza física + DB; mientras exista una sesión independiente
-se detendrá sin adoptarla ni borrarla. Sigue pendiente el retiro de los
-clientes/flags/tablas legacy restantes. El backend no vuelve a servicio
-con una versión que pueda crear sesiones independientes. Sólo cuando el
-conjunto pase validación/CI se integra, despliega y publica la APK. Esta unidad
-no aplica Flyway, modifica runtime, purga PROD ni publica Android.
+El binding obligatorio está implementado en V94 (NOT NULL y mismo proyecto).
+V95 retira, sólo vacíos, `remote_close_legacy_{plan,operation,event}`,
+`fresh_work_session_operation`, `rescue_session{,_turn}` y los marcadores
+`fresh_start_operation_id`/`replacement_work_session_id`. Cualquier dato
+restante, estado UNVERIFIED_LEGACY o dependencia de esquema ajena detiene
+Flyway sin borrar/adoptar ni aplicar una contracción parcial. Sólo la referencia
+al marcador eliminado se retira del guard de cierre; sus demás protecciones
+y los guards de journals se conservan.
+
+Orden obligatorio: backup fresco → mantenimiento/instalación Platform →
+purgador físico + verify/recibo auténtico → purga DB + acuse COMMITTED verificado →
+App/V94/V95 → arranque/smoke → APK/aceptación. Ante COMMIT ambiguo, reconciliar
+el mismo journal ANTES de avanzar a V94/V95. El purgador es una operación única
+del esquema previo: no reaplicarlo a una App arrancada/esquema ya contraído;
+después se conserva su acuse/backup fuera del producto. No volver a servicio
+con una versión que permita sesiones independientes ni rollback de esquema.
+
+Los creadores, clientes/flags fresh y cierre/adopción legacy ya están retirados.
+Finalizar/Abandonar Cambio y reconciliar su cierre siguen siendo operaciones
+durables. Integración/CI, mantenimiento, ambos purgadores, Flyway compartido y
+publicación todavía no se han ejecutado. Ninguna fila PROD se cambia al validar
+estas migraciones o pruebas efímeras.

@@ -13,8 +13,6 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.persistence.worksession.WorkSessionRepository;
 import com.atenea.persistence.worksession.WorkSessionStatus;
 import com.atenea.remoteworker.ProjectCodexIdentity;
-import com.atenea.remoteworker.RemoteWorkerClient;
-import com.atenea.remoteworker.RemoteWorkerException;
 import com.atenea.remoteworker.RemoteWorkerProperties;
 import com.atenea.service.worksession.AgentRunService;
 import org.springframework.stereotype.Service;
@@ -26,20 +24,17 @@ public class MobileSessionOperatorStateService {
     private final WorkSessionRepository workSessionRepository;
     private final AgentRunService agentRunService;
     private final RemoteWorkerProperties remoteWorkerProperties;
-    private final RemoteWorkerClient remoteWorkerClient;
 
     public MobileSessionOperatorStateService(
             AgentRunRepository agentRunRepository,
             WorkSessionRepository workSessionRepository,
             AgentRunService agentRunService,
-            RemoteWorkerProperties remoteWorkerProperties,
-            RemoteWorkerClient remoteWorkerClient
+            RemoteWorkerProperties remoteWorkerProperties
     ) {
         this.agentRunRepository = agentRunRepository;
         this.workSessionRepository = workSessionRepository;
         this.agentRunService = agentRunService;
         this.remoteWorkerProperties = remoteWorkerProperties;
-        this.remoteWorkerClient = remoteWorkerClient;
     }
 
     public MobileSessionOperatorStateResponse build(
@@ -189,84 +184,32 @@ public class MobileSessionOperatorStateService {
                     run.getId());
         }
 
-        boolean enabled = remoteWorkerProperties.isRemoteCloseReconciliationEnabledFor(
-                ProjectCodexIdentity.PROJECT_IDENTITY);
         return state(
-                enabled,
+                true,
                 MobileSessionOperatorState.CLOSED_OWNER_BLOCKS_CAPACITY,
-                "Bloqueada por una sesión cerrada",
-                "Otra sesión cerrada conserva la capacidad necesaria. El reintento estará disponible después de reconciliar su cierre.",
-                MobileSessionPrimaryAction.RECONCILE_REMOTE_CLOSE,
-                "Reconciliar cierre",
-                enabled,
-                CodexOperationsRole.PLATFORM_ADMINISTRATOR,
+                "Bloqueada por un cambio pendiente de cierre",
+                "Completa o reconcilia la finalización del cambio que conserva la capacidad. No se adoptará una sesión antigua.",
+                MobileSessionPrimaryAction.NONE,
+                null,
+                false,
+                null,
                 blockerId,
                 run.getId());
     }
 
-
-
-    private MobileSessionOperatorStateResponse releasedCapacityState(
-            AgentRunEntity run,
-            Long releasedOwnerId
-    ) {
-        if (!remoteWorkerProperties.isFreshSessionOnSourceAdvanceEnabledFor(
-                ProjectCodexIdentity.PROJECT_IDENTITY)) {
-            return state(
-                    true,
-                    MobileSessionOperatorState.CAPACITY_RELEASED,
-                    "Capacidad liberada",
-                    null,
-                    MobileSessionPrimaryAction.RETRY_AGENT_RUN,
-                    "Reintentar tarea",
-                    true,
-                    CodexOperationsRole.ROUTINE_OPERATOR,
-                    releasedOwnerId,
-                    run.getId());
-        }
-        try {
-            RemoteWorkerClient.WorkspaceReadiness readiness =
-                    remoteWorkerClient.diagnoseWorkspaceReadiness(run);
-            if ("READY_FOR_RETRY".equals(readiness.state())) {
-                return state(
-                        true,
-                        MobileSessionOperatorState.CAPACITY_RELEASED,
-                        "Capacidad liberada",
-                        null,
-                        MobileSessionPrimaryAction.RETRY_AGENT_RUN,
-                        "Reintentar tarea",
-                        true,
-                        CodexOperationsRole.ROUTINE_OPERATOR,
-                        releasedOwnerId,
-                        run.getId());
-            }
-            if ("SOURCE_ADVANCED".equals(readiness.state())) {
-                return state(true, MobileSessionOperatorState.SOURCE_ADVANCED,
-                        "La base del cambio ha avanzado",
-                        "Actualiza la base desde Cambio y vuelve a validar. Continúa en este mismo cambio.",
-                        MobileSessionPrimaryAction.NONE, null, false, null,
-                        run.getSession().getId(), run.getId());
-            }
-            return ownershipReview(releasedOwnerId, run.getId());
-        } catch (RemoteWorkerException exception) {
-            if (exception.isCompatibleTransportFailure()) {
-                return state(
-                        true,
-                        MobileSessionOperatorState.SOURCE_READINESS_PENDING,
-                        "Comprobando código actual",
-                        "No se pudo confirmar todavía si el código cambió. Vuelve a intentarlo cuando se restablezca la conexión.",
-                        MobileSessionPrimaryAction.WAIT,
-                        "Esperar actualización",
-                        false,
-                        null,
-                        run.getSession().getId(),
-                        run.getId());
-            }
-            return ownershipReview(releasedOwnerId, run.getId());
-        }
+    private MobileSessionOperatorStateResponse releasedCapacityState(AgentRunEntity run, Long releasedOwnerId) {
+        return state(
+                true,
+                MobileSessionOperatorState.CAPACITY_RELEASED,
+                "Capacidad liberada",
+                null,
+                MobileSessionPrimaryAction.RETRY_AGENT_RUN,
+                "Reintentar tarea",
+                true,
+                CodexOperationsRole.ROUTINE_OPERATOR,
+                releasedOwnerId,
+                run.getId());
     }
-
-
 
     private MobileSessionOperatorStateResponse ownershipReview(
             Long predecessorId,

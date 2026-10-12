@@ -472,33 +472,6 @@ class AteneaApiClient(
         ) { Unit }
     }
 
-    suspend fun createLegacyRemoteClosePlan(
-        sessionId: Long,
-        idempotencyKey: String
-    ): LegacyRemoteClosePlan = postJson(
-        path = "/api/admin/work-sessions/$sessionId/remote-close-plans",
-        body = JSONObject()
-            .put("operation", "RECONCILE_REMOTE_CLOSE")
-            .put("idempotencyKey", idempotencyKey),
-        authenticated = true,
-        parser = ::parseLegacyRemoteClosePlan
-    )
-
-    suspend fun confirmLegacyRemoteClose(
-        sessionId: Long,
-        plan: LegacyRemoteClosePlan,
-        idempotencyKey: String
-    ): LegacyRemoteCloseOperation = postJson(
-        path = "/api/admin/work-sessions/$sessionId/remote-close-reconciliations",
-        body = JSONObject()
-            .put("operation", "RECONCILE_REMOTE_CLOSE")
-            .put("planId", plan.planId)
-            .put("ownershipFingerprintSha256", plan.ownershipFingerprintSha256)
-            .put("idempotencyKey", idempotencyKey),
-        authenticated = true,
-        parser = ::parseLegacyRemoteCloseOperation
-    )
-
     suspend fun fetchMobileSessionPreview(sessionId: Long): MobileSessionPreview = getJson(
         path = "/api/mobile/sessions/$sessionId/preview",
         authenticated = true,
@@ -1790,39 +1763,6 @@ data class MobileSessionOperatorState(
     val targetAgentRunId: Long?
 )
 
-data class LegacyRemoteClosePlan(
-    val planId: String,
-    val workSessionId: Long,
-    val operation: String,
-    val state: String,
-    val requiredRole: String,
-    val ownershipFingerprintSha256: String,
-    val expiresAt: String,
-    val consumed: Boolean,
-    val expectedImpact: String,
-    val valuesExposed: Boolean,
-    val createdAt: String
-)
-
-data class LegacyRemoteCloseOperation(
-    val operationId: String,
-    val planId: String,
-    val workSessionId: Long,
-    val operation: String,
-    val state: String,
-    val revision: Long,
-    val ownershipFingerprintSha256: String,
-    val errorCode: String?,
-    val errorCategory: String?,
-    val nextAction: String,
-    val retryable: Boolean,
-    val receiptSha256: String?,
-    val requestedAt: String,
-    val updatedAt: String,
-    val releasedAt: String?,
-    val valuesExposed: Boolean
-)
-
 data class MobileSessionPreview(
     val id: String,
     val workSessionId: Long,
@@ -1844,7 +1784,6 @@ data class MobileSessionActions(
     val canCreateTurn: Boolean,
     val canPublish: Boolean,
     val canSyncPullRequest: Boolean,
-    val canClose: Boolean,
     val canGenerateDeliverables: Boolean,
     val canApproveDeliverables: Boolean,
     val canMarkApprovedPriceEstimateBilled: Boolean
@@ -2785,41 +2724,6 @@ private fun parseMobileSessionOperatorState(json: JSONObject): MobileSessionOper
         targetAgentRunId = json.optNullableLong("targetAgentRunId")
     )
 
-private fun parseLegacyRemoteClosePlan(json: JSONObject): LegacyRemoteClosePlan =
-    LegacyRemoteClosePlan(
-        planId = json.getString("planId"),
-        workSessionId = json.getLong("workSessionId"),
-        operation = json.getString("operation"),
-        state = json.getString("state"),
-        requiredRole = json.getString("requiredRole"),
-        ownershipFingerprintSha256 = json.getString("ownershipFingerprintSha256"),
-        expiresAt = json.getString("expiresAt"),
-        consumed = json.getBoolean("consumed"),
-        expectedImpact = json.getString("expectedImpact"),
-        valuesExposed = json.optBoolean("valuesExposed", false),
-        createdAt = json.getString("createdAt")
-    )
-
-private fun parseLegacyRemoteCloseOperation(json: JSONObject): LegacyRemoteCloseOperation =
-    LegacyRemoteCloseOperation(
-        operationId = json.getString("operationId"),
-        planId = json.getString("planId"),
-        workSessionId = json.getLong("workSessionId"),
-        operation = json.getString("operation"),
-        state = json.getString("state"),
-        revision = json.getLong("revision"),
-        ownershipFingerprintSha256 = json.getString("ownershipFingerprintSha256"),
-        errorCode = json.optNullableString("errorCode"),
-        errorCategory = json.optNullableString("errorCategory"),
-        nextAction = json.getString("nextAction"),
-        retryable = json.optBoolean("retryable", false),
-        receiptSha256 = json.optNullableString("receiptSha256"),
-        requestedAt = json.getString("requestedAt"),
-        updatedAt = json.getString("updatedAt"),
-        releasedAt = json.optNullableString("releasedAt"),
-        valuesExposed = json.optBoolean("valuesExposed", false)
-    )
-
 private fun parseMobileSessionPreview(json: JSONObject): MobileSessionPreview =
     MobileSessionPreview(
         id = json.getString("id"),
@@ -2843,7 +2747,6 @@ private fun parseMobileSessionActions(json: JSONObject): MobileSessionActions =
         canCreateTurn = json.optBoolean("canCreateTurn", false),
         canPublish = json.optBoolean("canPublish", false),
         canSyncPullRequest = json.optBoolean("canSyncPullRequest", false),
-        canClose = json.optBoolean("canClose", false),
         canGenerateDeliverables = json.optBoolean("canGenerateDeliverables", false),
         canApproveDeliverables = json.optBoolean("canApproveDeliverables", false),
         canMarkApprovedPriceEstimateBilled = json.optBoolean("canMarkApprovedPriceEstimateBilled", false)

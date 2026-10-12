@@ -19,16 +19,11 @@ import androidx.compose.ui.unit.dp
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.AteneaApiException
 import com.atenea.android.api.CodexRecoveryAction
-import com.atenea.android.api.LegacyRemoteCloseOperation
-import com.atenea.android.api.LegacyRemoteClosePlan
 import com.atenea.android.api.MobileSessionOperatorState
-import java.nio.charset.StandardCharsets
-import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 internal data class RemoteCloseActionUiState(
-    val plan: LegacyRemoteClosePlan? = null,
     val pending: Boolean = false,
     val requiresRefresh: Boolean = false,
     val error: String? = null,
@@ -37,73 +32,43 @@ internal data class RemoteCloseActionUiState(
 
 internal interface RemoteCloseGateway {
     suspend fun resumeClose(sessionId: Long)
-    suspend fun createPlan(sessionId: Long, idempotencyKey: String): LegacyRemoteClosePlan
-    suspend fun confirmPlan(
-        sessionId: Long,
-        plan: LegacyRemoteClosePlan,
-        idempotencyKey: String
-    ): LegacyRemoteCloseOperation
     suspend fun retryRun(runId: Long, workSessionId: Long): Boolean
 }
 
-private class ApiRemoteCloseGateway(
-    private val apiClient: AteneaApiClient
-) : RemoteCloseGateway {
+private class ApiRemoteCloseGateway(private val apiClient: AteneaApiClient) : RemoteCloseGateway {
     override suspend fun resumeClose(sessionId: Long) = apiClient.resumeWorkSessionClose(sessionId)
-
-    override suspend fun createPlan(
-        sessionId: Long,
-        idempotencyKey: String
-    ): LegacyRemoteClosePlan = apiClient.createLegacyRemoteClosePlan(sessionId, idempotencyKey)
-
-    override suspend fun confirmPlan(
-        sessionId: Long,
-        plan: LegacyRemoteClosePlan,
-        idempotencyKey: String
-    ): LegacyRemoteCloseOperation = apiClient.confirmLegacyRemoteClose(sessionId, plan, idempotencyKey)
-
     override suspend fun retryRun(runId: Long, workSessionId: Long): Boolean =
         apiClient.requestCodexRecovery(runId, workSessionId, CodexRecoveryAction.RETRY).state != "REJECTED"
-
 }
 
 internal class RemoteCloseOperatorCoordinator(
     apiClient: AteneaApiClient,
     private val currentWorkSessionId: Long,
-    gateway: RemoteCloseGateway = ApiRemoteCloseGateway(apiClient),
-    private val operatorRoleProvider: () -> String? = apiClient::currentOperatorRole,
-    private val idFactory: () -> String = { UUID.randomUUID().toString() }
+    private val gateway: RemoteCloseGateway = ApiRemoteCloseGateway(apiClient),
+    private val operatorRoleProvider: () -> String? = apiClient::currentOperatorRole
 ) {
-    private val gateway = gateway
     private val mutableState = MutableStateFlow(RemoteCloseActionUiState())
     val state: StateFlow<RemoteCloseActionUiState> = mutableState
-
     private var acceptedIdentity: RemoteCloseIdentity? = null
-    private var planIdempotencyKey: String? = null
-    private var confirmationIdempotencyKey: String? = null
 
     fun accept(serverState: MobileSessionOperatorState) {
         val identity = RemoteCloseIdentity.from(serverState)
         if (identity == acceptedIdentity && !mutableState.value.requiresRefresh) return
         acceptedIdentity = identity
-        planIdempotencyKey = null
-        confirmationIdempotencyKey = null
         mutableState.value = RemoteCloseActionUiState()
     }
 
     suspend fun runPrimaryAction(serverState: MobileSessionOperatorState): Boolean {
         if (!remoteCloseActionAllowed(serverState, operatorRoleProvider()) ||
-            mutableState.value.pending || mutableState.value.requiresRefresh
-        ) {
-            return false
-        }
+            mutableState.value.pending || mutableState.value.requiresRefresh ||
+            (serverState.primaryAction == "RECONCILE_REMOTE_CLOSE" &&
+                serverState.targetWorkSessionId != currentWorkSessionId)
+        ) return false
         mutableState.value = mutableState.value.copy(pending = true, error = null, notice = null)
         return try {
             when (serverState.primaryAction) {
                 "RETRY_AGENT_RUN" -> {
-                    val runId = serverState.targetAgentRunId
-                        ?: throw IllegalStateException("missing-run")
-                    if (!gateway.retryRun(runId, currentWorkSessionId)) {
+                    if (!gateway.retryRun(requireNotNull(serverState.targetAgentRunId), currentWorkSessionId)) {
                         throw IllegalStateException("rejected")
                     }
                     mutableState.value = mutableState.value.copy(
@@ -112,106 +77,23 @@ internal class RemoteCloseOperatorCoordinator(
                     true
                 }
                 "RECONCILE_REMOTE_CLOSE" -> {
-                    val targetSessionId = serverState.targetWorkSessionId
-                        ?: throw IllegalStateException("missing-session")
-                    if (remoteCloseNeedsLegacyConfirmation(serverState)) {
-                        val key = planIdempotencyKey ?: idFactory().also { planIdempotencyKey = it }
-                        val plan = gateway.createPlan(targetSessionId, key)
-                        requireValidPlan(plan, targetSessionId)
-                        mutableState.value = mutableState.value.copy(plan = plan)
-                        false
-                    } else {
-                        gateway.resumeClose(targetSessionId)
-                        mutableState.value = mutableState.value.copy(
-                            notice = "Reconciliación solicitada. Se mantendrá la misma operación de cierre."
-                        )
-                        true
-                    }
+                    gateway.resumeClose(currentWorkSessionId)
+                    mutableState.value = mutableState.value.copy(
+                        notice = "Reconciliación solicitada. Se mantendrá la misma operación de cierre."
+                    )
+                    true
                 }
                 else -> false
             }
         } catch (actionError: Exception) {
-            if (actionError is AteneaApiException && actionError.status == 409) {
-                invalidateStaleConfirmation(actionError)
-            } else {
-                mutableState.value = mutableState.value.copy(error = remoteCloseActionError(actionError))
-            }
-            false
-        } finally {
-            mutableState.value = mutableState.value.copy(pending = false)
-        }
-    }
-
-    suspend fun confirmLegacyReconciliation(serverState: MobileSessionOperatorState): Boolean {
-        val plan = mutableState.value.plan ?: return false
-        val targetSessionId = serverState.targetWorkSessionId ?: return false
-        if (!remoteCloseActionAllowed(serverState, operatorRoleProvider()) || mutableState.value.pending) {
-            return false
-        }
-        mutableState.value = mutableState.value.copy(pending = true, error = null, notice = null)
-        return try {
-            requireValidPlan(plan, targetSessionId)
-            val key = confirmationIdempotencyKey ?: idFactory().also { confirmationIdempotencyKey = it }
-            val operation = gateway.confirmPlan(targetSessionId, plan, key)
-            if (operation.state == "BLOCKED") {
-                invalidateBlockedOperation()
-                return false
-            }
-            if (operation.workSessionId != targetSessionId || operation.planId != plan.planId ||
-                operation.operation != "RECONCILE_REMOTE_CLOSE" || operation.valuesExposed) {
-                throw IllegalStateException("blocked-or-mismatched-operation")
-            }
             mutableState.value = mutableState.value.copy(
-                plan = null,
-                notice = if (operation.state == "RELEASED") {
-                    "Capacidad liberada. Actualiza el estado antes de decidir si reintentas."
-                } else {
-                    "Reconciliación iniciada. Atenea confirmará la liberación sin repetir la operación."
-                }
+                requiresRefresh = actionError is AteneaApiException && actionError.status == 409,
+                error = remoteCloseActionError(actionError)
             )
-            true
-        } catch (actionError: Exception) {
-            if (actionError is AteneaApiException && actionError.status == 409) {
-                invalidateStaleConfirmation(actionError)
-            } else {
-                mutableState.value = mutableState.value.copy(error = remoteCloseActionError(actionError))
-            }
             false
         } finally {
             mutableState.value = mutableState.value.copy(pending = false)
         }
-    }
-
-    fun cancelConfirmation() {
-        confirmationIdempotencyKey = null
-        mutableState.value = mutableState.value.copy(plan = null, error = null)
-    }
-
-    private fun invalidateStaleConfirmation(error: AteneaApiException) {
-        planIdempotencyKey = null
-        confirmationIdempotencyKey = null
-        mutableState.value = RemoteCloseActionUiState(
-            requiresRefresh = true,
-            error = remoteCloseActionError(error)
-        )
-    }
-
-    private fun invalidateBlockedOperation() {
-        planIdempotencyKey = null
-        confirmationIdempotencyKey = null
-        mutableState.value = RemoteCloseActionUiState(
-            requiresRefresh = true,
-            error = "La comprobación no liberó recursos. Actualiza y genera una nueva confirmación."
-        )
-    }
-
-    private fun requireValidPlan(plan: LegacyRemoteClosePlan, targetSessionId: Long) {
-        require(plan.workSessionId == targetSessionId)
-        require(plan.operation == "RECONCILE_REMOTE_CLOSE")
-        require(plan.state == "READY_FOR_CONFIRMATION")
-        require(!plan.consumed && !plan.valuesExposed)
-        require(plan.requiredRole == "PLATFORM_ADMINISTRATOR")
-        require(plan.ownershipFingerprintSha256.matches(Regex("[a-f0-9]{64}")))
     }
 }
 
@@ -239,12 +121,7 @@ internal fun remoteCloseActionAllowed(
 
 private fun remoteCloseActionMatchesState(state: MobileSessionOperatorState): Boolean = when (state.primaryAction) {
     "RETRY_AGENT_RUN" -> state.state == "CAPACITY_RELEASED" && state.targetAgentRunId != null
-    "RECONCILE_REMOTE_CLOSE" -> state.state in setOf(
-        "CLOSING_REMOTE",
-        "LEGACY_CLOSE_REQUIRED",
-        "CLOSED_OWNER_BLOCKS_CAPACITY",
-        "REMOTE_CLOSE_BLOCKED"
-    ) && state.targetWorkSessionId != null
+    "RECONCILE_REMOTE_CLOSE" -> state.state == "CLOSING_REMOTE" && state.targetWorkSessionId != null
     else -> false
 }
 
@@ -258,21 +135,13 @@ internal fun operatorHasRequiredRole(actualRole: String?, requiredRole: String?)
     return (rank[actualRole] ?: 0) >= (rank[requiredRole] ?: Int.MAX_VALUE)
 }
 
-internal fun remoteCloseNeedsLegacyConfirmation(state: MobileSessionOperatorState): Boolean =
-    state.primaryAction == "RECONCILE_REMOTE_CLOSE" &&
-        state.state in setOf(
-            "LEGACY_CLOSE_REQUIRED",
-            "CLOSED_OWNER_BLOCKS_CAPACITY",
-            "REMOTE_CLOSE_BLOCKED"
-        )
-
 internal fun remoteCloseActionError(error: Exception): String = when {
     error is AteneaApiException && error.status == 403 ->
         "No tienes el permiso requerido para esta acción."
     error is AteneaApiException && error.status == 404 ->
         "La sesión ya no está disponible. Actualiza antes de continuar."
     error is AteneaApiException && error.status == 409 ->
-        "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación."
+        "El estado cambió. Actualiza antes de continuar."
     error is AteneaApiException && error.status == 422 ->
         "La reconciliación no cumple las condiciones seguras. Actualiza el estado."
     else ->
@@ -283,11 +152,8 @@ internal fun remoteCloseActionError(error: Exception): String = when {
 internal fun RemoteCloseOperatorPanel(
     serverState: MobileSessionOperatorState,
     actionState: RemoteCloseActionUiState,
-    currentWorkSessionId: Long,
     operatorRole: String?,
     onPrimaryAction: () -> Unit,
-    onConfirm: () -> Unit,
-    onCancel: () -> Unit,
     dark: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -346,14 +212,7 @@ internal fun RemoteCloseOperatorPanel(
                 style = MaterialTheme.typography.bodySmall
             )
         }
-        if (serverState.state == "SOURCE_ADVANCED") {
-            Text(
-                "Continúa en el mismo cambio. Actualiza su base desde Cambio y vuelve a validar.",
-                color = secondary,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-        if (actionState.plan == null && serverState.primaryAction !in setOf("NONE", "WAIT")) {
+        if (serverState.primaryAction !in setOf("NONE", "WAIT")) {
             AteneaButton(
                 text = if (actionState.pending) "Comprobando…" else
                     serverState.primaryActionLabel ?: remoteCloseFallbackActionLabel(serverState.primaryAction),
@@ -365,40 +224,13 @@ internal fun RemoteCloseOperatorPanel(
         if (serverState.primaryAction == "WAIT") {
             Text("Esperando confirmación segura", color = foreground, fontWeight = FontWeight.Bold)
         }
-        actionState.plan?.let { plan ->
-            val targetWorkSessionId = plan.workSessionId
-            Column(
-                modifier = Modifier.fillMaxWidth().testTag("remote-close-confirmation"),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text("Objetivo: WorkSession $targetWorkSessionId", color = foreground, fontWeight = FontWeight.Bold)
-                Text(
-                    "Sesión abierta: WorkSession $currentWorkSessionId. Solo se liberará el ownership remoto activo del objetivo; historial, Git, runs y adjuntos se conservan.",
-                    color = secondary,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text("Confirmación disponible hasta ${plan.expiresAt.formatDateTimeForDisplay()}.", color = secondary, style = MaterialTheme.typography.labelSmall)
-                AteneaButton(
-                    text = if (actionState.pending) "Confirmando…" else "Confirmar WorkSession $targetWorkSessionId",
-                    modifier = Modifier.fillMaxWidth().testTag("remote-close-confirm-action"),
-                    enabled = !actionState.pending,
-                    onClick = onConfirm
-                )
-                AteneaTextButton(
-                    text = "Cancelar",
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !actionState.pending,
-                    onClick = onCancel
-                )
-            }
-        }
         actionState.error?.let { Text(it, color = if (dark) ConversationColors.error else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         actionState.notice?.let { Text(it, color = accent, style = MaterialTheme.typography.bodySmall) }
     }
 }
 
 internal fun remoteCloseStateLevel(state: String): OperationalLevel = when (state) {
-    "CAPACITY_RELEASED", "SOURCE_ADVANCED" -> OperationalLevel.OK
+    "CAPACITY_RELEASED" -> OperationalLevel.OK
     "REMOTE_CLOSE_BLOCKED", "OWNERSHIP_REVIEW_REQUIRED" -> OperationalLevel.CRITICAL
     else -> OperationalLevel.WARNING
 }
@@ -406,12 +238,9 @@ internal fun remoteCloseStateLevel(state: String): OperationalLevel = when (stat
 internal fun remoteCloseStateLabel(state: String): String = mapOf(
     "CLOSING_REMOTE" to "EN CURSO",
     "REMOTE_CLOSE_BLOCKED" to "BLOQUEADO",
-    "LEGACY_CLOSE_REQUIRED" to "CONFIRMACIÓN",
     "CLOSED_OWNER_BLOCKS_CAPACITY" to "BLOQUEO",
     "CLOSED_OWNER_RECONCILING" to "EN CURSO",
     "CAPACITY_RELEASED" to "LISTA",
-    "SOURCE_READINESS_PENDING" to "COMPROBANDO",
-    "SOURCE_ADVANCED" to "CÓDIGO NUEVO",
     "OWNERSHIP_REVIEW_REQUIRED" to "REVISIÓN",
     "DEFAULT" to "LISTA",
     "RUNNING" to "EN CURSO",
