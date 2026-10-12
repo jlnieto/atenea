@@ -64,6 +64,7 @@ public class DevelopmentChangeService {
     private final RemoteWorkerProperties remoteWorkerProperties;
     private final V2AuditOutboxService auditService;
     private final com.atenea.delivery.DeliveryStore deliveryStore;
+    private final com.atenea.delivery.WorkSessionRetirementStore retirements;
     private final TransactionTemplate transaction;
 
     public DevelopmentChangeService(
@@ -77,6 +78,7 @@ public class DevelopmentChangeService {
             RemoteWorkerProperties remoteWorkerProperties,
             V2AuditOutboxService auditService,
             com.atenea.delivery.DeliveryStore deliveryStore,
+            com.atenea.delivery.WorkSessionRetirementStore retirements,
             PlatformTransactionManager transactionManager) {
         this.projectRepository = projectRepository;
         this.operatorRepository = operatorRepository;
@@ -88,6 +90,7 @@ public class DevelopmentChangeService {
         this.remoteWorkerProperties = remoteWorkerProperties;
         this.auditService = auditService;
         this.deliveryStore = deliveryStore;
+        this.retirements = retirements;
         transaction = new TransactionTemplate(transactionManager);
     }
 
@@ -331,6 +334,10 @@ public class DevelopmentChangeService {
                 ? change.getStatus() == DevelopmentChangeStatus.OPEN
                 : change.getStatus() == DevelopmentChangeStatus.OPEN
                     || change.getStatus() == DevelopmentChangeStatus.PAUSED;
+        if (retirements.forChange(change.getChangeKey()).filter(op -> !"SUCCEEDED".equals(op.state())).isPresent()) {
+            return denied(actor,project,requestFingerprint,targetFingerprint,V2FailureCategory.OWNERSHIP,
+                "DEVELOPMENT_CHANGE_RETIREMENT_PENDING", "La retirada de la misma sesión debe terminar primero.");
+        }
         if (!validSource) {
             return denied(actor, project, requestFingerprint, targetFingerprint,
                     V2FailureCategory.VALIDATION,
@@ -652,6 +659,7 @@ public class DevelopmentChangeService {
 
     private DevelopmentChangeResponse toResponse(DevelopmentChangeEntity change) {
         WorkSessionEntity active = activeSession(change);
+        var retirement = retirements.forChange(change.getChangeKey());
         DevelopmentChangePolicy.Decision mutationDecision =
                 policy.decide(change.getProject().getId(), false);
         DevelopmentChangePolicy.Decision bindingDecision =
@@ -673,7 +681,7 @@ public class DevelopmentChangeService {
         DevelopmentChangeActionResponse primaryAction;
         if (!mutationsEnabled) {
             primaryAction = DevelopmentChangeActionResponse.waitForEnablement();
-        } else if (change.getStatus() != DevelopmentChangeStatus.OPEN) {
+        } else if (change.getStatus() != DevelopmentChangeStatus.OPEN || retirement.isPresent()) {
             primaryAction = DevelopmentChangeActionResponse.none();
         } else if (change.getWorkspaceState() == DevelopmentChangeWorkspaceState.UNCERTAIN) {
             primaryAction = reconciliationDecision.allowed()
@@ -728,7 +736,11 @@ public class DevelopmentChangeService {
                 change.getUpdatedAt(),
                 change.getVersion(),
                 change.getStatus() == DevelopmentChangeStatus.COMPLETED
-                        ? deliveryStore.completedSession(change.getChangeKey()) : null);
+                        ? deliveryStore.completedSession(change.getChangeKey()) : null,
+                active == null ? null : active.getStatus().name(),
+                change.getStatus() == DevelopmentChangeStatus.ABANDONED ? retirements.archivedSession(change.getChangeKey()) : null,
+                retirement.map(op -> op.state()).orElse(null),
+                retirement.map(op -> op.sessionId()).orElse(null));
     }
 
     private String currentCanonicalCommit(DevelopmentChangeEntity change) {

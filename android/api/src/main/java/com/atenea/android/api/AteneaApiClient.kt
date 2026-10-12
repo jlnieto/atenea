@@ -247,6 +247,65 @@ class AteneaApiClient(
         }
     }
 
+    suspend fun abandonDevelopmentChange(projectId: Long, changeKey: UUID, key: UUID) {
+        require(projectId > 0)
+        postJson(path = "/api/v2/projects/$projectId/development-changes/$changeKey/abandon",
+            body = JSONObject(), authenticated = true, headers = mapOf("Idempotency-Key" to key.toString()),
+            parser = { json ->
+                val change = json.getJSONObject("developmentChange")
+                require(change.getLong("projectId") == projectId && change.getString("changeKey") == changeKey.toString()
+                    && change.getString("status") == "ABANDONED") { "Recibo de abandono inválido." }
+            })
+    }
+
+    suspend fun retireWorkSession(sessionId: Long, key: UUID, reconcile: Boolean = false): String {
+        require(sessionId > 0)
+        return postJson(path = "/api/mobile/sessions/$sessionId/retirement" + if (reconcile) "/reconcile" else "",
+            body = JSONObject(), authenticated = true, headers = mapOf("Idempotency-Key" to key.toString()), parser = { json ->
+                require(json.getLong("sessionId") == sessionId && json.getString("idempotencyKey") == key.toString())
+                json.getString("state").also { require(it in setOf("APPLYING", "BLOCKED", "SUCCEEDED")) }
+            })
+    }
+
+    suspend fun fetchRetirementKey(sessionId: Long): UUID = getJson(
+        path = "/api/mobile/sessions/$sessionId/retirement", authenticated = true
+    ) { json ->
+        require(json.getLong("sessionId") == sessionId)
+        UUID.fromString(json.getString("idempotencyKey"))
+    }
+
+    suspend fun prepareExistingDevelopmentChange(projectId: Long, changeKey: UUID, provisionKey: UUID, sessionKey: UUID): Long {
+        require(projectId > 0)
+        val path = "/api/v2/projects/$projectId/development-changes/$changeKey"
+        suspend fun detail() = getJson(path = path, authenticated = true) { json ->
+            require(json.getLong("projectId") == projectId && json.getString("changeKey") == changeKey.toString()
+                && json.getString("status") == "OPEN") { "El cambio no está abierto o no pertenece al proyecto." }
+            json
+        }
+        var change = detail()
+        if (change.getString("workspaceState") == "NOT_PROVISIONED") {
+            val provisioned = postJson(path = "$path/workspace/provision", body = JSONObject(), authenticated = true,
+                headers = mapOf("Idempotency-Key" to provisionKey.toString()), parser = ::parseDevelopmentChangeWorkspaceOperation)
+            require(provisioned.state == "SUCCEEDED" && provisioned.workspaceState == "READY") { "El workspace no está preparado." }
+            change = detail()
+        }
+        require(change.getString("workspaceState") == "READY") { "El workspace necesita comprobación." }
+        change.optNullableLong("activeSessionId")?.let {
+            require(change.optNullableString("activeSessionStatus") in setOf(null, "OPEN")) { "La sesión se está cerrando." }
+            return it
+        }
+        val session = postJson(path = "$path/work-session:open-or-resolve",
+            body = JSONObject().put("expectedChangeRevision", change.getLong("version")), authenticated = true,
+            headers = mapOf("Idempotency-Key" to sessionKey.toString()), parser = ::parseDevelopmentChangeRemoteSession)
+        val sessionId = session.sessionId
+        require(sessionId != null && sessionId > 0 && session.state == "SUCCEEDED" && session.sessionState == "OPEN")
+        getJson(path = "/api/sessions/$sessionId", authenticated = true) { json ->
+            require(json.getLong("id") == sessionId && json.getLong("projectId") == projectId
+                && json.getString("developmentChangeKey") == changeKey.toString() && json.getString("status") == "OPEN")
+        }
+        return sessionId
+    }
+
     suspend fun resolveMobileWorkSession(projectId: Long, title: String? = null): ResolveMobileWorkSessionResult = postJson(
         path = "/api/mobile/projects/$projectId/sessions/resolve",
         body = JSONObject().putNullable("title", title),
@@ -1487,7 +1546,13 @@ data class MobileDevelopmentChange(
     val activeSessionId: Long?,
     val primaryActionLabel: String?,
     val updatedAt: String?,
-    val completedSessionId: Long? = null
+    val completedSessionId: Long? = null,
+    val activeSessionStatus: String? = null,
+    val archivedSessionId: Long? = null,
+    val retirementState: String? = null,
+    val primaryActionKind: String? = null,
+    val primaryActionEnabled: Boolean = false,
+    val retirementSessionId: Long? = null
 )
 
 data class ResolveMobileWorkSessionResult(
@@ -2483,6 +2548,11 @@ private fun parseMobileDevelopmentChange(json: JSONObject, expectedProjectId: Lo
     val completedSessionId = json.optNullableLong("completedSessionId")
     require(completedSessionId == null || (completedSessionId > 0 && json.getString("status") == "COMPLETED"
         && activeSessionId == null)) { "La respuesta contiene un historial de sesión inválido." }
+    val archivedSessionId = json.optNullableLong("archivedSessionId")
+    require(archivedSessionId == null || (archivedSessionId > 0 && json.getString("status") == "ABANDONED"
+        && activeSessionId == null)) { "La respuesta contiene un historial abandonado inválido." }
+    val retirementSessionId = json.optNullableLong("retirementSessionId")
+    require(retirementSessionId == null || retirementSessionId > 0) { "La sesión de retirada es inválida." }
     val title = json.getString("title")
     require(title.isNotBlank()) { "La respuesta contiene un cambio sin título." }
     return MobileDevelopmentChange(
@@ -2494,7 +2564,13 @@ private fun parseMobileDevelopmentChange(json: JSONObject, expectedProjectId: Lo
         activeSessionId = activeSessionId,
         primaryActionLabel = json.optJSONObject("primaryAction")?.optNullableString("label"),
         updatedAt = json.optNullableString("updatedAt"),
-        completedSessionId = completedSessionId
+        completedSessionId = completedSessionId,
+        activeSessionStatus = json.optNullableString("activeSessionStatus"),
+        archivedSessionId = archivedSessionId,
+        retirementState = json.optNullableString("retirementState"),
+        primaryActionKind = json.optJSONObject("primaryAction")?.optNullableString("kind"),
+        primaryActionEnabled = json.optJSONObject("primaryAction")?.optBoolean("enabled", false) == true,
+        retirementSessionId = retirementSessionId
     )
 }
 

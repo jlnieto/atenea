@@ -70,6 +70,7 @@ public class WorkSessionService {
     private final RemoteWorkerClient remoteWorkerClient;
     private final RemoteWorkerProperties remoteWorkerProperties;
     private final com.atenea.delivery.DeliveryStore deliveryStore;
+    private final com.atenea.delivery.WorkSessionRetirementStore retirements;
     private final TransactionTemplate closeTransaction;
     private RemoteRoutingSelector remoteRoutingSelector;
 
@@ -89,6 +90,7 @@ public class WorkSessionService {
             RemoteWorkerClient remoteWorkerClient,
             RemoteWorkerProperties remoteWorkerProperties,
             com.atenea.delivery.DeliveryStore deliveryStore,
+            com.atenea.delivery.WorkSessionRetirementStore retirements,
             PlatformTransactionManager transactionManager
     ) {
         this.projectRepository = projectRepository;
@@ -106,6 +108,7 @@ public class WorkSessionService {
         this.remoteWorkerClient = remoteWorkerClient;
         this.remoteWorkerProperties = remoteWorkerProperties;
         this.deliveryStore = deliveryStore;
+        this.retirements = retirements;
         this.closeTransaction = new TransactionTemplate(transactionManager);
         this.closeTransaction.setPropagationBehavior(
                 TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -399,7 +402,8 @@ public class WorkSessionService {
                 && session.getStatus() != WorkSessionStatus.CLOSING) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
-        if (session.getDevelopmentChange() != null) deliveryStore.requireCompletionClose(session);
+        boolean retirement = retirements.authorizeClose(session);
+        if (!retirement && session.getDevelopmentChange() != null) deliveryStore.requireCompletionClose(session);
 
         Instant now = Instant.now();
         session.setStatus(WorkSessionStatus.CLOSING);
@@ -408,7 +412,10 @@ public class WorkSessionService {
         session.setUpdatedAt(now);
 
         try {
-            reconcileClose(session);
+            // Retirement consumes its separate durable administrator intent. It
+            // never demands a merged PR, a clean tree, or a healthy deployment.
+            // The existing worker release still checks ownership and retains Git.
+            if (!retirement) reconcileClose(session);
             if (session.getExecutionTarget() == ExecutionTarget.LOCAL) {
                 session.setStatus(WorkSessionStatus.CLOSED);
                 session.setClosedAt(now);
@@ -444,21 +451,24 @@ public class WorkSessionService {
         if (isPersistedReleasedClose(session)) {
             return new RemoteCloseInvocation(
                     session.getRemoteCloseOperationId(), session,
-                    session.getDevelopmentChange() == null && hasUnactivatedRemoteHistory(session.getId()));
+                    session.getDevelopmentChange() == null && retirements.find(sessionId).isEmpty()
+                        && hasUnactivatedRemoteHistory(session.getId()));
         }
         if (session.getStatus() != WorkSessionStatus.CLOSING
                 || session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !ProjectCodexIdentity.matches(session)) {
             throw new WorkSessionNotOpenException(sessionId, session.getStatus());
         }
-        if (session.getDevelopmentChange() != null) deliveryStore.requireCompletionClose(session);
+        boolean retirement = retirements.authorizeClose(session);
+        if (!retirement && session.getDevelopmentChange() != null) deliveryStore.requireCompletionClose(session);
         Instant now = Instant.now();
         if (session.getRemoteCloseState() == RemoteCloseState.NOT_STARTED) {
             if (!allowNewOperation) {
                 throw new IllegalStateException(
                         "Remote close reconciliation requires a persisted operation");
             }
-            session.setRemoteCloseOperationId(UUID.randomUUID());
+            session.setRemoteCloseOperationId(retirement
+                    ? retirements.find(sessionId).orElseThrow().operationId() : UUID.randomUUID());
             session.setRemoteCloseState(RemoteCloseState.REQUESTED);
             session.setRemoteCloseRevision(1);
             session.setRemoteCloseReceiptSha256(null);
@@ -481,7 +491,7 @@ public class WorkSessionService {
         WorkSessionEntity persisted = workSessionRepository.saveAndFlush(session);
         return new RemoteCloseInvocation(
                 persisted.getRemoteCloseOperationId(), persisted,
-                persisted.getDevelopmentChange() == null && hasUnactivatedRemoteHistory(persisted.getId()));
+                persisted.getDevelopmentChange() == null && !retirement && hasUnactivatedRemoteHistory(persisted.getId()));
     }
 
     private boolean hasUnactivatedRemoteHistory(Long sessionId) {

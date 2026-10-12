@@ -47,6 +47,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
@@ -54,9 +55,11 @@ import org.springframework.test.annotation.DirtiesContext;
 @SpringBootTest(properties = {
         "atenea.auth.bootstrap.enabled=false",
         "atenea.remote-worker.remote-close-release-enabled=true",
-        "atenea.remote-worker.remote-close-project-allowlist=atenea"
+        "atenea.remote-worker.remote-close-project-allowlist=atenea",
+        "atenea.delivery.retirement-delay-ms=600000"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@AutoConfigureMockMvc
 class ChangeOwnedReleaseIntegrationTest {
     @Autowired WorkSessionService service;
     @Autowired WorkSessionRepository sessions;
@@ -68,6 +71,9 @@ class ChangeOwnedReleaseIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired RemoteWorkerProperties workerProperties;
     @Autowired ObjectMapper mapper;
+    @Autowired com.atenea.delivery.WorkSessionRetirementService retirements;
+    @Autowired com.atenea.delivery.WorkSessionRetirementStore retirementStore;
+    @Autowired org.springframework.test.web.servlet.MockMvc mvc;
     @MockBean GitRepositoryService git;
     @MockBean GitHubClient github;
     @MockBean WorkspaceRepositoryPathValidator paths;
@@ -83,6 +89,7 @@ class ChangeOwnedReleaseIntegrationTest {
     private boolean createdProject;
     private final AtomicInteger releases = new AtomicInteger();
     private final AtomicReference<JsonNode> request = new AtomicReference<>();
+    private final java.util.concurrent.atomic.AtomicBoolean retainWorktree = new java.util.concurrent.atomic.AtomicBoolean(true);
 
     @BeforeEach
     void setUp() throws Exception {
@@ -200,6 +207,7 @@ class ChangeOwnedReleaseIntegrationTest {
     void cleanUp() {
         if (worker != null) { worker.stop(0); worker = null; }
         if (session != null && session.getId() != null) {
+            jdbc.update("DELETE FROM work_session_retirement WHERE session_id=?", session.getId());
             jdbc.update("DELETE FROM mobile_delivery_operation WHERE session_id=?", session.getId());
             sessions.deleteById(session.getId()); session = null;
         }
@@ -315,6 +323,174 @@ class ChangeOwnedReleaseIntegrationTest {
         assertEquals("APPLYING", deliveryStore.completion(session.getId()).orElseThrow().state());
     }
 
+    @Test
+    void retirementOfDeclinedPrReleasesExactOwnerWithoutMergingAndKeepsHistory() {
+        retirementFixture();
+        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
+        UUID key=UUID.randomUUID();
+        var first=retirements.request(session.getId(),actor,key,false);
+        assertEquals(first.operationId(),retirements.request(session.getId(),actor,key,false).operationId());
+        assertEquals(0,releases.get());
+        retirements.reconcile();
+        var op=retirementStore.find(session.getId()).orElseThrow();
+        assertEquals("SUCCEEDED",op.state());
+        assertEquals("ABANDONED_NOT_DELIVERED",op.evidence().path("disposition").asText());
+        assertTrue(op.evidence().path("sourceAndHistoryRetained").asBoolean());
+        var retired=sessions.findById(session.getId()).orElseThrow();
+        assertEquals(WorkSessionStatus.CLOSED,retired.getStatus());
+        assertEquals(RemoteCloseState.RELEASED,retired.getRemoteCloseState());
+        assertEquals(first.operationId(),retired.getRemoteCloseOperationId());
+        assertEquals(WorkSessionPullRequestStatus.DECLINED,retired.getPullRequestStatus());
+        assertEquals(session.getFinalCommitSha(),retired.getFinalCommitSha());
+        assertEquals(DevelopmentChangeStatus.ABANDONED,changes.findById(change.getId()).orElseThrow().getStatus());
+        assertEquals(DevelopmentChangeProjectionState.NOT_STARTED,changes.findById(change.getId()).orElseThrow().getReleaseState());
+        assertEquals(session.getId(),retirementStore.archivedSession(change.getChangeKey()));
+        assertTrue(deliveryStore.completion(session.getId()).isEmpty());
+        assertEquals(1,releases.get());
+        assertEquals(first.operationId(),retirements.request(session.getId(),actor,key,false).operationId());
+        retirements.reconcile(); assertEquals(1,releases.get());
+        assertEquals("RETIREMENT_IDEMPOTENCY_MISMATCH",assertThrows(DeliveryRejectedException.class,
+            () -> retirements.request(session.getId(),actor,UUID.randomUUID(),false)).code());
+        verifyNoInteractions(github);
+        verify(git,never()).checkoutBranch(any(),any()); verify(git,never()).deleteLocalBranch(any(),any());
+        verify(git,never()).deleteRemoteBranch(any(),any());
+    }
+
+    @Test
+    void closedOrCompletedWorkCannotBeRetired() {
+        retirementFixture();
+        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
+        sessions.deleteById(session.getId()); session.setId(null);
+        session.setStatus(WorkSessionStatus.CLOSED); session.setClosedAt(Instant.now());
+        session.setRemoteCloseState(RemoteCloseState.UNVERIFIED_LEGACY); session=sessions.saveAndFlush(session);
+        assertEquals("RETIREMENT_SESSION_STATE_MISMATCH",assertThrows(DeliveryRejectedException.class,
+            () -> retirements.request(session.getId(),actor,UUID.randomUUID(),false)).code());
+        assertTrue(retirementStore.find(session.getId()).isEmpty()); assertEquals(0,releases.get());
+    }
+
+    @Test
+    void movedOwnerBlocksSameRetirementBeforeAnyRemoteRelease() {
+        retirementFixture();
+        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
+        var intent=retirements.request(session.getId(),actor,UUID.randomUUID(),false);
+        session.setFinalCommitSha("c".repeat(40)); sessions.saveAndFlush(session);
+        retirements.reconcile();
+        var op=retirementStore.find(session.getId()).orElseThrow();
+        assertEquals(intent.operationId(),op.operationId()); assertEquals("BLOCKED",op.state());
+        assertEquals("RETIREMENT_OWNER_MOVED",op.errorCode()); assertEquals(0,releases.get());
+        assertEquals(DevelopmentChangeStatus.OPEN,changes.findById(change.getId()).orElseThrow().getStatus());
+    }
+
+    @Test
+    void retirementCannotStartWithForeignOwnerOrNonAdministrator() {
+        retirementFixture();
+        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
+        session.setWorkspaceIdentity("remote:foreign:change:"+change.getChangeKey()); sessions.saveAndFlush(session);
+        assertEquals("RETIREMENT_EXACT_OWNER_REQUIRED",assertThrows(DeliveryRejectedException.class,
+            () -> retirements.request(session.getId(),actor,UUID.randomUUID(),false)).code());
+        administrator.setCodexOperationsRole(CodexOperationsRole.ROUTINE_OPERATOR); operators.saveAndFlush(administrator);
+        assertEquals("PLATFORM_ADMINISTRATOR_REQUIRED",assertThrows(DeliveryRejectedException.class,
+            () -> retirements.request(session.getId(),actor,UUID.randomUUID(),false)).code());
+        assertEquals(0,releases.get());
+    }
+
+    private void retirementFixture() {
+        // The base fixture intentionally starts with a BLOCKED close UUID for
+        // completion tests. Retirement needs a separate not-yet-requested owner;
+        // recreate this test-only row, never weaken the production monotonicity.
+        sessions.deleteById(session.getId());
+        session.setId(null);
+        Instant now=Instant.now();
+        administrator=new OperatorEntity(); administrator.setEmail(UUID.randomUUID()+"@atenea.test");
+        administrator.setDisplayName("Retirement operator"); administrator.setPasswordHash("synthetic");
+        administrator.setActive(true); administrator.setCodexOperationsRole(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        administrator.setCreatedAt(now); administrator.setUpdatedAt(now); administrator=operators.saveAndFlush(administrator);
+        session.setRemoteCloseState(RemoteCloseState.NOT_STARTED); session.setRemoteCloseOperationId(null);
+        session.setRemoteCloseRevision(0); session.setRemoteCloseRequestedAt(null); session.setRemoteCloseUpdatedAt(null);
+        session.setRemoteCloseErrorCode(null); session.setPullRequestStatus(WorkSessionPullRequestStatus.DECLINED);
+        session=sessions.saveAndFlush(session);
+    }
+
+    @Test
+    void retirementApiRejectsCommandsAndUnexpectedArgumentsBeforeCreatingIntent() throws Exception {
+        retirementFixture();
+        var principal=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+            new com.atenea.auth.AuthenticatedOperator(administrator.getId(),administrator.getEmail(),"Test"),null,
+            java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR")));
+        principal.setDetails(UUID.randomUUID());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+            "/api/mobile/sessions/{id}/retirement",session.getId())
+            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(principal))
+            .header("Idempotency-Key",UUID.randomUUID()).contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .content("{\"command\":\"rm -rf workspace\"}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isConflict());
+        assertTrue(retirementStore.find(session.getId()).isEmpty()); assertEquals(0,releases.get());
+    }
+
+    @Test
+    void dirtyLegacyWorkspaceRetirementRetainsDraftAndDoesNotRequirePrOrDelivery() {
+        retirementFixture();
+        UUID remote=session.getRemoteSessionId();
+        session.setDevelopmentChange(null); session.setStatus(WorkSessionStatus.OPEN);
+        session.setWorkspaceIdentity("remote:ax42-01:work-session:"+remote); session.setWorkspaceBranch("atenea/session-"+remote);
+        session.setCanonicalSourceRef("refs/heads/main"); session.setCanonicalSourceCommit("1".repeat(40));
+        session.setCanonicalSourceObservationSha256("2".repeat(64)); session.setCanonicalSourceObservedAt(Instant.now());
+        session=sessions.saveAndFlush(session);
+        when(git.isWorkingTreeClean(anyString())).thenReturn(false);
+        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
+        var first=retirements.request(session.getId(),actor,UUID.randomUUID(),false);
+        retirements.reconcile();
+        var retired=sessions.findById(session.getId()).orElseThrow();
+        assertEquals(WorkSessionStatus.CLOSED,retired.getStatus()); assertEquals(RemoteCloseState.RELEASED,retired.getRemoteCloseState());
+        assertEquals(session.getFinalCommitSha(),retired.getFinalCommitSha());
+        assertEquals(first.operationId(),retired.getRemoteCloseOperationId());
+        assertFalse(service.getSession(session.getId()).repoState().workingTreeClean());
+        assertEquals("SUCCEEDED",retirementStore.find(session.getId()).orElseThrow().state()); assertEquals(1,releases.get());
+        assertEquals(DevelopmentChangeStatus.OPEN,changes.findById(change.getId()).orElseThrow().getStatus());
+        verifyNoInteractions(github); verify(git,never()).checkoutBranch(any(),any());
+    }
+
+    @Test
+    void retirementRejectsReceiptThatDoesNotRetainWorktreeAndDoesNotMarkAbandoned() {
+        retirementFixture(); retainWorktree.set(false);
+        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
+        retirements.request(session.getId(),actor,UUID.randomUUID(),false);
+        retirements.reconcile();
+        assertEquals("BLOCKED",retirementStore.find(session.getId()).orElseThrow().state());
+        assertEquals(DevelopmentChangeStatus.OPEN,changes.findById(change.getId()).orElseThrow().getStatus());
+        assertNotEquals(WorkSessionStatus.CLOSED,sessions.findById(session.getId()).orElseThrow().getStatus());
+        assertEquals(1,releases.get()); retirements.reconcile(); assertEquals(1,releases.get());
+    }
+
+    @Test
+    void retirementAdmissionBarrierRejectsValidationUntilAndAfterRetirement() {
+        retirementFixture();
+        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
+        retirements.request(session.getId(),actor,UUID.randomUUID(),false);
+        assertThrows(org.springframework.dao.DataAccessException.class,()->insertRunningValidation());
+        retirements.reconcile();
+        assertThrows(org.springframework.dao.DataAccessException.class,()->insertRunningValidation());
+    }
+
+    @Test
+    void activeValidationPreventsRetirementIntent() {
+        retirementFixture(); insertRunningValidation();
+        try {
+            var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
+            assertEquals("RETIREMENT_WORK_IN_PROGRESS",assertThrows(DeliveryRejectedException.class,
+                ()->retirements.request(session.getId(),actor,UUID.randomUUID(),false)).code());
+            assertTrue(retirementStore.find(session.getId()).isEmpty()); assertEquals(0,releases.get());
+        } finally { jdbc.update("DELETE FROM validation_operation WHERE work_session_id=?",session.getId()); }
+    }
+
+    private void insertRunningValidation() {
+        jdbc.update("""
+            INSERT INTO validation_operation(id,work_session_id,operation,status,source_tree_fingerprint_sha256,
+                definition_revision,identity_sha256,started_at,created_at,updated_at)
+            VALUES (?,?,'BACKEND_TEST','RUNNING',?,'test-v1',?,now(),now(),now())
+            """,UUID.randomUUID(),session.getId(),"5".repeat(64),UUID.randomUUID().toString().replace("-","").repeat(2));
+    }
+
     private void authorizeDeliveredCompletionFixture() throws Exception {
         Instant now = Instant.now();
         administrator = new OperatorEntity();
@@ -369,6 +545,7 @@ class ChangeOwnedReleaseIntegrationTest {
 
     private ObjectNode receipt(JsonNode body) throws Exception {
         ObjectNode receipt = ((ObjectNode) body).deepCopy();
+        receipt.put("workerId","ax42-01");
         receipt.put("schemaVersion", "project-workspace-release-v1");
         receipt.put("state", "RELEASED");
         receipt.put("revision", 6);
@@ -379,10 +556,11 @@ class ChangeOwnedReleaseIntegrationTest {
                 "brokerResources", "browserProcesses").forEach(key -> removed.put(key, 0));
         ObjectNode released = receipt.putObject("released");
         Set.of("registration", "normalAdmission", "heavyAdmission", "allocation")
-                .forEach(key -> released.put(key, false));
+                .forEach(key -> released.put(key, !body.has("changeKey")));
         ObjectNode retained = receipt.putObject("retained");
         Set.of("workspaceRecord", "worktree", "git", "turns", "agentRuns", "attachments",
                 "logs", "artifacts", "backups", "policyVolumes").forEach(key -> retained.put(key, true));
+        retained.put("worktree",retainWorktree.get());
         receipt.put("valuesExposed", false);
         receipt.put("receiptSha256", hash(receipt));
         return receipt;

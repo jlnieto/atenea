@@ -37,5 +37,9 @@ public record DevelopmentChangeResponse(
         Instant createdAt,
         Instant updatedAt,
         long version,
-        Long completedSessionId) {
+        Long completedSessionId,
+        String activeSessionStatus,
+        Long archivedSessionId,
+        String retirementState,
+        Long retirementSessionId) {
 }

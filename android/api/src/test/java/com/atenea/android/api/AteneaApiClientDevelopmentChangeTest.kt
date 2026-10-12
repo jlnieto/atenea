@@ -13,6 +13,77 @@ import kotlin.test.assertFailsWith
 class AteneaApiClientDevelopmentChangeTest {
 
     @Test
+    fun `abandoned history exposes archived conversation but cannot be active`() = withServer { server ->
+        val value = JSONObject().put("changeKey", UUID.randomUUID().toString()).put("projectId", 1)
+            .put("title", "Old test").put("status", "ABANDONED").put("workspaceState", "READY")
+            .put("archivedSessionId", 20).put("activeSessionId", JSONObject.NULL)
+        server.enqueue(jsonResponse(200, JSONArray().put(value).toString()))
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+        assertEquals(20L, runBlocking { client.fetchDevelopmentChanges(1) }.single().archivedSessionId)
+        value.put("activeSessionId", 19)
+        server.enqueue(jsonResponse(200, JSONArray().put(value).toString()))
+        assertFailsWith<IllegalArgumentException> { runBlocking { client.fetchDevelopmentChanges(1) } }
+    }
+
+    @Test
+    fun `retirement uses only session identity and idempotency key without commands`() = withServer { server ->
+        val key = UUID.randomUUID()
+        val value = JSONObject().put("operationId", UUID.randomUUID().toString()).put("sessionId", 19)
+            .put("idempotencyKey", key.toString()).put("state", "APPLYING")
+        server.enqueue(jsonResponse(200, value.toString()))
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+        assertEquals("APPLYING", runBlocking { client.retireWorkSession(19, key) })
+        val request = server.takeRequest()
+        assertEquals("/api/mobile/sessions/19/retirement", request.path)
+        assertEquals(key.toString(), request.getHeader("Idempotency-Key"))
+        assertEquals("{}", request.body.readUtf8())
+        value.put("sessionId", 20)
+        server.enqueue(jsonResponse(200, value.toString()))
+        assertFailsWith<IllegalArgumentException> { runBlocking { client.retireWorkSession(19, key) } }
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun `recovering retirement reads and reuses original durable key`() = withServer { server ->
+        val key = UUID.randomUUID()
+        val value = JSONObject().put("operationId", UUID.randomUUID().toString()).put("sessionId", 20)
+            .put("idempotencyKey", key.toString()).put("state", "BLOCKED")
+        server.enqueue(jsonResponse(200, value.toString()))
+        value.put("state", "APPLYING")
+        server.enqueue(jsonResponse(200, value.toString()))
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+        runBlocking { client.retireWorkSession(20, client.fetchRetirementKey(20), reconcile = true) }
+        assertEquals("GET", server.takeRequest().method)
+        val retry = server.takeRequest()
+        assertEquals("/api/mobile/sessions/20/retirement/reconcile", retry.path)
+        assertEquals(key.toString(), retry.getHeader("Idempotency-Key"))
+    }
+
+    @Test
+    fun `preparing existing change never creates another change or duplicate prompt`() = withServer { server ->
+        val changeKey = UUID.randomUUID()
+        val detail = JSONObject().put("projectId", 1).put("changeKey", changeKey.toString()).put("status", "OPEN")
+            .put("workspaceState", "NOT_PROVISIONED").put("version", 2)
+        server.enqueue(jsonResponse(200, detail.toString()))
+        server.enqueue(jsonResponse(200, provisionJson("SUCCEEDED", "READY")))
+        detail.put("workspaceState", "READY").put("version", 3)
+        server.enqueue(jsonResponse(200, detail.toString()))
+        server.enqueue(jsonResponse(200, sessionJson(91, "SUCCEEDED", "OPEN")))
+        server.enqueue(jsonResponse(200, JSONObject().put("id", 91).put("projectId", 1)
+            .put("developmentChangeKey", changeKey.toString()).put("status", "OPEN").toString()))
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+        assertEquals(91L, runBlocking { client.prepareExistingDevelopmentChange(1, changeKey, UUID.randomUUID(), UUID.randomUUID()) })
+        assertEquals("GET", server.takeRequest().method)
+        assertEquals("/api/v2/projects/1/development-changes/$changeKey/workspace/provision", server.takeRequest().path)
+        assertEquals("GET", server.takeRequest().method)
+        val open = server.takeRequest()
+        assertEquals("/api/v2/projects/1/development-changes/$changeKey/work-session:open-or-resolve", open.path)
+        assertEquals(3, JSONObject(open.body.readUtf8()).getInt("expectedChangeRevision"))
+        assertEquals("/api/sessions/91", server.takeRequest().path)
+        assertEquals(5, server.requestCount)
+    }
+
+    @Test
     fun `completed changes expose only their preserved history session`() = withServer { server ->
         val value=JSONObject().put("changeKey",UUID.randomUUID().toString()).put("projectId",1)
             .put("title","Delivered change").put("status","COMPLETED").put("workspaceState","READY")

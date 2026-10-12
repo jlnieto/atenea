@@ -163,6 +163,7 @@ class WorkSessionServiceTest {
                 remoteWorkerClient,
                 remoteWorkerProperties,
                 deliveryStore,
+                org.mockito.Mockito.mock(com.atenea.delivery.WorkSessionRetirementStore.class),
                 transactionManager
         );
     }
