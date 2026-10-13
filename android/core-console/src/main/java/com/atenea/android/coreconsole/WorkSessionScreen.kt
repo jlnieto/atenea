@@ -45,8 +45,7 @@ internal fun WorkSessionScreen(
     sessionId: Long?,
     onOpenConversation: () -> Unit,
     onOpenCore: () -> Unit,
-    onBackToProjects: () -> Unit,
-    onFreshSession: (Long) -> Unit
+    onBackToProjects: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     if (sessionId == null) {
@@ -58,7 +57,7 @@ internal fun WorkSessionScreen(
     }
 
     val repository = remember(apiClient, projectId, sessionId) {
-        WorkSessionRepository(apiClient, projectId, sessionId, scope, onFreshSession)
+        WorkSessionRepository(apiClient, projectId, sessionId, scope)
     }
     DisposableEffect(repository) {
         repository.start()
@@ -89,11 +88,8 @@ internal fun WorkSessionScreen(
             RemoteCloseOperatorPanel(
                 serverState = operatorState,
                 actionState = remoteCloseState,
-                currentWorkSessionId = sessionId,
                 operatorRole = apiClient.currentOperatorRole(),
-                onPrimaryAction = repository::runRemoteClosePrimaryAction,
-                onConfirm = repository::confirmLegacyRemoteClose,
-                onCancel = repository::cancelLegacyRemoteClose
+                onPrimaryAction = repository::runRemoteClosePrimaryAction
             )
         }
 
@@ -124,8 +120,7 @@ internal fun WorkSessionScreen(
                 actions = it.actions,
                 pendingAction = state.pendingAction,
                 onPublish = { repository.runCoreAction("Publicando", "publica la pr") },
-                onSyncPullRequest = { repository.runCoreAction("Sincronizando PR", "sincroniza la pr") },
-                onClose = { repository.runCoreAction("Cerrando sesion", "cierra la sesion") }
+                onSyncPullRequest = { repository.runCoreAction("Sincronizando PR", "sincroniza la pr") }
             )
             WorkSessionDeliverablesPanel(
                 deliverables = state.deliverables,
@@ -310,8 +305,7 @@ private fun WorkSessionActionsPanel(
     actions: MobileSessionActions,
     pendingAction: String?,
     onPublish: () -> Unit,
-    onSyncPullRequest: () -> Unit,
-    onClose: () -> Unit
+    onSyncPullRequest: () -> Unit
 ) {
     AteneaPanel {
         Text("Entrega", style = MaterialTheme.typography.titleSmall)
@@ -322,11 +316,6 @@ private fun WorkSessionActionsPanel(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = false,
                 onClick = {}
-            )
-            actions.canClose -> AteneaButton(
-                text = "Cerrar sesion",
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onClose
             )
             actions.canPublish -> AteneaButton(
                 text = "Publicar PR",
@@ -610,7 +599,6 @@ private fun MetricText(label: String, value: String) {
 }
 
 private fun deliveryStatusText(actions: MobileSessionActions): String = when {
-    actions.canClose -> "La pull request esta fusionada. Ya puedes cerrar y reconciliar el repositorio."
     actions.canPublish -> "La sesion esta lista para abrir pull request."
     actions.canSyncPullRequest -> "Hay una pull request publicada. Sincroniza su estado cuando se revise o se fusione."
     else -> "No hay accion de entrega disponible ahora mismo."

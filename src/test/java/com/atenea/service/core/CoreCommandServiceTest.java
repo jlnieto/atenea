@@ -80,25 +80,25 @@ class CoreCommandServiceTest {
     void createCommandPersistsSucceededCommandForProjectContext() {
         when(coreIntentInterpreter.interpret(any(CreateCoreCommandRequest.class))).thenReturn(new CoreInterpretationResult(
                 new CoreIntentProposal(
-                        "CREATE_WORK_SESSION",
+                        "GET_PROJECT_OVERVIEW",
                         CoreDomain.DEVELOPMENT,
-                        "create_work_session",
-                        Map.of("projectId", 7L, "title", "Arranca una nueva sesion"),
+                        "get_project_overview",
+                        Map.of("projectId", 7L, "title", "Consulta el proyecto"),
                         BigDecimal.valueOf(0.90)),
                 CoreInterpreterSource.DETERMINISTIC,
                 "explicit_project_context"));
         when(coreDomainRouter.execute(any(CoreIntentEnvelope.class), any(CoreExecutionContext.class)))
                 .thenReturn(new CoreCommandExecutionResult(
-                        CoreResultType.WORK_SESSION_CONVERSATION_VIEW,
-                        CoreTargetType.WORK_SESSION,
+                        CoreResultType.PROJECT_OVERVIEW,
+                        CoreTargetType.PROJECT,
                         44L,
                         Map.of("created", true),
                         "Resolved WorkSession conversation view for project 7",
-                        "He creado una WorkSession y la conversación ya está lista.",
-                        "He creado una WorkSession y la conversación ya está lista."));
+                        "He consultado el proyecto.",
+                        "He consultado el proyecto."));
 
         CoreCommandResponse response = coreCommandService.createCommand(new CreateCoreCommandRequest(
-                "Arranca una nueva sesion",
+                "Consulta el proyecto",
                 CoreChannel.TEXT,
                 new CoreRequestContext(7L, null),
                 null));
@@ -106,7 +106,7 @@ class CoreCommandServiceTest {
         assertEquals(101L, response.commandId());
         assertEquals(CoreCommandStatus.SUCCEEDED, response.status());
         assertEquals(CoreInterpreterSource.DETERMINISTIC, response.interpretation().source());
-        assertEquals("create_work_session", response.intent().capability());
+        assertEquals("get_project_overview", response.intent().capability());
         assertEquals(44L, response.result().targetId());
 
         ArgumentCaptor<CoreCommandEntity> captor = ArgumentCaptor.forClass(CoreCommandEntity.class);
@@ -115,11 +115,11 @@ class CoreCommandServiceTest {
         CoreCommandEntity finalState = savedEntities.get(savedEntities.size() - 1);
         assertEquals(CoreCommandStatus.SUCCEEDED, finalState.getStatus());
         assertEquals(CoreDomain.DEVELOPMENT, finalState.getDomain());
-        assertEquals("CREATE_WORK_SESSION", finalState.getIntent());
-        assertEquals("create_work_session", finalState.getCapability());
+        assertEquals("GET_PROJECT_OVERVIEW", finalState.getIntent());
+        assertEquals("get_project_overview", finalState.getCapability());
         assertEquals(CoreRiskLevel.READ, finalState.getRiskLevel());
-        assertEquals(CoreResultType.WORK_SESSION_CONVERSATION_VIEW, finalState.getResultType());
-        assertEquals(CoreTargetType.WORK_SESSION, finalState.getTargetType());
+        assertEquals(CoreResultType.PROJECT_OVERVIEW, finalState.getResultType());
+        assertEquals(CoreTargetType.PROJECT, finalState.getTargetType());
         assertEquals(44L, finalState.getTargetId());
         assertEquals(CoreInterpreterSource.DETERMINISTIC, finalState.getInterpreterSource());
         assertNotNull(finalState.getInterpretedIntentJson());

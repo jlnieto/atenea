@@ -1,5 +1,6 @@
 package com.atenea.service.core;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -39,50 +40,8 @@ class DefaultCoreIntentInterpreterTest {
         interpreter = new DefaultCoreIntentInterpreter(coreProjectResolver, coreWorkSessionResolver, operationsHostResolver);
     }
 
-    @Test
-    void interpretExtractsCleanSessionTitleFromNaturalLanguageRequest() {
-        ProjectEntity project = project(7L, "Atenea Core");
-        when(coreProjectResolver.requireById(7L)).thenReturn(project);
 
-        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
-                "abre una sesion para Atenea Core: preparar publish final",
-                CoreChannel.TEXT,
-                new CoreRequestContext(7L, null),
-                null));
 
-        assertEquals("create_work_session", result.proposal().capability());
-        assertEquals(Map.of("projectId", 7L, "title", "preparar publish final"), result.proposal().parameters());
-        verifyNoInteractions(coreWorkSessionResolver);
-    }
-
-    @Test
-    void interpretFallsBackToProjectBasedTitleWhenRequestDoesNotCarryOne() {
-        ProjectEntity project = project(7L, "Atenea Core");
-        when(coreProjectResolver.requireById(7L)).thenReturn(project);
-
-        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
-                "abre una sesion para Atenea Core",
-                CoreChannel.TEXT,
-                new CoreRequestContext(7L, null),
-                null));
-
-        assertEquals("Work on Atenea Core", result.proposal().parameters().get("title"));
-    }
-
-    @Test
-    void interpretRecognizesAccentedSpanishOpenSessionRequests() {
-        ProjectEntity project = project(7L, "Atenea Core");
-        when(coreProjectResolver.requireById(7L)).thenReturn(project);
-
-        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
-                "abre una sesión para Atenea Core",
-                CoreChannel.TEXT,
-                new CoreRequestContext(7L, null),
-                null));
-
-        assertEquals("create_work_session", result.proposal().capability());
-        assertEquals("Work on Atenea Core", result.proposal().parameters().get("title"));
-    }
 
     @Test
     void interpretTreatsProjectStatusAsProjectOverviewInsteadOfPortfolioOverview() {
@@ -313,28 +272,12 @@ class DefaultCoreIntentInterpreterTest {
     }
 
     @Test
-    void interpretRoutesForceCloseRequestToCoreCapabilityWithForceFlag() {
-        WorkSessionEntity session = new WorkSessionEntity();
-        session.setId(44L);
-        session.setProject(project(9L, "pruebas-inicial"));
-        when(coreWorkSessionResolver.resolveActiveSession(
-                "cierra la sesion igualmente aunque falten entregables",
-                44L,
-                9L)).thenReturn(session);
-
-        CoreInterpretationResult result = interpreter.interpret(new CreateCoreCommandRequest(
-                "cierra la sesion igualmente aunque falten entregables",
-                CoreChannel.TEXT,
-                new CoreRequestContext(9L, 44L),
-                null));
-
-        assertEquals("close_work_session", result.proposal().capability());
-        assertEquals(
-                Map.of(
-                        "projectId", 9L,
-                        "workSessionId", 44L,
-                        "forceClosePendingDeliverables", true),
-                result.proposal().parameters());
+    void independentCloseDirectsTheOperatorToTheChangeWithoutResolvingASession() {
+        var error = assertThrows(CoreCapabilityDisabledException.class, () -> interpreter.interpret(
+                new CreateCoreCommandRequest("cierra la sesion igualmente aunque falten entregables",
+                        CoreChannel.TEXT, new CoreRequestContext(9L, 44L), null)));
+        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("Cambio"));
+        org.mockito.Mockito.verifyNoInteractions(coreWorkSessionResolver);
     }
 
     @Test

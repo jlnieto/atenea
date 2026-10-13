@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.persistence.auth.CodexOperationsRole;
 import com.atenea.persistence.auth.OperatorEntity;
 import com.atenea.persistence.auth.OperatorRepository;
@@ -41,6 +43,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @SpringBootTest
 class AgentRunRecoveryOperationPersistenceTest {
 
+    @Autowired private DevelopmentChangeRepository fixtureChangeRepository;
+
     private static final AtomicLong FIXTURE_SEQUENCE = new AtomicLong();
 
     @Autowired
@@ -67,6 +71,7 @@ class AgentRunRecoveryOperationPersistenceTest {
         agentRunRepository.deleteAll();
         sessionTurnRepository.deleteAll();
         workSessionRepository.deleteAll();
+        ChangeOwnedSessionFixtures.prune(fixtureChangeRepository);
         projectRepository.deleteAll();
         operatorRepository.deleteAll();
     }
@@ -218,7 +223,7 @@ class AgentRunRecoveryOperationPersistenceTest {
         session.setLastActivityAt(now);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
-        session = workSessionRepository.save(session);
+        session = workSessionRepository.save(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
 
         SessionTurnEntity turn = new SessionTurnEntity();
         turn.setSession(session);

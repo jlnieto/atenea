@@ -113,21 +113,6 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                     "portfolio_status_query");
         }
 
-        if (looksLikeOpenSession(normalized)) {
-            ProjectEntity project = resolveProject(context, input);
-            Map<String, Object> parameters = new LinkedHashMap<>();
-            parameters.put("projectId", project.getId());
-            parameters.put("title", extractSessionTitle(input, project.getName()));
-            return proposal(
-                    "CREATE_WORK_SESSION",
-                    "create_work_session",
-                    parameters,
-                    BigDecimal.valueOf(0.93),
-                    context != null && context.projectId() != null
-                            ? "explicit_project_context"
-                            : "resolved_project_context");
-        }
-
         if (looksLikeGenerateDeliverable(normalized)) {
             WorkSessionEntity session = resolveSession(context, input);
             SessionDeliverableType type = resolveDeliverableType(normalized);
@@ -240,16 +225,8 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
         }
 
         if (looksLikeClose(normalized)) {
-            WorkSessionEntity session = resolveSession(context, input);
-            return proposal(
-                    "CLOSE_WORK_SESSION",
-                    "close_work_session",
-                    Map.of(
-                            "projectId", session.getProject().getId(),
-                            "workSessionId", session.getId(),
-                            "forceClosePendingDeliverables", shouldForceClosePendingDeliverables(normalized)),
-                    BigDecimal.valueOf(0.95),
-                    "close_session_request");
+            throw new CoreCapabilityDisabledException(
+                    "Finaliza o abandona el Cambio desde su pantalla; no se cierran conversaciones por separado.");
         }
 
         if (looksLikeLatestSessionResponse(normalized)) {
@@ -411,30 +388,6 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                 )));
     }
 
-    private String extractSessionTitle(String input, String projectName) {
-        String normalized = input == null ? "" : input.trim();
-        if (normalized.isBlank()) {
-            return defaultSessionTitle(projectName);
-        }
-
-        String extracted = normalized
-                .replaceFirst("(?i)^abre una sesi[oó]n(?: para)?\\s*", "")
-                .replaceFirst("(?i)^abrir sesi[oó]n(?: para)?\\s*", "")
-                .replaceFirst("(?i)^open a session(?: for)?\\s*", "")
-                .replaceFirst("(?i)^create a session(?: for)?\\s*", "")
-                .replaceFirst("(?i)^crea una sesi[oó]n(?: para)?\\s*", "")
-                .replaceFirst("(?i)^inicia una sesi[oó]n(?: para)?\\s*", "")
-                .replaceFirst("(?i)^resolve session(?: for)?\\s*", "")
-                .replaceFirst("(?i)^" + java.util.regex.Pattern.quote(projectName) + "\\s*[:\\-]?\\s*", "")
-                .replaceFirst("(?i)^para\\s+" + java.util.regex.Pattern.quote(projectName) + "\\s*[:\\-]?\\s*", "")
-                .trim();
-
-        extracted = extracted.replaceFirst("^[:\\-]+\\s*", "").trim();
-        if (extracted.isBlank()) {
-            return defaultSessionTitle(projectName);
-        }
-        return extracted;
-    }
 
     private String defaultSessionTitle(String projectName) {
         return "Work on " + projectName;
@@ -564,15 +517,6 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                 || normalized.contains("cambiar a ");
     }
 
-    private boolean looksLikeOpenSession(String normalized) {
-        return normalized.contains("abre una sesion")
-                || normalized.contains("abrir sesion")
-                || normalized.contains("open a session")
-                || normalized.contains("create a session")
-                || normalized.contains("crea una sesion")
-                || normalized.contains("inicia una sesion")
-                || normalized.contains("resolve session");
-    }
 
     private boolean looksLikeContinueWork(String normalized) {
         return normalized.contains("continua")
@@ -680,12 +624,6 @@ public class DefaultCoreIntentInterpreter implements CoreIntentInterpreter {
                 || normalized.contains("cierrala");
     }
 
-    private boolean shouldForceClosePendingDeliverables(String normalized) {
-        return normalized.contains("igualmente")
-                || normalized.contains("de todos modos")
-                || normalized.contains("aunque falten entregables")
-                || normalized.contains("sin generar entregables");
-    }
 
     private boolean looksLikeDeliverablesRead(String normalized) {
         if (looksLikeClose(normalized)) {

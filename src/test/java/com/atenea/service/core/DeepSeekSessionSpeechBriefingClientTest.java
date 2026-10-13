@@ -147,7 +147,7 @@ class DeepSeekSessionSpeechBriefingClientTest {
                         "Cambio aplicado",
                         new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),
                         "Publicar la pull request"),
-                new MobileSessionActionsResponse(true, true, true, true, true, true, true),
+                new MobileSessionActionsResponse(true, true, true, true, true, true),
                 null,
                 "## Verificación\nTests en verde.");
     }

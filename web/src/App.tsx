@@ -50,12 +50,11 @@ import {
   CoreCommandResponse,
   CoreCommandSummary,
   CoreScope,
-  LegacyRemoteClosePlan,
   ManagedHost,
   MobileApiCostsOverview,
   MobileConversationTurn,
   MobileProjectOverview,
-  MobileRescueConversation,
+  MobileDevelopmentChange,
   MobileSessionEvent,
   MobileSessionOperatorState,
   MobileSessionSummary,
@@ -89,13 +88,13 @@ type RouteName =
   | "settings"
   | "session"
   | "conversation"
-  | "rescue";
+  | "changes";
 
 interface Route {
   name: RouteName;
   projectId?: number;
   sessionId?: number;
-  rescueSessionId?: number;
+
 }
 
 type Level = "ok" | "warning" | "critical" | "unknown" | "running" | "neutral";
@@ -197,7 +196,7 @@ function Shell({ session, route }: { session: AuthSession; route: Route }) {
     return () => window.clearInterval(timer);
   }, []);
 
-  const immersive = route.name === "conversation" || route.name === "rescue";
+  const immersive = route.name === "conversation";
 
   return (
     <div className={`app-shell ${immersive ? "app-shell--immersive" : ""}`}>
@@ -294,8 +293,8 @@ function RouteContent({ route, refreshHealth }: { route: Route; refreshHealth: (
       return route.sessionId ? <WorkSessionScreen sessionId={route.sessionId} projectId={route.projectId} /> : <MissingContext />;
     case "conversation":
       return route.sessionId ? <ConversationScreen sessionId={route.sessionId} projectId={route.projectId} /> : <MissingContext />;
-    case "rescue":
-      return route.projectId ? <RescueScreen projectId={route.projectId} rescueSessionId={route.rescueSessionId} /> : <MissingContext />;
+    case "changes":
+      return route.projectId ? <ChangesScreen projectId={route.projectId} /> : <MissingContext />;
     default:
       return <HomeScreen />;
   }
@@ -350,7 +349,7 @@ function LoginScreen() {
           </div>
         </div>
         <p className="login__copy">
-          Consola privada para operar proyectos, sesiones de trabajo, Core y estado del servidor.
+          Consola privada para trabajar por Cambios y operar los proyectos autorizados.
         </p>
         <div className="login__status">
           <StatusDot level={backendStatus === "online" ? "ok" : backendStatus === "offline" ? "critical" : "unknown"} />
@@ -475,148 +474,75 @@ function HomeScreen() {
 
 function ProjectsScreen() {
   const [projects, setProjects] = useState<MobileProjectOverview[]>([]);
-  const [filter, setFilter] = useState<"all" | "active" | "attention">("all");
-  const [query, setQuery] = useState("");
   const [titleByProject, setTitleByProject] = useState<Record<number, string>>({});
-  const [loadingProjectId, setLoadingProjectId] = useState<number | null>(null);
+  const [pending, setPending] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
+  const attempts = useRef(new Map<number, { title: string; keys: { create: string; provision: string; session: string } }>());
   async function load() {
-    setLoading(true);
-    setError("");
-    try {
-      setProjects(await api.projects());
-    } catch (loadError) {
-      setError(errorMessage(loadError));
-    } finally {
-      setLoading(false);
-    }
+    try { setProjects(await api.projects()); } catch (e) { setError(errorMessage(e)); }
   }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  const visible = projects.filter((project) => {
-    const matchesQuery = `${project.projectName} ${project.description || ""}`.toLowerCase().includes(query.toLowerCase());
-    if (!matchesQuery) {
-      return false;
-    }
-    if (filter === "active") {
-      return Boolean(project.session && project.session.status !== "CLOSED");
-    }
-    if (filter === "attention") {
-      return Boolean(project.session?.recoveryPending || project.session?.runInProgress ||
-        project.session?.closeBlockedState || !project.session);
-    }
-    return true;
-  });
-
-  async function openSession(project: MobileProjectOverview) {
-    if (project.session?.recoveryPending) {
-      navigate({ name: "session", projectId: project.projectId, sessionId: project.session.sessionId });
-      return;
-    }
-    setLoadingProjectId(project.projectId);
-    setError("");
+  useEffect(() => { load(); }, []);
+  async function start(projectId: number) {
+    setPending(projectId); setError("");
     try {
-      const title = titleByProject[project.projectId]?.trim() || null;
-      const result = await api.resolveWorkSession(project.projectId, title);
-      navigate({ name: "session", projectId: project.projectId, sessionId: result.view.session.id });
-    } catch (openError) {
-      setError(errorMessage(openError));
-    } finally {
-      setLoadingProjectId(null);
-    }
+      const title = titleByProject[projectId]?.trim();
+      if (!title || title.length > 200) throw new Error("Indica un título de entre 1 y 200 caracteres.");
+      let attempt = attempts.current.get(projectId);
+      if (!attempt) {
+        attempt = { title, keys: { create: crypto.randomUUID(), provision: crypto.randomUUID(), session: crypto.randomUUID() } };
+        attempts.current.set(projectId, attempt);
+      }
+      const sessionId = await api.startChange(projectId, attempt.title, attempt.keys);
+      attempts.current.delete(projectId);
+      navigate({ name: "conversation", projectId, sessionId });
+    } catch (e) { setError(errorMessage(e)); }
+    finally { setPending(null); }
   }
-
-  async function openRescue(project: MobileProjectOverview) {
-    setLoadingProjectId(project.projectId);
-    setError("");
-    try {
-      const result = await api.resolveRescueSession(project.projectId);
-      navigate({ name: "rescue", projectId: project.projectId, rescueSessionId: result.view.session.id });
-    } catch (openError) {
-      setError(errorMessage(openError));
-    } finally {
-      setLoadingProjectId(null);
-    }
-  }
-
-  return (
-    <Page>
-      <Toolbar>
-        <div className="search">
-          <Search />
-          <input placeholder="Filtrar proyectos" value={query} onChange={(event) => setQuery(event.target.value)} />
-        </div>
-        <Segmented
-          value={filter}
-          options={[
-            ["all", "Todos"],
-            ["active", "Activos"],
-            ["attention", "Atención"]
-          ]}
-          onChange={(value) => setFilter(value as typeof filter)}
-        />
-        <Button onClick={load} disabled={loading} icon={<RefreshCw />}>{loading ? "Actualizando" : "Actualizar"}</Button>
-      </Toolbar>
-      {error && <InlineError>{error}</InlineError>}
-      <div className="project-grid">
-        {visible.map((project) => (
-          <article className="project-card" key={project.projectId}>
-            <div className="project-card__top">
-              <div>
-                <span className="eyebrow">Proyecto #{project.projectId}</span>
-                <h2>{project.projectName}</h2>
-              </div>
-              <StatusPill level={projectLevel(project)}>{projectLabel(project)}</StatusPill>
-            </div>
-            <p>{project.description || "Repositorio registrado en Atenea."}</p>
-            <div className="facts">
-              <Fact label="Base" value={project.defaultBaseBranch || "-"} />
-              <Fact label="Sesión" value={project.session ? `#${project.session.sessionId}` : "Sin sesión"} />
-              <Fact label="PR" value={project.session?.pullRequestStatus || "-"} />
-            </div>
-            {project.session ? (
-              <div className={`session-mini${project.session.recoveryPending ? " session-mini--recovery" : ""}`}>
-                <strong>{project.session.recoveryPending ? "Nueva sesión pendiente" : project.session.title}</strong>
-                <span>{project.session.recoveryPending
-                  ? "La sesión anterior ya está cerrada. Continúa la creación de su única sucesora vacía."
-                  : project.session.lastActivityAt ? formatRelative(project.session.lastActivityAt) : "Sin actividad reciente"}</span>
-              </div>
-            ) : (
-              <label className="field">
-                <span>Título de nueva sesión</span>
-                <input
-                  value={titleByProject[project.projectId] || ""}
-                  onChange={(event) => setTitleByProject({ ...titleByProject, [project.projectId]: event.target.value })}
-                  placeholder="Preparar siguiente cambio"
-                />
-              </label>
-            )}
-            <div className="button-row">
-              <Button
-                variant="primary"
-                disabled={loadingProjectId === project.projectId}
-                onClick={() => openSession(project)}
-              >
-                {project.session?.recoveryPending
-                  ? "Continuar recuperación"
-                  : project.session ? "Abrir sesión" : "Crear sesión"}
-              </Button>
-              {!project.session?.recoveryPending && (
-                <Button variant="ghost" disabled={loadingProjectId === project.projectId} onClick={() => openRescue(project)}>
-                  Rescate
-                </Button>
-              )}
-            </div>
-          </article>
-        ))}
+  return <Page>
+    <Toolbar><Button onClick={load} disabled={pending !== null} icon={<RefreshCw />}>Actualizar</Button></Toolbar>
+    {error && <InlineError>{error}</InlineError>}
+    <div className="project-grid">{projects.map(project => <article className="project-card" key={project.projectId}>
+      <h2>{project.projectName}</h2><p>{project.description}</p>
+      <label className="field"><span>Título del nuevo cambio</span>
+        <input value={titleByProject[project.projectId] || ""} disabled={pending !== null || attempts.current.has(project.projectId)}
+          onChange={e => setTitleByProject({ ...titleByProject, [project.projectId]: e.target.value })} />
+      </label>
+      <div className="button-row">
+        <Button variant="primary" disabled={pending !== null || !titleByProject[project.projectId]?.trim()} onClick={() => start(project.projectId)}>
+          {pending === project.projectId ? "Preparando cambio..." : attempts.current.has(project.projectId) ? "Continuar preparación" : "Nuevo cambio"}
+        </Button>
+        <Button onClick={() => navigate({ name: "changes", projectId: project.projectId })}>Ver cambios</Button>
       </div>
-    </Page>
-  );
+      {project.session && <div className="session-mini"><strong>{project.session.title}</strong>
+        <Button onClick={() => navigate({ name: "conversation", projectId: project.projectId, sessionId: project.session!.sessionId })}>Continuar</Button>
+      </div>}
+    </article>)}</div>
+  </Page>;
+}
+
+function ChangesScreen({ projectId }: { projectId: number }) {
+  const [changes, setChanges] = useState<MobileDevelopmentChange[]>([]);
+  const [history, setHistory] = useState(false);
+  const [error, setError] = useState("");
+  async function load() {
+    try { setChanges(await api.changes(projectId)); } catch (e) { setError(errorMessage(e)); }
+  }
+  useEffect(() => { load(); }, [projectId]);
+  const historical = (change: MobileDevelopmentChange) => ["COMPLETED", "ABANDONED"].includes(change.status);
+  return <Page><Toolbar>
+    <Button onClick={() => navigate({ name: "projects" })}>Proyectos</Button>
+    <Button onClick={() => setHistory(false)}>Activos ({changes.filter(c => !historical(c)).length})</Button>
+    <Button onClick={() => setHistory(true)}>Historial ({changes.filter(historical).length})</Button>
+    <Button onClick={load}>Actualizar</Button>
+  </Toolbar>{error && <InlineError>{error}</InlineError>}
+  {changes.filter(c => historical(c) === history).map(change => {
+    const sessionId = historical(change) ? change.completedSessionId ?? change.archivedSessionId : change.activeSessionId;
+    return <Panel key={change.changeKey}><h2>{change.title}</h2><p>{change.status}</p>
+      {sessionId && <Button onClick={() => navigate({ name: "conversation", projectId, sessionId })}>
+        {history ? "Ver conversación" : "Continuar"}
+      </Button>}
+    </Panel>;
+  })}</Page>;
 }
 
 function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projectId?: number }) {
@@ -743,7 +669,6 @@ function WorkSessionScreen({ sessionId, projectId }: { sessionId: number; projec
           <div className="button-grid">
             <Button disabled={!actions.canPublish} onClick={() => runAction("publica la pr")} icon={<GitBranch />}>Publicar PR</Button>
             <Button disabled={!actions.canSyncPullRequest} onClick={() => runAction("sincroniza la pull request")} icon={<RefreshCw />}>Sync PR</Button>
-            <Button disabled={!actions.canClose} onClick={() => runAction("cierra la sesión de trabajo")} icon={<Check />}>Cerrar</Button>
             <Button disabled={!actions.canGenerateDeliverables} onClick={() => runAction("genera el ticket de trabajo")} icon={<ClipboardCheck />}>Ticket</Button>
             <Button disabled={!actions.canGenerateDeliverables} onClick={() => runAction("genera el desglose de trabajo")} icon={<ClipboardCheck />}>Desglose</Button>
             <Button disabled={!actions.canGenerateDeliverables} onClick={() => runAction("genera el presupuesto")} icon={<BarChart3 />}>Pricing</Button>
@@ -1323,8 +1248,6 @@ function ConversationScreen({ sessionId, projectId }: { sessionId: number; proje
           retryOverride={operatorState?.surfaceEnabled
             ? operatorState.state === "CAPACITY_RELEASED"
               ? "Usa «Reintentar tarea» en el estado operativo"
-              : operatorState.state === "SOURCE_ADVANCED"
-                ? "El código cambió; empieza una sesión nueva desde el estado operativo"
               : "Reconciliar el cierre antes de reintentar"
             : null}
           onRecovery={requestRecovery}
@@ -1379,29 +1302,16 @@ function RemoteCloseOperatorPanel({
   onChanged: () => void | Promise<void>;
   dark?: boolean;
 }) {
-  const [plan, setPlan] = useState<LegacyRemoteClosePlan | null>(null);
   const [pending, setPending] = useState(false);
   const [requiresRefresh, setRequiresRefresh] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const planIdempotencyKey = useRef<string | null>(null);
-  const confirmationIdempotencyKey = useRef<string | null>(null);
-  const confirmationRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setPlan(null);
     setRequiresRefresh(false);
     setNotice("");
     setError("");
-    planIdempotencyKey.current = null;
-    confirmationIdempotencyKey.current = null;
   }, [currentWorkSessionId, state.targetWorkSessionId, state.state, refreshGeneration]);
-
-  useEffect(() => {
-    if (plan) {
-      confirmationRef.current?.scrollIntoView({ block: "nearest" });
-    }
-  }, [plan]);
 
   if (!state.surfaceEnabled) {
     return null;
@@ -1409,9 +1319,8 @@ function RemoteCloseOperatorPanel({
 
   const roleAllowed = operatorHasRole(state.requiredRole);
   const actionAvailable = state.primaryActionAvailable && roleAllowed &&
-    remoteCloseActionMatchesState(state) && !requiresRefresh;
-  const legacyConfirmationRequired = state.primaryAction === "RECONCILE_REMOTE_CLOSE"
-    && ["LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY", "REMOTE_CLOSE_BLOCKED"].includes(state.state);
+    remoteCloseActionMatchesState(state) && !requiresRefresh &&
+    (state.primaryAction !== "RECONCILE_REMOTE_CLOSE" || state.targetWorkSessionId === currentWorkSessionId);
   const level = remoteCloseStateLevel(state.state);
   const actionLabel = state.primaryActionLabel || remoteCloseFallbackActionLabel(state.primaryAction);
 
@@ -1437,106 +1346,19 @@ function RemoteCloseOperatorPanel({
         return;
       }
       if (state.primaryAction === "RECONCILE_REMOTE_CLOSE" && state.targetWorkSessionId) {
-        if (legacyConfirmationRequired) {
-          planIdempotencyKey.current ||= crypto.randomUUID();
-          const nextPlan = await api.createLegacyRemoteClosePlan(
-            state.targetWorkSessionId,
-            planIdempotencyKey.current
-          );
-          if (nextPlan.state !== "READY_FOR_CONFIRMATION"
-              || nextPlan.consumed
-              || nextPlan.workSessionId !== state.targetWorkSessionId) {
-            setRequiresRefresh(true);
-            planIdempotencyKey.current = null;
-            throw new Error("stale-plan");
-          }
-          setPlan(nextPlan);
-          return;
-        }
+        if (state.targetWorkSessionId !== currentWorkSessionId) return;
         await api.resumeWorkSessionClose(state.targetWorkSessionId);
         setNotice("Reconciliación solicitada. Se mantendrá la misma operación de cierre.");
         await onChanged();
       }
-      if (state.primaryAction === "START_FRESH_SESSION" && state.targetWorkSessionId) {
-        const storageKey = `atenea.fresh-session.${state.targetWorkSessionId}`;
-        let idempotencyKey = sessionStorage.getItem(storageKey);
-        if (!idempotencyKey) {
-          idempotencyKey = crypto.randomUUID();
-          sessionStorage.setItem(storageKey, idempotencyKey);
-        }
-        const result = await api.startFreshWorkSession(
-          state.targetWorkSessionId,
-          idempotencyKey
-        );
-        if (result.state !== "COMPLETED"
-            || result.sourceWorkSessionId !== state.targetWorkSessionId
-            || result.resultWorkSessionId !== result.view.session.id
-            || typeof result.view.session.projectId !== "number") {
-          throw new Error("invalid-fresh-session");
-        }
-        sessionStorage.removeItem(storageKey);
-        navigate({
-          name: "conversation",
-          projectId: result.view.session.projectId,
-          sessionId: result.resultWorkSessionId
-        });
-      }
     } catch (actionError) {
       if (actionError instanceof ApiError && actionError.status === 409) {
-        setPlan(null);
         setRequiresRefresh(true);
-        planIdempotencyKey.current = null;
-        confirmationIdempotencyKey.current = null;
       }
       setError(remoteCloseActionError(actionError));
     } finally {
       setPending(false);
     }
-  }
-
-  async function confirmLegacyReconciliation() {
-    if (!plan || !actionAvailable || pending || !state.targetWorkSessionId) {
-      return;
-    }
-    setPending(true);
-    setError("");
-    setNotice("");
-    try {
-      confirmationIdempotencyKey.current ||= crypto.randomUUID();
-      const operation = await api.confirmLegacyRemoteClose(
-        state.targetWorkSessionId,
-        plan,
-        confirmationIdempotencyKey.current
-      );
-      if (operation.state === "BLOCKED") {
-        setPlan(null);
-        setRequiresRefresh(true);
-        planIdempotencyKey.current = null;
-        confirmationIdempotencyKey.current = null;
-        throw new Error("blocked");
-      }
-      setPlan(null);
-      setNotice(operation.state === "RELEASED"
-        ? "Capacidad liberada. Ya puedes actualizar el estado antes de decidir si reintentas."
-        : "Reconciliación iniciada. Atenea confirmará la liberación sin repetir la operación.");
-      await onChanged();
-    } catch (actionError) {
-      if (actionError instanceof ApiError && actionError.status === 409) {
-        setPlan(null);
-        setRequiresRefresh(true);
-        planIdempotencyKey.current = null;
-        confirmationIdempotencyKey.current = null;
-      }
-      setError(remoteCloseActionError(actionError));
-    } finally {
-      setPending(false);
-    }
-  }
-
-  function cancelConfirmation() {
-    setPlan(null);
-    setError("");
-    confirmationIdempotencyKey.current = null;
   }
 
   return (
@@ -1558,12 +1380,9 @@ function RemoteCloseOperatorPanel({
         {state.state === "CAPACITY_RELEASED" && (
           <p>El reintento es una decisión explícita: no se ha vuelto a enviar ninguna instrucción.</p>
         )}
-        {state.state === "SOURCE_ADVANCED" && (
-          <p>Se conservarán esta sesión y su historial. La nueva sesión se abrirá vacía y no iniciará Codex hasta que escribas una instrucción nueva.</p>
-        )}
       </div>
       <div className="remote-close-state__action">
-        {!plan && state.primaryAction !== "NONE" && state.primaryAction !== "WAIT" && (
+        {state.primaryAction !== "NONE" && state.primaryAction !== "WAIT" && (
           <Button
             variant="primary"
             disabled={!actionAvailable || pending}
@@ -1574,26 +1393,6 @@ function RemoteCloseOperatorPanel({
         )}
         {state.primaryAction === "WAIT" && <strong>Esperando confirmación segura</strong>}
       </div>
-      {plan && (
-        <div
-          className="remote-close-confirmation"
-          ref={confirmationRef}
-          role="group"
-          aria-label="Confirmar reconciliación del cierre"
-        >
-          <strong>Objetivo: WorkSession {state.targetWorkSessionId}</strong>
-          <span>
-            Sesión abierta: WorkSession {currentWorkSessionId}. Solo se liberará el ownership remoto activo del objetivo; historial, Git, runs y adjuntos se conservan.
-          </span>
-          <small>Confirmación disponible hasta {formatAbsoluteDate(plan.expiresAt)}.</small>
-          <div className="button-row">
-            <Button variant="primary" disabled={pending} onClick={confirmLegacyReconciliation}>
-              {pending ? "Confirmando…" : `Confirmar WorkSession ${state.targetWorkSessionId}`}
-            </Button>
-            <Button variant="ghost" disabled={pending} onClick={cancelConfirmation}>Cancelar</Button>
-          </div>
-        </div>
-      )}
       {error && <span className="remote-close-state__error" role="alert">{error}</span>}
       {notice && <span className="remote-close-state__notice" role="status">{notice}</span>}
     </section>
@@ -1621,14 +1420,9 @@ function remoteCloseActionMatchesState(state: MobileSessionOperatorState) {
     return state.state === "CAPACITY_RELEASED" && Boolean(state.targetAgentRunId);
   }
   if (state.primaryAction === "RECONCILE_REMOTE_CLOSE") {
-    return ["CLOSING_REMOTE", "LEGACY_CLOSE_REQUIRED", "CLOSED_OWNER_BLOCKS_CAPACITY", "REMOTE_CLOSE_BLOCKED"].includes(state.state)
-      && Boolean(state.targetWorkSessionId);
+    return state.state === "CLOSING_REMOTE" && Boolean(state.targetWorkSessionId);
   }
-  if (state.primaryAction === "START_FRESH_SESSION") {
-    return state.state === "SOURCE_ADVANCED"
-      && Boolean(state.targetWorkSessionId)
-      && Boolean(state.targetAgentRunId);
-  }
+
   return false;
 }
 
@@ -1641,7 +1435,7 @@ function operatorRoleLabel(role: NonNullable<MobileSessionOperatorState["require
 }
 
 function remoteCloseStateLevel(state: MobileSessionOperatorState["state"]): Level {
-  if (["CAPACITY_RELEASED", "SOURCE_ADVANCED"].includes(state)) return "ok";
+  if (state === "CAPACITY_RELEASED") return "ok";
   if (["REMOTE_CLOSE_BLOCKED", "OWNERSHIP_REVIEW_REQUIRED"].includes(state)) return "critical";
   return "warning";
 }
@@ -1650,12 +1444,9 @@ function remoteCloseStateLabel(state: MobileSessionOperatorState["state"]) {
   return ({
     CLOSING_REMOTE: "EN CURSO",
     REMOTE_CLOSE_BLOCKED: "BLOQUEADO",
-    LEGACY_CLOSE_REQUIRED: "CONFIRMACIÓN",
     CLOSED_OWNER_BLOCKS_CAPACITY: "BLOQUEO",
     CLOSED_OWNER_RECONCILING: "EN CURSO",
     CAPACITY_RELEASED: "LISTA",
-    SOURCE_READINESS_PENDING: "COMPROBANDO",
-    SOURCE_ADVANCED: "CÓDIGO NUEVO",
     OWNERSHIP_REVIEW_REQUIRED: "REVISIÓN",
     DEFAULT: "LISTA",
     RUNNING: "EN CURSO",
@@ -1667,7 +1458,6 @@ function remoteCloseFallbackActionLabel(action: MobileSessionOperatorState["prim
   return ({
     RECONCILE_REMOTE_CLOSE: "Reconciliar cierre",
     RETRY_AGENT_RUN: "Reintentar tarea",
-    START_FRESH_SESSION: "Empezar desde código actual",
     CONTACT_PLATFORM_ADMINISTRATOR: "Contactar con administración",
     WAIT: "Esperar actualización",
     NONE: ""
@@ -1678,7 +1468,7 @@ function remoteCloseActionError(error: unknown) {
   if (error instanceof ApiError) {
     if (error.status === 403) return "No tienes el permiso requerido para esta acción.";
     if (error.status === 404) return "La sesión ya no está disponible. Actualiza antes de continuar.";
-    if (error.status === 409) return "El estado cambió o la confirmación caducó. Actualiza y genera una nueva confirmación.";
+    if (error.status === 409) return "El estado cambió. Actualiza antes de continuar.";
     if (error.status === 422) return "La reconciliación no cumple las condiciones seguras. Actualiza el estado.";
   }
   return "La acción no pudo confirmarse. El estado se conserva; actualiza antes de volver a intentarlo.";
@@ -3043,65 +2833,6 @@ function passkeyResetActionLabel(reset: WebAuthnControlledResetStatus) {
   }
 }
 
-function RescueScreen({ projectId, rescueSessionId }: { projectId: number; rescueSessionId?: number }) {
-  const [conversation, setConversation] = useState<MobileRescueConversation | null>(null);
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  async function load() {
-    setError("");
-    try {
-      if (rescueSessionId) {
-        setConversation(await api.rescueConversation(rescueSessionId));
-      } else {
-        const result = await api.resolveRescueSession(projectId);
-        setConversation(result.view);
-        navigate({ name: "rescue", projectId, rescueSessionId: result.view.session.id });
-      }
-    } catch (loadError) {
-      setError(errorMessage(loadError));
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, [projectId, rescueSessionId]);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!conversation || !message.trim()) {
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await api.createRescueTurn(conversation.session.id, message.trim());
-      setConversation(response.view);
-      setMessage("");
-    } catch (submitError) {
-      setError(errorMessage(submitError));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <ConversationLayout
-      title={conversation?.session.title || "Rescate operativo"}
-      subtitle={conversation?.session.projectName || "Canal de rescate"}
-      back={() => navigate({ name: "projects" })}
-      refresh={load}
-    >
-      {error && <InlineError>{error}</InlineError>}
-      <TurnList turns={conversation?.turns || []} />
-      <form className="conversation-composer" onSubmit={submit}>
-        <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Instrucción de rescate..." />
-        <Button variant="primary" disabled={loading || !message.trim()}>{loading ? "Enviando" : "Enviar"}</Button>
-      </form>
-    </ConversationLayout>
-  );
-}
-
 function CoreComposer({
   scope,
   projectId,
@@ -3513,8 +3244,8 @@ function readRoute(): Route {
   if (name === "conversation") {
     return { name, projectId: toNumber(parts[0]), sessionId: toNumber(parts[1]) };
   }
-  if (name === "rescue") {
-    return { name, projectId: toNumber(parts[0]), rescueSessionId: toNumber(parts[1]) };
+  if (name === "changes") {
+    return { name, projectId: toNumber(parts[0]) };
   }
   const known: RouteName[] = ["home", "projects", "health", "core", "operations", "files", "costs", "diagnostics", "codex-admin", "settings"];
   return { name: known.includes(name as RouteName) ? name as RouteName : "home" };
@@ -3525,12 +3256,7 @@ function navigate(route: Route) {
   if (route.name === "session" || route.name === "conversation") {
     next += `/${route.projectId || 0}/${route.sessionId || 0}`;
   }
-  if (route.name === "rescue") {
-    next += `/${route.projectId || 0}`;
-    if (route.rescueSessionId) {
-      next += `/${route.rescueSessionId}`;
-    }
-  }
+  if (route.name === "changes") next += `/${route.projectId || 0}`;
   window.location.hash = next;
 }
 
@@ -3546,9 +3272,9 @@ function routeTitle(route: Route) {
     diagnostics: "Diagnóstico",
     "codex-admin": "Versiones Codex",
     settings: "Ajustes",
-    session: "WorkSession",
+    session: "Cambio",
     conversation: "Conversación",
-    rescue: "Rescate"
+    changes: "Cambios"
   };
   return titles[route.name];
 }

@@ -51,8 +51,7 @@ internal fun WorkSessionConversationScreen(
     projectId: Long?,
     sessionId: Long?,
     onOpenCore: () -> Unit,
-    onBackToSession: () -> Unit,
-    onFreshSession: (Long) -> Unit
+    onBackToSession: () -> Unit
 ) {
     val context = LocalContext.current
     val historyUriHandler = LocalUriHandler.current
@@ -655,12 +654,6 @@ internal fun WorkSessionConversationScreen(
         val coordinator = remoteCloseCoordinator ?: return
         scope.launch {
             if (coordinator.runPrimaryAction(currentState)) {
-                val freshSessionId = coordinator.state.value.freshSessionId
-                if (freshSessionId != null) {
-                    onFreshSession(freshSessionId)
-                } else {
-                    refresh(silent = true, includeProfile = false)
-                }
             }
         }
     }
@@ -696,16 +689,6 @@ internal fun WorkSessionConversationScreen(
                 error = validationError.message ?: "No se pudo validar el cambio."
             } finally {
                 validationPending = false
-            }
-        }
-    }
-
-    fun confirmLegacyRemoteClose() {
-        val currentState = operatorState ?: return
-        val coordinator = remoteCloseCoordinator ?: return
-        scope.launch {
-            if (coordinator.confirmLegacyReconciliation(currentState)) {
-                refresh(silent = true, includeProfile = false)
             }
         }
     }
@@ -763,11 +746,8 @@ internal fun WorkSessionConversationScreen(
                     RemoteCloseOperatorPanel(
                         serverState = currentState,
                         actionState = remoteCloseActionState,
-                        currentWorkSessionId = sessionId,
                         operatorRole = apiClient.currentOperatorRole(),
                         onPrimaryAction = ::runRemoteClosePrimaryAction,
-                        onConfirm = ::confirmLegacyRemoteClose,
-                        onCancel = { remoteCloseCoordinator?.cancelConfirmation() },
                         dark = true
                     )
                 }

@@ -2,6 +2,8 @@ package com.atenea.codexoperations;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.api.worksession.SessionTurnResponse;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
@@ -32,6 +34,8 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest(properties = "atenea.codex-session-operations.profiles-enabled=true")
 @Transactional
 class CodexFutureProfileHistoryIntegrationTest {
+
+    @Autowired private DevelopmentChangeRepository fixtureChangeRepository;
 
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private ProjectRepository projectRepository;
@@ -68,7 +72,7 @@ class CodexFutureProfileHistoryIntegrationTest {
         session.setPullRequestStatus(WorkSessionPullRequestStatus.NOT_CREATED);
         session.setOpenedAt(now); session.setLastActivityAt(now);
         session.setCreatedAt(now); session.setUpdatedAt(now);
-        session = sessionRepository.save(session);
+        session = sessionRepository.save(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
 
         SessionTurnEntity firstTurn = turn(session, "First", now);
         AgentRunEntity firstRun = run(session, firstTurn, workerId, now);
@@ -77,7 +81,7 @@ class CodexFutureProfileHistoryIntegrationTest {
 
         session.setDefaultCodexReasoningEffort(CodexReasoningEffort.HIGH);
         session.setUpdatedAt(now.plusSeconds(1));
-        sessionRepository.saveAndFlush(session);
+        sessionRepository.saveAndFlush(ChangeOwnedSessionFixtures.bind(session, fixtureChangeRepository));
 
         SessionTurnEntity secondTurn = turn(session, "Second", now.plusSeconds(2));
         AgentRunEntity secondRun = run(session, secondTurn, workerId, now.plusSeconds(2));

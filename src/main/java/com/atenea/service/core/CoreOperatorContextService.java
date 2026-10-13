@@ -90,21 +90,19 @@ public class CoreOperatorContextService {
                 });
 
         Long projectId = switch (intent.capability()) {
-            case "activate_project_context", "get_project_overview", "create_work_session",
+            case "activate_project_context", "get_project_overview",
                     "refresh_project_database" ->
                     longParameter(intent, "projectId");
             case "continue_work_session", "publish_work_session", "sync_work_session_pull_request",
                     "get_session_summary", "get_latest_session_response",
                     "get_session_deliverables", "generate_session_deliverable",
-                    "run_project_verification", "close_work_session" -> resolveProjectIdFromSession(
+                    "run_project_verification" -> resolveProjectIdFromSession(
                     longParameter(intent, "workSessionId"),
                     longParameter(intent, "projectId"));
             default -> context.getActiveProjectId();
         };
 
         Long workSessionId = switch (intent.capability()) {
-            case "create_work_session" -> result.targetId();
-            case "close_work_session" -> null;
             case "continue_work_session", "publish_work_session", "sync_work_session_pull_request",
                     "get_session_summary", "get_latest_session_response",
                     "get_session_deliverables", "generate_session_deliverable",

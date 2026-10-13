@@ -9,10 +9,7 @@ import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.MarkPriceEstimateBilledRequest;
 import com.atenea.api.worksession.PublishWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.PublishWorkSessionRequest;
-import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
-import com.atenea.api.worksession.ResolveWorkSessionRequest;
 import com.atenea.api.worksession.SessionDeliverableResponse;
-import com.atenea.api.worksession.SessionDeliverableSummaryResponse;
 import com.atenea.api.worksession.SessionDeliverablesViewResponse;
 import com.atenea.api.worksession.SyncWorkSessionPullRequestConversationViewResponse;
 import com.atenea.api.worksession.WorkSessionConversationViewResponse;
@@ -20,7 +17,6 @@ import com.atenea.api.worksession.WorkSessionViewResponse;
 import com.atenea.persistence.core.CoreDomain;
 import com.atenea.persistence.core.CoreResultType;
 import com.atenea.persistence.core.CoreTargetType;
-import com.atenea.persistence.worksession.SessionDeliverableStatus;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.service.database.ProjectDatabaseRefreshResponse;
 import com.atenea.service.database.ProjectDatabaseRefreshService;
@@ -34,7 +30,6 @@ import com.atenea.service.worksession.SessionTurnService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.atenea.service.worksession.WorkSessionService;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,7 +87,6 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
             case "list_projects_overview" -> listProjectsOverview();
             case "get_project_overview" -> getProjectOverview(intent.parameters());
             case "activate_project_context" -> activateProjectContext(intent.parameters(), context);
-            case "create_work_session" -> createWorkSession(intent.parameters());
             case "continue_work_session" -> continueWorkSession(intent.parameters());
             case "publish_work_session" -> publishWorkSession(intent.parameters());
             case "sync_work_session_pull_request" -> syncWorkSessionPullRequest(intent.parameters());
@@ -104,7 +98,6 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
             case "generate_session_deliverable" -> generateSessionDeliverable(intent.parameters());
             case "approve_session_deliverable" -> approveSessionDeliverable(intent.parameters());
             case "mark_price_estimate_billed" -> markPriceEstimateBilled(intent.parameters());
-            case "close_work_session" -> closeWorkSession(intent.parameters());
             default -> throw new CoreCapabilityDisabledException(
                     "Development capability is not supported by the current Core handler: " + intent.capability());
         };
@@ -314,28 +307,6 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
                 "Activated project context for project " + projectId,
                 message,
                 message);
-    }
-
-    private CoreCommandExecutionResult createWorkSession(Map<String, Object> parameters) {
-        Long projectId = requireLong(parameters, "projectId");
-        String title = requireText(parameters, "title");
-        ResolveWorkSessionConversationViewResponse response = workSessionService.resolveSessionConversationView(
-                projectId,
-                new ResolveWorkSessionRequest(title, null));
-        Long sessionId = response.view().view().session().id();
-        String operatorMessage = response.created()
-                ? "He creado una WorkSession y la conversación ya está lista."
-                : "He reutilizado la WorkSession existente y la conversación ya está lista.";
-        return new CoreCommandExecutionResult(
-                CoreResultType.WORK_SESSION_CONVERSATION_VIEW,
-                CoreTargetType.WORK_SESSION,
-                sessionId,
-                response,
-                "Resolved WorkSession conversation view for project " + projectId,
-                operatorMessage,
-                response.created()
-                        ? "He creado una sesión de trabajo y la conversación ya está lista."
-                        : "He reutilizado la sesión de trabajo existente y la conversación ya está lista.");
     }
 
     private CoreCommandExecutionResult continueWorkSession(Map<String, Object> parameters) {
@@ -753,72 +724,6 @@ public class DevelopmentCoreDomainHandler implements CoreDomainHandler {
                 "Marked deliverable " + deliverableId + " as billed for WorkSession " + sessionId,
                 "He marcado correctamente el presupuesto aprobado como facturado.",
                 "He marcado correctamente el presupuesto aprobado como facturado.");
-    }
-
-    private CoreCommandExecutionResult closeWorkSession(Map<String, Object> parameters) {
-        Long sessionId = requireLong(parameters, "workSessionId");
-        workSessionService.requireLegacyClose(sessionId);
-        boolean forceClosePendingDeliverables = Boolean.TRUE.equals(parameters.get("forceClosePendingDeliverables"));
-        List<SessionDeliverableType> generatedTypes = List.of();
-        if (!forceClosePendingDeliverables) {
-            generatedTypes = generatePendingCoreDeliverables(sessionId);
-        }
-        var response = workSessionService.closeSessionConversationView(sessionId);
-        return new CoreCommandExecutionResult(
-                CoreResultType.WORK_SESSION_CONVERSATION_VIEW,
-                CoreTargetType.WORK_SESSION,
-                sessionId,
-                response,
-                generatedTypes.isEmpty()
-                        ? "Closed WorkSession " + sessionId + " and returned the updated conversation view"
-                        : "Generated pending deliverables and closed WorkSession " + sessionId,
-                generatedTypes.isEmpty()
-                        ? "He cerrado la WorkSession correctamente."
-                        : "He generado los entregables pendientes y he cerrado la WorkSession correctamente.",
-                generatedTypes.isEmpty()
-                        ? "He cerrado la sesión de trabajo correctamente."
-                        : "He generado los entregables pendientes y he cerrado la sesión de trabajo correctamente.");
-    }
-
-    private List<SessionDeliverableType> generatePendingCoreDeliverables(Long sessionId) {
-        SessionDeliverablesViewResponse deliverablesView = sessionDeliverableService.getDeliverablesView(sessionId);
-        List<SessionDeliverableType> pendingTypes = pendingCoreDeliverableTypes(deliverablesView);
-        List<SessionDeliverableType> generatedTypes = new ArrayList<>();
-        for (SessionDeliverableType type : pendingTypes) {
-            SessionDeliverableResponse response = sessionDeliverableGenerationService.generateDeliverable(sessionId, type);
-            if (response.status() != SessionDeliverableStatus.SUCCEEDED) {
-                throw new CoreCloseWorkSessionRejectedException(
-                        "No se pudo generar correctamente "
-                                + humanizeDeliverableType(type)
-                                + " antes del cierre. La sesión sigue abierta.");
-            }
-            generatedTypes.add(type);
-        }
-        return generatedTypes;
-    }
-
-    private List<SessionDeliverableType> pendingCoreDeliverableTypes(SessionDeliverablesViewResponse deliverablesView) {
-        Map<SessionDeliverableType, SessionDeliverableSummaryResponse> latestByType = new LinkedHashMap<>();
-        if (deliverablesView.deliverables() != null) {
-            for (SessionDeliverableSummaryResponse deliverable : deliverablesView.deliverables()) {
-                latestByType.putIfAbsent(deliverable.type(), deliverable);
-            }
-        }
-
-        return EnumSet.allOf(SessionDeliverableType.class).stream()
-                .filter(type -> {
-                    SessionDeliverableSummaryResponse deliverable = latestByType.get(type);
-                    return deliverable == null || deliverable.status() != SessionDeliverableStatus.SUCCEEDED;
-                })
-                .toList();
-    }
-
-    private String humanizeDeliverableType(SessionDeliverableType type) {
-        return switch (type) {
-            case WORK_TICKET -> "el ticket de trabajo";
-            case WORK_BREAKDOWN -> "el desglose de trabajo";
-            case PRICE_ESTIMATE -> "el presupuesto";
-        };
     }
 
     private Long requireLong(Map<String, Object> parameters, String key) {

@@ -78,7 +78,7 @@ public class DeliveryStore {
             throw new DeliveryRejectedException("COMPLETION_WORK_IN_PROGRESS");
         }
     }
-    /** The legacy close/reconciler may only consume the already-authorized completion. */
+    /** Closing/reconciling a change consumes its already-authorized completion. */
     public void requireCompletionClose(com.atenea.persistence.worksession.WorkSessionEntity session) {
         DeliveryOperation operation = completion(session.getId())
                 .orElseThrow(() -> new DeliveryRejectedException("DELIVERED_CHANGE_COMPLETION_REQUIRED"));

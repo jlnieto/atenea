@@ -269,6 +269,7 @@ class DevelopmentChangeTwoChangeIsolationIntegrationTest {
         Instant now = Instant.now();
         WorkSessionEntity session = new WorkSessionEntity();
         session.setProject(project);
+        session.setDevelopmentChange(change);
         session.setStatus(WorkSessionStatus.OPEN);
         session.setTitle("Synthetic isolated session");
         session.setBaseBranch(ProjectCodexIdentity.BRANCH);

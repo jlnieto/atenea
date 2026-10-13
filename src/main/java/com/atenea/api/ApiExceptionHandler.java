@@ -25,10 +25,6 @@ import com.atenea.service.project.ProjectRepoPathMissingGitDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotDirectoryException;
 import com.atenea.service.project.ProjectRepoPathNotFoundException;
 import com.atenea.service.project.ProjectRepoPathOutsideWorkspaceException;
-import com.atenea.service.rescue.RescueSessionAlreadyRunningException;
-import com.atenea.service.rescue.RescueSessionClosedException;
-import com.atenea.service.rescue.RescueSessionExecutionFailedException;
-import com.atenea.service.rescue.RescueSessionNotFoundException;
 import com.atenea.service.operations.OperationsHostNotFoundException;
 import com.atenea.service.operations.OperationsIncidentNotFoundException;
 import com.atenea.service.operations.OperationsRemoteExecutionException;
@@ -44,7 +40,6 @@ import com.atenea.service.worksession.AttachmentLimitException;
 import com.atenea.service.worksession.AttachmentNotFoundException;
 import com.atenea.service.worksession.AttachmentOwnershipException;
 import com.atenea.service.worksession.ApprovedPriceEstimateNotFoundException;
-import com.atenea.service.worksession.OpenWorkSessionAlreadyExistsException;
 import com.atenea.service.worksession.PreviewConflictException;
 import com.atenea.service.worksession.PreviewNotFoundException;
 import com.atenea.service.worksession.PreviewOwnershipException;
@@ -216,12 +211,6 @@ public class ApiExceptionHandler {
                 .body(new ApiErrorResponse(exception.getMessage(), List.of(exception.getCode())));
     }
 
-    @ExceptionHandler(RescueSessionNotFoundException.class)
-    public ResponseEntity<ApiErrorResponse> handleRescueSessionNotFound(RescueSessionNotFoundException exception) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
-    }
-
     @ExceptionHandler(CoreCommandNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleCoreCommandNotFound(CoreCommandNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -260,13 +249,6 @@ public class ApiExceptionHandler {
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));
     }
 
-    @ExceptionHandler(OpenWorkSessionAlreadyExistsException.class)
-    public ResponseEntity<ApiErrorResponse> handleOpenWorkSessionAlreadyExists(
-            OpenWorkSessionAlreadyExistsException exception
-    ) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
-    }
 
     @ExceptionHandler(WorkSessionOperationBlockedException.class)
     public ResponseEntity<ApiErrorResponse> handleWorkSessionOperationBlocked(
@@ -293,8 +275,6 @@ public class ApiExceptionHandler {
     @ExceptionHandler({
             WorkSessionNotOpenException.class,
             WorkSessionAlreadyRunningException.class,
-            RescueSessionAlreadyRunningException.class,
-            RescueSessionClosedException.class,
             AgentRunAlreadyRunningException.class,
             AgentRunTransitionNotAllowedException.class,
             WorkSessionPublishConflictException.class
@@ -307,14 +287,6 @@ public class ApiExceptionHandler {
     @ExceptionHandler(WorkSessionTurnExecutionFailedException.class)
     public ResponseEntity<ApiErrorResponse> handleWorkSessionTurnExecutionFailed(
             WorkSessionTurnExecutionFailedException exception
-    ) {
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(new ApiErrorResponse(exception.getMessage(), List.of()));
-    }
-
-    @ExceptionHandler(RescueSessionExecutionFailedException.class)
-    public ResponseEntity<ApiErrorResponse> handleRescueSessionExecutionFailed(
-            RescueSessionExecutionFailedException exception
     ) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ApiErrorResponse(exception.getMessage(), List.of()));

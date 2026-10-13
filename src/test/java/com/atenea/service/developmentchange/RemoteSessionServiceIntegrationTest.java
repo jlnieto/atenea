@@ -155,9 +155,7 @@ class RemoteSessionServiceIntegrationTest {
         assertEquals(exact.getId(), resolved.sessionId());
         assertEquals(initialSessions + 1, workSessionRepository.count());
 
-        exact.setDevelopmentChange(null);
-        workSessionRepository.saveAndFlush(exact);
-        change = changeRepository.findById(change.getId()).orElseThrow();
+        change = change(project, DevelopmentChangeStatus.PAUSED, DevelopmentChangeWorkspaceState.READY);
         RemoteSessionRejectedException pausedWithoutExact = assertThrows(
                 RemoteSessionRejectedException.class,
                 () -> service.openOrResolve(
@@ -332,7 +330,7 @@ class RemoteSessionServiceIntegrationTest {
         assertNotNull(blocked.getReceiptSha256());
         WorkSessionEntity preserved = workSessionRepository.findById(foreignId).orElseThrow();
         assertEquals(foreignRemoteId, preserved.getRemoteSessionId());
-        assertNull(preserved.getDevelopmentChange());
+        assertNotEquals(change.getId(), preserved.getDevelopmentChange().getId());
         assertNotEquals(WorkSessionStatus.CLOSED, preserved.getStatus());
     }
 
@@ -421,7 +419,8 @@ class RemoteSessionServiceIntegrationTest {
         Instant now = Instant.now();
         WorkSessionEntity session = new WorkSessionEntity();
         session.setProject(owner);
-        session.setDevelopmentChange(linked ? target : null);
+        session.setDevelopmentChange(linked ? target : change(owner,
+                DevelopmentChangeStatus.OPEN, DevelopmentChangeWorkspaceState.READY));
         session.setStatus(WorkSessionStatus.OPEN);
         session.setTitle("Synthetic exact remote session");
         session.setBaseBranch("main");

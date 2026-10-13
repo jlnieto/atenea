@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 @Configuration
-@EnableConfigurationProperties({CodexAppServerProperties.class, RescueCodexAppServerProperties.class})
+@EnableConfigurationProperties(CodexAppServerProperties.class)
 public class CodexAppServerConfiguration {
 
     @Bean
@@ -21,11 +21,4 @@ public class CodexAppServerConfiguration {
         return new CodexAppServerClient(objectMapper, properties);
     }
 
-    @Bean
-    CodexAppServerClient rescueCodexAppServerClient(
-            ObjectMapper objectMapper,
-            RescueCodexAppServerProperties properties
-    ) {
-        return new CodexAppServerClient(objectMapper, properties.toCodexAppServerProperties());
-    }
 }

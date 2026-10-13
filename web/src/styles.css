@@ -1205,21 +1205,6 @@ select:focus {
   justify-content: center;
 }
 
-.remote-close-confirmation {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 5px;
-  padding-top: 13px;
-  border-top: 1px solid var(--border);
-  scroll-margin-bottom: 128px;
-}
-
-.remote-close-confirmation span,
-.remote-close-confirmation small {
-  color: var(--muted);
-  line-height: 19px;
-}
-
 .remote-close-state__error,
 .remote-close-state__notice {
   grid-column: 1 / -1;
@@ -1242,18 +1227,12 @@ select:focus {
   box-shadow: none;
 }
 
-.remote-close-state--dark .remote-close-state__copy p,
-.remote-close-state--dark .remote-close-confirmation span,
-.remote-close-state--dark .remote-close-confirmation small {
+.remote-close-state--dark .remote-close-state__copy p {
   color: #b8c2c4;
 }
 
 .remote-close-state--dark .remote-close-state__copy .remote-close-state__role {
   color: #f0c27b;
-}
-
-.remote-close-state--dark .remote-close-confirmation {
-  border-top-color: #303638;
 }
 
 .run-progress {
@@ -1911,13 +1890,8 @@ select:focus {
     text-align: left;
   }
 
-  .remote-close-state__action .button,
-  .remote-close-confirmation .button {
+  .remote-close-state__action .button {
     width: 100%;
-  }
-
-  .remote-close-confirmation {
-    scroll-margin-bottom: 184px;
   }
 
   .codex-admin-step {

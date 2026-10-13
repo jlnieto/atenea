@@ -2,12 +2,6 @@ package com.atenea.api.mobile;
 
 import com.atenea.api.billing.BillingQueueResponse;
 import com.atenea.api.billing.BillingQueueSummaryResponse;
-import com.atenea.api.rescue.CloseRescueSessionResponse;
-import com.atenea.api.rescue.CreateRescueTurnRequest;
-import com.atenea.api.rescue.CreateRescueTurnResponse;
-import com.atenea.api.rescue.ResolveRescueSessionRequest;
-import com.atenea.api.rescue.ResolveRescueSessionResponse;
-import com.atenea.api.rescue.RescueSessionConversationViewResponse;
 import com.atenea.api.operations.ManagedHostResponse;
 import com.atenea.api.operations.OperationsHostStatusResponse;
 import com.atenea.api.operations.OperationsIncidentListResponse;
@@ -18,8 +12,6 @@ import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.MarkPriceEstimateBilledRequest;
 import com.atenea.api.worksession.PublishWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.PublishWorkSessionRequest;
-import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
-import com.atenea.api.worksession.ResolveWorkSessionRequest;
 import com.atenea.api.worksession.SessionDeliverableResponse;
 import com.atenea.api.worksession.SessionDeliverablesViewResponse;
 import com.atenea.api.worksession.SyncWorkSessionPullRequestConversationViewResponse;
@@ -33,9 +25,7 @@ import com.atenea.service.mobile.MobileSessionReadStateService;
 import com.atenea.service.mobile.MobileSessionEventService;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.mobile.MobileStreamService;
-import com.atenea.service.mobile.FreshWorkSessionService;
 import com.atenea.service.operations.OperationsService;
-import com.atenea.service.rescue.RescueSessionService;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
 import com.atenea.service.worksession.SessionDeliverableService;
 import com.atenea.service.worksession.SessionTurnService;
@@ -72,9 +62,7 @@ public class MobileController {
     private final SessionDeliverableService sessionDeliverableService;
     private final SessionDeliverableGenerationService sessionDeliverableGenerationService;
     private final BillingQueueService billingQueueService;
-    private final RescueSessionService rescueSessionService;
     private final OperationsService operationsService;
-    private final FreshWorkSessionService freshWorkSessionService;
 
     public MobileController(
             MobileProjectOverviewService mobileProjectOverviewService,
@@ -89,9 +77,7 @@ public class MobileController {
             SessionDeliverableService sessionDeliverableService,
             SessionDeliverableGenerationService sessionDeliverableGenerationService,
             BillingQueueService billingQueueService,
-            RescueSessionService rescueSessionService,
-            OperationsService operationsService,
-            FreshWorkSessionService freshWorkSessionService
+            OperationsService operationsService
     ) {
         this.mobileProjectOverviewService = mobileProjectOverviewService;
         this.mobileInboxService = mobileInboxService;
@@ -105,9 +91,7 @@ public class MobileController {
         this.sessionDeliverableService = sessionDeliverableService;
         this.sessionDeliverableGenerationService = sessionDeliverableGenerationService;
         this.billingQueueService = billingQueueService;
-        this.rescueSessionService = rescueSessionService;
         this.operationsService = operationsService;
-        this.freshWorkSessionService = freshWorkSessionService;
     }
 
     @GetMapping("/projects/overview")
@@ -172,50 +156,6 @@ public class MobileController {
     @GetMapping("/sessions/{sessionId}/events/stream")
     public SseEmitter streamSessionEvents(@PathVariable Long sessionId) {
         return mobileStreamService.streamSessionEvents(sessionId);
-    }
-
-    @PostMapping("/projects/{projectId}/sessions/resolve")
-    public ResolveWorkSessionConversationViewResponse resolveSession(
-            @PathVariable Long projectId,
-            @Valid @RequestBody(required = false) ResolveWorkSessionRequest request
-    ) {
-        return workSessionService.resolveSessionConversationView(projectId, request);
-    }
-
-    @PostMapping("/sessions/{sessionId}/start-fresh")
-    public StartFreshWorkSessionResponse startFreshSession(
-            @AuthenticationPrincipal AuthenticatedOperator operator,
-            @PathVariable Long sessionId,
-            @Valid @RequestBody StartFreshWorkSessionRequest request
-    ) {
-        return freshWorkSessionService.start(operator, sessionId, request);
-    }
-
-    @PostMapping("/projects/{projectId}/rescue-sessions/resolve")
-    public ResolveRescueSessionResponse resolveRescueSession(
-            @PathVariable Long projectId,
-            @Valid @RequestBody(required = false) ResolveRescueSessionRequest request
-    ) {
-        return rescueSessionService.resolveSession(projectId, request);
-    }
-
-    @GetMapping("/rescue-sessions/{rescueSessionId}/conversation")
-    public RescueSessionConversationViewResponse getRescueSessionConversation(@PathVariable Long rescueSessionId) {
-        return rescueSessionService.getConversation(rescueSessionId);
-    }
-
-    @PostMapping("/rescue-sessions/{rescueSessionId}/turns")
-    @ResponseStatus(HttpStatus.CREATED)
-    public CreateRescueTurnResponse createRescueTurn(
-            @PathVariable Long rescueSessionId,
-            @Valid @RequestBody CreateRescueTurnRequest request
-    ) {
-        return rescueSessionService.createTurn(rescueSessionId, request);
-    }
-
-    @PostMapping("/rescue-sessions/{rescueSessionId}/close")
-    public CloseRescueSessionResponse closeRescueSession(@PathVariable Long rescueSessionId) {
-        return rescueSessionService.closeSession(rescueSessionId);
     }
 
     @GetMapping("/sessions/{sessionId}/conversation")

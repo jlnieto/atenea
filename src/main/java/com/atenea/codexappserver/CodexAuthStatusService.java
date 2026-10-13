@@ -15,39 +15,27 @@ public class CodexAuthStatusService {
 
     private final ObjectMapper objectMapper;
     private final CodexAppServerProperties primaryProperties;
-    private final RescueCodexAppServerProperties rescueProperties;
 
     public CodexAuthStatusService(
             ObjectMapper objectMapper,
             @Qualifier("atenea.codex-app-server-com.atenea.codexappserver.CodexAppServerProperties")
-            CodexAppServerProperties primaryProperties,
-            RescueCodexAppServerProperties rescueProperties
+            CodexAppServerProperties primaryProperties
     ) {
         this.objectMapper = objectMapper;
         this.primaryProperties = primaryProperties;
-        this.rescueProperties = rescueProperties;
     }
 
     public List<MobileCodexAuthStatusResponse> getStatuses() {
         return List.of(
-                readStatus("primary", primaryProperties.getAuthStatusFile(), primaryProperties.getAuthFile(), primaryProperties.getRequiredAuthMode()),
-                readStatus("rescue", rescueProperties.getAuthStatusFile(), rescueProperties.getAuthFile(), rescueProperties.getRequiredAuthMode()));
+                readStatus("primary", primaryProperties.getAuthStatusFile(), primaryProperties.getAuthFile(), primaryProperties.getRequiredAuthMode()));
     }
 
     public MobileCodexAuthStatusResponse getPrimaryStatus() {
         return readStatus("primary", primaryProperties.getAuthStatusFile(), primaryProperties.getAuthFile(), primaryProperties.getRequiredAuthMode());
     }
 
-    public MobileCodexAuthStatusResponse getRescueStatus() {
-        return readStatus("rescue", rescueProperties.getAuthStatusFile(), rescueProperties.getAuthFile(), rescueProperties.getRequiredAuthMode());
-    }
-
     public void ensurePrimaryCompliant() {
         ensureCompliant(getPrimaryStatus(), "Codex App Server");
-    }
-
-    public void ensureRescueCompliant() {
-        ensureCompliant(getRescueStatus(), "Codex Rescue App Server");
     }
 
     private void ensureCompliant(MobileCodexAuthStatusResponse status, String label) {

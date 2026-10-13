@@ -340,35 +340,71 @@ public class AgentRunService {
                 || !blocker.getRemoteCloseReceiptSha256().matches("^[0-9a-f]{64}$")
                 || blocker.getRemoteCloseReleasedAt() == null
                 || !source.getSelectedWorkerId().equals(blocker.getSelectedWorkerId())
-                || !ProjectCodexIdentity.hasCanonicalSourceObservation(blocker)) {
+                || !ProjectCodexIdentity.matches(blocker)
+                || blocker.getDevelopmentChange() == null
+                || blocker.getDevelopmentChange().getProject() == null
+                || !java.util.Objects.equals(blocker.getProject().getId(),
+                    blocker.getDevelopmentChange().getProject().getId())) {
             return false;
         }
         String remoteId = blocker.getRemoteSessionId() == null
                 ? null : blocker.getRemoteSessionId().toString();
-        boolean exactOwnership = remoteId != null
+        var change = blocker.getDevelopmentChange();
+        String identity = "remote:" + blocker.getSelectedWorkerId() + ":change:" + change.getChangeKey();
+        String branch = "atenea/change-" + change.getChangeKey();
+        boolean exactOwnership = remoteId != null && change.getChangeKey() != null
                 && !blocker.getRemoteSessionId().equals(source.getRemoteSessionId())
-                && ("remote:" + blocker.getSelectedWorkerId()
-                    + ":work-session:" + remoteId).equals(blocker.getWorkspaceIdentity());
-        if (!exactOwnership) {
-            return false;
-        }
+                && identity.equals(blocker.getWorkspaceIdentity())
+                && identity.equals(change.getWorkspaceIdentity())
+                && branch.equals(blocker.getWorkspaceBranch())
+                && branch.equals(change.getWorkspaceBranch())
+                && blocker.getSelectedWorkerId().equals(change.getSelectedWorkerId());
+        if (!exactOwnership) return false;
         return Boolean.TRUE.equals(jdbcTemplate.queryForObject("""
+                WITH binding AS (
+                    SELECT ws.*, dc.change_key, dc.status AS change_status
+                    FROM work_session ws JOIN development_change dc
+                      ON dc.id=ws.development_change_id AND dc.project_id=ws.project_id
+                    WHERE ws.id=? AND ws.remote_close_operation_id=? AND ws.remote_close_receipt_sha256=?
+                      AND ws.status='CLOSED' AND ws.remote_close_state='RELEASED'
+                      AND ws.remote_close_released_at IS NOT NULL AND ws.remote_close_revision>=6
+                )
                 SELECT EXISTS (
-                    SELECT 1
-                      FROM remote_close_legacy_operation
-                     WHERE operation_id = ?
-                       AND work_session_id = ?
-                       AND state = 'RELEASED'
-                       AND receipt_sha256 = ?
-                       AND released_at IS NOT NULL)
-                """, Boolean.class, blocker.getRemoteCloseOperationId(), blocker.getId(),
+                    SELECT 1 FROM binding b JOIN mobile_delivery_operation op ON op.session_id=b.id
+                    WHERE b.change_status='COMPLETED' AND op.kind='FINALIZE' AND op.target='APP_PROD'
+                      AND op.state='SUCCEEDED' AND op.finished_at IS NOT NULL
+                      AND op.evidence_json->>'remoteCloseOperationId'=b.remote_close_operation_id::text
+                      AND op.evidence_json->>'remoteCloseReceiptSha256'=b.remote_close_receipt_sha256
+                      AND op.evidence_json->'completion'->>'changeKey'=b.change_key::text
+                      AND op.evidence_json->'completion'->>'sessionId'=b.id::text
+                      AND op.evidence_json->'completion'->>'projectId'=b.project_id::text
+                      AND op.evidence_json->'completion'->>'workerId'=b.selected_worker_id
+                      AND op.evidence_json->'completion'->>'remoteSessionId'=b.remote_session_id::text
+                      AND op.evidence_json->'completion'->>'workspaceIdentity'=b.workspace_identity
+                      AND op.evidence_json->'completion'->>'workspaceBranch'=b.workspace_branch
+                    UNION ALL
+                    SELECT 1 FROM binding b JOIN work_session_retirement r ON r.session_id=b.id
+                    WHERE b.change_status='ABANDONED' AND r.state='SUCCEEDED' AND r.finished_at IS NOT NULL
+                      AND r.operation_id=b.remote_close_operation_id
+                      AND r.evidence_json->>'remoteCloseOperationId'=b.remote_close_operation_id::text
+                      AND r.evidence_json->>'receiptSha256'=b.remote_close_receipt_sha256
+                      AND r.owner_json->>'changeKey'=b.change_key::text
+                      AND r.owner_json->>'sessionId'=b.id::text AND r.owner_json->>'projectId'=b.project_id::text
+                      AND r.owner_json->>'workerId'=b.selected_worker_id
+                      AND r.owner_json->>'remoteSessionId'=b.remote_session_id::text
+                      AND r.owner_json->>'workspaceIdentity'=b.workspace_identity
+                      AND r.owner_json->>'workspaceBranch'=b.workspace_branch)
+                """, Boolean.class, blocker.getId(), blocker.getRemoteCloseOperationId(),
                 blocker.getRemoteCloseReceiptSha256()));
     }
 
     private TurnAttachmentSelectionValidator.ValidatedSelection retryAttachmentSelection(
             AgentRunEntity source
     ) {
-        if (!ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(source.getWorkloadKind())) {
+        boolean imageRun = ProjectCodexIdentity.IMAGE_WORKLOAD_KIND.equals(source.getWorkloadKind())
+                || (ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(source.getWorkloadKind())
+                    && source.getAttachmentCount() > 0);
+        if (!imageRun) {
             if (source.getAttachmentCount() != 0
                     || source.getAttachmentBytes() != 0
                     || source.getAttachmentManifestSha256() != null) {

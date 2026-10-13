@@ -68,8 +68,7 @@ internal fun AteneaShell(
     var checkingUpdate by remember { mutableStateOf(false) }
     var healthSnapshot by remember { mutableStateOf(ShellHealthSnapshot.UNKNOWN) }
     var healthLoading by remember { mutableStateOf(false) }
-    val immersiveWorkSurface = selectedDestination == AteneaDestination.CONVERSATION ||
-        selectedDestination == AteneaDestination.RESCUE
+    val immersiveWorkSurface = selectedDestination == AteneaDestination.CONVERSATION
 
     fun refreshHeaderHealth() {
         scope.launch {
@@ -214,11 +213,6 @@ internal fun AteneaShell(
                     AteneaDestination.VOICE -> VoiceScreen(apiClient = apiClient)
                     AteneaDestination.PROJECTS -> ProjectsScreen(
                         apiClient = apiClient,
-                        onOpenSession = { projectId, sessionId ->
-                            selectedProjectId = projectId
-                            selectedSessionId = sessionId
-                            selectedDestination = AteneaDestination.SESSION
-                        },
                         onOpenConversation = { projectId, sessionId ->
                             selectedProjectId = projectId
                             selectedSessionId = sessionId
@@ -228,10 +222,6 @@ internal fun AteneaShell(
                             selectedProjectId = projectId
                             selectedSessionId = null
                             selectedDestination = AteneaDestination.CHANGES
-                        },
-                        onOpenRescue = { projectId ->
-                            selectedProjectId = projectId
-                            selectedDestination = AteneaDestination.RESCUE
                         }
                     )
                     AteneaDestination.CHANGES -> DevelopmentChangesScreen(
@@ -250,11 +240,7 @@ internal fun AteneaShell(
                         sessionId = selectedSessionId,
                         onOpenConversation = { selectedDestination = AteneaDestination.CONVERSATION },
                         onOpenCore = { selectedDestination = AteneaDestination.CORE },
-                        onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS },
-                        onFreshSession = { freshSessionId ->
-                            selectedSessionId = freshSessionId
-                            selectedDestination = AteneaDestination.CONVERSATION
-                        }
+                        onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS }
                     )
                     AteneaDestination.CONVERSATION -> key(conversationRequestKey, selectedSessionId) {
                         WorkSessionConversationScreen(
@@ -262,10 +248,6 @@ internal fun AteneaShell(
                             projectId = selectedProjectId,
                             sessionId = selectedSessionId,
                             onOpenCore = { selectedDestination = AteneaDestination.CORE },
-                            onFreshSession = { freshSessionId ->
-                                selectedSessionId = freshSessionId
-                                selectedDestination = AteneaDestination.CONVERSATION
-                            },
                             onBackToSession = {
                                 selectedDestination = if (selectedProjectId == null) {
                                     AteneaDestination.PROJECTS
@@ -275,12 +257,6 @@ internal fun AteneaShell(
                             }
                         )
                     }
-                    AteneaDestination.RESCUE -> RescueScreen(
-                        apiClient = apiClient,
-                        projectId = selectedProjectId,
-                        onOpenCore = { selectedDestination = AteneaDestination.CORE },
-                        onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS }
-                    )
                     AteneaDestination.OPERATIONS -> OperationsScreen(
                         apiClient = apiClient,
                         onHealthSnapshotChanged = { healthSnapshot = it }
@@ -359,9 +335,8 @@ private enum class AteneaDestination(
     HOME("Inicio", "Inicio"),
     PROJECTS("Proyectos", "Proyectos"),
     CHANGES("Cambios", "Cambios"),
-    SESSION("Sesión", "Sesión"),
+    SESSION("Cambio", "Cambio"),
     CONVERSATION("Conversación", "Conversación"),
-    RESCUE("Rescate", "Rescate"),
     HEALTH("Estado", "Estado"),
     CORE("Core", "Core"),
     VOICE("Voz", "Voz"),
@@ -410,7 +385,6 @@ private class AteneaNavigationStore(context: Context) {
         AteneaDestination.CHANGES -> if (projectId != null) this else AteneaDestination.PROJECTS
         AteneaDestination.SESSION -> if (projectId != null && sessionId != null) this else AteneaDestination.PROJECTS
         AteneaDestination.CONVERSATION -> if (sessionId != null) this else AteneaDestination.PROJECTS
-        AteneaDestination.RESCUE -> if (projectId != null) this else AteneaDestination.PROJECTS
         else -> this
     }
 

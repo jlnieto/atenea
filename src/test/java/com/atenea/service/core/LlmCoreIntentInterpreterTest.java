@@ -115,7 +115,7 @@ class LlmCoreIntentInterpreterTest {
                         CodexAppServerExecutionResult.Status.COMPLETED,
                         """
                         ```json
-                        {"domain":"DEVELOPMENT","capability":"create_work_session","confidence":0.74,"arguments":{"projectId":7,"title":"Preparar Atenea Core"},"resolutionHints":{},"needsClarification":false,"missing":[],"reasoning":"Open a work session for one project."}
+                        {"domain":"DEVELOPMENT","capability":"get_project_overview","confidence":0.74,"arguments":{"projectId":7,"title":"Preparar Atenea Core"},"resolutionHints":{},"needsClarification":false,"missing":[],"reasoning":"Read one project overview."}
                         ```
                         """,
                         null,
@@ -129,7 +129,7 @@ class LlmCoreIntentInterpreterTest {
                 null));
         CoreIntentProposal proposal = interpretation.proposal();
 
-        assertEquals("create_work_session", proposal.capability());
+        assertEquals("get_project_overview", proposal.capability());
         assertEquals(7L, proposal.parameters().get("projectId"));
         assertEquals("Preparar Atenea Core", proposal.parameters().get("title"));
         assertEquals(CoreInterpreterSource.LLM, interpretation.source());

@@ -444,7 +444,7 @@ class DevelopmentChangeServiceIntegrationTest {
     }
 
     @Test
-    void refusesLegacyShapedSessionAndLeavesItsBindingNull() {
+    void refusesForeignWorkspaceIdentityWithoutRebindingTheChange() {
         var created = service.create(
                 actor, project.getId(), UUID.randomUUID(),
                 new CreateDevelopmentChangeRequest("Synthetic legacy refusal"));
@@ -465,9 +465,9 @@ class DevelopmentChangeServiceIntegrationTest {
 
         assertEquals("DEVELOPMENT_CHANGE_SESSION_OWNERSHIP_MISMATCH",
                 failure.response().failureCode());
-        assertNull(workSessionRepository
+        assertEquals(change.getId(), workSessionRepository
                 .findWithProjectAndDevelopmentChangeById(legacy.getId())
-                .orElseThrow().getDevelopmentChange());
+                .orElseThrow().getDevelopmentChange().getId());
     }
 
     private ProjectEntity project(String name) {
@@ -538,6 +538,7 @@ class DevelopmentChangeServiceIntegrationTest {
         Instant now = Instant.now();
         WorkSessionEntity session = new WorkSessionEntity();
         session.setProject(target);
+        session.setDevelopmentChange(change);
         session.setStatus(WorkSessionStatus.OPEN);
         session.setTitle("Synthetic M2 session");
         session.setBaseBranch("main");

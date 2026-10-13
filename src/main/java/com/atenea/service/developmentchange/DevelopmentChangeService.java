@@ -480,8 +480,8 @@ public class DevelopmentChangeService {
                 || !Objects.equals("refs/heads/" + session.getBaseBranch(), change.getBaseRef())) {
             return false;
         }
-        return session.getDevelopmentChange() == null
-                || Objects.equals(session.getDevelopmentChange().getId(), change.getId());
+        return session.getDevelopmentChange() != null
+                && Objects.equals(session.getDevelopmentChange().getId(), change.getId());
     }
 
     private CommandOutcome replay(

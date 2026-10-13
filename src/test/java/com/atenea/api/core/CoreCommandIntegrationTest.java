@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.atenea.AteneaApplication;
+import com.atenea.persistence.developmentchange.DevelopmentChangeRepository;
+import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.persistence.core.CoreCommandRepository;
 import com.atenea.persistence.project.ProjectEntity;
 import com.atenea.persistence.project.ProjectRepository;
@@ -47,12 +49,15 @@ class CoreCommandIntegrationTest {
     @Autowired
     private ProjectRepository projectRepository;
 
+    @Autowired private DevelopmentChangeRepository fixtureChanges;
+
     private String accessToken;
 
     @BeforeEach
     void setUp() {
         coreCommandRepository.deleteAll();
         workSessionRepository.deleteAll();
+        ChangeOwnedSessionFixtures.prune(fixtureChanges);
         projectRepository.deleteAll();
         accessToken = null;
     }

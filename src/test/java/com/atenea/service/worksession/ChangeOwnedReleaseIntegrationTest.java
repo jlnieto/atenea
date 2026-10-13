@@ -62,6 +62,7 @@ import org.springframework.test.annotation.DirtiesContext;
 @AutoConfigureMockMvc
 class ChangeOwnedReleaseIntegrationTest {
     @Autowired WorkSessionService service;
+    @Autowired AgentRunService agentRuns;
     @Autowired WorkSessionRepository sessions;
     @Autowired DevelopmentChangeRepository changes;
     @Autowired ProjectRepository projects;
@@ -295,7 +296,7 @@ class ChangeOwnedReleaseIntegrationTest {
         assertEquals(operation, persisted.getRemoteCloseOperationId());
         assertEquals(6, persisted.getRemoteCloseRevision());
         assertEquals(1, releases.get());
-        verify(paths, atLeastOnce()).normalizeConfiguredRepoPath("/repos/atenea");
+        verify(paths, atLeastOnce()).normalizeConfiguredRepoPath(project.getRepoPath());
         assertEquals(change.getChangeKey().toString(), request.get().get("changeKey").asText());
         assertEquals(session.getId().longValue(), request.get().get("databaseWorkSessionId").longValue());
         assertFalse(request.get().has("manifestSha256"));
@@ -362,10 +363,53 @@ class ChangeOwnedReleaseIntegrationTest {
         var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
         sessions.deleteById(session.getId()); session.setId(null);
         session.setStatus(WorkSessionStatus.CLOSED); session.setClosedAt(Instant.now());
-        session.setRemoteCloseState(RemoteCloseState.UNVERIFIED_LEGACY); session=sessions.saveAndFlush(session);
+        session.setRemoteCloseState(RemoteCloseState.RELEASED);
+        session.setRemoteCloseOperationId(UUID.randomUUID()); session.setRemoteCloseRevision(6);
+        session.setRemoteCloseReceiptSha256("c".repeat(64));
+        session.setRemoteCloseRequestedAt(Instant.now()); session.setRemoteCloseUpdatedAt(Instant.now());
+        session.setRemoteCloseReleasedAt(Instant.now()); session=sessions.saveAndFlush(session);
         assertEquals("RETIREMENT_SESSION_STATE_MISMATCH",assertThrows(DeliveryRejectedException.class,
             () -> retirements.request(session.getId(),actor,UUID.randomUUID(),false)).code());
         assertTrue(retirementStore.find(session.getId()).isEmpty()); assertEquals(0,releases.get());
+    }
+
+    @Test
+    void terminalChangeRetirementReceiptReleasesCapacityWithoutAnyLegacyTable() {
+        retirementFixture();
+        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
+        retirements.request(session.getId(),actor,UUID.randomUUID(),false);
+        retirements.reconcile();
+        assertEquals("SUCCEEDED", retirementStore.find(session.getId()).orElseThrow().state());
+        assertDoesNotThrow(() -> agentRuns.requireRemoteRetryEligible(capacityBlockedSource()));
+        assertNull(jdbc.queryForObject("SELECT to_regclass('public.remote_close_legacy_operation')::text",String.class));
+    }
+
+    @Test
+    void releasedProjectionWithoutATerminalChangeJournalDoesNotReleaseCapacity() {
+        retirementFixture();
+        sessions.deleteById(session.getId()); session.setId(null);
+        session.setStatus(WorkSessionStatus.CLOSED); session.setClosedAt(Instant.now());
+        session.setRemoteCloseState(RemoteCloseState.RELEASED);
+        session.setRemoteCloseOperationId(UUID.randomUUID()); session.setRemoteCloseRevision(6);
+        session.setRemoteCloseReceiptSha256("c".repeat(64));
+        session.setRemoteCloseRequestedAt(Instant.now()); session.setRemoteCloseUpdatedAt(Instant.now());
+        session.setRemoteCloseReleasedAt(Instant.now()); session=sessions.saveAndFlush(session);
+        change.setStatus(DevelopmentChangeStatus.ABANDONED); changes.saveAndFlush(change);
+        assertThrows(AgentRunRecoveryConflictException.class,
+                () -> agentRuns.requireRemoteRetryEligible(capacityBlockedSource()));
+        assertTrue(retirementStore.find(session.getId()).isEmpty()); assertEquals(0,releases.get());
+    }
+
+    private AgentRunEntity capacityBlockedSource() {
+        // Not persisted: this is an eligibility read, never a retry or new run.
+        WorkSessionEntity other=new WorkSessionEntity(); other.setProject(project);
+        AgentRunEntity source=new AgentRunEntity(); source.setSession(other);
+        source.setStatus(AgentRunStatus.FAILED); source.setExecutionTarget(ExecutionTarget.REMOTE);
+        source.setSelectedWorkerId("ax42-01"); source.setRemoteSessionId(UUID.randomUUID());
+        source.setFailureCode("CLOSED_SESSION_OWNS_CAPACITY");
+        source.setRecoveryNextAction(AgentRunRecoveryNextAction.RECONCILE_REMOTE_CLOSE);
+        source.setRecoveryBlockerWorkSessionId(session.getId());
+        return source;
     }
 
     @Test
@@ -427,28 +471,6 @@ class ChangeOwnedReleaseIntegrationTest {
         assertTrue(retirementStore.find(session.getId()).isEmpty()); assertEquals(0,releases.get());
     }
 
-    @Test
-    void dirtyLegacyWorkspaceRetirementRetainsDraftAndDoesNotRequirePrOrDelivery() {
-        retirementFixture();
-        UUID remote=session.getRemoteSessionId();
-        session.setDevelopmentChange(null); session.setStatus(WorkSessionStatus.OPEN);
-        session.setWorkspaceIdentity("remote:ax42-01:work-session:"+remote); session.setWorkspaceBranch("atenea/session-"+remote);
-        session.setCanonicalSourceRef("refs/heads/main"); session.setCanonicalSourceCommit("1".repeat(40));
-        session.setCanonicalSourceObservationSha256("2".repeat(64)); session.setCanonicalSourceObservedAt(Instant.now());
-        session=sessions.saveAndFlush(session);
-        when(git.isWorkingTreeClean(anyString())).thenReturn(false);
-        var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
-        var first=retirements.request(session.getId(),actor,UUID.randomUUID(),false);
-        retirements.reconcile();
-        var retired=sessions.findById(session.getId()).orElseThrow();
-        assertEquals(WorkSessionStatus.CLOSED,retired.getStatus()); assertEquals(RemoteCloseState.RELEASED,retired.getRemoteCloseState());
-        assertEquals(session.getFinalCommitSha(),retired.getFinalCommitSha());
-        assertEquals(first.operationId(),retired.getRemoteCloseOperationId());
-        assertFalse(service.getSession(session.getId()).repoState().workingTreeClean());
-        assertEquals("SUCCEEDED",retirementStore.find(session.getId()).orElseThrow().state()); assertEquals(1,releases.get());
-        assertEquals(DevelopmentChangeStatus.OPEN,changes.findById(change.getId()).orElseThrow().getStatus());
-        verifyNoInteractions(github); verify(git,never()).checkoutBranch(any(),any());
-    }
 
     @Test
     void retirementRejectsReceiptThatDoesNotRetainWorktreeAndDoesNotMarkAbandoned() {

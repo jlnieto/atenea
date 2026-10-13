@@ -111,48 +111,4 @@ class CoreOperatorContextServiceTest {
         assertEquals(101L, captor.getValue().getActiveCommandId());
     }
 
-    @Test
-    void closeWorkSessionClearsActiveSessionButKeepsProjectContext() {
-        CoreOperatorContextEntity activeContext = new CoreOperatorContextEntity();
-        activeContext.setOperatorKey("default");
-        activeContext.setActiveProjectId(7L);
-        activeContext.setActiveWorkSessionId(12L);
-        when(coreOperatorContextRepository.findById("default")).thenReturn(Optional.of(activeContext));
-        ProjectEntity project = new ProjectEntity();
-        project.setId(7L);
-        WorkSessionEntity session = new WorkSessionEntity();
-        session.setId(12L);
-        session.setProject(project);
-        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
-        CoreOperatorContextService service = new CoreOperatorContextService(
-                coreOperatorContextRepository,
-                workSessionRepository,
-                projectRepository);
-
-        service.updateAfterSuccess(
-                "default",
-                101L,
-                new CoreIntentEnvelope(
-                        "close",
-                        CoreDomain.DEVELOPMENT,
-                        "close_work_session",
-                        Map.of("workSessionId", 12L),
-                        BigDecimal.ONE,
-                        CoreRiskLevel.SAFE_WRITE,
-                        false),
-                new CoreCommandExecutionResult(
-                        CoreResultType.WORK_SESSION,
-                        CoreTargetType.WORK_SESSION,
-                        12L,
-                        null,
-                        null,
-                        null,
-                        null));
-
-        ArgumentCaptor<CoreOperatorContextEntity> captor = ArgumentCaptor.forClass(CoreOperatorContextEntity.class);
-        verify(coreOperatorContextRepository).save(captor.capture());
-        assertEquals(7L, captor.getValue().getActiveProjectId());
-        assertNull(captor.getValue().getActiveWorkSessionId());
-        assertEquals(101L, captor.getValue().getActiveCommandId());
-    }
 }

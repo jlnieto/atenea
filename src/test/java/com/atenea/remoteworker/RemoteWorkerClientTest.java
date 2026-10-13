@@ -928,31 +928,6 @@ class RemoteWorkerClientTest {
     }
 
     @Test
-    void readinessIsReadOnlyServerDerivedAndClassifiesExactSourceAdvance() {
-        AgentRunEntity run = projectRun(null);
-        run.getSession().setWorkspaceBranch(
-                "atenea/session-" + run.getRemoteSessionId());
-
-        RemoteWorkerClient.WorkspaceReadiness result =
-                client.diagnoseWorkspaceReadiness(run);
-
-        JsonNode body = requestBody.get();
-        assertEquals(Set.of(
-                        "sessionId", "workspaceIdentity", "projectId", "repository",
-                        "branch", "commit", "manifestSha256", "workspaceBranch"),
-                objectMapper.convertValue(body, Map.class).keySet());
-        assertEquals("SOURCE_ADVANCED", result.state());
-        assertEquals("START_FRESH_SESSION", result.nextAction());
-        assertEquals(false, result.retryAllowed());
-        assertEquals("2".repeat(40), result.canonicalCommit());
-        for (String forbidden : List.of(
-                "command", "path", "slot", "port", "service", "endpoint",
-                "resourceName", "label", "credential", "deletionTarget")) {
-            assertNull(body.get(forbidden));
-        }
-    }
-
-    @Test
     void unactivatedReleaseUsesExactExistingCloseContractAndHeader() {
         WorkSessionEntity session = releasableSession();
 

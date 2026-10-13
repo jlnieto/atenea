@@ -345,7 +345,7 @@ class SessionSpeechPreparationServiceTest {
                         false),
                 new SessionDeliverablesViewResponse(44L, List.of(), false, false, null),
                 null,
-                new MobileSessionActionsResponse(true, true, true, true, true, true, true),
+                new MobileSessionActionsResponse(true, true, true, true, true, true),
                 insights,
                 null);
     }

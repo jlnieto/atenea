@@ -16,13 +16,6 @@ import com.atenea.api.billing.BillingQueueSummaryResponse;
 import com.atenea.api.mobile.MobileProjectOverviewResponse.MobileProjectSessionSummaryResponse;
 import com.atenea.api.mobile.MobileSessionBlockerResponse;
 import com.atenea.api.mobile.MobileSessionInsightsResponse;
-import com.atenea.api.rescue.CreateRescueTurnRequest;
-import com.atenea.api.rescue.CreateRescueTurnResponse;
-import com.atenea.api.rescue.ResolveRescueSessionRequest;
-import com.atenea.api.rescue.ResolveRescueSessionResponse;
-import com.atenea.api.rescue.RescueSessionConversationViewResponse;
-import com.atenea.api.rescue.RescueSessionResponse;
-import com.atenea.api.rescue.RescueSessionTurnResponse;
 import com.atenea.api.worksession.ApprovedPriceEstimateSummaryResponse;
 import com.atenea.api.worksession.CloseWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.CreateSessionTurnConversationViewResponse;
@@ -30,9 +23,6 @@ import com.atenea.api.worksession.CreateSessionTurnRequest;
 import com.atenea.api.worksession.MarkPriceEstimateBilledRequest;
 import com.atenea.api.worksession.PublishWorkSessionConversationViewResponse;
 import com.atenea.api.worksession.PublishWorkSessionRequest;
-import com.atenea.api.worksession.ResolveWorkSessionConversationViewResponse;
-import com.atenea.api.worksession.ResolveWorkSessionRequest;
-import com.atenea.api.worksession.ResolveWorkSessionResponse;
 import com.atenea.api.worksession.SessionDeliverableResponse;
 import com.atenea.api.worksession.SessionDeliverablesViewResponse;
 import com.atenea.api.worksession.SyncWorkSessionPullRequestConversationViewResponse;
@@ -45,8 +35,6 @@ import com.atenea.persistence.worksession.SessionDeliverableStatus;
 import com.atenea.persistence.worksession.SessionDeliverableType;
 import com.atenea.persistence.worksession.WorkSessionPullRequestStatus;
 import com.atenea.persistence.worksession.WorkSessionStatus;
-import com.atenea.persistence.rescue.RescueSessionStatus;
-import com.atenea.persistence.rescue.RescueSessionTurnActor;
 import com.atenea.service.billing.BillingQueueService;
 import com.atenea.service.mobile.MobileInboxService;
 import com.atenea.service.mobile.MobileProjectOverviewService;
@@ -54,9 +42,7 @@ import com.atenea.service.mobile.MobileSessionReadStateService;
 import com.atenea.service.mobile.MobileSessionEventService;
 import com.atenea.service.mobile.MobileSessionService;
 import com.atenea.service.mobile.MobileStreamService;
-import com.atenea.service.mobile.FreshWorkSessionService;
 import com.atenea.service.operations.OperationsService;
-import com.atenea.service.rescue.RescueSessionService;
 import com.atenea.service.worksession.SessionDeliverableGenerationService;
 import com.atenea.service.worksession.SessionDeliverableService;
 import com.atenea.service.worksession.SessionTurnService;
@@ -107,11 +93,7 @@ class MobileControllerTest {
     @Mock
     private BillingQueueService billingQueueService;
     @Mock
-    private RescueSessionService rescueSessionService;
-    @Mock
     private OperationsService operationsService;
-    @Mock
-    private FreshWorkSessionService freshWorkSessionService;
 
     private MockMvc mockMvc;
 
@@ -130,13 +112,23 @@ class MobileControllerTest {
                         sessionDeliverableService,
                         sessionDeliverableGenerationService,
                         billingQueueService,
-                        rescueSessionService,
-                        operationsService,
-                        freshWorkSessionService))
+                        operationsService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
                 .build();
+    }
+
+    @Test
+    void independentSessionAndRescueRoutesAreAbsent() throws Exception {
+        for (String path : List.of("/api/mobile/projects/7/sessions/resolve",
+                "/api/mobile/sessions/17/start-fresh", "/api/mobile/projects/7/rescue-sessions/resolve",
+                "/api/mobile/rescue-sessions/91/turns", "/api/mobile/rescue-sessions/91/close")) {
+            mockMvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isNotFound());
+        }
+        mockMvc.perform(get("/api/mobile/rescue-sessions/91/conversation")).andExpect(status().isNotFound());
+        org.mockito.Mockito.verifyNoInteractions(workSessionService);
     }
 
     @Test
@@ -200,7 +192,7 @@ class MobileControllerTest {
                         "competitive", "low", "medium", List.of("A"), List.of("B"),
                         SessionDeliverableBillingStatus.READY, null, null,
                         Instant.parse("2026-03-29T10:00:00Z"), Instant.parse("2026-03-29T10:00:00Z")),
-                new MobileSessionActionsResponse(true, true, true, true, true, true, true),
+                new MobileSessionActionsResponse(true, true, true, true, true, true),
                 new MobileSessionInsightsResponse(
                         "Flujo de voz operativo",
                         new MobileSessionBlockerResponse("NONE", "Sin bloqueo activo"),
@@ -260,35 +252,6 @@ class MobileControllerTest {
                 .andExpect(jsonPath("$.updatedAt").isNumber());
     }
 
-    @Test
-    void startFreshSessionUsesAuthenticatedOperatorAndExactIdempotencyKey() throws Exception {
-        var operator = new AuthenticatedOperator(
-                4L, "operator@atenea.local", "Operator");
-        var principal = SecurityMockMvcRequestPostProcessors.authentication(
-                new UsernamePasswordAuthenticationToken(operator, null));
-        UUID key = UUID.fromString("00000000-0000-4000-8000-000000000017");
-        when(freshWorkSessionService.start(
-                any(), eq(17L), eq(new StartFreshWorkSessionRequest(key))))
-                .thenReturn(new StartFreshWorkSessionResponse(
-                        UUID.fromString("00000000-0000-4000-8000-000000000018"),
-                        "COMPLETED",
-                        17L,
-                        12L,
-                        true,
-                        conversation()));
-
-        mockMvc.perform(post("/api/mobile/sessions/17/start-fresh")
-                        .with(principal)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"idempotencyKey":"00000000-0000-4000-8000-000000000017"}
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("COMPLETED"))
-                .andExpect(jsonPath("$.sourceWorkSessionId").value(17))
-                .andExpect(jsonPath("$.resultWorkSessionId").value(12))
-                .andExpect(jsonPath("$.view.view.session.id").value(12));
-    }
 
     @Test
     void getSessionEventsReturnsEventFeed() throws Exception {
@@ -322,114 +285,7 @@ class MobileControllerTest {
                 .andExpect(request().asyncStarted());
     }
 
-    @Test
-    void mobileCompatibilityAliasesRemainAvailableForLegacyMutationFlows() throws Exception {
-        when(workSessionService.resolveSessionConversationView(7L, new ResolveWorkSessionRequest("Title", null)))
-                .thenReturn(new ResolveWorkSessionConversationViewResponse(true, conversation()));
-        when(workSessionService.getSessionConversationView(12L)).thenReturn(conversation());
-        when(workSessionGitHubService.publishSessionConversationView(12L, new PublishWorkSessionRequest("Ship")))
-                .thenReturn(new PublishWorkSessionConversationViewResponse(conversation()));
-        when(workSessionGitHubService.syncPullRequestConversationView(12L))
-                .thenReturn(new SyncWorkSessionPullRequestConversationViewResponse(conversation()));
-        when(workSessionService.closeSessionConversationView(12L))
-                .thenReturn(new CloseWorkSessionConversationViewResponse(conversation()));
-        when(billingQueueService.getQueue(SessionDeliverableBillingStatus.READY, null, null, null))
-                .thenReturn(new BillingQueueResponse(List.of()));
-        when(billingQueueService.getQueueSummary(null, null, null, null))
-                .thenReturn(new BillingQueueSummaryResponse(0, 0, List.of(), List.of()));
-        when(sessionDeliverableService.markPriceEstimateBilled(12L, 81L, new MarkPriceEstimateBilledRequest("INV-1")))
-                .thenReturn(new SessionDeliverableResponse(
-                        81L, 12L, SessionDeliverableType.PRICE_ESTIMATE, SessionDeliverableStatus.SUCCEEDED, 1, "Pricing",
-                        "# Price", "{}", "{}", null, null, "gpt-5.4", "v1", true, Instant.parse("2026-03-29T10:00:00Z"),
-                        SessionDeliverableBillingStatus.BILLED, "INV-1", Instant.parse("2026-03-29T10:05:00Z"),
-                        Instant.parse("2026-03-29T10:00:00Z"), Instant.parse("2026-03-29T10:05:00Z")));
 
-        mockMvc.perform(post("/api/mobile/projects/7/sessions/resolve")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "title": "Title"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.created").value(true));
-
-        mockMvc.perform(get("/api/mobile/sessions/12/conversation"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.view.session.id").value(12));
-
-        mockMvc.perform(post("/api/mobile/sessions/12/publish")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "commitMessage": "Ship"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.view.view.session.id").value(12));
-
-        mockMvc.perform(post("/api/mobile/sessions/12/pull-request/sync"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.view.view.session.id").value(12));
-
-        mockMvc.perform(post("/api/mobile/sessions/12/close"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.view.view.session.id").value(12));
-
-        mockMvc.perform(get("/api/mobile/billing/queue").param("billingStatus", "READY"))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(get("/api/mobile/billing/queue/summary"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.readyCount").value(0));
-
-        mockMvc.perform(post("/api/mobile/sessions/12/deliverables/81/billing/mark-billed")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "billingReference": "INV-1"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.billingStatus").value("BILLED"));
-    }
-
-    @Test
-    void rescueSessionEndpointsExposeSeparatedOperationalFlow() throws Exception {
-        RescueSessionConversationViewResponse rescueConversation = rescueConversation();
-        when(rescueSessionService.resolveSession(7L, new ResolveRescueSessionRequest("Repo bloqueado")))
-                .thenReturn(new ResolveRescueSessionResponse(true, rescueConversation));
-        when(rescueSessionService.getConversation(91L)).thenReturn(rescueConversation);
-        when(rescueSessionService.createTurn(91L, new CreateRescueTurnRequest("Revisa el bloqueo")))
-                .thenReturn(new CreateRescueTurnResponse(rescueConversation));
-
-        mockMvc.perform(post("/api/mobile/projects/7/rescue-sessions/resolve")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "title": "Repo bloqueado"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.created").value(true))
-                .andExpect(jsonPath("$.view.session.id").value(91))
-                .andExpect(jsonPath("$.view.session.status").value("OPEN"));
-
-        mockMvc.perform(get("/api/mobile/rescue-sessions/91/conversation"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.session.projectId").value(7))
-                .andExpect(jsonPath("$.turns[0].actor").value("ATENEA"));
-
-        mockMvc.perform(post("/api/mobile/rescue-sessions/91/turns")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "message": "Revisa el bloqueo"
-                                }
-                                """))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.view.session.id").value(91));
-    }
 
     private WorkSessionConversationViewResponse conversation() {
         return new WorkSessionConversationViewResponse(
@@ -465,26 +321,4 @@ class MobileControllerTest {
                 false);
     }
 
-    private RescueSessionConversationViewResponse rescueConversation() {
-        return new RescueSessionConversationViewResponse(
-                new RescueSessionResponse(
-                        91L,
-                        7L,
-                        "Pruebas Inicial",
-                        "/workspace/repos/sandboxes/smoke/pruebas-inicial",
-                        RescueSessionStatus.OPEN,
-                        "Repo bloqueado",
-                        true,
-                        "thread-rescue",
-                        null,
-                        Instant.parse("2026-03-29T10:00:00Z"),
-                        Instant.parse("2026-03-29T10:01:00Z"),
-                        null),
-                List.of(new RescueSessionTurnResponse(
-                        101L,
-                        RescueSessionTurnActor.ATENEA,
-                        "Modo rescate abierto",
-                        null,
-                        Instant.parse("2026-03-29T10:00:00Z"))));
-    }
 }

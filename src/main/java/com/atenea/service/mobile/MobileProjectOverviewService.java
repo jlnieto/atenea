@@ -3,6 +3,7 @@ package com.atenea.service.mobile;
 import com.atenea.api.mobile.MobileProjectOverviewResponse;
 import com.atenea.api.project.ProjectOverviewResponse;
 import com.atenea.service.project.ProjectOverviewService;
+import com.atenea.persistence.worksession.WorkSessionRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,14 +12,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class MobileProjectOverviewService {
 
     private final ProjectOverviewService projectOverviewService;
-    private final FreshWorkSessionService freshWorkSessionService;
+    private final WorkSessionRepository sessions;
 
     public MobileProjectOverviewService(
             ProjectOverviewService projectOverviewService,
-            FreshWorkSessionService freshWorkSessionService
+            WorkSessionRepository sessions
     ) {
         this.projectOverviewService = projectOverviewService;
-        this.freshWorkSessionService = freshWorkSessionService;
+        this.sessions = sessions;
     }
 
     @Transactional(readOnly = true)
@@ -31,11 +32,13 @@ public class MobileProjectOverviewService {
 
     private MobileProjectOverviewResponse toMobileOverview(ProjectOverviewResponse response) {
         ProjectOverviewResponse.WorkSessionOverviewResponse session = response.workSession();
-        boolean recoveryPending = session != null
-                && !session.current()
-                && freshWorkSessionService.hasIncompleteOperationForSource(session.sessionId());
         ProjectOverviewResponse.WorkSessionOverviewResponse visibleSession =
-                session != null && (session.current() || recoveryPending) ? session : null;
+                session != null && session.current()
+                && sessions.findWithProjectAndDevelopmentChangeById(session.sessionId())
+                    .filter(owned -> owned.getDevelopmentChange() != null
+                        && owned.getDevelopmentChange().getProject() != null
+                        && response.project().id().equals(owned.getDevelopmentChange().getProject().getId()))
+                    .isPresent() ? session : null;
         return new MobileProjectOverviewResponse(
                 response.project().id(),
                 response.project().name(),
@@ -49,7 +52,7 @@ public class MobileProjectOverviewService {
                         visibleSession.closeBlockedState(),
                         visibleSession.pullRequestStatus(),
                         visibleSession.lastActivityAt(),
-                        recoveryPending)
+                        false)
         );
     }
 }

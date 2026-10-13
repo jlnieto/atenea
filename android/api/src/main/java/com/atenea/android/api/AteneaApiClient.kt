@@ -306,13 +306,6 @@ class AteneaApiClient(
         return sessionId
     }
 
-    suspend fun resolveMobileWorkSession(projectId: Long, title: String? = null): ResolveMobileWorkSessionResult = postJson(
-        path = "/api/mobile/projects/$projectId/sessions/resolve",
-        body = JSONObject().putNullable("title", title),
-        authenticated = true,
-        parser = ::parseResolveMobileWorkSessionResult
-    )
-
     suspend fun startNewDevelopmentChange(
         projectId: Long,
         title: String,
@@ -478,43 +471,6 @@ class AteneaApiClient(
             authenticated = true
         ) { Unit }
     }
-
-    suspend fun startFreshWorkSession(
-        sessionId: Long,
-        idempotencyKey: String
-    ): StartFreshWorkSessionResult = postJson(
-        path = "/api/mobile/sessions/$sessionId/start-fresh",
-        body = JSONObject().put("idempotencyKey", idempotencyKey),
-        authenticated = true,
-        parser = ::parseStartFreshWorkSessionResult
-    )
-
-    suspend fun createLegacyRemoteClosePlan(
-        sessionId: Long,
-        idempotencyKey: String
-    ): LegacyRemoteClosePlan = postJson(
-        path = "/api/admin/work-sessions/$sessionId/remote-close-plans",
-        body = JSONObject()
-            .put("operation", "RECONCILE_REMOTE_CLOSE")
-            .put("idempotencyKey", idempotencyKey),
-        authenticated = true,
-        parser = ::parseLegacyRemoteClosePlan
-    )
-
-    suspend fun confirmLegacyRemoteClose(
-        sessionId: Long,
-        plan: LegacyRemoteClosePlan,
-        idempotencyKey: String
-    ): LegacyRemoteCloseOperation = postJson(
-        path = "/api/admin/work-sessions/$sessionId/remote-close-reconciliations",
-        body = JSONObject()
-            .put("operation", "RECONCILE_REMOTE_CLOSE")
-            .put("planId", plan.planId)
-            .put("ownershipFingerprintSha256", plan.ownershipFingerprintSha256)
-            .put("idempotencyKey", idempotencyKey),
-        authenticated = true,
-        parser = ::parseLegacyRemoteCloseOperation
-    )
 
     suspend fun fetchMobileSessionPreview(sessionId: Long): MobileSessionPreview = getJson(
         path = "/api/mobile/sessions/$sessionId/preview",
@@ -687,25 +643,6 @@ class AteneaApiClient(
         authenticated = true,
         parser = ::parseCodexRecoveryResponse
     )
-
-    suspend fun resolveMobileRescueSession(projectId: Long, title: String? = "Rescate operativo"): ResolveMobileRescueSessionResult = postJson(
-        path = "/api/mobile/projects/$projectId/rescue-sessions/resolve",
-        body = JSONObject().putNullable("title", title),
-        authenticated = true,
-        parser = ::parseResolveMobileRescueSessionResult
-    )
-
-    suspend fun fetchMobileRescueConversation(sessionId: Long): MobileRescueConversation = getJson(
-        path = "/api/mobile/rescue-sessions/$sessionId/conversation",
-        authenticated = true,
-        parser = ::parseMobileRescueConversation
-    )
-
-    suspend fun createMobileRescueTurn(sessionId: Long, message: String): MobileRescueConversation = postJson(
-        path = "/api/mobile/rescue-sessions/$sessionId/turns",
-        body = JSONObject().put("message", message),
-        authenticated = true
-    ) { json -> parseMobileRescueConversation(json.getJSONObject("view")) }
 
     suspend fun fetchOperationsHosts(): List<ManagedHost> = getJsonArray(
         path = "/api/mobile/operations/hosts",
@@ -1555,10 +1492,6 @@ data class MobileDevelopmentChange(
     val retirementSessionId: Long? = null
 )
 
-data class ResolveMobileWorkSessionResult(
-    val created: Boolean,
-    val view: MobileWorkSessionConversation
-)
 
 data class NewDevelopmentChangeRequestKeys(
     val create: UUID,
@@ -1592,14 +1525,6 @@ class NewDevelopmentChangeException(
     cause: Throwable? = null
 ) : RuntimeException(message, cause)
 
-data class StartFreshWorkSessionResult(
-    val operationId: String,
-    val state: String,
-    val sourceWorkSessionId: Long,
-    val resultWorkSessionId: Long,
-    val created: Boolean,
-    val view: MobileWorkSessionConversation
-)
 
 data class MobileWorkSessionConversation(
     val session: MobileWorkSession,
@@ -1838,39 +1763,6 @@ data class MobileSessionOperatorState(
     val targetAgentRunId: Long?
 )
 
-data class LegacyRemoteClosePlan(
-    val planId: String,
-    val workSessionId: Long,
-    val operation: String,
-    val state: String,
-    val requiredRole: String,
-    val ownershipFingerprintSha256: String,
-    val expiresAt: String,
-    val consumed: Boolean,
-    val expectedImpact: String,
-    val valuesExposed: Boolean,
-    val createdAt: String
-)
-
-data class LegacyRemoteCloseOperation(
-    val operationId: String,
-    val planId: String,
-    val workSessionId: Long,
-    val operation: String,
-    val state: String,
-    val revision: Long,
-    val ownershipFingerprintSha256: String,
-    val errorCode: String?,
-    val errorCategory: String?,
-    val nextAction: String,
-    val retryable: Boolean,
-    val receiptSha256: String?,
-    val requestedAt: String,
-    val updatedAt: String,
-    val releasedAt: String?,
-    val valuesExposed: Boolean
-)
-
 data class MobileSessionPreview(
     val id: String,
     val workSessionId: Long,
@@ -1892,7 +1784,6 @@ data class MobileSessionActions(
     val canCreateTurn: Boolean,
     val canPublish: Boolean,
     val canSyncPullRequest: Boolean,
-    val canClose: Boolean,
     val canGenerateDeliverables: Boolean,
     val canApproveDeliverables: Boolean,
     val canMarkApprovedPriceEstimateBilled: Boolean
@@ -1989,27 +1880,6 @@ data class MobileSessionEvent(
     val deliverableId: Long?,
     val eventId: String?,
     val progressSequence: Long?
-)
-
-data class ResolveMobileRescueSessionResult(
-    val created: Boolean,
-    val view: MobileRescueConversation
-)
-
-data class MobileRescueConversation(
-    val session: MobileRescueSession,
-    val turns: List<MobileConversationTurn>
-)
-
-data class MobileRescueSession(
-    val id: Long,
-    val projectId: Long,
-    val projectName: String,
-    val repoPath: String?,
-    val status: String,
-    val title: String,
-    val canCreateTurn: Boolean,
-    val lastActivityAt: String?
 )
 
 data class ManagedHost(
@@ -2574,11 +2444,6 @@ private fun parseMobileDevelopmentChange(json: JSONObject, expectedProjectId: Lo
     )
 }
 
-private fun parseResolveMobileWorkSessionResult(json: JSONObject): ResolveMobileWorkSessionResult =
-    ResolveMobileWorkSessionResult(
-        created = json.optBoolean("created", false),
-        view = parseMobileWorkSessionConversation(json.getJSONObject("view"))
-    )
 
 private data class CreatedDevelopmentChange(
     val changeKey: UUID
@@ -2650,15 +2515,6 @@ private suspend fun <T> newDevelopmentChangeStep(
     )
 }
 
-private fun parseStartFreshWorkSessionResult(json: JSONObject): StartFreshWorkSessionResult =
-    StartFreshWorkSessionResult(
-        operationId = json.getString("operationId"),
-        state = json.getString("state"),
-        sourceWorkSessionId = json.getLong("sourceWorkSessionId"),
-        resultWorkSessionId = json.getLong("resultWorkSessionId"),
-        created = json.optBoolean("created", false),
-        view = parseMobileWorkSessionConversation(json.getJSONObject("view"))
-    )
 
 private fun parseMobileWorkSessionConversation(json: JSONObject): MobileWorkSessionConversation {
     val view = json.optJSONObject("view") ?: json
@@ -2868,41 +2724,6 @@ private fun parseMobileSessionOperatorState(json: JSONObject): MobileSessionOper
         targetAgentRunId = json.optNullableLong("targetAgentRunId")
     )
 
-private fun parseLegacyRemoteClosePlan(json: JSONObject): LegacyRemoteClosePlan =
-    LegacyRemoteClosePlan(
-        planId = json.getString("planId"),
-        workSessionId = json.getLong("workSessionId"),
-        operation = json.getString("operation"),
-        state = json.getString("state"),
-        requiredRole = json.getString("requiredRole"),
-        ownershipFingerprintSha256 = json.getString("ownershipFingerprintSha256"),
-        expiresAt = json.getString("expiresAt"),
-        consumed = json.getBoolean("consumed"),
-        expectedImpact = json.getString("expectedImpact"),
-        valuesExposed = json.optBoolean("valuesExposed", false),
-        createdAt = json.getString("createdAt")
-    )
-
-private fun parseLegacyRemoteCloseOperation(json: JSONObject): LegacyRemoteCloseOperation =
-    LegacyRemoteCloseOperation(
-        operationId = json.getString("operationId"),
-        planId = json.getString("planId"),
-        workSessionId = json.getLong("workSessionId"),
-        operation = json.getString("operation"),
-        state = json.getString("state"),
-        revision = json.getLong("revision"),
-        ownershipFingerprintSha256 = json.getString("ownershipFingerprintSha256"),
-        errorCode = json.optNullableString("errorCode"),
-        errorCategory = json.optNullableString("errorCategory"),
-        nextAction = json.getString("nextAction"),
-        retryable = json.optBoolean("retryable", false),
-        receiptSha256 = json.optNullableString("receiptSha256"),
-        requestedAt = json.getString("requestedAt"),
-        updatedAt = json.getString("updatedAt"),
-        releasedAt = json.optNullableString("releasedAt"),
-        valuesExposed = json.optBoolean("valuesExposed", false)
-    )
-
 private fun parseMobileSessionPreview(json: JSONObject): MobileSessionPreview =
     MobileSessionPreview(
         id = json.getString("id"),
@@ -2926,7 +2747,6 @@ private fun parseMobileSessionActions(json: JSONObject): MobileSessionActions =
         canCreateTurn = json.optBoolean("canCreateTurn", false),
         canPublish = json.optBoolean("canPublish", false),
         canSyncPullRequest = json.optBoolean("canSyncPullRequest", false),
-        canClose = json.optBoolean("canClose", false),
         canGenerateDeliverables = json.optBoolean("canGenerateDeliverables", false),
         canApproveDeliverables = json.optBoolean("canApproveDeliverables", false),
         canMarkApprovedPriceEstimateBilled = json.optBoolean("canMarkApprovedPriceEstimateBilled", false)
@@ -3038,30 +2858,6 @@ private fun parseMobileSessionEvents(json: JSONObject): MobileSessionEvents {
     )
 }
 
-private fun parseResolveMobileRescueSessionResult(json: JSONObject): ResolveMobileRescueSessionResult =
-    ResolveMobileRescueSessionResult(
-        created = json.optBoolean("created", false),
-        view = parseMobileRescueConversation(json.getJSONObject("view"))
-    )
-
-private fun parseMobileRescueConversation(json: JSONObject): MobileRescueConversation {
-    val session = json.getJSONObject("session")
-    val turns = json.optJSONArray("turns") ?: JSONArray()
-    return MobileRescueConversation(
-        session = MobileRescueSession(
-            id = session.getLong("id"),
-            projectId = session.getLong("projectId"),
-            projectName = session.optString("projectName", ""),
-            repoPath = session.optNullableString("repoPath"),
-            status = session.optString("status", ""),
-            title = session.optString("title", ""),
-            canCreateTurn = session.optBoolean("canCreateTurn", false),
-            lastActivityAt = session.optNullableString("lastActivityAt")
-        ),
-        turns = List(turns.length()) { index -> parseMobileConversationTurn(turns.getJSONObject(index)) }
-    )
-}
-
 internal fun parseMobileConversationTurn(json: JSONObject): MobileConversationTurn =
     MobileConversationTurn(
         id = json.getLong("id"),
@@ -3093,6 +2889,7 @@ internal fun parseMobileConversationTurn(json: JSONObject): MobileConversationTu
             }
         }.orEmpty()
     )
+
 
 private fun parseManagedHost(json: JSONObject): ManagedHost = ManagedHost(
     id = json.getLong("id"),
