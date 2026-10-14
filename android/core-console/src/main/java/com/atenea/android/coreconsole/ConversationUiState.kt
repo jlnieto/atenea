@@ -1,7 +1,7 @@
 package com.atenea.android.coreconsole
 
 internal enum class ConversationPane(val title: String) {
-    CHAT("Conversación"), CHANGE("Cambio"), ACTIVITY("Detalle de ejecución"), PROFILE("Configuración de Codex")
+    CHAT("Conversación"), CHANGE("Cambio"), ACTIVITY("Detalle de ejecución"), PROFILE("Configuración de Codex"), HELP("Ayuda con este cambio")
 }
 
 internal fun conversationStatusLabel(

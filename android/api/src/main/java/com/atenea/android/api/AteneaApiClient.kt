@@ -405,6 +405,18 @@ class AteneaApiClient(
         parser = ::parseMobileDeliveryState
     )
 
+    suspend fun fetchChangeHelp(sessionId: Long): ChangeHelp = getJson(
+        path = "/api/mobile/sessions/$sessionId/help", authenticated = true
+    ) { json -> parseChangeHelp(json, sessionId) }
+
+    suspend fun askChangeHelp(sessionId: Long, question: String, simple: Boolean = false): ChangeHelp {
+        require(question.isNotBlank() && question.length <= 1000)
+        return postJson(
+            path = "/api/mobile/sessions/$sessionId/help",
+            body = JSONObject().put("question", question.trim()).put("simple", simple), authenticated = true
+        ) { json -> parseChangeHelp(json, sessionId) }
+    }
+
     suspend fun createDeliveryPullRequest(sessionId: Long): MobileDeliveryOperation = postJson(
         path = "/api/mobile/sessions/$sessionId/delivery/pr", body = JSONObject(), authenticated = true,
         parser = ::parseMobileDeliveryOperation

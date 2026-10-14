@@ -81,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.atenea.android.api.MobileConversationTurn
 import com.atenea.android.api.SessionTurnAttachment
+import com.atenea.android.api.ChangeHelpDestination
 import java.util.UUID
 import kotlinx.coroutines.launch
 
@@ -105,6 +106,7 @@ internal fun ConversationSurface(
     runContent: @Composable (() -> Unit)? = null,
     profileContent: @Composable (() -> Unit)? = null,
     changeContent: @Composable (() -> Unit)? = null,
+    helpContent: (@Composable ((ChangeHelpDestination) -> Unit) -> Unit)? = null,
     changeNeedsAttention: Boolean = false,
     surfaceKey: String = "conversation",
     composerEnabled: Boolean = true,
@@ -150,6 +152,7 @@ internal fun ConversationSurface(
                 onChange = { pane = if (pane == ConversationPane.CHANGE) ConversationPane.CHAT else ConversationPane.CHANGE },
                 onActivity = runContent?.let { { pane = ConversationPane.ACTIVITY } },
                 onProfile = profileContent?.let { { pane = ConversationPane.PROFILE } },
+                onHelp = helpContent?.let { { pane = ConversationPane.HELP } },
                 onAttachments = attachmentDraft?.let { { showAttachmentHelp = true } }
             )
 
@@ -207,19 +210,30 @@ internal fun ConversationSurface(
                             } }
                         ) { Text("Ir a los mensajes nuevos") }
                     }
+                } else if (pane == ConversationPane.HELP) {
+                    helpContent?.invoke { destination ->
+                        pane = when (destination) {
+                            ChangeHelpDestination.CHANGE -> ConversationPane.CHANGE
+                            ChangeHelpDestination.ACTIVITY -> ConversationPane.ACTIVITY
+                            ChangeHelpDestination.CHAT -> ConversationPane.CHAT
+                        }
+                    }
                 } else {
                     Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         when (pane) {
-                            ConversationPane.CHANGE -> if (changeContent != null) changeContent()
+                            ConversationPane.CHANGE -> {
+                                if (helpContent != null) AteneaTextButton("Ayuda con este cambio", onClick = { pane = ConversationPane.HELP })
+                                if (changeContent != null) changeContent()
                                 else Text("No se ha podido cargar el cambio. Usa Actualizar en el menú.")
+                            }
                             ConversationPane.ACTIVITY -> if (runContent != null) runContent()
                                 else Text("No hay un detalle de ejecución disponible.")
                             ConversationPane.PROFILE -> if (profileContent != null) profileContent()
                                 else Text("El perfil de ejecución no está disponible en esta sesión.")
-                            ConversationPane.CHAT -> Unit
+                            ConversationPane.CHAT, ConversationPane.HELP -> Unit
                         }
                         error?.let { message ->
                             SelectionContainer { Text(message, color = ConversationColors.error) }
@@ -282,6 +296,7 @@ private fun ConversationTopBar(
     onChange: () -> Unit,
     onActivity: (() -> Unit)?,
     onProfile: (() -> Unit)?,
+    onHelp: (() -> Unit)?,
     onAttachments: (() -> Unit)?
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -308,11 +323,14 @@ private fun ConversationTopBar(
                 contentDescription = if (changeNeedsAttention) "Cambio, necesita atención" else "Cambio"
             }
         ) { Text(if (changeNeedsAttention) "Cambio !" else "Cambio") }
+        onHelp?.let { action -> TextButton(onClick = action,
+            modifier = Modifier.semantics { contentDescription = "Ayuda con este cambio" }) { Text("Ayuda") } }
         Box {
             IconButton(onClick = { menuOpen = true }, modifier = Modifier.semantics { contentDescription = "Opciones de conversación" }) {
                 Text("⋮", style = MaterialTheme.typography.titleLarge)
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                onHelp?.let { action -> DropdownMenuItem(text = { Text("Ayuda con este cambio") }, onClick = { menuOpen = false; action() }) }
                 onProfile?.let { action -> DropdownMenuItem(text = { Text("Configuración de Codex") }, onClick = { menuOpen = false; action() }) }
                 onActivity?.let { action -> DropdownMenuItem(text = { Text("Detalle de ejecución") }, onClick = { menuOpen = false; action() }) }
                 onAttachments?.let { action -> DropdownMenuItem(text = { Text("Adjuntos") }, onClick = { menuOpen = false; action() }) }

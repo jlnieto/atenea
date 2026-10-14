@@ -21,8 +21,8 @@ class ConversationUiStateTest {
     }
 
     @Test
-    fun `four panes have separate readable roles`() {
-        assertEquals(listOf("Conversación", "Cambio", "Detalle de ejecución", "Configuración de Codex"),
+    fun `help has a separate readable role from conversation and operations`() {
+        assertEquals(listOf("Conversación", "Cambio", "Detalle de ejecución", "Configuración de Codex", "Ayuda con este cambio"),
             ConversationPane.entries.map { it.title })
     }
 

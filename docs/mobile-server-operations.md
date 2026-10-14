@@ -15,6 +15,13 @@ Atenea debe permitir completar el ciclo real de trabajo aunque el operador sólo
 - operar servidores gestionados por SSH con runbooks auditables
 - desplegar sólo mediante acciones confirmadas y verificables
 
+Para orientación de operación dentro de un Cambio, véase
+[Ayuda con este cambio](change-help-v1.md). La consulta explica el estado
+registrado y navega a las acciones; no es otra tarea de Codex ni crea una sesión.
+En el contexto explícito `ATENEA_MANAGED_CHANGE`, source/ownership se verifican
+por el worker y la validación usa las acciones mediadas. No se recrean remotos
+del workspace manual dentro de los worktrees gestionados.
+
 ## Estado implementado hoy
 
 El nuevo control de entrega durable desde Android está descrito en
