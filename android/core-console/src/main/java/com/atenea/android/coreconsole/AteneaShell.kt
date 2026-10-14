@@ -264,14 +264,23 @@ internal fun AteneaShell(
                     AteneaDestination.FILES -> FilesScreen(apiClient = apiClient)
                     AteneaDestination.COSTS -> CostsScreen(apiClient = apiClient)
                     AteneaDestination.DIAGNOSTICS -> DiagnosticsScreen(apiClient = apiClient)
-                    AteneaDestination.SETTINGS -> SettingsScreen(
+                    AteneaDestination.SETTINGS, AteneaDestination.SECURITY, AteneaDestination.DEVICES -> SettingsScreen(
                         apiClient = apiClient,
                         updateState = updateState,
                         updateMessage = updateMessage,
                         updateProgress = updateProgress,
                         checkingUpdate = checkingUpdate,
+                        operatorName = operatorName,
                         currentVersionCode = currentVersionCode,
                         currentVersionName = currentVersionName,
+                        section = when (selectedDestination) {
+                            AteneaDestination.SECURITY -> SettingsSection.SECURITY
+                            AteneaDestination.DEVICES -> SettingsSection.DEVICES
+                            else -> SettingsSection.HOME
+                        },
+                        onOpenSecurity = { selectedDestination = AteneaDestination.SECURITY },
+                        onOpenDevices = { selectedDestination = AteneaDestination.DEVICES },
+                        onBack = { selectedDestination = AteneaDestination.SETTINGS },
                         onCheckUpdate = {
                             scope.launch {
                                 checkingUpdate = true
@@ -323,7 +332,8 @@ private fun DrawerDestination(
 ) {
     AteneaDrawerRow(
         label = destination.label,
-        selected = selectedDestination == destination,
+        selected = selectedDestination == destination ||
+            (destination == AteneaDestination.SETTINGS && selectedDestination in listOf(AteneaDestination.SECURITY, AteneaDestination.DEVICES)),
         onClick = { onSelect(destination) }
     )
 }
@@ -344,7 +354,9 @@ private enum class AteneaDestination(
     FILES("Archivos", "Archivos"),
     COSTS("Costes API", "Costes API"),
     DIAGNOSTICS("Diagnostico", "Diagnostico"),
-    SETTINGS("Ajustes", "Ajustes")
+    SETTINGS("Ajustes", "Ajustes"),
+    SECURITY("Seguridad y acceso", "Seguridad y acceso"),
+    DEVICES("Dispositivos con acceso", "Dispositivos con acceso")
 }
 
 private data class AteneaRouteSnapshot(

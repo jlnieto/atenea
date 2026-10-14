@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextField
@@ -25,8 +26,11 @@ import com.atenea.android.api.OperatorSessionInventory
 import com.atenea.android.api.OperatorSessionState
 import com.atenea.android.api.PasskeyCredentialState
 import com.atenea.android.api.PasskeyInventory
+import com.atenea.android.api.PasskeyInventoryItem
 import com.atenea.android.api.TotpEnrollment
 import kotlinx.coroutines.launch
+
+internal enum class SettingsSection { HOME, SECURITY, DEVICES }
 
 @Composable
 internal fun SettingsScreen(
@@ -35,10 +39,15 @@ internal fun SettingsScreen(
     updateMessage: String?,
     updateProgress: UpdateDownloadProgress?,
     checkingUpdate: Boolean,
+    operatorName: String,
     currentVersionCode: Int,
     currentVersionName: String,
     onCheckUpdate: () -> Unit,
-    onInstallUpdate: (AteneaUpdateManifest) -> Unit
+    onInstallUpdate: (AteneaUpdateManifest) -> Unit,
+    section: SettingsSection,
+    onOpenSecurity: () -> Unit,
+    onOpenDevices: () -> Unit,
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -54,6 +63,15 @@ internal fun SettingsScreen(
     var passkeyLoading by remember { mutableStateOf(true) }
     var passkeyError by remember { mutableStateOf<String?>(null) }
     var passkeyMessage by remember { mutableStateOf<String?>(null) }
+    var pendingPasskeyRevoke by remember { mutableStateOf<PasskeyInventoryItem?>(null) }
+    var pendingSessionRevoke by remember { mutableStateOf<OperatorSessionInventory?>(null) }
+    var pendingOthersRevoke by remember { mutableStateOf(false) }
+    var sessionActionPending by remember { mutableStateOf(false) }
+    var passkeyActionPending by remember { mutableStateOf(false) }
+    var historyExpanded by remember { mutableStateOf(false) }
+    var historyVisibleCount by remember { mutableStateOf(20) }
+    var passkeyHistoryExpanded by remember { mutableStateOf(false) }
+    var passkeyHistoryVisibleCount by remember { mutableStateOf(20) }
 
     fun loadSessions() {
         scope.launch {
@@ -83,9 +101,12 @@ internal fun SettingsScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        loadSessions()
-        loadPasskeys()
+    LaunchedEffect(section) {
+        when (section) {
+            SettingsSection.SECURITY -> loadPasskeys()
+            SettingsSection.DEVICES -> loadSessions()
+            SettingsSection.HOME -> Unit
+        }
     }
     val latestManifest = when (updateState) {
         is UpdateCheckResult.Available -> updateState.update
@@ -100,12 +121,20 @@ internal fun SettingsScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(AteneaSpacing.medium)
     ) {
+        if (section == SettingsSection.HOME) {
+            AteneaPanel {
+                Text("Cuenta", style = MaterialTheme.typography.titleMedium)
+                MetricLine("Sesión actual", operatorName)
+                Text("Gestiona cómo accedes a Atenea y dónde tienes sesiones abiertas.")
+                AteneaOutlinedButton(text = "Seguridad y acceso", onClick = onOpenSecurity)
+                AteneaOutlinedButton(text = "Dispositivos con acceso", onClick = onOpenDevices)
+            }
+        }
+        if (section == SettingsSection.SECURITY) {
         AteneaPanel {
-            Text("Seguridad", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Sesión familiar con refresh coordinado y revocación remota.",
-                style = MaterialTheme.typography.bodyMedium
-            )
+            AteneaOutlinedButton(text = "Volver a Ajustes", onClick = onBack)
+            Text("Seguridad y acceso", style = MaterialTheme.typography.titleMedium)
+            Text("Gestiona las passkeys y el respaldo TOTP de tu cuenta.")
             MetricLine(
                 "Passkey",
                 if (passkey.availability == PasskeyAvailability.AVAILABLE) {
@@ -137,31 +166,38 @@ internal fun SettingsScreen(
                         style = MaterialTheme.typography.titleSmall
                     )
                     Text(inventory.nextAction, style = MaterialTheme.typography.bodySmall)
-                    inventory.credentials.forEach { credential ->
+                    if (inventory.credentials.none { it.state == PasskeyCredentialState.ACTIVE }) {
+                        Text("No hay passkeys activas.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    inventory.credentials.filter { it.state == PasskeyCredentialState.ACTIVE }.forEach { credential ->
                         Text(credential.label, style = MaterialTheme.typography.bodyLarge)
                         Text(
                             buildString {
-                                append(if (credential.state == PasskeyCredentialState.ACTIVE) "Activa" else "Revocada")
+                                append("Activa")
                                 append(if (credential.backupEligible) " · Sincronizable" else " · No sincronizable")
                                 append(if (credential.lastVerifiedAt != null) " · Verificada" else " · Sin verificar")
                             },
                             style = MaterialTheme.typography.bodySmall
                         )
-                        if (passkeyMutationsAllowed(inventory.readOnly)
-                            && credential.state == PasskeyCredentialState.ACTIVE) {
+                        if (passkeyMutationsAllowed(inventory.readOnly)) {
                             AteneaOutlinedButton(
                                 text = "Revocar en Atenea",
-                                onClick = {
-                                    scope.launch {
-                                        runCatching { apiClient.revokePasskey(credential.recordId) }
-                                            .onSuccess {
-                                                passkeyMessage = "Revocada en Atenea. Bórrala manualmente del proveedor si ya no la necesitas."
-                                                loadPasskeys()
-                                            }
-                                            .onFailure { passkeyError = it.message }
-                                    }
-                                }
+                                enabled = !passkeyActionPending,
+                                onClick = { pendingPasskeyRevoke = credential }
                             )
+                        }
+                    }
+                    val revoked = inventory.credentials.filter { it.state == PasskeyCredentialState.REVOKED }
+                    if (revoked.isNotEmpty()) {
+                        AteneaOutlinedButton(
+                            text = if (passkeyHistoryExpanded) "Ocultar passkeys revocadas" else "Passkeys revocadas (${revoked.size})",
+                            onClick = { passkeyHistoryExpanded = !passkeyHistoryExpanded }
+                        )
+                        if (passkeyHistoryExpanded) revoked.take(passkeyHistoryVisibleCount).forEach { credential ->
+                            Text("${credential.label} · Revocada", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (passkeyHistoryExpanded && revoked.size > passkeyHistoryVisibleCount) {
+                            AteneaOutlinedButton(text = "Mostrar más passkeys", onClick = { passkeyHistoryVisibleCount += 20 })
                         }
                     }
                     if (passkeyMutationsAllowed(inventory.readOnly)
@@ -193,7 +229,7 @@ internal fun SettingsScreen(
                 }
             }
             passkeyMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            MetricLine("TOTP", "Respaldo opcional; alta real requiere H11")
+            MetricLine("TOTP", "Respaldo opcional")
             factorMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             if (passkeyMutationsAllowed(passkeyInventory?.readOnly)
                 && totpEnrollment == null) {
@@ -256,32 +292,32 @@ internal fun SettingsScreen(
                 AteneaButton(text = "Ya los he guardado", onClick = { recoveryCodes = emptyList() })
             }
         }
+        }
 
+        if (section == SettingsSection.DEVICES) {
         AteneaPanel {
+            AteneaOutlinedButton(text = "Volver a Ajustes", onClick = onBack)
             Text("Dispositivos con acceso", style = MaterialTheme.typography.titleMedium)
+            Text("Revisa dónde está abierta tu cuenta y cierra los accesos que no reconozcas.")
+            sessionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             when {
                 sessionLoading -> Text("Cargando inventario seguro…")
-                sessionError != null -> Text(sessionError.orEmpty(), color = MaterialTheme.colorScheme.error)
-                sessions.isEmpty() -> Text("No hay sesiones familiares activas.")
-                else -> sessions.forEach { item ->
+                sessionError != null && sessions.isEmpty() -> Unit
+                sessions.none { it.state == OperatorSessionState.ACTIVE } -> Text("No hay sesiones activas.")
+                else -> sessions.filter { it.state == OperatorSessionState.ACTIVE }.sortedByDescending { it.current }.forEach { item ->
                     Text(
                         if (item.current) "${item.deviceLabel} · Esta sesión" else item.deviceLabel,
                         style = MaterialTheme.typography.bodyLarge
                     )
                     Text(
-                        "${item.clientType} · ${item.state} · ${item.lastUsedAt.formatDateTimeForDisplay()}",
+                        "${item.clientType} · Último uso ${item.lastUsedAt.formatDateTimeForDisplay()}",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    if (!item.current && item.state == OperatorSessionState.ACTIVE) {
+                    if (!item.current) {
                         AteneaOutlinedButton(
-                            text = "Revocar",
-                            onClick = {
-                                scope.launch {
-                                    runCatching { apiClient.revokeOperatorSession(item.familyId) }
-                                        .onFailure { sessionError = it.message }
-                                    loadSessions()
-                                }
-                            }
+                            text = "Cerrar acceso",
+                            enabled = !sessionActionPending,
+                            onClick = { pendingSessionRevoke = item }
                         )
                     }
                 }
@@ -289,17 +325,29 @@ internal fun SettingsScreen(
             if (sessions.any { !it.current && it.state == OperatorSessionState.ACTIVE }) {
                 AteneaOutlinedButton(
                     text = "Cerrar las demás sesiones",
-                    onClick = {
-                        scope.launch {
-                            runCatching { apiClient.revokeOtherOperatorSessions() }
-                                .onFailure { sessionError = it.message }
-                            loadSessions()
-                        }
-                    }
+                    enabled = !sessionActionPending,
+                    onClick = { pendingOthersRevoke = true }
                 )
             }
+            if (sessionError != null) AteneaOutlinedButton(text = "Reintentar", onClick = { loadSessions() })
+            val history = sessions.filter { it.state != OperatorSessionState.ACTIVE }
+            if (!sessionLoading && history.isNotEmpty()) {
+                AteneaOutlinedButton(
+                    text = if (historyExpanded) "Ocultar historial" else "Historial de sesiones (${history.size})",
+                    onClick = { historyExpanded = !historyExpanded }
+                )
+                if (historyExpanded) history.take(historyVisibleCount).forEach { item ->
+                    Text(item.deviceLabel, style = MaterialTheme.typography.bodyLarge)
+                    Text("${item.clientType} · ${if (item.state == OperatorSessionState.REVOKED) "Revocada" else "Caducada"} · ${item.lastUsedAt.formatDateTimeForDisplay()}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (historyExpanded && history.size > historyVisibleCount) {
+                    AteneaOutlinedButton(text = "Mostrar más sesiones", onClick = { historyVisibleCount += 20 })
+                }
+            }
+        }
         }
 
+        if (section == SettingsSection.HOME) {
         AteneaPanel {
             Text("App", style = MaterialTheme.typography.titleMedium)
             MetricLine("Version name", currentVersionName)
@@ -368,6 +416,61 @@ internal fun SettingsScreen(
                 }
             }
         }
+        }
+    }
+
+    pendingPasskeyRevoke?.let { credential ->
+        AlertDialog(
+            onDismissRequest = { if (!passkeyActionPending) pendingPasskeyRevoke = null },
+            title = { Text("¿Revocar ${credential.label}?") },
+            text = { Text("Dejarás de poder usar esta passkey para entrar en Atenea.") },
+            confirmButton = { AteneaOutlinedButton(text = "Confirmar revocación", enabled = !passkeyActionPending, onClick = {
+                pendingPasskeyRevoke = null
+                scope.launch {
+                    passkeyActionPending = true
+                    try {
+                        runCatching { apiClient.revokePasskey(credential.recordId) }
+                            .onSuccess {
+                                passkeyMessage = "Revocada en Atenea. Bórrala manualmente del proveedor si ya no la necesitas."
+                                loadPasskeys()
+                            }
+                            .onFailure { passkeyError = it.message }
+                    } finally {
+                        passkeyActionPending = false
+                    }
+                }
+            }) },
+            dismissButton = { AteneaOutlinedButton(text = "Cancelar", onClick = { pendingPasskeyRevoke = null }) }
+        )
+    }
+    val sessionToClose = pendingSessionRevoke
+    if (sessionToClose != null || pendingOthersRevoke) {
+        AlertDialog(
+            onDismissRequest = { if (!sessionActionPending) { pendingSessionRevoke = null; pendingOthersRevoke = false } },
+            title = { Text(if (pendingOthersRevoke) "¿Cerrar todas las demás sesiones?" else "¿Cerrar el acceso de ${sessionToClose?.deviceLabel}?") },
+            text = { Text("Los dispositivos afectados tendrán que iniciar sesión de nuevo.") },
+            confirmButton = { AteneaOutlinedButton(text = "Confirmar cierre", enabled = !sessionActionPending, onClick = {
+                val closeOthers = pendingOthersRevoke
+                pendingSessionRevoke = null
+                pendingOthersRevoke = false
+                scope.launch {
+                    sessionActionPending = true
+                    try {
+                        runCatching {
+                            if (closeOthers) apiClient.revokeOtherOperatorSessions()
+                            else apiClient.revokeOperatorSession(sessionToClose!!.familyId)
+                        }.onSuccess { loadSessions() }
+                            .onFailure { sessionError = it.message }
+                    } finally {
+                        sessionActionPending = false
+                    }
+                }
+            }) },
+            dismissButton = { AteneaOutlinedButton(text = "Cancelar", onClick = {
+                pendingSessionRevoke = null
+                pendingOthersRevoke = false
+            }) }
+        )
     }
 }
 
