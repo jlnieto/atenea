@@ -28,7 +28,7 @@ public record DevelopmentChangeActionResponse(
     public static DevelopmentChangeActionResponse bindSession() {
         return new DevelopmentChangeActionResponse(
                 DevelopmentChangeActionKind.BIND_SESSION,
-                "Vincular sesión",
+                "Continuar cambio",
                 true);
     }
 
@@ -77,7 +77,7 @@ public record DevelopmentChangeActionResponse(
     public static DevelopmentChangeActionResponse continueSession() {
         return new DevelopmentChangeActionResponse(
                 DevelopmentChangeActionKind.CONTINUE_SESSION,
-                "Continuar sesión",
+                "Continuar cambio",
                 true);
     }
 

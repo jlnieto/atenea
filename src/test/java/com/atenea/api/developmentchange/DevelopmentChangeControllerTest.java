@@ -84,7 +84,8 @@ class DevelopmentChangeControllerTest {
                 .andExpect(jsonPath("$[0].changeKey").value(CHANGE_KEY.toString()))
                 .andExpect(jsonPath("$[0].workspaceBranch")
                         .value("atenea/change-" + CHANGE_KEY))
-                .andExpect(jsonPath("$[0].primaryAction.kind").value("BIND_SESSION"));
+                .andExpect(jsonPath("$[0].primaryAction.kind").value("BIND_SESSION"))
+                .andExpect(jsonPath("$[0].primaryAction.label").value("Continuar cambio"));
     }
 
     @Test
@@ -198,6 +199,7 @@ class DevelopmentChangeControllerTest {
                 .andExpect(jsonPath("$.state").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.workspaceState").value("READY"))
                 .andExpect(jsonPath("$.nextAction.kind").value("BIND_SESSION"))
+                .andExpect(jsonPath("$.nextAction.label").value("Continuar cambio"))
                 .andExpect(jsonPath("$..workspaceIdentity").doesNotExist())
                 .andExpect(jsonPath("$..workspacePath").doesNotExist());
     }

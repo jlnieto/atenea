@@ -42,11 +42,16 @@ internal fun developmentChangeHistory(change: MobileDevelopmentChange): Boolean 
 internal fun closedSessionHistoryOnly(status: String, completionAvailable: Boolean): Boolean =
     status == "CLOSED" && !completionAvailable
 
+internal fun canContinueDevelopmentChange(change: MobileDevelopmentChange, expectedProjectId: Long): Boolean =
+    change.projectId == expectedProjectId && change.status == "OPEN" && change.activeSessionId == null
+        && change.retirementState == null && change.primaryActionEnabled
+        && change.primaryActionKind in setOf("PROVISION_WORKSPACE", "BIND_SESSION", "INSPECT_WORKSPACE", "RECONCILE_WORKSPACE")
+
 internal fun changeConversationLabel(change: MobileDevelopmentChange): String = when {
     developmentChangeHistory(change) -> "Ver conversación"
     change.retirementState != null -> "Ver conversación · retirada pendiente"
     change.activeSessionStatus == "CLOSING" -> "Ver conversación · cierre pendiente"
-    else -> "Continuar conversación"
+    else -> "Continuar cambio"
 }
 
 @Composable
@@ -63,6 +68,7 @@ internal fun DevelopmentChangesScreen(
     var error by remember(projectId) { mutableStateOf<String?>(null) }
     var showHistory by remember(projectId) { mutableStateOf(false) }
     var acting by remember(projectId) { mutableStateOf(false) }
+    var continuingChangeKey by remember(projectId) { mutableStateOf<UUID?>(null) }
     var pendingAbandon by remember(projectId) { mutableStateOf<MobileDevelopmentChange?>(null) }
     val scope = rememberCoroutineScope()
     val keys = remember(projectId) { mutableMapOf<UUID, UUID>() }
@@ -150,19 +156,22 @@ internal fun DevelopmentChangesScreen(
                 onOpenConversation = { sessionId -> onOpenConversation(projectId, sessionId) },
                 onAbandon = if (!developmentChangeHistory(change) && apiClient.currentOperatorRole() == "PLATFORM_ADMINISTRATOR"
                     && change.retirementState != "APPLYING") ({ pendingAbandon = change }) else null,
-                onPrepare = if (change.status == "OPEN" && change.activeSessionId == null && !acting
-                    && change.primaryActionEnabled && change.primaryActionKind in setOf("PROVISION_WORKSPACE", "BIND_SESSION")) ({
+                onPrepare = if (canContinueDevelopmentChange(change, projectId)) ({
+                    if (!acting) {
+                        acting = true
+                        continuingChangeKey = change.changeKey
                         scope.launch {
-                            acting = true
                             try {
                                 val key = keys.getOrPut(change.changeKey) { UUID.randomUUID() }
                                 val sessionKey = UUID.nameUUIDFromBytes(("open-session:$key").toByteArray())
                                 val sid = apiClient.prepareExistingDevelopmentChange(projectId, change.changeKey, key, sessionKey)
                                 onOpenConversation(projectId, sid)
                             } catch (failure: Exception) { error = failure.message ?: "No se pudo continuar el cambio." }
-                            finally { acting = false; refreshRevision++ }
+                            finally { acting = false; continuingChangeKey = null; refreshRevision++ }
                         }
+                    }
                     }) else null,
+                continuing = continuingChangeKey == change.changeKey,
                 enabled = !acting
             )
         }
@@ -176,6 +185,7 @@ internal fun DevelopmentChangeCard(
     onOpenConversation: (Long) -> Unit,
     onAbandon: (() -> Unit)? = null,
     onPrepare: (() -> Unit)? = null,
+    continuing: Boolean = false,
     enabled: Boolean = true
 ) {
     val sessionId = change.sessionForReentry(projectId)
@@ -193,16 +203,19 @@ internal fun DevelopmentChangeCard(
         } else {
             Text(
                 if (developmentChangeHistory(change)) "Historial conservado."
-                else if (change.activeSessionId == null) "Sin WorkSession activa."
+                else if (onPrepare != null) "Atenea terminará la preparación y abrirá la conversación de este cambio."
+                else if (change.activeSessionId == null) "La conversación aún no está disponible."
                 else "Este cambio no está abierto para continuar.",
                 style = MaterialTheme.typography.bodySmall
             )
             change.primaryActionLabel?.let { action ->
-                Text("Siguiente acción: $action", style = MaterialTheme.typography.bodySmall)
+                Text("Siguiente acción: ${if (onPrepare != null) "Continuar cambio" else action}", style = MaterialTheme.typography.bodySmall)
             }
         }
         if (change.retirementState != null) Text("Retirada: ${change.retirementState}")
-        onPrepare?.let { AteneaButton(change.primaryActionLabel ?: "Continuar cambio", enabled = enabled, onClick = it) }
+        onPrepare?.let { AteneaButton(if (continuing) "Abriendo conversación…" else "Continuar cambio",
+            modifier = Modifier.testTag("development-change-prepare-${change.changeKey}"),
+            enabled = enabled && !continuing, onClick = it) }
         onAbandon?.let { AteneaTextButton(if (change.retirementState == "BLOCKED") "Recuperar retirada" else "Abandonar cambio", enabled = enabled, onClick = it) }
     }
 }
