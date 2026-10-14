@@ -153,6 +153,17 @@ class ChangeHelpGuideTest {
         assertEquals("Ir a Consultar estado",r.nextAction().label());
         assertFalse(r.answer().contains("ha caducado"));
     }
+    @Test void healthyBackendCannotHideAnotherTargetsFailedPublicationOrOfferFinalization() {
+        for (var target:java.util.List.of("ANDROID_STABLE","AX42_PLATFORM")) {
+            var f=publication("BLOCKED"); f.deliveryTarget=target; f.deliveryError="CANONICAL_MAIN_MOVED";
+            f.deploymentStatus="DEPLOYED";
+            var r=ChangeHelpGuide.explain(f.build(),"Qué hago",false);
+            assertEquals("DELIVERY_ATTENTION",r.stage());
+            assertTrue(r.nextAction().label().contains("Ver resultado"));
+            assertFalse(r.nextAction().label().contains("Finalizar"));
+            assertFalse(r.answer().contains("prepara de nuevo"));
+        }
+    }
     private ChangeHelpFixture publication(String state) {
         var f=new ChangeHelpFixture(); f.validation="CURRENT"; f.passed=4; f.pr="MERGED";
         f.deliveryKind="RELEASE"; f.deliveryState=state; return f;

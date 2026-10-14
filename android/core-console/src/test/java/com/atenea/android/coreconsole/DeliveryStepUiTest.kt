@@ -91,6 +91,21 @@ class DeliveryStepUiTest {
             assertTrue(step.title.contains("Android estable"))
         }
     }
+    @Test fun `healthy backend cannot hide failed Android but newer same target success retires the failure`() {
+        val failed = operation("RELEASE", "FAILED", MobileDeliveryTarget.ANDROID_STABLE).copy(errorCode = "RELEASE_BUILD_FAILED")
+        val observed = MobileDeploymentObservation(22, "DEPLOYED", "OPERATOR", "3".repeat(40), "2".repeat(40),
+            true, now, UUID.randomUUID(), UUID.randomUUID(), "5".repeat(64), null)
+        state(snapshot(failed, operation("INTEGRATE", "SUCCEEDED")).copy(deployment = observed)) {
+            val step = it.currentStep(true, false, now)
+            assertEquals(DeliveryStepStatus.ATTENTION, step.status)
+            assertEquals(DeliveryStepAction.REFRESH, step.action)
+            assertEquals(failed.id, step.operation?.id)
+        }
+        state(snapshot(operation("RELEASE", "SUCCEEDED", MobileDeliveryTarget.ANDROID_STABLE), failed,
+            operation("INTEGRATE", "SUCCEEDED")).copy(deployment = observed)) {
+            assertEquals(DeliveryStepAction.FINALIZE, it.currentStep(true, false, now).action)
+        }
+    }
     @Test fun `rollback failure and unavailable observations never offer a second publication`() {
         state(snapshot(operation("RELEASE", "ROLLBACK_FAILED"), operation("INTEGRATE", "SUCCEEDED"))) {
             assertEquals(DeliveryStepStatus.ATTENTION, it.currentStep(true, false, now).status)
