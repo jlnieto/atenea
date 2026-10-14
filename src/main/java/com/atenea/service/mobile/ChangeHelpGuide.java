@@ -61,14 +61,6 @@ public final class ChangeHelpGuide {
             if (c.agentReportedGitInstructions()) answer += " La última respuesta de Codex menciona las referencias Git del trabajo manual. Ese mensaje no es un resultado de pruebas fallidas: la validación gestionada de Atenea tiene su propia autoridad sobre este cambio.";
             shortAnswer="El cambio está guardado. Ahora toca comprobarlo: abre Cambio y pulsa Validar cambio una vez.";
             label="Ir a Validar cambio"; reason="Abre las acciones; esta consulta no inicia pruebas.";
-        } else if (c.deliveryState() != null && !List.of("SUCCEEDED","FAILED","BLOCKED","ROLLED_BACK","ROLLBACK_FAILED").contains(c.deliveryState())) {
-            stage="DELIVERY_PENDING"; answer="Hay una operación de entrega pendiente. Sigue su mismo resultado o confirmación en las acciones del cambio. Esta ayuda no la reenvía ni concede autorizaciones; si hace falta confirmar una publicación, Atenea lo indicará allí.";
-            shortAnswer="Hay un paso de entrega pendiente. Consulta esa misma operación.";
-            label="Ver operación de entrega"; reason="No repitas una acción que ya tiene operación guardada.";
-        } else if (c.deliveryError() != null) {
-            stage="DELIVERY_ATTENTION"; answer="La última operación de entrega guardó un bloqueo. Consulta el código y las opciones de recuperación del mismo cambio. Preguntar aquí no hace un nuevo intento ni publica nada.";
-            shortAnswer="La entrega necesita atención. Abre sus opciones de recuperación.";
-            label="Ver bloqueo de entrega"; reason="La acción normal volverá a comprobar estado y permisos.";
         } else if ("CURRENT".equals(c.validationState()) && (!c.deliveryEnabled()
                 || !"PLATFORM_ADMINISTRATOR".equals(c.operatorRole()))) {
             stage="DELIVERY_NOT_AVAILABLE";
@@ -77,6 +69,54 @@ public final class ChangeHelpGuide {
                     : "El código consta validado, pero tu rol actual no permite las operaciones administrativas de entrega. Consultar esta ayuda no concede esos permisos. Debe resolverse por el mecanismo de autorización previsto, sin recrear el ticket.";
             shortAnswer="Las pruebas están registradas; falta habilitación o autorización para la entrega.";
             label="Ver estado de entrega"; reason="No se inventan permisos ni se ofrece publicar por terminal.";
+        } else if ("RELEASE".equals(c.deliveryKind()) && "READY".equals(c.deliveryState())) {
+            if (c.deliveryExpiresAt() == null || !c.deliveryPlanVerified()) {
+                stage="DELIVERY_ATTENTION";
+                answer="La operación dice preparada, pero no hay evidencia suficiente de un plan válido para confirmar. Consulta el estado en Cambio. No se puede publicar con esta información ni se debe inventar que el plan está vigente.";
+                shortAnswer="Falta confirmar la evidencia del plan. En Cambio, utiliza Consultar estado.";
+                label="Ir a Consultar estado"; reason="La evidencia incompleta no habilita una confirmación.";
+            } else if (c.deliveryExpiresAt() <= c.observedAt().getEpochSecond()) {
+                stage="DELIVERY_ATTENTION";
+                answer="La preparación de " + c.deliveryTargetLabel() + " ha caducado sin publicar. No hay un despliegue trabajando. Atenea debe registrar el cierre de ese plan; después podrás preparar uno nuevo desde Cambio. No vuelvas a validar ni integrar la PR.";
+                shortAnswer="El plan ha caducado; no se ha publicado. Consulta Cambio para preparar de nuevo cuando cierre ese plan.";
+                label="Ver preparación caducada"; reason="Un plan caducado no se puede confirmar ni renovar silenciosamente.";
+            } else {
+                stage="PUBLICATION_CONFIRMATION";
+                answer="La preparación de " + c.deliveryTargetLabel() + " terminó. Atenea no está trabajando ni va a publicar sola: falta tu confirmación. En Cambio, pulsa Confirmar " + c.deliveryTargetLabel() + " y utiliza tu autenticador. La autorización será sólo para ese plan. Puedes hacerlo desde el móvil; no necesitas SSH ni otra sesión.";
+                shortAnswer="La preparación está lista. Ahora te toca: Cambio → Confirmar " + c.deliveryTargetLabel() + ".";
+                label="Ir a Confirmar " + c.deliveryTargetLabel(); reason="Abre la confirmación; esta ayuda no publica ni concede permisos.";
+            }
+        } else if (c.deliveryState() != null && !List.of("SUCCEEDED","FAILED","BLOCKED","ROLLED_BACK","ROLLBACK_FAILED").contains(c.deliveryState())) {
+            stage="DELIVERY_PENDING";
+            if ("WAITING_CI".equals(c.deliveryState())) {
+                answer="La misma operación está esperando las comprobaciones de GitHub. Atenea continuará al recibir el resultado. Puedes salir de la app; no tienes que repetir la acción.";
+                shortAnswer="GitHub está comprobando el cambio. Espera; puedes salir de la app.";
+            } else if ("PLANNING".equals(c.deliveryState()) || "PREPARING".equals(c.deliveryState())) {
+                answer="Atenea está preparando " + c.deliveryTargetLabel() + ". Aún no está publicando. Puedes salir de la app: la misma operación conserva su resultado. Cuando esté lista faltará tu confirmación.";
+                shortAnswer="Preparando " + c.deliveryTargetLabel() + ". Espera; después habrá que confirmar.";
+            } else {
+                answer="La misma operación de entrega está en curso. Puedes salir de la app; Atenea conserva y consulta su resultado. No repitas la acción ni envíes otro prompt.";
+                shortAnswer="La operación está trabajando. Espera; no tienes que mantener abierta la app.";
+            }
+            label="Ver progreso de entrega"; reason="Consulta la misma operación; no vuelve a solicitarla.";
+        } else if ("DEPLOYED".equals(c.deploymentStatus()) && !"ROLLBACK_FAILED".equals(c.deliveryState())) {
+            stage="COMPLETION_READY";
+            answer="Atenea confirma que Backend PROD está sano y contiene este cambio. No hay un despliegue pendiente. Comprueba el resultado funcional; si el cambio incluye Android, publicar e instalar su APK es un paso separado en Otras publicaciones. Después utiliza Finalizar cambio. Finalizar no vuelve a desplegar y conserva la conversación.";
+            shortAnswer="El backend ya contiene el cambio y está sano. Comprueba el resultado y, cuando esté aceptado, utiliza Finalizar cambio.";
+            label="Ir a Finalizar cambio"; reason="El cierre vuelve a comprobar entrega, validación y ausencia de operaciones activas.";
+        } else if (c.deliveryError() != null) {
+            stage="DELIVERY_ATTENTION"; answer="La última operación de entrega guardó un bloqueo. Consulta el código y las opciones de recuperación del mismo cambio. Preguntar aquí no hace un nuevo intento ni publica nada.";
+            shortAnswer="La entrega necesita atención. Abre sus opciones de recuperación.";
+            label="Ver bloqueo de entrega"; reason="La acción normal volverá a comprobar estado y permisos.";
+            if ("RELEASE".equals(c.deliveryKind()) && List.of("PLAN_EXPIRED","CANONICAL_MAIN_MOVED").contains(c.deliveryError())) {
+                answer="La preparación anterior de " + c.deliveryTargetLabel() + " ya no se puede usar. No se ha publicado ni hay un despliegue trabajando. En Cambio, prepara de nuevo; Atenea volverá a comprobar la versión aprobada. La validación y la integración del ticket se conservan.";
+                shortAnswer="La preparación anterior ya no sirve. Ahora te toca: preparar " + c.deliveryTargetLabel() + " de nuevo.";
+                label="Ir a Preparar " + c.deliveryTargetLabel(); reason="Es una preparación nueva explícita; no repite pruebas, PR ni despliegue.";
+            }
+        } else if (List.of("UNHEALTHY","UNAVAILABLE").contains(c.deploymentStatus())) {
+            stage="DELIVERY_ATTENTION"; answer="Atenea no ha podido confirmar un despliegue sano que contenga este cambio. Consultar estado vuelve a leer el despliegue; no publica ni reintenta nada. No se puede finalizar con una entrega sin confirmar.";
+            shortAnswer="Falta confirmar el estado de PROD. En Cambio, utiliza Consultar estado.";
+            label="Ir a Consultar estado"; reason="Sólo consulta; una observación no confirmada no habilita una publicación.";
         } else if ("MERGED".equals(c.pullRequestState()) || "CURRENT".equals(c.integrationState())) {
             stage="PUBLICATION"; answer="El cambio consta integrado. Integrar no equivale a desplegar el backend o instalar una APK. Revisa los recibos y prepara la publicación que corresponda. Sólo se puede finalizar cuando Atenea confirme un despliegue sano que contenga este cambio.";
             shortAnswer="El código está integrado. Revisa la publicación antes de dar el cambio por terminado.";

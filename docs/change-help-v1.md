@@ -28,7 +28,9 @@ con proyecto, worker, rama y workspace coherentes. No se aceptan rutas, modelos,
 comandos, hechos o destinos elegidos por el cliente.
 
 - `GET /api/mobile/sessions/{sessionId}/help`: explicación del estado registrado.
-  Sólo lecturas de DB; ningún worker, LLM, lock de escritura ni reconciliación.
+  Lecturas de DB; para una PR integrada y un administrador, reutiliza también
+  la observación read-only del publicador que usa Cambio. No consulta Codex,
+  llama al LLM, adquiere locks de escritura ni solicita reconciliaciones.
 - `POST /api/mobile/sessions/{sessionId}/help`: cuerpo cerrado
   `{"question":"¿Qué hago ahora?","simple":false}`; `simple` es opcional.
   Pregunta no vacía, hasta 1000 caracteres. Puede pedir una explicación más
@@ -59,6 +61,25 @@ no los habilita ni sustituye las comprobaciones normales de factores/operación.
 El catálogo de cuatro validaciones está confirmado para Atenea (projectId=1).
 Para otros proyectos sin un catálogo confirmado, se ofrece orientación de estado
 sin inventar pruebas o publicaciones. Esto no anuncia soporte de entrega universal.
+
+## Orientación de publicación y pantalla Cambio
+
+La preparación RECOVERY publica un merge/main, no el head de la PR. La ayuda
+la reconoce únicamente mediante el recibo de integración propio y el binding
+durable exacto `integrated-release-recovery/v1`; un commit distinto, otra
+sesión/operador o una prueba contradictoria no se adoptan como esta revisión.
+READY vigente significa **Te toca a ti → Confirmar**, no trabajo en curso.
+Un plan caducado nunca se confirma; tras su cierre durable, la preparación
+nueva es explícita. PREPARING, WAITING_CI y APPLYING indican que Atenea continúa
+sin mantener abierta la app. Una entrega sana observada sustituye los bloqueos
+históricos del plan anterior, sin inventar una publicación móvil.
+
+Cambio coloca primero el paso actual con una acción principal y diferencia
+**Atenea está trabajando**, **Te toca a ti**, **Necesita atención** y **Estado
+por confirmar**. Las pruebas terminadas y los recibos técnicos se consultan
+en desplegables, no antes de Confirmar. Android y Worker siguen siendo destinos
+separados. No cambia confirmaciones, TOTP, permisos, caducidad, reintentos ni
+la autoridad de integración/producción.
 
 ## Contrato de Codex gestionado
 

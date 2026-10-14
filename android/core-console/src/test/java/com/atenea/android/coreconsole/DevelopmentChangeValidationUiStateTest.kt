@@ -31,6 +31,13 @@ class DevelopmentChangeValidationUiStateTest {
         assertEquals("Cambio validado para la revisión actual.", state.message)
     }
 
+    @Test fun `old failed notice cannot override current validation`() {
+        val state = developmentChangeValidationUiState(session(validationState = "CURRENT"), false, false,
+            "Closed validation failed (0/4)")
+        assertEquals("Cambio validado para la revisión actual.", state.message)
+        assertFalse(state.needsAttention)
+    }
+
     @Test
     fun `new stale revision exposes validation again regardless of older evidence`() {
         val state = developmentChangeValidationUiState(session(validationState = "STALE"), false, false, null)
