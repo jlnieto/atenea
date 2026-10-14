@@ -94,6 +94,13 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
         return DeliveryStepUi(DeliveryStepStatus.ATTENTION, "Restauración fallida",
             "La publicación sigue bloqueada. Consulta el resultado; no inicies otra operación.", operation = it)
     }
+    operations.filter { it.kind == "RELEASE" && it.target != MobileDeliveryTarget.APP_PROD }
+        .distinctBy { it.target }.firstOrNull { it.state in setOf("FAILED", "BLOCKED", "ROLLED_BACK") }?.let {
+            return DeliveryStepUi(DeliveryStepStatus.ATTENTION, "${it.target.label}: necesita atención",
+                (it.errorCode?.let(::deliveryErrorLabel) ?: "La última publicación de este destino no terminó correctamente.") +
+                    " Un backend sano no confirma la entrega de Android o Worker. Consulta esta operación en Otras publicaciones y sus detalles.",
+                DeliveryStepAction.REFRESH, it)
+        }
     if (appDeployed) return DeliveryStepUi(DeliveryStepStatus.ACTION, "Backend PROD: entregado",
         "El backend está sano y contiene tu cambio. Comprueba el resultado y finaliza el ticket. Android es una publicación separada.",
         if (completionEnabled) DeliveryStepAction.FINALIZE else DeliveryStepAction.NONE)

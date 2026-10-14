@@ -99,6 +99,16 @@ public final class ChangeHelpGuide {
                 shortAnswer="La operación está trabajando. Espera; no tienes que mantener abierta la app.";
             }
             label="Ver progreso de entrega"; reason="Consulta la misma operación; no vuelve a solicitarla.";
+        } else if ("RELEASE".equals(c.deliveryKind()) && !"APP_PROD".equals(c.deliveryTarget())
+                && List.of("FAILED","BLOCKED","ROLLED_BACK","ROLLBACK_FAILED").contains(c.deliveryState())) {
+            stage="DELIVERY_ATTENTION";
+            answer="La última publicación de " + c.deliveryTargetLabel() + " necesita atención. Que Backend PROD esté sano no confirma la entrega de otro destino. Consulta el resultado de esa operación; esta ayuda no hace un segundo intento ni da el ticket por terminado.";
+            shortAnswer=c.deliveryTargetLabel() + " necesita atención. Consulta esa publicación antes de dar el cambio por terminado.";
+            label="Ver resultado de " + c.deliveryTargetLabel(); reason="Backend, Android y Worker tienen resultados independientes.";
+            if ("PLAN_EXPIRED".equals(c.deliveryError())) {
+                answer="La preparación de " + c.deliveryTargetLabel() + " caducó sin publicar. Puedes preparar de nuevo desde Cambio; Atenea volverá a comprobar la versión y sus permisos. Que el backend esté desplegado no publica este destino.";
+                shortAnswer="El plan de " + c.deliveryTargetLabel() + " caducó. Prepara de nuevo y comprueba el resultado.";
+            }
         } else if ("DEPLOYED".equals(c.deploymentStatus()) && !"ROLLBACK_FAILED".equals(c.deliveryState())) {
             stage="COMPLETION_READY";
             answer="Atenea confirma que Backend PROD está sano y contiene este cambio. No hay un despliegue pendiente. Comprueba el resultado funcional; si el cambio incluye Android, publicar e instalar su APK es un paso separado en Otras publicaciones. Después utiliza Finalizar cambio. Finalizar no vuelve a desplegar y conserva la conversación.";
