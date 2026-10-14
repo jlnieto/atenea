@@ -86,6 +86,7 @@ for (const viewport of [
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     let refreshCalls = 0;
     let revoked = false;
+    let passkeyRevoked = false;
     await page.route("**/api/**", async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
@@ -116,11 +117,25 @@ for (const viewport of [
             absoluteExpiresAt: "2026-09-12T09:00:00Z",
             state: "ACTIVE",
             current: false
-          }])
+          }]),
+          {
+            familyId: "00000000-0000-4000-8000-000000000003",
+            clientType: "WEB",
+            deviceLabel: "Navegador antiguo",
+            createdAt: "2026-07-01T09:00:00Z",
+            lastUsedAt: "2026-07-02T09:00:00Z",
+            absoluteExpiresAt: "2026-08-01T09:00:00Z",
+            state: "EXPIRED",
+            current: false
+          }
         ]);
       }
       if (path.endsWith("000000000002") && request.method() === "DELETE") {
         revoked = true;
+        return route.fulfill({ status: 204, body: "" });
+      }
+      if (path.startsWith("/api/auth/webauthn/credentials/") && request.method() === "DELETE") {
+        passkeyRevoked = true;
         return route.fulfill({ status: 204, body: "" });
       }
       if (path === "/api/auth/webauthn/credentials" && request.method() === "GET") {
@@ -146,14 +161,16 @@ for (const viewport of [
     });
 
     await page.goto("/#/settings", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Seguridad de la cuenta" })).toBeVisible();
-    await expect(page.getByText("Navegador principal · Esta sesión", { exact: true })).toBeVisible();
-    await expect(page.getByText("Teléfono de pruebas", { exact: true })).toBeVisible();
-    await expect(page.getByText("Refresh en cookie HttpOnly; acceso sólo en memoria y refresh coordinado.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Ajustes", level: 2 })).toBeVisible();
+    await expect(page.getByText("Teléfono de pruebas", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: /Seguridad y acceso/ }).click();
+    await expect(page.getByRole("heading", { name: "Seguridad y acceso", level: 2 })).toBeVisible();
     await expect(page.getByText("Passkeys independientes verificadas", { exact: true })).toBeVisible();
     await expect(page.getByText("2 dominios", { exact: true })).toBeVisible();
     await expect(page.getByText("Google Password Manager · 1", { exact: true })).toBeVisible();
     await expect(page.getByText("1Password · 2", { exact: true })).toBeVisible();
+    await expect(page.getByText("Proveedor desconocido · 3", { exact: true })).toHaveCount(0);
+    await page.getByText("Passkeys revocadas (1)").click();
     await expect(page.getByText("Proveedor desconocido · 3", { exact: true })).toBeVisible();
     await expect(page.locator("body")).not.toContainText("credentialId");
     await expect(page.locator("body")).not.toContainText("AAGUID");
@@ -170,12 +187,26 @@ for (const viewport of [
     await expect(page.getByRole("button", { name: "Verificar passkey seleccionada" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Revocar en Atenea" }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Sincronizar inventario activo" })).toBeVisible();
+    await page.getByRole("button", { name: "Revocar en Atenea" }).first().click();
+    await expect(page.getByText("¿Revocar Google Password Manager · 1?")).toBeVisible();
+    expect(passkeyRevoked).toBe(false);
+    await page.getByRole("button", { name: "Cancelar" }).click();
     await retainScreenshot(page, `${viewport.name}-passkey-inventory.png`);
 
-    await page.getByRole("button", { name: "Revocar", exact: true }).click();
+    await page.goto("/#/devices", { waitUntil: "networkidle" });
+    await expect(page.getByText("Navegador principal · Esta sesión", { exact: true })).toBeVisible();
+    await expect(page.getByText("Teléfono de pruebas", { exact: true })).toBeVisible();
+    await expect(page.getByText("Navegador antiguo", { exact: true })).toHaveCount(0);
+    await page.getByText("Historial de sesiones (1)").click();
+    await expect(page.getByText("Navegador antiguo", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Cerrar acceso" }).click();
+    await expect(page.getByText("¿Cerrar el acceso de Teléfono de pruebas?")).toBeVisible();
+    expect(revoked).toBe(false);
+    await page.getByRole("button", { name: "Confirmar cierre" }).click();
     await expect(page.getByText("Teléfono de pruebas", { exact: true })).toHaveCount(0);
     expect(revoked).toBe(true);
 
+    await page.goto("/#/security", { waitUntil: "networkidle" });
     await page.getByRole("button", { name: "Preparar TOTP" }).click();
     await expect(page.getByText("Alta TOTP pendiente", { exact: true })).toBeVisible();
     await expect(page.getByText("SYNTHETICFIXTUREONLY", { exact: true })).toBeVisible();
@@ -274,7 +305,7 @@ for (const viewport of [
       return json(route, {});
     });
 
-    await page.goto("/#/settings", { waitUntil: "networkidle" });
+    await page.goto("/#/security", { waitUntil: "networkidle" });
     await expect(page.getByText("Discovery de passkeys: solo lectura", { exact: true })).toBeVisible();
     await expect(page.getByText("Solo lectura", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Registrar passkey" })).toHaveCount(0);
@@ -457,7 +488,7 @@ for (const viewport of [
       return json(route, {});
     });
 
-    await page.goto("/#/settings", { waitUntil: "networkidle" });
+    await page.goto("/#/security", { waitUntil: "networkidle" });
     const resetPanel = page.getByLabel("Reinicio controlado de passkeys");
     await expect(resetPanel).toContainText("1 de 3 · Registrar en 1Password");
     await expect(page.getByRole("button", { name: "Registrar passkey en 1Password" })).toBeVisible();
@@ -474,6 +505,8 @@ for (const viewport of [
     expect(proofTarget).toBe(candidateRecordId);
     expect(proofProvider).toBe("ONE_PASSWORD");
     await page.getByRole("button", { name: "Sustituir passkeys históricas" }).click();
+    await expect(page.getByText("¿Sustituir las passkeys históricas?")).toBeVisible();
+    await page.getByRole("button", { name: "Confirmar sustitución" }).click();
     await expect(resetPanel).toContainText("Reinicio completado");
     await expect(resetPanel).toContainText("una passkey activa en 1Password");
     expect(committedCandidate).toBe(candidateRecordId);

@@ -284,6 +284,58 @@ svg {
   margin: 8px 0 18px;
 }
 
+.settings-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+
+.settings-link {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-link:hover,
+.settings-link:focus-visible {
+  border-color: var(--text);
+}
+
+.settings-link span,
+.security-history {
+  color: var(--muted);
+}
+
+.security-history {
+  margin-top: 14px;
+}
+
+.security-history summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.security-confirm {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.security-confirm p {
+  margin: 0;
+}
+
 .security-section h3 {
   margin: 3px 0 0;
 }

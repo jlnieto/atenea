@@ -86,6 +86,8 @@ type RouteName =
   | "diagnostics"
   | "codex-admin"
   | "settings"
+  | "security"
+  | "devices"
   | "session"
   | "conversation"
   | "changes";
@@ -220,7 +222,7 @@ function Shell({ session, route }: { session: AuthSession; route: Route }) {
                   || session.operator.codexOperationsRole === "PLATFORM_ADMINISTRATOR"
                   || !session.operator.codexOperationsRole).map((item) => (
                   <button
-                    className={`nav__item ${route.name === item.route ? "is-active" : ""}`}
+                    className={`nav__item ${route.name === item.route || (item.route === "settings" && (route.name === "security" || route.name === "devices")) ? "is-active" : ""}`}
                     key={item.route}
                     type="button"
                     onClick={() => {
@@ -289,6 +291,10 @@ function RouteContent({ route, refreshHealth }: { route: Route; refreshHealth: (
       return <CodexAdministrationScreen />;
     case "settings":
       return <SettingsScreen />;
+    case "security":
+      return <SecurityAccessScreen />;
+    case "devices":
+      return <DevicesAccessScreen />;
     case "session":
       return route.sessionId ? <WorkSessionScreen sessionId={route.sessionId} projectId={route.projectId} /> : <MissingContext />;
     case "conversation":
@@ -2414,8 +2420,120 @@ function codexAdminNextStep(
 }
 
 function SettingsScreen() {
+  return (
+    <Page>
+      <Panel>
+        <PanelHeader title="Ajustes" eyebrow="Cuenta" />
+        <Row title="Sesión actual" detail={api.currentSession?.operator.displayName || api.currentSession?.operator.email || "Activa"} level="ok" />
+        <p className="muted">Gestiona cómo accedes a Atenea y dónde tienes sesiones abiertas.</p>
+        <div className="settings-links">
+          <button type="button" className="settings-link" onClick={() => navigate({ name: "security" })}>
+            <strong>Seguridad y acceso</strong>
+            <span>Passkeys, TOTP y recuperación</span>
+          </button>
+          <button type="button" className="settings-link" onClick={() => navigate({ name: "devices" })}>
+            <strong>Dispositivos con acceso</strong>
+            <span>Sesiones activas y cierre remoto</span>
+          </button>
+        </div>
+        <Button variant="danger" icon={<LogOut />} onClick={() => api.logout()}>Cerrar sesión</Button>
+      </Panel>
+    </Page>
+  );
+}
+
+function DevicesAccessScreen() {
   const [sessions, setSessions] = useState<OperatorSessionInventory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [pendingRevoke, setPendingRevoke] = useState<OperatorSessionInventory | "others" | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyVisibleCount, setHistoryVisibleCount] = useState(20);
+
+  async function loadSessions() {
+    setLoading(true);
+    setError("");
+    try {
+      setSessions(await api.sessions());
+    } catch (loadError) {
+      setError(errorMessage(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadSessions(); }, []);
+
+  async function confirmRevoke() {
+    if (!pendingRevoke) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (pendingRevoke === "others") await api.revokeOtherSessions();
+      else await api.revokeSession(pendingRevoke.familyId);
+      setPendingRevoke(null);
+      await loadSessions();
+    } catch (revokeError) {
+      setError(errorMessage(revokeError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const active = sessions.filter((item) => item.state === "ACTIVE")
+    .sort((left, right) => Number(right.current) - Number(left.current));
+  const history = sessions.filter((item) => item.state !== "ACTIVE");
+
+  return (
+    <Page>
+      <Panel>
+        <PanelHeader title="Dispositivos con acceso" eyebrow="Cuenta" action={<Button onClick={() => navigate({ name: "settings" })}>Volver a Ajustes</Button>} />
+        <p className="muted">Revisa dónde está abierta tu cuenta y cierra los accesos que no reconozcas.</p>
+        {loading && <p className="muted">Cargando sesiones…</p>}
+        {error && <InlineError>{error}</InlineError>}
+        {!loading && !error && active.length === 0 && <p className="muted">No hay sesiones activas.</p>}
+        {active.map((item) => (
+          <div className="security-session" key={item.familyId}>
+            <div>
+              <strong>{item.deviceLabel}{item.current ? " · Esta sesión" : ""}</strong>
+              <span>{item.clientType} · Último uso {formatAbsoluteDate(item.lastUsedAt)}</span>
+            </div>
+            {!item.current && <Button variant="danger" disabled={busy} onClick={() => setPendingRevoke(item)}>Cerrar acceso</Button>}
+          </div>
+        ))}
+        {active.some((item) => !item.current) && (
+          <Button disabled={busy} onClick={() => setPendingRevoke("others")}>Cerrar las demás sesiones</Button>
+        )}
+        {history.length > 0 && (
+          <details className="security-history" onToggle={(event) => setShowHistory(event.currentTarget.open)}>
+            <summary>Historial de sesiones ({history.length})</summary>
+            {showHistory && history.slice(0, historyVisibleCount).map((item) => (
+              <div className="security-session" key={item.familyId}>
+                <div><strong>{item.deviceLabel}</strong><span>{item.clientType} · {item.state === "REVOKED" ? "Revocada" : "Caducada"} · Último uso {formatAbsoluteDate(item.lastUsedAt)}</span></div>
+              </div>
+            ))}
+            {showHistory && history.length > historyVisibleCount && (
+              <Button onClick={() => setHistoryVisibleCount((count) => count + 20)}>Mostrar más sesiones</Button>
+            )}
+          </details>
+        )}
+        {pendingRevoke && (
+          <div className="security-confirm" role="group" aria-label="Confirmar cierre de acceso">
+            <strong>{pendingRevoke === "others" ? "¿Cerrar todas las demás sesiones?" : `¿Cerrar el acceso de ${pendingRevoke.deviceLabel}?`}</strong>
+            <p>Los dispositivos afectados tendrán que iniciar sesión de nuevo.</p>
+            <div className="button-row">
+              <Button variant="danger" disabled={busy} onClick={confirmRevoke}>Confirmar cierre</Button>
+              <Button disabled={busy} onClick={() => setPendingRevoke(null)}>Cancelar</Button>
+            </div>
+          </div>
+        )}
+      </Panel>
+    </Page>
+  );
+}
+
+function SecurityAccessScreen() {
   const [error, setError] = useState("");
   const [factorNotice, setFactorNotice] = useState("");
   const [factorPending, setFactorPending] = useState(false);
@@ -2431,18 +2549,10 @@ function SettingsScreen() {
     "UNKNOWN"
   );
   const [selectedPasskeyRecordId, setSelectedPasskeyRecordId] = useState("");
-
-  async function loadSessions() {
-    setLoading(true);
-    setError("");
-    try {
-      setSessions(await api.sessions());
-    } catch (loadError) {
-      setError(errorMessage(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [pendingPasskeyRevoke, setPendingPasskeyRevoke] = useState<{ recordId: string; label: string } | null>(null);
+  const [pendingResetCommit, setPendingResetCommit] = useState(false);
+  const [showRevokedPasskeys, setShowRevokedPasskeys] = useState(false);
+  const [revokedPasskeyVisibleCount, setRevokedPasskeyVisibleCount] = useState(20);
 
   async function loadPasskeys() {
     setPasskeyLoading(true);
@@ -2474,18 +2584,8 @@ function SettingsScreen() {
   }
 
   useEffect(() => {
-    loadSessions();
     loadPasskeys();
   }, []);
-
-  async function revoke(familyId: string) {
-    try {
-      await api.revokeSession(familyId);
-      await loadSessions();
-    } catch (revokeError) {
-      setError(errorMessage(revokeError));
-    }
-  }
 
   async function registerPasskey() {
     setFactorPending(true);
@@ -2528,6 +2628,7 @@ function SettingsScreen() {
     setPasskeyError("");
     try {
       await api.revokePasskey(recordId);
+      setPendingPasskeyRevoke(null);
       setPasskeyNotice(
         "Passkey revocada en Atenea. Elimínala también del proveedor si ya no la necesitas."
       );
@@ -2578,6 +2679,7 @@ function SettingsScreen() {
         setPasskeyNotice("Reinicio completado: queda activa la nueva passkey de 1Password.");
       }
       await loadPasskeys();
+      setPendingResetCommit(false);
     } catch (factorError) {
       setPasskeyError(errorMessage(factorError));
     } finally {
@@ -2618,19 +2720,15 @@ function SettingsScreen() {
   return (
     <Page>
       <Panel>
-        <PanelHeader title="Seguridad de la cuenta" eyebrow="Operador" />
-        <List>
-          <Row title="Sesión web protegida" detail="Refresh en cookie HttpOnly; acceso sólo en memoria y refresh coordinado." level="ok" />
-          <Row title="API" detail={window.location.origin} />
-          <Row title="Factores fuertes" detail="Passkey preferente y TOTP de respaldo. El alta real requiere autorización H11." level="warning" />
-        </List>
+        <PanelHeader title="Seguridad y acceso" eyebrow="Cuenta" action={<Button onClick={() => navigate({ name: "settings" })}>Volver a Ajustes</Button>} />
         <div className="security-section" aria-label="Factores de seguridad">
           <div>
             <span className="eyebrow">Factores</span>
-            <h3>Acceso fuerte y step-up</h3>
-            <p className="muted">El mismo factor reciente se usa para autorizar una acción y un target/plan exactos.</p>
+            <h3>Factores de acceso</h3>
+            <p className="muted">Gestiona las passkeys y el respaldo TOTP de tu cuenta.</p>
           </div>
           {factorNotice && <p className="notice notice--ok">{factorNotice}</p>}
+          {error && <InlineError>{error}</InlineError>}
           {passkeyNotice && <p className="notice notice--ok">{passkeyNotice}</p>}
           {passkeyLoading && <p className="muted">Cargando passkeys sanitizadas…</p>}
           {passkeyError && <InlineError>{passkeyError}</InlineError>}
@@ -2646,7 +2744,7 @@ function SettingsScreen() {
                   variant="primary"
                   disabled={factorPending}
                   icon={<ShieldCheck />}
-                  onClick={advancePasskeyReset}
+                  onClick={() => passkeyReset.state === "COMMIT_READY" ? setPendingResetCommit(true) : advancePasskeyReset()}
                 >
                   {passkeyResetActionLabel(passkeyReset)}
                 </Button>
@@ -2692,22 +2790,22 @@ function SettingsScreen() {
                 </Button>
               )}
               <div className="passkey-inventory" aria-label="Inventario sanitizado de passkeys">
-                {passkeys.credentials.length === 0 && (
-                  <p className="muted">Aún no hay passkeys en el inventario seguro.</p>
+                {passkeys.credentials.every((credential) => credential.state !== "ACTIVE") && (
+                  <p className="muted">No hay passkeys activas.</p>
                 )}
-                {passkeys.credentials.map((credential) => (
+                {passkeys.credentials.filter((credential) => credential.state === "ACTIVE").map((credential) => (
                   <div className="security-session" key={credential.recordId}>
                     <div>
                       <strong>{credential.label}</strong>
                       <span>
-                        {credential.state === "ACTIVE" ? "Activa" : "Revocada"}
+                        Activa
                         {credential.backupEligible ? " · Sincronizable" : " · No sincronizable"}
                         {credential.lastVerifiedAt
                           ? ` · Verificada ${formatAbsoluteDate(credential.lastVerifiedAt)}`
                           : " · Sin verificar"}
                       </span>
                     </div>
-                    {passkeys.readOnly && credential.state === "ACTIVE" && (
+                    {passkeys.readOnly && (
                       <label className="passkey-choice">
                         <input
                           type="radio"
@@ -2720,11 +2818,11 @@ function SettingsScreen() {
                         <span>Elegir para verificar</span>
                       </label>
                     )}
-                    {!passkeys.readOnly && credential.state === "ACTIVE" && (
+                    {!passkeys.readOnly && (
                       <Button
                         variant="danger"
                         disabled={factorPending}
-                        onClick={() => revokePasskey(credential.recordId)}
+                        onClick={() => setPendingPasskeyRevoke({ recordId: credential.recordId, label: credential.label })}
                       >
                         Revocar en Atenea
                       </Button>
@@ -2732,6 +2830,19 @@ function SettingsScreen() {
                   </div>
                 ))}
               </div>
+              {passkeys.credentials.some((credential) => credential.state === "REVOKED") && (
+                <details className="security-history" onToggle={(event) => setShowRevokedPasskeys(event.currentTarget.open)}>
+                  <summary>Passkeys revocadas ({passkeys.credentials.filter((credential) => credential.state === "REVOKED").length})</summary>
+                  {showRevokedPasskeys && passkeys.credentials.filter((credential) => credential.state === "REVOKED").slice(0, revokedPasskeyVisibleCount).map((credential) => (
+                    <div className="security-session" key={credential.recordId}>
+                      <strong>{credential.label}</strong><span>Revocada</span>
+                    </div>
+                  ))}
+                  {showRevokedPasskeys && passkeys.credentials.filter((credential) => credential.state === "REVOKED").length > revokedPasskeyVisibleCount && (
+                    <Button onClick={() => setRevokedPasskeyVisibleCount((count) => count + 20)}>Mostrar más passkeys</Button>
+                  )}
+                </details>
+              )}
             </>
           )}
           <div className="button-row">
@@ -2775,32 +2886,26 @@ function SettingsScreen() {
             </div>
           )}
         </div>
-        <div className="security-section">
-          <div>
-            <span className="eyebrow">Sesiones</span>
-            <h3>Dispositivos con acceso</h3>
-          </div>
-          {loading && <p className="muted">Cargando inventario seguro…</p>}
-          {error && <InlineError>{error}</InlineError>}
-          {!loading && !error && sessions.length === 0 && <p className="muted">No hay sesiones familiares activas.</p>}
-          {sessions.map((item) => (
-            <div className="security-session" key={item.familyId}>
-              <div>
-                <strong>{item.deviceLabel}{item.current ? " · Esta sesión" : ""}</strong>
-                <span>{item.clientType} · {item.state} · Último uso {formatAbsoluteDate(item.lastUsedAt)}</span>
-              </div>
-              {!item.current && item.state === "ACTIVE" && (
-                <Button variant="danger" onClick={() => revoke(item.familyId)}>Revocar</Button>
-              )}
+        {pendingPasskeyRevoke && (
+          <div className="security-confirm" role="group" aria-label="Confirmar revocación de passkey">
+            <strong>¿Revocar {pendingPasskeyRevoke.label}?</strong>
+            <p>Dejarás de poder usar esta passkey para entrar en Atenea.</p>
+            <div className="button-row">
+              <Button variant="danger" disabled={factorPending} onClick={() => revokePasskey(pendingPasskeyRevoke.recordId)}>Confirmar revocación</Button>
+              <Button onClick={() => setPendingPasskeyRevoke(null)}>Cancelar</Button>
             </div>
-          ))}
-          {sessions.some((item) => !item.current && item.state === "ACTIVE") && (
-            <Button onClick={async () => { await api.revokeOtherSessions(); await loadSessions(); }}>
-              Cerrar las demás sesiones
-            </Button>
-          )}
-        </div>
-        <Button variant="danger" icon={<LogOut />} onClick={() => api.logout()}>Cerrar sesión</Button>
+          </div>
+        )}
+        {pendingResetCommit && (
+          <div className="security-confirm" role="group" aria-label="Confirmar sustitución de passkeys">
+            <strong>¿Sustituir las passkeys históricas?</strong>
+            <p>Se revocarán las passkeys anteriores y quedará activa la nueva passkey verificada.</p>
+            <div className="button-row">
+              <Button variant="danger" disabled={factorPending} onClick={advancePasskeyReset}>Confirmar sustitución</Button>
+              <Button disabled={factorPending} onClick={() => setPendingResetCommit(false)}>Cancelar</Button>
+            </div>
+          </div>
+        )}
       </Panel>
     </Page>
   );
@@ -3247,7 +3352,7 @@ function readRoute(): Route {
   if (name === "changes") {
     return { name, projectId: toNumber(parts[0]) };
   }
-  const known: RouteName[] = ["home", "projects", "health", "core", "operations", "files", "costs", "diagnostics", "codex-admin", "settings"];
+  const known: RouteName[] = ["home", "projects", "health", "core", "operations", "files", "costs", "diagnostics", "codex-admin", "settings", "security", "devices"];
   return { name: known.includes(name as RouteName) ? name as RouteName : "home" };
 }
 
@@ -3272,6 +3377,8 @@ function routeTitle(route: Route) {
     diagnostics: "Diagnóstico",
     "codex-admin": "Versiones Codex",
     settings: "Ajustes",
+    security: "Seguridad y acceso",
+    devices: "Dispositivos con acceso",
     session: "Cambio",
     conversation: "Conversación",
     changes: "Cambios"

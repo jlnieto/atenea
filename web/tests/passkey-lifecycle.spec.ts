@@ -76,7 +76,7 @@ const disabledPasskeyReset = {
 test("Signal API receives only the exact complete active snapshot", async ({ page }) => {
   await installSignalMethod(page, "success");
   await routeSettings(page, completeSnapshot);
-  await page.goto("/#/settings", { waitUntil: "networkidle" });
+  await page.goto("/#/security", { waitUntil: "networkidle" });
 
   await page.getByRole("button", { name: "Sincronizar inventario activo" }).click();
 
@@ -92,7 +92,7 @@ test("Signal API receives only the exact complete active snapshot", async ({ pag
 test("missing Signal API produces a clear manual fallback", async ({ page }) => {
   await installSignalMethod(page, "missing");
   await routeSettings(page, completeSnapshot);
-  await page.goto("/#/settings", { waitUntil: "networkidle" });
+  await page.goto("/#/security", { waitUntil: "networkidle" });
 
   await page.getByRole("button", { name: "Sincronizar inventario activo" }).click();
 
@@ -105,7 +105,7 @@ test("missing Signal API produces a clear manual fallback", async ({ page }) => 
 test("Signal API failure stays local and exposes an actionable fallback", async ({ page }) => {
   await installSignalMethod(page, "failure");
   await routeSettings(page, completeSnapshot);
-  await page.goto("/#/settings", { waitUntil: "networkidle" });
+  await page.goto("/#/security", { waitUntil: "networkidle" });
 
   await page.getByRole("button", { name: "Sincronizar inventario activo" }).click();
 
@@ -117,7 +117,7 @@ test("Signal API failure stays local and exposes an actionable fallback", async 
 test("an incomplete snapshot is a grave error and is never signalled", async ({ page }) => {
   await installSignalMethod(page, "success");
   await routeSettings(page, { ...completeSnapshot, activeCredentialCount: 3 });
-  await page.goto("/#/settings", { waitUntil: "networkidle" });
+  await page.goto("/#/security", { waitUntil: "networkidle" });
 
   await page.getByRole("button", { name: "Sincronizar inventario activo" }).click();
 
