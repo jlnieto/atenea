@@ -21,7 +21,26 @@ Después de un cambio committeado y antes de abrir una PR, ejecuta
 `./scripts/validate-change`. Si UFD produce un plan, respétalo y no lo sustituyas
 manualmente por una selección más permisiva.
 
-## Autoridad de `main`
+## Trabajo desde Atenea
+
+En un DevelopmentChange gestionado, el contrato revisado del worker identifica
+explícitamente el modo `ATENEA_MANAGED_CHANGE`. Su base inmutable y ownership
+son comprobados por Atenea; no se deduce este modo de nombres de directorios ni
+de texto del operador. No se exige que ese worktree tenga un remoto `github`.
+No se crean remotos o refs ni se hace fetch/push para imitar el workspace manual.
+
+Codex implementa el cambio y explica qué se hizo y qué no se comprobó. Las
+validaciones, PR, integración y publicación pasan por las acciones gestionadas
+de Atenea. Si no se ejecutaron pruebas, no se declara que fallaron: se indica
+"Pruebas pendientes" y se orienta al operador a Cambio → Validar cambio. Ante
+una duda de operación se orienta a "Ayuda con este cambio"; no se solicita otro
+cambio, otra sesión ni un prompt duplicado. Terminar un AgentRun no demuestra
+que la validación haya pasado. No se sugieren SSH ni comandos privilegiados.
+
+El siguiente apartado se aplica al workspace manual/compartido, no al modo
+gestionado explícitamente verificado por el worker. Sus controles no se relajan.
+
+## Autoridad de `main` en el workspace manual
 
 `github/main` es la autoridad de código e integración de Atenea app. `origin/main`
 es únicamente el mirror operativo del workspace compartido. No se propaga ningún

@@ -1,0 +1,50 @@
+package com.atenea.service.mobile;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+/** Allowlisted, recorded state. No paths, credentials, raw logs or commands. */
+public record ChangeHelpContext(
+        Long sessionId, Long projectId, UUID changeKey, Long sourceRevision, Instant observedAt,
+        String changeStatus, String sessionStatus, String workspaceState, String sourceState,
+        String validationState, String pullRequestState, String integrationState,
+        String releaseState, boolean runInProgress, boolean validationInProgress,
+        boolean sourceUpdateInProgress, String remoteCloseState, Long latestRunId,
+        String latestRunStatus, String runFailureCode, boolean agentReportedGitInstructions,
+        int passedChecks, int requiredChecks, String failedCheck, String validationFailure,
+        String deliveryKind, String deliveryState, String deliveryError,
+        String operatorRole, boolean deliveryEnabled, String runFailure
+) {
+    public List<String> facts() {
+        var facts = new java.util.ArrayList<String>();
+        facts.add("Cambio: " + readable(changeStatus) + "; sesión: " + readable(sessionStatus) + ".");
+        facts.add("Espacio de trabajo: " + readable(workspaceState) + "; código: " + readable(sourceState) + ".");
+        if (latestRunId != null) facts.add("Última tarea " + latestRunId + ": " + readable(latestRunStatus) + ".");
+        facts.add(requiredChecks > 0 ? "Pruebas de esta revisión: " + passedChecks + "/" + requiredChecks + " correctas."
+                : "No hay un catálogo de comprobaciones confirmado para este proyecto.");
+        if (failedCheck != null) facts.add("Comprobación con atención pendiente: " + failedCheck + ".");
+        if (runFailureCode != null) facts.add("Código de la tarea: " + runFailureCode + ".");
+        if (runFailure != null) facts.add("Error guardado de la tarea: " + runFailure);
+        if (validationFailure != null) facts.add("Resultado guardado: " + validationFailure);
+        if (deliveryState != null) facts.add("Última operación de entrega: " + deliveryKind + " / " + deliveryState + ".");
+        if (deliveryError != null) facts.add("Código de entrega: " + deliveryError + ".");
+        return List.copyOf(facts);
+    }
+    private static String readable(String status) {
+        if (status == null) return "no confirmado";
+        return switch (status) {
+            case "OPEN" -> "en curso";
+            case "CLOSED" -> "cerrada";
+            case "COMPLETED" -> "completado";
+            case "READY" -> "preparado";
+            case "DIRTY" -> "con modificaciones guardadas";
+            case "CLEAN" -> "sin cambios pendientes";
+            case "SUCCEEDED" -> "terminada correctamente";
+            case "FAILED" -> "fallida";
+            case "BLOCKED" -> "bloqueado";
+            case "UNKNOWN" -> "no confirmado";
+            default -> status;
+        };
+    }
+}

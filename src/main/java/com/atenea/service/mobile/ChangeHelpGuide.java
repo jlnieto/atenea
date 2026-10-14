@@ -1,0 +1,106 @@
+package com.atenea.service.mobile;
+
+import com.atenea.api.mobile.ChangeHelpResponse;
+import com.atenea.api.mobile.ChangeHelpResponse.Navigation;
+import java.text.Normalizer;
+import java.util.List;
+import java.util.Locale;
+
+/** State decides the next destination; neither the question nor an LLM grants actions. */
+public final class ChangeHelpGuide {
+    private ChangeHelpGuide() { }
+    public static ChangeHelpResponse explain(ChangeHelpContext c, String question, boolean simple) {
+        String stage, answer, shortAnswer, label, reason, destination = "CHANGE";
+        if ("COMPLETED".equals(c.changeStatus()) && "CLOSED".equals(c.sessionStatus())) {
+            stage="COMPLETED"; answer="Este cambio está completado y su conversación se conserva como historia. Una petición nueva debe ir en un nuevo cambio.";
+            shortAnswer="Este trabajo ya está terminado. Puedes consultar su historia.";
+            destination="CHAT"; label="Ver conversación"; reason="Consultar no reabre ni recrea el cambio.";
+        } else if ("CLOSED".equals(c.sessionStatus())) {
+            stage="HISTORY"; answer="Esta sesión está cerrada. Su conversación y resultados se conservan como historia. El estado del cambio aparece en los hechos guardados; esta consulta no lo da por completado ni reabre la sesión.";
+            shortAnswer="Esta conversación está cerrada y se puede consultar como historia.";
+            destination="CHAT"; label="Ver conversación"; reason="Consultar no reabre ni ejecuta tareas.";
+        } else if (c.requiredChecks() == 0) {
+            stage="WORKFLOW_NOT_CONFIRMED"; answer="Puedo mostrar el estado guardado de este cambio, pero no hay un catálogo de validación y entrega confirmado para este proyecto en esta ayuda. No voy a aplicar el flujo de Atenea a otro repositorio ni inventar acciones. Continúa la conversación de este mismo cambio para identificar la capacidad que falta.";
+            shortAnswer="Falta confirmar qué acciones están soportadas para este proyecto.";
+            destination="CHAT"; label="Volver a la conversación"; reason="No se inventa un catálogo ni se lanza otra tarea.";
+        } else if (c.runInProgress()) {
+            stage="RUNNING"; answer="Codex todavía está trabajando. No envíes otra vez la misma petición ni reintentes la tarea. Puedes consultar su progreso y volver a preguntar cuando termine.";
+            shortAnswer="La tarea sigue en marcha. Espera; no hace falta repetirla.";
+            destination="ACTIVITY"; label="Ver progreso"; reason="Abre el detalle de la ejecución actual.";
+        } else if (c.validationInProgress()) {
+            stage="VALIDATING"; answer="Las pruebas ya están en curso. Consultar su resultado no inicia ni repite pruebas. Cuando terminen, Atenea mostrará qué pasó.";
+            shortAnswer="Atenea está comprobando el cambio. Espera al resultado.";
+            label="Ver validación"; reason="Consulta la operación existente; no solicites otra.";
+        } else if (c.sourceUpdateInProgress()) {
+            stage="SOURCE_UPDATE"; answer="Hay una actualización de la base o una resolución de conflictos pendiente. Hay que seguir su misma operación antes de validar o integrar. No se debe crear otra PR o volver a enviar el trabajo.";
+            shortAnswer="Se está preparando la revisión del mismo cambio. Consulta esa operación.";
+            label="Ver actualización de base"; reason="Las opciones de recuperación conservan la operación existente.";
+        } else if (!"READY".equals(c.workspaceState()) || "BLOCKED".equals(c.sourceState())
+                || "STALE".equals(c.sourceState()) || "BLOCKED".equals(c.remoteCloseState())) {
+            stage="WORKSPACE_ATTENTION"; answer="Atenea no confirma ahora un workspace listo y coherente para continuar. El trabajo sigue vinculado al mismo cambio. Abre sus acciones para ver el motivo y las comprobaciones disponibles; no cambies identidades ni crees otra sesión.";
+            shortAnswer="Hay que comprobar el espacio de trabajo del mismo cambio antes de continuar.";
+            label="Ver estado del cambio"; reason="Sólo las acciones autorizadas podrán comprobar o recuperar su estado.";
+        } else if ("FAILED".equals(c.latestRunStatus()) || "CANCELLED".equals(c.latestRunStatus())) {
+            stage="TASK_ATTENTION"; answer="La última tarea no terminó correctamente. Eso no significa que se haya perdido el cambio. Abre el detalle para consultar el error y si permite recuperar o reintentar esa misma tarea. No dupliques el prompt.";
+            shortAnswer="La tarea necesita atención. Revisa su error antes de hacer otro intento.";
+            destination="ACTIVITY"; label="Ver tarea y recuperación"; reason="El detalle decide si existe un reintento autorizado.";
+        } else if (c.failedCheck() != null) {
+            stage="VALIDATION_ATTENTION"; answer="Hay un resultado de validación fallido o bloqueado para esta revisión. La causa guardada aparece debajo. No se puede crear o integrar la PR hasta completar las comprobaciones. Si falla el código, corrígelo en esta conversación; si falla la infraestructura, no lo presentes como un fallo del código.";
+            shortAnswer="Una comprobación necesita atención. Mira su resultado; el cambio está conservado.";
+            label="Ver resultado de validación"; reason="Consultar no ejecuta ni reintenta pruebas.";
+        } else if ("CURRENT".equals(c.validationState()) && c.passedChecks()!=c.requiredChecks()) {
+            stage="VALIDATION_EVIDENCE_MISSING"; answer="El estado dice validado, pero esta consulta no encuentra todas las comprobaciones vigentes de la misma revisión. No se puede afirmar que las pruebas hayan pasado. Consulta el resultado guardado antes de integrar o publicar.";
+            shortAnswer="Falta confirmar la evidencia de las pruebas de esta revisión.";
+            label="Consultar evidencia"; reason="No se promueve el cambio por un estado sin sus resultados.";
+        } else if ("BLOCKED".equals(c.validationState())) {
+            stage="VALIDATION_UNKNOWN_BLOCKER"; answer="Atenea marca la validación como bloqueada, pero no hay un resultado vigente que explique exactamente la causa en esta consulta. No voy a inventar el motivo ni afirmar que los tests fallaron. Consulta el resultado guardado y el estado del mismo cambio.";
+            shortAnswer="La validación está bloqueada, pero falta evidencia de la causa. Consulta su resultado.";
+            label="Consultar evidencia"; reason="Sin evidencia no se inventa un fallo ni se recomienda un reintento automático.";
+        } else if (!"CURRENT".equals(c.validationState()) && "DIRTY".equals(c.sourceState())) {
+            stage="VALIDATION_REQUIRED"; answer="Hay cambios guardados, pero todavía falta validar esta revisión. Terminar la tarea de Codex no significa que hayan pasado las pruebas. En Cambio, pulsa Validar cambio una vez y espera el resultado.";
+            if (c.agentReportedGitInstructions()) answer += " La última respuesta de Codex menciona las referencias Git del trabajo manual. Ese mensaje no es un resultado de pruebas fallidas: la validación gestionada de Atenea tiene su propia autoridad sobre este cambio.";
+            shortAnswer="El cambio está guardado. Ahora toca comprobarlo: abre Cambio y pulsa Validar cambio una vez.";
+            label="Ir a Validar cambio"; reason="Abre las acciones; esta consulta no inicia pruebas.";
+        } else if (c.deliveryState() != null && !List.of("SUCCEEDED","FAILED","BLOCKED","ROLLED_BACK","ROLLBACK_FAILED").contains(c.deliveryState())) {
+            stage="DELIVERY_PENDING"; answer="Hay una operación de entrega pendiente. Sigue su mismo resultado o confirmación en las acciones del cambio. Esta ayuda no la reenvía ni concede autorizaciones; si hace falta confirmar una publicación, Atenea lo indicará allí.";
+            shortAnswer="Hay un paso de entrega pendiente. Consulta esa misma operación.";
+            label="Ver operación de entrega"; reason="No repitas una acción que ya tiene operación guardada.";
+        } else if (c.deliveryError() != null) {
+            stage="DELIVERY_ATTENTION"; answer="La última operación de entrega guardó un bloqueo. Consulta el código y las opciones de recuperación del mismo cambio. Preguntar aquí no hace un nuevo intento ni publica nada.";
+            shortAnswer="La entrega necesita atención. Abre sus opciones de recuperación.";
+            label="Ver bloqueo de entrega"; reason="La acción normal volverá a comprobar estado y permisos.";
+        } else if ("CURRENT".equals(c.validationState()) && (!c.deliveryEnabled()
+                || !"PLATFORM_ADMINISTRATOR".equals(c.operatorRole()))) {
+            stage="DELIVERY_NOT_AVAILABLE";
+            answer=!c.deliveryEnabled()
+                    ? "El código consta validado, pero las operaciones de entrega no están habilitadas en App. Esta consulta no puede habilitarlas ni publicar por otro canal. Consulta el estado del mismo cambio."
+                    : "El código consta validado, pero tu rol actual no permite las operaciones administrativas de entrega. Consultar esta ayuda no concede esos permisos. Debe resolverse por el mecanismo de autorización previsto, sin recrear el ticket.";
+            shortAnswer="Las pruebas están registradas; falta habilitación o autorización para la entrega.";
+            label="Ver estado de entrega"; reason="No se inventan permisos ni se ofrece publicar por terminal.";
+        } else if ("MERGED".equals(c.pullRequestState()) || "CURRENT".equals(c.integrationState())) {
+            stage="PUBLICATION"; answer="El cambio consta integrado. Integrar no equivale a desplegar el backend o instalar una APK. Revisa los recibos y prepara la publicación que corresponda. Sólo se puede finalizar cuando Atenea confirme un despliegue sano que contenga este cambio.";
+            shortAnswer="El código está integrado. Revisa la publicación antes de dar el cambio por terminado.";
+            label="Ver publicaciones y recibos"; reason="Preparar, confirmar, publicar y finalizar son pasos distintos.";
+        } else if (!"NOT_CREATED".equals(c.pullRequestState()) && !"UNKNOWN".equals(c.pullRequestState())) {
+            stage="PULL_REQUEST"; answer="La PR ya existe según el estado guardado. Revisa sus comprobaciones y si tiene conflictos. No se crea otra PR. Atenea debe confirmar el head actual, CI y mergeability antes de ofrecer la integración.";
+            shortAnswer="Ya tienes una PR. Consulta sus comprobaciones antes de integrar.";
+            label="Ver estado de la PR"; reason="El estado de GitHub puede cambiar y se comprobará mediante la acción normal.";
+        } else if ("CURRENT".equals(c.validationState())) {
+            stage="READY_FOR_PR"; answer="Esta revisión consta validada. El siguiente paso es crear su PR desde las acciones del cambio. Después GitHub debe comprobar ese head antes de integrar. Crear la PR no despliega ni publica una APK.";
+            shortAnswer="El cambio consta validado. Ahora puedes ir al paso Crear PR.";
+            label="Ir al paso Crear PR"; reason="Las acciones comprueban nuevamente revisión, permisos y disponibilidad.";
+        } else {
+            stage="IMPLEMENTATION"; answer="Todavía no consta una revisión con cambios pendiente de validar. Puedes continuar la conversación del mismo cambio y pedir a Codex que implemente lo que falta. No necesitas otra sesión.";
+            shortAnswer="Continúa este mismo cambio en su conversación.";
+            destination="CHAT"; label="Volver a la conversación"; reason="No se envía un prompt automáticamente.";
+        }
+        String normalized = Normalizer.normalize(question == null ? "" : question, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+        if (normalized.contains("integrar") && normalized.contains("public")) {
+            answer = "Validar comprueba el código; la PR permite revisarlo; integrar lo incorpora a main; publicar lo lleva al backend, al worker o a Android. Son pasos distintos. " + answer;
+        }
+        return new ChangeHelpResponse("change-help/v1", c.sessionId(), c.changeKey(), c.sourceRevision(),
+                c.observedAt(), stage, simple ? shortAnswer : answer, shortAnswer, c.facts(),
+                new Navigation(destination,label,reason), List.of("¿Qué tengo que hacer ahora?", "Explícamelo más fácil", "¿Qué falta para publicar?"), "RECORDED_STATE");
+    }
+}

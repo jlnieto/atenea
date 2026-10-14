@@ -796,6 +796,10 @@ internal fun WorkSessionConversationScreen(
                 }
             }
         } },
+        // Help must remain accessible even if loading the worker-backed conversation failed.
+        helpContent = { navigate ->
+            ChangeHelpScreen(apiClient, sessionId, current?.session?.developmentChangeKey, navigate)
+        },
         profileContent = if (!profileUnavailable) {
             {
                 CodexExecutionProfileStrip(
