@@ -283,27 +283,55 @@ class AteneaApiClient(
             json
         }
         var change = detail()
+        if (change.getString("workspaceState") in setOf("BLOCKED", "UNCERTAIN")) {
+            val inspect = change.getString("workspaceState") == "BLOCKED"
+            val expectedAction = if (inspect) "INSPECT_WORKSPACE" else "RECONCILE_WORKSPACE"
+            require(change.optJSONObject("primaryAction")?.let {
+                it.optBoolean("enabled") && it.optString("kind") == expectedAction
+            } == true) { "La preparación de este cambio necesita revisión; no se ha reintentado." }
+            val checked = postJson(path = "$path/workspace/${if (inspect) "inspect" else "reconcile"}",
+                body = JSONObject(), authenticated = true,
+                headers = if (inspect) mapOf("Idempotency-Key" to
+                    UUID.nameUUIDFromBytes("inspect-workspace:$provisionKey".toByteArray()).toString()) else emptyMap(),
+                parser = ::parseDevelopmentChangeWorkspaceOperation)
+            require(checked.state == "SUCCEEDED" && checked.workspaceState in setOf("NOT_PROVISIONED", "READY")) {
+                "No se pudo comprobar la preparación (${checked.failureCode ?: checked.state}). Se conserva el mismo cambio."
+            }
+            change = detail()
+        }
         if (change.getString("workspaceState") == "NOT_PROVISIONED") {
+            require(change.optJSONObject("primaryAction")?.let {
+                it.optBoolean("enabled") && it.optString("kind") == "PROVISION_WORKSPACE"
+            } == true) { "La preparación de este cambio no está habilitada." }
             val provisioned = postJson(path = "$path/workspace/provision", body = JSONObject(), authenticated = true,
                 headers = mapOf("Idempotency-Key" to provisionKey.toString()), parser = ::parseDevelopmentChangeWorkspaceOperation)
             require(provisioned.state == "SUCCEEDED" && provisioned.workspaceState == "READY") { "El workspace no está preparado." }
             change = detail()
         }
         require(change.getString("workspaceState") == "READY") { "El workspace necesita comprobación." }
-        change.optNullableLong("activeSessionId")?.let {
-            require(change.optNullableString("activeSessionStatus") in setOf(null, "OPEN")) { "La sesión se está cerrando." }
-            return it
+        suspend fun verifySession(sessionId: Long): Long {
+            require(sessionId > 0) { "La conversación no está disponible." }
+            getJson(path = "/api/sessions/$sessionId", authenticated = true) { json ->
+                require(json.getLong("id") == sessionId && json.getLong("projectId") == projectId
+                    && json.getString("developmentChangeKey") == changeKey.toString() && json.getString("status") == "OPEN") {
+                    "La conversación no pertenece a este cambio abierto."
+                }
+            }
+            return sessionId
         }
+        change.optNullableLong("activeSessionId")?.let {
+            require(change.optNullableString("activeSessionStatus") == "OPEN") { "La conversación se está cerrando." }
+            return verifySession(it)
+        }
+        require(change.optJSONObject("primaryAction")?.let {
+            it.optBoolean("enabled") && it.optString("kind") == "BIND_SESSION"
+        } == true) { "La conversación de este cambio todavía no está habilitada." }
         val session = postJson(path = "$path/work-session:open-or-resolve",
             body = JSONObject().put("expectedChangeRevision", change.getLong("version")), authenticated = true,
             headers = mapOf("Idempotency-Key" to sessionKey.toString()), parser = ::parseDevelopmentChangeRemoteSession)
         val sessionId = session.sessionId
         require(sessionId != null && sessionId > 0 && session.state == "SUCCEEDED" && session.sessionState == "OPEN")
-        getJson(path = "/api/sessions/$sessionId", authenticated = true) { json ->
-            require(json.getLong("id") == sessionId && json.getLong("projectId") == projectId
-                && json.getString("developmentChangeKey") == changeKey.toString() && json.getString("status") == "OPEN")
-        }
-        return sessionId
+        return verifySession(sessionId)
     }
 
     suspend fun startNewDevelopmentChange(

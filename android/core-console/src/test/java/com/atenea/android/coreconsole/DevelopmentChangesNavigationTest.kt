@@ -11,6 +11,22 @@ import kotlin.test.assertFalse
 
 class DevelopmentChangesNavigationTest {
     @Test
+    fun `creation recovery and existing conversation share one product action`() {
+        assertEquals("Continuar cambio", changeConversationLabel(change(23)))
+        for (kind in listOf("PROVISION_WORKSPACE", "BIND_SESSION", "INSPECT_WORKSPACE", "RECONCILE_WORKSPACE")) {
+            val pending = change(null).copy(primaryActionKind = kind, primaryActionEnabled = true)
+            assertTrue(canContinueDevelopmentChange(pending, 1))
+            assertFalse(canContinueDevelopmentChange(pending, 2))
+            assertFalse(canContinueDevelopmentChange(pending.copy(primaryActionEnabled = false), 1))
+            assertFalse(canContinueDevelopmentChange(pending.copy(activeSessionId = 23), 1))
+            assertFalse(canContinueDevelopmentChange(pending.copy(status = "COMPLETED"), 1))
+            assertFalse(canContinueDevelopmentChange(pending.copy(retirementState = "APPLYING"), 1))
+        }
+        assertFalse(canContinueDevelopmentChange(change(null).copy(primaryActionKind = "WAIT_FOR_ENABLEMENT",
+            primaryActionEnabled = true), 1))
+    }
+
+    @Test
     fun `retired closed session exposes history without hiding retained completion recovery`() {
         assertTrue(closedSessionHistoryOnly("CLOSED", false))
         assertFalse(closedSessionHistoryOnly("OPEN", false))

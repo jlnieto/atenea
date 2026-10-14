@@ -64,9 +64,10 @@ class AteneaApiClientDevelopmentChangeTest {
         val changeKey = UUID.randomUUID()
         val detail = JSONObject().put("projectId", 1).put("changeKey", changeKey.toString()).put("status", "OPEN")
             .put("workspaceState", "NOT_PROVISIONED").put("version", 2)
+            .put("primaryAction", action("PROVISION_WORKSPACE"))
         server.enqueue(jsonResponse(200, detail.toString()))
         server.enqueue(jsonResponse(200, provisionJson("SUCCEEDED", "READY")))
-        detail.put("workspaceState", "READY").put("version", 3)
+        detail.put("workspaceState", "READY").put("version", 3).put("primaryAction", action("BIND_SESSION"))
         server.enqueue(jsonResponse(200, detail.toString()))
         server.enqueue(jsonResponse(200, sessionJson(91, "SUCCEEDED", "OPEN")))
         server.enqueue(jsonResponse(200, JSONObject().put("id", 91).put("projectId", 1)
@@ -81,6 +82,168 @@ class AteneaApiClientDevelopmentChangeTest {
         assertEquals(3, JSONObject(open.body.readUtf8()).getInt("expectedChangeRevision"))
         assertEquals("/api/sessions/91", server.takeRequest().path)
         assertEquals(5, server.requestCount)
+    }
+
+    @Test
+    fun `ready change opens its conversation without provisioning or creating another ticket`() = withServer { server ->
+        val key = UUID.randomUUID()
+        val sessionKey = UUID.randomUUID()
+        enqueueReadyConversation(server, key)
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+        assertEquals(91L, runBlocking { client.prepareExistingDevelopmentChange(1, key, UUID.randomUUID(), sessionKey) })
+        assertEquals("GET", server.takeRequest().method)
+        val open = server.takeRequest()
+        assertEquals("/api/v2/projects/1/development-changes/$key/work-session:open-or-resolve", open.path)
+        assertEquals(sessionKey.toString(), open.getHeader("Idempotency-Key"))
+        assertEquals(setOf("expectedChangeRevision"), JSONObject(open.body.readUtf8()).keys().asSequence().toSet())
+        assertEquals("/api/sessions/91", server.takeRequest().path)
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test
+    fun `blocked change verifies absence then prepares and opens the same conversation`() = withServer { server ->
+        val key = UUID.randomUUID()
+        val provisionKey = UUID.randomUUID()
+        server.enqueue(jsonResponse(200, existingDetail(key, "BLOCKED", "INSPECT_WORKSPACE").toString()))
+        server.enqueue(jsonResponse(200, provisionJson("SUCCEEDED", "NOT_PROVISIONED")))
+        server.enqueue(jsonResponse(200, existingDetail(key, "NOT_PROVISIONED", "PROVISION_WORKSPACE").toString()))
+        server.enqueue(jsonResponse(200, provisionJson("SUCCEEDED", "READY")))
+        enqueueReadyConversation(server, key)
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+        assertEquals(91L, runBlocking { client.prepareExistingDevelopmentChange(1, key, provisionKey, UUID.randomUUID()) })
+        assertEquals("GET", server.takeRequest().method)
+        val inspect = server.takeRequest()
+        assertEquals("/api/v2/projects/1/development-changes/$key/workspace/inspect", inspect.path)
+        assertEquals(UUID.nameUUIDFromBytes("inspect-workspace:$provisionKey".toByteArray()).toString(), inspect.getHeader("Idempotency-Key"))
+        assertEquals("{}", inspect.body.readUtf8())
+        assertEquals("GET", server.takeRequest().method)
+        val provision = server.takeRequest()
+        assertEquals("/api/v2/projects/1/development-changes/$key/workspace/provision", provision.path)
+        assertEquals(provisionKey.toString(), provision.getHeader("Idempotency-Key"))
+        assertEquals("{}", provision.body.readUtf8())
+        assertEquals("GET", server.takeRequest().method)
+        assertEquals("/api/v2/projects/1/development-changes/$key/work-session:open-or-resolve", server.takeRequest().path)
+        assertEquals("/api/sessions/91", server.takeRequest().path)
+        assertEquals(7, server.requestCount)
+    }
+
+    @Test
+    fun `uncertain preparation reconciles original intent without another provision`() = withServer { server ->
+        val key = UUID.randomUUID()
+        server.enqueue(jsonResponse(200, existingDetail(key, "UNCERTAIN", "RECONCILE_WORKSPACE").toString()))
+        server.enqueue(jsonResponse(200, provisionJson("SUCCEEDED", "READY")))
+        enqueueReadyConversation(server, key)
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+        assertEquals(91L, runBlocking { client.prepareExistingDevelopmentChange(1, key, UUID.randomUUID(), UUID.randomUUID()) })
+        assertEquals("GET", server.takeRequest().method)
+        val reconcile = server.takeRequest()
+        assertEquals("/api/v2/projects/1/development-changes/$key/workspace/reconcile", reconcile.path)
+        assertEquals(null, reconcile.getHeader("Idempotency-Key"))
+        assertEquals("{}", reconcile.body.readUtf8())
+        assertEquals("GET", server.takeRequest().method)
+        assertEquals("/api/v2/projects/1/development-changes/$key/work-session:open-or-resolve", server.takeRequest().path)
+        assertEquals("/api/sessions/91", server.takeRequest().path)
+        assertEquals(5, server.requestCount)
+    }
+
+    @Test
+    fun `foreign or still uncertain workspace stops before provisioning or opening`() = withServer { server ->
+        for (state in listOf("BLOCKED", "UNCERTAIN")) {
+            val key = UUID.randomUUID()
+            server.enqueue(jsonResponse(200, existingDetail(key, state,
+                if (state == "BLOCKED") "INSPECT_WORKSPACE" else "RECONCILE_WORKSPACE").toString()))
+            server.enqueue(jsonResponse(200, provisionJson(state, state, "OWNERSHIP_MISMATCH")))
+            val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+            assertFailsWith<IllegalArgumentException> {
+                runBlocking { client.prepareExistingDevelopmentChange(1, key, UUID.randomUUID(), UUID.randomUUID()) }
+            }
+            assertEquals("GET", server.takeRequest().method)
+            assertEquals("POST", server.takeRequest().method)
+        }
+        assertEquals(4, server.requestCount)
+    }
+
+    @Test
+    fun `disabled or mismatched server actions cannot be overridden by continuation`() = withServer { server ->
+        for ((state, kind, enabled) in listOf(Triple("BLOCKED", "INSPECT_WORKSPACE", false),
+            Triple("UNCERTAIN", "INSPECT_WORKSPACE", true), Triple("NOT_PROVISIONED", "PROVISION_WORKSPACE", false),
+            Triple("READY", "BIND_SESSION", false))) {
+            val key = UUID.randomUUID()
+            val detail = existingDetail(key, state, kind).put("primaryAction", action(kind, enabled))
+            server.enqueue(jsonResponse(200, detail.toString()))
+            val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+            assertFailsWith<IllegalArgumentException> {
+                runBlocking { client.prepareExistingDevelopmentChange(1, key, UUID.randomUUID(), UUID.randomUUID()) }
+            }
+            assertEquals("GET", server.takeRequest().method)
+        }
+        assertEquals(4, server.requestCount)
+    }
+
+    @Test
+    fun `already opened conversation is verified and reused without a second open`() = withServer { server ->
+        val key = UUID.randomUUID()
+        val detail = existingDetail(key, "READY", "CONTINUE_SESSION").put("activeSessionId", 91).put("activeSessionStatus", "OPEN")
+        repeat(2) {
+            server.enqueue(jsonResponse(200, detail.toString()))
+            server.enqueue(jsonResponse(200, ownedSession(key).toString()))
+        }
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+        repeat(2) { assertEquals(91L, runBlocking { client.prepareExistingDevelopmentChange(1, key, UUID.randomUUID(), UUID.randomUUID()) }) }
+        repeat(4) { assertEquals("GET", server.takeRequest().method) }
+        assertEquals(4, server.requestCount)
+    }
+
+    @Test
+    fun `lost open response resolves bound conversation without repeating the effect`() = withServer { server ->
+        val key = UUID.randomUUID()
+        server.enqueue(jsonResponse(200, existingDetail(key, "READY", "BIND_SESSION").toString()))
+        server.enqueue(jsonResponse(500, "{}"))
+        server.enqueue(jsonResponse(200, existingDetail(key, "READY", "CONTINUE_SESSION")
+            .put("activeSessionId", 91).put("activeSessionStatus", "OPEN").toString()))
+        server.enqueue(jsonResponse(200, ownedSession(key).toString()))
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+        val provisionKey = UUID.randomUUID()
+        val sessionKey = UUID.randomUUID()
+        assertFailsWith<Exception> { runBlocking { client.prepareExistingDevelopmentChange(1, key, provisionKey, sessionKey) } }
+        assertEquals(91L, runBlocking { client.prepareExistingDevelopmentChange(1, key, provisionKey, sessionKey) })
+        assertEquals("GET", server.takeRequest().method)
+        assertEquals("POST", server.takeRequest().method)
+        repeat(2) { assertEquals("GET", server.takeRequest().method) }
+        assertEquals(4, server.requestCount)
+    }
+
+    @Test
+    fun `closing or cross owned conversation is never a continuation target`() = withServer { server ->
+        val key = UUID.randomUUID()
+        server.enqueue(jsonResponse(200, existingDetail(key, "READY", "CONTINUE_SESSION")
+            .put("activeSessionId", 91).put("activeSessionStatus", "CLOSING").toString()))
+        val client = AteneaApiClient(server.baseUrl(), { "access-token" })
+        assertFailsWith<IllegalArgumentException> { runBlocking { client.prepareExistingDevelopmentChange(1, key, UUID.randomUUID(), UUID.randomUUID()) } }
+        assertEquals(1, server.requestCount)
+        server.takeRequest()
+        server.enqueue(jsonResponse(200, existingDetail(key, "READY", "CONTINUE_SESSION")
+            .put("activeSessionId", 91).put("activeSessionStatus", "OPEN").toString()))
+        server.enqueue(jsonResponse(200, ownedSession(UUID.randomUUID()).toString()))
+        assertFailsWith<IllegalArgumentException> { runBlocking { client.prepareExistingDevelopmentChange(1, key, UUID.randomUUID(), UUID.randomUUID()) } }
+        assertEquals(3, server.requestCount)
+        repeat(2) { assertEquals("GET", server.takeRequest().method) }
+    }
+
+    private fun action(kind: String, enabled: Boolean = true) = JSONObject()
+        .put("kind", kind).put("enabled", enabled).put("label", "Continuar cambio")
+
+    private fun existingDetail(key: UUID, state: String, kind: String) = JSONObject()
+        .put("projectId", 1).put("changeKey", key.toString()).put("status", "OPEN")
+        .put("workspaceState", state).put("version", 3).put("primaryAction", action(kind))
+
+    private fun ownedSession(key: UUID) = JSONObject().put("id", 91).put("projectId", 1)
+        .put("developmentChangeKey", key.toString()).put("status", "OPEN")
+
+    private fun enqueueReadyConversation(server: MockWebServer, key: UUID) {
+        server.enqueue(jsonResponse(200, existingDetail(key, "READY", "BIND_SESSION").toString()))
+        server.enqueue(jsonResponse(200, sessionJson(91, "SUCCEEDED", "OPEN")))
+        server.enqueue(jsonResponse(200, ownedSession(key).toString()))
     }
 
     @Test
