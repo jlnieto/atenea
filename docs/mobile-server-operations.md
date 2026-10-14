@@ -321,6 +321,8 @@ Estados posibles del check:
 
 `DEGRADED` cuenta como no saludable para que la app no muestre punto verde cuando las páginas cargan lentas. Una revisión de estado que detecta webs lentas o caídas abre o actualiza una incidencia operativa sobre el servicio web.
 
+El monitor programado comprueba cada cinco minutos. Para enviar una push por lentitud exige tres comprobaciones consecutivas lentas de la misma web. Envía una sola push por incidencia detectada y vuelve a avisar únicamente si la web se recupera y después se degrada de nuevo. Una web caída o un fallo de Apache se notifican en la primera comprobación; cada problema nuevo se identifica por servicio y web para no repetir avisos cuando solo cambia el tiempo medido. El estado de confirmación de las push reside en el proceso del monitor y se reinicia al reiniciar la aplicación.
+
 ## Criterio de listo
 
 Una versión está lista para desplegar desde operación móvil sólo si:

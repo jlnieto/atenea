@@ -130,7 +130,7 @@ public class OperationsService {
         OperationsActionRunEntity apacheRun = executeRemote(host, service, null, "SERVICE_CHECK",
                 serviceCheckCommand(service), Duration.ofSeconds(20));
         List<WebsiteCheckResponse> websiteChecks = checkWebsites(hostId);
-        List<String> errors = new ArrayList<>();
+        List<OperationsMonitoringIssue> issues = new ArrayList<>();
 
         if (apacheRun.getStatus() == OperationsActionRunStatus.FAILED) {
             String detail = firstNonBlank(
@@ -139,15 +139,19 @@ public class OperationsService {
                     apacheRun.getExitCode() == null
                             ? "fallo al ejecutar el diagnóstico remoto"
                             : "código de salida " + apacheRun.getExitCode());
-            errors.add("Apache: " + detail);
+            issues.add(new OperationsMonitoringIssue("apache", "Apache: " + detail, false));
         }
         websiteChecks.stream()
                 .filter(check -> !check.healthy())
-                .map(this::monitoringWebsiteError)
-                .forEach(errors::add);
+                .map(check -> new OperationsMonitoringIssue(
+                        "website:" + check.websiteId() + ":" + check.state(),
+                        monitoringWebsiteError(check),
+                        "DEGRADED".equals(check.state())))
+                .forEach(issues::add);
 
-        syncMonitoringIncident(host, service, apacheRun, websiteChecks, errors);
-        return new OperationsMonitoringResult(host.getId(), host.getName(), errors);
+        syncMonitoringIncident(host, service, apacheRun, websiteChecks,
+                issues.stream().map(OperationsMonitoringIssue::message).toList());
+        return new OperationsMonitoringResult(host.getId(), host.getName(), issues);
     }
 
     @Transactional

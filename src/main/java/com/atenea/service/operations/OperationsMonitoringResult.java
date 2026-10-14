@@ -5,13 +5,17 @@ import java.util.List;
 public record OperationsMonitoringResult(
         Long hostId,
         String hostName,
-        List<String> errors
+        List<OperationsMonitoringIssue> issues
 ) {
     public OperationsMonitoringResult {
-        errors = List.copyOf(errors);
+        issues = List.copyOf(issues);
+    }
+
+    public List<String> errors() {
+        return issues.stream().map(OperationsMonitoringIssue::message).toList();
     }
 
     public boolean degraded() {
-        return !errors.isEmpty();
+        return !issues.isEmpty();
     }
 }
