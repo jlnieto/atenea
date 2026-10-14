@@ -106,4 +106,55 @@ class ChangeHelpGuideTest {
         assertEquals("WORKFLOW_NOT_CONFIRMED",r.stage());
         assertEquals("CHAT",r.nextAction().destination());
     }
+    @Test void preparedPublicationRequiresUserConfirmationNotWaitingOrPreparingAgain() {
+        var f=publication("READY"); f.deliveryExpiresAt=f.build().observedAt().getEpochSecond()+600;
+        var r=ChangeHelpGuide.explain(f.build(),"¿Tengo que esperar?",false);
+        assertEquals("PUBLICATION_CONFIRMATION",r.stage());
+        assertEquals("Ir a Confirmar Backend PROD",r.nextAction().label());
+        assertTrue(r.answer().contains("no está trabajando")); assertTrue(r.answer().contains("autenticador"));
+        f.deliveryTarget="ANDROID_STABLE";
+        assertEquals("Ir a Confirmar Android estable",ChangeHelpGuide.explain(f.build(),"Qué hago",false).nextAction().label());
+    }
+    @Test void preparingOrWaitingCiClearlyContinuesWithoutKeepingThePhoneOpen() {
+        var f=publication("PREPARING");
+        var r=ChangeHelpGuide.explain(f.build(),"Qué hago",false);
+        assertEquals("DELIVERY_PENDING",r.stage()); assertTrue(r.answer().contains("Puedes salir"));
+        assertTrue(r.answer().contains("Aún no está publicando"));
+        f.deliveryState="WAITING_CI";
+        assertTrue(ChangeHelpGuide.explain(f.build(),"Qué hago",false).answer().contains("GitHub"));
+    }
+    @Test void expiredReadyPlanNeverOffersConfirmationAndClosedExpiredPlanExplainsNewPreparation() {
+        var f=publication("READY"); f.deliveryExpiresAt=f.build().observedAt().getEpochSecond();
+        assertEquals("DELIVERY_ATTENTION",stage(f));
+        assertFalse(ChangeHelpGuide.explain(f.build(),"Qué hago",false).nextAction().label().contains("Confirmar"));
+        f.deliveryState="BLOCKED"; f.deliveryError="PLAN_EXPIRED";
+        assertEquals("Ir a Preparar Backend PROD",ChangeHelpGuide.explain(f.build(),"Qué hago",false).nextAction().label());
+    }
+    @Test void verifiedOperatorDeploymentSupersedesExpiredHistoricalPreparationButNotAnActivePublication() {
+        var f=publication("BLOCKED"); f.deliveryError="PLAN_EXPIRED"; f.deploymentStatus="DEPLOYED";
+        assertEquals("COMPLETION_READY",stage(f));
+        assertEquals("Ir a Finalizar cambio",ChangeHelpGuide.explain(f.build(),"Qué hago",false).nextAction().label());
+        f.deliveryState="APPLYING"; f.deliveryError=null;
+        assertEquals("DELIVERY_PENDING",stage(f));
+        f.deliveryState="ROLLBACK_FAILED"; f.deliveryError="FAILED";
+        assertEquals("DELIVERY_ATTENTION",stage(f));
+    }
+    @Test void unavailableOrUnhealthyDeploymentDoesNotSuggestFinishingOrInventPass() {
+        var f=publication("SUCCEEDED"); f.deploymentStatus="UNHEALTHY";
+        assertEquals("DELIVERY_ATTENTION",stage(f));
+        f.deploymentStatus="UNAVAILABLE";
+        assertEquals("Ir a Consultar estado",ChangeHelpGuide.explain(f.build(),"Qué hago",false).nextAction().label());
+    }
+    @Test void missingPlanHashCannotOfferConfirmationOrInventExpiry() {
+        var f=publication("READY"); f.deliveryExpiresAt=f.build().observedAt().getEpochSecond()+600;
+        f.deliveryPlanVerified=false;
+        var r=ChangeHelpGuide.explain(f.build(),"Qué hago",false);
+        assertEquals("DELIVERY_ATTENTION",r.stage());
+        assertEquals("Ir a Consultar estado",r.nextAction().label());
+        assertFalse(r.answer().contains("ha caducado"));
+    }
+    private ChangeHelpFixture publication(String state) {
+        var f=new ChangeHelpFixture(); f.validation="CURRENT"; f.passed=4; f.pr="MERGED";
+        f.deliveryKind="RELEASE"; f.deliveryState=state; return f;
+    }
 }

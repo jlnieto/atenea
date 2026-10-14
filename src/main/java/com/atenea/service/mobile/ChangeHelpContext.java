@@ -14,7 +14,8 @@ public record ChangeHelpContext(
         String latestRunStatus, String runFailureCode, boolean agentReportedGitInstructions,
         int passedChecks, int requiredChecks, String failedCheck, String validationFailure,
         String deliveryKind, String deliveryState, String deliveryError,
-        String operatorRole, boolean deliveryEnabled, String runFailure
+        String operatorRole, boolean deliveryEnabled, String runFailure,
+        String deliveryTarget, Long deliveryExpiresAt, String deploymentStatus, boolean deliveryPlanVerified
 ) {
     public List<String> facts() {
         var facts = new java.util.ArrayList<String>();
@@ -29,7 +30,20 @@ public record ChangeHelpContext(
         if (validationFailure != null) facts.add("Resultado guardado: " + validationFailure);
         if (deliveryState != null) facts.add("Última operación de entrega: " + deliveryKind + " / " + deliveryState + ".");
         if (deliveryError != null) facts.add("Código de entrega: " + deliveryError + ".");
+        if ("DEPLOYED".equals(deploymentStatus)) facts.add("Backend PROD: sano y contiene el cambio integrado.");
+        else if ("NOT_INCLUDED".equals(deploymentStatus)) facts.add("Backend PROD: todavía no contiene este cambio.");
+        else if ("UNAVAILABLE".equals(deploymentStatus) || "UNHEALTHY".equals(deploymentStatus)) {
+            facts.add("Backend PROD: no se pudo confirmar un despliegue sano de este cambio.");
+        }
         return List.copyOf(facts);
+    }
+    public String deliveryTargetLabel() {
+        return switch (deliveryTarget == null ? "" : deliveryTarget) {
+            case "APP_PROD" -> "Backend PROD";
+            case "ANDROID_STABLE" -> "Android estable";
+            case "AX42_PLATFORM" -> "Worker AX42";
+            default -> "la publicación";
+        };
     }
     private static String readable(String status) {
         if (status == null) return "no confirmado";

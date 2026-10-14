@@ -2,6 +2,10 @@ package com.atenea.service.mobile;
 
 import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.delivery.DeliveryStore;
+import com.atenea.delivery.DeliveryOperation;
+import com.atenea.delivery.DeliveryTarget;
+import com.atenea.delivery.MobileDeliveryService;
+import com.atenea.delivery.ReleaseRecoverySource;
 import com.atenea.delivery.ReleaseControlClient;
 import com.atenea.persistence.auth.OperatorRepository;
 import com.atenea.persistence.worksession.AgentRunRepository;
@@ -27,13 +31,15 @@ public class ChangeHelpContextService {
     private final OperatorRepository operators;
     private final DeliveryStore deliveries;
     private final ReleaseControlClient releaseControl;
+    private final MobileDeliveryService deliveryObservations;
 
     public ChangeHelpContextService(WorkSessionRepository sessions, AgentRunRepository runs,
             ValidationOperationRepository validations, OperatorRepository operators, DeliveryStore deliveries,
-            ReleaseControlClient releaseControl) {
+            ReleaseControlClient releaseControl, MobileDeliveryService deliveryObservations) {
         this.sessions = sessions; this.runs = runs; this.validations = validations;
         this.operators = operators; this.deliveries = deliveries;
         this.releaseControl = releaseControl;
+        this.deliveryObservations = deliveryObservations;
     }
 
     @Transactional(readOnly = true)
@@ -70,10 +76,22 @@ public class ChangeHelpContextService {
         var failed = latest.values().stream().filter(v -> v.getStatus() == ValidationOperationStatus.FAILED
                 || v.getStatus() == ValidationOperationStatus.BLOCKED).findFirst().orElse(null);
         int passed = (int) latest.values().stream().filter(v -> v.getStatus() == ValidationOperationStatus.SUCCEEDED).count();
-        var delivery = deliveries.list(id).stream().filter(d -> Objects.equals(d.operatorId(), actor.operatorId())
-                && Objects.equals(d.sessionId(), id) && session.getFinalCommitSha() != null
-                && Objects.equals(d.sourceCommit(), session.getFinalCommitSha()))
+        var ownedDeliveries = deliveries.list(id).stream().filter(d -> Objects.equals(d.operatorId(), actor.operatorId())
+                && Objects.equals(d.sessionId(), id)).toList();
+        var delivery = ownedDeliveries.stream().filter(d -> belongsToRevision(d, session.getFinalCommitSha(), ownedDeliveries))
                 .findFirst().orElse(null);
+        String deploymentStatus = "NOT_CONFIRMED";
+        if ("MERGED".equals(name(session.getPullRequestStatus())) && releaseControl.enabled()
+                && "PLATFORM_ADMINISTRATOR".equals(name(operator.getCodexOperationsRole()))) {
+            // Same read-only, ownership-checked observation used by the Cambio screen.
+            // No plan, grant, reconciliation or publication is requested by help.
+            try {
+                var observed = deliveryObservations.observeDeployment(id, actor);
+                if (observed != null) deploymentStatus = observed.status();
+            } catch (RuntimeException unavailable) {
+                deploymentStatus = "UNAVAILABLE";
+            }
+        }
         String response = run == null || run.getResultTurn() == null ? "" : run.getResultTurn().getMessageText();
         boolean gitInstructions = response != null && response.contains("github/main")
                 && response.toLowerCase(Locale.ROOT).contains("origin");
@@ -91,7 +109,40 @@ public class ChangeHelpContextService {
                 delivery == null ? null : delivery.kind(), delivery == null ? null : delivery.state(),
                 delivery == null ? null : safeCode(delivery.errorCode()),
                 name(operator.getCodexOperationsRole()), releaseControl.enabled(),
-                run != null && run.getStatus() == AgentRunStatus.FAILED ? safeText(run.getErrorSummary()) : null);
+                run != null && run.getStatus() == AgentRunStatus.FAILED ? safeText(run.getErrorSummary()) : null,
+                delivery == null ? null : name(delivery.target()),
+                delivery == null || !delivery.evidence().path("expiresAt").isIntegralNumber() ? null
+                        : delivery.evidence().path("expiresAt").asLong(), deploymentStatus,
+                delivery != null && delivery.planSha256() != null && delivery.planSha256().matches("[0-9a-f]{64}"));
+    }
+
+    private static boolean belongsToRevision(DeliveryOperation operation, String head,
+            java.util.List<DeliveryOperation> owned) {
+        if (head == null) return false;
+        if (!"RELEASE".equals(operation.kind()) && Objects.equals(head, operation.sourceCommit())) return true;
+        if ("PUBLISH_PR".equals(operation.kind())) {
+            return head.equals(operation.evidence().path("headCommit").asText())
+                    || head.equals(operation.evidence().path("ufdDispatch").path("headSha").asText());
+        }
+        if (!"RELEASE".equals(operation.kind())) return false;
+        // A recovery release publishes main, not the PR head. Accept it only through
+        // its exact retained integration receipt, never by session or a moving main alone.
+        try {
+            var proof = ReleaseRecoverySource.from(operation);
+            if (proof == null) return owned.stream().anyMatch(integrated ->
+                    "INTEGRATE".equals(integrated.kind()) && integrated.target() == DeliveryTarget.APP_PROD
+                    && "SUCCEEDED".equals(integrated.state()) && head.equals(integrated.sourceCommit())
+                    && (operation.target() == DeliveryTarget.AX42_PLATFORM
+                        || operation.sourceCommit() != null && operation.sourceCommit().equals(
+                                integrated.evidence().path("mergeCommit").asText())));
+            return proof != null && head.equals(proof.publishedHeadCommit()) && owned.stream().anyMatch(integrated ->
+                    integrated.id().equals(proof.integrationOperationId()) && "INTEGRATE".equals(integrated.kind())
+                    && integrated.target() == DeliveryTarget.APP_PROD && "SUCCEEDED".equals(integrated.state())
+                    && head.equals(integrated.sourceCommit())
+                    && proof.integratedMergeCommit().equals(integrated.evidence().path("mergeCommit").asText()));
+        } catch (com.atenea.delivery.DeliveryRejectedException rejected) {
+            return false;
+        }
     }
 
     private static String name(Enum<?> value) { return value == null ? "UNKNOWN" : value.name(); }

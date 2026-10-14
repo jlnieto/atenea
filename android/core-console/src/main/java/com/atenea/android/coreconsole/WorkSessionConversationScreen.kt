@@ -768,7 +768,8 @@ internal fun WorkSessionConversationScreen(
             }
         } else null,
         changeNeedsAttention = current?.session?.developmentChangeValidationState == "BLOCKED"
-            || deliveryState.operations.any { it.state in setOf("BLOCKED", "FAILED", "QUARANTINED", "ROLLBACK_FAILED") },
+            || deliveryState.currentStep(current?.session?.developmentChangeValidationState == "CURRENT",
+                current?.runInProgress == true).status == DeliveryStepStatus.ATTENTION,
         changeContent = current?.takeIf { it.session.developmentChangeKey != null }?.let { loaded -> {
             WorkSessionChangePanel(
                 sessionId = sessionId,
@@ -779,7 +780,11 @@ internal fun WorkSessionConversationScreen(
                 readError = validationEvidenceError,
                 onReadEvidence = { if (!validationEvidenceLoading) scope.launch { readValidationEvidence(sessionId) } },
                 onValidate = ::validateChange,
-                completed = loaded.session.status == "CLOSED" || deliveryState.completion != null
+                completed = loaded.session.status == "CLOSED" || deliveryState.completion != null,
+                runInProgress = loaded.runInProgress,
+                deliveryBeforeValidation = !loaded.runInProgress && !deliveryState.sourcePhaseComplete
+                    && deliveryState.sourceUpdate?.state in setOf("QUEUED", "PREPARE_CLAIMED", "UNCERTAIN", "ATTENTION",
+                        "READY_TO_RESOLVE", "RETRY_REQUESTED", "RESOLVING", "FAILED", "BLOCKED")
             ) {
                 if (closedSessionHistoryOnly(loaded.session.status, deliveryState.completion != null)) {
                     Text("WorkSession cerrada · historial")

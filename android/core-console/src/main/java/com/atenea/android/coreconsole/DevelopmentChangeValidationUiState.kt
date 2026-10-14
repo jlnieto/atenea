@@ -7,7 +7,9 @@ internal data class DevelopmentChangeValidationUiState(
     val canStart: Boolean,
     val label: String,
     val message: String,
-    val current: Boolean = false
+    val current: Boolean = false,
+    val needsAttention: Boolean = false,
+    val inProgress: Boolean = false
 )
 
 internal fun developmentChangeValidationUiState(
@@ -21,7 +23,7 @@ internal fun developmentChangeValidationUiState(
     }
     val current = session.developmentChangeValidationState == "CURRENT"
     val dirty = session.developmentChangeSourceState == "DIRTY"
-    val message = operationNotice ?: when (session.developmentChangeValidationState) {
+    val message = operationNotice?.takeIf { validationPending || !current } ?: when (session.developmentChangeValidationState) {
         "CURRENT" -> "Cambio validado para la revisión actual."
         "STALE" -> "El código cambió desde la última validación."
         "BLOCKED" -> "La validación necesita atención."
@@ -36,6 +38,8 @@ internal fun developmentChangeValidationUiState(
         canStart = dirty && !current && !runInProgress && !validationPending,
         label = if (validationPending) "Validando…" else "Validar cambio",
         message = message,
-        current = current
+        current = current,
+        needsAttention = session.developmentChangeValidationState == "BLOCKED" && !runInProgress && !validationPending,
+        inProgress = validationPending
     )
 }

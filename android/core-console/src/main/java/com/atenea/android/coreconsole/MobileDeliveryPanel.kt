@@ -1,6 +1,8 @@
 package com.atenea.android.coreconsole
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
@@ -14,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -182,11 +185,16 @@ internal fun rememberMobileDeliveryUiState(api: AteneaApiClient, sessionId: Long
 @Composable
 internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validated: Boolean,
     runInProgress: Boolean, state: MobileDeliveryUiState) {
-    if (api.currentOperatorRole() != "PLATFORM_ADMINISTRATOR") return
+    if (api.currentOperatorRole() != "PLATFORM_ADMINISTRATOR") {
+        DeliveryStepCard(DeliveryStepUi(DeliveryStepStatus.ATTENTION, "Permiso de entrega requerido",
+            "Tu rol no permite integrar o publicar. Ayuda con este cambio explica qué autorización falta.")) { }
+        return
+    }
+    val step = state.currentStep(validated, runInProgress)
+    if (!validated && !state.sourcePhaseComplete && !runInProgress && step.title == "Validación pendiente") return
     val uriHandler = LocalUriHandler.current
     val operations = state.operations
     val available = state.available
-    val loaded = state.loaded
     val busy = state.busy
     var confirmation by remember(sessionId) { mutableStateOf<MobileDeliveryOperation?>(null) }
     var confirmMerge by remember(sessionId) { mutableStateOf(false) }
@@ -198,115 +206,105 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
 
     fun act(action: suspend () -> Unit) = state.act(action)
     val pr = operations.firstOrNull { it.kind == "PUBLISH_PR" }
-    val integration = operations.firstOrNull { it.kind == "INTEGRATE" }
     val active = operations.any { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
     val releasePlanned = operations.any { it.kind == "RELEASE" && (!it.terminal || it.state == "ROLLBACK_FAILED") }
-    Column {
-        Text(if (state.completed) "Cambio completado" else "PR → Integración → Publicación → Finalización")
-        if (state.completed) Text("La WorkSession está cerrada. La conversación, el código y los recibos se conservan como historial.")
-        else if (state.completing) {
-            Text(if (state.completion?.state == "BLOCKED") "La finalización necesita atención. No se ha marcado el ticket como completado."
-                else "Finalizando la misma WorkSession. Puedes salir de esta pantalla; Atenea conserva la operación.")
-            if (state.completion?.state == "BLOCKED") AteneaButton("Reconciliar finalización",
-                enabled = state.canReconcileCompletion(runInProgress), onClick = { act { api.finalizeDelivery(sessionId, reconcile = true) } })
-        }
-        if (!validated && !state.sourcePhaseComplete) Text("Primero completa la validación de esta revisión. Integrar y publicar son pasos separados.")
-        if (!available && state.loadError == null) Text(if (loaded) "La publicación móvil aún no está habilitada en este servidor."
-            else "Consultando las capacidades de publicación…")
-        if (state.integrated || state.completed) {
-            Text("Integración completada")
-            Text(deploymentLabel(state.deployment, state.appDeployed))
-            if (state.appDeployed) {
-                Text("Versión PROD: ${state.deployment?.sourceCommit?.take(12)} · contiene el cambio de esta PR.")
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // The current decision and its button precede receipts and secondary targets.
+        DeliveryStepCard(step) {
+            when (step.action) {
+                DeliveryStepAction.CREATE_PR -> AteneaButton("Crear PR", enabled = available && validated && !runInProgress && !busy && !active,
+                    onClick = { act { api.createDeliveryPullRequest(sessionId) } })
+                DeliveryStepAction.INTEGRATE -> AteneaButton("Integrar cambio", enabled = available && validated && !runInProgress && !busy && !active
+                    && state.integration?.allowsRequest == true, onClick = { confirmMerge = true })
+                DeliveryStepAction.CONFIRM_RELEASE -> step.operation?.let { plan ->
+                    AteneaButton("Confirmar ${plan.target.label}", enabled = available && validated && !busy && !runInProgress
+                        && plan.canConfirm(System.currentTimeMillis() / 1000)
+                        && (plan.target != MobileDeliveryTarget.APP_PROD || state.canPrepareBackend),
+                        onClick = { confirmation = plan; totp = "" })
+                }
+                DeliveryStepAction.PREPARE_BACKEND -> AteneaButton("Preparar Backend PROD",
+                    enabled = if (state.releaseRecoveryEnabled) state.canPrepareReleaseRecovery(validated, runInProgress)
+                        else available && validated && !runInProgress && !busy && !active && !releasePlanned && state.canPrepareBackend,
+                    onClick = { act {
+                        if (state.releaseRecoveryEnabled) api.prepareReleaseRecovery(sessionId)
+                        else api.prepareRelease(sessionId, MobileDeliveryTarget.APP_PROD)
+                    } })
+                DeliveryStepAction.FINALIZE -> AteneaButton("Finalizar cambio", enabled = state.canFinalize(validated, runInProgress),
+                    onClick = { confirmFinalize = true })
+                DeliveryStepAction.RECONCILE_FINALIZE -> AteneaButton("Reconciliar finalización", enabled = state.canReconcileCompletion(runInProgress),
+                    onClick = { act { api.finalizeDelivery(sessionId, reconcile = true) } })
+                DeliveryStepAction.RESOLVE -> AteneaButton("Resolver conflictos", enabled = state.canResolveConflicts(validated, runInProgress),
+                    onClick = { act { api.resolveDeliveryConflicts(sessionId) } })
+                DeliveryStepAction.UPDATE_PR -> AteneaButton("Actualizar la misma PR", enabled = state.canUpdatePullRequest(validated, runInProgress),
+                    onClick = { act { api.createDeliveryPullRequest(sessionId) } })
+                DeliveryStepAction.RECOVER_SOURCE -> state.sourceUpdate?.let { update ->
+                    AteneaButton("Recuperar operación", enabled = state.canRecoverSource(validated, runInProgress),
+                        onClick = { act { api.recoverDeliverySource(sessionId, update.id) } })
+                }
+                DeliveryStepAction.RETRY_RESOLVER -> state.sourceUpdate?.let { update -> update.resolverRunId?.let { run ->
+                    AteneaButton("Reintentar resolución", enabled = state.canRetryResolver(runInProgress),
+                        onClick = { act { api.retryDeliveryResolver(sessionId, update.id, run) } })
+                } }
+                DeliveryStepAction.REFRESH -> AteneaOutlinedButton("Consultar estado", enabled = !busy,
+                    onClick = { act { /* Read-only refresh; no new intent. */ } })
+                DeliveryStepAction.NONE -> Unit
             }
-            TextButton(onClick = { showHistory = !showHistory }) {
-                Text(if (showHistory) "Ocultar historial" else "Ver historial y recibos")
-            }
         }
-        val visibleOperations = visibleDeliveryOperations(operations, state.integrated || state.completed, showHistory)
-        visibleOperations.forEach { operation ->
-            Text("${deliveryKindLabel(operation)} · ${if (operation.kind == "FINALIZE" && operation.state == "APPLYING") "Finalizando" else deliveryStateLabel(operation.state)}" +
-                (operation.sourceCommit?.take(12)?.let { " · $it" } ?: "") +
-                (operation.versionName?.let { " · $it (${operation.versionCode})" } ?: ""))
-            operation.errorCode?.let { Text(deliveryErrorLabel(it)) }
-            operation.effectiveSourceCommit?.let { Text("Commit efectivo: ${it.take(12)}") }
-            operation.resultSha256?.let { Text("APK SHA-256: $it") }
-            operation.releaseRecovery?.let { proof ->
-                Text("Publicación recuperada: contiene el merge ${proof.integratedMergeCommit.take(12)} del ticket.")
-                TextButton(onClick = { uriHandler.openUri("https://github.com/jlnieto/atenea/compare/" +
-                    "${proof.integratedMergeCommit}...${proof.selectedMainCommit}") }) { Text("Revisar versión a publicar") }
-            }
-        }
+        state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (state.integrated || state.completed) Text("✓ PR integrada", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (state.appDeployed) Text(deploymentLabel(state.deployment, true), style = MaterialTheme.typography.bodySmall)
         pr?.pullRequestUrl?.takeIf { it.matches(Regex("https://github\\.com/jlnieto/atenea/pull/[1-9][0-9]*")) }?.let { url ->
             TextButton(onClick = { uriHandler.openUri(url) }) { Text("Revisar PR") }
         }
-        if (pr?.state == "SUCCEEDED" && !state.integrated) {
-            Text(deliveryIntegrationLabel(state.integration?.mergeState))
-        }
-        state.sourceUpdate?.takeIf { !state.sourcePhaseComplete || showHistory }?.let { update ->
-            Text(if (state.sourcePhaseComplete) "Historial: resolución de conflictos · ${update.state}" else sourceUpdateLabel(update.state))
-            update.errorCode?.let { Text("Recuperación detenida: $it. La misma operación y conversación se conservan.") }
-            if (state.canRecoverSource(validated,runInProgress)) {
-                Text("Recuperar termina la operación retenida; no cambia su main ni descarta archivos.")
-                AteneaButton("Recuperar operación", enabled = true,
-                    onClick = { act { api.recoverDeliverySource(sessionId,update.id) } })
-            }
-            val resolverRunId = update.resolverRunId
-            if (!state.sourcePhaseComplete && update.state == "FAILED" && resolverRunId != null) {
-                Text("Reintentar comprueba la misma fuente y conserva el intento fallido. Consultar no ejecuta otro resolver.")
-                AteneaButton("Reintentar resolución", enabled = state.canRetryResolver(runInProgress),
-                    onClick = { act { api.retryDeliveryResolver(sessionId, update.id, resolverRunId) } })
-            }
-        }
-        if (!state.sourcePhaseComplete && ((state.integration?.mergeState == "CONFLICTS" && state.sourceUpdate == null)
-            || state.sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE", "PUBLISHED"))) {
-            AteneaButton(if (state.sourceUpdate == null) "Resolver conflictos" else "Actualizar base con main", enabled = state.canResolveConflicts(validated, runInProgress),
-                onClick = { act { api.resolveDeliveryConflicts(sessionId) } })
-        }
-        state.loadError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (!state.sourcePhaseComplete && state.sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")) {
-            AteneaButton("Actualizar la misma PR", enabled = state.canUpdatePullRequest(validated, runInProgress),
-                onClick = { act { api.createDeliveryPullRequest(sessionId) } })
-        } else if (!state.sourcePhaseComplete && pr?.state != "SUCCEEDED") {
-            AteneaButton("Crear PR", enabled = available && validated && !runInProgress && !busy && !active,
-                onClick = { act { api.createDeliveryPullRequest(sessionId) } })
-        } else if (!state.sourcePhaseComplete && integration?.state != "SUCCEEDED") {
-            AteneaButton("Integrar cambio", enabled = available && validated && !runInProgress && !busy && !active
-                    && state.integration?.allowsRequest == true,
-                onClick = { confirmMerge = true })
-        }
-        if (state.appDeployed && state.completion == null && state.completionEnabled) {
-            Text("El cambio ya está entregado. Finalizar cierra este ticket sin volver a desplegar.")
-            AteneaButton("Finalizar cambio", enabled = state.canFinalize(validated, runInProgress),
-                onClick = { confirmFinalize = true })
-        }
         if (state.integrated && state.completion == null) {
-            if (!state.appDeployed) {
-                TextButton(onClick = { act { /* Only the read-only refresh performed by act. */ } }, enabled = !busy) { Text("Consultar despliegue") }
-            }
             TextButton(onClick = { showOtherTargets = !showOtherTargets }) {
                 Text(if (showOtherTargets) "Ocultar otras publicaciones" else "Otras publicaciones (Worker / Android)")
             }
-            val targets = (if (state.appDeployed) emptyList() else listOf(MobileDeliveryTarget.APP_PROD)) +
-                (if (showOtherTargets) listOf(MobileDeliveryTarget.AX42_PLATFORM, MobileDeliveryTarget.ANDROID_STABLE) else emptyList())
-            targets.forEach { target ->
+            if (showOtherTargets) listOf(MobileDeliveryTarget.AX42_PLATFORM, MobileDeliveryTarget.ANDROID_STABLE).forEach { target ->
+                Text(target.label, style = MaterialTheme.typography.titleSmall)
                 val plan = operations.firstOrNull { it.kind == "RELEASE" && it.target == target }
-                if (plan?.canConfirm(System.currentTimeMillis() / 1000) == true) {
+                if (plan?.canConfirm(System.currentTimeMillis() / 1000) == true && step.operation?.id != plan.id) {
                     AteneaButton("Confirmar ${target.label}", enabled = available && !busy && !runInProgress
-                        && (target != MobileDeliveryTarget.APP_PROD || state.canPrepareBackend),
+                        && validated,
                         onClick = { confirmation = plan; totp = "" })
-                } else if (target != MobileDeliveryTarget.APP_PROD || !state.releaseRecoveryEnabled) {
-                    AteneaButton("Preparar ${target.label}", enabled = available && validated && !runInProgress && !busy && !active && !releasePlanned
-                        && (target != MobileDeliveryTarget.APP_PROD || state.canPrepareBackend),
+                } else if (plan == null || plan.terminal) {
+                    Text("Preparar obtiene un plan; no publica ni instala.", style = MaterialTheme.typography.bodySmall)
+                    AteneaOutlinedButton("Preparar ${target.label}", enabled = available && validated && !runInProgress && !busy && !active && !releasePlanned,
                         onClick = { act { api.prepareRelease(sessionId, target) } })
+                } else Text("${deliveryStateLabel(plan.state)}. Sigue la operación que aparece arriba.")
+                if (plan?.state == "SUCCEEDED" && target == MobileDeliveryTarget.ANDROID_STABLE) {
+                    Text("APK ${plan.versionName} / ${plan.versionCode} publicada. Instálala en Ajustes → Actualizaciones.")
                 }
             }
-            if (!state.appDeployed && state.releaseRecoveryEnabled && operations.none {
-                    it.kind == "RELEASE" && it.target == MobileDeliveryTarget.APP_PROD && !it.terminal }) {
-                Text("Preparar comprueba que la versión aprobada contiene este cambio. No publica todavía.")
-                AteneaButton("Preparar Backend PROD", enabled = state.canPrepareReleaseRecovery(validated, runInProgress),
-                    onClick = { act { api.prepareReleaseRecovery(sessionId) } })
+        }
+        HorizontalDivider()
+        TextButton(onClick = { showHistory = !showHistory }) {
+            Text(if (showHistory) "Ocultar historial y detalles" else "Ver historial y detalles")
+        }
+        if (showHistory) {
+            Text("Historial · no es trabajo pendiente", style = MaterialTheme.typography.titleSmall)
+            state.deployment?.sourceCommit?.let { Text("Versión PROD: ${it.take(12)}") }
+            operations.take(10).forEach { operation ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("${deliveryKindLabel(operation)} · ${deliveryStateLabel(operation.state)}", style = MaterialTheme.typography.titleSmall)
+                    operation.sourceCommit?.let { Text("Fuente: ${it.take(12)}", style = MaterialTheme.typography.bodySmall) }
+                    operation.errorCode?.let { Text(deliveryErrorLabel(it)) }
+                    operation.effectiveSourceCommit?.let { Text("Commit efectivo: ${it.take(12)}") }
+                    operation.resultSha256?.let { Text("APK SHA-256: $it") }
+                    operation.versionName?.let { Text("Versión: $it / ${operation.versionCode}") }
+                    operation.releaseRecovery?.let { proof ->
+                        Text("Contiene el merge ${proof.integratedMergeCommit.take(12)} del ticket.")
+                        TextButton(onClick = { uriHandler.openUri("https://github.com/jlnieto/atenea/compare/" +
+                            "${proof.integratedMergeCommit}...${proof.selectedMainCommit}") }) { Text("Revisar versión a publicar") }
+                    }
+                    Text("Operación: ${operation.operationId}", style = MaterialTheme.typography.bodySmall)
+                }
+                HorizontalDivider()
+            }
+            state.sourceUpdate?.let { update ->
+                Text("Actualización de base · ${update.state}")
+                update.errorCode?.let { Text("Código guardado: $it") }
             }
         }
     }

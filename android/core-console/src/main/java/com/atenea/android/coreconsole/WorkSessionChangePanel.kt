@@ -6,7 +6,12 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import com.atenea.android.api.DevelopmentChangeValidationEvidence
 
@@ -21,13 +26,51 @@ internal fun WorkSessionChangePanel(
     onReadEvidence: () -> Unit,
     onValidate: () -> Unit,
     completed: Boolean = false,
+    runInProgress: Boolean = false,
+    deliveryBeforeValidation: Boolean = false,
     deliveryContent: @Composable () -> Unit
 ) {
-    Text(title, style = MaterialTheme.typography.titleMedium)
-    Text("Misma WorkSession $sessionId", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    HorizontalDivider()
-    Text("1 · Validación", style = MaterialTheme.typography.titleSmall)
-    Text(validation.message)
+    var showValidationDetails by remember(sessionId) { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text("Cambio · sesión $sessionId", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (validation.current || completed || deliveryBeforeValidation) {
+            // Current delivery and its primary button appear before completed validation.
+            deliveryContent()
+            Text(if (validation.current) "✓ Validación de esta revisión completada"
+                else if (deliveryBeforeValidation) "Validación pendiente · después de recuperar esta operación"
+                else "Validación · historial",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            val status = when {
+                runInProgress || validation.inProgress -> DeliveryStepStatus.WORKING
+                validation.needsAttention -> DeliveryStepStatus.ATTENTION
+                else -> DeliveryStepStatus.ACTION
+            }
+            DeliveryStepCard(DeliveryStepUi(status,
+                if (runInProgress) "Codex está trabajando" else if (validation.inProgress) "Validando cambio" else "Validar cambio",
+                if (runInProgress) "Puedes salir de la app. Espera al resultado; no repitas el prompt."
+                else if (validation.inProgress) "Atenea está comprobando esta revisión. Puedes salir de la app; no repitas la validación."
+                else validation.message)) {
+                if (validation.visible && !runInProgress) AteneaButton(validation.label,
+                    enabled = validation.canStart, onClick = onValidate)
+            }
+        }
+        TextButton(onClick = { showValidationDetails = !showValidationDetails }) {
+            Text(if (showValidationDetails) "Ocultar pruebas y detalles" else "Ver pruebas y detalles")
+        }
+        if (showValidationDetails) {
+            HorizontalDivider()
+            ValidationEvidenceDetails(evidence, loading, readError, onReadEvidence)
+        }
+    }
+}
+
+@Composable
+private fun ValidationEvidenceDetails(evidence: DevelopmentChangeValidationEvidence?, loading: Boolean,
+    readError: String?, onReadEvidence: () -> Unit) {
+    Text("Resultados guardados · consultar no ejecuta pruebas", style = MaterialTheme.typography.titleSmall)
     if (evidence != null) {
         Text("${evidence.passedOperations}/${evidence.requiredOperations} comprobaciones de la revisión ${evidence.sourceRevision}")
         val failure = evidence.operations.firstOrNull { it.status in setOf("FAILED", "BLOCKED") }
@@ -58,14 +101,8 @@ internal fun WorkSessionChangePanel(
     }
     readError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     AteneaOutlinedButton("Consultar resultado", enabled = !loading, onClick = onReadEvidence)
-    // Cached evidence must never hide a new validation required by the session projection.
-    if (!completed && validation.visible && !validation.current) {
-        AteneaButton(validation.label, enabled = validation.canStart, onClick = onValidate)
-    }
     Text("Consultar no ejecuta ni reintenta pruebas.", style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
-    HorizontalDivider()
-    deliveryContent()
 }
 
 internal fun validationOperationLabel(operation: String): String = when (operation) {
