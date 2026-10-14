@@ -322,6 +322,10 @@ class OperationsServiceTest {
                 "Apache: systemctl reported inactive",
                 "Web Cliente (https://cliente.test): DEGRADED - Slow response 3200ms above 2500ms threshold"),
                 result.errors());
+        assertEquals(List.of("apache", "website:30:DEGRADED"),
+                result.issues().stream().map(OperationsMonitoringIssue::key).toList());
+        assertEquals(List.of(false, true),
+                result.issues().stream().map(OperationsMonitoringIssue::confirmSlowResponse).toList());
         verify(operationsIncidentRepository).save(any(OperationsIncidentEntity.class));
     }
 
