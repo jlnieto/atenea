@@ -252,6 +252,16 @@ public class MobileDeliveryService {
     }
 
     public PrivilegedActionAuthorizationGrant authorize(UUID id, AuthenticatedSession actor, String totp) {
+        DeliveryOperation plan = authorizationPlan(id, actor);
+        try {
+            return grants.issueVerified(factors.verifyTotpStepUp(actor.operator(), actor.sessionFamilyId(), binding(plan), totp));
+        } catch (com.atenea.auth.OperatorAuthenticationException exception) {
+            throw new DeliveryRejectedException("PUBLICATION_FACTOR_REJECTED");
+        }
+    }
+
+    /** Both factors consume the same server-derived publication identity and readiness policy. */
+    DeliveryOperation authorizationPlan(UUID id, AuthenticatedSession actor) {
         enabled(); administrator(actor.operator().operatorId());
         DeliveryOperation plan = store.get(id, false);
         ready(plan, actor);
@@ -271,11 +281,7 @@ public class MobileDeliveryService {
             });
             if (blocked != null) throw new DeliveryRejectedException(blocked);
         }
-        try {
-            return grants.issueVerified(factors.verifyTotpStepUp(actor.operator(), actor.sessionFamilyId(), binding(plan), totp));
-        } catch (com.atenea.auth.OperatorAuthenticationException exception) {
-            throw new DeliveryRejectedException("PUBLICATION_FACTOR_REJECTED");
-        }
+        return plan;
     }
 
     public DeliveryOperation.DeliveryView confirm(UUID id, AuthenticatedSession actor, UUID authorization) {
@@ -613,7 +619,7 @@ public class MobileDeliveryService {
             throw new DeliveryRejectedException("PLAN_NOT_READY_OR_EXPIRED");
         }
     }
-    private PrivilegedActionBinding binding(DeliveryOperation op) {
+    PrivilegedActionBinding binding(DeliveryOperation op) {
         return PrivilegedActionBinding.fromCanonical("PUBLISH_ATENEA_RELEASE",
                 op.target().name() + "|" + op.sourceCommit(), op.id() + "|" + op.planSha256());
     }

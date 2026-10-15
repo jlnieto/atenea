@@ -47,7 +47,10 @@ Si un fallo antiguo sólo conservó un resumen genérico, no se inventa su causa
    separados bajo **Otras publicaciones (Worker / Android)**. Se obtiene un plan con SHA, hash y caducidad, a partir
    de un artefacto de GitHub main. Si su build está en curso, el mismo plan
    espera, sin crear otra operación ni desplegar.
-6. Pulsar **Confirmar** y usar el código del autenticador. Es una autorización
+6. Pulsar **Confirmar** y elegir **Confirmar con el móvil**: la passkey requiere
+   huella, PIN o desbloqueo seguro. **Usar Authenticator** conserva la alternativa
+   TOTP. La primera configuración de la passkey requiere Authenticator una vez;
+   configurarla no publica. Es una autorización
    para esa publicación concreta, no permisos para cada edición o comando
    de Codex. El factor no se guarda en la conversación.
 7. Consultar el resultado. La operación continúa fuera del proceso App y se
@@ -126,7 +129,7 @@ su head y merge, y el SHA seleccionado. El móvil muestra esa versión y permite
 revisar en GitHub los cambios posteriores al ticket. Incluye esos cambios
 aprobados de main, no sólo el diff original del ticket. Preparar no publica:
 el ejecutor existente aún exige el artefacto inmutable y su CI, y Confirmar
-mantiene TOTP y el grant vinculado al plan/hash y commit seleccionados.
+mantiene la prueba de usuario y el grant vinculado al plan/hash y commit seleccionados.
 
 Antes de autorizar y confirmar se vuelven a comprobar la identidad y la
 ancestría. Si main volvió a avanzar, el plan no confirmado queda BLOCKED con
@@ -180,6 +183,47 @@ instalar/verificar primero el publicador **VPS** desde Platform; después App
 PROD y la APK estable. No necesita Flyway ni actualizar/reiniciar el worker.
 Si el publicador anterior no reconoce OBSERVE_APP, App indica UNAVAILABLE y
 conserva la auditoría; no inventa estado ni intenta publicar para comprobarlo.
+
+## Confirmación nativa de publicaciones
+
+La publicación usa el mismo plan durable, fingerprint, autorización de un uso y
+cola de confirmación. Android no recibe autoridad permanente ni decide comandos,
+paths, versiones o secretos. Las opciones y la prueba firmada pasan por
+`/api/mobile/delivery/{id}/authorize/passkey/options` y `/authorize/passkey`.
+App deriva el binding de target, source, UUID y hash del plan y reutiliza
+WebAuthn STEP_UP/ANDROID, con `userVerification=required`, origen/RP, familia,
+propietario, firma, contador y caducidad verificados en servidor. Obtener opciones
+o un grant no confirma ni ejecuta un despliegue.
+
+La primera vez, **Configurar confirmación del móvil** requiere verificar una
+passkey ya registrada y un código TOTP. Este paso no publica. V96 conserva la
+confianza explícita de esa clave, su fingerprint, el challenge consumido y la
+autorización TOTP consumida, con FKs de propietario. No se confía automáticamente
+en ninguna clave existente ni en las registradas después: tener una sesión abierta
+y registrar otra passkey no habilita publicación. Revocar la clave o cambiar su
+identidad impide usarla. Después de la configuración, cada publicación sigue
+necesitando una prueba de usuario para su plan exacto; no pide otro TOTP.
+
+Si no aparece la passkey en el proveedor del móvil, **Usar Authenticator** permite
+continuar; no se crean credenciales automáticamente. Cancelar no confirma ni hace
+fallback automático. Una doble pulsación solicita una sola prueba. Si cambia o
+caduca el plan durante el desbloqueo, el móvil no confirma y el servidor mantiene
+sus comprobaciones. Si se pierde la respuesta al confirmar, sólo se consulta la
+misma operación; no se vuelve a solicitar otro factor ni se reenvía el despliegue.
+No se guardan códigos, pruebas o grants en disco, borradores o conversaciones.
+
+La asociación pública `/.well-known/assetlinks.json` permite únicamente
+`delegate_permission/common.get_login_creds` para `com.atenea.android`, con los
+certificados configurados; no habilita deep links ni acepta paquetes del cliente.
+El origen Android por defecto corresponde exclusivamente a la firma estable
+existente (certificado SHA-256
+`a1642a052853e9992da7ae8f8b6fe09e150533877776c009e7cca83e8b76559a`).
+`ATENEA_AUTH_WEBAUTHN_ANDROID_ORIGINS` sigue siendo la autoridad si el operador lo
+configura explícitamente. No se habilitan lifecycle, discovery, controlled-reset
+ni otras capacidades. La asociación no entrega claves privadas y no sustituye la
+prueba criptográfica del backend. Implementación basada en
+[Credential Manager de Android](https://developer.android.com/identity/credential-manager)
+y [passkeys](https://developer.android.com/identity/passkeys).
 
 ## Qué es nuevo y qué se reutiliza
 

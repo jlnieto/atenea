@@ -129,7 +129,8 @@ atenea:
       relying-party-id: ${ATENEA_AUTH_WEBAUTHN_RP_ID:atenea.yudri.es}
       relying-party-name: ${ATENEA_AUTH_WEBAUTHN_RP_NAME:Atenea}
       web-origin: ${ATENEA_AUTH_WEBAUTHN_WEB_ORIGIN:https://atenea.yudri.es}
-      android-origins: ${ATENEA_AUTH_WEBAUTHN_ANDROID_ORIGINS:}
+      # Existing stable signing identity only; an explicit operator override remains authoritative.
+      android-origins: ${ATENEA_AUTH_WEBAUTHN_ANDROID_ORIGINS:android:apk-key-hash:oWQqBShT6Zktp66Pi2_gnhUFM4d3dsAJ58yoPot2VZo}
       challenge-ttl: ${ATENEA_AUTH_WEBAUTHN_CHALLENGE_TTL:5m}
       credential-lifecycle-enabled: ${ATENEA_AUTH_WEBAUTHN_CREDENTIAL_LIFECYCLE_ENABLED:false}
       credential-inventory-enabled: ${ATENEA_AUTH_WEBAUTHN_CREDENTIAL_INVENTORY_ENABLED:false}

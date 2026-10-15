@@ -9,6 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.support.ChangeOwnedSessionFixtures;
 import com.atenea.auth.action.PrivilegedActionAuthorizationService;
+import com.atenea.auth.webauthn.WebAuthnService;
+import com.atenea.auth.webauthn.WebAuthnOptionsResponse;
+import com.atenea.auth.webauthn.WebAuthnChannel;
 import com.atenea.auth.recovery.OperatorRecoveryService;
 import com.atenea.github.GitHubClient;
 import com.atenea.persistence.auth.CodexOperationsRole;
@@ -64,6 +67,8 @@ class MobileDeliveryApiIntegrationTest {
     @MockBean WorkSessionGitHubService publication;
     @MockBean OperatorRecoveryService factors;
     @MockBean PrivilegedActionAuthorizationService grants;
+    @MockBean WebAuthnService passkeys;
+    @MockBean ReleasePasskeyTrustStore trust;
     OperatorEntity admin, routine;
     Long sessionId;
     @BeforeEach void fixture() {
@@ -138,6 +143,102 @@ class MobileDeliveryApiIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content("{\"authorization\":\""+UUID.randomUUID()+"\",\"command\":\"foreign\"}"))
                 .andExpect(status().isConflict());
         verifyNoInteractions(factors,grants);
+    }
+
+    @Test void passkeyOptionsAreClosedAuthenticatedAndUseTheSameReadyPlanWithoutPublishing() throws Exception {
+        var op=store.create(sessionId,admin.getId(),"RELEASE",DeliveryTarget.APP_PROD,"1".repeat(40),"READY",
+                mapper.createObjectNode().put("expiresAt",Instant.now().plusSeconds(600).getEpochSecond()));
+        jdbc.update("UPDATE mobile_delivery_operation SET plan_sha256=? WHERE id=?","2".repeat(64),op.id());
+        String endpoint="/api/mobile/delivery/"+op.id()+"/authorize/passkey/options";
+        String origin="android:apk-key-hash:"+"A".repeat(43);
+        mvc.perform(post(endpoint).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isUnauthorized());
+        mvc.perform(post(endpoint).with(auth(routine)).header("X-Atenea-Android-Origin",origin)
+                .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
+        mvc.perform(post(endpoint).with(auth(admin)).header("X-Atenea-Android-Origin",origin)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"sourceCommit\":\"foreign\"}")).andExpect(status().isConflict());
+        when(passkeys.beginStepUp(any(),any(),eq(WebAuthnChannel.ANDROID),eq(origin),any())).thenReturn(
+            new WebAuthnOptionsResponse(UUID.randomUUID(),"challenge",300_000,"atenea.yudri.es",null,null,null,
+                List.of(),List.of(new WebAuthnOptionsResponse.CredentialDescriptor("public-key","credential",List.of("internal"))),"required",null,null));
+        when(trust.trustedCredentialIds(admin.getId())).thenReturn(java.util.Set.of("credential"));
+        mvc.perform(post(endpoint).with(auth(admin)).header("X-Atenea-Android-Origin",origin)
+                .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.userVerification").value("required"));
+        verify(passkeys,times(1)).beginStepUp(any(),any(),eq(WebAuthnChannel.ANDROID),eq(origin),any());
+        assertEquals("READY",store.get(op.id(),false).state());
+        verifyNoInteractions(factors,grants);
+        verify(executor,never()).execute(any(),any(),any());
+    }
+
+    @Test void passkeyCannotAcceptClientAuthorityUnpreparedExpiredOrForeignPlans() throws Exception {
+        String origin="android:apk-key-hash:"+"A".repeat(43);
+        var op=store.create(sessionId,admin.getId(),"RELEASE",DeliveryTarget.APP_PROD,"1".repeat(40),"PREPARING",mapper.createObjectNode());
+        String endpoint="/api/mobile/delivery/"+op.id()+"/authorize/passkey";
+        var body=mapper.createObjectNode().put("requestId",UUID.randomUUID().toString()).put("credentialId","credential")
+                .putNull("userHandle").put("clientDataJson","client").put("authenticatorData","data").put("signature","signature");
+        for(String extra:List.of("command","path","host","sourceCommit","planSha256","authorization","userVerified")) {
+            mvc.perform(post(endpoint).with(auth(admin)).header("X-Atenea-Android-Origin",origin)
+                    .contentType(MediaType.APPLICATION_JSON).content(body.deepCopy().put(extra,"foreign").toString()))
+                    .andExpect(status().isConflict());
+        }
+        mvc.perform(post(endpoint).with(auth(admin)).header("X-Atenea-Android-Origin",origin)
+                .contentType(MediaType.APPLICATION_JSON).content(body.toString())).andExpect(status().isConflict());
+        jdbc.update("UPDATE mobile_delivery_operation SET state='READY',plan_sha256=?,evidence_json=?::jsonb WHERE id=?",
+                "2".repeat(64),"{\"expiresAt\":1}",op.id());
+        mvc.perform(post(endpoint).with(auth(admin)).header("X-Atenea-Android-Origin",origin)
+                .contentType(MediaType.APPLICATION_JSON).content(body.toString())).andExpect(status().isConflict());
+        jdbc.update("UPDATE mobile_delivery_operation SET operator_id=?,evidence_json=?::jsonb WHERE id=?",routine.getId(),
+                "{\"expiresAt\":"+Instant.now().plusSeconds(600).getEpochSecond()+"}",op.id());
+        mvc.perform(post(endpoint).with(auth(admin)).header("X-Atenea-Android-Origin",origin)
+                .contentType(MediaType.APPLICATION_JSON).content(body.toString())).andExpect(status().isConflict());
+        verifyNoInteractions(passkeys,factors,grants);
+    }
+
+    @Test void validTrustedPasskeyReturnsOnlyAnAuthorizationWithoutAcceptingOrExecutingTheRelease() throws Exception {
+        var op=store.create(sessionId,admin.getId(),"RELEASE",DeliveryTarget.APP_PROD,"1".repeat(40),"READY",
+                mapper.createObjectNode().put("expiresAt",Instant.now().plusSeconds(600).getEpochSecond()));
+        jdbc.update("UPDATE mobile_delivery_operation SET plan_sha256=? WHERE id=?","2".repeat(64),op.id());
+        var grant=new com.atenea.auth.action.PrivilegedActionAuthorizationGrant(UUID.randomUUID(),Instant.now().plusSeconds(60));
+        when(trust.isTrusted(admin.getId(),"credential")).thenReturn(true);
+        when(passkeys.completeStepUp(any(),any(),eq(WebAuthnChannel.ANDROID),any(),any(),any())).thenAnswer(call ->
+            new com.atenea.auth.action.VerifiedStepUp(admin.getId(),call.getArgument(1),call.getArgument(4),
+                com.atenea.auth.action.PrivilegedActionFactor.WEBAUTHN,Instant.now()));
+        when(grants.issueVerified(any())).thenReturn(grant);
+        var body=mapper.createObjectNode().put("requestId",UUID.randomUUID().toString()).put("credentialId","credential")
+                .put("userHandle","user").put("clientDataJson","client").put("authenticatorData","data").put("signature","signature");
+        mvc.perform(post("/api/mobile/delivery/{id}/authorize/passkey",op.id()).with(auth(admin))
+                .header("X-Atenea-Android-Origin","android:apk-key-hash:"+"A".repeat(43))
+                .contentType(MediaType.APPLICATION_JSON).content(body.toString())).andExpect(status().isOk())
+                .andExpect(jsonPath("$.authorization").value(grant.authorization().toString()));
+        assertEquals("READY",store.get(op.id(),false).state());
+        verify(grants,never()).consumeForAcceptance(any(),any(),any(),any());
+        verifyNoInteractions(factors);
+        verify(executor,never()).execute(any(),any(),any());
+    }
+
+    @Test void passkeySetupRequiresBothClosedAssertionAndAuthenticatorNotSessionAlone() throws Exception {
+        var body=mapper.createObjectNode().put("requestId",UUID.randomUUID().toString()).put("credentialId","credential")
+                .putNull("userHandle").put("clientDataJson","client").put("authenticatorData","data").put("signature","signature");
+        mvc.perform(post("/api/mobile/release-passkeys/setup").with(auth(admin))
+                .header("X-Atenea-Android-Origin","android:apk-key-hash:"+"A".repeat(43))
+                .contentType(MediaType.APPLICATION_JSON).content(body.toString())).andExpect(status().isConflict());
+        mvc.perform(post("/api/mobile/release-passkeys/setup").with(auth(admin))
+                .header("X-Atenea-Android-Origin","android:apk-key-hash:"+"A".repeat(43))
+                .contentType(MediaType.APPLICATION_JSON).content(body.put("totp","123456").put("trusted",true).toString()))
+                .andExpect(status().isConflict());
+        verifyNoInteractions(passkeys,factors,grants);
+    }
+
+    @Test void passkeySetupStatusRequiresCurrentAdministratorAndRemainsReadOnly() throws Exception {
+        String origin="android:apk-key-hash:"+"A".repeat(43);
+        mvc.perform(get("/api/mobile/release-passkeys").header("X-Atenea-Android-Origin",origin))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/mobile/release-passkeys").with(auth(routine)).header("X-Atenea-Android-Origin",origin))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/mobile/release-passkeys").with(auth(admin)).header("X-Atenea-Android-Origin",origin))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.configured").value(false));
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation",Integer.class));
+        verifyNoInteractions(passkeys,factors,grants);
+        verify(executor,never()).execute(any(),any(),any());
     }
     @Test void oldUfdClaimIsFoundBeyondUiWindowAndOnlyForExactOwnedHead() {
         String head="1".repeat(40),branch="atenea/change-59315b6e-59bc-4884-9def-356e1ca86ef4";

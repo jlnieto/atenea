@@ -89,6 +89,8 @@ class WebAuthnServiceIntegrationTest {
     @Autowired private OperatorAuthProperties properties;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JwtTokenService jwtTokenService;
+    @Autowired private com.atenea.auth.action.PrivilegedActionAuthorizationService actionGrants;
+    @Autowired private com.atenea.delivery.ReleasePasskeyTrustStore publicationTrust;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     private OperatorEntity operator;
@@ -820,6 +822,92 @@ class WebAuthnServiceIntegrationTest {
     }
 
     @Test
+    void androidPublicationRequiresVerifiedPresenceSignatureOriginAndExactOneUsePlan() throws Exception {
+        boolean previouslyEnabled = properties.getPrivilegedActions().isEnabled();
+        properties.getPrivilegedActions().setEnabled(true);
+        try {
+            RegisteredPasskey passkey = register(0, false, false, WebAuthnChannel.ANDROID, ANDROID_ORIGIN);
+            UUID plan = UUID.randomUUID();
+            PrivilegedActionBinding binding = PrivilegedActionBinding.fromCanonical("PUBLISH_ATENEA_RELEASE",
+                    "APP_PROD|" + "1".repeat(40), plan + "|" + "2".repeat(64));
+            PrivilegedActionBinding otherPlan = PrivilegedActionBinding.fromCanonical("PUBLISH_ATENEA_RELEASE",
+                    "APP_PROD|" + "1".repeat(40), plan + "|" + "3".repeat(64));
+            WebAuthnOptionsResponse options = webAuthnService.beginStepUp(actor, familyId,
+                    WebAuthnChannel.ANDROID, ANDROID_ORIGIN, binding);
+            assertEquals("required", options.userVerification());
+            assertRejected(() -> webAuthnService.completeStepUp(actor, familyId, WebAuthnChannel.ANDROID,
+                    ANDROID_ORIGIN, binding, authenticationRequest(passkey, options, 1, true, false, ANDROID_ORIGIN)));
+            assertRejected(() -> webAuthnService.completeStepUp(actor, familyId, WebAuthnChannel.ANDROID,
+                    ANDROID_ORIGIN, binding, authenticationRequest(passkey, options, 1, true, true, WEB_ORIGIN)));
+            WebAuthnAuthenticationRequest valid = authenticationRequest(passkey, options, 1, true, true, ANDROID_ORIGIN);
+            assertRejected(() -> webAuthnService.completeStepUp(actor, familyId, WebAuthnChannel.ANDROID,
+                    ANDROID_ORIGIN, otherPlan, valid));
+            VerifiedStepUp proof = webAuthnService.completeStepUp(actor, familyId, WebAuthnChannel.ANDROID,
+                    ANDROID_ORIGIN, binding, valid);
+            assertRejected(() -> webAuthnService.completeStepUp(actor, familyId, WebAuthnChannel.ANDROID,
+                    ANDROID_ORIGIN, binding, valid));
+            var grant = actionGrants.issueVerified(proof);
+            var session = new com.atenea.auth.AuthenticatedSession(actor, familyId, Instant.now(), List.of("access_token"));
+            int[] effects = {0};
+            assertRejected(() -> actionGrants.consumeForAcceptance(grant.authorization(), session, otherPlan, () -> ++effects[0]));
+            assertEquals(0, effects[0]);
+            assertEquals(1, actionGrants.consumeForAcceptance(grant.authorization(), session, binding, () -> ++effects[0]));
+            assertRejected(() -> actionGrants.consumeForAcceptance(grant.authorization(), session, binding, () -> ++effects[0]));
+            assertEquals(1, effects[0]);
+        } finally {
+            properties.getPrivilegedActions().setEnabled(previouslyEnabled);
+        }
+    }
+
+    @Test
+    void registrationAndWebAuthnAloneDoNotTrustKeysButConsumedTotpApprovalDoesAndRevocationStopsIt() throws Exception {
+        boolean previouslyEnabled = properties.getPrivilegedActions().isEnabled();
+        properties.getPrivilegedActions().setEnabled(true);
+        try {
+            RegisteredPasskey passkey = register(0, false, false, WebAuthnChannel.ANDROID, ANDROID_ORIGIN);
+            String encodedId = encode(passkey.credentialId());
+            assertFalse(publicationTrust.isTrusted(operator.getId(), encodedId));
+            assertTrue(publicationTrust.trustedCredentialIds(operator.getId()).isEmpty());
+            var setupBinding = PrivilegedActionBinding.fromCanonical("SETUP_RELEASE_PASSKEY",
+                    "operator="+operator.getId(), "release-passkey-trust-v1");
+            var options = webAuthnService.beginStepUp(actor,familyId,WebAuthnChannel.ANDROID,ANDROID_ORIGIN,setupBinding);
+            webAuthnService.completeStepUp(actor,familyId,WebAuthnChannel.ANDROID,ANDROID_ORIGIN,setupBinding,
+                    authenticationRequest(passkey,options,1,true,true,ANDROID_ORIGIN));
+            var record = credentialRepository.findByCredentialId(passkey.credentialId()).orElseThrow();
+            var trustBinding = PrivilegedActionBinding.fromCanonical("TRUST_RELEASE_PASSKEY",
+                    "credential="+record.getId(),"synthetic-key-fingerprint-policy");
+            var session = new com.atenea.auth.AuthenticatedSession(actor,familyId,Instant.now(),List.of("access_token"));
+            // Synthetic verified-factor fixture in the isolated DB; production obtains this proof only from TOTP verification.
+            var weak = actionGrants.issueVerified(new VerifiedStepUp(operator.getId(),familyId,trustBinding,PrivilegedActionFactor.WEBAUTHN,Instant.now()));
+            assertRejected(() -> actionGrants.consumeForAcceptance(weak.authorization(),session,trustBinding,()->{
+                publicationTrust.approve(credentialRepository.findByCredentialIdForUpdate(passkey.credentialId()).orElseThrow(),
+                        weak.authorization(),options.requestId());return true;
+            }));
+            assertFalse(publicationTrust.isTrusted(operator.getId(),encodedId));
+            var strong = actionGrants.issueVerified(new VerifiedStepUp(operator.getId(),familyId,trustBinding,PrivilegedActionFactor.TOTP,Instant.now()));
+            actionGrants.consumeForAcceptance(strong.authorization(),session,trustBinding,()->{
+                publicationTrust.approve(credentialRepository.findByCredentialIdForUpdate(passkey.credentialId()).orElseThrow(),
+                        strong.authorization(),options.requestId());return true;
+            });
+            assertTrue(publicationTrust.isTrusted(operator.getId(),encodedId));
+            assertFalse(publicationTrust.isTrusted(Long.MAX_VALUE,encodedId));
+            byte[] originalKey=record.getPublicKeyCose();
+            byte[] changedKey=originalKey.clone();
+            changedKey[changedKey.length-1]^=1;
+            jdbcTemplate.update("UPDATE operator_webauthn_credential SET public_key_cose=? WHERE id=?",changedKey,record.getId());
+            assertFalse(publicationTrust.isTrusted(operator.getId(),encodedId));
+            jdbcTemplate.update("UPDATE operator_webauthn_credential SET public_key_cose=? WHERE id=?",originalKey,record.getId());
+            assertTrue(publicationTrust.isTrusted(operator.getId(),encodedId));
+            RegisteredPasskey later = register(0,false,false,WebAuthnChannel.ANDROID,ANDROID_ORIGIN);
+            assertFalse(publicationTrust.isTrusted(operator.getId(),encode(later.credentialId())));
+            assertEquals(Set.of(encodedId),publicationTrust.trustedCredentialIds(operator.getId()));
+            jdbcTemplate.update("UPDATE operator_webauthn_credential SET revoked_at=now() WHERE id=?",record.getId());
+            assertFalse(publicationTrust.isTrusted(operator.getId(),encodedId));
+            assertTrue(publicationTrust.trustedCredentialIds(operator.getId()).isEmpty());
+        } finally { properties.getPrivilegedActions().setEnabled(previouslyEnabled); }
+    }
+
+    @Test
     void duplicateAndCrossOperatorCredentialsFailClosed() throws Exception {
         RegisteredPasskey passkey = register(0, false, false,
                 WebAuthnChannel.WEB, WEB_ORIGIN);
@@ -1213,6 +1301,7 @@ class WebAuthnServiceIntegrationTest {
     }
 
     private void clearSyntheticState() {
+        jdbcTemplate.update("DELETE FROM operator_release_passkey_trust");
         jdbcTemplate.update("DELETE FROM operator_privileged_action_authorization");
         jdbcTemplate.update("DELETE FROM operator_security_notification");
         jdbcTemplate.update("DELETE FROM operator_security_event");
