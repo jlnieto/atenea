@@ -18,7 +18,7 @@ class WorkSessionAttachmentComposerTest {
     val compose = createComposeRule()
 
     @Test
-    fun readyStateShowsSecondaryAttachAndOneEnabledSendAction() {
+    fun readyStateAttachesThroughMenuAndKeepsOneEnabledSendAction() {
         var attachClicks = 0
         compose.setContent {
             ConversationSurface(
@@ -31,7 +31,6 @@ class WorkSessionAttachmentComposerTest {
                 onInputChange = {},
                 onSend = {},
                 onBack = {},
-                onOpenCore = {},
                 onRefresh = {},
                 error = null,
                 attachmentDraft = WorkSessionAttachmentDraft(
@@ -43,7 +42,9 @@ class WorkSessionAttachmentComposerTest {
         }
 
         compose.onNodeWithText("Imágenes · 0/4 seleccionadas").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Adjuntar imágenes").assertIsDisplayed().assertIsEnabled().performClick()
+        compose.onNodeWithContentDescription("Adjuntar imágenes").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
+        compose.onNodeWithText("Adjuntar imágenes").assertIsEnabled().performClick()
         compose.onNodeWithContentDescription("Enviar").assertIsDisplayed().assertIsEnabled()
         org.junit.Assert.assertEquals(1, attachClicks)
     }
@@ -61,7 +62,6 @@ class WorkSessionAttachmentComposerTest {
                 onInputChange = {},
                 onSend = {},
                 onBack = {},
-                onOpenCore = {},
                 onRefresh = {},
                 error = null,
                 attachmentDraft = WorkSessionAttachmentDraft(
@@ -74,10 +74,10 @@ class WorkSessionAttachmentComposerTest {
 
         compose.onNodeWithText("Imágenes no disponibles").assertDoesNotExist()
         compose.onNodeWithText("Esta WorkSession se creó antes de activar imágenes.").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Adjuntar imágenes").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Adjuntar imágenes").assertDoesNotExist()
         compose.onNodeWithContentDescription("Enviar").assertIsEnabled()
         compose.onNodeWithContentDescription("Opciones de conversación").performClick()
-        compose.onNodeWithText("Adjuntos").performClick()
+        compose.onNodeWithText("Imágenes no disponibles").performClick()
         compose.onNodeWithText("Esta WorkSession se creó antes de activar imágenes.").assertIsDisplayed()
         compose.onNodeWithText("Puedes continuar en esta misma conversación sin adjuntos.").assertIsDisplayed()
         compose.onNodeWithText("Abre una WorkSession nueva de Atenea.").assertDoesNotExist()
@@ -112,7 +112,6 @@ class WorkSessionAttachmentComposerTest {
                 onInputChange = {},
                 onSend = {},
                 onBack = {},
-                onOpenCore = {},
                 onRefresh = {},
                 error = null,
                 attachmentDraft = WorkSessionAttachmentDraft(
@@ -152,7 +151,6 @@ class WorkSessionAttachmentComposerTest {
                 onInputChange = {},
                 onSend = {},
                 onBack = {},
-                onOpenCore = {},
                 onRefresh = {},
                 error = null,
                 attachmentDraft = WorkSessionAttachmentDraft(
@@ -192,7 +190,6 @@ class WorkSessionAttachmentComposerTest {
                 onInputChange = {},
                 onSend = {},
                 onBack = {},
-                onOpenCore = {},
                 onRefresh = {},
                 error = null,
                 attachmentDraft = WorkSessionAttachmentDraft(

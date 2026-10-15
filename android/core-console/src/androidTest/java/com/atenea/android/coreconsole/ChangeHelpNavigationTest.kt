@@ -25,15 +25,32 @@ import java.util.UUID
 class ChangeHelpNavigationTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun changeAttentionAndHelpLiveOnlyInConversationMenu() {
+        compose.setContent {
+            ConversationSurface(title = "Sesión actual", status = "Validación bloqueada", turns = emptyList(),
+                input = "", pending = false, placeholder = "Prompt", onInputChange = {}, onSend = {},
+                onBack = {}, onRefresh = {}, error = null, changeNeedsAttention = true,
+                changeContent = { Text("Panel del cambio") }, helpContent = { _ -> Text("Ayuda independiente") })
+        }
+        compose.onNodeWithText("Cambio · necesita atención").assertDoesNotExist()
+        compose.onNodeWithText("Ayuda con este cambio").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
+        compose.onNodeWithText("Ayuda con este cambio").assertIsDisplayed()
+        compose.onNodeWithText("Abrir Core").assertDoesNotExist()
+        compose.onNodeWithText("Cambio · necesita atención").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Panel del cambio").assertIsDisplayed()
+    }
+
     @Test fun helpIsAccessibleWhenConversationFailedAndComposerIsDisabled() {
         var sent = 0
         compose.setContent {
             ConversationSurface(title = "Cambio actual", status = "Necesita atención", turns = emptyList(),
                 input = "", pending = false, placeholder = "Prompt", composerEnabled = false,
-                onInputChange = {}, onSend = { sent++ }, onBack = {}, onOpenCore = {}, onRefresh = {},
+                onInputChange = {}, onSend = { sent++ }, onBack = {}, onRefresh = {},
                 error = "No se pudo cargar la conversación", helpContent = { _ -> Text("Ayuda independiente") })
         }
-        compose.onNodeWithText("Ayuda").performClick()
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
+        compose.onNodeWithText("Ayuda con este cambio").performClick()
         compose.onNodeWithText("Ayuda independiente").assertIsDisplayed()
         assertEquals(0, sent)
     }
@@ -45,7 +62,7 @@ class ChangeHelpNavigationTest {
             var input by remember { mutableStateOf("") }
             ConversationSurface(title = "Cambio actual", status = "Pruebas pendientes", turns = emptyList(),
                 input = input, pending = false, placeholder = "Prompt", onInputChange = { input = it },
-                onSend = { sent++ }, onBack = {}, onOpenCore = {}, onRefresh = {}, error = null,
+                onSend = { sent++ }, onBack = {}, onRefresh = {}, error = null,
                 changeContent = { AteneaButton("Validar cambio", onClick = { validated++ }) },
                 helpContent = { navigate -> Column {
                     Text("El código está guardado. Pruebas pendientes.")
@@ -53,7 +70,8 @@ class ChangeHelpNavigationTest {
                 } })
         }
         compose.onNodeWithTag("conversation-input").performTextReplacement("Mi borrador")
-        compose.onNodeWithText("Ayuda").performClick()
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
+        compose.onNodeWithText("Ayuda con este cambio").performClick()
         compose.onNodeWithText("Ir a Validar cambio").performClick()
         compose.onNodeWithText("Validar cambio").assertIsDisplayed()
         assertEquals(0, sent); assertEquals(0, validated)

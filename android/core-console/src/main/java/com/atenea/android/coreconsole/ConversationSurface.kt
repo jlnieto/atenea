@@ -40,6 +40,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
@@ -99,7 +100,6 @@ internal fun ConversationSurface(
     onSend: () -> Unit,
     onMicrophoneClick: (() -> Unit)? = null,
     onBack: () -> Unit,
-    onOpenCore: () -> Unit,
     onRefresh: () -> Unit,
     error: String?,
     commandContent: @Composable (() -> Unit)? = null,
@@ -145,7 +145,6 @@ internal fun ConversationSurface(
                 status = if (pane == ConversationPane.CHAT) status else title,
                 pending = pending,
                 onBack = { if (pane == ConversationPane.CHAT) onBack() else pane = ConversationPane.CHAT },
-                onOpenCore = onOpenCore,
                 onRefresh = onRefresh,
                 showChange = changeContent != null,
                 changeNeedsAttention = changeNeedsAttention,
@@ -153,7 +152,17 @@ internal fun ConversationSurface(
                 onActivity = runContent?.let { { pane = ConversationPane.ACTIVITY } },
                 onProfile = profileContent?.let { { pane = ConversationPane.PROFILE } },
                 onHelp = helpContent?.let { { pane = ConversationPane.HELP } },
-                onAttachments = attachmentDraft?.let { { showAttachmentHelp = true } }
+                onAttachments = attachmentDraft?.let { draft ->
+                    {
+                        if (composerEnabled && !pending && draft.canAddImage() && onAttachImages != null) {
+                            pane = ConversationPane.CHAT
+                            onAttachImages()
+                        } else {
+                            showAttachmentHelp = true
+                        }
+                    }
+                },
+                attachmentsReady = attachmentDraft?.isReady == true
             )
 
             Box(
@@ -260,7 +269,6 @@ internal fun ConversationSurface(
                     onMicrophoneClick = onMicrophoneClick,
                     inputLocked = composerInputLocked,
                     attachmentDraft = attachmentDraft,
-                    onAttachImages = onAttachImages,
                     onRemoveImage = onRemoveImage,
                     onRetryImage = onRetryImage,
                     onResetAttachmentSubmission = onResetAttachmentSubmission
@@ -270,11 +278,21 @@ internal fun ConversationSurface(
         if (showAttachmentHelp) {
             AlertDialog(
                 onDismissRequest = { showAttachmentHelp = false },
-                title = { Text(if (attachmentDraft?.isReady == true) "Adjuntar imágenes" else "Adjuntos no disponibles") },
+                title = { Text(if (attachmentDraft?.isReady == true) "Adjuntar imágenes" else "Imágenes no disponibles") },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(attachmentDraft?.capabilityFailure?.message
-                        ?: attachmentDraft?.capability?.message?.takeIf { it.isNotBlank() }
-                        ?: "PNG, JPEG o WebP. Usa el clip para seleccionar imágenes.")
+                    val draft = attachmentDraft
+                    Text(when {
+                        draft == null -> "Las imágenes no están disponibles en esta sesión."
+                        draft.capabilityLoading -> "Comprobando disponibilidad de imágenes."
+                        draft.capabilityFailure != null -> draft.capabilityFailure.message
+                        !draft.isReady -> draft.capability?.message?.takeIf { it.isNotBlank() }
+                            ?: "Las imágenes no están disponibles en esta sesión."
+                        draft.isSubmissionLocked -> "Hay un envío pendiente. Resuélvelo o edita el borrador antes de añadir imágenes."
+                        !draft.canAddImage() -> "Has alcanzado el máximo de imágenes para este turno."
+                        pending -> "Espera a que termine la operación actual."
+                        !composerEnabled -> "Ahora no puedes añadir imágenes a esta conversación."
+                        else -> "Puedes adjuntar imágenes PNG, JPEG o WebP."
+                    })
                     if (attachmentDraft?.isReady != true) Text("Puedes continuar en esta misma conversación sin adjuntos.")
                 } },
                 confirmButton = { TextButton(onClick = { showAttachmentHelp = false }) { Text("Entendido") } }
@@ -289,7 +307,6 @@ private fun ConversationTopBar(
     status: String?,
     pending: Boolean,
     onBack: () -> Unit,
-    onOpenCore: () -> Unit,
     onRefresh: () -> Unit,
     showChange: Boolean,
     changeNeedsAttention: Boolean,
@@ -297,7 +314,8 @@ private fun ConversationTopBar(
     onActivity: (() -> Unit)?,
     onProfile: (() -> Unit)?,
     onHelp: (() -> Unit)?,
-    onAttachments: (() -> Unit)?
+    onAttachments: (() -> Unit)?,
+    attachmentsReady: Boolean
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
@@ -317,26 +335,34 @@ private fun ConversationTopBar(
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        if (showChange) TextButton(
-            onClick = onChange,
-            modifier = Modifier.semantics {
-                contentDescription = if (changeNeedsAttention) "Cambio, necesita atención" else "Cambio"
-            }
-        ) { Text(if (changeNeedsAttention) "Cambio !" else "Cambio") }
-        onHelp?.let { action -> TextButton(onClick = action,
-            modifier = Modifier.semantics { contentDescription = "Ayuda con este cambio" }) { Text("Ayuda") } }
         Box {
             IconButton(onClick = { menuOpen = true }, modifier = Modifier.semantics { contentDescription = "Opciones de conversación" }) {
                 Text("⋮", style = MaterialTheme.typography.titleLarge)
             }
+            if (showChange && changeNeedsAttention) Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 6.dp, end = 6.dp)
+                    .size(8.dp)
+                    .background(ConversationColors.warning, CircleShape)
+            )
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                onAttachments?.let { action -> DropdownMenuItem(
+                    text = { Text(if (attachmentsReady) "Adjuntar imágenes" else "Imágenes no disponibles") },
+                    leadingIcon = { PaperclipIcon(if (attachmentsReady) ConversationColors.action else ConversationColors.mutedText) },
+                    onClick = { menuOpen = false; action() }
+                ) }
+                if (showChange) DropdownMenuItem(
+                    text = { Text(if (changeNeedsAttention) "Cambio · necesita atención" else "Cambio") },
+                    onClick = { menuOpen = false; onChange() }
+                )
                 onHelp?.let { action -> DropdownMenuItem(text = { Text("Ayuda con este cambio") }, onClick = { menuOpen = false; action() }) }
-                onProfile?.let { action -> DropdownMenuItem(text = { Text("Configuración de Codex") }, onClick = { menuOpen = false; action() }) }
+                if (onActivity != null || onProfile != null) HorizontalDivider()
                 onActivity?.let { action -> DropdownMenuItem(text = { Text("Detalle de ejecución") }, onClick = { menuOpen = false; action() }) }
-                onAttachments?.let { action -> DropdownMenuItem(text = { Text("Adjuntos") }, onClick = { menuOpen = false; action() }) }
+                onProfile?.let { action -> DropdownMenuItem(text = { Text("Configuración de Codex") }, onClick = { menuOpen = false; action() }) }
+                HorizontalDivider()
                 DropdownMenuItem(text = { Text(if (pending) "Actualizando…" else "Actualizar") }, enabled = !pending,
                     onClick = { menuOpen = false; onRefresh() })
-                DropdownMenuItem(text = { Text("Abrir Core") }, onClick = { menuOpen = false; onOpenCore() })
             }
         }
     }
@@ -553,7 +579,6 @@ private fun ConversationComposer(
     onMicrophoneClick: (() -> Unit)?,
     inputLocked: Boolean,
     attachmentDraft: WorkSessionAttachmentDraft?,
-    onAttachImages: (() -> Unit)?,
     onRemoveImage: ((UUID) -> Unit)?,
     onRetryImage: ((UUID) -> Unit)?,
     onResetAttachmentSubmission: (() -> Unit)?
@@ -596,7 +621,7 @@ private fun ConversationComposer(
                     .testTag("conversation-input")
                     .background(ConversationColors.composerField)
                     .padding(
-                        start = if (attachmentDraft != null) 54.dp else 10.dp,
+                        start = 10.dp,
                         top = 12.dp,
                         end = 60.dp,
                         bottom = 14.dp
@@ -626,21 +651,6 @@ private fun ConversationComposer(
                     }
                 }
             )
-            if (attachmentDraft != null) {
-                val attachEnabled = enabled && !pending && attachmentDraft.canAddImage()
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 4.dp, bottom = 8.dp)
-                        .size(48.dp)
-                        .border(1.dp, ConversationColors.secondaryBorder, CircleShape)
-                        .clickable(enabled = attachEnabled) { onAttachImages?.invoke() }
-                        .semantics { contentDescription = "Adjuntar imágenes" },
-                    contentAlignment = Alignment.Center
-                ) {
-                    PaperclipIcon(if (attachEnabled) ConversationColors.action else ConversationColors.mutedText)
-                }
-            }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
