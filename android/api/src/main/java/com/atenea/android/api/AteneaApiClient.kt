@@ -493,6 +493,36 @@ class AteneaApiClient(
         path = "/api/mobile/delivery/$id/authorize", body = JSONObject().put("totp", totp), authenticated = true
     ) { UUID.fromString(it.getString("authorization")) }
 
+    suspend fun beginReleasePasskey(id: UUID, androidOrigin: String): ReleasePasskeyChallenge = postJson(
+        path = "/api/mobile/delivery/$id/authorize/passkey/options", body = JSONObject(), authenticated = true,
+        headers = releasePasskeyHeaders(androidOrigin)
+    ) { parseReleasePasskeyChallenge(it, URL(normalizedBaseUrl).host) }
+
+    suspend fun authorizeReleasePasskey(id: UUID, androidOrigin: String,
+        challenge: ReleasePasskeyChallenge, assertionJson: String): UUID = postJson(
+        path = "/api/mobile/delivery/$id/authorize/passkey",
+        body = releasePasskeyAssertion(challenge, androidOrigin, assertionJson), authenticated = true,
+        headers = releasePasskeyHeaders(androidOrigin)
+    ) { UUID.fromString(it.getString("authorization")) }
+
+    suspend fun beginReleasePasskeySetup(androidOrigin: String): ReleasePasskeyChallenge = postJson(
+        path = "/api/mobile/release-passkeys/setup/options", body = JSONObject(), authenticated = true,
+        headers = releasePasskeyHeaders(androidOrigin)
+    ) { parseReleasePasskeyChallenge(it, URL(normalizedBaseUrl).host) }
+
+    suspend fun fetchReleasePasskeyStatus(androidOrigin: String): ReleasePasskeyStatus = requestJson(
+        path = "/api/mobile/release-passkeys", method = "GET", body = null, authenticated = true,
+        headers = releasePasskeyHeaders(androidOrigin), parser = ::parseReleasePasskeyStatus
+    )
+
+    suspend fun configureReleasePasskey(androidOrigin: String, challenge: ReleasePasskeyChallenge,
+        assertionJson: String, totp: String) {
+        require(totp.matches(Regex("[0-9]{6}")))
+        postJson(path = "/api/mobile/release-passkeys/setup", authenticated = true,
+            body = releasePasskeyAssertion(challenge, androidOrigin, assertionJson).put("totp", totp),
+            headers = releasePasskeyHeaders(androidOrigin)) { require(it.opt("configured") == true) }
+    }
+
     suspend fun confirmRelease(id: UUID, authorization: UUID): MobileDeliveryOperation = postJson(
         path = "/api/mobile/delivery/$id/confirm", body = JSONObject().put("authorization", authorization.toString()),
         authenticated = true, parser = ::parseMobileDeliveryOperation

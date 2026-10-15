@@ -2,6 +2,9 @@ package com.atenea.android.coreconsole
 
 import android.content.Context
 import android.os.Build
+import android.content.pm.PackageManager
+import java.security.MessageDigest
+import java.util.Base64
 import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.CredentialManager
@@ -39,6 +42,7 @@ internal fun passkeySignalAvailability(sdkInt: Int): PasskeySignalAvailability =
     }
 
 internal class AndroidPasskeyCoordinator(context: Context) {
+    private val uiContext = context
     private val appContext = context.applicationContext
     private val manager by lazy { CredentialManager.create(appContext) }
 
@@ -51,7 +55,7 @@ internal class AndroidPasskeyCoordinator(context: Context) {
     suspend fun createCredential(registrationOptionsJson: String): String {
         require(availability == PasskeyAvailability.AVAILABLE) { "Passkey no disponible" }
         val response = manager.createCredential(
-            appContext,
+            uiContext,
             CreatePublicKeyCredentialRequest(registrationOptionsJson)
         ) as? CreatePublicKeyCredentialResponse
             ?: error("Respuesta passkey no compatible")
@@ -61,12 +65,26 @@ internal class AndroidPasskeyCoordinator(context: Context) {
     suspend fun getCredential(authenticationOptionsJson: String): String {
         require(availability == PasskeyAvailability.AVAILABLE) { "Passkey no disponible" }
         val response = manager.getCredential(
-            appContext,
+            uiContext,
             GetCredentialRequest(listOf(GetPublicKeyCredentialOption(authenticationOptionsJson)))
         )
         val credential = response.credential as? PublicKeyCredential
             ?: error("Credencial passkey no compatible")
         return credential.authenticationResponseJson
+    }
+
+    /** Origin is derived from the installed APK, never typed or selected by the operator. */
+    @Suppress("DEPRECATION")
+    fun signingOrigin(): String {
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            appContext.packageManager.getPackageInfo(appContext.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                .signingInfo?.apkContentsSigners
+        } else {
+            appContext.packageManager.getPackageInfo(appContext.packageName, PackageManager.GET_SIGNATURES).signatures
+        }
+        require(signatures?.size == 1) { "No se pudo verificar la firma de Atenea." }
+        return "android:apk-key-hash:" + Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(MessageDigest.getInstance("SHA-256").digest(signatures[0].toByteArray()))
     }
 
     suspend fun signalAllAcceptedCredentials(

@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -16,11 +15,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalContext
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.atenea.android.api.AteneaApiClient
+import com.atenea.android.api.AteneaApiException
 import com.atenea.android.api.MobileDeliveryOperation
 import com.atenea.android.api.MobileDeliveryIntegration
 import com.atenea.android.api.MobileDeliveryState
@@ -201,8 +204,8 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
     var confirmFinalize by remember(sessionId) { mutableStateOf(false) }
     var showHistory by remember(sessionId) { mutableStateOf(false) }
     var showOtherTargets by remember(sessionId) { mutableStateOf(false) }
-    // No factor, grant or production authority is saved to disk or in the conversation.
-    var totp by remember(sessionId) { mutableStateOf("") }
+    val context = LocalContext.current
+    val passkey = remember(context) { AndroidPasskeyCoordinator(context) }
 
     fun act(action: suspend () -> Unit) = state.act(action)
     val pr = operations.firstOrNull { it.kind == "PUBLISH_PR" }
@@ -220,7 +223,7 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                     AteneaButton("Confirmar ${plan.target.label}", enabled = available && validated && !busy && !runInProgress
                         && plan.canConfirm(System.currentTimeMillis() / 1000)
                         && (plan.target != MobileDeliveryTarget.APP_PROD || state.canPrepareBackend),
-                        onClick = { confirmation = plan; totp = "" })
+                        onClick = { confirmation = plan })
                 }
                 DeliveryStepAction.PREPARE_BACKEND -> AteneaButton("Preparar Backend PROD",
                     enabled = if (state.releaseRecoveryEnabled) state.canPrepareReleaseRecovery(validated, runInProgress)
@@ -267,7 +270,7 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                 if (plan?.canConfirm(System.currentTimeMillis() / 1000) == true && step.operation?.id != plan.id) {
                     AteneaButton("Confirmar ${target.label}", enabled = available && !busy && !runInProgress
                         && validated,
-                        onClick = { confirmation = plan; totp = "" })
+                        onClick = { confirmation = plan })
                 } else if (plan == null || plan.terminal) {
                     Text("Preparar obtiene un plan; no publica ni instala.", style = MaterialTheme.typography.bodySmall)
                     AteneaOutlinedButton("Preparar ${target.label}", enabled = available && validated && !runInProgress && !busy && !active && !releasePlanned,
@@ -328,32 +331,43 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
             dismissButton = { TextButton(onClick = { confirmMerge = false }) { Text("Cancelar") } })
     }
     confirmation?.let { plan ->
-        val currentPlan = operations.firstOrNull { it.id == plan.id }
-        AlertDialog(onDismissRequest = { confirmation = null; totp = "" },
-            title = { Text("Publicar ${plan.target.label}") }, text = {
-                Column {
-                    plan.releaseRecovery?.let { proof ->
-                        Text("Esta versión incluye el ticket integrado en ${proof.integratedMergeCommit.take(12)} " +
-                            "y los cambios posteriores aprobados en main. No vuelve a integrar la PR.")
-                    }
-                    Text("Commit ${plan.sourceCommit}. " +
-                        (plan.versionName?.let { "Versión $it (${plan.versionCode}). " } ?: "") +
-                        "La operación continuará aunque App se reinicie. Introduce el código de tu autenticador para esta publicación.")
-                    OutlinedTextField(value = totp, onValueChange = { value ->
-                        totp = value.filter { it in '0'..'9' }.take(6)
-                    }, label = { Text("Código de 6 cifras") }, singleLine = true)
-                }
-            }, confirmButton = {
-                TextButton(enabled = available && validated && !runInProgress && totp.length == 6 && !busy
+        ReleaseAuthorizationDialog(plan,
+            canPublish = {
+                state.available && validated && !runInProgress && !state.busy && !active
                     && (plan.target != MobileDeliveryTarget.APP_PROD || state.canPrepareBackend)
-                    && currentPlan?.canConfirm(System.currentTimeMillis() / 1000) == true, onClick = {
-                    val code = totp; confirmation = null; totp = ""
-                    act {
-                        val authorization = api.authorizeRelease(plan.id, code)
-                        api.confirmRelease(plan.id, authorization)
-                    }
-                }) { Text("Publicar") }
-            }, dismissButton = { TextButton(onClick = { confirmation = null; totp = "" }) { Text("Cancelar") } })
+                    && sameConfirmableRelease(plan, state.operations.firstOrNull { it.id == plan.id }, System.currentTimeMillis() / 1000)
+            },
+            passkeyAvailable = passkey.availability == PasskeyAvailability.AVAILABLE,
+            authorizePasskey = {
+                val origin = passkey.signingOrigin()
+                val challenge = try { api.beginReleasePasskey(plan.id, origin) }
+                catch (failure: AteneaApiException) {
+                    if (failure.status == 409 && failure.message.contains("PUBLICATION_PASSKEY_SETUP_REQUIRED")) throw ReleasePasskeySetupRequired()
+                    throw failure
+                }
+                val assertion = try { passkey.getCredential(challenge.requestJson) }
+                catch (_: GetCredentialCancellationException) { throw ReleaseAuthorizationCancelled() }
+                catch (_: NoCredentialException) { throw ReleasePasskeyUnavailable() }
+                api.authorizeReleasePasskey(plan.id, origin, challenge, assertion)
+            },
+            authorizeTotp = { code -> api.authorizeRelease(plan.id, code) },
+            configurePasskey = { code ->
+                val origin = passkey.signingOrigin()
+                val challenge = api.beginReleasePasskeySetup(origin)
+                val assertion = try { passkey.getCredential(challenge.requestJson) }
+                catch (_: GetCredentialCancellationException) { throw ReleaseAuthorizationCancelled() }
+                catch (_: NoCredentialException) { throw ReleasePasskeyUnavailable() }
+                api.configureReleasePasskey(origin, challenge, assertion, code)
+            },
+            confirm = { grant ->
+                val result = api.confirmRelease(plan.id, grant)
+                check(result.id == plan.id && result.sessionId == sessionId
+                    && result.state in setOf("CONFIRMED", "ACCEPTED", "APPLYING", "SUCCEEDED"))
+            },
+            refresh = { state.refresh() },
+            onAccepted = { confirmation = null },
+            onDismiss = { confirmation = null; act { /* Observe only, including lost confirmation replies. */ } },
+            loadPasskeyStatus = { api.fetchReleasePasskeyStatus(passkey.signingOrigin()) })
     }
 }
 
