@@ -26,7 +26,7 @@ class ChangeWorkflowClarityTest {
             AteneaOperatorTheme {
                 ConversationSurface(title = "Rediseñar vista ajustes", status = "Preparación lista",
                     turns = emptyList(), input = "", pending = false, placeholder = "Prompt",
-                    onInputChange = {}, onSend = {}, onBack = {}, onOpenCore = {}, onRefresh = {}, error = null,
+                    onInputChange = {}, onSend = {}, onBack = {}, onRefresh = {}, error = null,
                     changeContent = {
                 WorkSessionChangePanel(22, "Rediseñar vista ajustes",
                     DevelopmentChangeValidationUiState(true, false, "Validar cambio", "Validado", current = true),
@@ -39,6 +39,7 @@ class ChangeWorkflowClarityTest {
                     })
             }
         }
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
         compose.onNodeWithText("Cambio").performClick()
         compose.onNodeWithText("Te toca a ti").assertIsDisplayed()
         compose.onNodeWithText("Confirmar Backend PROD").assertIsDisplayed()

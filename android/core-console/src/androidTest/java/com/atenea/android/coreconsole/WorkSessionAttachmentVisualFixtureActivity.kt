@@ -69,7 +69,6 @@ class WorkSessionAttachmentVisualFixtureActivity : ComponentActivity() {
                 onSend = {},
                 onMicrophoneClick = {},
                 onBack = {},
-                onOpenCore = {},
                 onRefresh = {},
                 error = null,
                 attachmentDraft = WorkSessionAttachmentDraft(

@@ -247,7 +247,6 @@ internal fun AteneaShell(
                             apiClient = apiClient,
                             projectId = selectedProjectId,
                             sessionId = selectedSessionId,
-                            onOpenCore = { selectedDestination = AteneaDestination.CORE },
                             onBackToSession = {
                                 selectedDestination = if (selectedProjectId == null) {
                                     AteneaDestination.PROJECTS

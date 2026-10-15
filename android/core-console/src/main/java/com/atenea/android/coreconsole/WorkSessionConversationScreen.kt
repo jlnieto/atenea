@@ -50,7 +50,6 @@ internal fun WorkSessionConversationScreen(
     apiClient: AteneaApiClient,
     projectId: Long?,
     sessionId: Long?,
-    onOpenCore: () -> Unit,
     onBackToSession: () -> Unit
 ) {
     val context = LocalContext.current
@@ -724,7 +723,6 @@ internal fun WorkSessionConversationScreen(
         onSend = ::send,
         onMicrophoneClick = ::requestVoicePrompt,
         onBack = onBackToSession,
-        onOpenCore = onOpenCore,
         onRefresh = { refresh() },
         error = error,
         commandContent = activeCommand?.takeIf { it.isVisibleConversationCommand() }?.let { command ->

@@ -56,7 +56,7 @@ class ConversationScrollRegressionTest {
         ConversationSurface(
             title = "Prueba local de scroll", status = null, turns = turns,
             input = "Borrador intacto", pending = false, placeholder = "Instrucción",
-            onInputChange = {}, onSend = {}, onBack = {}, onOpenCore = {}, onRefresh = {},
+            onInputChange = {}, onSend = {}, onBack = {}, onRefresh = {},
             error = null, surfaceKey = "scroll-regression"
         )
     }

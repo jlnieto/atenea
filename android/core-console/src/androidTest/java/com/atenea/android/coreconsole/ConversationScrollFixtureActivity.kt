@@ -30,7 +30,7 @@ class ConversationScrollFixtureActivity : ComponentActivity() {
                 title = "Prueba local de conversación", status = "Abierta",
                 turns = turns, input = draft, pending = false, placeholder = "Instrucción",
                 onInputChange = { draft = it }, onSend = { sends++ }, onBack = {},
-                onOpenCore = {}, onRefresh = {}, error = null, surfaceKey = "real-scroll-fixture"
+                onRefresh = {}, error = null, surfaceKey = "real-scroll-fixture"
             )
         }
     }

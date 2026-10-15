@@ -70,6 +70,7 @@ class ConversationWorkspaceLayoutTest {
         var exited = 0
         compose.setContent { Fixture(onSend = { sent++ }, onBack = { exited++ }) }
         compose.onNodeWithTag("conversation-input").performTextReplacement("Borrador sin enviar")
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
         compose.onNodeWithText("Cambio").performClick()
         compose.onNodeWithText("Validación del cambio").assertIsDisplayed()
         compose.onNodeWithTag("conversation-composer").assertDoesNotExist()
@@ -99,6 +100,7 @@ class ConversationWorkspaceLayoutTest {
         val restoration = StateRestorationTester(compose)
         restoration.setContent { Fixture() }
         compose.onNodeWithTag("conversation-input").performTextReplacement("Borrador tras rotación")
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
         compose.onNodeWithText("Cambio").performClick()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("Validación del cambio").assertIsDisplayed()
@@ -145,6 +147,7 @@ class ConversationWorkspaceLayoutTest {
         }
         assertReadableText("Monitorizar degradación de Apache cada 5 minutos")
         saveContrastScreenshot("contrast-chat.png")
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
         compose.onNodeWithText("Cambio").performClick()
         assertReadableText("La validación necesita atención.")
         assertReadableText("0/4 comprobaciones de la revisión 2")
@@ -195,6 +198,7 @@ class ConversationWorkspaceLayoutTest {
         compose.runOnIdle { turns = turns + turn(31, "Mensaje nuevo") }
         compose.onNodeWithText("Mensaje 1").assertIsDisplayed()
         compose.onNodeWithText("Ir a los mensajes nuevos").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
         compose.onNodeWithText("Cambio").performClick()
         compose.onNodeWithContentDescription("Volver").performClick()
         compose.onNodeWithText("Mensaje 1").assertIsDisplayed()
@@ -219,6 +223,7 @@ class ConversationWorkspaceLayoutTest {
                     evidence, false, null, { reads++ }, { validations++ }, deliveryContent = { Text("Entrega") })
             })
         }
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
         compose.onNodeWithText("Cambio").performClick()
         compose.onNodeWithText("Código: TEST_DATABASE_SETUP_FAILED").assertIsDisplayed()
         compose.onNodeWithText("Operation ID: ${attempt.id}").performScrollTo().assertIsDisplayed()
@@ -240,7 +245,7 @@ class ConversationWorkspaceLayoutTest {
             status = "Validación bloqueada",
             turns = turns, input = draft, pending = false, placeholder = "Escribe una instrucción",
             onInputChange = { draft = it }, onSend = onSend, onBack = onBack,
-            onOpenCore = {}, onRefresh = {}, error = null, surfaceKey = "work-session-21",
+            onRefresh = {}, error = null, surfaceKey = "work-session-21",
             changeContent = change,
             runContent = { Text("Ejecución durable", Modifier.height(300.dp)) },
             profileContent = { Text("Perfil siguiente ejecución", Modifier.height(300.dp)) }
