@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.*;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -55,6 +56,12 @@ class ProductUpdateAnnouncementIntegrationTest {
         when(attachments.changeProjectCapability()).thenReturn(new AttachmentWorkerClient.RealProjectCapability(AttachmentWorkerClient.CHANGE_PROJECT_PROTOCOL,
                 "ax42-01",true,List.of("atenea"),List.of(AttachmentStorageScope.REAL_SESSION),now));when(fcm.isReady()).thenReturn(true);
     }
+    @AfterEach void removeOnlyThisTestsCommittedFixture() {
+        if (actor==null) return;
+        jdbc.update("DELETE FROM product_update_announcement WHERE operator_id=?",actor.operatorId());
+        jdbc.update("DELETE FROM operator_push_device WHERE operator_id=?",actor.operatorId());
+        operators.deleteById(actor.operatorId());
+    }
     @Test void intentCommitsBeforeFcmAndReplaysWithoutDuplicatingPushOrCreatingSessions() {
         long sessions=jdbc.queryForObject("SELECT count(*) FROM work_session",Long.class);
         doAnswer(call -> {
@@ -78,8 +85,19 @@ class ProductUpdateAnnouncementIntegrationTest {
         assertEquals("PRODUCT_RELEASE_NOT_READY",assertThrows(DeliveryRejectedException.class,() -> service.announce(actor)).code());verify(fcm,never()).send(anyList());
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM product_update_announcement WHERE operator_id=?",Integer.class,actor.operatorId()));
     }
-    @Test void currentDatabaseRoleAndFcmReadinessAreRequired() {
+    @Test void currentDatabaseRoleIsRequired() {
         var operator=operators.findById(actor.operatorId()).orElseThrow();operator.setCodexOperationsRole(CodexOperationsRole.ROUTINE_OPERATOR);operators.saveAndFlush(operator);
         assertEquals("PLATFORM_ADMINISTRATOR_REQUIRED",assertThrows(DeliveryRejectedException.class,() -> service.announce(actor)).code());verify(fcm,never()).send(anyList());
+    }
+    @Test void unconfiguredFcmCannotBeRecordedAsAnAcceptedNotice() {
+        when(fcm.isReady()).thenReturn(false);
+        assertEquals("PUSH_NOT_READY",assertThrows(DeliveryRejectedException.class,() -> service.announce(actor)).code());
+        verify(fcm,never()).send(anyList());
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM product_update_announcement WHERE operator_id=?",Integer.class,actor.operatorId()));
+    }
+    @Test void incompatibleChangeImagesCannotAnnounceTheProductReady() {
+        when(attachments.changeProjectCapability()).thenReturn(null);
+        assertEquals("PRODUCT_RELEASE_NOT_READY",assertThrows(DeliveryRejectedException.class,() -> service.announce(actor)).code());
+        verify(fcm,never()).send(anyList());
     }
 }

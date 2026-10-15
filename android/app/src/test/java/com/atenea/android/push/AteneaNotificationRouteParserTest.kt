@@ -30,6 +30,10 @@ class AteneaNotificationRouteParserTest {
             "deepLinkKind" to "ATENEA_UPDATES","deepLink" to "atenea://updates")
         assertEquals(AteneaNotificationRoute(null,eventId,AteneaNotificationDestination.UPDATES),
             AteneaNotificationRouteParser.parse("atenea://updates",data))
+        assertEquals(AteneaNotificationRoute(null,eventId,AteneaNotificationDestination.UPDATES),
+            AteneaNotificationRouteParser.parseIntent("atenea://updates",data+mapOf("google.message_id" to "transport",
+                "gcm.n.title" to "Atenea","collapse_key" to "com.atenea.android","from" to "synthetic")))
+        assertNull(AteneaNotificationRouteParser.parseIntent("atenea://updates",data+("command" to "foreign")))
         for(invalid in listOf(data+("command" to "foreign"),data+("sessionId" to "21"),data+("notificationEventId" to "foreign"),
             data+("deepLinkKind" to "WORK_SESSION_CONVERSATION"))) {
             assertNull(AteneaNotificationRouteParser.parse("atenea://updates",invalid))
