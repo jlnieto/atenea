@@ -8,6 +8,7 @@ import com.atenea.github.GitHubClient;
 import com.atenea.github.GitHubPullRequest;
 import com.atenea.github.GitHubRepositoryRef;
 import com.atenea.delivery.ChangeCompletionEvidence;
+import com.atenea.delivery.ChangeDeliveryReadiness;
 import com.atenea.delivery.DeliveryRejectedException;
 import com.atenea.delivery.DeliveryStore;
 import com.atenea.delivery.DeliveryTarget;
@@ -325,6 +326,30 @@ class ChangeOwnedReleaseIntegrationTest {
     }
 
     @Test
+    void legacyBackendOnlyEvidenceCannotAuthorizeAChangeOwnedClose() throws Exception {
+        authorizeDeliveredCompletionFixture();
+        var completion=deliveryStore.completion(session.getId()).orElseThrow();
+        ObjectNode evidence=completion.evidence().deepCopy();evidence.remove("requiredDeliveryBeforeClose");
+        deliveryStore.update(completion,"APPLYING",null,completion.planSha256(),evidence);
+        assertEquals("COMPLETION_WORKSPACE_NOT_VERIFIED",assertThrows(DeliveryRejectedException.class,
+                () -> service.closeSession(session.getId())).code());
+        assertEquals(0,releases.get());
+        assertNotEquals(WorkSessionStatus.CLOSED,sessions.findById(session.getId()).orElseThrow().getStatus());
+    }
+
+    @Test
+    void androidRequiredWithoutApkEvidenceCannotCloseEvenWithAHealthyBackend() throws Exception {
+        authorizeDeliveredCompletionFixture();
+        var completion=deliveryStore.completion(session.getId()).orElseThrow();
+        ObjectNode evidence=completion.evidence().deepCopy();
+        ((ObjectNode)evidence.path("requiredDeliveryBeforeClose")).withArray("requiredTargets").add("ANDROID_STABLE");
+        deliveryStore.update(completion,"APPLYING",null,completion.planSha256(),evidence);
+        assertEquals("COMPLETION_WORKSPACE_NOT_VERIFIED",assertThrows(DeliveryRejectedException.class,
+                () -> service.closeSession(session.getId())).code());
+        assertEquals(0,releases.get());
+    }
+
+    @Test
     void retirementOfDeclinedPrReleasesExactOwnerWithoutMergingAndKeepsHistory() {
         retirementFixture();
         var actor=new com.atenea.auth.AuthenticatedOperator(administrator.getId(),null,null);
@@ -558,9 +583,13 @@ class ChangeOwnedReleaseIntegrationTest {
         evidence.putObject("workspaceInspection").put("disposition", "OWNED").put("workspaceDirty", false)
                 .put("retainedDraft", false).put("sourceCommit", session.getFinalCommitSha())
                 .put("requestFingerprintSha256", "e".repeat(64));
-        evidence.set("deploymentBeforeClose", mapper.valueToTree(new MobileDeliveryService.DeploymentObservation(
+        var backend=new MobileDeliveryService.DeploymentObservation(
                 session.getId(), "DEPLOYED", "OPERATOR", "9".repeat(40), merge, true, now.getEpochSecond(),
-                UUID.randomUUID(), UUID.randomUUID(), "f".repeat(64), null)));
+                UUID.randomUUID(), UUID.randomUUID(), "f".repeat(64), null);
+        evidence.set("deploymentBeforeClose", mapper.valueToTree(backend));
+        evidence.set("requiredDeliveryBeforeClose",mapper.valueToTree(new ChangeDeliveryReadiness(
+                session.getId(),"CONFIRMED",session.getFinalCommitSha(),merge,java.util.List.of(DeliveryTarget.APP_PROD),
+                true,backend,null,"UNAVAILABLE",null,now.getEpochSecond())));
         deliveryStore.create(session.getId(), administrator.getId(), "FINALIZE", DeliveryTarget.APP_PROD,
                 session.getFinalCommitSha(), "APPLYING", evidence);
     }
