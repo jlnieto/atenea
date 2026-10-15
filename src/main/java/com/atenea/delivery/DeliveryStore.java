@@ -88,7 +88,7 @@ public class DeliveryStore {
             throw new DeliveryRejectedException("PLATFORM_ADMINISTRATOR_REQUIRED");
         }
         JsonNode observed = operation.evidence().path("workspaceInspection");
-        JsonNode deployed = operation.evidence().path("deploymentBeforeClose");
+        JsonNode delivered = operation.evidence().path("requiredDeliveryBeforeClose");
         long now = Instant.now().getEpochSecond();
         if (!"APPLYING".equals(operation.state()) || !"OWNED".equals(observed.path("disposition").asText())
                 || session.getDevelopmentChange().getStatus() != com.atenea.persistence.developmentchange.DevelopmentChangeStatus.OPEN
@@ -103,10 +103,7 @@ public class DeliveryStore {
                 || !session.getSelectedWorkerId().equals(session.getDevelopmentChange().getSelectedWorkerId())
                 || !session.getWorkspaceBranch().equals("atenea/change-" + binding.changeKey())
                 || !session.getWorkspaceIdentity().equals("remote:ax42-01:change:" + binding.changeKey())
-                || !"DEPLOYED".equals(deployed.path("status").asText()) || !deployed.path("healthy").asBoolean(false)
-                || deployed.path("sessionId").asLong(-1) != session.getId()
-                || !binding.integratedMergeCommit().equals(deployed.path("integratedMergeCommit").asText())
-                || deployed.path("observedAt").asLong(0) < now - 60 || deployed.path("observedAt").asLong(0) > now + 5
+                || !ChangeDeliveryReadiness.verifiedForClose(delivered,session.getId(),binding.publishedHeadCommit(),binding.integratedMergeCommit())
                 || observed.path("workspaceDirty").asBoolean(true) || observed.path("retainedDraft").asBoolean(true)
                 || !session.getFinalCommitSha().equals(observed.path("sourceCommit").asText())
                 || !observed.path("requestFingerprintSha256").asText().matches("[0-9a-f]{64}")) {

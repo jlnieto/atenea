@@ -15,7 +15,8 @@ public record ChangeHelpContext(
         int passedChecks, int requiredChecks, String failedCheck, String validationFailure,
         String deliveryKind, String deliveryState, String deliveryError,
         String operatorRole, boolean deliveryEnabled, String runFailure,
-        String deliveryTarget, Long deliveryExpiresAt, String deploymentStatus, boolean deliveryPlanVerified
+        String deliveryTarget, Long deliveryExpiresAt, String deploymentStatus, boolean deliveryPlanVerified,
+        com.atenea.delivery.ChangeDeliveryReadiness deliveryReadiness, Integer reportedInstalledVersionCode
 ) {
     public List<String> facts() {
         var facts = new java.util.ArrayList<String>();
@@ -30,6 +31,14 @@ public record ChangeHelpContext(
         if (validationFailure != null) facts.add("Resultado guardado: " + validationFailure);
         if (deliveryState != null) facts.add("Última operación de entrega: " + deliveryKind + " / " + deliveryState + ".");
         if (deliveryError != null) facts.add("Código de entrega: " + deliveryError + ".");
+        if (deliveryReadiness!=null) {
+            if ("CONFIRMED".equals(deliveryReadiness.requirementsStatus())) facts.add("Publicaciones requeridas por el diff: " + deliveryReadiness.requiredTargets() + ".");
+            if (deliveryReadiness.android()!=null) {
+                var apk=deliveryReadiness.android();
+                facts.add("APK del canal: " + apk.versionName()+" / "+apk.versionCode()+"; fuente "+apk.sourceCommit().substring(0,12)+"; contiene este cambio: "+deliveryReadiness.androidStatus()+".");
+            }
+        }
+        if (reportedInstalledVersionCode!=null) facts.add("Versión instalada informada por este móvil: " + reportedInstalledVersionCode + ".");
         if ("DEPLOYED".equals(deploymentStatus)) facts.add("Backend PROD: sano y contiene el cambio integrado.");
         else if ("NOT_INCLUDED".equals(deploymentStatus)) facts.add("Backend PROD: todavía no contiene este cambio.");
         else if ("UNAVAILABLE".equals(deploymentStatus) || "UNHEALTHY".equals(deploymentStatus)) {

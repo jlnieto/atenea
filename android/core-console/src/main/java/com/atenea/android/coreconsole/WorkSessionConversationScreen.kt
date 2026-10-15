@@ -50,7 +50,8 @@ internal fun WorkSessionConversationScreen(
     apiClient: AteneaApiClient,
     projectId: Long?,
     sessionId: Long?,
-    onBackToSession: () -> Unit
+    onBackToSession: () -> Unit,
+    onOpenUpdates: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val historyUriHandler = LocalUriHandler.current
@@ -792,10 +793,13 @@ internal fun WorkSessionConversationScreen(
                     }?.let { url ->
                         AteneaTextButton("Revisar PR", onClick = { historyUriHandler.openUri(url) })
                     }
+                    MobileDeliveryPanel(apiClient, sessionId, validated = false, runInProgress = false,
+                        state = deliveryState, sessionOpen = false, onOpenUpdates = onOpenUpdates)
                 } else {
                     MobileDeliveryPanel(apiClient, sessionId,
                         validated = loaded.session.developmentChangeValidationState == "CURRENT",
-                        runInProgress = loaded.runInProgress, state = deliveryState)
+                        runInProgress = loaded.runInProgress, state = deliveryState,
+                        sessionOpen = loaded.session.status == "OPEN", onOpenUpdates = onOpenUpdates)
                 }
             }
         } },
@@ -833,7 +837,19 @@ internal fun WorkSessionConversationScreen(
             attachmentDraft = attachmentDraft.resetUncertainSubmission()
             error = null
         },
-        onOpenHistoricalAttachment = ::openHistoricalAttachment
+        onOpenHistoricalAttachment = ::openHistoricalAttachment,
+        onOpenUpdates = onOpenUpdates,
+        onEnableImages = {
+            sessionId?.let { id -> scope.launch {
+                pending = true
+                try {
+                    attachmentDraft = attachmentDraft.copy(capability = apiClient.enableWorkSessionImages(id), capabilityFailure = null)
+                } catch (failure: Exception) {
+                    if (failure is kotlinx.coroutines.CancellationException) throw failure
+                    error = failure.message ?: "No se pudieron habilitar las imágenes en esta conversación."
+                } finally { pending = false }
+            } }
+        }
     )
 }
 

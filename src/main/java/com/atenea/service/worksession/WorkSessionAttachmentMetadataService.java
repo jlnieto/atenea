@@ -245,16 +245,12 @@ public class WorkSessionAttachmentMetadataService {
         if (request.storageScope() == null) {
             return;
         }
-        String expectedWorkspace = "remote:" + request.workerId()
-                + ":work-session:" + request.remoteSessionId();
         if (request.storageScope() != AttachmentStorageScope.REAL_SESSION
-                || !RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION.equals(
-                    session.getAttachmentPolicyRevision())
+                || !com.atenea.attachments.AttachmentOwnership.exact(session)
                 || !ProjectCodexIdentity.matches(session)
                 || !RealAttachmentProjectRegistry.ATENEA_WORKER_ID.equals(request.workerId())
                 || !Objects.equals(session.getRemoteSessionId(), request.remoteSessionId())
-                || !Objects.equals(session.getWorkspaceIdentity(), request.workspaceIdentity())
-                || !Objects.equals(expectedWorkspace, request.workspaceIdentity())) {
+                || !Objects.equals(session.getWorkspaceIdentity(), request.workspaceIdentity())) {
             throw new AttachmentOwnershipException(
                     "El almacenamiento real no coincide con el ownership persistido de la WorkSession.");
         }

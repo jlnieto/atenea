@@ -12,10 +12,26 @@ import com.atenea.android.api.SessionTurnAttachment
 import java.util.UUID
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
 
 class WorkSessionAttachmentComposerTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test fun legacyOpenChangeCanEnableImagesHereWithoutSendingADuplicatePrompt() {
+        var enablements=0;var sends=0
+        compose.setContent {
+            ConversationSurface(title="Mismo cambio",status="OPEN",turns=emptyList(),input="Borrador conservado",
+                pending=false,placeholder="Prompt",onInputChange={},onSend={sends++},onBack={},onRefresh={},error=null,
+                attachmentDraft=WorkSessionAttachmentDraft(capability=blockedCapabilityFixture(),capabilityLoading=false),
+                onEnableImages={enablements++})
+        }
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
+        compose.onNodeWithText("Activar imágenes").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Activar imágenes aquí").performClick()
+        assertEquals(1,enablements);assertEquals(0,sends)
+        compose.onNodeWithText("Borrador conservado").assertIsDisplayed()
+    }
 
     @Test
     fun readyStateAttachesThroughMenuAndKeepsOneEnabledSendAction() {

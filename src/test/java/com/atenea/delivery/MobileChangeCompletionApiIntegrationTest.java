@@ -96,6 +96,8 @@ class MobileChangeCompletionApiIntegrationTest {
         when(delivery.observeDeployment(eq(session.getId()),any())).thenReturn(new MobileDeliveryService.DeploymentObservation(
                 session.getId(),"DEPLOYED","OPERATOR","8".repeat(40),"4".repeat(40),true,now.getEpochSecond(),
                 UUID.randomUUID(),UUID.randomUUID(),"9".repeat(64),null));
+        when(delivery.observeDelivery(eq(session.getId()),any())).thenAnswer(call -> DeliveryReadinessFixture.backend(
+                delivery.observeDeployment(session.getId(),call.getArgument(1)),session.getFinalCommitSha()));
         when(workspaces.execute(any())).thenReturn(new DevelopmentChangeWorkspaceObservation(
                 DevelopmentChangeWorkspaceObservation.Disposition.OWNED,session.getFinalCommitSha(),null,false,false,"a".repeat(64)));
         when(close.closeSession(session.getId())).thenAnswer(call -> {

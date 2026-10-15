@@ -59,6 +59,57 @@ public class ReleaseControlClient {
         return exchange(Map.of("operation", "OBSERVE_APP"));
     }
 
+    public JsonNode observeAndroid() { return exchange(Map.of("operation", "OBSERVE_ANDROID")); }
+    public JsonNode observePlatform() { return exchange(Map.of("operation", "OBSERVE_PLATFORM")); }
+
+    public static PlatformObservation verifyPlatformObservation(JsonNode value) {
+        var fields=new java.util.HashSet<String>();if (value!=null) value.fieldNames().forEachRemaining(fields::add);
+        long now=Instant.now().getEpochSecond();
+        if (value==null || !value.isObject() || !fields.equals(Set.of("protocol","target","state","sourceCommit","installationSha256",
+                "observedAt","planId","operationId","receiptSha256","finishedAt"))
+                || !"atenea-platform-observation/v1".equals(value.path("protocol").asText())
+                || !"AX42_PLATFORM".equals(value.path("target").asText()) || !"OBSERVED".equals(value.path("state").asText())
+                || !value.path("sourceCommit").asText().matches("[0-9a-f]{40}")
+                || !value.path("installationSha256").asText().matches("[0-9a-f]{64}")
+                || !value.path("receiptSha256").asText().matches("[0-9a-f]{64}")
+                || !value.path("observedAt").isIntegralNumber() || value.path("observedAt").asLong()<now-60 || value.path("observedAt").asLong()>now+5
+                || !value.path("finishedAt").isIntegralNumber() || value.path("finishedAt").asLong()<1
+                || value.path("finishedAt").asLong()>value.path("observedAt").asLong()
+                || !canonicalUuid(value.path("planId")) || !canonicalUuid(value.path("operationId"))) {
+            throw new DeliveryRejectedException("PLATFORM_OBSERVATION_EVIDENCE_MISMATCH");
+        }
+        return new PlatformObservation(value.path("sourceCommit").asText(),value.path("installationSha256").asText(),value.path("observedAt").asLong(),
+                UUID.fromString(value.path("planId").asText()),UUID.fromString(value.path("operationId").asText()),value.path("receiptSha256").asText());
+    }
+    public record PlatformObservation(String sourceCommit,String installationSha256,long observedAt,UUID planId,UUID operationId,String receiptSha256) { }
+
+    public static AndroidObservation verifyAndroidObservation(JsonNode value) {
+        var fields=new java.util.HashSet<String>();
+        if (value!=null) value.fieldNames().forEachRemaining(fields::add);
+        long now=Instant.now().getEpochSecond();
+        if (value==null || !value.isObject() || !fields.equals(Set.of("protocol","target","state","sourceCommit",
+                "versionCode","versionName","apkSha256","certificateSha256","observedAt","planId","operationId","receiptSha256","finishedAt"))
+                || !"atenea-android-observation/v1".equals(value.path("protocol").asText())
+                || !"ANDROID_STABLE".equals(value.path("target").asText()) || !"OBSERVED".equals(value.path("state").asText())
+                || !value.path("sourceCommit").asText().matches("[0-9a-f]{40}")
+                || !value.path("versionCode").isIntegralNumber() || !value.path("versionCode").canConvertToInt() || value.path("versionCode").asInt()<1
+                || !value.path("versionName").asText().matches("[0-9]+\\.[0-9]+\\.[0-9]+")
+                || !value.path("apkSha256").asText().matches("[0-9a-f]{64}")
+                || !value.path("certificateSha256").asText().matches("[0-9a-f]{64}")
+                || !value.path("receiptSha256").asText().matches("[0-9a-f]{64}")
+                || !value.path("observedAt").isIntegralNumber() || value.path("observedAt").asLong()<now-60 || value.path("observedAt").asLong()>now+5
+                || !value.path("finishedAt").isIntegralNumber() || value.path("finishedAt").asLong()<1
+                || value.path("finishedAt").asLong()>value.path("observedAt").asLong()
+                || !canonicalUuid(value.path("planId")) || !canonicalUuid(value.path("operationId"))) {
+            throw new DeliveryRejectedException("ANDROID_OBSERVATION_EVIDENCE_MISMATCH");
+        }
+        return new AndroidObservation(value.path("sourceCommit").asText(),value.path("versionName").asText(),value.path("versionCode").asInt(),
+                value.path("apkSha256").asText(),value.path("certificateSha256").asText(),value.path("observedAt").asLong(),
+                UUID.fromString(value.path("planId").asText()),UUID.fromString(value.path("operationId").asText()),value.path("receiptSha256").asText());
+    }
+    public record AndroidObservation(String sourceCommit, String versionName, int versionCode, String apkSha256,
+            String certificateSha256, long observedAt, UUID planId, UUID operationId, String receiptSha256) { }
+
     /** Separate read-only protocol: never accepted as an execution receipt. */
     public static AppObservation verifyAppObservation(JsonNode value) {
         Set<String> fields = new java.util.HashSet<>();

@@ -11,7 +11,22 @@ object AteneaNotificationRouteParser {
     private const val DEEP_LINK_KIND = "WORK_SESSION_CONVERSATION"
     private val categories = setOf("RUN_COMPLETED", "RUN_FAILED", "ACTION_REQUIRED")
 
+    // Firebase adds transport/analytics extras to background notification intents.
+    // They are not application payload fields or navigation authority.
+    fun parseIntent(deepLink: String?, extras: Map<String,String>): AteneaNotificationRoute? = parse(deepLink,
+        extras.filterKeys { !it.startsWith("google.") && !it.startsWith("gcm.") && it !in setOf("from","collapse_key") })
+
     fun parse(deepLink: String?, data: Map<String, String>): AteneaNotificationRoute? {
+        if (deepLink=="atenea://updates") {
+            if (data.isEmpty()) return AteneaNotificationRoute(null,"deep-link:updates",com.atenea.android.coreconsole.AteneaNotificationDestination.UPDATES)
+            if (data.keys!=setOf("schemaVersion","eventType","type","templateVersion","notificationEventId","deepLinkKind","deepLink")
+                || data["schemaVersion"]!="atenea-product-update-data-v1" || data["eventType"]!="PRODUCT_UPDATE"
+                || data["type"]!="PRODUCT_UPDATE" || data["templateVersion"]!="product-update-safe-v1"
+                || data["deepLinkKind"]!="ATENEA_UPDATES" || data["deepLink"]!=deepLink) return null
+            val id=runCatching { UUID.fromString(data["notificationEventId"]) }.getOrNull() ?: return null
+            if(id.toString()!=data["notificationEventId"])return null
+            return AteneaNotificationRoute(null,id.toString(),com.atenea.android.coreconsole.AteneaNotificationDestination.UPDATES)
+        }
         val parsedUri = parseUri(deepLink ?: return null) ?: return null
         if (data.isEmpty()) {
             return AteneaNotificationRoute(parsedUri, "deep-link:$parsedUri")

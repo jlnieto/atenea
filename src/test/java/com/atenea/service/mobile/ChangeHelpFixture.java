@@ -15,11 +15,13 @@ public class ChangeHelpFixture {
     public boolean deliveryPlanVerified=true;
     public int passed, required=4;
     public long revision=1;
+    public com.atenea.delivery.ChangeDeliveryReadiness readiness;
+    public Integer installedVersion;
     public ChangeHelpContext build() {
         return new ChangeHelpContext(22L,1L,UUID.fromString("a4ff9100-2e8a-46df-911f-53874886701e"),revision,
                 Instant.parse("2026-10-14T08:00:00Z"),change,session,workspace,source,validation,pr,integration,release,
                 activeRun,activeValidation,sourceUpdate,close,113L,runStatus,failure,gitWarning,passed,required,check,
                 checkFailure,deliveryKind,deliveryState,deliveryError,operatorRole,deliveryEnabled,null,
-                deliveryTarget,deliveryExpiresAt,deploymentStatus,deliveryPlanVerified);
+                deliveryTarget,deliveryExpiresAt,deploymentStatus,deliveryPlanVerified,readiness,installedVersion);
     }
 }

@@ -12,8 +12,13 @@ android {
         applicationId = "com.atenea.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 155
-        versionName = "0.5.122"
+        val stableBuild = providers.gradleProperty("ATENEA_STABLE_BUILD_NUMBER").orNull?.let {
+            require(it.matches(Regex("[1-9][0-9]{0,8}"))) { "Invalid stable CI build number" }
+            it.toInt()
+        }
+        // Fixed main workflow counter; retries of one build retain the same version.
+        versionCode = stableBuild?.let { 1_000_000 + it } ?: 156
+        versionName = stableBuild?.let { "0.6.$it" } ?: "0.5.123"
         manifestPlaceholders["appName"] = "Atenea"
 
         val ateneaApiBaseUrl = providers.gradleProperty("ATENEA_API_BASE_URL")

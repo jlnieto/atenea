@@ -4,6 +4,26 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 
 class ChangeHelpGuideTest {
+    @Test void apkQuestionUsesRealChannelWithoutRequiringValidationAndOffersRealUpdateDestination() {
+        var f=new ChangeHelpFixture();f.source="CLEAN";f.validation="NOT_STARTED";f.installedVersion=155;
+        var apk=new com.atenea.delivery.ReleaseControlClient.AndroidObservation("8".repeat(40),"0.6.12",1000012,"a".repeat(64),"b".repeat(64),
+                java.time.Instant.now().getEpochSecond(),java.util.UUID.randomUUID(),java.util.UUID.randomUUID(),"c".repeat(64));
+        f.readiness=new com.atenea.delivery.ChangeDeliveryReadiness(22L,"NOT_INTEGRATED",null,null,java.util.List.of(),false,null,apk,"NOT_INTEGRATED",null,java.time.Instant.now().getEpochSecond());
+        var answer=ChangeHelpGuide.explain(f.build(),"Instalé una versión pero el menú sigue igual",false);
+        assertEquals("ANDROID_CHANNEL",answer.stage());assertEquals("APP_UPDATES",answer.nextAction().destination());
+        assertTrue(answer.answer().contains("1000012"));assertTrue(answer.answer().contains("sin validar"));
+        f.session="CLOSED";f.change="COMPLETED";
+        assertEquals("APP_UPDATES",ChangeHelpGuide.explain(f.build(),"¿Qué APK hay?",false).nextAction().destination());
+    }
+
+    @Test void healthyBackendCannotRecommendFinalizationWhenAndroidIsRequiredButMissing() {
+        var f=new ChangeHelpFixture();f.validation="CURRENT";f.passed=4;f.pr="MERGED";f.deploymentStatus="DEPLOYED";
+        f.readiness=new com.atenea.delivery.ChangeDeliveryReadiness(22L,"CONFIRMED","1".repeat(40),"2".repeat(40),
+                java.util.List.of(com.atenea.delivery.DeliveryTarget.ANDROID_STABLE),false,null,null,"NOT_INCLUDED",null,java.time.Instant.now().getEpochSecond());
+        var answer=ChangeHelpGuide.explain(f.build(),"¿Qué hago ahora?",false);
+        assertEquals("ANDROID_PUBLICATION_REQUIRED",answer.stage());assertEquals("DELIVERY",answer.nextAction().destination());
+        assertTrue(answer.answer().contains("Preparar Android estable"));
+    }
     private String stage(ChangeHelpFixture f) { return ChangeHelpGuide.explain(f.build(),"¿Qué hago?",false).stage(); }
 
     @Test void realGitInstructionBlockerIsPendingValidationNotFailedTests() {

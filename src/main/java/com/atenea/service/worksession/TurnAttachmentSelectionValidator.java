@@ -96,7 +96,7 @@ public class TurnAttachmentSelectionValidator {
         }
 
         requireCompatibleWorker(session, workerClient.health());
-        requireCompatibleRealCapability(session, workerClient.realProjectCapability());
+        requireCompatibleRealCapability(session, AttachmentWorkerClient.capabilityFor(workerClient,session));
 
         List<ValidatedAttachment> validated = new ArrayList<>(attachments.size());
         for (WorkSessionAttachmentEntity attachment : attachments) {
@@ -136,17 +136,7 @@ public class TurnAttachmentSelectionValidator {
         if (newBinding) {
             admissionPolicy.requireRealCreateBindAllowed(ProjectCodexIdentity.PROJECT_IDENTITY);
         }
-        String expectedWorkspace = "remote:" + RealAttachmentProjectRegistry.ATENEA_WORKER_ID
-                + ":work-session:" + session.getRemoteSessionId();
-        if (!RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION.equals(
-                    session.getAttachmentPolicyRevision())
-                || !ProjectCodexIdentity.matches(session)
-                || session.getExecutionTarget() != ExecutionTarget.REMOTE
-                || !RealAttachmentProjectRegistry.ATENEA_WORKER_ID.equals(
-                    session.getSelectedWorkerId())
-                || session.getRemoteSessionId() == null
-                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
-                || !Objects.equals(expectedWorkspace, session.getWorkspaceIdentity())) {
+        if (!com.atenea.attachments.AttachmentOwnership.exact(session)) {
             throw new AttachmentOwnershipException(
                     "La WorkSession no tiene ownership real completo para adjuntos.");
         }
@@ -241,7 +231,7 @@ public class TurnAttachmentSelectionValidator {
     ) {
         if (capability == null
                 || !capability.healthy()
-                || !AttachmentWorkerClient.REAL_PROJECT_PROTOCOL.equals(
+                || !AttachmentWorkerClient.capabilityProtocol(session).equals(
                     capability.protocolVersion())
                 || !Objects.equals(session.getSelectedWorkerId(), capability.workerId())
                 || !List.of(ProjectCodexIdentity.PROJECT_IDENTITY)

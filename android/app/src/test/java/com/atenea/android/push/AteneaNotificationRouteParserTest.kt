@@ -1,6 +1,7 @@
 package com.atenea.android.push
 
 import com.atenea.android.coreconsole.AteneaNotificationRoute
+import com.atenea.android.coreconsole.AteneaNotificationDestination
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,6 +23,23 @@ class AteneaNotificationRouteParserTest {
         "deepLinkKind" to "WORK_SESSION_CONVERSATION",
         "deepLink" to "atenea://work-sessions/12/conversation"
     )
+
+    @Test fun `product ready push opens global news without inventing a session`() {
+        val data=mapOf("schemaVersion" to "atenea-product-update-data-v1","eventType" to "PRODUCT_UPDATE",
+            "type" to "PRODUCT_UPDATE","templateVersion" to "product-update-safe-v1","notificationEventId" to eventId,
+            "deepLinkKind" to "ATENEA_UPDATES","deepLink" to "atenea://updates")
+        assertEquals(AteneaNotificationRoute(null,eventId,AteneaNotificationDestination.UPDATES),
+            AteneaNotificationRouteParser.parse("atenea://updates",data))
+        assertEquals(AteneaNotificationRoute(null,eventId,AteneaNotificationDestination.UPDATES),
+            AteneaNotificationRouteParser.parseIntent("atenea://updates",data+mapOf("google.message_id" to "transport",
+                "gcm.n.title" to "Atenea","collapse_key" to "com.atenea.android","from" to "synthetic")))
+        assertNull(AteneaNotificationRouteParser.parseIntent("atenea://updates",data+("command" to "foreign")))
+        for(invalid in listOf(data+("command" to "foreign"),data+("sessionId" to "21"),data+("notificationEventId" to "foreign"),
+            data+("deepLinkKind" to "WORK_SESSION_CONVERSATION"))) {
+            assertNull(AteneaNotificationRouteParser.parse("atenea://updates",invalid))
+        }
+        assertNull(AteneaNotificationRouteParser.parse("atenea://updates?execute=anything",emptyMap()))
+    }
 
     @AfterTest
     fun detachConsumer() {

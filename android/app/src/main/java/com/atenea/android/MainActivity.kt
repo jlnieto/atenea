@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         val deepLink = intent.dataString ?: values["deepLink"]
-        AteneaNotificationRouteParser.parse(deepLink, values)?.let { route ->
+        AteneaNotificationRouteParser.parseIntent(deepLink, values)?.let { route ->
             requestedConversation.value = route
         }
     }

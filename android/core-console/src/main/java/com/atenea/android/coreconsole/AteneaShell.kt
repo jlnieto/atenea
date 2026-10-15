@@ -44,6 +44,7 @@ internal fun AteneaShell(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    LaunchedEffect(apiClient, currentVersionCode) { apiClient.reportInstalledVersion(currentVersionCode) }
     val navigationStore = remember(context) {
         AteneaNavigationStore(context.applicationContext)
     }
@@ -98,6 +99,10 @@ internal fun AteneaShell(
     }
     LaunchedEffect(requestedConversation?.requestKey) {
         requestedConversation ?: return@LaunchedEffect
+        if (requestedConversation.destination==AteneaNotificationDestination.UPDATES) {
+            selectedDestination=AteneaDestination.NEWS
+            return@LaunchedEffect
+        }
         val conversationNavigation = requestedConversation.toConversationNavigation()
         selectedProjectId = null
         selectedSessionId = conversationNavigation.sessionId
@@ -148,7 +153,7 @@ internal fun AteneaShell(
                             )
                         }
                     AteneaDrawerSection("Sistema")
-                    listOf(AteneaDestination.COSTS, AteneaDestination.DIAGNOSTICS, AteneaDestination.SETTINGS).forEach { destination ->
+                    listOf(AteneaDestination.NEWS, AteneaDestination.COSTS, AteneaDestination.DIAGNOSTICS, AteneaDestination.SETTINGS).forEach { destination ->
                         DrawerDestination(
                             destination = destination,
                             selectedDestination = selectedDestination,
@@ -247,6 +252,15 @@ internal fun AteneaShell(
                             apiClient = apiClient,
                             projectId = selectedProjectId,
                             sessionId = selectedSessionId,
+                            onOpenUpdates = {
+                                selectedDestination = AteneaDestination.SETTINGS
+                                scope.launch {
+                                    checkingUpdate = true; updateMessage = null; updateProgress = null
+                                    try { updateState = updateManager.check() }
+                                    catch (failure: Exception) { updateMessage = failure.message ?: "No se pudo comprobar la actualización." }
+                                    finally { checkingUpdate = false }
+                                }
+                            },
                             onBackToSession = {
                                 selectedDestination = if (selectedProjectId == null) {
                                     AteneaDestination.PROJECTS
@@ -263,6 +277,15 @@ internal fun AteneaShell(
                     AteneaDestination.FILES -> FilesScreen(apiClient = apiClient)
                     AteneaDestination.COSTS -> CostsScreen(apiClient = apiClient)
                     AteneaDestination.DIAGNOSTICS -> DiagnosticsScreen(apiClient = apiClient)
+                    AteneaDestination.NEWS -> AteneaUpdatesScreen(apiClient,currentVersionCode,currentVersionName,
+                        onOpenUpdates={ selectedDestination=AteneaDestination.SETTINGS
+                            scope.launch {
+                                checkingUpdate=true;updateMessage=null
+                                try { updateState=updateManager.check() }
+                                catch(failure: Exception) { updateMessage="No se pudo comprobar la actualización." }
+                                finally { checkingUpdate=false }
+                            }
+                        })
                     AteneaDestination.SETTINGS, AteneaDestination.SECURITY, AteneaDestination.DEVICES -> SettingsScreen(
                         apiClient = apiClient,
                         updateState = updateState,
@@ -353,6 +376,7 @@ private enum class AteneaDestination(
     FILES("Archivos", "Archivos"),
     COSTS("Costes API", "Costes API"),
     DIAGNOSTICS("Diagnostico", "Diagnostico"),
+    NEWS("Novedades", "Novedades de Atenea"),
     SETTINGS("Ajustes", "Ajustes"),
     SECURITY("Seguridad y acceso", "Seguridad y acceso"),
     DEVICES("Dispositivos con acceso", "Dispositivos con acceso")

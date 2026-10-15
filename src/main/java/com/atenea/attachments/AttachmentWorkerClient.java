@@ -23,6 +23,20 @@ import org.springframework.stereotype.Component;
 public class AttachmentWorkerClient {
 
     public static final String REAL_PROJECT_PROTOCOL = "real-project-attachment/v1";
+    public static final String CHANGE_PROJECT_PROTOCOL = "change-session-attachment/v1";
+
+    public static String capabilityProtocol(com.atenea.persistence.worksession.WorkSessionEntity session) {
+        return AttachmentOwnership.CHANGE_POLICY.equals(session.getAttachmentPolicyRevision())
+                ? CHANGE_PROJECT_PROTOCOL : REAL_PROJECT_PROTOCOL;
+    }
+
+    public static RealProjectCapability capabilityFor(AttachmentWorkerClient client, com.atenea.persistence.worksession.WorkSessionEntity session) {
+        return AttachmentOwnership.CHANGE_POLICY.equals(session.getAttachmentPolicyRevision())
+                ? client.changeProjectCapability() : client.realProjectCapability();
+    }
+    public RealProjectCapability changeProjectCapability() {
+        return json("GET", "/v1/capabilities/change-session-attachment", null, RealProjectCapability.class);
+    }
 
     private final AttachmentProperties properties;
     private final ObjectMapper objectMapper;

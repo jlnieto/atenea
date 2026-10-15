@@ -22,6 +22,9 @@ En el contexto explícito `ATENEA_MANAGED_CHANGE`, source/ownership se verifican
 por el worker y la validación usa las acciones mediadas. No se recrean remotos
 del workspace manual dentro de los worktrees gestionados.
 
+Para comprobar mejoras y versiones de todos los componentes sin abrir otro
+Cambio, véase [Novedades y entrega completa](mobile-product-updates.md).
+
 ## Estado implementado hoy
 
 El nuevo control de entrega durable desde Android está descrito en

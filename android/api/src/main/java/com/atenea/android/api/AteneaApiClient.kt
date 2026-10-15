@@ -31,6 +31,15 @@ class AteneaApiClient(
     }
 
     fun currentOperatorRole(): String? = operatorRoleProvider()
+    suspend fun fetchAteneaUpdates(page: Int = 1): AteneaProductUpdates {
+        require(page in 1..50)
+        return getJson(path="/api/mobile/atenea/updates?page=$page",authenticated=true,parser=::parseAteneaUpdates)
+    }
+    @Volatile private var installedVersionCode: Int? = null
+    fun reportInstalledVersion(code: Int) { require(code>0); installedVersionCode=code }
+    private fun versionHeaders(): Map<String,String> = installedVersionCode?.let {
+        mapOf("X-Atenea-App-Version-Code" to it.toString())
+    } ?: emptyMap()
 
     suspend fun login(email: String, password: String): MobileAuthSession = postJson(
         path = "/api/mobile/auth/login",
@@ -433,15 +442,17 @@ class AteneaApiClient(
         parser = ::parseMobileDeliveryState
     )
 
-    suspend fun fetchChangeHelp(sessionId: Long): ChangeHelp = getJson(
-        path = "/api/mobile/sessions/$sessionId/help", authenticated = true
+    suspend fun fetchChangeHelp(sessionId: Long): ChangeHelp = requestJson(
+        path = "/api/mobile/sessions/$sessionId/help", method = "GET", body = null,
+        authenticated = true, headers = versionHeaders()
     ) { json -> parseChangeHelp(json, sessionId) }
 
     suspend fun askChangeHelp(sessionId: Long, question: String, simple: Boolean = false): ChangeHelp {
         require(question.isNotBlank() && question.length <= 1000)
         return postJson(
             path = "/api/mobile/sessions/$sessionId/help",
-            body = JSONObject().put("question", question.trim()).put("simple", simple), authenticated = true
+            body = JSONObject().put("question", question.trim()).put("simple", simple), authenticated = true,
+            headers = versionHeaders()
         ) { json -> parseChangeHelp(json, sessionId) }
     }
 
@@ -476,6 +487,13 @@ class AteneaApiClient(
         authenticated = true
     ) { json -> parseMobileDeliveryOperation(json).also {
         require(it.sessionId == sessionId && it.kind == "RELEASE" && it.target == MobileDeliveryTarget.APP_PROD
+            && it.releaseRecovery != null)
+    } }
+
+    suspend fun prepareAndroidRecovery(sessionId: Long): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/android-recovery-plan", body = JSONObject(), authenticated = true
+    ) { json -> parseMobileDeliveryOperation(json).also {
+        require(it.sessionId == sessionId && it.kind == "RELEASE" && it.target == MobileDeliveryTarget.ANDROID_STABLE
             && it.releaseRecovery != null)
     } }
 
@@ -605,6 +623,11 @@ class AteneaApiClient(
         path = "/api/mobile/sessions/$sessionId/attachments/capability",
         authenticated = true,
         parser = ::parseWorkSessionAttachmentCapability
+    )
+
+    suspend fun enableWorkSessionImages(sessionId: Long): WorkSessionAttachmentCapability = postJson(
+        path = "/api/mobile/sessions/$sessionId/attachments/enable",
+        body = JSONObject(), authenticated = true, parser = ::parseWorkSessionAttachmentCapability
     )
 
     suspend fun fetchWorkSessionAttachments(

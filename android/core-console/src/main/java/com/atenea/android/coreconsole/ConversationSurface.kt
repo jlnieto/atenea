@@ -117,7 +117,9 @@ internal fun ConversationSurface(
     onRemoveImage: ((UUID) -> Unit)? = null,
     onRetryImage: ((UUID) -> Unit)? = null,
     onResetAttachmentSubmission: (() -> Unit)? = null,
-    onOpenHistoricalAttachment: ((SessionTurnAttachment) -> Unit)? = null
+    onOpenHistoricalAttachment: ((SessionTurnAttachment) -> Unit)? = null,
+    onEnableImages: (() -> Unit)? = null,
+    onOpenUpdates: () -> Unit = {}
 ) {
     var pane by rememberSaveable(surfaceKey) { mutableStateOf(ConversationPane.CHAT) }
     var showAttachmentHelp by remember { mutableStateOf(false) }
@@ -162,7 +164,9 @@ internal fun ConversationSurface(
                         }
                     }
                 },
-                attachmentsReady = attachmentDraft?.isReady == true
+                attachmentsReady = attachmentDraft?.isReady == true,
+                attachmentsRecoverable = composerEnabled && !pending && onEnableImages != null
+                    && attachmentDraft?.capability?.blockedReason?.name == "SESSION_NOT_ELIGIBLE"
             )
 
             Box(
@@ -221,8 +225,11 @@ internal fun ConversationSurface(
                     }
                 } else if (pane == ConversationPane.HELP) {
                     helpContent?.invoke { destination ->
+                        if (destination == ChangeHelpDestination.APP_UPDATES) onOpenUpdates()
                         pane = when (destination) {
                             ChangeHelpDestination.CHANGE -> ConversationPane.CHANGE
+                            ChangeHelpDestination.DELIVERY -> ConversationPane.CHANGE
+                            ChangeHelpDestination.APP_UPDATES -> ConversationPane.HELP
                             ChangeHelpDestination.ACTIVITY -> ConversationPane.ACTIVITY
                             ChangeHelpDestination.CHAT -> ConversationPane.CHAT
                         }
@@ -295,7 +302,12 @@ internal fun ConversationSurface(
                     })
                     if (attachmentDraft?.isReady != true) Text("Puedes continuar en esta misma conversación sin adjuntos.")
                 } },
-                confirmButton = { TextButton(onClick = { showAttachmentHelp = false }) { Text("Entendido") } }
+                confirmButton = {
+                    if (composerEnabled && !pending && onEnableImages != null
+                        && attachmentDraft?.capability?.blockedReason?.name == "SESSION_NOT_ELIGIBLE") {
+                        TextButton(onClick = { showAttachmentHelp = false; onEnableImages() }) { Text("Activar imágenes aquí") }
+                    } else TextButton(onClick = { showAttachmentHelp = false }) { Text("Entendido") }
+                }
             )
         }
     }
@@ -315,7 +327,8 @@ private fun ConversationTopBar(
     onProfile: (() -> Unit)?,
     onHelp: (() -> Unit)?,
     onAttachments: (() -> Unit)?,
-    attachmentsReady: Boolean
+    attachmentsReady: Boolean,
+    attachmentsRecoverable: Boolean
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
@@ -348,7 +361,7 @@ private fun ConversationTopBar(
             )
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 onAttachments?.let { action -> DropdownMenuItem(
-                    text = { Text(if (attachmentsReady) "Adjuntar imágenes" else "Imágenes no disponibles") },
+                    text = { Text(if (attachmentsReady) "Adjuntar imágenes" else if (attachmentsRecoverable) "Activar imágenes" else "Imágenes no disponibles") },
                     leadingIcon = { PaperclipIcon(if (attachmentsReady) ConversationColors.action else ConversationColors.mutedText) },
                     onClick = { menuOpen = false; action() }
                 ) }

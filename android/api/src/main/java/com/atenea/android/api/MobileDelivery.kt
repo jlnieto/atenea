@@ -11,7 +11,41 @@ data class MobileDeliveryState(val enabled: Boolean, val operations: List<Mobile
     val sourceUpdateEnabled: Boolean = false, val sourceUpdate: MobileSourceUpdate? = null,
     val releaseRecoveryEnabled: Boolean = false,
     val deployment: MobileDeploymentObservation? = null,
-    val completionEnabled: Boolean = false)
+    val completionEnabled: Boolean = false,
+    val readiness: MobileChangeDeliveryReadiness? = null)
+
+data class MobileAndroidChannel(val sourceCommit: String, val versionName: String, val versionCode: Int,
+    val apkSha256: String, val observedAt: Long)
+
+data class MobileChangeDeliveryReadiness(val sessionId: Long, val requirementsStatus: String,
+    val headCommit: String?, val integratedMergeCommit: String?, val requiredTargets: List<MobileDeliveryTarget>,
+    val ready: Boolean, val android: MobileAndroidChannel?, val androidStatus: String, val observedAt: Long) {
+    fun fresh(nowSeconds: Long): Boolean = observedAt in (nowSeconds - 60)..(nowSeconds + 5)
+}
+
+internal fun parseDeliveryReadiness(json: JSONObject): MobileChangeDeliveryReadiness {
+    val status=json.getString("requirementsStatus")
+    require(status in setOf("CONFIRMED","NOT_INTEGRATED","UNAVAILABLE"))
+    val targets=json.getJSONArray("requiredTargets").let { values ->
+        List(values.length()) { MobileDeliveryTarget.valueOf(values.getString(it)) }.also {
+            require(it.size==it.distinct().size && it.none { target -> target==MobileDeliveryTarget.AX42_PLATFORM })
+        }
+    }
+    val channel=json.optJSONObject("android")?.let { value ->
+        require(value.getString("sourceCommit").matches(Regex("[0-9a-f]{40}")))
+        for (key in listOf("apkSha256","certificateSha256","receiptSha256")) require(value.getString(key).matches(Regex("[0-9a-f]{64}")))
+        for (key in listOf("planId","operationId")) require(UUID.fromString(value.getString(key)).toString()==value.getString(key))
+        require(value.getInt("versionCode")>0 && value.getString("versionName").matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+")))
+        MobileAndroidChannel(value.getString("sourceCommit"),value.getString("versionName"),value.getInt("versionCode"),
+            value.getString("apkSha256"),value.getLong("observedAt"))
+    }
+    val androidStatus=json.getString("androidStatus")
+    require(androidStatus in setOf("INCLUDED","NOT_INCLUDED","UNAVAILABLE","NOT_INTEGRATED"))
+    val ready=json.getBoolean("ready")
+    require(!ready || status=="CONFIRMED" && (!targets.contains(MobileDeliveryTarget.ANDROID_STABLE) || channel!=null && androidStatus=="INCLUDED"))
+    return MobileChangeDeliveryReadiness(json.getLong("sessionId"),status,json.nullableDeliveryString("headCommit"),
+        json.nullableDeliveryString("integratedMergeCommit"),targets,ready,channel,androidStatus,json.getLong("observedAt"))
+}
 
 data class MobileDeploymentObservation(val sessionId: Long, val status: String, val origin: String?,
     val sourceCommit: String?, val integratedMergeCommit: String?, val healthy: Boolean,
@@ -104,7 +138,8 @@ internal fun parseMobileDeliveryState(json: JSONObject): MobileDeliveryState {
         json.opt("sourceUpdateEnabled") == true, json.optJSONObject("sourceUpdate")?.let(::parseMobileSourceUpdate),
         json.opt("releaseRecoveryEnabled") == true,
         json.optJSONObject("deployment")?.let(::parseDeploymentObservation),
-        json.opt("completionEnabled") == true)
+        json.opt("completionEnabled") == true,
+        json.optJSONObject("readiness")?.let(::parseDeliveryReadiness))
 }
 
 data class MobileReleaseRecovery(val integrationOperationId: UUID, val publishedHeadCommit: String,
@@ -161,7 +196,7 @@ private fun parseReleaseRecovery(operation: JSONObject): MobileReleaseRecovery? 
     require(value.keys().asSequence().toSet() == setOf("protocol", "integrationOperationId",
         "publishedHeadCommit", "integratedMergeCommit", "selectedMainCommit"))
     require(value.getString("protocol") == "integrated-release-recovery/v1")
-    require(operation.getString("kind") == "RELEASE" && operation.getString("target") == "APP_PROD")
+    require(operation.getString("kind") == "RELEASE" && operation.getString("target") in setOf("APP_PROD","ANDROID_STABLE"))
     fun sha(key: String) = value.getString(key).also { require(it.matches(Regex("[0-9a-f]{40}"))) }
     val selected = sha("selectedMainCommit")
     require(selected == operation.getString("sourceCommit"))

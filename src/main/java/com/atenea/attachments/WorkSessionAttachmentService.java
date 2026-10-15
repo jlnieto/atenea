@@ -91,7 +91,7 @@ public class WorkSessionAttachmentService {
             if (ownership.real()) {
                 requireCompatibleRealCapability(
                         session,
-                        workerClient.realProjectCapability());
+                        AttachmentWorkerClient.capabilityFor(workerClient,session));
                 stored = workerClient.putReal(
                         ownership.remoteSessionId(),
                         ownership.projectIdentity(),
@@ -232,11 +232,14 @@ public class WorkSessionAttachmentService {
                 && metadata.getWorkspaceIdentity() == null) {
             return workerClient.content(workSessionId, attachmentId);
         }
-        String expectedWorkspace = "remote:" + metadata.getWorkerId()
-                + ":work-session:" + metadata.getRemoteSessionId();
+        WorkSessionEntity owner = workSessionRepository.findWithProjectById(workSessionId)
+                .orElseThrow(() -> new WorkSessionNotFoundException(workSessionId));
         if (metadata.getStorageScope() != AttachmentStorageScope.REAL_SESSION
                 || metadata.getRemoteSessionId() == null
-                || !Objects.equals(expectedWorkspace, metadata.getWorkspaceIdentity())) {
+                || !AttachmentOwnership.exact(owner)
+                || !Objects.equals(owner.getRemoteSessionId(), metadata.getRemoteSessionId())
+                || !Objects.equals(owner.getSelectedWorkerId(), metadata.getWorkerId())
+                || !Objects.equals(owner.getWorkspaceIdentity(), metadata.getWorkspaceIdentity())) {
             throw new AttachmentOwnershipException(
                     "El scope retenido del adjunto está incompleto o es ambiguo.");
         }
@@ -246,12 +249,16 @@ public class WorkSessionAttachmentService {
     private UploadOwnership requireCreateAllowed(Long workSessionId) {
         WorkSessionEntity session = workSessionRepository.findWithProjectById(workSessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(workSessionId));
+        if (session.getDevelopmentChange()!=null && (session.getStatus()!=com.atenea.persistence.worksession.WorkSessionStatus.OPEN
+                || session.getDevelopmentChange().getStatus()!=com.atenea.persistence.developmentchange.DevelopmentChangeStatus.OPEN)) {
+            throw new AttachmentOwnershipException("Sólo se añaden imágenes a la conversación abierta del mismo Cambio.");
+        }
         if (session.getExecutionTarget() != ExecutionTarget.REMOTE
                 || !Objects.equals(session.getSelectedWorkerId(), properties.getWorkerId())) {
             throw new AttachmentOwnershipException(
                     "La WorkSession no tiene afinidad persistida con el worker de adjuntos.");
         }
-        if (session.getAttachmentPolicyRevision() == null) {
+        if (session.getAttachmentPolicyRevision() == null && session.getDevelopmentChange() == null) {
             admissionPolicy.requireSyntheticCreationAllowed(session.getProject().getName());
             return UploadOwnership.synthetic(session);
         }
@@ -261,16 +268,7 @@ public class WorkSessionAttachmentService {
     }
 
     private void requireExactRealOwnership(WorkSessionEntity session) {
-        String expectedWorkspace = "remote:" + RealAttachmentProjectRegistry.ATENEA_WORKER_ID
-                + ":work-session:" + session.getRemoteSessionId();
-        if (!RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION.equals(
-                    session.getAttachmentPolicyRevision())
-                || !ProjectCodexIdentity.matches(session)
-                || !RealAttachmentProjectRegistry.ATENEA_WORKER_ID.equals(
-                    session.getSelectedWorkerId())
-                || session.getRemoteSessionId() == null
-                || !ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
-                || !Objects.equals(expectedWorkspace, session.getWorkspaceIdentity())) {
+        if (!AttachmentOwnership.exact(session)) {
             throw new AttachmentOwnershipException(
                     "La WorkSession no tiene ownership real completo para adjuntos.");
         }
@@ -298,7 +296,7 @@ public class WorkSessionAttachmentService {
     ) {
         if (capability == null
                 || !capability.healthy()
-                || !AttachmentWorkerClient.REAL_PROJECT_PROTOCOL.equals(
+                || !AttachmentWorkerClient.capabilityProtocol(session).equals(
                     capability.protocolVersion())
                 || !Objects.equals(session.getSelectedWorkerId(), capability.workerId())
                 || !List.of(ProjectCodexIdentity.PROJECT_IDENTITY)

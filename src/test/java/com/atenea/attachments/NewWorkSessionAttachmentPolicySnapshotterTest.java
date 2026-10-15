@@ -14,6 +14,20 @@ import org.junit.jupiter.api.Test;
 
 class NewWorkSessionAttachmentPolicySnapshotterTest {
 
+    @Test void changeOwnedSessionSnapshotsNewPolicyAndRejectsCrossedOwner() {
+        var session=exactRemoteAteneaSession(); session.getProject().setId(1L);
+        var change=new com.atenea.persistence.developmentchange.DevelopmentChangeEntity();
+        change.setChangeKey(UUID.randomUUID()); change.setProject(session.getProject()); change.setSelectedWorkerId("ax42-01");
+        change.setWorkspaceIdentity("remote:ax42-01:change:"+change.getChangeKey());
+        change.setWorkspaceBranch("atenea/change-"+change.getChangeKey());
+        session.setDevelopmentChange(change); session.setWorkspaceIdentity(change.getWorkspaceIdentity()); session.setWorkspaceBranch(change.getWorkspaceBranch());
+        snapshotter(true,Set.of("atenea")).snapshotNewSession(session);
+        assertEquals(AttachmentOwnership.CHANGE_POLICY,session.getAttachmentPolicyRevision());
+        org.junit.jupiter.api.Assertions.assertTrue(AttachmentOwnership.exact(session));
+        session.setWorkspaceIdentity("remote:ax42-01:change:"+UUID.randomUUID());
+        org.junit.jupiter.api.Assertions.assertFalse(AttachmentOwnership.exact(session));
+    }
+
     @Test
     void snapshotsRevisionOnlyForNewExactRemoteAteneaOwnership() {
         NewWorkSessionAttachmentPolicySnapshotter snapshotter = snapshotter(true, Set.of("atenea"));

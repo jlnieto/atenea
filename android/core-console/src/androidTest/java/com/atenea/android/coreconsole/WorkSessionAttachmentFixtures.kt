@@ -27,7 +27,7 @@ internal fun blockedCapabilityFixture() = readyCapabilityFixture().copy(
     state = WorkSessionAttachmentCapabilityState.BLOCKED,
     blockedReason = WorkSessionAttachmentBlockedReason.SESSION_NOT_ELIGIBLE,
     message = "Esta WorkSession se creó antes de activar imágenes.",
-    nextAction = "Abre una WorkSession nueva de Atenea.",
+    nextAction = "Activa las imágenes en esta misma conversación.",
     workerCompatibility = WorkSessionAttachmentWorkerCompatibility.NOT_CHECKED
 )
 

@@ -35,7 +35,9 @@ class MobileDeliveryUiStateTest {
             var observed=deployed()
             var operations=listOf(operation().copy(kind="INTEGRATE",state="SUCCEEDED",mergeCommit="3".repeat(40)))
             val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,operations,
-                deployment=observed,completionEnabled=supported) }
+                deployment=observed,completionEnabled=supported,
+                readiness=com.atenea.android.api.MobileChangeDeliveryReadiness(21,"CONFIRMED","1".repeat(40),"3".repeat(40),
+                    listOf(MobileDeliveryTarget.APP_PROD),observed.healthy,null,"UNAVAILABLE",System.currentTimeMillis()/1000)) }
             state.refresh(); assertFalse(state.canFinalize(true,false))
             supported=true; state.refresh(); assertTrue(state.canFinalize(true,false))
             assertFalse(state.canFinalize(false,false)); assertFalse(state.canFinalize(true,true))

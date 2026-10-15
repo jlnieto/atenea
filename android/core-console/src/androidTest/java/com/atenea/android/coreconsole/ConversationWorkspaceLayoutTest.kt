@@ -150,7 +150,10 @@ class ConversationWorkspaceLayoutTest {
         compose.onNodeWithContentDescription("Opciones de conversación").performClick()
         compose.onNodeWithText("Cambio").performClick()
         assertReadableText("La validación necesita atención.")
+        compose.onNodeWithText("Ver pruebas y detalles").performScrollTo().performClick()
+        compose.onNodeWithText("0/4 comprobaciones de la revisión 2").performScrollTo()
         assertReadableText("0/4 comprobaciones de la revisión 2")
+        compose.onNodeWithText(attempt.summary).performScrollTo()
         assertReadableText(attempt.summary)
         saveContrastScreenshot("contrast-change.png")
     }
@@ -225,7 +228,8 @@ class ConversationWorkspaceLayoutTest {
         }
         compose.onNodeWithContentDescription("Opciones de conversación").performClick()
         compose.onNodeWithText("Cambio").performClick()
-        compose.onNodeWithText("Código: TEST_DATABASE_SETUP_FAILED").assertIsDisplayed()
+        compose.onNodeWithText("Ver pruebas y detalles").performScrollTo().performClick()
+        compose.onNodeWithText("Código: TEST_DATABASE_SETUP_FAILED").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Operation ID: ${attempt.id}").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Consultar resultado").performScrollTo().performClick()
         assertEquals(1, reads)

@@ -122,7 +122,7 @@ class AttachmentCapabilityServiceTest {
                 legacyCapability,
                 AttachmentCapability.BlockedReason.SESSION_NOT_ELIGIBLE,
                 AttachmentCapability.WorkerCompatibility.NOT_CHECKED);
-        assertTrue(legacyCapability.nextAction().contains("WorkSession nueva"));
+        assertTrue(legacyCapability.nextAction().contains("sin crear otro Cambio"));
         verify(workerClient, never()).health();
     }
 
