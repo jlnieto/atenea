@@ -211,6 +211,83 @@ public class GitHubClient {
         return sha;
     }
 
+    public record MergedChange(long number,String title,String summary,String branch,String headCommit,String mergeCommit,Instant mergedAt,String url) { }
+    public record MergedChangesPage(List<MergedChange> changes,boolean more) { }
+
+    /** Fixed-size read-only history. Repository selection is server-owned, not an API input. */
+    public MergedChangesPage recentMergedChanges(GitHubRepositoryRef repository,int page) {
+        ensureConfigured();
+        if (page<1 || page>50) throw new GitHubIntegrationException("HISTORY_PAGE_INVALID");
+        String root="/repos/"+repository.owner()+"/"+repository.repo();
+        JsonNode values=sendJsonRequest("GET",properties.getApiBaseUrl().resolve(root+"/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=5&page="+page),null);
+        if (!values.isArray() || values.size()>5) throw new GitHubIntegrationException("HISTORY_EVIDENCE_INCOMPLETE");
+        var changes=new ArrayList<MergedChange>();
+        for (JsonNode pr:values) {
+            if (!pr.path("merged_at").isTextual()) continue;
+            long number=pr.path("number").asLong(-1);String branch=pr.path("head").path("ref").asText();String head=pr.path("head").path("sha").asText();
+            requireSha(head);requireSha(pr.path("merge_commit_sha").asText());requireExactPullRequest(repository,number,branch,head,pr);
+            Instant merged=Instant.parse(pr.path("merged_at").asText());
+            if (!"closed".equals(pr.path("state").asText()) || merged.isAfter(Instant.now().plusSeconds(60))) throw new GitHubIntegrationException("HISTORY_EVIDENCE_INCOMPLETE");
+            String title=productText(pr.path("title").asText(),200);
+            if (title.isBlank()) title="Mejora de Atenea";
+            String summary=productSummary(pr.path("body").asText(),title);
+            changes.add(new MergedChange(number,title,summary,branch,head,pr.path("merge_commit_sha").asText(),merged,
+                    "https://github.com/"+repository.owner()+"/"+repository.repo()+"/pull/"+number));
+        }
+        return new MergedChangesPage(List.copyOf(changes),values.size()==5 && page<50);
+    }
+    static String productText(String text,int maximum) {
+        if (text==null || text.matches("(?is).*(https?://|/srv/|/home/|bearer |password|secret|\\b(?:sudo|ssh|curl|bash|docker|python|git)\\b).*")) return "";
+        String clean=text.replaceAll("[\\p{Cntrl}`]"," ").replaceAll("\\s+"," ").trim();
+        return clean.substring(0,Math.min(maximum,clean.length()));
+    }
+    static String productSummary(String body,String fallback) {
+        var matcher=Pattern.compile("(?is)## Novedades para el usuario\\s*\\n(.*?)(?:\\n## |\\z)").matcher(body==null ? "" : body);
+        if (!matcher.find()) return fallback;
+        String result=matcher.group(1).lines().map(line -> productText(line.replaceFirst("^\\s*[-*]\\s*",""),220))
+                .filter(line -> !line.isBlank()).limit(4).collect(java.util.stream.Collectors.joining("\n"));
+        return result.isBlank() ? fallback : result;
+    }
+
+    /** Bounded exact-head file classification, including both sides of a rename. */
+    public List<String> changedFiles(GitHubRepositoryRef repository, long number, String branch, String head) {
+        ensureConfigured(); requireSha(head);
+        String root = "/repos/" + repository.owner() + "/" + repository.repo() + "/pulls/" + number;
+        JsonNode before = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(root), null);
+        requireExactPullRequest(repository, number, branch, head, before);
+        int count = before.path("changed_files").asInt(-1);
+        if (count < 1 || count > 1000) throw new GitHubIntegrationException("DELIVERY_DIFF_INCOMPLETE");
+        var paths = new java.util.TreeSet<String>();
+        var filenames = new java.util.HashSet<String>();
+        int observed = 0;
+        for (int page=1; observed<count; page++) {
+            JsonNode files=sendJsonRequest("GET", properties.getApiBaseUrl().resolve(root+"/files?per_page=100&page="+page),null);
+            if (!files.isArray() || files.isEmpty() || files.size()>100 || observed+files.size()>count) {
+                throw new GitHubIntegrationException("DELIVERY_DIFF_INCOMPLETE");
+            }
+            for (JsonNode file:files) {
+                if (!filenames.add(file.path("filename").asText())) throw new GitHubIntegrationException("DELIVERY_DIFF_INCOMPLETE");
+                for (String field : List.of("filename", "previous_filename")) {
+                    if (!file.has(field) && "previous_filename".equals(field)) continue;
+                    String path=file.path(field).asText();
+                    if (path.isBlank() || path.startsWith("/") || path.contains("\\")
+                            || java.util.Arrays.asList(path.split("/",-1)).stream().anyMatch(p -> p.isBlank() || p.equals(".") || p.equals(".."))) {
+                        throw new GitHubIntegrationException("DELIVERY_DIFF_INCOMPLETE");
+                    }
+                    paths.add(path);
+                }
+            }
+            observed+=files.size();
+        }
+        JsonNode after=sendJsonRequest("GET",properties.getApiBaseUrl().resolve(root),null);
+        requireExactPullRequest(repository,number,branch,head,after);
+        if (after.path("changed_files").asInt(-1)!=count
+                || !before.path("merge_commit_sha").equals(after.path("merge_commit_sha"))) {
+            throw new GitHubIntegrationException("DELIVERY_DIFF_INCOMPLETE");
+        }
+        return List.copyOf(paths);
+    }
+
     /** Read-only proof for a pinned publication recovery, not selection of a new source. */
     public void requireIntegratedChangeInSource(GitHubRepositoryRef repository, long number,
             String branch, String publishedHead, String integratedMerge, String selectedMain) {

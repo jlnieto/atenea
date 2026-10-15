@@ -59,6 +59,7 @@ public class RemoteSessionService {
     private final RemoteWorkBetaPolicy betaPolicy;
     private final V2AuditOutboxService auditService;
     private final TransactionTemplate transaction;
+    private final com.atenea.attachments.NewWorkSessionAttachmentPolicySnapshotter attachmentPolicy;
 
     public RemoteSessionService(
             ProjectRepository projectRepository,
@@ -69,7 +70,8 @@ public class RemoteSessionService {
             DevelopmentChangePolicy developmentChangePolicy,
             RemoteWorkBetaPolicy betaPolicy,
             V2AuditOutboxService auditService,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            com.atenea.attachments.NewWorkSessionAttachmentPolicySnapshotter attachmentPolicy) {
         this.projectRepository = projectRepository;
         this.operatorRepository = operatorRepository;
         this.changeRepository = changeRepository;
@@ -79,6 +81,7 @@ public class RemoteSessionService {
         this.betaPolicy = betaPolicy;
         this.auditService = auditService;
         transaction = new TransactionTemplate(transactionManager);
+        this.attachmentPolicy = attachmentPolicy;
     }
 
     public RemoteSessionOperationResponse openOrResolve(
@@ -619,6 +622,7 @@ public class RemoteSessionService {
         session.setCloseRetryable(false);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
+        attachmentPolicy.snapshotNewSession(session);
         return session;
     }
 

@@ -163,7 +163,7 @@ class ChangeHelpContextServiceTest {
                 22L,"DEPLOYED","OPERATOR","3".repeat(40),"2".repeat(40),true,Instant.now().getEpochSecond(),
                 UUID.randomUUID(),UUID.randomUUID(),"4".repeat(64),null));
         assertEquals("DEPLOYED",service.read(22L,actor).deploymentStatus());
-        verify(observations).observeDeployment(22L,actor); verifyNoMoreInteractions(observations);
+        verify(observations).observeDeployment(22L,actor); verify(observations).observeDelivery(22L,actor); verifyNoMoreInteractions(observations);
         verify(deliveries,never()).create(any(),any(),any(),any(),any(),any(),any());
         when(observations.observeDeployment(22L,actor)).thenThrow(new RuntimeException("transport"));
         assertEquals("UNAVAILABLE",service.read(22L,actor).deploymentStatus());

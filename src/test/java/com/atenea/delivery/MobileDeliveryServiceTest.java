@@ -33,6 +33,44 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
 class MobileDeliveryServiceTest {
+    private com.fasterxml.jackson.databind.node.ObjectNode androidObservation(String source) {
+        return mapper.createObjectNode().put("protocol","atenea-android-observation/v1").put("target","ANDROID_STABLE").put("state","OBSERVED")
+                .put("sourceCommit",source).put("versionName","0.6.12").put("versionCode",1000012).put("apkSha256","a".repeat(64))
+                .put("certificateSha256","b".repeat(64)).put("observedAt",Instant.now().getEpochSecond()).put("planId",UUID.randomUUID().toString())
+                .put("operationId",UUID.randomUUID().toString()).put("receiptSha256","c".repeat(64)).put("finishedAt",1L);
+    }
+    @Test void androidDiffRequiresActualApkInclusionEvenWhenBackendIsHealthyAndCachesImmutableDiff() {
+        integratedRecoveryFixture(); when(executor.observeApp()).thenReturn(installedObservation());
+        assertEquals("DEPLOYED",service.observeDeployment(21L,actor).status());
+        when(github.changedFiles(any(),eq(42L),anyString(),anyString())).thenReturn(List.of("android/core-console/Conversation.kt"));
+        when(executor.observeAndroid()).thenReturn(androidObservation("2".repeat(40)),androidObservation("4".repeat(40)));
+        doThrow(new GitHubIntegrationException("RELEASE_CHANGE_NOT_INCLUDED")).when(github).requireIntegratedChangeInSource(
+                any(),eq(42L),anyString(),anyString(),eq("3".repeat(40)),eq("2".repeat(40)));
+        var missing=service.observeDelivery(21L,actor);
+        assertEquals(List.of(DeliveryTarget.ANDROID_STABLE),missing.requiredTargets());assertFalse(missing.ready());
+        assertEquals("NOT_INCLUDED",missing.androidStatus());
+        var delivered=service.observeDelivery(21L,actor);
+        assertTrue(delivered.ready());assertEquals("INCLUDED",delivered.androidStatus());
+        verify(github,times(1)).changedFiles(any(),anyLong(),anyString(),anyString());
+        verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
+        verify(store,never()).update(any(),any(),any(),any(),any());verifyNoInteractions(publication,factors,grants);
+    }
+    @Test void missingChannelEvidenceNeverFallsBackToBackendSuccess() {
+        integratedRecoveryFixture();when(github.changedFiles(any(),anyLong(),anyString(),anyString())).thenReturn(List.of("android/app/Screen.kt"));
+        when(executor.observeAndroid()).thenThrow(new DeliveryRejectedException("TARGET_REJECTED"));
+        var result=service.observeDelivery(21L,actor);assertFalse(result.ready());assertEquals("UNAVAILABLE",result.androidStatus());
+        assertEquals("TARGET_REJECTED",result.errorCode());verify(executor,never()).plan(any(),any(),any());
+    }
+    @Test void androidCanPrepareCurrentMainUsingTheSameIntegratedChangeProof() {
+        var integration=integratedRecoveryFixture();
+        when(store.create(eq(21L),eq(7L),eq("RELEASE"),eq(DeliveryTarget.ANDROID_STABLE),eq("4".repeat(40)),eq("PLANNING"),any()))
+                .thenAnswer(call -> new DeliveryOperation(id,21L,7L,"RELEASE",DeliveryTarget.ANDROID_STABLE,call.getArgument(4),execution,
+                        "PLANNING",null,call.getArgument(6),null,Instant.now(),Instant.now()));
+        var view=service.requestReleaseRecovery(21L,actor,DeliveryTarget.ANDROID_STABLE);
+        assertEquals(DeliveryTarget.ANDROID_STABLE,view.target());assertEquals("4".repeat(40),view.sourceCommit());
+        assertEquals(integration.id(),view.releaseRecovery().integrationOperationId());
+        verify(executor,never()).execute(any(),any(),any());verifyNoInteractions(publication,factors,grants);
+    }
     private final ObjectMapper mapper = new ObjectMapper();
     private final DeliveryStore store = mock(DeliveryStore.class);
     private final WorkSessionRepository sessions = mock(WorkSessionRepository.class);

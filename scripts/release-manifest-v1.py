@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from android_artifact_version import read_version
 
 
 def manifest(target):
@@ -22,9 +23,8 @@ def manifest(target):
             sha.update(block)
     code = name = None
     if target == "ANDROID_STABLE":
-        gradle = Path("android/app/build.gradle.kts").read_text()
-        code = int(re.search(r"^\s*versionCode = ([0-9]+)$", gradle, re.M)[1])
-        name = re.search(r'^\s*versionName = "([0-9]+\.[0-9]+\.[0-9]+)"$', gradle, re.M)[1]
+        # Use actual build output; the publisher independently checks aapt and signature.
+        code,name=read_version("release")
     return {"protocol": "atenea-release/v1", "target": target, "sourceCommit": source,
             "payloadSha256": sha.hexdigest(), "versionCode": code, "versionName": name,
             "flywayVersion": max(int(re.match(r"V([0-9]+)__", path.name)[1])

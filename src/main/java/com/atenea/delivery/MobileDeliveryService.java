@@ -52,6 +52,7 @@ public class MobileDeliveryService {
     private final TransactionTemplate transaction;
     // Positive immutable ancestry proofs only. Runtime/health/role/owner are read on every poll.
     private final java.util.Map<String, Long> observedAncestry = new java.util.LinkedHashMap<>();
+    private final java.util.Map<String, List<DeliveryTarget>> immutableRequirements = new java.util.LinkedHashMap<>();
 
     public MobileDeliveryService(DeliveryStore store, WorkSessionRepository sessions, AgentRunRepository runs,
             OperatorRepository operators, DevelopmentChangeBranchPublicationService ownership,
@@ -73,6 +74,60 @@ public class MobileDeliveryService {
     }
     public boolean isEnabled() { return executor.enabled(); }
 
+    /** Read-only global APK facts plus exact-change ancestry and diff-derived requirements. */
+    public ChangeDeliveryReadiness observeDelivery(Long sessionId, AuthenticatedOperator actor) {
+        administrator(actor.operatorId());
+        WorkSessionEntity session=session(sessionId,false);
+        ReleaseControlClient.AndroidObservation android=null;
+        String androidError=null;
+        try { android=ReleaseControlClient.verifyAndroidObservation(executor.observeAndroid()); }
+        catch (DeliveryRejectedException unavailable) { androidError=unavailable.code(); }
+        long now=Instant.now().getEpochSecond();
+        if (session.getAcceptanceState()!=WorkSessionAcceptanceState.INTEGRATION_READY
+                || session.getPullRequestStatus()!=WorkSessionPullRequestStatus.MERGED) {
+            return new ChangeDeliveryReadiness(sessionId,"NOT_INTEGRATED",session.getFinalCommitSha(),null,List.of(),false,
+                    null,android,"NOT_INTEGRATED",androidError,now);
+        }
+        List<DeliveryTarget> targets=List.of();
+        String merge=null;
+        try {
+            enabled(); observedDeliveredOwner(session); published(session);
+            var integrated=store.integrated(sessionId,session.getFinalCommitSha())
+                    .orElseThrow(() -> new DeliveryRejectedException("EXACT_CHANGE_NOT_INTEGRATED"));
+            if (!"INTEGRATE".equals(integrated.kind()) || !"SUCCEEDED".equals(integrated.state())
+                    || integrated.target()!=DeliveryTarget.APP_PROD || !sessionId.equals(integrated.sessionId())
+                    || !session.getFinalCommitSha().equals(integrated.sourceCommit())) throw new DeliveryRejectedException("RELEASE_SOURCE_EVIDENCE_MISMATCH");
+            merge=ReleaseRecoverySource.create(integrated,integrated.evidence().path("mergeCommit").asText()).integratedMergeCommit();
+            requireCachedAncestry(session,ReleaseRecoverySource.create(integrated,merge));
+            String requirementKey=session.getPullRequestUrl()+"|"+session.getPublishedHeadBranch()+"|"+session.getFinalCommitSha()+"|"+merge;
+            synchronized (immutableRequirements) {
+                targets=immutableRequirements.get(requirementKey);
+                if (targets==null) {
+                    targets=ChangeDeliveryReadiness.classify(github.changedFiles(APP,github.extractPullRequestNumber(session.getPullRequestUrl()),
+                            session.getPublishedHeadBranch(),session.getFinalCommitSha()));
+                    if (immutableRequirements.size()>=128) immutableRequirements.remove(immutableRequirements.keySet().iterator().next());
+                    immutableRequirements.put(requirementKey,targets);
+                }
+            }
+            String androidStatus=android==null ? "UNAVAILABLE" : "NOT_INCLUDED";
+            if (android!=null) {
+                try { requireCachedAncestry(session,ReleaseRecoverySource.create(integrated,android.sourceCommit())); androidStatus="INCLUDED"; }
+                catch (DeliveryRejectedException rejected) {
+                    if (!"RELEASE_CHANGE_NOT_INCLUDED".equals(rejected.code())) { androidStatus="UNAVAILABLE"; androidError=rejected.code(); }
+                }
+            }
+            var backend=targets.contains(DeliveryTarget.APP_PROD) ? observeDeployment(sessionId,actor) : null;
+            boolean ready=(!targets.contains(DeliveryTarget.APP_PROD) || backend!=null && "DEPLOYED".equals(backend.status()) && backend.healthy())
+                    && (!targets.contains(DeliveryTarget.ANDROID_STABLE) || "INCLUDED".equals(androidStatus));
+            return new ChangeDeliveryReadiness(sessionId,"CONFIRMED",session.getFinalCommitSha(),merge,targets,ready,
+                    backend,android,androidStatus,backend!=null && backend.errorCode()!=null ? backend.errorCode()
+                        : targets.contains(DeliveryTarget.ANDROID_STABLE) ? androidError : null,now);
+        } catch (DeliveryRejectedException | GitHubIntegrationException rejected) {
+            return new ChangeDeliveryReadiness(sessionId,"UNAVAILABLE",session.getFinalCommitSha(),merge,targets==null ? List.of() : targets,false,
+                    null,android,"UNAVAILABLE",rejected instanceof DeliveryRejectedException d ? d.code() : "DELIVERY_DIFF_UNAVAILABLE",now);
+        }
+    }
+
     /** Read-only installed state; does not adopt operator effects into the mobile outbox. */
     public DeploymentObservation observeDeployment(Long sessionId, AuthenticatedOperator actor) {
         administrator(actor.operatorId());
@@ -92,15 +147,7 @@ public class MobileDeliveryService {
             }
             var observed = ReleaseControlClient.verifyAppObservation(executor.observeApp());
             var proof = ReleaseRecoverySource.create(integrated, observed.sourceCommit());
-            String key = sessionId + "|" + session.getPullRequestUrl() + "|" + session.getPublishedHeadBranch() + "|" + proof;
-            synchronized (observedAncestry) {
-                long now = Instant.now().getEpochSecond();
-                if (observedAncestry.getOrDefault(key, 0L) <= now) {
-                    requireRecoveryAncestry(session, proof);
-                    if (observedAncestry.size() >= 128) observedAncestry.remove(observedAncestry.keySet().iterator().next());
-                    observedAncestry.put(key, now + 60);
-                }
-            }
+            requireCachedAncestry(session,proof);
             var mobile = store.find(observed.planId());
             String origin = "OPERATOR";
             if (mobile.isPresent()) {
@@ -130,6 +177,10 @@ public class MobileDeliveryService {
 
     /** Explicit alternative when canonical main advanced after this ticket was integrated. */
     public DeliveryOperation.DeliveryView requestReleaseRecovery(Long sessionId, AuthenticatedOperator actor) {
+        return requestReleaseRecovery(sessionId,actor,DeliveryTarget.APP_PROD);
+    }
+    public DeliveryOperation.DeliveryView requestReleaseRecovery(Long sessionId, AuthenticatedOperator actor, DeliveryTarget target) {
+        if (!List.of(DeliveryTarget.APP_PROD,DeliveryTarget.ANDROID_STABLE).contains(target)) throw new DeliveryRejectedException("CLOSED_REQUEST_REQUIRED");
         enabled(); administrator(actor.operatorId());
         return Objects.requireNonNull(transaction.execute(ignored -> {
             WorkSessionEntity session = session(sessionId, true);
@@ -143,6 +194,7 @@ public class MobileDeliveryService {
             if (active.isPresent()) {
                 DeliveryOperation retained = active.get();
                 if (retained.sessionId().equals(sessionId) && retained.operatorId().equals(actor.operatorId())
+                        && retained.target()==target
                         && ReleaseRecoverySource.from(retained) != null) {
                     requireRecoveryIdentity(retained, session);
                     return retained.view(); // Retain its pinned source even if main moved again.
@@ -158,13 +210,16 @@ public class MobileDeliveryService {
             }
             String selected = recoveryCanonicalMain();
             ReleaseRecoverySource proof = ReleaseRecoverySource.create(integrated, selected);
-            var completed = store.completedRecovery(sessionId, actor.operatorId(), integrated.id(), selected);
+            var completed = target==DeliveryTarget.APP_PROD ? store.completedRecovery(sessionId, actor.operatorId(), integrated.id(), selected)
+                    : store.list(sessionId).stream().filter(op -> "RELEASE".equals(op.kind()) && "SUCCEEDED".equals(op.state())
+                        && op.target()==target && selected.equals(op.sourceCommit()) && actor.operatorId().equals(op.operatorId())
+                        && ReleaseRecoverySource.from(op)!=null && integrated.id().equals(ReleaseRecoverySource.from(op).integrationOperationId())).findFirst();
             if (completed.isPresent()) {
                 requireRecoveryIdentity(completed.get(), session);
                 return completed.get().view();
             }
             requireRecoveryAncestry(session, proof);
-            return store.create(sessionId, actor.operatorId(), "RELEASE", DeliveryTarget.APP_PROD, selected,
+            return store.create(sessionId, actor.operatorId(), "RELEASE", target, selected,
                     "PLANNING", mapper.createObjectNode().set(ReleaseRecoverySource.FIELD, proof.json(mapper))).view();
         }));
     }
@@ -565,6 +620,17 @@ public class MobileDeliveryService {
         catch (GitHubIntegrationException unavailable) { throw new DeliveryRejectedException("GITHUB_UNAVAILABLE"); }
     }
 
+    private void requireCachedAncestry(WorkSessionEntity session, ReleaseRecoverySource proof) {
+        String key=session.getId()+"|"+session.getPullRequestUrl()+"|"+session.getPublishedHeadBranch()+"|"+proof;
+        synchronized (observedAncestry) {
+            long now=Instant.now().getEpochSecond();
+            if (observedAncestry.getOrDefault(key,0L)<=now) {
+                requireRecoveryAncestry(session,proof);
+                if (observedAncestry.size()>=128) observedAncestry.remove(observedAncestry.keySet().iterator().next());
+                observedAncestry.put(key,now+60);
+            }
+        }
+    }
     private void requireRecoveryAncestry(WorkSessionEntity session, ReleaseRecoverySource proof) {
         try {
             github.requireIntegratedChangeInSource(APP, github.extractPullRequestNumber(session.getPullRequestUrl()),

@@ -31,6 +31,21 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class ProjectCodexAttachmentManifestServiceTest {
+    @Test void changeOwnedV4UsesTheSameRetainedImageWithoutLegacySessionIdentity() {
+        var run=imageRun();var session=run.getSession();session.getProject().setId(1L);
+        var change=new com.atenea.persistence.developmentchange.DevelopmentChangeEntity();
+        change.setChangeKey(UUID.randomUUID());change.setProject(session.getProject());change.setSelectedWorkerId("ax42-01");
+        change.setWorkspaceIdentity("remote:ax42-01:change:"+change.getChangeKey());change.setWorkspaceBranch("atenea/change-"+change.getChangeKey());
+        session.setDevelopmentChange(change);session.setWorkspaceIdentity(change.getWorkspaceIdentity());session.setWorkspaceBranch(change.getWorkspaceBranch());
+        session.setAttachmentPolicyRevision(com.atenea.attachments.AttachmentOwnership.CHANGE_POLICY);
+        run.setWorkspaceIdentity(change.getWorkspaceIdentity());run.setDevelopmentChangeKey(change.getChangeKey());
+        run.setWorkloadKind(ProjectCodexIdentity.CHANGE_WORKLOAD_KIND);run.setAttachmentCount(1);run.setAttachmentBytes(1024);
+        var image=image(session,FIRST_ID,"image/png",1024,"a".repeat(64));run.setAttachmentManifestSha256(manifest(image));
+        givenBindings(run,FIRST_ID);when(attachmentRepository.findAllById(any())).thenReturn(List.of(image));
+        assertEquals(FIRST_ID,service.exactReferences(run).getFirst().attachmentId());
+        change.setWorkspaceIdentity("remote:ax42-01:change:"+UUID.randomUUID());
+        assertThrows(RemoteWorkerException.class,() -> service.exactReferences(run));
+    }
 
     private static final UUID FIRST_ID =
             UUID.fromString("4e8f351e-e05a-41b6-99e5-3eb72d770002");

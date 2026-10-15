@@ -31,7 +31,8 @@ public final class NewWorkSessionAttachmentPolicySnapshotter {
             return;
         }
 
-        session.setAttachmentPolicyRevision(project.policyRevision());
+        session.setAttachmentPolicyRevision(AttachmentOwnership.changeOwned(session)
+                ? AttachmentOwnership.CHANGE_POLICY : project.policyRevision());
     }
 
     private boolean hasExactRemoteOwnership(
@@ -43,7 +44,9 @@ public final class NewWorkSessionAttachmentPolicySnapshotter {
                 && project.workerId().equals(session.getSelectedWorkerId())
                 && session.getRemoteSessionId() != null
                 && ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
-                && ("remote:" + project.workerId() + ":work-session:" + session.getRemoteSessionId())
-                        .equals(session.getWorkspaceIdentity());
+                && (AttachmentOwnership.changeOwned(session)
+                    || (session.getDevelopmentChange() == null
+                        && ("remote:" + project.workerId() + ":work-session:" + session.getRemoteSessionId())
+                            .equals(session.getWorkspaceIdentity())));
     }
 }

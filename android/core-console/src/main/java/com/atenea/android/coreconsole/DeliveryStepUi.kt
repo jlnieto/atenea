@@ -21,7 +21,7 @@ internal enum class DeliveryStepStatus(val label: String) {
 }
 
 internal enum class DeliveryStepAction {
-    NONE, CREATE_PR, INTEGRATE, CONFIRM_RELEASE, PREPARE_BACKEND, FINALIZE, RECONCILE_FINALIZE,
+    NONE, CREATE_PR, INTEGRATE, CONFIRM_RELEASE, PREPARE_BACKEND, PREPARE_ANDROID, FINALIZE, RECONCILE_FINALIZE,
     RESOLVE, UPDATE_PR, RETRY_RESOLVER, RECOVER_SOURCE, REFRESH
 }
 
@@ -101,8 +101,16 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
                     " Un backend sano no confirma la entrega de Android o Worker. Consulta esta operación en Otras publicaciones y sus detalles.",
                 DeliveryStepAction.REFRESH, it)
         }
-    if (appDeployed) return DeliveryStepUi(DeliveryStepStatus.ACTION, "Backend PROD: entregado",
-        "El backend está sano y contiene tu cambio. Comprueba el resultado y finaliza el ticket. Android es una publicación separada.",
+    if (integrated && readiness?.requirementsStatus != "CONFIRMED") return DeliveryStepUi(DeliveryStepStatus.CHECKING,
+        "Entregas por confirmar", "Falta confirmar el diff y sus publicaciones. Un backend sano no demuestra una APK publicada.", DeliveryStepAction.REFRESH)
+    if (integrated && readiness?.requiredTargets?.contains(MobileDeliveryTarget.ANDROID_STABLE) == true
+        && readiness?.androidStatus == "UNAVAILABLE") return DeliveryStepUi(DeliveryStepStatus.CHECKING,
+        "APK por confirmar", "No se pudo leer la evidencia del canal Android. Consulta el estado; no se da por publicada.", DeliveryStepAction.REFRESH)
+    if (integrated && readiness?.requiredTargets?.contains(MobileDeliveryTarget.ANDROID_STABLE) == true
+        && readiness?.androidStatus != "INCLUDED") return DeliveryStepUi(DeliveryStepStatus.ACTION,
+        "Publicar Android estable", "Este cambio modifica Android. Falta una APK que lo contenga; preparar no publica. La versión se genera automáticamente.", DeliveryStepAction.PREPARE_ANDROID)
+    if (allRequiredDelivered) return DeliveryStepUi(DeliveryStepStatus.ACTION, "Entregas del cambio: confirmadas",
+        "Las publicaciones que requiere este diff contienen el cambio. Ya puedes finalizar el ticket; instalar la APK en el móvil es una acción separada.",
         if (completionEnabled) DeliveryStepAction.FINALIZE else DeliveryStepAction.NONE)
     if (integrated) {
         if (!canPrepareBackend) return DeliveryStepUi(DeliveryStepStatus.CHECKING, "Despliegue por confirmar",

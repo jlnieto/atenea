@@ -40,6 +40,12 @@ public class AttachmentCapabilityService {
         long currentBytes = Math.max(
                 0L,
                 attachmentRepository.sumSizeBytesByWorkSessionId(workSessionId));
+        if (session.getStatus()==com.atenea.persistence.worksession.WorkSessionStatus.CLOSED) {
+            return blocked(session,currentBytes,AttachmentCapability.BlockedReason.SESSION_NOT_ELIGIBLE,
+                    "La conversación está cerrada. Sus imágenes se conservan como historia.",
+                    "Puedes consultar los adjuntos existentes; no se añaden imágenes nuevas a una conversación cerrada.",
+                    AttachmentCapability.WorkerCompatibility.NOT_CHECKED);
+        }
 
         if (!admissionPolicy.isGlobalCreateBindEnabled()) {
             return blocked(
@@ -76,8 +82,8 @@ public class AttachmentCapabilityService {
                     session,
                     currentBytes,
                     AttachmentCapability.BlockedReason.SESSION_NOT_ELIGIBLE,
-                    "Esta sesión se creó antes de habilitar los adjuntos.",
-                    "Crea una WorkSession nueva de Atenea.",
+                    "Falta habilitar las imágenes en esta conversación.",
+                    "Activa las imágenes sin crear otro Cambio ni otra conversación.",
                     AttachmentCapability.WorkerCompatibility.NOT_CHECKED);
         }
         if (!hasExactRealOwnership(session)) {
@@ -86,7 +92,7 @@ public class AttachmentCapabilityService {
                     currentBytes,
                     AttachmentCapability.BlockedReason.OWNERSHIP_INVALID,
                     "La sesión no tiene ownership canónico completo para adjuntos.",
-                    "Cierra esta sesión y crea una WorkSession nueva y limpia.",
+                    "Consulta Ayuda con este cambio; no recrees la conversación.",
                     AttachmentCapability.WorkerCompatibility.NOT_CHECKED);
         }
         if (currentBytes >= properties.getMaxSessionBytes()) {
@@ -117,7 +123,7 @@ public class AttachmentCapabilityService {
 
         AttachmentWorkerClient.RealProjectCapability realCapability;
         try {
-            realCapability = workerClient.realProjectCapability();
+            realCapability = AttachmentWorkerClient.capabilityFor(workerClient,session);
         } catch (AttachmentWorkerException exception) {
             if (exception.getStatusCode() == 404) {
                 return unsupported(session, currentBytes);
@@ -151,17 +157,7 @@ public class AttachmentCapabilityService {
     }
 
     private boolean hasExactRealOwnership(WorkSessionEntity session) {
-        String expectedWorkspace = "remote:" + RealAttachmentProjectRegistry.ATENEA_WORKER_ID
-                + ":work-session:" + session.getRemoteSessionId();
-        return RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION.equals(
-                    session.getAttachmentPolicyRevision())
-                && ProjectCodexIdentity.matches(session)
-                && session.getExecutionTarget() == ExecutionTarget.REMOTE
-                && RealAttachmentProjectRegistry.ATENEA_WORKER_ID.equals(
-                    session.getSelectedWorkerId())
-                && session.getRemoteSessionId() != null
-                && ProjectCodexIdentity.WORKLOAD_KIND.equals(session.getRemoteWorkloadKind())
-                && Objects.equals(expectedWorkspace, session.getWorkspaceIdentity());
+        return AttachmentOwnership.exact(session);
     }
 
     private boolean compatibleHealth(
@@ -184,7 +180,7 @@ public class AttachmentCapabilityService {
     ) {
         return capability != null
                 && capability.healthy()
-                && AttachmentWorkerClient.REAL_PROJECT_PROTOCOL.equals(
+                && AttachmentWorkerClient.capabilityProtocol(session).equals(
                     capability.protocolVersion())
                 && Objects.equals(session.getSelectedWorkerId(), capability.workerId())
                 && List.of(ProjectCodexIdentity.PROJECT_IDENTITY)

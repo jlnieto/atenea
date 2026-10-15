@@ -118,8 +118,7 @@ public class ProjectCodexAttachmentManifestService {
                 || !RealAttachmentProjectRegistry.ATENEA_WORKER_ID.equals(run.getSelectedWorkerId())
                 || run.getRemoteSessionId() == null
                 || run.getWorkspaceIdentity() == null
-                || !RealAttachmentProjectRegistry.ATENEA_POLICY_REVISION.equals(
-                    run.getSession().getAttachmentPolicyRevision())
+                || !com.atenea.attachments.AttachmentOwnership.exact(run.getSession())
                 || (!ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind())
                     && !("remote:" + run.getSelectedWorkerId() + ":work-session:"
                         + run.getRemoteSessionId()).equals(run.getWorkspaceIdentity()))

@@ -35,7 +35,7 @@ public record ReleaseRecoverySource(String protocol, UUID integrationOperationId
         JsonNode value = operation.evidence().path(FIELD);
         Set<String> fields = new HashSet<>(); value.fieldNames().forEachRemaining(fields::add);
         if (!value.isObject() || !FIELDS.equals(fields) || !PROTOCOL.equals(value.path("protocol").asText())
-                || !"RELEASE".equals(operation.kind()) || operation.target() != DeliveryTarget.APP_PROD
+                || !"RELEASE".equals(operation.kind()) || !Set.of(DeliveryTarget.APP_PROD,DeliveryTarget.ANDROID_STABLE).contains(operation.target())
                 || !sha(value.path("publishedHeadCommit")) || !sha(value.path("integratedMergeCommit"))
                 || !sha(value.path("selectedMainCommit"))
                 || !value.path("selectedMainCommit").asText().equals(operation.sourceCommit())) {

@@ -88,7 +88,8 @@ public class MobileChangeCompletionService {
             UUID inspectionId = UUID.randomUUID();
             var workspace = requireWorkspace(binding, inspectionId);
             ObjectNode evidence = binding.initialEvidence(mapper);
-            evidence.set("deploymentBefore", mapper.valueToTree(deployed));
+            evidence.set("deploymentBefore", mapper.valueToTree(deployed.backend()));
+            evidence.set("requiredDeliveryBefore", mapper.valueToTree(deployed));
             evidence.put("workspacePreflightId", inspectionId.toString());
             evidence.set("workspacePreflight", mapper.valueToTree(workspace));
             DeliveryOperation operation = store.create(sessionId, actor.operatorId(), "FINALIZE", DeliveryTarget.APP_PROD,
@@ -143,7 +144,8 @@ public class MobileChangeCompletionService {
                 store.lockCompletionAdmissionAndRequireIdle(locked.getId());
                 ObjectNode evidence = op.evidence().deepCopy();
                 evidence.set("workspaceInspection", mapper.valueToTree(observed));
-                evidence.set("deploymentBeforeClose", mapper.valueToTree(deployed));
+                evidence.set("deploymentBeforeClose", mapper.valueToTree(deployed.backend()));
+                evidence.set("requiredDeliveryBeforeClose", mapper.valueToTree(deployed));
                 store.update(op, "APPLYING", null, op.planSha256(), evidence);
             });
             // No App transaction spans the cross-host effect. This service
@@ -165,7 +167,7 @@ public class MobileChangeCompletionService {
         }
     }
 
-    private void complete(UUID id, MobileDeliveryService.DeploymentObservation deployed,
+    private void complete(UUID id, ChangeDeliveryReadiness deployed,
             DevelopmentChangeWorkspaceObservation workspaceAfter) {
         DeliveryOperation original = store.get(id, false);
         WorkSessionEntity session = session(original.sessionId(), true);
@@ -192,7 +194,8 @@ public class MobileChangeCompletionService {
         change.setUpdatedAt(Instant.now());
         changes.saveAndFlush(change);
         ObjectNode evidence = op.evidence().deepCopy();
-        evidence.set("deploymentAfter", mapper.valueToTree(deployed));
+        evidence.set("deploymentAfter", mapper.valueToTree(deployed.backend()));
+        evidence.set("requiredDeliveryAfter", mapper.valueToTree(deployed));
         evidence.set("workspaceInspectionAfter", mapper.valueToTree(workspaceAfter));
         evidence.put("remoteCloseOperationId", session.getRemoteCloseOperationId().toString());
         evidence.put("remoteCloseReceiptSha256", session.getRemoteCloseReceiptSha256());
@@ -242,25 +245,24 @@ public class MobileChangeCompletionService {
         }
         return observed;
     }
-    private MobileDeliveryService.DeploymentObservation requireDeployment(Long id, AuthenticatedOperator actor, ChangeCompletionEvidence binding) {
-        var result = delivery.observeDeployment(id, actor);
+    private ChangeDeliveryReadiness requireDeployment(Long id, AuthenticatedOperator actor, ChangeCompletionEvidence binding) {
+        var result = delivery.observeDelivery(id, actor);
         requireDeploymentProof(result, id, binding);
         return result;
     }
-    private void requireDeploymentProof(MobileDeliveryService.DeploymentObservation result, Long id, ChangeCompletionEvidence binding) {
+    private void requireDeploymentProof(ChangeDeliveryReadiness result, Long id, ChangeCompletionEvidence binding) {
         // Keep the symbolic cause instead of turning a concurrent read into a
         // definitive unhealthy deployment. Only BUSY is retried automatically.
-        if (result != null && id.equals(result.sessionId()) && "UNAVAILABLE".equals(result.status())
-                && !result.healthy() && result.errorCode() != null
+        if (result != null && id.equals(result.sessionId()) && ("UNAVAILABLE".equals(result.requirementsStatus())
+                    || result.backend()!=null && "UNAVAILABLE".equals(result.backend().status()))
+                && result.errorCode() != null
                 && result.errorCode().matches("[A-Z][A-Z0-9_]{2,79}")) {
             throw new DeliveryRejectedException(result.errorCode());
         }
-        long now = Instant.now().getEpochSecond();
-        if (result == null || !id.equals(result.sessionId()) || !"DEPLOYED".equals(result.status()) || !result.healthy()
-                || !binding.integratedMergeCommit().equals(result.integratedMergeCommit()) || result.observedAt() == null
-                || result.observedAt() > now + 5 || result.observedAt() < now - 60 || result.planId() == null
-                || result.operationId() == null || result.receiptSha256() == null || !result.receiptSha256().matches("[0-9a-f]{64}")) {
-            throw new DeliveryRejectedException("HEALTHY_DELIVERED_CHANGE_REQUIRED");
+        if (result == null || !ChangeDeliveryReadiness.verifiedForClose(mapper.valueToTree(result),id,
+                binding.publishedHeadCommit(),binding.integratedMergeCommit())) {
+            throw new DeliveryRejectedException(result != null && result.requiredTargets().contains(DeliveryTarget.ANDROID_STABLE)
+                    && !"INCLUDED".equals(result.androidStatus()) ? "ANDROID_DELIVERY_REQUIRED" : "HEALTHY_DELIVERED_CHANGE_REQUIRED");
         }
     }
     private void owned(WorkSessionEntity session) {

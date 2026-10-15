@@ -14,6 +14,20 @@ if [[ ! -f "$SOURCE_APK" ]]; then
   exit 1
 fi
 
+# Read build output before any publication effects; defaults in source are not evidence.
+read -r VERSION_CODE VERSION_NAME < <(python3 "$SCRIPT_DIR/android_artifact_version.py" debug)
+
+# A local default must never overwrite a newer CI stable publication.
+if [[ -f /srv/atenea/apk-public-secret/android/manifest.json ]]; then
+  python3 - "$VERSION_CODE" <<'PY'
+import json,sys
+with open('/srv/atenea/apk-public-secret/android/manifest.json',encoding='utf-8') as stream:
+    current=json.load(stream)['versionCode']
+if type(current) is not int or int(sys.argv[1])<=current:
+    raise SystemExit('ANDROID_VERSION_MUST_ADVANCE; use the managed immutable publication flow')
+PY
+fi
+
 install -d -m 755 "$PUBLIC_TARGET_DIR"
 install -m 644 "$SOURCE_APK" "$PUBLIC_TARGET_APK"
 
@@ -29,8 +43,6 @@ if [[ -n "${ATENEA_APK_DOWNLOAD_TOKEN:-}" ]]; then
   RELEASES_DIR="${SECRET_TARGET_DIR}/releases"
   APK_SHA256="$(sha256sum "$SOURCE_APK" | awk '{print $1}')"
   APK_SIZE_BYTES="$(stat -c '%s' "$SOURCE_APK")"
-  VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' "${REPO_DIR}/android/app/build.gradle.kts" | head -1)"
-  VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' "${REPO_DIR}/android/app/build.gradle.kts" | head -1)"
   APK_URL="https://atenea.yudri.es/apk/${ATENEA_APK_DOWNLOAD_TOKEN}/android/atenea-debug.apk"
   RELEASE_TARGET_DIR="${RELEASES_DIR}/${VERSION_CODE}"
   RELEASE_TARGET_APK="${RELEASE_TARGET_DIR}/atenea-debug.apk"

@@ -11,7 +11,29 @@ public final class ChangeHelpGuide {
     private ChangeHelpGuide() { }
     public static ChangeHelpResponse explain(ChangeHelpContext c, String question, boolean simple) {
         String stage, answer, shortAnswer, label, reason, destination = "CHANGE";
-        if ("COMPLETED".equals(c.changeStatus()) && "CLOSED".equals(c.sessionStatus())) {
+        String normalized = Normalizer.normalize(question == null ? "" : question, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+        var readiness=c.deliveryReadiness();
+        boolean apkQuestion=normalized.matches("(?s).*(apk|android|version|menu|actualiza|publicaciones).*" );
+        if (apkQuestion && readiness!=null && readiness.android()!=null) {
+            var apk=readiness.android();
+            stage="ANDROID_CHANNEL";
+            answer="La APK realmente publicada es "+apk.versionName()+" / "+apk.versionCode()+", fuente "+apk.sourceCommit().substring(0,12)+". "
+                    + switch (readiness.androidStatus()) {
+                        case "INCLUDED" -> "Atenea ha comprobado que contiene este cambio integrado. ";
+                        case "NOT_INCLUDED" -> "Esa APK todavía no contiene este cambio; desplegar el backend no publica Android. ";
+                        default -> "Esta consulta no confirma que esa APK contenga el cambio de esta conversación. ";
+                    };
+            boolean update=c.reportedInstalledVersionCode()!=null && c.reportedInstalledVersionCode()<apk.versionCode();
+            if (update) answer+="Este móvil informa una versión anterior. Actualiza Atenea desde el botón de abajo. ";
+            else if (c.reportedInstalledVersionCode()!=null && c.reportedInstalledVersionCode()==apk.versionCode()) answer+="La versión informada por este móvil coincide con el canal. ";
+            else answer+="La versión instalada no se ha confirmado en esta petición. Puedes comprobarla en Actualizaciones. ";
+            answer+="Puedes consultar publicaciones e historial incluso con la conversación cerrada o sin validar una pregunta de diagnóstico. No necesitas crear otro cambio.";
+            shortAnswer=answer;
+            destination=update ? "APP_UPDATES" : "DELIVERY";
+            label=update ? "Actualizar Atenea" : "Ver publicaciones";
+            reason="Abre una pantalla disponible; no publica ni envía un prompt.";
+        } else if ("COMPLETED".equals(c.changeStatus()) && "CLOSED".equals(c.sessionStatus())) {
             stage="COMPLETED"; answer="Este cambio está completado y su conversación se conserva como historia. Una petición nueva debe ir en un nuevo cambio.";
             shortAnswer="Este trabajo ya está terminado. Puedes consultar su historia.";
             destination="CHAT"; label="Ver conversación"; reason="Consultar no reabre ni recrea el cambio.";
@@ -109,7 +131,22 @@ public final class ChangeHelpGuide {
                 answer="La preparación de " + c.deliveryTargetLabel() + " caducó sin publicar. Puedes preparar de nuevo desde Cambio; Atenea volverá a comprobar la versión y sus permisos. Que el backend esté desplegado no publica este destino.";
                 shortAnswer="El plan de " + c.deliveryTargetLabel() + " caducó. Prepara de nuevo y comprueba el resultado.";
             }
-        } else if ("DEPLOYED".equals(c.deploymentStatus()) && !"ROLLBACK_FAILED".equals(c.deliveryState())) {
+        } else if (readiness!=null && "CONFIRMED".equals(readiness.requirementsStatus()) && readiness.ready()) {
+            stage="COMPLETION_READY";
+            answer="Atenea ha confirmado todas las publicaciones que requiere el diff de este cambio. Ya puedes comprobar el resultado y utilizar Finalizar cambio. Si se ha publicado Android, instalar esa actualización en el móvil es una acción separada.";
+            shortAnswer="Las entregas requeridas están confirmadas. Comprueba el resultado y finaliza el cambio.";
+            destination="DELIVERY"; label="Ir a Finalizar cambio"; reason="El cierre vuelve a comprobar las entregas y conserva el historial.";
+        } else if (readiness!=null && "CONFIRMED".equals(readiness.requirementsStatus())
+                && readiness.requiredTargets().contains(com.atenea.delivery.DeliveryTarget.ANDROID_STABLE)
+                && !"INCLUDED".equals(readiness.androidStatus())) {
+            stage="ANDROID_PUBLICATION_REQUIRED";
+            answer="El diff de este cambio modifica Android, pero no hay una APK del canal que Atenea haya confirmado que lo contenga. Un backend desplegado no basta. Abre Publicaciones y utiliza Preparar Android estable; después confirma esa misma operación. La versión se genera automáticamente en el build estable.";
+            shortAnswer="Falta publicar Android. Abre Publicaciones y prepara Android estable; no crees otro cambio.";
+            destination="DELIVERY"; label="Ver publicación Android"; reason="Preparar y confirmar son acciones distintas; esta ayuda no las ejecuta.";
+        } else if (readiness!=null && "UNAVAILABLE".equals(readiness.requirementsStatus()) && "MERGED".equals(c.pullRequestState())) {
+            stage="DELIVERY_ATTENTION"; answer="Falta confirmar el diff o sus publicaciones. No voy a afirmar que el ticket esté entregado sólo porque PROD esté sano. Abre Publicaciones y consulta el estado.";
+            shortAnswer="Falta confirmar las publicaciones requeridas."; destination="DELIVERY"; label="Consultar publicaciones"; reason="No inicia ni repite una publicación.";
+        } else if (readiness==null && "DEPLOYED".equals(c.deploymentStatus()) && !"ROLLBACK_FAILED".equals(c.deliveryState())) {
             stage="COMPLETION_READY";
             answer="Atenea confirma que Backend PROD está sano y contiene este cambio. No hay un despliegue pendiente. Comprueba el resultado funcional; si el cambio incluye Android, publicar e instalar su APK es un paso separado en Otras publicaciones. Después utiliza Finalizar cambio. Finalizar no vuelve a desplegar y conserva la conversación.";
             shortAnswer="El backend ya contiene el cambio y está sano. Comprueba el resultado y, cuando esté aceptado, utiliza Finalizar cambio.";
@@ -144,8 +181,6 @@ public final class ChangeHelpGuide {
             shortAnswer="Continúa este mismo cambio en su conversación.";
             destination="CHAT"; label="Volver a la conversación"; reason="No se envía un prompt automáticamente.";
         }
-        String normalized = Normalizer.normalize(question == null ? "" : question, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
         if (normalized.contains("integrar") && normalized.contains("public")) {
             answer = "Validar comprueba el código; la PR permite revisarlo; integrar lo incorpora a main; publicar lo lleva al backend, al worker o a Android. Son pasos distintos. " + answer;
         }

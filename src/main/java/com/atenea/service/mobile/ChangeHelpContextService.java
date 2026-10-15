@@ -81,7 +81,8 @@ public class ChangeHelpContextService {
         var delivery = ownedDeliveries.stream().filter(d -> belongsToRevision(d, session.getFinalCommitSha(), ownedDeliveries))
                 .findFirst().orElse(null);
         String deploymentStatus = "NOT_CONFIRMED";
-        if ("MERGED".equals(name(session.getPullRequestStatus())) && releaseControl.enabled()
+        boolean deliveryEnabled=releaseControl.enabled();
+        if ("MERGED".equals(name(session.getPullRequestStatus())) && deliveryEnabled
                 && "PLATFORM_ADMINISTRATOR".equals(name(operator.getCodexOperationsRole()))) {
             // Same read-only, ownership-checked observation used by the Cambio screen.
             // No plan, grant, reconciliation or publication is requested by help.
@@ -93,6 +94,15 @@ public class ChangeHelpContextService {
             }
         }
         String response = run == null || run.getResultTurn() == null ? "" : run.getResultTurn().getMessageText();
+        com.atenea.delivery.ChangeDeliveryReadiness readiness=null;
+        if (Long.valueOf(1).equals(session.getProject().getId()) && deliveryEnabled
+                && "PLATFORM_ADMINISTRATOR".equals(name(operator.getCodexOperationsRole()))) {
+            try { readiness=deliveryObservations.observeDelivery(id,actor); }
+            catch (RuntimeException unavailable) {
+                readiness=new com.atenea.delivery.ChangeDeliveryReadiness(id,"UNAVAILABLE",session.getFinalCommitSha(),null,
+                        java.util.List.of(),false,null,null,"UNAVAILABLE","DELIVERY_OBSERVATION_UNAVAILABLE",Instant.now().getEpochSecond());
+            }
+        }
         boolean gitInstructions = response != null && response.contains("github/main")
                 && response.toLowerCase(Locale.ROOT).contains("origin");
         return new ChangeHelpContext(id, session.getProject().getId(), change.getChangeKey(), change.getSourceRevision(),
@@ -108,12 +118,22 @@ public class ChangeHelpContextService {
                 failed == null ? null : name(failed.getOperation()), failed == null ? null : safeText(failed.getSummary()),
                 delivery == null ? null : delivery.kind(), delivery == null ? null : delivery.state(),
                 delivery == null ? null : safeCode(delivery.errorCode()),
-                name(operator.getCodexOperationsRole()), releaseControl.enabled(),
+                name(operator.getCodexOperationsRole()), deliveryEnabled,
                 run != null && run.getStatus() == AgentRunStatus.FAILED ? safeText(run.getErrorSummary()) : null,
                 delivery == null ? null : name(delivery.target()),
                 delivery == null || !delivery.evidence().path("expiresAt").isIntegralNumber() ? null
                         : delivery.evidence().path("expiresAt").asLong(), deploymentStatus,
-                delivery != null && delivery.planSha256() != null && delivery.planSha256().matches("[0-9a-f]{64}"));
+                delivery != null && delivery.planSha256() != null && delivery.planSha256().matches("[0-9a-f]{64}"),
+                readiness, reportedVersion());
+    }
+
+    private static Integer reportedVersion() {
+        var attributes=org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        if (!(attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet)) return null;
+        String code=servlet.getRequest().getHeader("X-Atenea-App-Version-Code");
+        if (code==null || !code.matches("[1-9][0-9]{0,9}")) return null;
+        try { int value=Integer.parseInt(code); return value>0 ? value : null; }
+        catch (NumberFormatException invalid) { return null; }
     }
 
     private static boolean belongsToRevision(DeliveryOperation operation, String head,

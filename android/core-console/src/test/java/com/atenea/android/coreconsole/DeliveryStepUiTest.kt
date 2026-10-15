@@ -31,7 +31,9 @@ class DeliveryStepUiTest {
     private fun state(value: MobileDeliveryState, check: (MobileDeliveryUiState) -> Unit) = runBlocking {
         val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
         try {
-            val state = MobileDeliveryUiState(22, scope) { value }
+            val readiness=value.readiness ?: com.atenea.android.api.MobileChangeDeliveryReadiness(22,"CONFIRMED","1".repeat(40),"2".repeat(40),
+                listOf(MobileDeliveryTarget.APP_PROD),value.deployment?.status=="DEPLOYED" && value.deployment?.healthy==true,null,"UNAVAILABLE",now)
+            val state = MobileDeliveryUiState(22, scope) { value.copy(readiness=readiness) }
             state.refresh(); check(state)
         } finally { scope.cancel() }
     }

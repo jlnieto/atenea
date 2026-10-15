@@ -43,6 +43,10 @@ if [[ "$GRADLE_TASK" == :app:assemble* || "$GRADLE_TASK" == :app:bundle* ]]; the
 fi
 
 EXTRA_GRADLE_ARGS=()
+if [[ -n "${ATENEA_STABLE_BUILD_NUMBER:-}" ]]; then
+  [[ "$ATENEA_STABLE_BUILD_NUMBER" =~ ^[1-9][0-9]{0,8}$ ]] || { echo 'Invalid stable CI build number' >&2; exit 2; }
+  EXTRA_GRADLE_ARGS+=("-PATENEA_STABLE_BUILD_NUMBER=$ATENEA_STABLE_BUILD_NUMBER")
+fi
 if [[ -n "${ATENEA_APK_DOWNLOAD_TOKEN:-}" && -z "${ATENEA_ANDROID_UPDATE_MANIFEST_URL:-}" ]]; then
   ATENEA_ANDROID_UPDATE_MANIFEST_URL="https://atenea.yudri.es/apk/${ATENEA_APK_DOWNLOAD_TOKEN}/android/manifest.json"
 fi

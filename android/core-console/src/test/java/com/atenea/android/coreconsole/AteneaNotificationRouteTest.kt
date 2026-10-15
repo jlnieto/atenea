@@ -2,8 +2,14 @@ package com.atenea.android.coreconsole
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class AteneaNotificationRouteTest {
+    @Test fun globalNewsIsNeverConvertedToAnInventedConversation() {
+        assertFailsWith<IllegalArgumentException> {
+            AteneaNotificationRoute(null,"notice",AteneaNotificationDestination.UPDATES).toConversationNavigation()
+        }
+    }
     @Test
     fun mapsOnlyTheValidatedSessionAndRequestIdentityToConversationNavigation() {
         val route = AteneaNotificationRoute(

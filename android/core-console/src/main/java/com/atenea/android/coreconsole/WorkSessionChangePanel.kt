@@ -57,6 +57,7 @@ internal fun WorkSessionChangePanel(
                     enabled = validation.canStart, onClick = onValidate)
             }
         }
+        if (!validation.current && !completed && !deliveryBeforeValidation) deliveryContent()
         TextButton(onClick = { showValidationDetails = !showValidationDetails }) {
             Text(if (showValidationDetails) "Ocultar pruebas y detalles" else "Ver pruebas y detalles")
         }

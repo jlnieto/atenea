@@ -23,6 +23,20 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
 class MobileChangeCompletionServiceTest {
+    @Test void pendingAndroidCannotCloseTheSameTicketButPublishedApkUnlocksCompletion() {
+        var pending=new ChangeDeliveryReadiness(21L,"CONFIRMED",session.getFinalCommitSha(),"4".repeat(40),
+                List.of(DeliveryTarget.APP_PROD,DeliveryTarget.ANDROID_STABLE),false,deployed,null,"NOT_INCLUDED",null,Instant.now().getEpochSecond());
+        when(delivery.observeDelivery(eq(21L),any())).thenReturn(pending);
+        assertEquals("ANDROID_DELIVERY_REQUIRED",assertThrows(DeliveryRejectedException.class,() -> service.request(21L,actor,false)).code());
+        assertEquals(WorkSessionStatus.OPEN,session.getStatus());assertNull(durable.get());verifyNoInteractions(close);
+        var apk=new ReleaseControlClient.AndroidObservation("8".repeat(40),"0.6.12",1000012,"a".repeat(64),"b".repeat(64),
+                Instant.now().getEpochSecond(),UUID.randomUUID(),UUID.randomUUID(),"c".repeat(64));
+        when(delivery.observeDelivery(eq(21L),any())).thenReturn(new ChangeDeliveryReadiness(21L,"CONFIRMED",session.getFinalCommitSha(),"4".repeat(40),
+                pending.requiredTargets(),true,deployed,apk,"INCLUDED",null,Instant.now().getEpochSecond()));
+        service.request(21L,actor,false);service.advance(id);
+        assertEquals("SUCCEEDED",durable.get().state());assertEquals(WorkSessionStatus.CLOSED,session.getStatus());
+        assertEquals(1000012,durable.get().evidence().path("requiredDeliveryAfter").path("android").path("versionCode").asInt());
+    }
     private final ObjectMapper mapper = new ObjectMapper();
     private final DeliveryStore store = mock(DeliveryStore.class);
     private final WorkSessionRepository sessions = mock(WorkSessionRepository.class);
@@ -95,6 +109,8 @@ class MobileChangeCompletionServiceTest {
         deployed=new MobileDeliveryService.DeploymentObservation(21L,"DEPLOYED","OPERATOR","8".repeat(40),"4".repeat(40),
                 true,Instant.now().getEpochSecond(),UUID.randomUUID(),UUID.randomUUID(),"9".repeat(64),null);
         when(delivery.observeDeployment(eq(21L),any())).thenReturn(deployed);
+        when(delivery.observeDelivery(eq(21L),any())).thenAnswer(call ->
+                DeliveryReadinessFixture.backend(delivery.observeDeployment(21L,actor),session.getFinalCommitSha()));
         when(workspaces.execute(any())).thenReturn(clean());
         when(close.closeSession(21L)).thenAnswer(call -> { release(); return null; });
         service=new MobileChangeCompletionService(store,sessions,changes,operators,ownership,delivery,workspaces,close,properties,mapper,manager);
@@ -279,6 +295,7 @@ class MobileChangeCompletionServiceTest {
         var github=mock(com.atenea.github.GitHubClient.class);
         when(executor.enabled()).thenReturn(true);
         when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(47L);
+        when(github.changedFiles(any(),eq(47L),anyString(),anyString())).thenReturn(List.of("src/main/java/Example.java"));
         var realDelivery=new MobileDeliveryService(store,sessions,mock(AgentRunRepository.class),operators,ownership,
                 mock(WorkSessionGitHubService.class),new WorkSessionAcceptanceService(sessions),github,executor,
                 mock(com.atenea.auth.recovery.OperatorRecoveryService.class),

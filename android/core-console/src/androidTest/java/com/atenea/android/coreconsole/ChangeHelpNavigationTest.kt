@@ -25,6 +25,21 @@ import java.util.UUID
 class ChangeHelpNavigationTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun helpOpensRealAndroidUpdatesWithoutSendingOrValidatingADiagnosticQuestion() {
+        var updates=0;var sends=0
+        compose.setContent {
+            ConversationSurface(title="Cambio actual",status="OPEN",turns=emptyList(),input="Mi borrador",pending=false,
+                placeholder="Prompt",onInputChange={},onSend={sends++},onBack={},onRefresh={},error=null,
+                onOpenUpdates={updates++},helpContent={ navigate ->
+                    AteneaButton("Comprobar actualización",onClick={navigate(ChangeHelpDestination.APP_UPDATES)})
+                })
+        }
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
+        compose.onNodeWithText("Ayuda con este cambio").performClick()
+        compose.onNodeWithText("Comprobar actualización").performClick()
+        assertEquals(1,updates);assertEquals(0,sends)
+    }
+
     @Test fun changeAttentionAndHelpLiveOnlyInConversationMenu() {
         compose.setContent {
             ConversationSurface(title = "Sesión actual", status = "Validación bloqueada", turns = emptyList(),

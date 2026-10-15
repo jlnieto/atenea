@@ -421,6 +421,7 @@ class WorkSessionAttachmentServiceTest {
     @Test
     void retrievesRealContentThroughLegacyV1RouteUsingRemoteSessionUuid() {
         WorkSessionEntity session = exactRealSession(12L, 7L);
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
         WorkSessionAttachmentEntity metadata = attachment(session);
         metadata.setStorageScope(AttachmentStorageScope.REAL_SESSION);
         metadata.setRemoteSessionId(session.getRemoteSessionId());
@@ -439,6 +440,7 @@ class WorkSessionAttachmentServiceTest {
     @Test
     void rejectsAmbiguousStoredScopeBeforeV1Retrieval() {
         WorkSessionEntity session = exactRealSession(12L, 7L);
+        when(workSessionRepository.findWithProjectById(12L)).thenReturn(Optional.of(session));
         WorkSessionAttachmentEntity metadata = attachment(session);
         metadata.setStorageScope(AttachmentStorageScope.REAL_SESSION);
         metadata.setRemoteSessionId(session.getRemoteSessionId());
