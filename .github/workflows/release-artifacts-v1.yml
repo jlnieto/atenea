@@ -45,7 +45,6 @@ jobs:
           persist-credentials: false
       - name: Build unsigned stable APK (no production or signing credentials)
         env:
-          ATENEA_STABLE_BUILD_NUMBER: ${{ github.run_number }}
           ATENEA_ANDROID_UPDATE_MANIFEST_URL: ${{ secrets.ATENEA_ANDROID_UPDATE_MANIFEST_URL }}
           ATENEA_FIREBASE_API_KEY: ${{ vars.ATENEA_FIREBASE_API_KEY }}
           ATENEA_FIREBASE_PROJECT_ID: ${{ vars.ATENEA_FIREBASE_PROJECT_ID }}
