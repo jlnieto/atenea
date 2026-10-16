@@ -228,6 +228,7 @@ internal fun ConversationSurface(
                         if (destination == ChangeHelpDestination.APP_UPDATES) onOpenUpdates()
                         pane = when (destination) {
                             ChangeHelpDestination.CHANGE -> ConversationPane.CHANGE
+                            ChangeHelpDestination.VALIDATION_RECOVERY -> ConversationPane.HELP
                             ChangeHelpDestination.DELIVERY -> ConversationPane.CHANGE
                             ChangeHelpDestination.APP_UPDATES -> ConversationPane.HELP
                             ChangeHelpDestination.ACTIVITY -> ConversationPane.ACTIVITY

@@ -67,9 +67,15 @@ public final class ChangeHelpGuide {
             shortAnswer="La tarea necesita atención. Revisa su error antes de hacer otro intento.";
             destination="ACTIVITY"; label="Ver tarea y recuperación"; reason="El detalle decide si existe un reintento autorizado.";
         } else if (c.failedCheck() != null) {
-            stage="VALIDATION_ATTENTION"; answer="Hay un resultado de validación fallido o bloqueado para esta revisión. La causa guardada aparece debajo. No se puede crear o integrar la PR hasta completar las comprobaciones. Si falla el código, corrígelo en esta conversación; si falla la infraestructura, no lo presentes como un fallo del código.";
-            shortAnswer="Una comprobación necesita atención. Mira su resultado; el cambio está conservado.";
-            label="Ver resultado de validación"; reason="Consultar no ejecuta ni reintenta pruebas.";
+            boolean manifest=c.validationFailure()!=null && c.validationFailure().startsWith("[UNSUPPORTED_DEPENDENCY_MANIFEST]");
+            stage=manifest?"VALIDATION_ENVIRONMENT_ATTENTION":"VALIDATION_ATTENTION";
+            answer=manifest
+                    ? "Android no pudo empezar: su configuración de construcción no coincide con la autorizada por el validador. No demuestra un fallo de tu funcionalidad. Atenea está detenida; esperar o repetir Validar cambio no lo resolverá. Abre Recuperar validación: si reconoce una reparación exacta, podrás prepararla y confirmar su aplicación. Si no, podrás encargar la investigación desde este mismo cambio. Tu código y conversación se conservan."
+                    : "Una comprobación de esta revisión necesita atención. Atenea está detenida, no trabajando. La causa guardada aparece debajo. Puedes investigar y encargar la corrección desde el mismo cambio; no dupliques el prompt funcional ni crees otra sesión. La investigación no ejecuta pruebas ni publica por sí sola.";
+            shortAnswer=manifest?"No ha fallado tu funcionalidad: el validador no reconoce la configuración Android. Abre Recuperar validación; no repitas las pruebas."
+                    :"Una comprobación necesita atención. Abre Recuperar validación para investigar el bloqueo sin perder tu cambio.";
+            destination="VALIDATION_RECOVERY";label="Recuperar validación";
+            reason="Consultar no modifica nada. Preparar, aplicar o encargar una investigación requieren una acción explícita.";
         } else if ("CURRENT".equals(c.validationState()) && c.passedChecks()!=c.requiredChecks()) {
             stage="VALIDATION_EVIDENCE_MISSING"; answer="El estado dice validado, pero esta consulta no encuentra todas las comprobaciones vigentes de la misma revisión. No se puede afirmar que las pruebas hayan pasado. Consulta el resultado guardado antes de integrar o publicar.";
             shortAnswer="Falta confirmar la evidencia de las pruebas de esta revisión.";
@@ -140,7 +146,7 @@ public final class ChangeHelpGuide {
                 && readiness.requiredTargets().contains(com.atenea.delivery.DeliveryTarget.ANDROID_STABLE)
                 && !"INCLUDED".equals(readiness.androidStatus())) {
             stage="ANDROID_PUBLICATION_REQUIRED";
-            answer="El diff de este cambio modifica Android, pero no hay una APK del canal que Atenea haya confirmado que lo contenga. Un backend desplegado no basta. Abre Publicaciones y utiliza Preparar Android estable; después confirma esa misma operación. La versión se genera automáticamente en el build estable.";
+            answer="El diff de este cambio modifica Android, pero no hay una APK del canal que Atenea haya confirmado que lo contenga. Un backend desplegado no basta. Abre Publicaciones y utiliza Preparar Android estable; después confirma esa misma operación. La versión declarada en el código debe superar la del canal; Atenea lo comprueba antes de publicar.";
             shortAnswer="Falta publicar Android. Abre Publicaciones y prepara Android estable; no crees otro cambio.";
             destination="DELIVERY"; label="Ver publicación Android"; reason="Preparar y confirmar son acciones distintas; esta ayuda no las ejecuta.";
         } else if (readiness!=null && "UNAVAILABLE".equals(readiness.requirementsStatus()) && "MERGED".equals(c.pullRequestState())) {

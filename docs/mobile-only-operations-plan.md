@@ -12,6 +12,56 @@ su prueba de aceptación con el dispositivo real.
 
 ## Estado actual y siguiente paso
 
+Actualización 2026-10-16: WS21/PR47 y el ticket original Apache ya se completaron;
+las unidades descritas más abajo son el registro histórico de esa entrega, no
+una orden de recrear o reintentar WS21. El modelo actual es sólo Cambio con su
+WorkSession vinculada, App PROD único y sin canary ni App DEV permanente.
+
+Trabajo activo: recuperación móvil de la validación del cambio
+`f0720132-6299-449f-a161-1a6a6f9f3a9b`, WorkSession 26. Se conserva su borrador
+y la evidencia del error `UNSUPPORTED_DEPENDENCY_MANIFEST`: Android no llegó a
+compilar; no era un test funcional fallido. Su base heredó un cálculo de versión
+en Gradle incompatible con la política cerrada del worker.
+
+Implementación en revisión (aún no desplegada):
+
+- App y Platform comparten un contrato **de datos**, no implementación. CI
+  comprueba los diez inputs Android y rechaza autoridades de build adicionales.
+  El artefacto inmutable vincula su política; el publicador comprueba el hash
+  instalado de AX42 antes de staging y de publicación.
+- Ayuda dirige a Recuperar validación. Consultar no escribe ni reintenta.
+  Preparar crea una intención durable; Aplicar exige confirmación independiente.
+  La única receta revisada sustituye el bloque exacto de versión heredado por
+  literales explícitos conservando 0.5.123/156 en aquel borrador. Comprueba hashes,
+  los diez inputs y ownership; no acepta rutas, versiones ni comandos del móvil.
+  Conserva los demás archivos, HEAD, índice, rama y WorkSession. Al aplicar,
+  registra revisión nueva; las pruebas antiguas quedan como historial, no PASS.
+- Ante otro fallo de validación se ofrece Investigar este bloqueo: un único
+  AgentRun explícito en la **misma conversación**, con código y resumen durable.
+  Puede diagnosticar/corregir código del repositorio autorizado; no recibe root,
+  secretos ni acceso libre a Platform. Si el problema necesita otra capacidad
+  administrativa, debe identificar ese límite, sin inventar una reparación.
+- Rescate independiente: enlace fijo desde login, Ajustes y error de ayuda,
+  accesible también como favorito del navegador. Tailscale restringe la identidad
+  humana; el publicador sirve estado y reinicio confirmado de la misma App,
+  manteniendo datos/versión y exigiendo cero trabajo activo. No habilita consola,
+  restores, comandos libres ni reintentos de efectos inciertos. Requiere bootstrap
+  root inicial del VPS y aceptación desde el Samsung.
+
+La migración V99 almacena intención/evidencias/resultado y exclusión de trabajo
+concurrente. Los efectos parciales se recuperan por la misma operación o quedan
+en atención; nunca se reparan a mano los recibos. No crear otro Cambio para
+ocultar el bloqueo.
+
+Pendiente: revisión, validación postcommit UFD, integración, instalación del
+publicador/rescate por operador VPS, rollout worker → App V99 → APK 0.5.124/157,
+reparación normal del mismo cambio y aceptación Samsung. No se declara operación
+100% autónoma: quedan por completar el desarrollo multirrepo Platform desde el
+móvil y el acceso al proveedor ante pérdida de host/red. Esa frontera no se
+resuelve concediendo root a Codex.
+
+### Registro histórico de la entrega de conflictos (octubre 2026)
+
 Entrega activa: 1, resolución de conflictos desde la WorkSession.
 
 Caso de aceptación: el ticket de monitorización de Apache, WorkSession 21 y
