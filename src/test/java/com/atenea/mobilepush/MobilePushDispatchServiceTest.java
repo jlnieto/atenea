@@ -188,6 +188,22 @@ class MobilePushDispatchServiceTest {
         verify(mobilePushNotificationLogRepository, never()).existsByEventKey(any());
     }
 
+    @Test
+    void unverifiedRemoteCheckUsesAnAccuratePushTitle() {
+        OperatorPushDeviceEntity device = buildDevice();
+        when(operatorPushDeviceRepository.findByActiveTrueOrderByUpdatedAtDesc()).thenReturn(List.of(device));
+
+        mobilePushDispatchService.notifyOperationsVerificationFailure(
+                3L, "dedicado-principal", List.of("No se pudo comprobar Apache por SSH (código 255)."));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<FcmPushSender.FcmPushMessage>> messagesCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(fcmPushSender).send(messagesCaptor.capture());
+        assertEquals("No se pudo verificar dedicado-principal",
+                messagesCaptor.getValue().getFirst().title());
+    }
+
     private static WorkSessionEntity buildSession(Long id, String projectName, String title) {
         ProjectEntity project = new ProjectEntity();
         project.setId(7L);

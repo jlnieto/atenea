@@ -11,23 +11,20 @@ internal data class HealthOverview(
 ) {
     val snapshot: ShellHealthSnapshot
         get() {
-            if (errors.isNotEmpty()) {
-                return ShellHealthSnapshot(
-                    level = OperationalLevel.CRITICAL,
-                    totalHosts = hosts.size,
-                    issueCount = errors.size + hosts.sumOf { it.unhealthyWebsites + it.openIncidents.size }
-                )
-            }
-            if (hosts.isEmpty()) {
+            if (hosts.isEmpty() && incidents.isEmpty() && errors.isEmpty()) {
                 return ShellHealthSnapshot(OperationalLevel.UNKNOWN, totalHosts = 0, issueCount = 0)
             }
-            val issueCount = hosts.sumOf { it.unhealthyWebsites + it.openIncidents.size } + incidents.size
-            val warningCount = hosts.count {
+            val issueCount = errors.size + hosts.sumOf { it.unhealthyWebsites } +
+                maxOf(incidents.size, hosts.sumOf { it.openIncidents.size })
+            val critical = hosts.any { host ->
+                host.downWebsites > 0 || host.openIncidents.any { it.severity == "CRITICAL" }
+            } || incidents.any { it.severity == "CRITICAL" }
+            val warning = issueCount > 0 || hosts.any {
                 it.websiteChecks.isEmpty() || it.hostStatusRun?.status == "FAILED"
             }
             val level = when {
-                issueCount > 0 -> OperationalLevel.CRITICAL
-                warningCount > 0 -> OperationalLevel.WARNING
+                critical -> OperationalLevel.CRITICAL
+                warning -> OperationalLevel.WARNING
                 else -> OperationalLevel.OK
             }
             return ShellHealthSnapshot(level = level, totalHosts = hosts.size, issueCount = issueCount)

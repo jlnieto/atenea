@@ -145,11 +145,19 @@ public class MobilePushDispatchService {
     }
 
     public void notifyOperationsDegradation(Long hostId, String hostName, List<String> errors) {
+        sendOperationsPush(hostId, "Degradación detectada en " + hostName, errors, "OPERATIONS_DEGRADATION");
+    }
+
+    public void notifyOperationsVerificationFailure(Long hostId, String hostName, List<String> errors) {
+        sendOperationsPush(hostId, "No se pudo verificar " + hostName,
+                errors, "OPERATIONS_VERIFICATION_FAILURE");
+    }
+
+    private void sendOperationsPush(Long hostId, String title, List<String> errors, String type) {
         List<OperatorPushDeviceEntity> devices = operatorPushDeviceRepository.findByActiveTrueOrderByUpdatedAtDesc();
         if (devices.isEmpty()) {
             return;
         }
-        String title = "Degradación detectada en " + hostName;
         String body = String.join("\n", errors);
         try {
             List<FcmPushSender.FcmPushMessage> fcmMessages = devices.stream()
@@ -158,7 +166,7 @@ public class MobilePushDispatchService {
                             title,
                             body,
                             Map.of(
-                                    "type", "OPERATIONS_DEGRADATION",
+                                    "type", type,
                                     "hostId", hostId,
                                     "errors", body)))
                     .toList();

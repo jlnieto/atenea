@@ -564,7 +564,11 @@ private fun OperationsHostStatus.websiteLevel(): OperationalLevel = when {
 }
 
 private fun OperationsHostStatus.incidentLevel(): OperationalLevel =
-    if (openIncidents.isEmpty()) OperationalLevel.OK else OperationalLevel.CRITICAL
+    when {
+        openIncidents.any { it.severity == "CRITICAL" } -> OperationalLevel.CRITICAL
+        openIncidents.isNotEmpty() -> OperationalLevel.WARNING
+        else -> OperationalLevel.OK
+    }
 
 private fun CoreCommandResponse.isSuccessfulApacheCommand(request: CoreCommandRequestState?): Boolean {
     val input = request?.input.orEmpty().lowercase()
