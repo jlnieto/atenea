@@ -194,6 +194,19 @@ class ChangeHelpGuideTest {
             assertFalse(r.answer().contains("prepara de nuevo"));
         }
     }
+    @Test void stoppedBasePreparationIsNotDescribedAsWorkingOrAsFailedFunctionalTests() {
+        var f=new ChangeHelpFixture();f.sourceUpdate=true;f.deliveryKind="SOURCE_UPDATE";
+        f.deliveryState="ATTENTION";f.deliveryError="SOURCE_UPDATE_TARGET_UNAVAILABLE";
+        var result=ChangeHelpGuide.explain(f.build(),"Qué hago",false);
+        assertEquals("SOURCE_UPDATE_ATTENTION",result.stage());
+        assertTrue(result.answer().contains("detenida"));
+        assertTrue(result.answer().contains("Recuperar operación"));
+        assertTrue(result.answer().contains("versión exacta"));
+        assertFalse(result.answer().contains("pruebas han fallado"));
+        f.deliveryError="SOURCE_UPDATE_TARGET_INVALID";
+        assertFalse(ChangeHelpGuide.explain(f.build(),"Qué hago",false).answer().contains("Recuperar operación continuará"));
+    }
+
     private ChangeHelpFixture publication(String state) {
         var f=new ChangeHelpFixture(); f.validation="CURRENT"; f.passed=4; f.pr="MERGED";
         f.deliveryKind="RELEASE"; f.deliveryState=state; return f;

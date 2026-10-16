@@ -413,8 +413,8 @@ internal fun deploymentLabel(observation: MobileDeploymentObservation?, deployed
     else -> "No se pudo verificar el despliegue actual. Consultar no publica ni reintenta operaciones."
 }
 
-internal fun sourceUpdateLabel(state: String): String = when (state) {
-    "QUEUED", "PREPARE_CLAIMED" -> "Preparando conflictos en esta WorkSession…"
+internal fun sourceUpdateLabel(state: String, errorCode: String? = null): String = when (state) {
+    "QUEUED", "PREPARE_CLAIMED" -> "Atenea está obteniendo la versión exacta aprobada de main y preparando los conflictos en esta misma conversación. Puedes salir de la app; no repitas la acción."
     "UNCERTAIN" -> "Comprobando la misma preparación; no repitas la acción."
     "READY_TO_RESOLVE" -> "Preparación lista; Atenea está iniciando el resolver."
     "RETRY_REQUESTED" -> "Reintento autorizado de la misma resolución."
@@ -422,7 +422,13 @@ internal fun sourceUpdateLabel(state: String): String = when (state) {
     "RESOLVER_COMPLETED" -> "Codex terminó. Falta validar la nueva revisión y actualizar la misma PR."
     "READY_TO_FINALIZE" -> "Preparación terminada. Falta validar la nueva revisión y actualizar la misma PR."
     "PUBLISHED" -> "La misma PR contiene la revisión nueva. GitHub debe validar este head antes de integrar."
-    else -> "La recuperación necesita atención. No se ha integrado ni publicado el cambio."
+    "ATTENTION", "BLOCKED", "FAILED" -> "Atenea está detenida, no trabajando. " + when (errorCode) {
+        "SOURCE_UPDATE_TARGET_UNAVAILABLE" -> "No se pudo obtener el código aprobado. Tu trabajo y la operación están conservados."
+        "SOURCE_UPDATE_REF_MOVED" -> "Main avanzó durante la preparación. Se conserva la versión aprobada; no se elegirá otra automáticamente."
+        "SOURCE_UPDATE_TARGET_INVALID" -> "La versión o la evidencia no coinciden con lo autorizado. No se cambiará el código; consulta Ayuda con este cambio."
+        else -> "No se ha confirmado la preparación. Tu código, conversación y PR se conservan."
+    }
+    else -> "Falta confirmar el estado de esta operación. Consulta el resultado; no se ha integrado ni publicado el cambio."
 }
 
 internal fun deliveryIntegrationLabel(mergeState: String?): String = when (mergeState) {
