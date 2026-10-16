@@ -54,8 +54,17 @@ public final class ChangeHelpGuide {
             shortAnswer="Atenea está comprobando el cambio. Espera al resultado.";
             label="Ver validación"; reason="Consulta la operación existente; no solicites otra.";
         } else if (c.sourceUpdateInProgress()) {
-            stage="SOURCE_UPDATE"; answer="Hay una actualización de la base o una resolución de conflictos pendiente. Hay que seguir su misma operación antes de validar o integrar. No se debe crear otra PR o volver a enviar el trabajo.";
-            shortAnswer="Se está preparando la revisión del mismo cambio. Consulta esa operación.";
+            boolean stopped=c.deliveryState()!=null && java.util.Set.of("ATTENTION","BLOCKED","FAILED").contains(c.deliveryState());
+            stage=stopped?"SOURCE_UPDATE_ATTENTION":"SOURCE_UPDATE";
+            answer=stopped && "SOURCE_UPDATE_TARGET_INVALID".equals(c.deliveryError())
+                ? "La actualización está detenida porque el código o su evidencia no coinciden con lo autorizado. No se modificará el trabajo ni se forzará la recuperación. Consulta el detalle de esta misma operación; no crees otra PR ni repitas tu prompt."
+                : stopped
+                ? "La actualización de la base está detenida; Atenea no está trabajando en ella. Tu código y la PR se conservan. Abre Ver actualización de base: Recuperar operación continuará con la versión exacta aprobada, obteniendo el código que falte sin crear otra PR ni repetir tu prompt. Si la evidencia no es válida, se detendrá y mostrará el motivo. No hace falta volver a validar mientras esta preparación siga pendiente."
+                : "Hay una actualización pendiente de esta misma operación. La pantalla de actualización indica si Atenea está comprobando u obteniendo la versión exacta aprobada de main, resolviendo conflictos o esperando tu confirmación. No elige otro main ni crea otra PR. Puedes salir de la app; no repitas el prompt ni la acción.";
+            shortAnswer=stopped && "SOURCE_UPDATE_TARGET_INVALID".equals(c.deliveryError())
+                ? "Está detenida por una evidencia no válida. Consulta el detalle; no fuerces otro intento."
+                : stopped?"Está detenida. Abre Ver actualización de base para recuperar la misma operación; tu trabajo se conserva."
+                :"La preparación del mismo cambio está en curso. Consulta su estado; no repitas la acción.";
             label="Ver actualización de base"; reason="Las opciones de recuperación conservan la operación existente.";
         } else if (!"READY".equals(c.workspaceState()) || "BLOCKED".equals(c.sourceState())
                 || "STALE".equals(c.sourceState()) || "BLOCKED".equals(c.remoteCloseState())) {

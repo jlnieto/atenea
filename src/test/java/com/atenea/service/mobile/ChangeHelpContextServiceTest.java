@@ -33,7 +33,8 @@ class ChangeHelpContextServiceTest {
     private final DeliveryStore deliveries=mock(DeliveryStore.class);
     private final ReleaseControlClient releaseControl=mock(ReleaseControlClient.class);
     private final MobileDeliveryService observations=mock(MobileDeliveryService.class);
-    private final ChangeHelpContextService service=new ChangeHelpContextService(sessions,runs,validations,operators,deliveries,releaseControl,observations);
+    private final com.atenea.delivery.SourceUpdateStore sourceUpdates=mock(com.atenea.delivery.SourceUpdateStore.class);
+    private final ChangeHelpContextService service=new ChangeHelpContextService(sessions,runs,validations,operators,deliveries,releaseControl,observations,sourceUpdates);
     private final AuthenticatedOperator actor=new AuthenticatedOperator(1L,"operator@example.test","Operator");
     private WorkSessionEntity session;
     private DevelopmentChangeEntity change;
@@ -79,6 +80,19 @@ class ChangeHelpContextServiceTest {
         when(operators.findById(1L)).thenReturn(Optional.empty());
         assertThrows(WorkSessionOperationBlockedException.class,()->service.read(22L,actor));
         verifyNoInteractions(runs,validations,deliveries);
+    }
+    @Test void blockedSourcePreparationDoesNotDisappearBehindTheSuccessfulPrReceipt() {
+        var op=mock(com.atenea.delivery.SourceUpdateOperation.class);
+        when(op.sessionId()).thenReturn(22L);when(op.operatorId()).thenReturn(1L);
+        when(op.state()).thenReturn("BLOCKED");when(op.errorCode()).thenReturn("SOURCE_UPDATE_TARGET_UNAVAILABLE");
+        when(op.resolverRunId()).thenReturn(null);
+        when(sourceUpdates.latest(22L)).thenReturn(Optional.of(op));
+        var context=service.read(22L,actor);
+        assertTrue(context.sourceUpdateInProgress());
+        assertEquals("SOURCE_UPDATE",context.deliveryKind());
+        assertEquals("BLOCKED",context.deliveryState());
+        assertEquals("SOURCE_UPDATE_TARGET_UNAVAILABLE",context.deliveryError());
+        verify(sourceUpdates,never()).authorizeRecovery(any(),any(),any());
     }
     @Test void oldDefinitionAndOtherFingerprintDoNotCount() {
         var old=new ValidationOperationEntity(); old.setOperation(ValidationOperationKind.BACKEND_TEST);

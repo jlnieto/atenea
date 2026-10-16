@@ -32,14 +32,17 @@ public class ChangeHelpContextService {
     private final DeliveryStore deliveries;
     private final ReleaseControlClient releaseControl;
     private final MobileDeliveryService deliveryObservations;
+    private final com.atenea.delivery.SourceUpdateStore sourceUpdates;
 
     public ChangeHelpContextService(WorkSessionRepository sessions, AgentRunRepository runs,
             ValidationOperationRepository validations, OperatorRepository operators, DeliveryStore deliveries,
-            ReleaseControlClient releaseControl, MobileDeliveryService deliveryObservations) {
+            ReleaseControlClient releaseControl, MobileDeliveryService deliveryObservations,
+            com.atenea.delivery.SourceUpdateStore sourceUpdates) {
         this.sessions = sessions; this.runs = runs; this.validations = validations;
         this.operators = operators; this.deliveries = deliveries;
         this.releaseControl = releaseControl;
         this.deliveryObservations = deliveryObservations;
+        this.sourceUpdates = sourceUpdates;
     }
 
     @Transactional(readOnly = true)
@@ -105,19 +108,27 @@ public class ChangeHelpContextService {
         }
         boolean gitInstructions = response != null && response.contains("github/main")
                 && response.toLowerCase(Locale.ROOT).contains("origin");
+        var recordedSource = sourceUpdates.latest(id).filter(op -> Objects.equals(op.sessionId(),id)
+                && Objects.equals(op.operatorId(),actor.operatorId())).orElse(null);
+        boolean preparationBlocked=recordedSource!=null && "BLOCKED".equals(recordedSource.state())
+                && recordedSource.preparation()==null && recordedSource.resolverRunId()==null;
+        boolean preparing=sessions.existsActiveSourceUpdateBySessionId(id) || preparationBlocked;
+        boolean sourcePending=preparing || sessions.existsActiveSourceFinalizationBySessionId(id);
+        var sourceUpdate=preparing ? recordedSource : null;
         return new ChangeHelpContext(id, session.getProject().getId(), change.getChangeKey(), change.getSourceRevision(),
                 Instant.now(), name(change.getStatus()), name(session.getStatus()), name(change.getWorkspaceState()),
                 name(change.getSourceState()), name(change.getValidationState()), name(session.getPullRequestStatus()),
                 name(change.getIntegrationState()), name(change.getReleaseState()),
                 runs.existsBySessionIdAndStatusIn(id, AgentRunStatus.nonTerminalStatuses()),
                 validations.existsByWorkSessionIdAndStatus(id, ValidationOperationStatus.RUNNING),
-                sessions.existsActiveSourceUpdateBySessionId(id) || sessions.existsActiveSourceFinalizationBySessionId(id),
+                sourcePending,
                 name(session.getRemoteCloseState()), run == null ? null : run.getId(),
                 run == null ? null : name(run.getStatus()), run == null ? null : safeCode(run.getFailureCode()),
                 gitInstructions, passed, Long.valueOf(1).equals(session.getProject().getId()) ? ValidationOperationKind.values().length : 0,
                 failed == null ? null : name(failed.getOperation()), failed == null ? null : safeText(failed.getSummary()),
-                delivery == null ? null : delivery.kind(), delivery == null ? null : delivery.state(),
-                delivery == null ? null : safeCode(delivery.errorCode()),
+                sourceUpdate != null ? "SOURCE_UPDATE" : delivery == null ? null : delivery.kind(),
+                sourceUpdate != null ? sourceUpdate.state() : delivery == null ? null : delivery.state(),
+                sourceUpdate != null ? safeCode(sourceUpdate.errorCode()) : delivery == null ? null : safeCode(delivery.errorCode()),
                 name(operator.getCodexOperationsRole()), deliveryEnabled,
                 run != null && run.getStatus() == AgentRunStatus.FAILED ? safeText(run.getErrorSummary()) : null,
                 delivery == null ? null : name(delivery.target()),

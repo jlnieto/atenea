@@ -151,4 +151,33 @@ class DeliveryStepUiTest {
             assertFalse(state.available)
         } finally { scope.cancel() }
     }
+
+    @Test fun `source synchronization is working without offering another recovery`() {
+        for (phase in listOf("QUEUED", "PREPARE_CLAIMED", "UNCERTAIN")) {
+            val source=MobileSourceUpdate(UUID.randomUUID(),22,phase,"2".repeat(40),2,null,null,false)
+            state(snapshot(operation("PUBLISH_PR","SUCCEEDED")).copy(integration=null,sourceUpdateEnabled=true,sourceUpdate=source)) {
+                val step=it.currentStep(false,false,now)
+                assertEquals(DeliveryStepStatus.WORKING,step.status)
+                assertEquals(DeliveryStepAction.NONE,step.action)
+                assertFalse(it.canRecoverSource(false,false))
+            }
+        }
+    }
+
+    @Test fun `stopped source recovery says stopped explains cause and preserves same operation`() {
+        val source=MobileSourceUpdate(UUID.randomUUID(),22,"ATTENTION","2".repeat(40),2,null,"SOURCE_UPDATE_TARGET_UNAVAILABLE",true)
+        state(snapshot(operation("PUBLISH_PR","SUCCEEDED")).copy(integration=null,sourceUpdateEnabled=true,sourceUpdate=source)) {
+            val step=it.currentStep(false,false,now)
+            assertEquals(DeliveryStepStatus.ATTENTION,step.status)
+            assertEquals(DeliveryStepAction.RECOVER_SOURCE,step.action)
+            assertTrue(step.message.contains("detenida, no trabajando"))
+            assertTrue(step.message.contains("código aprobado"))
+            assertEquals(source.id,it.sourceUpdate?.id)
+        }
+        state(snapshot().copy(integration=null,sourceUpdateEnabled=true,
+            sourceUpdate=source.copy(errorCode="SOURCE_UPDATE_TARGET_INVALID",recoveryAvailable=false))) {
+            assertEquals(DeliveryStepAction.NONE,it.currentStep(false,false,now).action)
+            assertEquals(DeliveryStepStatus.ATTENTION,it.currentStep(false,false,now).status)
+        }
+    }
 }

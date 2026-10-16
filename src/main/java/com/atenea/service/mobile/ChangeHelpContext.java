@@ -29,7 +29,9 @@ public record ChangeHelpContext(
         if (runFailureCode != null) facts.add("Código de la tarea: " + runFailureCode + ".");
         if (runFailure != null) facts.add("Error guardado de la tarea: " + runFailure);
         if (validationFailure != null) facts.add("Resultado guardado: " + validationFailure);
-        if (deliveryState != null) facts.add("Última operación de entrega: " + deliveryKind + " / " + deliveryState + ".");
+        if (deliveryState != null) facts.add("SOURCE_UPDATE".equals(deliveryKind)
+                ? "Actualización de la misma PR: " + readable(deliveryState) + "."
+                : "Última operación de entrega: " + deliveryKind + " / " + deliveryState + ".");
         if (deliveryError != null) facts.add("Código de entrega: " + deliveryError + ".");
         if (deliveryReadiness!=null) {
             if ("CONFIRMED".equals(deliveryReadiness.requirementsStatus())) facts.add("Publicaciones requeridas por el diff: " + deliveryReadiness.requiredTargets() + ".");
@@ -66,6 +68,11 @@ public record ChangeHelpContext(
             case "SUCCEEDED" -> "terminada correctamente";
             case "FAILED" -> "fallida";
             case "BLOCKED" -> "bloqueado";
+            case "ATTENTION" -> "detenida; necesita atención";
+            case "QUEUED", "PREPARE_CLAIMED" -> "preparando el código aprobado y los conflictos";
+            case "UNCERTAIN" -> "comprobando el resultado de la misma operación";
+            case "READY_TO_RESOLVE" -> "preparación terminada; iniciando la resolución";
+            case "RESOLVING" -> "Codex está resolviendo los conflictos";
             case "UNKNOWN" -> "no confirmado";
             default -> status;
         };

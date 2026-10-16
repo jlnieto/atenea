@@ -199,6 +199,35 @@ class SourceUpdateIntegrationTest {
         verify(gateway,never()).exchange(any(),eq(Action.RECONCILE));
     }
 
+    @Test void synchronizationFailureStopsAndExplicitRecoveryResumesTheSamePinnedIntent() {
+        var op=queued();
+        when(gateway.exchange(op.command(),Action.PREPARE)).thenThrow(new RemoteWorkerException("synthetic fetch unavailable",503,
+            "SOURCE_UPDATE_TARGET_UNAVAILABLE",RemoteWorkerFailureCategory.TRANSPORT,true,AgentRunRecoveryNextAction.REQUEST_RECONCILIATION,null));
+        service.reconcile(op.id());
+        when(gateway.exchange(op.command(),Action.INSPECT)).thenReturn(new Preparation(State.ABSENT,null,List.of(),null,null));
+        expire(op.id());service.reconcile(op.id());
+        assertEquals("BLOCKED",store.get(op.id(),false).state());
+        assertTrue(service.observe(sessionId,actor).recoveryAvailable());
+        service.recoverPreparation(sessionId,op.id(),actor);
+        assertFalse(service.observe(sessionId,actor).recoveryAvailable()); // accepted/outbox working, not another button
+        when(gateway.exchange(op.command(),Action.RECOVER)).thenReturn(prepared());
+        service.reconcile(op.id());
+        assertEquals("READY_TO_RESOLVE",store.get(op.id(),false).state());
+        assertEquals(op.command(),store.get(op.id(),false).command());
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_update_operation WHERE session_id=?",Long.class,sessionId));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_recovery_authorization WHERE preparation_id=?",Long.class,op.id()));
+        verify(gateway,times(1)).exchange(op.command(),Action.PREPARE);
+        verify(gateway,times(1)).exchange(op.command(),Action.RECOVER);
+    }
+
+    @Test void invalidPinnedEvidenceCannotBeRecoveredByRepeatingTheAction() {
+        var op=queued();store.state(op.id(),"BLOCKED","SOURCE_UPDATE_TARGET_INVALID");
+        assertFalse(service.observe(sessionId,actor).recoveryAvailable());
+        assertEquals("SOURCE_UPDATE_TARGET_INVALID",assertThrows(DeliveryRejectedException.class,
+            ()->service.recoverPreparation(sessionId,op.id(),actor)).code());
+        verifyNoInteractions(gateway);
+    }
+
     @Test void concurrentRecoveryRequestsRetainOneAuthorizationAndCannotStealLiveLease() throws Exception {
         var op=queued();store.state(op.id(),"ATTENTION","SOURCE_UPDATE_REF_MOVED");
         var pool=java.util.concurrent.Executors.newFixedThreadPool(2);

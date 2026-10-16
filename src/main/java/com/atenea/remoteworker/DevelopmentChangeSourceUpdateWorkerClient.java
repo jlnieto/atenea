@@ -29,7 +29,7 @@ public class DevelopmentChangeSourceUpdateWorkerClient implements DevelopmentCha
     private static final int MAX_RESPONSE = 262144;
     private static final Set<String> ERRORS = Set.of("SOURCE_UPDATE_REJECTED", "SOURCE_UPDATE_REF_MOVED",
             "SOURCE_UPDATE_DIRTY_WORKSPACE", "SOURCE_UPDATE_LATER_EDIT", "SOURCE_UPDATE_EXECUTION_ACTIVE",
-            "SOURCE_UPDATE_IDENTITY_CONFLICT");
+            "SOURCE_UPDATE_IDENTITY_CONFLICT", "SOURCE_UPDATE_TARGET_UNAVAILABLE", "SOURCE_UPDATE_TARGET_INVALID");
     private final RemoteWorkerProperties properties;
     private final ObjectMapper mapper;
     private final HttpClient http;

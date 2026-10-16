@@ -55,9 +55,19 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
             update.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") -> DeliveryStepAction.UPDATE_PR
             else -> DeliveryStepAction.NONE
         }
-        return DeliveryStepUi(if (action != DeliveryStepAction.NONE) DeliveryStepStatus.ACTION
-            else if (update.state in setOf("BLOCKED", "FAILED", "ATTENTION")) DeliveryStepStatus.ATTENTION
-            else DeliveryStepStatus.WORKING, "Actualizar la misma PR", sourceUpdateLabel(update.state), action)
+        val stopped = update.state in setOf("BLOCKED", "FAILED", "ATTENTION") || action == DeliveryStepAction.RECOVER_SOURCE
+        val title = when {
+            stopped -> "Actualización detenida"
+            update.state in setOf("QUEUED", "PREPARE_CLAIMED") -> "Preparando código y conflictos"
+            else -> "Actualizar la misma PR"
+        }
+        val message = sourceUpdateLabel(update.state, update.errorCode) +
+            if (action == DeliveryStepAction.RECOVER_SOURCE)
+                " Pulsa Recuperar operación para continuar con la versión exacta aprobada. No crea otra PR ni repite tu prompt."
+            else ""
+        return DeliveryStepUi(if (stopped) DeliveryStepStatus.ATTENTION
+            else if (action != DeliveryStepAction.NONE) DeliveryStepStatus.ACTION
+            else DeliveryStepStatus.WORKING, title, message, action)
     }
     if (!validated && !sourcePhaseComplete) return DeliveryStepUi(DeliveryStepStatus.ACTION, "Validación pendiente",
         "Primero comprueba esta revisión. Después vendrán PR, integración y publicación.")

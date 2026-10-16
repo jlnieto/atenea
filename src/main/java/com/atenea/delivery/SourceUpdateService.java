@@ -91,7 +91,9 @@ public class SourceUpdateService {
         administrator(actor.operatorId());
         session(sessionId, false);
         return store.latest(sessionId).map(op -> op.view().withRecoveryAvailable(
-            (java.util.Set.of("ATTENTION","BLOCKED","UNCERTAIN").contains(op.state())
+            ((java.util.Set.of("ATTENTION","BLOCKED").contains(op.state())
+                || op.state().equals("UNCERTAIN") && op.errorCode()!=null && !store.leased(op.id()))
+                && !"SOURCE_UPDATE_TARGET_INVALID".equals(op.errorCode())
                 && op.preparation()==null && op.resolverRunId()==null)
             || store.finalizationNeedsRecovery(op.id()))).orElse(null);
     }
@@ -109,6 +111,7 @@ public class SourceUpdateService {
             if (!Objects.equals(op.sessionId(),sessionId) || !Objects.equals(store.latest(sessionId).orElseThrow().id(),operationId))
                 throw rejected("SOURCE_UPDATE_OWNER_MISMATCH");
             requireStructure(session,op.command());
+            if ("SOURCE_UPDATE_TARGET_INVALID".equals(op.errorCode())) throw rejected("SOURCE_UPDATE_TARGET_INVALID");
             if (store.recoveryAuthorized(op.id(),"PREPARATION")
                     && (!java.util.Set.of("ATTENTION","BLOCKED","UNCERTAIN").contains(op.state())
                         || (op.state().equals("UNCERTAIN") && (op.errorCode()==null || store.leased(op.id())))))
