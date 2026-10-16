@@ -299,7 +299,7 @@ class MobileChangeCompletionServiceTest {
         var realDelivery=new MobileDeliveryService(store,sessions,mock(AgentRunRepository.class),operators,ownership,
                 mock(WorkSessionGitHubService.class),new WorkSessionAcceptanceService(sessions),github,executor,
                 mock(com.atenea.auth.recovery.OperatorRecoveryService.class),
-                mock(com.atenea.auth.action.PrivilegedActionAuthorizationService.class),mapper,manager);
+                mock(com.atenea.auth.action.PrivilegedActionAuthorizationService.class),mapper,manager,mock(SourceUpdateBaseGuard.class));
         service=new MobileChangeCompletionService(store,sessions,changes,operators,ownership,realDelivery,
                 workspaces,close,properties,mapper,manager);
         var observation=mapper.createObjectNode().put("protocol","atenea-app-observation/v1")

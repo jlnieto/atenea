@@ -686,7 +686,9 @@ internal fun WorkSessionConversationScreen(
                     }
                 }
             } catch (validationError: Exception) {
-                error = validationError.message ?: "No se pudo validar el cambio."
+                error = sourceBaseFailureMessage(validationError.message)
+                    ?: validationError.message ?: "No se pudo validar el cambio."
+                refresh(silent = true, includeProfile = false)
             } finally {
                 validationPending = false
             }
@@ -768,7 +770,7 @@ internal fun WorkSessionConversationScreen(
         } else null,
         changeNeedsAttention = current?.session?.developmentChangeValidationState == "BLOCKED"
             || deliveryState.currentStep(current?.session?.developmentChangeValidationState == "CURRENT",
-                current?.runInProgress == true).status == DeliveryStepStatus.ATTENTION,
+                current?.runInProgress == true, validationInProgress = changeValidationUi.inProgress).status == DeliveryStepStatus.ATTENTION,
         changeContent = current?.takeIf { it.session.developmentChangeKey != null }?.let { loaded -> {
             WorkSessionChangePanel(
                 sessionId = sessionId,
@@ -781,9 +783,7 @@ internal fun WorkSessionConversationScreen(
                 onValidate = ::validateChange,
                 completed = loaded.session.status == "CLOSED" || deliveryState.completion != null,
                 runInProgress = loaded.runInProgress,
-                deliveryBeforeValidation = !loaded.runInProgress && !deliveryState.sourcePhaseComplete
-                    && deliveryState.sourceUpdate?.state in setOf("QUEUED", "PREPARE_CLAIMED", "UNCERTAIN", "ATTENTION",
-                        "READY_TO_RESOLVE", "RETRY_REQUESTED", "RESOLVING", "FAILED", "BLOCKED")
+                deliveryBeforeValidation = deliveryState.deliveryBeforeValidation(loaded.runInProgress || changeValidationUi.inProgress)
             ) {
                 if (closedSessionHistoryOnly(loaded.session.status, deliveryState.completion != null)) {
                     Text("WorkSession cerrada · historial")
@@ -799,7 +799,8 @@ internal fun WorkSessionConversationScreen(
                     MobileDeliveryPanel(apiClient, sessionId,
                         validated = loaded.session.developmentChangeValidationState == "CURRENT",
                         runInProgress = loaded.runInProgress, state = deliveryState,
-                        sessionOpen = loaded.session.status == "OPEN", onOpenUpdates = onOpenUpdates)
+                        sessionOpen = loaded.session.status == "OPEN", onOpenUpdates = onOpenUpdates,
+                        validationInProgress = changeValidationUi.inProgress)
                 }
             }
         } },

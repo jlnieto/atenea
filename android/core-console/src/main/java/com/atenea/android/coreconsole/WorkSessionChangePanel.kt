@@ -35,11 +35,11 @@ internal fun WorkSessionChangePanel(
         Text(title, style = MaterialTheme.typography.titleMedium)
         Text("Cambio · sesión $sessionId", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (validation.current || completed || deliveryBeforeValidation) {
+        if (completed || deliveryBeforeValidation || validation.current && !validation.inProgress && !runInProgress) {
             // Current delivery and its primary button appear before completed validation.
             deliveryContent()
             Text(if (validation.current) "✓ Validación de esta revisión completada"
-                else if (deliveryBeforeValidation) "Validación pendiente · después de recuperar esta operación"
+                else if (deliveryBeforeValidation) "Validación pendiente · después de resolver este paso"
                 else "Validación · historial",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
@@ -57,7 +57,7 @@ internal fun WorkSessionChangePanel(
                     enabled = validation.canStart, onClick = onValidate)
             }
         }
-        if (!validation.current && !completed && !deliveryBeforeValidation) deliveryContent()
+        if (!validation.current && !completed && !deliveryBeforeValidation && !validation.inProgress && !runInProgress) deliveryContent()
         TextButton(onClick = { showValidationDetails = !showValidationDetails }) {
             Text(if (showValidationDetails) "Ocultar pruebas y detalles" else "Ver pruebas y detalles")
         }

@@ -14,7 +14,9 @@ public final class ChangeHelpGuide {
         String normalized = Normalizer.normalize(question == null ? "" : question, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
         var readiness=c.deliveryReadiness();
-        boolean apkQuestion=normalized.matches("(?s).*(apk|android|version|menu|actualiza|publicaciones).*" );
+        boolean sourceQuestion=normalized.matches("(?s).*\\b(pr|pull request|base|conflictos)\\b.*");
+        boolean apkQuestion=normalized.matches("(?s).*(apk|android|version|menu|publicaciones|actualiza[^.?!]*(app|atenea)).*")
+                && (!sourceQuestion || normalized.matches("(?s).*\\b(apk|android)\\b.*"));
         if (apkQuestion && readiness!=null && readiness.android()!=null) {
             var apk=readiness.android();
             stage="ANDROID_CHANNEL";
@@ -75,6 +77,17 @@ public final class ChangeHelpGuide {
             stage="TASK_ATTENTION"; answer="La última tarea no terminó correctamente. Eso no significa que se haya perdido el cambio. Abre el detalle para consultar el error y si permite recuperar o reintentar esa misma tarea. No dupliques el prompt.";
             shortAnswer="La tarea necesita atención. Revisa su error antes de hacer otro intento.";
             destination="ACTIVITY"; label="Ver tarea y recuperación"; reason="El detalle decide si existe un reintento autorizado.";
+        } else if ("UPDATE_REQUIRED".equals(c.sourceBaseStatus())) {
+            stage="SOURCE_BASE_UPDATE_REQUIRED";
+            answer="La base preparada de esta PR es anterior a main. Los resultados de pruebas guardados se conservan, pero falta incorporar la base actual antes de publicar. Atenea está detenida: en Cambio pulsa Actualizar base con main una vez. Se conservan el mismo cambio, conversación y PR; no repitas el prompt. Cuando termine esa preparación, valida la revisión resultante y después utiliza Actualizar la misma PR. No hace falta validar primero la base antigua.";
+            shortAnswer="Tu trabajo se conserva. En Cambio pulsa Actualizar base con main; después valida la nueva revisión y actualiza la misma PR.";
+            destination="CHANGE"; label="Ir a Actualizar base con main";
+            reason="Abre la acción existente; preguntar no cambia la base ni inicia pruebas.";
+        } else if ("UNAVAILABLE".equals(c.sourceBaseStatus())) {
+            stage="SOURCE_BASE_UNCONFIRMED";
+            answer="No se pudo confirmar en GitHub si la base preparada sigue vigente. No se han modificado el código ni la PR. En Cambio utiliza Consultar estado; no repitas Validar cambio ni Actualizar la misma PR mientras falte esta comprobación.";
+            shortAnswer="Falta comprobar la base en GitHub. En Cambio pulsa Consultar estado; no repitas las pruebas ni la publicación.";
+            label="Ir a Consultar estado"; reason="Sólo vuelve a consultar; no elige otra base ni publica.";
         } else if (c.failedCheck() != null) {
             boolean manifest=c.validationFailure()!=null && c.validationFailure().startsWith("[UNSUPPORTED_DEPENDENCY_MANIFEST]");
             stage=manifest?"VALIDATION_ENVIRONMENT_ATTENTION":"VALIDATION_ATTENTION";

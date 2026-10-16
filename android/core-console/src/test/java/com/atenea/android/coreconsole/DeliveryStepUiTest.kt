@@ -38,6 +38,71 @@ class DeliveryStepUiTest {
         } finally { scope.cancel() }
     }
 
+    @Test fun `outdated base replaces update PR even after four checks and is actionable before validation`() {
+        val source=MobileSourceUpdate(UUID.randomUUID(),22,"RESOLVER_COMPLETED","2".repeat(40),4,124,null,
+            baseStatus="UPDATE_REQUIRED")
+        val rejected=operation("PUBLISH_PR","BLOCKED").copy(errorCode="SOURCE_FINALIZATION_MAIN_MOVED")
+        state(snapshot(rejected,operation("PUBLISH_PR","SUCCEEDED")).copy(integration=null,sourceUpdateEnabled=true,sourceUpdate=source)) {
+            for (validated in listOf(false,true)) {
+                val step=it.currentStep(validated,false,now)
+                assertEquals(DeliveryStepAction.UPDATE_BASE,step.action)
+                assertEquals(DeliveryStepStatus.ATTENTION,step.status)
+                assertTrue(step.message.contains("No repitas el prompt"))
+                assertTrue(it.deliveryBeforeValidation(false));assertTrue(it.canUpdateBase(false))
+                assertFalse(it.canUpdatePullRequest(validated,false));assertFalse(it.canRecoverSource(validated,false))
+            }
+            assertFalse(it.canUpdateBase(true));assertFalse(it.deliveryBeforeValidation(true))
+            val checking=it.currentStep(false,false,now,validationInProgress=true)
+            assertEquals(DeliveryStepStatus.WORKING,checking.status)
+            assertEquals(DeliveryStepAction.NONE,checking.action)
+            assertTrue(checking.title.contains("Validando"))
+        }
+    }
+    @Test fun `current base requires fresh validation and unconfirmed base only allows reading`() {
+        val source=MobileSourceUpdate(UUID.randomUUID(),22,"READY_TO_FINALIZE","2".repeat(40),5,null,null,baseStatus="CURRENT")
+        state(snapshot().copy(integration=null,sourceUpdateEnabled=true,sourceUpdate=source)) {
+            assertEquals(DeliveryStepAction.NONE,it.currentStep(false,false,now).action)
+            assertFalse(it.deliveryBeforeValidation(false));assertFalse(it.canUpdatePullRequest(false,false))
+            assertEquals(DeliveryStepAction.UPDATE_PR,it.currentStep(true,false,now).action)
+            assertTrue(it.canUpdatePullRequest(true,false));assertFalse(it.canUpdateBase(false))
+        }
+        for (status in listOf("UNAVAILABLE","NOT_REQUIRED")) {
+            state(snapshot().copy(integration=null,sourceUpdateEnabled=true,sourceUpdate=source.copy(baseStatus=status))) {
+                assertEquals(DeliveryStepAction.REFRESH,it.currentStep(false,false,now).action)
+                assertEquals(DeliveryStepStatus.CHECKING,it.currentStep(true,false,now).status)
+                assertTrue(it.deliveryBeforeValidation(false));assertFalse(it.canUpdateBase(false))
+                assertFalse(it.canUpdatePullRequest(true,false))
+            }
+        }
+    }
+    @Test fun `pending publication and retained finalization recovery precede another base preparation`() {
+        val source=MobileSourceUpdate(UUID.randomUUID(),22,"READY_TO_FINALIZE","2".repeat(40),5,null,null,baseStatus="CURRENT")
+        state(snapshot(operation("PUBLISH_PR","QUEUED")).copy(integration=null,sourceUpdateEnabled=true,sourceUpdate=source)) {
+            assertEquals(DeliveryStepStatus.WORKING,it.currentStep(true,false,now).status)
+            assertEquals(DeliveryStepAction.NONE,it.currentStep(true,false,now).action)
+            assertFalse(it.canUpdateBase(false));assertFalse(it.canUpdatePullRequest(true,false))
+        }
+        state(snapshot(operation("PUBLISH_PR","BLOCKED")).copy(integration=null,sourceUpdateEnabled=true,
+            sourceUpdate=source.copy(baseStatus="NOT_REQUIRED",recoveryAvailable=true))) {
+            assertEquals(DeliveryStepAction.RECOVER_SOURCE,it.currentStep(true,false,now).action)
+            assertFalse(it.canUpdateBase(false))
+        }
+    }
+    @Test fun `main moving between observation and click refreshes guidance without a second write`() = runBlocking {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var loads=0;var submissions=0
+            var source=MobileSourceUpdate(UUID.randomUUID(),22,"RESOLVER_COMPLETED","2".repeat(40),4,124,null,baseStatus="CURRENT")
+            val state=MobileDeliveryUiState(22,scope) { loads++;snapshot().copy(integration=null,sourceUpdateEnabled=true,sourceUpdate=source) }
+            state.refresh();assertTrue(state.canUpdatePullRequest(true,false))
+            state.act { submissions++;source=source.copy(baseStatus="UPDATE_REQUIRED");error("HTTP 409 SOURCE_FINALIZATION_MAIN_MOVED") }
+            assertEquals(1,submissions);assertEquals(2,loads)
+            assertEquals(DeliveryStepAction.UPDATE_BASE,state.currentStep(true,false,now).action)
+            assertTrue(state.actionError!!.contains("Actualizar base con main"))
+            assertFalse(state.actionError!!.contains("misma operación"))
+        } finally { scope.cancel() }
+    }
+
     @Test fun `ready main publication shows user confirmation not working or another preparation`() {
         val ready = operation("RELEASE", "READY").copy(sourceCommit = "2".repeat(40))
         state(snapshot(ready, operation("INTEGRATE", "SUCCEEDED"))) {

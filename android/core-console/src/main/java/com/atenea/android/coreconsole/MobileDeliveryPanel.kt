@@ -105,8 +105,23 @@ internal class MobileDeliveryUiState(
 
     fun canUpdatePullRequest(validated: Boolean, runInProgress: Boolean): Boolean =
         available && sourceUpdateEnabled && !sourcePhaseComplete && sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
+            && sourceUpdate?.baseStatus == "CURRENT"
             && validated && !runInProgress && !busy
             && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
+
+    fun canUpdateBase(runInProgress: Boolean): Boolean =
+        available && sourceUpdateEnabled && !sourcePhaseComplete
+            && sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
+            && sourceUpdate?.baseStatus == "UPDATE_REQUIRED" && sourceUpdate?.recoveryAvailable != true
+            && !runInProgress && !busy
+            && operations.none { !it.terminal || it.state == "ROLLBACK_FAILED" }
+
+    fun deliveryBeforeValidation(runInProgress: Boolean): Boolean = !runInProgress && !sourcePhaseComplete
+        && sourceUpdate?.let { update ->
+            update.state in setOf("QUEUED", "PREPARE_CLAIMED", "UNCERTAIN", "ATTENTION", "READY_TO_RESOLVE",
+                "RETRY_REQUESTED", "RESOLVING", "FAILED", "BLOCKED")
+                || update.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") && update.baseStatus != "CURRENT"
+        } == true
 
     fun canRetryResolver(runInProgress: Boolean): Boolean =
         available && sourceUpdateEnabled && !sourcePhaseComplete && sourceUpdate?.state == "FAILED" && sourceUpdate?.resolverRunId != null
@@ -170,7 +185,10 @@ internal class MobileDeliveryUiState(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                actionError = "${failure.message.orEmpty()} Consulta el estado antes de repetir; Atenea conserva la misma operación."
+                actionError = sourceBaseFailureMessage(failure.message) ?: "${failure.message.orEmpty()} Consulta el estado antes de repetir; Atenea conserva la misma operación."
+                // A main change between observation and click must immediately
+                // replace the obsolete button, without submitting another action.
+                refresh()
             } finally {
                 busy = false
             }
@@ -197,13 +215,13 @@ internal fun rememberMobileDeliveryUiState(api: AteneaApiClient, sessionId: Long
 @Composable
 internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validated: Boolean,
     runInProgress: Boolean, state: MobileDeliveryUiState, sessionOpen: Boolean = true,
-    onOpenUpdates: (() -> Unit)? = null) {
+    onOpenUpdates: (() -> Unit)? = null, validationInProgress: Boolean = false) {
     if (api.currentOperatorRole() != "PLATFORM_ADMINISTRATOR") {
         DeliveryStepCard(DeliveryStepUi(DeliveryStepStatus.ATTENTION, "Permiso de entrega requerido",
             "Tu rol no permite integrar o publicar. Ayuda con este cambio explica qué autorización falta.")) { }
         return
     }
-    val step = state.currentStep(validated, runInProgress)
+    val step = state.currentStep(validated, runInProgress, validationInProgress = validationInProgress)
     val uriHandler = LocalUriHandler.current
     val operations = state.operations
     val available = state.available
@@ -222,7 +240,7 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
     val releasePlanned = operations.any { it.kind == "RELEASE" && (!it.terminal || it.state == "ROLLBACK_FAILED") }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // The current decision and its button precede receipts and secondary targets.
-        if (sessionOpen && (validated || state.sourcePhaseComplete || runInProgress) || state.completed) DeliveryStepCard(step) {
+        if (sessionOpen && (validated || state.sourcePhaseComplete || runInProgress || state.deliveryBeforeValidation(runInProgress || validationInProgress)) || state.completed) DeliveryStepCard(step) {
             when (step.action) {
                 DeliveryStepAction.CREATE_PR -> AteneaButton("Crear PR", enabled = available && validated && !runInProgress && !busy && !active,
                     onClick = { act { api.createDeliveryPullRequest(sessionId) } })
@@ -252,6 +270,8 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                     onClick = { act { api.resolveDeliveryConflicts(sessionId) } })
                 DeliveryStepAction.UPDATE_PR -> AteneaButton("Actualizar la misma PR", enabled = state.canUpdatePullRequest(validated, runInProgress),
                     onClick = { act { api.createDeliveryPullRequest(sessionId) } })
+                DeliveryStepAction.UPDATE_BASE -> AteneaButton("Actualizar base con main", enabled = state.canUpdateBase(runInProgress || validationInProgress),
+                    onClick = { act { api.resolveDeliveryConflicts(sessionId) } })
                 DeliveryStepAction.RECOVER_SOURCE -> state.sourceUpdate?.let { update ->
                     AteneaButton("Recuperar operación", enabled = state.canRecoverSource(validated, runInProgress),
                         onClick = { act { api.recoverDeliverySource(sessionId, update.id) } })
@@ -461,6 +481,8 @@ internal fun deliveryStateLabel(state: String): String = when (state) {
 }
 
 internal fun deliveryErrorLabel(code: String): String = when (code) {
+    "SOURCE_FINALIZATION_MAIN_MOVED" -> "La base preparada es anterior a main. Pulsa Actualizar base con main; después valida la revisión resultante y actualiza la misma PR. Tu código se conserva."
+    "SOURCE_BASE_OBSERVATION_UNAVAILABLE" -> "No se pudo comprobar la base en GitHub. Consulta el estado; no repitas las pruebas ni la publicación."
     "HEALTHY_DELIVERED_CHANGE_REQUIRED" -> "Atenea no pudo confirmar un despliegue sano que contenga este cambio. El ticket no se ha completado."
     "COMPLETION_WORKSPACE_NOT_CLEAN_OR_EXACT", "COMPLETION_WORKSPACE_NOT_VERIFIED" -> "El workspace no coincide con el código entregado o tiene cambios sin publicar. Se conserva sin borrar nada."
     "COMPLETION_WORK_IN_PROGRESS" -> "Hay trabajo pendiente en esta WorkSession. Espera a que termine antes de finalizar."
@@ -489,3 +511,7 @@ internal fun deliveryErrorLabel(code: String): String = when (code) {
     "RELEASE_EVIDENCE_MISMATCH" -> "La evidencia del servidor no coincide con esta operación. No repitas la publicación."
     else -> "Necesita atención: $code"
 }
+
+internal fun sourceBaseFailureMessage(message: String?): String? =
+    listOf("SOURCE_FINALIZATION_MAIN_MOVED", "SOURCE_BASE_OBSERVATION_UNAVAILABLE")
+        .firstOrNull { message?.contains(it) == true }?.let(::deliveryErrorLabel)

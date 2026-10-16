@@ -206,7 +206,7 @@ class MobileDeliveryUiStateTest {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {
             var online=true
-            var update=MobileSourceUpdate(UUID.randomUUID(),21,"RESOLVER_COMPLETED","2".repeat(40),5,105,null)
+            var update=MobileSourceUpdate(UUID.randomUUID(),21,"RESOLVER_COMPLETED","2".repeat(40),5,105,null,baseStatus="CURRENT")
             val state=MobileDeliveryUiState(21,scope) {
                 if (!online) error("offline")
                 MobileDeliveryState(true,listOf(operation().copy(state="SUCCEEDED")),

@@ -43,19 +43,22 @@ public class ClosedValidationOperationService {
     private final ValidationOperationRepository validationOperationRepository;
     private final RemoteWorkerClient remoteWorkerClient;
     private final WorkSessionAcceptanceService acceptanceService;
+    private final com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard;
 
     public ClosedValidationOperationService(
             WorkSessionRepository workSessionRepository,
             AgentRunRepository agentRunRepository,
             ValidationOperationRepository validationOperationRepository,
             RemoteWorkerClient remoteWorkerClient,
-            WorkSessionAcceptanceService acceptanceService
+            WorkSessionAcceptanceService acceptanceService,
+            com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard
     ) {
         this.workSessionRepository = workSessionRepository;
         this.agentRunRepository = agentRunRepository;
         this.validationOperationRepository = validationOperationRepository;
         this.remoteWorkerClient = remoteWorkerClient;
         this.acceptanceService = acceptanceService;
+        this.sourceBaseGuard = sourceBaseGuard;
     }
 
     @Transactional(readOnly = true)
@@ -112,6 +115,8 @@ public class ClosedValidationOperationService {
         if (existing != null) {
             return response(existing);
         }
+
+        sourceBaseGuard.requireCurrent(sessionId);
 
         UUID validationId = UUID.randomUUID();
         Instant startedAt = Instant.now();
@@ -246,6 +251,9 @@ public class ClosedValidationOperationService {
                     "Todas las validaciones obligatorias están vigentes.");
         }
 
+        // Polling/reading retained results remains possible. Only new test
+        // admission is refused when its prepared base is already obsolete.
+        sourceBaseGuard.requireCurrent(sessionId);
         ValidationOperationEntity entity = newValidationEntity(
                 session, next, source.fingerprintSha256(), failed == null ? null : failed.getId());
         validationOperationRepository.saveAndFlush(entity);

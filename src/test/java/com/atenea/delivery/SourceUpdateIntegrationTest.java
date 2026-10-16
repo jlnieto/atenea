@@ -52,6 +52,7 @@ class SourceUpdateIntegrationTest {
     @Autowired AgentRunService agentRuns;
     @Autowired DevelopmentChangeAgentRunSourceAdvanceService advance;
     @Autowired com.atenea.service.worksession.ClosedValidationOperationService validations;
+    @Autowired com.atenea.service.worksession.WorkSessionAcceptanceService acceptance;
     @Autowired SourceFinalizationService finalizations;
     @Autowired MobileDeliveryService delivery;
     @Autowired DeliveryStore deliveries;
@@ -913,10 +914,11 @@ class SourceUpdateIntegrationTest {
         assertEquals(2L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_update_operation WHERE session_id=?",Long.class,sessionId));
         verify(routing).refreshKnownWorker("ax42-01","development-change-source-update/v2");
     }
-    @Test void newGenerationRequiresFreshValidationAndCannotSupersedeUncertainPublication() {
+    @Test void newGenerationRejectsUnrecordedSourceAndCannotSupersedeUncertainPublication() {
         finalizable(false);when(github.canonicalMain(any())).thenReturn("a".repeat(40));
-        jdbc.update("UPDATE development_change SET validation_state='STALE' WHERE id=?",changeId);
+        jdbc.update("UPDATE development_change SET validation_state='STALE',source_fingerprint_sha256=? WHERE id=?","9".repeat(64),changeId);
         assertThrows(RuntimeException.class,()->service.request(sessionId,actor));
+        jdbc.update("UPDATE development_change SET source_fingerprint_sha256=? WHERE id=?",preparedFingerprint,changeId);
         validateFixtureSource();when(github.canonicalMain(any())).thenReturn(main);
         delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);simulateFinalizer();
         when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE)))
@@ -926,6 +928,118 @@ class SourceUpdateIntegrationTest {
         when(github.canonicalMain(any())).thenReturn("a".repeat(40));
         assertEquals("SOURCE_UPDATE_EXECUTION_ACTIVE",assertThrows(DeliveryRejectedException.class,()->service.request(sessionId,actor)).code());
         assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_update_operation WHERE session_id=?",Long.class,sessionId));
+    }
+
+    @Test void movedBaseIsVisibleBeforeValidationAndNewPrAttemptsCreateNoBlockedOutboxRows() throws Exception {
+        var parent=finalizable(false);
+        when(github.canonicalMain(any())).thenReturn("a".repeat(40));
+        mvc.perform(get("/api/mobile/sessions/{id}/delivery",sessionId).with(auth()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.sourceUpdate.baseStatus").value("UPDATE_REQUIRED"))
+                .andExpect(jsonPath("$.sourceUpdate.recoveryAvailable").value(false));
+        for (int i=0;i<2;i++) {
+            mvc.perform(post("/api/mobile/sessions/{id}/delivery/pr",sessionId).with(auth())
+                    .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isConflict());
+        }
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation WHERE session_id=?",Long.class,sessionId));
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_finalization WHERE session_id=?",Long.class,sessionId));
+        assertEquals(parent.command(),store.get(parent.id(),false).command());
+        verifyNoInteractions(finalizationGateway);
+        clearInvocations(remoteClient);
+        jdbc.update("DELETE FROM validation_operation WHERE work_session_id=? AND operation='ANDROID_BUILD'",sessionId);
+        assertEquals("SOURCE_FINALIZATION_MAIN_MOVED",assertThrows(DeliveryRejectedException.class,
+                ()->validations.advanceDevelopmentChange(sessionId)).code());
+        verify(remoteClient,never()).startValidation(any(),any(),anyString(),anyString());
+    }
+
+    @Test void unvalidatedExactPreparationCanAdvanceItsBaseWithoutRelaxingPublicationAndUpdatesTheSamePr() throws Exception {
+        var parent=finalizable(false);
+        // The previous checks remain historical, not authority for a different tree.
+        tx.executeWithoutResult(ignored -> {
+            var session=sessions.findWithProjectAndDevelopmentChangeById(sessionId).orElseThrow();
+            acceptance.invalidateForSourceUpdate(session);
+            session.getDevelopmentChange().setValidationState(DevelopmentChangeProjectionState.STALE);
+            changes.saveAndFlush(session.getDevelopmentChange());
+        });
+        String nextMain="a".repeat(40),nextFingerprint="9".repeat(64);
+        when(github.canonicalMain(any())).thenReturn(nextMain);
+        mvc.perform(post("/api/mobile/sessions/{id}/delivery/resolve-conflicts",sessionId).with(auth())
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.state").value("QUEUED"));
+        var next=store.latest(sessionId).orElseThrow();
+        assertEquals(parent.id(),next.command().predecessorPreparationOperationId());
+        assertEquals(nextMain,next.command().targetMainCommit());
+        assertEquals(next.id(),service.request(sessionId,actor).id());
+        when(gateway.exchange(next.command(),Action.PREPARE)).thenReturn(new Preparation(State.READY_TO_FINALIZE,
+                "7".repeat(40),List.of(),nextFingerprint,"8".repeat(64)));
+        service.reconcile(next.id());
+        assertEquals("READY_TO_FINALIZE",store.get(next.id(),false).state());
+        assertEquals(SourceUpdateBaseGuard.Status.CURRENT,service.observe(sessionId,actor).baseStatus());
+        assertThrows(RuntimeException.class,()->delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD));
+        doAnswer(call -> {
+            var session=call.getArgument(0,WorkSessionEntity.class);
+            return new RemoteWorkerClient.SourceTreeFingerprint("observed",session.getRemoteSessionId().toString(),
+                    session.getWorkspaceIdentity(),"atenea",published,nextFingerprint,1,0,0,false);
+        }).when(remoteClient).fingerprintSourceTree(any());
+        when(remoteClient.startValidation(any(),any(),eq(nextFingerprint),anyString())).thenAnswer(call -> {
+            var session=call.getArgument(0,WorkSessionEntity.class);var kind=call.getArgument(1,ValidationOperationKind.class);
+            String now=Instant.now().toString();
+            return new RemoteWorkerClient.DurableValidationResult(1,"closed-validation-broker/v1",call.getArgument(3),
+                    session.getRemoteSessionId().toString(),session.getWorkspaceIdentity(),"atenea",published,
+                    nextFingerprint,kind.name(),kind.definitionRevision(),"SUCCEEDED","NONE","CONFIRMED",0,1,
+                    "e".repeat(64),"Closed validation passed",now,now,now,now,2,false);
+        });
+        // First observation may be required after the new preparation invalidates acceptance.
+        com.atenea.api.worksession.DevelopmentChangeValidationResponse result=null;
+        for (int i=0;i<6;i++) {
+            result=validations.advanceDevelopmentChange(sessionId);
+            if (result.state().equals("SUCCEEDED")) break;
+        }
+        assertNotNull(result);assertEquals("SUCCEEDED",result.state());assertEquals(4,result.passedOperations());
+        verify(remoteClient,times(4)).startValidation(any(),any(),eq(nextFingerprint),anyString());
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.INSPECT)))
+                .thenReturn(new DevelopmentChangeSourceFinalizationGateway.Result(DevelopmentChangeSourceFinalizationGateway.FinalizationState.ABSENT,null,null,null));
+        when(finalizationGateway.finalizeSource(any(),eq(DevelopmentChangeSourceFinalizationCommand.Action.FINALIZE))).thenAnswer(call -> {
+            var command=call.getArgument(0,DevelopmentChangeSourceFinalizationCommand.class);
+            assertEquals(nextMain,command.targetMainCommit());assertEquals(next.id(),command.preparationOperationId());
+            assertEquals(nextFingerprint,command.owner().sourceFingerprintSha256());return finalized();
+        });
+        delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD);
+        assertEquals(finalized().publishedHeadSha(),publisher.publish(sessionId).headSha());
+        assertEquals("PUBLISHED",store.get(next.id(),false).state());
+        assertEquals(parent,store.get(parent.id(),false));
+        assertEquals(2L,jdbc.queryForObject("SELECT count(*) FROM mobile_source_update_operation WHERE session_id=?",Long.class,sessionId));
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        assertEquals("https://github.com/jlnieto/atenea/pull/47",jdbc.queryForObject("SELECT pull_request_url FROM work_session WHERE id=?",String.class,sessionId));
+        assertEquals(base,jdbc.queryForObject("SELECT base_commit FROM development_change WHERE id=?",String.class,changeId));
+    }
+
+    @Test void preparedContinuationRejectsUnobservedEditsInsteadOfReplacingTheirFingerprint() {
+        var parent=finalizable(false);when(github.canonicalMain(any())).thenReturn("a".repeat(40));
+        doReturn(new RemoteWorkerClient.SourceTreeFingerprint("observed",
+                sessions.findById(sessionId).orElseThrow().getRemoteSessionId().toString(),parent.command().owner().workspaceIdentity(),
+                "atenea",published,"9".repeat(64),1,0,0,false)).when(remoteClient).fingerprintSourceTree(any());
+        assertEquals("SOURCE_UPDATE_CONTINUATION_EVIDENCE_MISMATCH",assertThrows(DeliveryRejectedException.class,
+                ()->service.request(sessionId,actor)).code());
+        assertEquals(parent.id(),store.latest(sessionId).orElseThrow().id());
+    }
+
+    @Test void cleanPreparedContinuationCanBeRequestedBeforeTestingItsObsoleteBase() {
+        var parent=finalizable(true);
+        tx.executeWithoutResult(ignored -> {
+            var session=sessions.findWithProjectAndDevelopmentChangeById(sessionId).orElseThrow();
+            acceptance.invalidateForSourceUpdate(session);
+            session.getDevelopmentChange().setValidationState(DevelopmentChangeProjectionState.STALE);
+            changes.saveAndFlush(session.getDevelopmentChange());
+        });
+        when(github.canonicalMain(any())).thenReturn("a".repeat(40));
+        var next=service.request(sessionId,actor);var command=store.get(next.id(),false).command();
+        assertEquals(parent.id(),command.predecessorPreparationOperationId());
+        assertNull(command.owner().sourceFingerprintSha256());
+        assertEquals(parent.command().owner().sourceCommit(),command.owner().sourceCommit());
+        assertEquals("a".repeat(40),command.targetMainCommit());
+        assertThrows(RuntimeException.class,()->delivery.request(sessionId,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD));
+        verifyNoInteractions(finalizationGateway);
     }
     @Test void simultaneousMainContinuationRequestsRetainOneNewIntentAndExactPinnedTarget() throws Exception {
         var parent=finalizable(false);when(github.canonicalMain(any())).thenReturn("a".repeat(40));

@@ -16,7 +16,8 @@ public record ChangeHelpContext(
         String deliveryKind, String deliveryState, String deliveryError,
         String operatorRole, boolean deliveryEnabled, String runFailure,
         String deliveryTarget, Long deliveryExpiresAt, String deploymentStatus, boolean deliveryPlanVerified,
-        com.atenea.delivery.ChangeDeliveryReadiness deliveryReadiness, Integer reportedInstalledVersionCode
+        com.atenea.delivery.ChangeDeliveryReadiness deliveryReadiness, Integer reportedInstalledVersionCode,
+        String sourceBaseStatus
 ) {
     public List<String> facts() {
         var facts = new java.util.ArrayList<String>();
@@ -33,6 +34,8 @@ public record ChangeHelpContext(
                 ? "Actualización de la misma PR: " + readable(deliveryState) + "."
                 : "Última operación de entrega: " + deliveryKind + " / " + deliveryState + ".");
         if (deliveryError != null) facts.add("Código de entrega: " + deliveryError + ".");
+        if ("UPDATE_REQUIRED".equals(sourceBaseStatus)) facts.add("Base preparada: anterior a main; falta actualizar la misma PR antes de validar o publicar.");
+        if ("UNAVAILABLE".equals(sourceBaseStatus)) facts.add("Base preparada: no se pudo confirmar su vigencia en GitHub.");
         if (deliveryReadiness!=null) {
             if ("CONFIRMED".equals(deliveryReadiness.requirementsStatus())) facts.add("Publicaciones requeridas por el diff: " + deliveryReadiness.requiredTargets() + ".");
             if (deliveryReadiness.android()!=null) {

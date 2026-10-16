@@ -172,6 +172,13 @@ class MobileDeliveryTest {
             assertFailsWith<IllegalArgumentException> { parseMobileSourceUpdate(sourceUpdate().put(key,value)) }
         }
     }
+    @Test fun baseObservationIsClosedAndMissingFieldNeverAssumesCurrent() {
+        assertEquals("UNAVAILABLE",parseMobileSourceUpdate(sourceUpdate()).baseStatus)
+        for (status in listOf("CURRENT","UPDATE_REQUIRED","UNAVAILABLE","NOT_REQUIRED")) {
+            assertEquals(status,parseMobileSourceUpdate(sourceUpdate().put("baseStatus",status)).baseStatus)
+        }
+        assertFailsWith<IllegalArgumentException> { parseMobileSourceUpdate(sourceUpdate().put("baseStatus","ALLOW_PUSH")) }
+    }
     @Test fun malformedSourceUpdateCannotBeInterpretedAsPermissionToStartAnotherOne() {
         val root=JSONObject().put("enabled",true).put("operations",org.json.JSONArray())
             .put("sourceUpdateEnabled",true).put("sourceUpdate","invalid")

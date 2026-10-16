@@ -9,8 +9,19 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.test.platform.app.InstrumentationRegistry
 import android.graphics.Bitmap
+import com.atenea.android.api.AteneaApiClient
+import com.atenea.android.api.MobileDeliveryState
+import com.atenea.android.api.MobileSourceUpdate
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import java.util.UUID
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -18,6 +29,44 @@ import org.junit.Test
 
 class ChangeWorkflowClarityTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun outdatedBaseActionIsVisibleWithoutOfferingObsoleteValidationOrAnotherPr() {
+        assertOutdatedBaseAction(validated=false)
+    }
+    @Test fun outdatedBaseActionReplacesPublishEvenWhenTheRevisionIsValidated() {
+        assertOutdatedBaseAction(validated=true)
+    }
+    private fun assertOutdatedBaseAction(validated: Boolean) {
+        var validations=0
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            val api=AteneaApiClient("https://synthetic.invalid",{ null },operatorRoleProvider={ "PLATFORM_ADMINISTRATOR" })
+            val state=MobileDeliveryUiState(22,scope) {
+                MobileDeliveryState(true,emptyList(),sourceUpdateEnabled=true,
+                    sourceUpdate=MobileSourceUpdate(UUID.randomUUID(),22,"RESOLVER_COMPLETED","1".repeat(40),4,124,null,
+                        baseStatus="UPDATE_REQUIRED"))
+            }
+            runBlocking { state.refresh() }
+            compose.setContent {
+                AteneaOperatorTheme {
+                    WorkSessionChangePanel(22,"Mismo cambio",
+                        DevelopmentChangeValidationUiState(true,!validated,"Validar cambio","Revisión pendiente",current=validated),
+                        null,false,null,{}, { validations++ },deliveryBeforeValidation=state.deliveryBeforeValidation(false)) {
+                        MobileDeliveryPanel(api,22,validated=validated,runInProgress=false,state=state)
+                    }
+                }
+            }
+            // Render the actual panel/button, not a hand-written test substitute.
+            // Clicking the fixed authenticated API is covered by MobileDeliveryTest.
+            compose.onNode(hasText("Actualizar base con main") and hasClickAction()).assertIsDisplayed()
+            compose.onNodeWithText("Validar cambio").assertDoesNotExist()
+            compose.onNodeWithText("Actualizar la misma PR").assertDoesNotExist()
+            assertEquals(0,validations)
+            val bitmap=compose.onRoot().captureToImage().asAndroidBitmap()
+            File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,"stale-base-$validated.png")
+                .outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+        } finally { scope.cancel() }
+    }
 
     @Test fun readyConfirmationPrecedesCompletedValidationAndTechnicalDetails() {
         var confirmations = 0
