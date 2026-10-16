@@ -124,6 +124,7 @@ private fun LoginScreen(
         Text("Atenea", style = MaterialTheme.typography.headlineLarge)
         Text("Consola nativa", style = MaterialTheme.typography.bodyMedium)
         Text(apiBaseUrl, style = MaterialTheme.typography.bodySmall)
+        IndependentRescueEntry()
 
         Spacer(modifier = Modifier.height(24.dp))
 

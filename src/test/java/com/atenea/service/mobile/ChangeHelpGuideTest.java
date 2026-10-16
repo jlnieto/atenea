@@ -4,6 +4,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 
 class ChangeHelpGuideTest {
+    @Test void unsupportedManifestExplainsNoExecutionAndOffersRecoveryNotBlindRetry() {
+        var f=new ChangeHelpFixture();f.check="ANDROID_BUILD";f.checkFailure="[UNSUPPORTED_DEPENDENCY_MANIFEST] mismatch";
+        var result=ChangeHelpGuide.explain(f.build(),"¿Qué hago?",false);
+        assertEquals("VALIDATION_ENVIRONMENT_ATTENTION",result.stage());
+        assertEquals("VALIDATION_RECOVERY",result.nextAction().destination());
+        assertTrue(result.answer().contains("Android no pudo empezar"));
+        assertTrue(result.answer().contains("no lo resolverá"));
+        assertFalse(result.answer().contains("SSH"));
+        assertTrue(ChangeHelpGuide.explain(f.build(),"Más fácil",true).answer().contains("no repitas"));
+    }
     @Test void apkQuestionUsesRealChannelWithoutRequiringValidationAndOffersRealUpdateDestination() {
         var f=new ChangeHelpFixture();f.source="CLEAN";f.validation="NOT_STARTED";f.installedVersion=155;
         var apk=new com.atenea.delivery.ReleaseControlClient.AndroidObservation("8".repeat(40),"0.6.12",1000012,"a".repeat(64),"b".repeat(64),

@@ -68,6 +68,12 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleDatabaseGuard(org.springframework.dao.DataAccessException exception) {
         for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
             if (cause instanceof java.sql.SQLException sql && "55000".equals(sql.getSQLState())
+                    && sql.getMessage() != null && sql.getMessage().contains("ATENEA_VALIDATION_REPAIR_")) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorResponse(
+                        "Hay una recuperación de validación pendiente. Consulta Recuperar validación antes de iniciar otra acción.",
+                        List.of("VALIDATION_RECOVERY_NEEDS_ATTENTION")));
+            }
+            if (cause instanceof java.sql.SQLException sql && "55000".equals(sql.getSQLState())
                     && sql.getMessage() != null && sql.getMessage().contains("ATENEA_RELEASE_IN_PROGRESS")) {
                 return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorResponse(
                         "Hay una publicación en curso. Espera a que termine antes de iniciar otra tarea.",
