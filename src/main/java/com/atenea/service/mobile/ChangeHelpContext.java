@@ -16,7 +16,8 @@ public record ChangeHelpContext(
         String deliveryKind, String deliveryState, String deliveryError,
         String operatorRole, boolean deliveryEnabled, String runFailure,
         String deliveryTarget, Long deliveryExpiresAt, String deploymentStatus, boolean deliveryPlanVerified,
-        com.atenea.delivery.ChangeDeliveryReadiness deliveryReadiness, Integer reportedInstalledVersionCode
+        com.atenea.delivery.ChangeDeliveryReadiness deliveryReadiness, Integer reportedInstalledVersionCode,
+        String sourceBaseStatus
 ) {
     public List<String> facts() {
         var facts = new java.util.ArrayList<String>();
@@ -29,8 +30,12 @@ public record ChangeHelpContext(
         if (runFailureCode != null) facts.add("Código de la tarea: " + runFailureCode + ".");
         if (runFailure != null) facts.add("Error guardado de la tarea: " + runFailure);
         if (validationFailure != null) facts.add("Resultado guardado: " + validationFailure);
-        if (deliveryState != null) facts.add("Última operación de entrega: " + deliveryKind + " / " + deliveryState + ".");
+        if (deliveryState != null) facts.add("SOURCE_UPDATE".equals(deliveryKind)
+                ? "Actualización de la misma PR: " + readable(deliveryState) + "."
+                : "Última operación de entrega: " + deliveryKind + " / " + deliveryState + ".");
         if (deliveryError != null) facts.add("Código de entrega: " + deliveryError + ".");
+        if ("UPDATE_REQUIRED".equals(sourceBaseStatus)) facts.add("Base preparada: anterior a main; falta actualizar la misma PR antes de validar o publicar.");
+        if ("UNAVAILABLE".equals(sourceBaseStatus)) facts.add("Base preparada: no se pudo confirmar su vigencia en GitHub.");
         if (deliveryReadiness!=null) {
             if ("CONFIRMED".equals(deliveryReadiness.requirementsStatus())) facts.add("Publicaciones requeridas por el diff: " + deliveryReadiness.requiredTargets() + ".");
             if (deliveryReadiness.android()!=null) {
@@ -66,6 +71,11 @@ public record ChangeHelpContext(
             case "SUCCEEDED" -> "terminada correctamente";
             case "FAILED" -> "fallida";
             case "BLOCKED" -> "bloqueado";
+            case "ATTENTION" -> "detenida; necesita atención";
+            case "QUEUED", "PREPARE_CLAIMED" -> "preparando el código aprobado y los conflictos";
+            case "UNCERTAIN" -> "comprobando el resultado de la misma operación";
+            case "READY_TO_RESOLVE" -> "preparación terminada; iniciando la resolución";
+            case "RESOLVING" -> "Codex está resolviendo los conflictos";
             case "UNKNOWN" -> "no confirmado";
             default -> status;
         };

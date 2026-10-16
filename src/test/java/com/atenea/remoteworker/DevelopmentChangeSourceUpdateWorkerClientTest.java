@@ -158,20 +158,24 @@ class DevelopmentChangeSourceUpdateWorkerClientTest {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         properties.setEndpoint("http://127.0.0.1:"+server.getAddress().getPort());
         var calls = new AtomicInteger();
+        var failureCode=new java.util.concurrent.atomic.AtomicReference<>("SOURCE_UPDATE_REF_MOVED");
         server.createContext("/v1/development-changes/source-updates/prepare", exchange -> {
             assertEquals("Bearer "+"x".repeat(40), exchange.getRequestHeaders().getFirst("Authorization"));
             assertEquals(command.owner().idempotencyKey().toString(), exchange.getRequestHeaders().getFirst("Idempotency-Key"));
             assertEquals(mapper.readTree(mapper.writeValueAsBytes(client.request(command, DevelopmentChangeSourceUpdateCommand.Action.PREPARE))),
                     mapper.readTree(exchange.getRequestBody()));
             calls.incrementAndGet();
-            byte[] bytes = "{\"code\":\"SOURCE_UPDATE_REF_MOVED\",\"message\":\"private host path\"}".getBytes();
+            byte[] bytes = mapper.writeValueAsBytes(java.util.Map.of("code",failureCode.get(),"message","private host path"));
             exchange.sendResponseHeaders(409, bytes.length); exchange.getResponseBody().write(bytes); exchange.close();
         });
         server.start();
         try {
-            var error = assertThrows(RemoteWorkerException.class, () -> client.exchange(command, DevelopmentChangeSourceUpdateCommand.Action.PREPARE));
-            assertEquals("SOURCE_UPDATE_REF_MOVED", error.getFailureCode());
-            assertFalse(error.getMessage().contains("private")); assertEquals(1, calls.get());
+            for (String code:java.util.List.of("SOURCE_UPDATE_REF_MOVED","SOURCE_UPDATE_TARGET_UNAVAILABLE","SOURCE_UPDATE_TARGET_INVALID")) {
+                failureCode.set(code);
+                var error = assertThrows(RemoteWorkerException.class, () -> client.exchange(command, DevelopmentChangeSourceUpdateCommand.Action.PREPARE));
+                assertEquals(code, error.getFailureCode());assertFalse(error.getMessage().contains("private"));
+            }
+            assertEquals(3, calls.get());
         } finally { server.stop(0); }
     }
     @Test void partialResponseBodyCannotHangTheDurableReconciler(@TempDir Path temporary) throws Exception {

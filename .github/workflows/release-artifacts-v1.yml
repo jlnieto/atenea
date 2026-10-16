@@ -45,7 +45,6 @@ jobs:
           persist-credentials: false
       - name: Build unsigned stable APK (no production or signing credentials)
         env:
-          ATENEA_STABLE_BUILD_NUMBER: ${{ github.run_number }}
           ATENEA_ANDROID_UPDATE_MANIFEST_URL: ${{ secrets.ATENEA_ANDROID_UPDATE_MANIFEST_URL }}
           ATENEA_FIREBASE_API_KEY: ${{ vars.ATENEA_FIREBASE_API_KEY }}
           ATENEA_FIREBASE_PROJECT_ID: ${{ vars.ATENEA_FIREBASE_PROJECT_ID }}
@@ -58,6 +57,7 @@ jobs:
           test -n "$ATENEA_FIREBASE_APP_ID"
           test -n "$ATENEA_FIREBASE_GCM_SENDER_ID"
           python3 -B scripts/test-android-artifact-version.py
+          python3 -B scripts/test-managed-validation-policy.py
           ./scripts/android-build.sh :app:assembleRelease :app:testDebugUnitTest :api:testDebugUnitTest :secure:testDebugUnitTest :core-console:testDebugUnitTest :voice-runtime:testDebugUnitTest
           mkdir -p target/release-android
           cp android/app/build/outputs/apk/release/app-release-unsigned.apk target/release-android/app-unsigned.apk

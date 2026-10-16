@@ -84,6 +84,7 @@ class MobileDeliveryServiceTest {
     private final OperatorRecoveryService factors = mock(OperatorRecoveryService.class);
     private final PrivilegedActionAuthorizationService grants = mock(PrivilegedActionAuthorizationService.class);
     private final PlatformTransactionManager tm = mock(PlatformTransactionManager.class);
+    private final SourceUpdateBaseGuard sourceBaseGuard = mock(SourceUpdateBaseGuard.class);
     private final AuthenticatedOperator actor = new AuthenticatedOperator(7L, "delivery@atenea.test", "Test");
     private final UUID id = UUID.randomUUID(), execution = UUID.randomUUID();
     private MobileDeliveryService service;
@@ -101,7 +102,7 @@ class MobileDeliveryServiceTest {
         when(sessions.findWithProjectAndDevelopmentChangeById(21L)).thenReturn(Optional.of(session));
         when(sessions.findLockedWithProjectById(21L)).thenReturn(Optional.of(session));
         when(sessions.save(any())).thenAnswer(call -> call.getArgument(0));
-        service = new MobileDeliveryService(store,sessions,runs,operators,owner,publication,acceptance,github,executor,factors,grants,mapper,tm);
+        service = new MobileDeliveryService(store,sessions,runs,operators,owner,publication,acceptance,github,executor,factors,grants,mapper,tm,sourceBaseGuard);
     }
     private DeliveryOperation operation(String kind, String state) {
         return new DeliveryOperation(id,21L,7L,kind,DeliveryTarget.APP_PROD,"1".repeat(40),execution,state,
@@ -490,7 +491,7 @@ class MobileDeliveryServiceTest {
         service.reconcile(); service.reconcile();
         assertEquals("UNCONFIRMED",saved.get().evidence().path("ufdDispatch").path("status").asText());
         // Reconstruct service as after an App restart, keeping the durable outbox.
-        service=new MobileDeliveryService(store,sessions,runs,operators,owner,publication,acceptance,github,executor,factors,grants,mapper,tm);
+        service=new MobileDeliveryService(store,sessions,runs,operators,owner,publication,acceptance,github,executor,factors,grants,mapper,tm,sourceBaseGuard);
         service.reconcile(); service.reconcile();
         verify(github,times(1)).dispatchOwnedHeadUfd(request);
         assertEquals(request.requestId().toString(),saved.get().evidence().path("ufdDispatch").path("requestId").asText());

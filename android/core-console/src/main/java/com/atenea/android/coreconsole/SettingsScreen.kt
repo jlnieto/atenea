@@ -352,6 +352,7 @@ internal fun SettingsScreen(
             Text("App", style = MaterialTheme.typography.titleMedium)
             MetricLine("Version name", currentVersionName)
             MetricLine("Version code", currentVersionCode.toString())
+            IndependentRescueEntry()
         }
 
         AteneaPanel {

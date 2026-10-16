@@ -47,6 +47,13 @@ internal fun ChangeHelpScreen(
     var pending by remember(sessionId) { mutableStateOf(false) }
     var error by remember(sessionId) { mutableStateOf<String?>(null) }
     var boundChangeKey by remember(sessionId) { mutableStateOf(changeKey) }
+    var recovering by rememberSaveable(sessionId) { mutableStateOf(false) }
+
+    if (recovering) {
+        ValidationRecoveryScreen(apiClient, sessionId, changeKey,
+            onBack = { recovering = false }, onNavigate = onNavigate)
+        return
+    }
 
     fun ask(text: String?, simple: Boolean = false) {
         if (pending) return
@@ -73,7 +80,9 @@ internal fun ChangeHelpScreen(
     LaunchedEffect(sessionId, changeKey) { ask(null) }
     ChangeHelpPanel(turns, question, pending, error,
         onQuestionChange = { if (it.length <= 1000) question = it },
-        onAsk = { text, simple -> ask(text, simple) }, onRefresh = { ask(null) }, onNavigate = onNavigate)
+        onAsk = { text, simple -> ask(text, simple) }, onRefresh = { ask(null) }, onNavigate = {
+            if (it == ChangeHelpDestination.VALIDATION_RECOVERY) recovering = true else onNavigate(it)
+        })
 }
 
 @Composable
@@ -89,6 +98,7 @@ internal fun ChangeHelpPanel(
         Text("Ayuda con este cambio", style = MaterialTheme.typography.titleMedium)
         Text("Puedes preguntar cómo continuar. Esta ayuda no ejecuta tareas, pruebas ni publicaciones.",
             style = MaterialTheme.typography.bodySmall)
+        if (error != null) IndependentRescueEntry()
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = scroll,
             contentPadding = PaddingValues(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             itemsIndexed(turns) { _, turn ->

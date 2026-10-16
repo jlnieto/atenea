@@ -33,7 +33,9 @@ class ChangeHelpContextServiceTest {
     private final DeliveryStore deliveries=mock(DeliveryStore.class);
     private final ReleaseControlClient releaseControl=mock(ReleaseControlClient.class);
     private final MobileDeliveryService observations=mock(MobileDeliveryService.class);
-    private final ChangeHelpContextService service=new ChangeHelpContextService(sessions,runs,validations,operators,deliveries,releaseControl,observations);
+    private final com.atenea.delivery.SourceUpdateStore sourceUpdates=mock(com.atenea.delivery.SourceUpdateStore.class);
+    private final com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard=mock(com.atenea.delivery.SourceUpdateBaseGuard.class);
+    private final ChangeHelpContextService service=new ChangeHelpContextService(sessions,runs,validations,operators,deliveries,releaseControl,observations,sourceUpdates,sourceBaseGuard);
     private final AuthenticatedOperator actor=new AuthenticatedOperator(1L,"operator@example.test","Operator");
     private WorkSessionEntity session;
     private DevelopmentChangeEntity change;
@@ -79,6 +81,52 @@ class ChangeHelpContextServiceTest {
         when(operators.findById(1L)).thenReturn(Optional.empty());
         assertThrows(WorkSessionOperationBlockedException.class,()->service.read(22L,actor));
         verifyNoInteractions(runs,validations,deliveries);
+    }
+    @Test void blockedSourcePreparationDoesNotDisappearBehindTheSuccessfulPrReceipt() {
+        var op=mock(com.atenea.delivery.SourceUpdateOperation.class);
+        when(op.sessionId()).thenReturn(22L);when(op.operatorId()).thenReturn(1L);
+        when(op.state()).thenReturn("BLOCKED");when(op.errorCode()).thenReturn("SOURCE_UPDATE_TARGET_UNAVAILABLE");
+        when(op.resolverRunId()).thenReturn(null);
+        when(sourceUpdates.latest(22L)).thenReturn(Optional.of(op));
+        var context=service.read(22L,actor);
+        assertTrue(context.sourceUpdateInProgress());
+        assertEquals("SOURCE_UPDATE",context.deliveryKind());
+        assertEquals("BLOCKED",context.deliveryState());
+        assertEquals("SOURCE_UPDATE_TARGET_UNAVAILABLE",context.deliveryError());
+        verify(sourceUpdates,never()).authorizeRecovery(any(),any(),any());
+    }
+    @Test void exactRejectedPrUpdateWithoutNewHeadIsNotHiddenByTheOldSuccessfulPublication() {
+        session.setStatus(WorkSessionStatus.OPEN);session.setFinalCommitSha("1".repeat(40));
+        var operator=new OperatorEntity();operator.setId(1L);operator.setActive(true);
+        operator.setCodexOperationsRole(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
+        when(operators.findById(1L)).thenReturn(Optional.of(operator));when(releaseControl.enabled()).thenReturn(true);
+        var source=mock(com.atenea.delivery.SourceUpdateOperation.class);
+        var command=mock(com.atenea.remoteworker.DevelopmentChangeSourceUpdateCommand.class);
+        var owner=mock(com.atenea.remoteworker.DevelopmentChangeBranchPublicationCommand.class);
+        when(command.owner()).thenReturn(owner);when(owner.sourceCommit()).thenReturn(session.getFinalCommitSha());
+        when(source.command()).thenReturn(command);when(source.state()).thenReturn("RESOLVER_COMPLETED");
+        when(source.sessionId()).thenReturn(22L);when(source.operatorId()).thenReturn(1L);
+        when(source.resultRevision()).thenReturn(change.getSourceRevision());when(source.resultFingerprintSha256()).thenReturn(change.getSourceFingerprintSha256());
+        when(source.preparation()).thenReturn(new com.atenea.remoteworker.DevelopmentChangeSourceUpdateGateway.Preparation(
+                com.atenea.remoteworker.DevelopmentChangeSourceUpdateGateway.State.NEEDS_RESOLUTION,"2".repeat(40),List.of("Example.java"),"4".repeat(64),"5".repeat(64)));
+        Instant now=Instant.now();when(source.updatedAt()).thenReturn(now.minusSeconds(20));
+        when(sourceUpdates.latest(22L)).thenReturn(Optional.of(source));
+        when(sourceBaseGuard.observe(source)).thenReturn(com.atenea.delivery.SourceUpdateBaseGuard.Status.UPDATE_REQUIRED);
+        var blocked=new DeliveryOperation(UUID.randomUUID(),22L,1L,"PUBLISH_PR",DeliveryTarget.APP_PROD,null,
+                UUID.randomUUID(),"BLOCKED",null,new ObjectMapper().createObjectNode(),"SOURCE_FINALIZATION_MAIN_MOVED",now,now);
+        var old=new DeliveryOperation(UUID.randomUUID(),22L,1L,"PUBLISH_PR",DeliveryTarget.APP_PROD,session.getFinalCommitSha(),
+                UUID.randomUUID(),"SUCCEEDED",null,new ObjectMapper().createObjectNode().put("headCommit",session.getFinalCommitSha()),null,now.minusSeconds(60),now.minusSeconds(60));
+        when(deliveries.list(22L)).thenReturn(List.of(blocked,old));
+        var context=service.read(22L,actor);
+        assertEquals("BLOCKED",context.deliveryState());assertEquals("SOURCE_FINALIZATION_MAIN_MOVED",context.deliveryError());
+        assertEquals("UPDATE_REQUIRED",context.sourceBaseStatus());assertFalse(context.sourceUpdateInProgress());
+        // Another source revision / a failure predating this preparation cannot be adopted.
+        when(source.resultRevision()).thenReturn(change.getSourceRevision()+1);
+        assertEquals("SUCCEEDED",service.read(22L,actor).deliveryState());
+        when(source.resultRevision()).thenReturn(change.getSourceRevision());when(source.updatedAt()).thenReturn(now.plusSeconds(10));
+        assertEquals("SUCCEEDED",service.read(22L,actor).deliveryState());
+        verify(sourceUpdates,never()).authorizeRecovery(any(),any(),any());
+        verify(deliveries,never()).update(any(),any(),any(),any(),any());
     }
     @Test void oldDefinitionAndOtherFingerprintDoNotCount() {
         var old=new ValidationOperationEntity(); old.setOperation(ValidationOperationKind.BACKEND_TEST);

@@ -438,14 +438,44 @@ class AteneaApiClient(
     }
 
     suspend fun fetchDelivery(sessionId: Long): MobileDeliveryState = getJson(
-        path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true,
-        parser = ::parseMobileDeliveryState
-    )
+        path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true
+    ) { json -> parseMobileDeliveryState(json).also { state ->
+        require(state.validation?.workSessionId?.let { it == sessionId } != false)
+    } }
 
     suspend fun fetchChangeHelp(sessionId: Long): ChangeHelp = requestJson(
         path = "/api/mobile/sessions/$sessionId/help", method = "GET", body = null,
         authenticated = true, headers = versionHeaders()
     ) { json -> parseChangeHelp(json, sessionId) }
+
+    suspend fun fetchValidationRecovery(sessionId: Long): ValidationRecovery = getJson(
+        path = "/api/mobile/sessions/$sessionId/validation-recovery", authenticated = true
+    ) { json -> parseValidationRecovery(json, sessionId) }
+
+    suspend fun prepareValidationRepair(sessionId: Long): ValidationRecoveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/validation-recovery/prepare", body = JSONObject(), authenticated = true,
+        parser = ::parseValidationRecoveryOperation
+    )
+
+    suspend fun investigateValidation(sessionId: Long): ValidationRecoveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/validation-recovery/investigate", body = JSONObject(), authenticated = true,
+        parser = ::parseValidationRecoveryOperation
+    )
+
+    suspend fun applyValidationRepair(sessionId: Long, id: UUID): ValidationRecoveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/validation-recovery/$id/apply", body = JSONObject(), authenticated = true,
+        parser = ::parseValidationRecoveryOperation
+    )
+
+    suspend fun recoverValidationRepair(sessionId: Long, id: UUID): ValidationRecoveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/validation-recovery/$id/recover", body = JSONObject(), authenticated = true,
+        parser = ::parseValidationRecoveryOperation
+    )
+
+    suspend fun cancelValidationRepair(sessionId: Long, id: UUID): ValidationRecoveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/validation-recovery/$id/cancel", body = JSONObject(), authenticated = true,
+        parser = ::parseValidationRecoveryOperation
+    )
 
     suspend fun askChangeHelp(sessionId: Long, question: String, simple: Boolean = false): ChangeHelp {
         require(question.isNotBlank() && question.length <= 1000)

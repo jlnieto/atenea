@@ -31,6 +31,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,23 +44,33 @@ public class ClosedValidationOperationService {
     private final ValidationOperationRepository validationOperationRepository;
     private final RemoteWorkerClient remoteWorkerClient;
     private final WorkSessionAcceptanceService acceptanceService;
+    private final com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard;
 
     public ClosedValidationOperationService(
             WorkSessionRepository workSessionRepository,
             AgentRunRepository agentRunRepository,
             ValidationOperationRepository validationOperationRepository,
             RemoteWorkerClient remoteWorkerClient,
-            WorkSessionAcceptanceService acceptanceService
+            WorkSessionAcceptanceService acceptanceService,
+            com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard
     ) {
         this.workSessionRepository = workSessionRepository;
         this.agentRunRepository = agentRunRepository;
         this.validationOperationRepository = validationOperationRepository;
         this.remoteWorkerClient = remoteWorkerClient;
         this.acceptanceService = acceptanceService;
+        this.sourceBaseGuard = sourceBaseGuard;
     }
 
     @Transactional(readOnly = true)
     public DevelopmentChangeValidationEvidenceResponse getDevelopmentChangeEvidence(Long sessionId) {
+        return findDevelopmentChangeEvidence(sessionId).orElseThrow(() ->
+                new WorkSessionOperationBlockedException("Validation evidence requires the bound DevelopmentChange"));
+    }
+
+    /** Optional observation does not throw or mark the enclosing snapshot rollback-only on an unconfirmed identity. */
+    @Transactional(readOnly = true)
+    public Optional<DevelopmentChangeValidationEvidenceResponse> findDevelopmentChangeEvidence(Long sessionId) {
         // No lock, worker call, source observation, projection promotion or retry on this path.
         WorkSessionEntity session = workSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
@@ -73,7 +84,7 @@ public class ClosedValidationOperationService {
                 || !Objects.equals(session.getWorkspaceBranch(), change.getWorkspaceBranch())
                 || session.getSelectedWorkerId() == null
                 || !Objects.equals(session.getSelectedWorkerId(), change.getSelectedWorkerId())) {
-            throw new WorkSessionOperationBlockedException("Validation evidence requires the bound DevelopmentChange");
+            return Optional.empty();
         }
         String fingerprint = change.getSourceFingerprintSha256();
         List<ValidationOperationEntity> results = fingerprint == null ? List.of()
@@ -86,10 +97,10 @@ public class ClosedValidationOperationService {
                 .map(this::response).orElse(null);
         int passed = (int) latest.values().stream()
                 .filter(value -> value.getStatus() == ValidationOperationStatus.SUCCEEDED).count();
-        return new DevelopmentChangeValidationEvidenceResponse(
+        return Optional.of(new DevelopmentChangeValidationEvidenceResponse(
                 change.getChangeKey(), sessionId, change.getSourceRevision(), fingerprint,
                 change.getValidationState(), passed, ValidationOperationKind.values().length,
-                evidence, lastAttempt);
+                evidence, lastAttempt));
     }
 
     @Transactional
@@ -112,6 +123,8 @@ public class ClosedValidationOperationService {
         if (existing != null) {
             return response(existing);
         }
+
+        sourceBaseGuard.requireCurrent(sessionId);
 
         UUID validationId = UUID.randomUUID();
         Instant startedAt = Instant.now();
@@ -246,6 +259,9 @@ public class ClosedValidationOperationService {
                     "Todas las validaciones obligatorias están vigentes.");
         }
 
+        // Polling/reading retained results remains possible. Only new test
+        // admission is refused when its prepared base is already obsolete.
+        sourceBaseGuard.requireCurrent(sessionId);
         ValidationOperationEntity entity = newValidationEntity(
                 session, next, source.fingerprintSha256(), failed == null ? null : failed.getId());
         validationOperationRepository.saveAndFlush(entity);

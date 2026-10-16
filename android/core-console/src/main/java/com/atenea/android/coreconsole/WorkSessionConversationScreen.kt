@@ -86,31 +86,9 @@ internal fun WorkSessionConversationScreen(
     var operationNotice by remember { mutableStateOf<String?>(null) }
     var operationPending by remember { mutableStateOf(false) }
     var validationPending by remember { mutableStateOf(false) }
-    var validationNotice by remember { mutableStateOf<String?>(null) }
-    var validationEvidence by remember(sessionId) { mutableStateOf<DevelopmentChangeValidationEvidence?>(null) }
-    var validationEvidenceLoading by remember(sessionId) { mutableStateOf(false) }
-    var validationEvidenceError by remember(sessionId) { mutableStateOf<String?>(null) }
     var wasBackgrounded by remember { mutableStateOf(false) }
     var attachmentDraft by remember(sessionId) { mutableStateOf(WorkSessionAttachmentDraft()) }
     var openingAttachmentId by remember { mutableStateOf<UUID?>(null) }
-
-    suspend fun readValidationEvidence(id: Long) {
-        validationEvidenceLoading = true
-        try {
-            validationEvidence = apiClient.fetchDevelopmentChangeValidationEvidence(id).also {
-                require(it.changeKey.toString() == conversation?.session?.developmentChangeKey)
-            }
-            validationEvidenceError = null
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            validationEvidenceError = if (failure is AteneaApiException && failure.status == 404) {
-                "La sesión o esta consulta no están disponibles (HTTP 404). No se ha reintentado la validación."
-            } else "No se pudo consultar el resultado guardado. ${failure.message.orEmpty()}"
-        } finally {
-            validationEvidenceLoading = false
-        }
-    }
 
     suspend fun refreshAttachmentCapability(id: Long) {
         attachmentDraft = attachmentDraft.copy(capabilityLoading = true, capabilityFailure = null)
@@ -203,10 +181,11 @@ internal fun WorkSessionConversationScreen(
                     )
                     refreshCodexState(loaded, includeProfile)
                 }
-                if (conversation?.session?.developmentChangeKey != null) readValidationEvidence(id)
                 if (!silent || attachmentDraft.capability == null) {
                     refreshAttachmentCapability(id)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (loadError: Exception) {
                 error = loadError.message ?: "No se pudo cargar la conversación."
             } finally {
@@ -658,20 +637,16 @@ internal fun WorkSessionConversationScreen(
         }
     }
 
-    fun validateChange() {
+    fun validateChange(workflow: MobileDeliveryUiState) {
         val id = sessionId ?: return
-        if (validationPending || conversation?.runInProgress == true) return
+        if (validationPending || conversation?.runInProgress == true || !workflow.beginValidation()) return
+        validationPending = true
         scope.launch {
-            validationPending = true
-            validationNotice = "Preparando la validación cerrada…"
             error = null
             try {
                 while (true) {
                     val result = apiClient.advanceDevelopmentChangeValidation(id)
-                    validationNotice = buildString {
-                        append(result.summary)
-                        append(" (${result.passedOperations}/${result.requiredOperations})")
-                    }
+                    workflow.refresh()
                     when (result.state) {
                         "RUNNING", "ADVANCING" -> delay(3_000)
                         "SUCCEEDED" -> {
@@ -685,10 +660,14 @@ internal fun WorkSessionConversationScreen(
                         }
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (validationError: Exception) {
-                error = validationError.message ?: "No se pudo validar el cambio."
+                error = sourceBaseFailureMessage(validationError.message)
+                    ?: validationError.message ?: "No se pudo validar el cambio."
+                refresh(silent = true, includeProfile = false)
             } finally {
-                validationPending = false
+                try { workflow.finishValidation() } finally { validationPending = false }
             }
         }
     }
@@ -699,19 +678,22 @@ internal fun WorkSessionConversationScreen(
     } == true
     val profileReady = profileUnavailable || profile != null
     val deliveryState = rememberMobileDeliveryUiState(apiClient, sessionId,
-        enabled = current?.session?.developmentChangeKey != null && apiClient.currentOperatorRole() == "PLATFORM_ADMINISTRATOR")
+        enabled = current?.session?.developmentChangeKey != null)
+    LaunchedEffect(deliveryState.loaded, deliveryState.validationEvidence?.sourceRevision,
+        deliveryState.validationEvidence?.validationState, deliveryState.sourceUpdate?.state, deliveryState.completed) {
+        // Refresh conversation/history on durable workflow transitions too,
+        // including preparations which do not start a Codex run. The change
+        // buttons themselves still use the single delivery/validation snapshot.
+        if (deliveryState.loaded) refresh(silent = true, includeProfile = false)
+    }
     val composerEnabled = current?.canCreateTurn == true && profileReady && !profileDirty && deliveryState.completion == null
-        && profileError == null && !validationPending
-    val changeValidationUi = developmentChangeValidationUiState(
-        session = current?.session,
-        runInProgress = current?.runInProgress == true,
-        validationPending = validationPending,
-        operationNotice = validationNotice
-    )
+        && profileError == null && !validationPending && !deliveryState.busy && !deliveryState.validationRunning
+        && !deliveryState.deliveryBeforeValidation(false)
+    val changeValidationUi = deliveryState.validationUi(current?.session, current?.runInProgress == true)
     ConversationSurface(
         title = current?.session?.title ?: "WorkSession $sessionId",
         status = "Sesión $sessionId · " + conversationStatusLabel(current?.runInProgress == true,
-            current?.session?.developmentChangeValidationState, current?.session?.status,
+            deliveryState.validationEvidence?.validationState, current?.session?.status,
             current?.latestRun?.status, validationInProgress = validationPending),
         surfaceKey = "work-session-$sessionId",
         turns = current?.recentTurns.orEmpty(),
@@ -724,7 +706,7 @@ internal fun WorkSessionConversationScreen(
         onSend = ::send,
         onMicrophoneClick = ::requestVoicePrompt,
         onBack = onBackToSession,
-        onRefresh = { refresh() },
+        onRefresh = { refresh(); scope.launch { deliveryState.refresh() } },
         error = error,
         commandContent = activeCommand?.takeIf { it.isVisibleConversationCommand() }?.let { command ->
             {
@@ -766,24 +748,22 @@ internal fun WorkSessionConversationScreen(
                 }
             }
         } else null,
-        changeNeedsAttention = current?.session?.developmentChangeValidationState == "BLOCKED"
-            || deliveryState.currentStep(current?.session?.developmentChangeValidationState == "CURRENT",
-                current?.runInProgress == true).status == DeliveryStepStatus.ATTENTION,
+        changeNeedsAttention = deliveryState.validationEvidence?.validationState == "BLOCKED"
+            || deliveryState.currentStep(deliveryState.validationCurrent,
+                current?.runInProgress == true, validationInProgress = changeValidationUi.inProgress).status == DeliveryStepStatus.ATTENTION,
         changeContent = current?.takeIf { it.session.developmentChangeKey != null }?.let { loaded -> {
             WorkSessionChangePanel(
                 sessionId = sessionId,
                 title = loaded.session.title,
                 validation = changeValidationUi,
-                evidence = validationEvidence,
-                loading = validationEvidenceLoading,
-                readError = validationEvidenceError,
-                onReadEvidence = { if (!validationEvidenceLoading) scope.launch { readValidationEvidence(sessionId) } },
-                onValidate = ::validateChange,
+                evidence = deliveryState.validationEvidence,
+                loading = deliveryState.refreshing,
+                readError = deliveryState.loadError,
+                onReadEvidence = { if (!deliveryState.refreshing) scope.launch { deliveryState.refresh() } },
+                onValidate = { validateChange(deliveryState) },
                 completed = loaded.session.status == "CLOSED" || deliveryState.completion != null,
                 runInProgress = loaded.runInProgress,
-                deliveryBeforeValidation = !loaded.runInProgress && !deliveryState.sourcePhaseComplete
-                    && deliveryState.sourceUpdate?.state in setOf("QUEUED", "PREPARE_CLAIMED", "UNCERTAIN", "ATTENTION",
-                        "READY_TO_RESOLVE", "RETRY_REQUESTED", "RESOLVING", "FAILED", "BLOCKED")
+                deliveryBeforeValidation = deliveryState.deliveryBeforeValidation(loaded.runInProgress || changeValidationUi.inProgress)
             ) {
                 if (closedSessionHistoryOnly(loaded.session.status, deliveryState.completion != null)) {
                     Text("WorkSession cerrada · historial")
@@ -797,9 +777,10 @@ internal fun WorkSessionConversationScreen(
                         state = deliveryState, sessionOpen = false, onOpenUpdates = onOpenUpdates)
                 } else {
                     MobileDeliveryPanel(apiClient, sessionId,
-                        validated = loaded.session.developmentChangeValidationState == "CURRENT",
+                        validated = deliveryState.validationCurrent,
                         runInProgress = loaded.runInProgress, state = deliveryState,
-                        sessionOpen = loaded.session.status == "OPEN", onOpenUpdates = onOpenUpdates)
+                        sessionOpen = loaded.session.status == "OPEN", onOpenUpdates = onOpenUpdates,
+                        validationInProgress = changeValidationUi.inProgress)
                 }
             }
         } },

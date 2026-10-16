@@ -4,6 +4,39 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 
 class ChangeHelpGuideTest {
+    @Test void outdatedBaseComesBeforeValidationAndOldSuccessfulPrEvenWhenAllFourChecksPassed() {
+        var f=new ChangeHelpFixture();f.pr="OPEN";f.sourceBaseStatus="UPDATE_REQUIRED";
+        f.deliveryKind="PUBLISH_PR";f.deliveryState="BLOCKED";f.deliveryError="SOURCE_FINALIZATION_MAIN_MOVED";
+        var apk=new com.atenea.delivery.ReleaseControlClient.AndroidObservation("8".repeat(40),"0.5.125",158,"a".repeat(64),"b".repeat(64),
+                java.time.Instant.now().getEpochSecond(),java.util.UUID.randomUUID(),java.util.UUID.randomUUID(),"c".repeat(64));
+        f.readiness=new com.atenea.delivery.ChangeDeliveryReadiness(22L,"NOT_INTEGRATED",null,null,java.util.List.of(),false,
+                null,apk,"NOT_INTEGRATED",null,java.time.Instant.now().getEpochSecond());
+        for (String validation:java.util.List.of("STALE","CURRENT")) {
+            f.validation=validation;f.passed=validation.equals("CURRENT") ? 4 : 0;
+            var answer=ChangeHelpGuide.explain(f.build(),"Falla Actualizar la misma PR de Atenea",false);
+            assertEquals("SOURCE_BASE_UPDATE_REQUIRED",answer.stage());assertEquals("CHANGE",answer.nextAction().destination());
+            assertTrue(answer.nextAction().label().contains("Actualizar base con main"));
+            assertTrue(answer.answer().contains("No hace falta validar primero la base antigua"));
+            assertTrue(answer.answer().contains("mismo cambio, conversación y PR"));
+            assertTrue(answer.facts().stream().anyMatch(fact->fact.contains("SOURCE_FINALIZATION_MAIN_MOVED")));
+        }
+    }
+    @Test void missingBaseObservationOffersReadOnlyRefreshNotPublicationOrNewTests() {
+        var f=new ChangeHelpFixture();f.sourceBaseStatus="UNAVAILABLE";f.pr="OPEN";
+        var answer=ChangeHelpGuide.explain(f.build(),"Qué hago",true);
+        assertEquals("SOURCE_BASE_UNCONFIRMED",answer.stage());
+        assertTrue(answer.answer().contains("Consultar estado"));assertFalse(answer.answer().contains("Validar cambio"));
+    }
+    @Test void unsupportedManifestExplainsNoExecutionAndOffersRecoveryNotBlindRetry() {
+        var f=new ChangeHelpFixture();f.check="ANDROID_BUILD";f.checkFailure="[UNSUPPORTED_DEPENDENCY_MANIFEST] mismatch";
+        var result=ChangeHelpGuide.explain(f.build(),"¿Qué hago?",false);
+        assertEquals("VALIDATION_ENVIRONMENT_ATTENTION",result.stage());
+        assertEquals("VALIDATION_RECOVERY",result.nextAction().destination());
+        assertTrue(result.answer().contains("Android no pudo empezar"));
+        assertTrue(result.answer().contains("no lo resolverá"));
+        assertFalse(result.answer().contains("SSH"));
+        assertTrue(ChangeHelpGuide.explain(f.build(),"Más fácil",true).answer().contains("no repitas"));
+    }
     @Test void apkQuestionUsesRealChannelWithoutRequiringValidationAndOffersRealUpdateDestination() {
         var f=new ChangeHelpFixture();f.source="CLEAN";f.validation="NOT_STARTED";f.installedVersion=155;
         var apk=new com.atenea.delivery.ReleaseControlClient.AndroidObservation("8".repeat(40),"0.6.12",1000012,"a".repeat(64),"b".repeat(64),
@@ -184,6 +217,19 @@ class ChangeHelpGuideTest {
             assertFalse(r.answer().contains("prepara de nuevo"));
         }
     }
+    @Test void stoppedBasePreparationIsNotDescribedAsWorkingOrAsFailedFunctionalTests() {
+        var f=new ChangeHelpFixture();f.sourceUpdate=true;f.deliveryKind="SOURCE_UPDATE";
+        f.deliveryState="ATTENTION";f.deliveryError="SOURCE_UPDATE_TARGET_UNAVAILABLE";
+        var result=ChangeHelpGuide.explain(f.build(),"Qué hago",false);
+        assertEquals("SOURCE_UPDATE_ATTENTION",result.stage());
+        assertTrue(result.answer().contains("detenida"));
+        assertTrue(result.answer().contains("Recuperar operación"));
+        assertTrue(result.answer().contains("versión exacta"));
+        assertFalse(result.answer().contains("pruebas han fallado"));
+        f.deliveryError="SOURCE_UPDATE_TARGET_INVALID";
+        assertFalse(ChangeHelpGuide.explain(f.build(),"Qué hago",false).answer().contains("Recuperar operación continuará"));
+    }
+
     private ChangeHelpFixture publication(String state) {
         var f=new ChangeHelpFixture(); f.validation="CURRENT"; f.passed=4; f.pr="MERGED";
         f.deliveryKind="RELEASE"; f.deliveryState=state; return f;

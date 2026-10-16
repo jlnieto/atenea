@@ -27,6 +27,7 @@ def manifest(target):
         code,name=read_version("release")
     return {"protocol": "atenea-release/v1", "target": target, "sourceCommit": source,
             "payloadSha256": sha.hexdigest(), "versionCode": code, "versionName": name,
+            "managedAndroidPolicySha256": hashlib.sha256(Path("runtime-contract/atenea-android-inputs-v2.json").read_bytes()).hexdigest(),
             "flywayVersion": max(int(re.match(r"V([0-9]+)__", path.name)[1])
                 for path in Path("src/main/resources/db/migration").glob("V*__*.sql")) if target == "APP_PROD" else None}
 

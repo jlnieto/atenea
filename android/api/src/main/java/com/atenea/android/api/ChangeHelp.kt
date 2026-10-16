@@ -3,7 +3,7 @@ package com.atenea.android.api
 import org.json.JSONObject
 import java.util.UUID
 
-enum class ChangeHelpDestination { CHANGE, ACTIVITY, CHAT, DELIVERY, APP_UPDATES }
+enum class ChangeHelpDestination { CHANGE, ACTIVITY, CHAT, DELIVERY, APP_UPDATES, VALIDATION_RECOVERY }
 
 data class ChangeHelpNavigation(val destination: ChangeHelpDestination, val label: String, val reason: String)
 

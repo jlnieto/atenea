@@ -14,7 +14,9 @@ public final class ChangeHelpGuide {
         String normalized = Normalizer.normalize(question == null ? "" : question, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
         var readiness=c.deliveryReadiness();
-        boolean apkQuestion=normalized.matches("(?s).*(apk|android|version|menu|actualiza|publicaciones).*" );
+        boolean sourceQuestion=normalized.matches("(?s).*\\b(pr|pull request|base|conflictos)\\b.*");
+        boolean apkQuestion=normalized.matches("(?s).*(apk|android|version|menu|publicaciones|actualiza[^.?!]*(app|atenea)).*")
+                && (!sourceQuestion || normalized.matches("(?s).*\\b(apk|android)\\b.*"));
         if (apkQuestion && readiness!=null && readiness.android()!=null) {
             var apk=readiness.android();
             stage="ANDROID_CHANNEL";
@@ -54,8 +56,17 @@ public final class ChangeHelpGuide {
             shortAnswer="Atenea está comprobando el cambio. Espera al resultado.";
             label="Ver validación"; reason="Consulta la operación existente; no solicites otra.";
         } else if (c.sourceUpdateInProgress()) {
-            stage="SOURCE_UPDATE"; answer="Hay una actualización de la base o una resolución de conflictos pendiente. Hay que seguir su misma operación antes de validar o integrar. No se debe crear otra PR o volver a enviar el trabajo.";
-            shortAnswer="Se está preparando la revisión del mismo cambio. Consulta esa operación.";
+            boolean stopped=c.deliveryState()!=null && java.util.Set.of("ATTENTION","BLOCKED","FAILED").contains(c.deliveryState());
+            stage=stopped?"SOURCE_UPDATE_ATTENTION":"SOURCE_UPDATE";
+            answer=stopped && "SOURCE_UPDATE_TARGET_INVALID".equals(c.deliveryError())
+                ? "La actualización está detenida porque el código o su evidencia no coinciden con lo autorizado. No se modificará el trabajo ni se forzará la recuperación. Consulta el detalle de esta misma operación; no crees otra PR ni repitas tu prompt."
+                : stopped
+                ? "La actualización de la base está detenida; Atenea no está trabajando en ella. Tu código y la PR se conservan. Abre Ver actualización de base: Recuperar operación continuará con la versión exacta aprobada, obteniendo el código que falte sin crear otra PR ni repetir tu prompt. Si la evidencia no es válida, se detendrá y mostrará el motivo. No hace falta volver a validar mientras esta preparación siga pendiente."
+                : "Hay una actualización pendiente de esta misma operación. La pantalla de actualización indica si Atenea está comprobando u obteniendo la versión exacta aprobada de main, resolviendo conflictos o esperando tu confirmación. No elige otro main ni crea otra PR. Puedes salir de la app; no repitas el prompt ni la acción.";
+            shortAnswer=stopped && "SOURCE_UPDATE_TARGET_INVALID".equals(c.deliveryError())
+                ? "Está detenida por una evidencia no válida. Consulta el detalle; no fuerces otro intento."
+                : stopped?"Está detenida. Abre Ver actualización de base para recuperar la misma operación; tu trabajo se conserva."
+                :"La preparación del mismo cambio está en curso. Consulta su estado; no repitas la acción.";
             label="Ver actualización de base"; reason="Las opciones de recuperación conservan la operación existente.";
         } else if (!"READY".equals(c.workspaceState()) || "BLOCKED".equals(c.sourceState())
                 || "STALE".equals(c.sourceState()) || "BLOCKED".equals(c.remoteCloseState())) {
@@ -66,10 +77,27 @@ public final class ChangeHelpGuide {
             stage="TASK_ATTENTION"; answer="La última tarea no terminó correctamente. Eso no significa que se haya perdido el cambio. Abre el detalle para consultar el error y si permite recuperar o reintentar esa misma tarea. No dupliques el prompt.";
             shortAnswer="La tarea necesita atención. Revisa su error antes de hacer otro intento.";
             destination="ACTIVITY"; label="Ver tarea y recuperación"; reason="El detalle decide si existe un reintento autorizado.";
+        } else if ("UPDATE_REQUIRED".equals(c.sourceBaseStatus())) {
+            stage="SOURCE_BASE_UPDATE_REQUIRED";
+            answer="La base preparada de esta PR es anterior a main. Los resultados de pruebas guardados se conservan, pero falta incorporar la base actual antes de publicar. Atenea está detenida: en Cambio pulsa Actualizar base con main una vez. Se conservan el mismo cambio, conversación y PR; no repitas el prompt. Cuando termine esa preparación, valida la revisión resultante y después utiliza Actualizar la misma PR. No hace falta validar primero la base antigua.";
+            shortAnswer="Tu trabajo se conserva. En Cambio pulsa Actualizar base con main; después valida la nueva revisión y actualiza la misma PR.";
+            destination="CHANGE"; label="Ir a Actualizar base con main";
+            reason="Abre la acción existente; preguntar no cambia la base ni inicia pruebas.";
+        } else if ("UNAVAILABLE".equals(c.sourceBaseStatus())) {
+            stage="SOURCE_BASE_UNCONFIRMED";
+            answer="No se pudo confirmar en GitHub si la base preparada sigue vigente. No se han modificado el código ni la PR. En Cambio utiliza Consultar estado; no repitas Validar cambio ni Actualizar la misma PR mientras falte esta comprobación.";
+            shortAnswer="Falta comprobar la base en GitHub. En Cambio pulsa Consultar estado; no repitas las pruebas ni la publicación.";
+            label="Ir a Consultar estado"; reason="Sólo vuelve a consultar; no elige otra base ni publica.";
         } else if (c.failedCheck() != null) {
-            stage="VALIDATION_ATTENTION"; answer="Hay un resultado de validación fallido o bloqueado para esta revisión. La causa guardada aparece debajo. No se puede crear o integrar la PR hasta completar las comprobaciones. Si falla el código, corrígelo en esta conversación; si falla la infraestructura, no lo presentes como un fallo del código.";
-            shortAnswer="Una comprobación necesita atención. Mira su resultado; el cambio está conservado.";
-            label="Ver resultado de validación"; reason="Consultar no ejecuta ni reintenta pruebas.";
+            boolean manifest=c.validationFailure()!=null && c.validationFailure().startsWith("[UNSUPPORTED_DEPENDENCY_MANIFEST]");
+            stage=manifest?"VALIDATION_ENVIRONMENT_ATTENTION":"VALIDATION_ATTENTION";
+            answer=manifest
+                    ? "Android no pudo empezar: su configuración de construcción no coincide con la autorizada por el validador. No demuestra un fallo de tu funcionalidad. Atenea está detenida; esperar o repetir Validar cambio no lo resolverá. Abre Recuperar validación: si reconoce una reparación exacta, podrás prepararla y confirmar su aplicación. Si no, podrás encargar la investigación desde este mismo cambio. Tu código y conversación se conservan."
+                    : "Una comprobación de esta revisión necesita atención. Atenea está detenida, no trabajando. La causa guardada aparece debajo. Puedes investigar y encargar la corrección desde el mismo cambio; no dupliques el prompt funcional ni crees otra sesión. La investigación no ejecuta pruebas ni publica por sí sola.";
+            shortAnswer=manifest?"No ha fallado tu funcionalidad: el validador no reconoce la configuración Android. Abre Recuperar validación; no repitas las pruebas."
+                    :"Una comprobación necesita atención. Abre Recuperar validación para investigar el bloqueo sin perder tu cambio.";
+            destination="VALIDATION_RECOVERY";label="Recuperar validación";
+            reason="Consultar no modifica nada. Preparar, aplicar o encargar una investigación requieren una acción explícita.";
         } else if ("CURRENT".equals(c.validationState()) && c.passedChecks()!=c.requiredChecks()) {
             stage="VALIDATION_EVIDENCE_MISSING"; answer="El estado dice validado, pero esta consulta no encuentra todas las comprobaciones vigentes de la misma revisión. No se puede afirmar que las pruebas hayan pasado. Consulta el resultado guardado antes de integrar o publicar.";
             shortAnswer="Falta confirmar la evidencia de las pruebas de esta revisión.";
@@ -140,7 +168,7 @@ public final class ChangeHelpGuide {
                 && readiness.requiredTargets().contains(com.atenea.delivery.DeliveryTarget.ANDROID_STABLE)
                 && !"INCLUDED".equals(readiness.androidStatus())) {
             stage="ANDROID_PUBLICATION_REQUIRED";
-            answer="El diff de este cambio modifica Android, pero no hay una APK del canal que Atenea haya confirmado que lo contenga. Un backend desplegado no basta. Abre Publicaciones y utiliza Preparar Android estable; después confirma esa misma operación. La versión se genera automáticamente en el build estable.";
+            answer="El diff de este cambio modifica Android, pero no hay una APK del canal que Atenea haya confirmado que lo contenga. Un backend desplegado no basta. Abre Publicaciones y utiliza Preparar Android estable; después confirma esa misma operación. La versión declarada en el código debe superar la del canal; Atenea lo comprueba antes de publicar.";
             shortAnswer="Falta publicar Android. Abre Publicaciones y prepara Android estable; no crees otro cambio.";
             destination="DELIVERY"; label="Ver publicación Android"; reason="Preparar y confirmar son acciones distintas; esta ayuda no las ejecuta.";
         } else if (readiness!=null && "UNAVAILABLE".equals(readiness.requirementsStatus()) && "MERGED".equals(c.pullRequestState())) {

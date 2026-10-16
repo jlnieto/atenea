@@ -50,6 +50,7 @@ public class MobileDeliveryService {
     private final PrivilegedActionAuthorizationService grants;
     private final ObjectMapper mapper;
     private final TransactionTemplate transaction;
+    private final SourceUpdateBaseGuard sourceBaseGuard;
     // Positive immutable ancestry proofs only. Runtime/health/role/owner are read on every poll.
     private final java.util.Map<String, Long> observedAncestry = new java.util.LinkedHashMap<>();
     private final java.util.Map<String, List<DeliveryTarget>> immutableRequirements = new java.util.LinkedHashMap<>();
@@ -59,12 +60,13 @@ public class MobileDeliveryService {
             WorkSessionGitHubService publication, WorkSessionAcceptanceService acceptance,
             GitHubClient github, ReleaseControlClient executor,
             OperatorRecoveryService factors, PrivilegedActionAuthorizationService grants,
-            ObjectMapper mapper, PlatformTransactionManager transactionManager) {
+            ObjectMapper mapper, PlatformTransactionManager transactionManager, SourceUpdateBaseGuard sourceBaseGuard) {
         this.store = store; this.sessions = sessions; this.runs = runs; this.operators = operators;
         this.ownership = ownership; this.publication = publication; this.github = github;
         this.acceptance = acceptance;
         this.executor = executor; this.factors = factors; this.grants = grants; this.mapper = mapper;
         this.transaction = new TransactionTemplate(transactionManager);
+        this.sourceBaseGuard=sourceBaseGuard;
     }
 
     public List<DeliveryOperation.DeliveryView> list(Long sessionId, AuthenticatedOperator actor) {
@@ -286,6 +288,7 @@ public class MobileDeliveryService {
                             && Objects.equals(op.sourceCommit(), session.getFinalCommitSha())).findFirst();
                     if (completed.isPresent()) return completed.get().view();
                 }
+                if ("PUBLISH_PR".equals(kind)) sourceBaseGuard.requireCurrent(sessionId);
                 return store.create(sessionId, actor.operatorId(), kind, target,
                         "INTEGRATE".equals(kind) ? session.getFinalCommitSha() : null,
                         "QUEUED", mapper.createObjectNode()).view();

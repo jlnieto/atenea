@@ -98,6 +98,13 @@ public class RemoteWorkerClient {
         return exchange("GET", "/v1/codex/catalog", null, CodexCatalog.class);
     }
 
+    /** Only the internal typed gateway constructs this closed request. */
+    public JsonNode validationRecovery(Map<String,Object> body, ValidationRecoveryCommand.Action action) {
+        return exchange("POST", "/v1/development-changes/validation-recovery/"
+                + action.name().toLowerCase(java.util.Locale.ROOT), body, JsonNode.class,
+                body.get("idempotencyKey").toString(), properties.getWorkspaceProvisionTimeout());
+    }
+
     public CodexUpdateStage stageCodexUpdate(
             UUID planId, UUID candidateId, UUID idempotencyKey) {
         Map<String, Object> body = Map.of(

@@ -69,6 +69,7 @@ public class SourceUpdateService {
     private final GitHubClient github;
     private final RemoteWorkerProperties worker;
     private final com.atenea.remoteworker.RemoteWorkerClient sourceObserver;
+    private final SourceUpdateBaseGuard baseGuard;
     private final TransactionTemplate transaction;
 
     public SourceUpdateService(SourceUpdateStore store, WorkSessionRepository sessions,
@@ -77,12 +78,14 @@ public class SourceUpdateService {
             AgentRunService agentRuns, RemoteAgentRunCoordinator coordinator, WorkSessionAcceptanceService acceptance,
             DevelopmentChangeBranchPublicationService ownership, MobileDeliveryService delivery,
             RemoteRoutingSelector routing, DevelopmentChangeSourceUpdateGateway gateway, GitHubClient github,
-            RemoteWorkerProperties worker, com.atenea.remoteworker.RemoteWorkerClient sourceObserver, PlatformTransactionManager manager) {
+            RemoteWorkerProperties worker, com.atenea.remoteworker.RemoteWorkerClient sourceObserver,
+            SourceUpdateBaseGuard baseGuard, PlatformTransactionManager manager) {
         this.store=store; this.sessions=sessions; this.changes=changes; this.workspaceOperations=workspaceOperations;
         this.operators=operators; this.runs=runs; this.turns=turns; this.agentRuns=agentRuns;
         this.coordinator=coordinator; this.acceptance=acceptance; this.ownership=ownership; this.delivery=delivery;
         this.routing=routing; this.gateway=gateway; this.github=github; this.worker=worker;
         this.sourceObserver=sourceObserver;
+        this.baseGuard=baseGuard;
         transaction = new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -91,9 +94,11 @@ public class SourceUpdateService {
         administrator(actor.operatorId());
         session(sessionId, false);
         return store.latest(sessionId).map(op -> op.view().withRecoveryAvailable(
-            (java.util.Set.of("ATTENTION","BLOCKED","UNCERTAIN").contains(op.state())
+            ((java.util.Set.of("ATTENTION","BLOCKED").contains(op.state())
+                || op.state().equals("UNCERTAIN") && op.errorCode()!=null && !store.leased(op.id()))
+                && !"SOURCE_UPDATE_TARGET_INVALID".equals(op.errorCode())
                 && op.preparation()==null && op.resolverRunId()==null)
-            || store.finalizationNeedsRecovery(op.id()))).orElse(null);
+            || store.finalizationNeedsRecovery(op.id())).withBaseStatus(baseGuard.observe(op))).orElse(null);
     }
 
     public boolean isEnabled() { return delivery.isEnabled() && worker.isEnabled(); }
@@ -109,6 +114,7 @@ public class SourceUpdateService {
             if (!Objects.equals(op.sessionId(),sessionId) || !Objects.equals(store.latest(sessionId).orElseThrow().id(),operationId))
                 throw rejected("SOURCE_UPDATE_OWNER_MISMATCH");
             requireStructure(session,op.command());
+            if ("SOURCE_UPDATE_TARGET_INVALID".equals(op.errorCode())) throw rejected("SOURCE_UPDATE_TARGET_INVALID");
             if (store.recoveryAuthorized(op.id(),"PREPARATION")
                     && (!java.util.Set.of("ATTENTION","BLOCKED","UNCERTAIN").contains(op.state())
                         || (op.state().equals("UNCERTAIN") && (op.errorCode()==null || store.leased(op.id())))))
@@ -209,13 +215,17 @@ public class SourceUpdateService {
             }
             String main = github.canonicalMain(APP);
             if (prior.isPresent() && Objects.equals(main,prior.get().command().targetMainCommit())) return prior.get().view();
-            var change = ownership.requireExactOwner(session);
+            var predecessor=prior.orElse(null);
+            // Updating a retained, exactly observed preparation is not publication.
+            // Do not require tests for the obsolete base just to prepare its successor.
+            // First preparation / already-published sources keep their existing gate.
+            var change = predecessor!=null && SourceUpdateBaseGuard.PREPARED.contains(predecessor.state())
+                    ? requirePreparedContinuation(session,predecessor) : ownership.requireExactOwner(session);
             if (prior.isEmpty() && (!"CONFLICTS".equals(delivery.observeIntegration(sessionId, actor).mergeState())
                     || !Objects.equals(change.getSourceRevision(), session.getPublishedSourceRevision())
                     || session.getPublicationReceiptSha256() == null || session.getRemoteSessionId() == null)) {
                 throw rejected("SOURCE_UPDATE_EXACT_CONFLICT_REQUIRED");
             }
-            var predecessor=prior.orElse(null);
             if (predecessor!=null && (predecessor.preparation()==null
                     || (!predecessor.state().equals("PUBLISHED") && (change.getSourceRevision()!=(predecessor.resultRevision()==null
                         ? predecessor.preparedRevision() : predecessor.resultRevision())
@@ -225,6 +235,9 @@ public class SourceUpdateService {
                 throw rejected("SOURCE_UPDATE_CONTINUATION_EVIDENCE_MISMATCH");
             }
             store.requireIdle();
+            if (predecessor!=null && SourceUpdateBaseGuard.PREPARED.contains(predecessor.state())) {
+                requireUnchangedPreparedTree(session,change);
+            }
             String capability=predecessor==null ? "development-change-source-update/v1" : "development-change-source-update/v2";
             if (!routing.refreshKnownWorker(ProjectCodexIdentity.WORKER_ID, capability)) {
                 throw rejected("SOURCE_UPDATE_CAPABILITY_UNAVAILABLE");
@@ -466,6 +479,41 @@ public class SourceUpdateService {
             throw rejected("SOURCE_UPDATE_OWNER_MISMATCH");
         }
         return change;
+    }
+
+    private DevelopmentChangeEntity requirePreparedContinuation(WorkSessionEntity session, SourceUpdateOperation predecessor) {
+        var change=requireStructure(session,predecessor.command());
+        Long revision=predecessor.resultRevision()==null ? predecessor.preparedRevision() : predecessor.resultRevision();
+        String fingerprint=predecessor.resultRevision()==null
+                ? predecessor.preparation()==null ? null : predecessor.preparation().preparedFingerprintSha256()
+                : predecessor.resultFingerprintSha256();
+        if (fingerprint==null && change.getSourceState()==DevelopmentChangeSourceState.CLEAN) {
+            fingerprint=change.getSourceFingerprintSha256(); // Verified again against clean HEAD below.
+        }
+        if (predecessor.preparation()==null || revision==null || revision!=change.getSourceRevision()
+                || fingerprint==null || !fingerprint.matches("[0-9a-f]{64}")
+                || !fingerprint.equals(change.getSourceFingerprintSha256())
+                || (session.getSourceTreeFingerprintSha256()!=null && !fingerprint.equals(session.getSourceTreeFingerprintSha256()))
+                || !Objects.equals(change.getObservedCanonicalCommit(),predecessor.command().owner().sourceCommit())
+                || !java.util.Set.of(DevelopmentChangeSourceState.DIRTY,DevelopmentChangeSourceState.CLEAN).contains(change.getSourceState())) {
+            throw rejected("SOURCE_UPDATE_CONTINUATION_EVIDENCE_MISMATCH");
+        }
+        return change;
+    }
+
+    private void requireUnchangedPreparedTree(WorkSessionEntity session, DevelopmentChangeEntity change) {
+        var observed=sourceObserver.fingerprintSourceTree(session);
+        if (observed==null || !"observed".equals(observed.state()) || observed.valuesExposed()
+                || !Objects.equals(observed.sessionId(),session.getRemoteSessionId().toString())
+                || !Objects.equals(observed.workspaceIdentity(),session.getWorkspaceIdentity())
+                || !ProjectCodexIdentity.PROJECT_IDENTITY.equals(observed.projectId())
+                || !Objects.equals(observed.headCommit(),change.getObservedCanonicalCommit())
+                || !Objects.equals(observed.fingerprintSha256(),change.getSourceFingerprintSha256())
+                || observed.stagedChangeCount()<0 || observed.unstagedChangeCount()<0 || observed.untrackedChangeCount()<0
+                || (observed.stagedChangeCount()>0 || observed.unstagedChangeCount()>0 || observed.untrackedChangeCount()>0)
+                    != (change.getSourceState()==DevelopmentChangeSourceState.DIRTY)) {
+            throw rejected("SOURCE_UPDATE_CONTINUATION_EVIDENCE_MISMATCH");
+        }
     }
 
     private void invalidate(DevelopmentChangeEntity change, WorkSessionEntity session) {

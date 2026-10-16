@@ -35,29 +35,32 @@ internal fun WorkSessionChangePanel(
         Text(title, style = MaterialTheme.typography.titleMedium)
         Text("Cambio · sesión $sessionId", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (validation.current || completed || deliveryBeforeValidation) {
+        if (completed || deliveryBeforeValidation || validation.current && !validation.inProgress && !runInProgress) {
             // Current delivery and its primary button appear before completed validation.
             deliveryContent()
             Text(if (validation.current) "✓ Validación de esta revisión completada"
-                else if (deliveryBeforeValidation) "Validación pendiente · después de recuperar esta operación"
+                else if (deliveryBeforeValidation) "Validación pendiente · después de resolver este paso"
                 else "Validación · historial",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             val status = when {
+                validation.checking -> DeliveryStepStatus.CHECKING
                 runInProgress || validation.inProgress -> DeliveryStepStatus.WORKING
                 validation.needsAttention -> DeliveryStepStatus.ATTENTION
                 else -> DeliveryStepStatus.ACTION
             }
             DeliveryStepCard(DeliveryStepUi(status,
-                if (runInProgress) "Codex está trabajando" else if (validation.inProgress) "Validando cambio" else "Validar cambio",
+                if (validation.checking) "Estado por confirmar"
+                else if (runInProgress) "Codex está trabajando" else if (validation.inProgress) "Validando cambio" else "Validar cambio",
                 if (runInProgress) "Puedes salir de la app. Espera al resultado; no repitas el prompt."
                 else if (validation.inProgress) "Atenea está comprobando esta revisión. Puedes salir de la app; no repitas la validación."
                 else validation.message)) {
-                if (validation.visible && !runInProgress) AteneaButton(validation.label,
+                if (validation.checking) AteneaOutlinedButton("Consultar estado", enabled = !loading, onClick = onReadEvidence)
+                else if (validation.visible && !runInProgress) AteneaButton(validation.label,
                     enabled = validation.canStart, onClick = onValidate)
             }
         }
-        if (!validation.current && !completed && !deliveryBeforeValidation) deliveryContent()
+        if (!validation.current && !completed && !deliveryBeforeValidation && !validation.inProgress && !runInProgress) deliveryContent()
         TextButton(onClick = { showValidationDetails = !showValidationDetails }) {
             Text(if (showValidationDetails) "Ocultar pruebas y detalles" else "Ver pruebas y detalles")
         }

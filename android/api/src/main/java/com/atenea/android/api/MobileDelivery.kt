@@ -12,7 +12,8 @@ data class MobileDeliveryState(val enabled: Boolean, val operations: List<Mobile
     val releaseRecoveryEnabled: Boolean = false,
     val deployment: MobileDeploymentObservation? = null,
     val completionEnabled: Boolean = false,
-    val readiness: MobileChangeDeliveryReadiness? = null)
+    val readiness: MobileChangeDeliveryReadiness? = null,
+    val validation: DevelopmentChangeValidationEvidence? = null)
 
 data class MobileAndroidChannel(val sourceCommit: String, val versionName: String, val versionCode: Int,
     val apkSha256: String, val observedAt: Long)
@@ -93,7 +94,8 @@ internal fun parseDeploymentObservation(json: JSONObject): MobileDeploymentObser
 
 data class MobileSourceUpdate(val id: UUID, val sessionId: Long, val state: String,
     val targetMainCommit: String, val sourceRevision: Long?, val resolverRunId: Long?, val errorCode: String?,
-    val recoveryAvailable: Boolean = false)
+    val recoveryAvailable: Boolean = false, val baseStatus: String = "UNAVAILABLE",
+    val updatedAt: String? = null)
 
 internal fun parseMobileSourceUpdate(json: JSONObject): MobileSourceUpdate {
     val state = json.getString("state")
@@ -108,9 +110,11 @@ internal fun parseMobileSourceUpdate(json: JSONObject): MobileSourceUpdate {
     }
     val id = UUID.fromString(json.getString("id"))
     require(id.toString() == json.getString("id"))
+    val baseStatus = if (json.has("baseStatus")) json.getString("baseStatus") else "UNAVAILABLE"
+    require(baseStatus in setOf("NOT_REQUIRED", "CURRENT", "UPDATE_REQUIRED", "UNAVAILABLE"))
     return MobileSourceUpdate(id, positive("sessionId")!!,
         state, main, positive("sourceRevision"), positive("resolverRunId"), json.nullableDeliveryString("errorCode"),
-        json.opt("recoveryAvailable") == true)
+        json.opt("recoveryAvailable") == true, baseStatus, json.nullableDeliveryString("updatedAt"))
 }
 
 data class MobileDeliveryIntegration(
@@ -133,13 +137,15 @@ internal fun parseMobileDeliveryState(json: JSONObject): MobileDeliveryState {
     }
     require(!json.has("sourceUpdate") || json.isNull("sourceUpdate") || json.opt("sourceUpdate") is JSONObject)
     require(!json.has("deployment") || json.isNull("deployment") || json.opt("deployment") is JSONObject)
+    require(!json.has("validation") || json.isNull("validation") || json.opt("validation") is JSONObject)
     return MobileDeliveryState(json.getBoolean("enabled"),
         List(items.length()) { parseMobileDeliveryOperation(items.getJSONObject(it)) }, integration,
         json.opt("sourceUpdateEnabled") == true, json.optJSONObject("sourceUpdate")?.let(::parseMobileSourceUpdate),
         json.opt("releaseRecoveryEnabled") == true,
         json.optJSONObject("deployment")?.let(::parseDeploymentObservation),
         json.opt("completionEnabled") == true,
-        json.optJSONObject("readiness")?.let(::parseDeliveryReadiness))
+        json.optJSONObject("readiness")?.let(::parseDeliveryReadiness),
+        json.optJSONObject("validation")?.let(::parseDevelopmentChangeValidationEvidence))
 }
 
 data class MobileReleaseRecovery(val integrationOperationId: UUID, val publishedHeadCommit: String,
@@ -162,7 +168,8 @@ data class MobileDeliveryOperation(
     val mergeCommit: String?,
     val effectiveSourceCommit: String?,
     val resultSha256: String?,
-    val releaseRecovery: MobileReleaseRecovery? = null
+    val releaseRecovery: MobileReleaseRecovery? = null,
+    val updatedAt: String? = null
 ) {
     val terminal: Boolean get() = state in setOf("SUCCEEDED", "ROLLED_BACK", "FAILED", "BLOCKED", "ROLLBACK_FAILED")
     fun canConfirm(nowSeconds: Long): Boolean = kind == "RELEASE" && state == "READY"
@@ -186,7 +193,8 @@ internal fun parseMobileDeliveryOperation(json: JSONObject): MobileDeliveryOpera
     mergeCommit = json.nullableDeliveryString("mergeCommit"),
     effectiveSourceCommit = json.nullableDeliveryString("effectiveSourceCommit"),
     resultSha256 = json.nullableDeliveryString("resultSha256"),
-    releaseRecovery = parseReleaseRecovery(json)
+    releaseRecovery = parseReleaseRecovery(json),
+    updatedAt = json.nullableDeliveryString("updatedAt")
 )
 
 private fun parseReleaseRecovery(operation: JSONObject): MobileReleaseRecovery? {
