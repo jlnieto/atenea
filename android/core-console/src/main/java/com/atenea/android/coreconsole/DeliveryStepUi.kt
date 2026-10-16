@@ -22,7 +22,7 @@ internal enum class DeliveryStepStatus(val label: String) {
 
 internal enum class DeliveryStepAction {
     NONE, CREATE_PR, INTEGRATE, CONFIRM_RELEASE, PREPARE_BACKEND, PREPARE_ANDROID, FINALIZE, RECONCILE_FINALIZE,
-    RESOLVE, UPDATE_PR, RETRY_RESOLVER, RECOVER_SOURCE, REFRESH
+    RESOLVE, UPDATE_PR, UPDATE_BASE, RETRY_RESOLVER, RECOVER_SOURCE, REFRESH
 }
 
 /** A presentation of current evidence, never an authorization or an automatic action. */
@@ -30,7 +30,7 @@ internal data class DeliveryStepUi(val status: DeliveryStepStatus, val title: St
     val action: DeliveryStepAction = DeliveryStepAction.NONE, val operation: MobileDeliveryOperation? = null)
 
 internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress: Boolean,
-    nowSeconds: Long = System.currentTimeMillis() / 1000): DeliveryStepUi {
+    nowSeconds: Long = System.currentTimeMillis() / 1000, validationInProgress: Boolean = false): DeliveryStepUi {
     if (completed) return DeliveryStepUi(DeliveryStepStatus.COMPLETE, "Cambio completado",
         "El ticket está cerrado. La conversación y los recibos se conservan como historia.")
     if (loadError != null || !available) return DeliveryStepUi(DeliveryStepStatus.CHECKING,
@@ -41,6 +41,8 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
         "Atenea está comprobando la solicitud. No vuelvas a pulsar; se conserva la misma operación.")
     if (runInProgress) return DeliveryStepUi(DeliveryStepStatus.WORKING, "Codex está trabajando",
         "Espera al resultado. Puedes salir de la app; no hace falta enviar otra vez el prompt.")
+    if (validationInProgress) return DeliveryStepUi(DeliveryStepStatus.WORKING, "Validando cambio",
+        "Atenea está comprobando esta revisión. Espera al resultado; no actualices la base ni repitas la validación mientras siga en curso.")
     completion?.let {
         return if (it.state == "BLOCKED") DeliveryStepUi(DeliveryStepStatus.ATTENTION, "Finalización detenida",
             deliveryErrorLabel(it.errorCode ?: "COMPLETION_EVIDENCE_MISMATCH"), DeliveryStepAction.RECONCILE_FINALIZE, it)
@@ -48,24 +50,36 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
             "Puedes salir de la app. Atenea cerrará la misma WorkSession y conservará la conversación.", operation = it)
     }
     sourceUpdate?.takeIf { !sourcePhaseComplete && it.state != "PUBLISHED"
-        && (validated || it.state !in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")) }?.let { update ->
+        && (it.state !in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") || operations.none { op -> !op.terminal })
+        && (validated || it.state !in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") || it.baseStatus != "CURRENT") }?.let { update ->
+        val prepared = update.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
         val action = when {
             canRecoverSource(validated, false) -> DeliveryStepAction.RECOVER_SOURCE
             canRetryResolver(false) -> DeliveryStepAction.RETRY_RESOLVER
-            update.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") -> DeliveryStepAction.UPDATE_PR
+            prepared && update.baseStatus == "UPDATE_REQUIRED" -> DeliveryStepAction.UPDATE_BASE
+            prepared && update.baseStatus != "CURRENT" -> DeliveryStepAction.REFRESH
+            prepared -> DeliveryStepAction.UPDATE_PR
             else -> DeliveryStepAction.NONE
         }
-        val stopped = update.state in setOf("BLOCKED", "FAILED", "ATTENTION") || action == DeliveryStepAction.RECOVER_SOURCE
+        val stopped = update.state in setOf("BLOCKED", "FAILED", "ATTENTION")
+            || action in setOf(DeliveryStepAction.RECOVER_SOURCE, DeliveryStepAction.UPDATE_BASE)
         val title = when {
+            action == DeliveryStepAction.UPDATE_BASE -> "Actualizar base con main"
+            prepared && action == DeliveryStepAction.REFRESH -> "Base por confirmar"
             stopped -> "Actualización detenida"
             update.state in setOf("QUEUED", "PREPARE_CLAIMED") -> "Preparando código y conflictos"
             else -> "Actualizar la misma PR"
         }
-        val message = sourceUpdateLabel(update.state, update.errorCode) +
+        val message = when (action) {
+            DeliveryStepAction.UPDATE_BASE -> "La base preparada es anterior a main. Atenea está detenida; tu código y la misma PR se conservan. Actualiza la base primero; después valida la revisión resultante y actualiza esa PR. No repitas el prompt ni valides la base antigua."
+            DeliveryStepAction.REFRESH -> "No se pudo confirmar la vigencia de la base en GitHub. Consulta el estado; no repitas las pruebas ni la publicación."
+            else -> sourceUpdateLabel(update.state, update.errorCode)
+        } +
             if (action == DeliveryStepAction.RECOVER_SOURCE)
                 " Pulsa Recuperar operación para continuar con la versión exacta aprobada. No crea otra PR ni repite tu prompt."
             else ""
         return DeliveryStepUi(if (stopped) DeliveryStepStatus.ATTENTION
+            else if (prepared && action == DeliveryStepAction.REFRESH) DeliveryStepStatus.CHECKING
             else if (action != DeliveryStepAction.NONE) DeliveryStepStatus.ACTION
             else DeliveryStepStatus.WORKING, title, message, action)
     }

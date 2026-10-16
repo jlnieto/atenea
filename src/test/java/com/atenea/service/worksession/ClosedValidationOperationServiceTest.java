@@ -126,7 +126,7 @@ class ClosedValidationOperationServiceTest {
                 agentRunRepository,
                 validationOperationRepository,
                 remoteWorkerClient,
-                acceptanceService);
+                acceptanceService, org.mockito.Mockito.mock(com.atenea.delivery.SourceUpdateBaseGuard.class));
     }
 
     @Test

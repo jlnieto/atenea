@@ -44,13 +44,12 @@ Actualizaciones o el panel de publicación. No manda al usuario a validar una
 pregunta de diagnóstico ni a buscar un menú oculto. Finalizar requiere evidencia
 fresca de **todos** los destinos exigidos por el diff, antes y después del cierre.
 
-## Versiones estables automáticas
+## Versiones estables revisadas
 
-El workflow inmutable de main asigna `versionCode = 1000000 + github.run_number`
-y `versionName = 0.6.<github.run_number>`. Una reejecución conserva la identidad
-de la versión; un nuevo run incrementa el código. Así no se depende de acordarse
-de editar una constante en cada mejora Android. El salto sobre los códigos
-anteriores es deliberado y compatible con las actualizaciones instaladas.
+La versión del producto se revisa en Git, en `android/app/build.gradle.kts`.
+Las actualizaciones conservan la serie `0.5.x` e incrementan `versionCode`;
+los números de ejecución CI no son versiones de la app. Reejecutar el build
+del mismo SHA conserva la versión. No se reutiliza un código ya publicado.
 
 Los manifests leen la metadata del APK realmente construido. El publicador
 root vuelve a verificar versión, firma y monotonía de forma independiente. Los

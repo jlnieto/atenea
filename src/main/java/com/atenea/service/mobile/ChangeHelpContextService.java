@@ -33,16 +33,19 @@ public class ChangeHelpContextService {
     private final ReleaseControlClient releaseControl;
     private final MobileDeliveryService deliveryObservations;
     private final com.atenea.delivery.SourceUpdateStore sourceUpdates;
+    private final com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard;
 
     public ChangeHelpContextService(WorkSessionRepository sessions, AgentRunRepository runs,
             ValidationOperationRepository validations, OperatorRepository operators, DeliveryStore deliveries,
             ReleaseControlClient releaseControl, MobileDeliveryService deliveryObservations,
-            com.atenea.delivery.SourceUpdateStore sourceUpdates) {
+            com.atenea.delivery.SourceUpdateStore sourceUpdates,
+            com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard) {
         this.sessions = sessions; this.runs = runs; this.validations = validations;
         this.operators = operators; this.deliveries = deliveries;
         this.releaseControl = releaseControl;
         this.deliveryObservations = deliveryObservations;
         this.sourceUpdates = sourceUpdates;
+        this.sourceBaseGuard = sourceBaseGuard;
     }
 
     @Transactional(readOnly = true)
@@ -81,7 +84,10 @@ public class ChangeHelpContextService {
         int passed = (int) latest.values().stream().filter(v -> v.getStatus() == ValidationOperationStatus.SUCCEEDED).count();
         var ownedDeliveries = deliveries.list(id).stream().filter(d -> Objects.equals(d.operatorId(), actor.operatorId())
                 && Objects.equals(d.sessionId(), id)).toList();
-        var delivery = ownedDeliveries.stream().filter(d -> belongsToRevision(d, session.getFinalCommitSha(), ownedDeliveries))
+        var recordedSource = sourceUpdates.latest(id).filter(op -> Objects.equals(op.sessionId(),id)
+                && Objects.equals(op.operatorId(),actor.operatorId())).orElse(null);
+        var delivery = ownedDeliveries.stream().filter(d -> belongsToRevision(d, session.getFinalCommitSha(), ownedDeliveries)
+                || belongsToPreparedRevision(d,session,recordedSource))
                 .findFirst().orElse(null);
         String deploymentStatus = "NOT_CONFIRMED";
         boolean deliveryEnabled=releaseControl.enabled();
@@ -108,8 +114,12 @@ public class ChangeHelpContextService {
         }
         boolean gitInstructions = response != null && response.contains("github/main")
                 && response.toLowerCase(Locale.ROOT).contains("origin");
-        var recordedSource = sourceUpdates.latest(id).filter(op -> Objects.equals(op.sessionId(),id)
-                && Objects.equals(op.operatorId(),actor.operatorId())).orElse(null);
+        String sourceBaseStatus="NOT_REQUIRED";
+        if (recordedSource!=null && deliveryEnabled && "OPEN".equals(name(session.getStatus()))
+                && !(delivery!=null && "PUBLISH_PR".equals(delivery.kind()) && !delivery.terminal())
+                && "PLATFORM_ADMINISTRATOR".equals(name(operator.getCodexOperationsRole()))) {
+            sourceBaseStatus=sourceBaseGuard.observe(recordedSource).name();
+        }
         boolean preparationBlocked=recordedSource!=null && "BLOCKED".equals(recordedSource.state())
                 && recordedSource.preparation()==null && recordedSource.resolverRunId()==null;
         boolean preparing=sessions.existsActiveSourceUpdateBySessionId(id) || preparationBlocked;
@@ -135,7 +145,7 @@ public class ChangeHelpContextService {
                 delivery == null || !delivery.evidence().path("expiresAt").isIntegralNumber() ? null
                         : delivery.evidence().path("expiresAt").asLong(), deploymentStatus,
                 delivery != null && delivery.planSha256() != null && delivery.planSha256().matches("[0-9a-f]{64}"),
-                readiness, reportedVersion());
+                readiness, reportedVersion(), sourceBaseStatus);
     }
 
     private static Integer reportedVersion() {
@@ -145,6 +155,26 @@ public class ChangeHelpContextService {
         if (code==null || !code.matches("[1-9][0-9]{0,9}")) return null;
         try { int value=Integer.parseInt(code); return value>0 ? value : null; }
         catch (NumberFormatException invalid) { return null; }
+    }
+
+    private static boolean belongsToPreparedRevision(DeliveryOperation delivery,
+            com.atenea.persistence.worksession.WorkSessionEntity session, com.atenea.delivery.SourceUpdateOperation source) {
+        // A finalization rejected before intent creation has no new commit yet.
+        // Attribute its error only to the exact latest retained preparation, not
+        // to any null-head operation belonging to this session's history.
+        if (source==null || source.command()==null || source.preparation()==null
+                || !java.util.Set.of("RESOLVER_COMPLETED","READY_TO_FINALIZE").contains(source.state())
+                || !"PUBLISH_PR".equals(delivery.kind()) || delivery.target()!=com.atenea.delivery.DeliveryTarget.APP_PROD
+                || delivery.sourceCommit()!=null || source.updatedAt()==null || delivery.createdAt().isBefore(source.updatedAt())
+                || !(java.util.Set.of("QUEUED","WAITING_CI").contains(delivery.state())
+                    || java.util.Set.of("BLOCKED","FAILED").contains(delivery.state())
+                        && delivery.errorCode()!=null && delivery.errorCode().startsWith("SOURCE_FINALIZATION_"))
+                || !Objects.equals(session.getFinalCommitSha(),source.command().owner().sourceCommit())) return false;
+        var change=session.getDevelopmentChange();
+        Long revision=source.resultRevision()==null ? source.preparedRevision() : source.resultRevision();
+        String fingerprint=source.resultRevision()==null ? source.preparation().preparedFingerprintSha256() : source.resultFingerprintSha256();
+        return Objects.equals(revision,change.getSourceRevision()) && fingerprint!=null
+                && fingerprint.equals(change.getSourceFingerprintSha256());
     }
 
     private static boolean belongsToRevision(DeliveryOperation operation, String head,

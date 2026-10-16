@@ -68,6 +68,10 @@ public class SourceUpdateStore {
                 command.publicationReceiptSha256(), json(command),command.predecessorPreparationOperationId(), originalSourceCommit, originalFingerprint);
         return get(owner.operationId(), false);
     }
+    public boolean hasRetainedFinalization(UUID preparationId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM mobile_source_finalization WHERE preparation_id=?)", Boolean.class, preparationId));
+    }
     public void requireIdle() {
         jdbc.execute("SELECT pg_advisory_xact_lock(814205002)");
         Long active = jdbc.queryForObject("""

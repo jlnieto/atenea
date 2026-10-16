@@ -93,7 +93,7 @@ internal fun parseDeploymentObservation(json: JSONObject): MobileDeploymentObser
 
 data class MobileSourceUpdate(val id: UUID, val sessionId: Long, val state: String,
     val targetMainCommit: String, val sourceRevision: Long?, val resolverRunId: Long?, val errorCode: String?,
-    val recoveryAvailable: Boolean = false)
+    val recoveryAvailable: Boolean = false, val baseStatus: String = "UNAVAILABLE")
 
 internal fun parseMobileSourceUpdate(json: JSONObject): MobileSourceUpdate {
     val state = json.getString("state")
@@ -108,9 +108,11 @@ internal fun parseMobileSourceUpdate(json: JSONObject): MobileSourceUpdate {
     }
     val id = UUID.fromString(json.getString("id"))
     require(id.toString() == json.getString("id"))
+    val baseStatus = if (json.has("baseStatus")) json.getString("baseStatus") else "UNAVAILABLE"
+    require(baseStatus in setOf("NOT_REQUIRED", "CURRENT", "UPDATE_REQUIRED", "UNAVAILABLE"))
     return MobileSourceUpdate(id, positive("sessionId")!!,
         state, main, positive("sourceRevision"), positive("resolverRunId"), json.nullableDeliveryString("errorCode"),
-        json.opt("recoveryAvailable") == true)
+        json.opt("recoveryAvailable") == true, baseStatus)
 }
 
 data class MobileDeliveryIntegration(

@@ -4,6 +4,29 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 
 class ChangeHelpGuideTest {
+    @Test void outdatedBaseComesBeforeValidationAndOldSuccessfulPrEvenWhenAllFourChecksPassed() {
+        var f=new ChangeHelpFixture();f.pr="OPEN";f.sourceBaseStatus="UPDATE_REQUIRED";
+        f.deliveryKind="PUBLISH_PR";f.deliveryState="BLOCKED";f.deliveryError="SOURCE_FINALIZATION_MAIN_MOVED";
+        var apk=new com.atenea.delivery.ReleaseControlClient.AndroidObservation("8".repeat(40),"0.5.125",158,"a".repeat(64),"b".repeat(64),
+                java.time.Instant.now().getEpochSecond(),java.util.UUID.randomUUID(),java.util.UUID.randomUUID(),"c".repeat(64));
+        f.readiness=new com.atenea.delivery.ChangeDeliveryReadiness(22L,"NOT_INTEGRATED",null,null,java.util.List.of(),false,
+                null,apk,"NOT_INTEGRATED",null,java.time.Instant.now().getEpochSecond());
+        for (String validation:java.util.List.of("STALE","CURRENT")) {
+            f.validation=validation;f.passed=validation.equals("CURRENT") ? 4 : 0;
+            var answer=ChangeHelpGuide.explain(f.build(),"Falla Actualizar la misma PR de Atenea",false);
+            assertEquals("SOURCE_BASE_UPDATE_REQUIRED",answer.stage());assertEquals("CHANGE",answer.nextAction().destination());
+            assertTrue(answer.nextAction().label().contains("Actualizar base con main"));
+            assertTrue(answer.answer().contains("No hace falta validar primero la base antigua"));
+            assertTrue(answer.answer().contains("mismo cambio, conversación y PR"));
+            assertTrue(answer.facts().stream().anyMatch(fact->fact.contains("SOURCE_FINALIZATION_MAIN_MOVED")));
+        }
+    }
+    @Test void missingBaseObservationOffersReadOnlyRefreshNotPublicationOrNewTests() {
+        var f=new ChangeHelpFixture();f.sourceBaseStatus="UNAVAILABLE";f.pr="OPEN";
+        var answer=ChangeHelpGuide.explain(f.build(),"Qué hago",true);
+        assertEquals("SOURCE_BASE_UNCONFIRMED",answer.stage());
+        assertTrue(answer.answer().contains("Consultar estado"));assertFalse(answer.answer().contains("Validar cambio"));
+    }
     @Test void unsupportedManifestExplainsNoExecutionAndOffersRecoveryNotBlindRetry() {
         var f=new ChangeHelpFixture();f.check="ANDROID_BUILD";f.checkFailure="[UNSUPPORTED_DEPENDENCY_MANIFEST] mismatch";
         var result=ChangeHelpGuide.explain(f.build(),"¿Qué hago?",false);
