@@ -61,6 +61,7 @@ class MobileDeliveryApiIntegrationTest {
     @Autowired DeliveryStore store;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper mapper;
+    @Autowired org.springframework.transaction.PlatformTransactionManager manager;
     @MockBean ReleaseControlClient executor;
     @MockBean GitHubClient github;
     @MockBean DevelopmentChangeBranchPublicationService ownership;
@@ -75,6 +76,9 @@ class MobileDeliveryApiIntegrationTest {
         when(executor.enabled()).thenReturn(true);
         admin=operator(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
         routine=operator(CodexOperationsRole.ROUTINE_OPERATOR);
+        sessionId=createSession(false);
+    }
+    private Long createSession(boolean remote) {
         ProjectEntity project=new ProjectEntity(); project.setName("Delivery API "+UUID.randomUUID());
         project.setRepoPath("/synthetic"); project.setDefaultBaseBranch("main");
         project.setCreatedAt(Instant.now()); project.setUpdatedAt(Instant.now()); projects.saveAndFlush(project);
@@ -82,7 +86,20 @@ class MobileDeliveryApiIntegrationTest {
         session.setPullRequestStatus(com.atenea.persistence.worksession.WorkSessionPullRequestStatus.NOT_CREATED);
         session.setTitle("Isolated delivery API"); session.setBaseBranch("main"); session.setWorkspaceIdentity("local:test:"+UUID.randomUUID());
         session.setOpenedAt(Instant.now()); session.setLastActivityAt(Instant.now());
-        session.setCreatedAt(Instant.now()); session.setUpdatedAt(Instant.now()); sessionId=sessions.saveAndFlush(ChangeOwnedSessionFixtures.bind(session, changes)).getId();
+        session.setCreatedAt(Instant.now()); session.setUpdatedAt(Instant.now());
+        if (remote) {
+            jdbc.update("""
+                INSERT INTO worker_node(id,protocol_version,endpoint,enabled,healthy,normal_capacity,heavy_capacity,capabilities)
+                VALUES ('synthetic-fixture-worker','agent-run-worker/v1','http://synthetic.invalid',true,true,1,1,'project-codex-v4')
+                ON CONFLICT (id) DO NOTHING
+                """);
+            session.setExecutionTarget(com.atenea.persistence.worksession.ExecutionTarget.REMOTE);
+            session.setSelectedWorkerId("synthetic-fixture-worker");
+            session.setRemoteSessionId(UUID.randomUUID());
+            session.setRemoteWorkloadKind(com.atenea.remoteworker.ProjectCodexIdentity.WORKLOAD_KIND);
+            session.setRemoteCloseState(com.atenea.persistence.worksession.RemoteCloseState.NOT_STARTED);
+        }
+        return sessions.saveAndFlush(ChangeOwnedSessionFixtures.bind(session, changes)).getId();
     }
     private OperatorEntity operator(CodexOperationsRole role) {
         OperatorEntity value=new OperatorEntity(); value.setEmail(UUID.randomUUID()+"@atenea.test");
@@ -133,6 +150,41 @@ class MobileDeliveryApiIntegrationTest {
         verifyNoInteractions(factors,grants);
         verify(executor,never()).inspect(any());
         verifyNoInteractions(github,publication);
+    }
+
+    @Test void preparationAndValidationReferToTheSameCurrentRevisionWithoutReusingOldFlags() throws Exception {
+        sessionId=createSession(true);
+        var session=sessions.findById(sessionId).orElseThrow();
+        var change=session.getDevelopmentChange();
+        change.setSourceRevision(5);
+        change.setSourceFingerprintSha256("5".repeat(64));
+        change.setValidationState(DevelopmentChangeProjectionState.STALE);
+        changes.saveAndFlush(change);
+        session.setAcceptanceState(WorkSessionAcceptanceState.DRAFT);
+        sessions.saveAndFlush(session);
+        mvc.perform(get("/api/mobile/sessions/{id}/delivery",sessionId).with(auth(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.validation.sourceRevision").value(5))
+                .andExpect(jsonPath("$.validation.sourceFingerprintSha256").value("5".repeat(64)))
+                .andExpect(jsonPath("$.validation.validationState").value("STALE"))
+                .andExpect(jsonPath("$.validation.passedOperations").value(0))
+                .andExpect(jsonPath("$.validation.requiredOperations").value(4));
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation",Integer.class));
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM validation_operation",Integer.class));
+        verifyNoInteractions(publication,factors,grants);
+        verify(executor,never()).execute(any(),any(),any());
+    }
+
+    @Test void unconfirmedValidationIdentityPreservesReadOnlyDurableHistoryButNeverInventsEvidence() throws Exception {
+        var op=store.create(sessionId,admin.getId(),"PUBLISH_PR",DeliveryTarget.APP_PROD,null,"BLOCKED",mapper.createObjectNode());
+        new org.springframework.transaction.support.TransactionTemplate(manager).executeWithoutResult(transaction -> {
+            assertDoesNotThrow(() -> mvc.perform(get("/api/mobile/sessions/{id}/delivery",sessionId).with(auth(admin)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.operations[0].id").value(op.id().toString()))
+                    .andExpect(jsonPath("$.validation").isEmpty()));
+            assertFalse(transaction.isRollbackOnly(),"Optional evidence must not poison the read-only snapshot transaction");
+        });
+        assertEquals("BLOCKED",store.get(op.id(),false).state());
+        verifyNoInteractions(publication,factors,grants);
     }
     @Test void unpreparedPlanCannotConsumeTotpAndUnknownArgumentsAreRejected() throws Exception {
         var op=store.create(sessionId,admin.getId(),"RELEASE",DeliveryTarget.APP_PROD,"1".repeat(40),"PREPARING",mapper.createObjectNode());

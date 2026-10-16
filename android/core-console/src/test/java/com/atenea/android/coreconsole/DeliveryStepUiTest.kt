@@ -33,7 +33,8 @@ class DeliveryStepUiTest {
         try {
             val readiness=value.readiness ?: com.atenea.android.api.MobileChangeDeliveryReadiness(22,"CONFIRMED","1".repeat(40),"2".repeat(40),
                 listOf(MobileDeliveryTarget.APP_PROD),value.deployment?.status=="DEPLOYED" && value.deployment?.healthy==true,null,"UNAVAILABLE",now)
-            val state = MobileDeliveryUiState(22, scope) { value.copy(readiness=readiness) }
+            val state = MobileDeliveryUiState(22, scope) { value.copy(readiness=readiness,
+                validation=workflowEvidence(22,value.sourceUpdate?.sourceRevision ?: 1)) }
             state.refresh(); check(state)
         } finally { scope.cancel() }
     }
@@ -93,9 +94,11 @@ class DeliveryStepUiTest {
         try {
             var loads=0;var submissions=0
             var source=MobileSourceUpdate(UUID.randomUUID(),22,"RESOLVER_COMPLETED","2".repeat(40),4,124,null,baseStatus="CURRENT")
-            val state=MobileDeliveryUiState(22,scope) { loads++;snapshot().copy(integration=null,sourceUpdateEnabled=true,sourceUpdate=source) }
+            val state=MobileDeliveryUiState(22,scope) { loads++;snapshot().copy(integration=null,sourceUpdateEnabled=true,sourceUpdate=source,
+                validation=workflowEvidence(22,4)) }
             state.refresh();assertTrue(state.canUpdatePullRequest(true,false))
-            state.act { submissions++;source=source.copy(baseStatus="UPDATE_REQUIRED");error("HTTP 409 SOURCE_FINALIZATION_MAIN_MOVED") }
+            state.submitDelivery(DeliveryStepAction.UPDATE_PR) { submissions++;source=source.copy(baseStatus="UPDATE_REQUIRED")
+                throw com.atenea.android.api.AteneaApiException(409,"SOURCE_FINALIZATION_MAIN_MOVED") }
             assertEquals(1,submissions);assertEquals(2,loads)
             assertEquals(DeliveryStepAction.UPDATE_BASE,state.currentStep(true,false,now).action)
             assertTrue(state.actionError!!.contains("Actualizar base con main"))

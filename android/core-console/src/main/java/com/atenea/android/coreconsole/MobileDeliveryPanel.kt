@@ -25,176 +25,12 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.AteneaApiException
 import com.atenea.android.api.MobileDeliveryOperation
-import com.atenea.android.api.MobileDeliveryIntegration
-import com.atenea.android.api.MobileDeliveryState
 import com.atenea.android.api.MobileDeliveryTarget
 import com.atenea.android.api.MobileSourceUpdate
 import com.atenea.android.api.MobileDeploymentObservation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 
-/** Owned by the WorkSession screen, not by the currently visible pane. */
-internal class MobileDeliveryUiState(
-    private val sessionId: Long,
-    private val scope: CoroutineScope,
-    private val load: suspend () -> MobileDeliveryState
-) {
-    constructor(api: AteneaApiClient, sessionId: Long, scope: CoroutineScope) :
-        this(sessionId, scope, { api.fetchDelivery(sessionId) })
-    var operations by mutableStateOf(emptyList<MobileDeliveryOperation>())
-        private set
-    var integration by mutableStateOf<MobileDeliveryIntegration?>(null)
-        private set
-    var sourceUpdate by mutableStateOf<MobileSourceUpdate?>(null)
-        private set
-    var sourceUpdateEnabled by mutableStateOf(false)
-        private set
-    var releaseRecoveryEnabled by mutableStateOf(false)
-        private set
-    var completionEnabled by mutableStateOf(false)
-        private set
-    var readiness by mutableStateOf<com.atenea.android.api.MobileChangeDeliveryReadiness?>(null)
-        private set
-    val allRequiredDelivered: Boolean get() = readiness?.let {
-        it.requirementsStatus == "CONFIRMED" && it.ready && it.fresh(System.currentTimeMillis()/1000)
-            && it.integratedMergeCommit == operations.firstOrNull { op -> op.kind=="INTEGRATE" }?.mergeCommit
-    } == true
-    val completion: MobileDeliveryOperation? get() = operations.firstOrNull { it.kind == "FINALIZE" }
-    val completed: Boolean get() = completion?.state == "SUCCEEDED"
-    val completing: Boolean get() = completion != null && !completed
-    var deployment by mutableStateOf<MobileDeploymentObservation?>(null)
-        private set
-    val integrated: Boolean get() {
-        val receipt = operations.firstOrNull { it.kind == "INTEGRATE" }
-        return receipt?.state == "SUCCEEDED" && integration?.mergeState != "STALE_SOURCE"
-            && deployment?.status != "NOT_INTEGRATED"
-            && (integration?.sourceCommit == null || integration?.sourceCommit == receipt.sourceCommit)
-    }
-    val sourcePhaseComplete: Boolean get() = completion != null || integrated || integration?.mergeState == "MERGED"
-    val appDeployed: Boolean get() = available && integrated
-        && operations.firstOrNull { it.kind == "INTEGRATE" }?.mergeCommit == deployment?.integratedMergeCommit
-        && deployment?.isDeployed(System.currentTimeMillis() / 1000) == true
-    val canPrepareBackend: Boolean get() = completion == null && !appDeployed
-        && (deployment == null || deployment?.status == "NOT_INCLUDED")
-    var available by mutableStateOf(false)
-        private set
-    var loaded by mutableStateOf(false)
-        private set
-    var busy by mutableStateOf(false)
-        private set
-    var loadError by mutableStateOf<String?>(null)
-        private set
-    var actionError by mutableStateOf<String?>(null)
-        private set
-
-    fun canFinalize(validated: Boolean, runInProgress: Boolean): Boolean =
-        available && completionEnabled && completion == null && allRequiredDelivered && validated && !runInProgress && !busy
-            && operations.none { !it.terminal || it.state == "ROLLBACK_FAILED" }
-
-    fun canReconcileCompletion(runInProgress: Boolean): Boolean =
-        available && completionEnabled && completion?.state == "BLOCKED" && !runInProgress && !busy
-
-    fun canResolveConflicts(validated: Boolean, runInProgress: Boolean): Boolean =
-        available && sourceUpdateEnabled && !sourcePhaseComplete
-            && ((sourceUpdate == null && integration?.mergeState == "CONFLICTS")
-                || sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE", "PUBLISHED"))
-            && validated && !runInProgress && !busy
-            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
-
-    fun canUpdatePullRequest(validated: Boolean, runInProgress: Boolean): Boolean =
-        available && sourceUpdateEnabled && !sourcePhaseComplete && sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
-            && sourceUpdate?.baseStatus == "CURRENT"
-            && validated && !runInProgress && !busy
-            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
-
-    fun canUpdateBase(runInProgress: Boolean): Boolean =
-        available && sourceUpdateEnabled && !sourcePhaseComplete
-            && sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
-            && sourceUpdate?.baseStatus == "UPDATE_REQUIRED" && sourceUpdate?.recoveryAvailable != true
-            && !runInProgress && !busy
-            && operations.none { !it.terminal || it.state == "ROLLBACK_FAILED" }
-
-    fun deliveryBeforeValidation(runInProgress: Boolean): Boolean = !runInProgress && !sourcePhaseComplete
-        && sourceUpdate?.let { update ->
-            update.state in setOf("QUEUED", "PREPARE_CLAIMED", "UNCERTAIN", "ATTENTION", "READY_TO_RESOLVE",
-                "RETRY_REQUESTED", "RESOLVING", "FAILED", "BLOCKED")
-                || update.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") && update.baseStatus != "CURRENT"
-        } == true
-
-    fun canRetryResolver(runInProgress: Boolean): Boolean =
-        available && sourceUpdateEnabled && !sourcePhaseComplete && sourceUpdate?.state == "FAILED" && sourceUpdate?.resolverRunId != null
-            && !runInProgress && !busy
-            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
-
-    fun canRecoverSource(validated: Boolean, runInProgress: Boolean): Boolean =
-        available && sourceUpdateEnabled && !sourcePhaseComplete && sourceUpdate?.recoveryAvailable == true && !runInProgress && !busy
-            && ((sourceUpdate?.state in setOf("ATTENTION", "BLOCKED", "UNCERTAIN") && sourceUpdate?.resolverRunId == null)
-                || (validated && sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
-                    && operations.any { it.kind == "PUBLISH_PR" && it.state in setOf("BLOCKED", "FAILED") }))
-            && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
-
-    fun canPrepareReleaseRecovery(validated: Boolean, runInProgress: Boolean): Boolean =
-        available && releaseRecoveryEnabled && canPrepareBackend && validated && !runInProgress && !busy
-            && operations.firstOrNull { it.kind == "INTEGRATE" }?.state == "SUCCEEDED"
-            && operations.none { !it.terminal || it.state == "ROLLBACK_FAILED" }
-
-    suspend fun refresh() {
-        try {
-            val state = load()
-            require(state.operations.all { it.sessionId == sessionId })
-            require(state.integration?.sessionId?.let { it == sessionId } ?: true)
-            require(state.sourceUpdate?.sessionId?.let { it == sessionId } ?: true)
-            require(state.deployment?.sessionId?.let { it == sessionId } ?: true)
-            require(state.readiness?.sessionId?.let { it == sessionId } ?: true)
-            operations = state.operations
-            integration = state.integration
-            sourceUpdate = state.sourceUpdate
-            sourceUpdateEnabled = state.sourceUpdateEnabled
-            releaseRecoveryEnabled = state.releaseRecoveryEnabled
-            completionEnabled = state.completionEnabled
-            deployment = state.deployment
-            readiness = state.readiness
-            available = state.enabled
-            loaded = true
-            loadError = null
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            // Keep durable IDs visible, but never authorize actions from a stale capability response.
-            available = false
-            integration = null
-            sourceUpdateEnabled = false
-            releaseRecoveryEnabled = false
-            completionEnabled = false
-            deployment = null
-            readiness = null
-            loadError = "No se pudo consultar la publicación. ${failure.message.orEmpty()}"
-        }
-    }
-
-    fun act(action: suspend () -> Unit) {
-        if (busy) return
-        busy = true
-        actionError = null
-        scope.launch {
-            try {
-                action()
-                refresh()
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                actionError = sourceBaseFailureMessage(failure.message) ?: "${failure.message.orEmpty()} Consulta el estado antes de repetir; Atenea conserva la misma operación."
-                // A main change between observation and click must immediately
-                // replace the obsolete button, without submitting another action.
-                refresh()
-            } finally {
-                busy = false
-            }
-        }
-    }
-}
 
 @Composable
 internal fun rememberMobileDeliveryUiState(api: AteneaApiClient, sessionId: Long, enabled: Boolean): MobileDeliveryUiState {
@@ -216,12 +52,14 @@ internal fun rememberMobileDeliveryUiState(api: AteneaApiClient, sessionId: Long
 internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validated: Boolean,
     runInProgress: Boolean, state: MobileDeliveryUiState, sessionOpen: Boolean = true,
     onOpenUpdates: (() -> Unit)? = null, validationInProgress: Boolean = false) {
+    val checksCurrent = validated && state.validationCurrent
+    val scope = rememberCoroutineScope()
     if (api.currentOperatorRole() != "PLATFORM_ADMINISTRATOR") {
         DeliveryStepCard(DeliveryStepUi(DeliveryStepStatus.ATTENTION, "Permiso de entrega requerido",
             "Tu rol no permite integrar o publicar. Ayuda con este cambio explica qué autorización falta.")) { }
         return
     }
-    val step = state.currentStep(validated, runInProgress, validationInProgress = validationInProgress)
+    val step = state.currentStep(checksCurrent, runInProgress, validationInProgress = validationInProgress)
     val uriHandler = LocalUriHandler.current
     val operations = state.operations
     val available = state.available
@@ -231,57 +69,61 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
     var confirmFinalize by remember(sessionId) { mutableStateOf(false) }
     var showHistory by remember(sessionId) { mutableStateOf(false) }
     var showOtherTargets by remember(sessionId) { mutableStateOf(false) }
+    var showVersions by remember(sessionId) { mutableStateOf(false) }
     val context = LocalContext.current
     val passkey = remember(context) { AndroidPasskeyCoordinator(context) }
 
-    fun act(action: suspend () -> Unit) = state.act(action)
+    fun deliver(kind: DeliveryStepAction,
+        target: MobileDeliveryTarget = if (kind == DeliveryStepAction.PREPARE_ANDROID) MobileDeliveryTarget.ANDROID_STABLE else MobileDeliveryTarget.APP_PROD,
+        action: suspend () -> MobileDeliveryOperation) = state.submitDelivery(kind, target, action)
+    fun source(kind: DeliveryStepAction, action: suspend () -> MobileSourceUpdate) = state.submitSource(kind, action)
     val pr = operations.firstOrNull { it.kind == "PUBLISH_PR" }
     val active = operations.any { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
     val releasePlanned = operations.any { it.kind == "RELEASE" && (!it.terminal || it.state == "ROLLBACK_FAILED") }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // The current decision and its button precede receipts and secondary targets.
-        if (sessionOpen && (validated || state.sourcePhaseComplete || runInProgress || state.deliveryBeforeValidation(runInProgress || validationInProgress)) || state.completed) DeliveryStepCard(step) {
+        if (sessionOpen && (checksCurrent || state.sourcePhaseComplete || runInProgress || state.deliveryBeforeValidation(runInProgress || validationInProgress)) || state.completed) DeliveryStepCard(step) {
             when (step.action) {
-                DeliveryStepAction.CREATE_PR -> AteneaButton("Crear PR", enabled = available && validated && !runInProgress && !busy && !active,
-                    onClick = { act { api.createDeliveryPullRequest(sessionId) } })
-                DeliveryStepAction.INTEGRATE -> AteneaButton("Integrar cambio", enabled = available && validated && !runInProgress && !busy && !active
+                DeliveryStepAction.CREATE_PR -> AteneaButton("Crear PR", enabled = available && checksCurrent && !runInProgress && !busy && !active,
+                    onClick = { deliver(DeliveryStepAction.CREATE_PR) { api.createDeliveryPullRequest(sessionId) } })
+                DeliveryStepAction.INTEGRATE -> AteneaButton("Integrar cambio", enabled = available && checksCurrent && !runInProgress && !busy && !active
                     && state.integration?.allowsRequest == true, onClick = { confirmMerge = true })
                 DeliveryStepAction.CONFIRM_RELEASE -> step.operation?.let { plan ->
-                    AteneaButton("Confirmar ${plan.target.label}", enabled = available && validated && !busy && !runInProgress
+                    AteneaButton("Confirmar ${plan.target.label}", enabled = available && checksCurrent && !busy && !runInProgress
                         && plan.canConfirm(System.currentTimeMillis() / 1000)
                         && (plan.target != MobileDeliveryTarget.APP_PROD || state.canPrepareBackend),
                         onClick = { confirmation = plan })
                 }
                 DeliveryStepAction.PREPARE_BACKEND -> AteneaButton("Preparar Backend PROD",
-                    enabled = if (state.releaseRecoveryEnabled) state.canPrepareReleaseRecovery(validated, runInProgress)
-                        else available && validated && !runInProgress && !busy && !active && !releasePlanned && state.canPrepareBackend,
-                    onClick = { act {
+                    enabled = if (state.releaseRecoveryEnabled) state.canPrepareReleaseRecovery(checksCurrent, runInProgress)
+                        else available && checksCurrent && !runInProgress && !busy && !active && !releasePlanned && state.canPrepareBackend,
+                    onClick = { deliver(DeliveryStepAction.PREPARE_BACKEND) {
                         if (state.releaseRecoveryEnabled) api.prepareReleaseRecovery(sessionId)
                         else api.prepareRelease(sessionId, MobileDeliveryTarget.APP_PROD)
                     } })
                 DeliveryStepAction.PREPARE_ANDROID -> AteneaButton("Preparar Android estable",
-                    enabled = available && validated && !runInProgress && !busy && !active && !releasePlanned,
-                    onClick = { act { api.prepareAndroidRecovery(sessionId) } })
-                DeliveryStepAction.FINALIZE -> AteneaButton("Finalizar cambio", enabled = state.canFinalize(validated, runInProgress),
+                    enabled = available && checksCurrent && !runInProgress && !busy && !active && !releasePlanned,
+                    onClick = { deliver(DeliveryStepAction.PREPARE_ANDROID) { api.prepareAndroidRecovery(sessionId) } })
+                DeliveryStepAction.FINALIZE -> AteneaButton("Finalizar cambio", enabled = state.canFinalize(checksCurrent, runInProgress),
                     onClick = { confirmFinalize = true })
                 DeliveryStepAction.RECONCILE_FINALIZE -> AteneaButton("Reconciliar finalización", enabled = state.canReconcileCompletion(runInProgress),
-                    onClick = { act { api.finalizeDelivery(sessionId, reconcile = true) } })
-                DeliveryStepAction.RESOLVE -> AteneaButton("Resolver conflictos", enabled = state.canResolveConflicts(validated, runInProgress),
-                    onClick = { act { api.resolveDeliveryConflicts(sessionId) } })
-                DeliveryStepAction.UPDATE_PR -> AteneaButton("Actualizar la misma PR", enabled = state.canUpdatePullRequest(validated, runInProgress),
-                    onClick = { act { api.createDeliveryPullRequest(sessionId) } })
+                    onClick = { deliver(DeliveryStepAction.RECONCILE_FINALIZE) { api.finalizeDelivery(sessionId, reconcile = true) } })
+                DeliveryStepAction.RESOLVE -> AteneaButton("Resolver conflictos", enabled = state.canResolveConflicts(checksCurrent, runInProgress),
+                    onClick = { source(DeliveryStepAction.RESOLVE) { api.resolveDeliveryConflicts(sessionId) } })
+                DeliveryStepAction.UPDATE_PR -> AteneaButton("Actualizar la misma PR", enabled = state.canUpdatePullRequest(checksCurrent, runInProgress),
+                    onClick = { deliver(DeliveryStepAction.UPDATE_PR) { api.createDeliveryPullRequest(sessionId) } })
                 DeliveryStepAction.UPDATE_BASE -> AteneaButton("Actualizar base con main", enabled = state.canUpdateBase(runInProgress || validationInProgress),
-                    onClick = { act { api.resolveDeliveryConflicts(sessionId) } })
+                    onClick = { source(DeliveryStepAction.UPDATE_BASE) { api.resolveDeliveryConflicts(sessionId) } })
                 DeliveryStepAction.RECOVER_SOURCE -> state.sourceUpdate?.let { update ->
-                    AteneaButton("Recuperar operación", enabled = state.canRecoverSource(validated, runInProgress),
-                        onClick = { act { api.recoverDeliverySource(sessionId, update.id) } })
+                    AteneaButton("Recuperar operación", enabled = state.canRecoverSource(checksCurrent, runInProgress),
+                        onClick = { source(DeliveryStepAction.RECOVER_SOURCE) { api.recoverDeliverySource(sessionId, update.id) } })
                 }
                 DeliveryStepAction.RETRY_RESOLVER -> state.sourceUpdate?.let { update -> update.resolverRunId?.let { run ->
                     AteneaButton("Reintentar resolución", enabled = state.canRetryResolver(runInProgress),
-                        onClick = { act { api.retryDeliveryResolver(sessionId, update.id, run) } })
+                        onClick = { source(DeliveryStepAction.RETRY_RESOLVER) { api.retryDeliveryResolver(sessionId, update.id, run) } })
                 } }
-                DeliveryStepAction.REFRESH -> AteneaOutlinedButton("Consultar estado", enabled = !busy,
-                    onClick = { act { /* Read-only refresh; no new intent. */ } })
+                DeliveryStepAction.REFRESH -> AteneaOutlinedButton("Consultar estado", enabled = !state.sending && !state.refreshing,
+                    onClick = { scope.launch { state.refresh() } })
                 DeliveryStepAction.NONE -> Unit
             }
         }
@@ -292,26 +134,31 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
         pr?.pullRequestUrl?.takeIf { it.matches(Regex("https://github\\.com/jlnieto/atenea/pull/[1-9][0-9]*")) }?.let { url ->
             TextButton(onClick = { uriHandler.openUri(url) }) { Text("Revisar PR") }
         }
-        state.readiness?.let { readiness ->
-            Text("Publicaciones", style = MaterialTheme.typography.titleSmall)
-            if (readiness.requirementsStatus == "CONFIRMED") {
-                Text("Este cambio requiere: " + readiness.requiredTargets.joinToString { it.label }.ifBlank { "ninguna publicación de runtime" })
-            } else Text("Los destinos del cambio se confirmarán con el diff de su PR integrada.")
-            readiness.android?.let { apk ->
-                val installed = context.packageManager.getPackageInfo(context.packageName, 0)
-                @Suppress("DEPRECATION") val installedCode = installed.versionCode
-                Text("APK publicada: ${apk.versionName} / ${apk.versionCode} · fuente ${apk.sourceCommit.take(12)}")
-                Text("Esta app instalada: ${installed.versionName} / $installedCode")
-                Text(when (readiness.androidStatus) {
-                    "INCLUDED" -> if (installedCode==apk.versionCode) "La APK publicada contiene este cambio y coincide con la instalada."
-                        else "La APK publicada contiene este cambio. La versión instalada se comprueba por separado."
-                    "NOT_INCLUDED" -> "La APK publicada todavía no contiene este cambio."
-                    "NOT_INTEGRATED" -> "La APK del canal se puede consultar sin validar ni integrar esta conversación."
-                    else -> "No se pudo confirmar si esta APK contiene el cambio."
-                })
-                if (onOpenUpdates != null) AteneaOutlinedButton(if (installedCode<apk.versionCode) "Actualizar Atenea" else "Comprobar actualizaciones",
-                    onClick = onOpenUpdates)
-            } ?: Text("No se ha podido confirmar la APK publicada. Consultar no publica nada.")
+        TextButton(onClick = { showVersions = !showVersions }) {
+            Text(if (showVersions) "Ocultar versiones y publicaciones" else "Versiones y publicaciones")
+        }
+        if (showVersions) {
+            state.readiness?.let { readiness ->
+                Text("Publicaciones", style = MaterialTheme.typography.titleSmall)
+                if (readiness.requirementsStatus == "CONFIRMED") {
+                    Text("Este cambio requiere: " + readiness.requiredTargets.joinToString { it.label }.ifBlank { "ninguna publicación de runtime" })
+                } else Text("Los destinos del cambio se confirmarán con el diff de su PR integrada.")
+                readiness.android?.let { apk ->
+                    val installed = context.packageManager.getPackageInfo(context.packageName, 0)
+                    @Suppress("DEPRECATION") val installedCode = installed.versionCode
+                    Text("APK publicada: ${apk.versionName} / ${apk.versionCode} · fuente ${apk.sourceCommit.take(12)}")
+                    Text("Esta app instalada: ${installed.versionName} / $installedCode")
+                    Text(when (readiness.androidStatus) {
+                        "INCLUDED" -> if (installedCode==apk.versionCode) "La APK publicada contiene este cambio y coincide con la instalada."
+                            else "La APK publicada contiene este cambio. La versión instalada se comprueba por separado."
+                        "NOT_INCLUDED" -> "La APK publicada todavía no contiene este cambio."
+                        "NOT_INTEGRATED" -> "La APK del canal se puede consultar sin validar ni integrar esta conversación."
+                        else -> "No se pudo confirmar si esta APK contiene el cambio."
+                    })
+                    if (onOpenUpdates != null) AteneaOutlinedButton(if (installedCode<apk.versionCode) "Actualizar Atenea" else "Comprobar actualizaciones",
+                        onClick = onOpenUpdates)
+                } ?: Text("No se ha podido confirmar la APK publicada. Consultar no publica nada.")
+            }
         }
         if (state.integrated) {
             TextButton(onClick = { showOtherTargets = !showOtherTargets }) {
@@ -322,12 +169,12 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                 val plan = operations.firstOrNull { it.kind == "RELEASE" && it.target == target }
                 if (plan?.canConfirm(System.currentTimeMillis() / 1000) == true && step.operation?.id != plan.id) {
                     AteneaButton("Confirmar ${target.label}", enabled = available && !busy && !runInProgress
-                        && validated,
+                        && checksCurrent,
                         onClick = { confirmation = plan })
                 } else if (plan == null || plan.terminal) {
                     Text("Preparar obtiene un plan; no publica ni instala.", style = MaterialTheme.typography.bodySmall)
-                    AteneaOutlinedButton("Preparar ${target.label}", enabled = available && validated && !runInProgress && !busy && !active && !releasePlanned,
-                        onClick = { act { if (target==MobileDeliveryTarget.ANDROID_STABLE) api.prepareAndroidRecovery(sessionId)
+                    AteneaOutlinedButton("Preparar ${target.label}", enabled = available && checksCurrent && !runInProgress && !busy && !active && !releasePlanned,
+                        onClick = { deliver(if (target==MobileDeliveryTarget.ANDROID_STABLE) DeliveryStepAction.PREPARE_ANDROID else DeliveryStepAction.PREPARE_BACKEND, target) { if (target==MobileDeliveryTarget.ANDROID_STABLE) api.prepareAndroidRecovery(sessionId)
                             else api.prepareRelease(sessionId, target) } })
                 } else Text("${deliveryStateLabel(plan.state)}. Sigue la operación que aparece arriba.")
                 if (plan?.state == "SUCCEEDED" && target == MobileDeliveryTarget.ANDROID_STABLE) {
@@ -370,24 +217,24 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
             text = { Text("Atenea comprobará la validación, la integración y el despliegue sano. Cerrará esta misma WorkSession " +
                 "y marcará el ticket como completado, conservando la conversación y todos los recibos. No volverá a publicar. " +
                 "Para modificaciones posteriores abre otro cambio.") },
-            confirmButton = { TextButton(enabled = state.canFinalize(validated, runInProgress), onClick = {
-                confirmFinalize = false; act { api.finalizeDelivery(sessionId) }
+            confirmButton = { TextButton(enabled = state.canFinalize(checksCurrent, runInProgress), onClick = {
+                confirmFinalize = false; deliver(DeliveryStepAction.FINALIZE) { api.finalizeDelivery(sessionId) }
             }) { Text("Finalizar cambio") } },
             dismissButton = { TextButton(onClick = { confirmFinalize = false }) { Text("Cancelar") } })
     }
     if (confirmMerge) {
         AlertDialog(onDismissRequest = { confirmMerge = false }, title = { Text("Integrar este cambio") },
             text = { Text("Atenea comprobará el commit validado y las protecciones de GitHub. Integrar no despliega a PROD.") },
-            confirmButton = { TextButton(enabled = available && validated && !runInProgress && !busy && !active
+            confirmButton = { TextButton(enabled = available && checksCurrent && !runInProgress && !busy && !active
                     && state.integration?.allowsRequest == true, onClick = {
-                confirmMerge = false; act { api.integrateDelivery(sessionId) }
+                confirmMerge = false; deliver(DeliveryStepAction.INTEGRATE) { api.integrateDelivery(sessionId) }
             }) { Text("Integrar") } },
             dismissButton = { TextButton(onClick = { confirmMerge = false }) { Text("Cancelar") } })
     }
     confirmation?.let { plan ->
         ReleaseAuthorizationDialog(plan,
             canPublish = {
-                state.available && validated && !runInProgress && !state.busy && !active
+                state.available && checksCurrent && !runInProgress && !state.busy && !active
                     && (plan.target != MobileDeliveryTarget.APP_PROD || state.canPrepareBackend)
                     && sameConfirmableRelease(plan, state.operations.firstOrNull { it.id == plan.id }, System.currentTimeMillis() / 1000)
             },
@@ -414,13 +261,16 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                 api.configureReleasePasskey(origin, challenge, assertion, code)
             },
             confirm = { grant ->
-                val result = api.confirmRelease(plan.id, grant)
-                check(result.id == plan.id && result.sessionId == sessionId
-                    && result.state in setOf("CONFIRMED", "ACCEPTED", "APPLYING", "SUCCEEDED"))
+                state.confirmRelease(plan.id) {
+                    api.confirmRelease(plan.id, grant).also { result ->
+                        check(result.id == plan.id && result.sessionId == sessionId
+                            && result.state in setOf("CONFIRMED", "ACCEPTED", "APPLYING", "SUCCEEDED"))
+                    }
+                }
             },
             refresh = { state.refresh() },
             onAccepted = { confirmation = null },
-            onDismiss = { confirmation = null; act { /* Observe only, including lost confirmation replies. */ } },
+            onDismiss = { confirmation = null; scope.launch { state.refresh() } },
             loadPasskeyStatus = { api.fetchReleasePasskeyStatus(passkey.signingOrigin()) })
     }
 }
