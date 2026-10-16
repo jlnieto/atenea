@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 public class OperationsMonitoringScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(OperationsMonitoringScheduler.class);
-    private static final int SLOW_RESPONSE_CONFIRMATION_CYCLES = 3;
+    private static final int ALERT_CONFIRMATION_CYCLES = 3;
 
     private final OperationsService operationsService;
     private final MobilePushDispatchService mobilePushDispatchService;
@@ -52,13 +52,19 @@ public class OperationsMonitoringScheduler {
                 degradedHosts++;
                 HostNotificationState state = notificationStates.computeIfAbsent(
                         host.id(), ignored -> new HostNotificationState());
-                List<String> newAlerts = state.newAlerts(result.issues());
+                List<OperationsMonitoringIssue> newAlerts = state.newAlerts(result.issues());
                 if (!newAlerts.isEmpty()) {
-                    mobilePushDispatchService.notifyOperationsDegradation(
-                            result.hostId(), result.hostName(), newAlerts);
+                    List<String> messages = newAlerts.stream().map(OperationsMonitoringIssue::message).toList();
+                    if (newAlerts.stream().allMatch(issue -> "ssh".equals(issue.key()))) {
+                        mobilePushDispatchService.notifyOperationsVerificationFailure(
+                                result.hostId(), result.hostName(), messages);
+                    } else {
+                        mobilePushDispatchService.notifyOperationsDegradation(
+                                result.hostId(), result.hostName(), messages);
+                    }
                 }
             } catch (RuntimeException exception) {
-                // An unobserved cycle cannot confirm a slow response or keep an alert active.
+                // An unobserved cycle cannot confirm an issue or keep an alert active.
                 notificationStates.remove(host.id());
                 log.warn("Scheduled operations check failed hostId={}: {}", host.id(), exception.getMessage());
             }
@@ -70,7 +76,7 @@ public class OperationsMonitoringScheduler {
         private final Map<String, Integer> consecutiveObservations = new HashMap<>();
         private final Set<String> notifiedIssues = new HashSet<>();
 
-        List<String> newAlerts(List<OperationsMonitoringIssue> issues) {
+        List<OperationsMonitoringIssue> newAlerts(List<OperationsMonitoringIssue> issues) {
             Set<String> activeKeys = new HashSet<>();
             for (OperationsMonitoringIssue issue : issues) {
                 activeKeys.add(issue.key());
@@ -78,14 +84,14 @@ public class OperationsMonitoringScheduler {
             consecutiveObservations.keySet().retainAll(activeKeys);
             notifiedIssues.retainAll(activeKeys);
 
-            List<String> alerts = new ArrayList<>();
+            List<OperationsMonitoringIssue> alerts = new ArrayList<>();
             for (OperationsMonitoringIssue issue : issues) {
                 int observations = consecutiveObservations.compute(issue.key(),
-                        (key, previous) -> Math.min(SLOW_RESPONSE_CONFIRMATION_CYCLES,
+                        (key, previous) -> Math.min(ALERT_CONFIRMATION_CYCLES,
                                 previous == null ? 1 : previous + 1));
-                if ((!issue.confirmSlowResponse() || observations >= SLOW_RESPONSE_CONFIRMATION_CYCLES)
+                if ((!issue.requiresConfirmation() || observations >= ALERT_CONFIRMATION_CYCLES)
                         && notifiedIssues.add(issue.key())) {
-                    alerts.add(issue.message());
+                    alerts.add(issue);
                 }
             }
             return alerts;

@@ -35,8 +35,10 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Predicate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +51,7 @@ public class OperationsService {
             OperationsIncidentStatus.FAILED);
     private static final int APACHE_RECOVERY_MAX_VALIDATION_CHECKS = 3;
     private static final int APACHE_RECOVERY_VALIDATION_TIMEOUT_MILLIS = 1_500;
+    private static final String WEBSITE_INCIDENT_TITLE = "Webs lentas o caídas";
 
     private final ManagedHostRepository managedHostRepository;
     private final ManagedServiceRepository managedServiceRepository;
@@ -107,14 +110,24 @@ public class OperationsService {
                 serviceCheckCommand(service), Duration.ofSeconds(20));
         OperationsIncidentEntity incident = null;
         if (run.getStatus() == OperationsActionRunStatus.FAILED) {
+            boolean unverified = service.getServiceType() == ManagedServiceType.WEB_SERVER
+                    ? apacheCheckUnverified(run)
+                    : remoteCheckUnavailable(run);
             incident = openOrUpdateIncident(
                     host,
                     service,
                     OperationsSeverity.WARNING,
-                    service.getName() + " requiere atención",
-                    "El diagnóstico remoto de " + service.getName() + " terminó con error.");
+                    unverified ? "Comprobación remota no disponible" : service.getName() + " requiere atención",
+                    unverified
+                            ? "No se pudo completar el diagnóstico remoto de " + service.getName()
+                                    + "; su estado es desconocido."
+                            : "El diagnóstico remoto de " + service.getName() + " terminó con error.");
         } else {
-            incident = resolveServiceIncidentIfHealthy(host, service);
+            incident = service.getServiceType() == ManagedServiceType.WEB_SERVER
+                    ? resolveServiceIncidentIfHealthy(host, service, existing ->
+                            !existing.getTitle().startsWith("Webs ")
+                                    && !"Apache o webs degradados".equals(existing.getTitle()))
+                    : resolveServiceIncidentIfHealthy(host, service);
         }
         return new OperationsServiceCheckResponse(
                 toHostResponse(host),
@@ -132,8 +145,19 @@ public class OperationsService {
         List<WebsiteCheckResponse> websiteChecks = checkWebsites(hostId);
         List<OperationsMonitoringIssue> issues = new ArrayList<>();
 
-        if (apacheRun.getStatus() == OperationsActionRunStatus.FAILED) {
+        boolean apacheUnverified = apacheCheckUnverified(apacheRun);
+        if (apacheUnverified) {
+            String code = apacheRun.getExitCode() == null
+                    ? ""
+                    : " (código " + apacheRun.getExitCode() + ")";
+            String cause = remoteCheckCause(apacheRun);
+            String method = remoteCheckUnavailable(apacheRun) ? "por SSH" : "con el diagnóstico remoto";
+            issues.add(new OperationsMonitoringIssue("ssh", "No se pudo comprobar Apache " + method + code
+                    + "; su estado es desconocido." + (cause == null ? "" : " Causa: " + cause + "."), true));
+        } else if (apacheRun.getStatus() == OperationsActionRunStatus.FAILED) {
+            OperationsExecutionReportResponse report = reportFromJson(apacheRun.getResultJson());
             String detail = firstNonBlank(
+                    report == null ? null : report.summary(),
                     apacheRun.getStderrSummary(),
                     apacheRun.getStdoutSummary(),
                     apacheRun.getExitCode() == null
@@ -305,11 +329,20 @@ public class OperationsService {
     }
 
     private OperationsIncidentEntity resolveServiceIncidentIfHealthy(ManagedHostEntity host, ManagedServiceEntity service) {
+        return resolveServiceIncidentIfHealthy(host, service, incident -> true);
+    }
+
+    private OperationsIncidentEntity resolveServiceIncidentIfHealthy(
+            ManagedHostEntity host,
+            ManagedServiceEntity service,
+            Predicate<OperationsIncidentEntity> canResolve
+    ) {
         return operationsIncidentRepository
                 .findFirstByHostIdAndServiceIdAndStatusInOrderByLastActivityAtDesc(
                         host.getId(),
                         service.getId(),
                         ACTIVE_INCIDENT_STATUSES)
+                .filter(canResolve)
                 .map(incident -> {
                     incident.setStatus(OperationsIncidentStatus.RESOLVED);
                     incident.setSeverity(OperationsSeverity.INFO);
@@ -332,7 +365,8 @@ public class OperationsService {
                 .filter(check -> !check.healthy())
                 .toList();
         if (unhealthy.isEmpty()) {
-            resolveServiceIncidentIfHealthy(host, service);
+            resolveServiceIncidentIfHealthy(host, service,
+                    incident -> WEBSITE_INCIDENT_TITLE.equals(incident.getTitle()));
             return;
         }
         OperationsSeverity severity = severityFromWebsiteChecks(unhealthy);
@@ -341,7 +375,7 @@ public class OperationsService {
                 host,
                 service,
                 severity,
-                "Webs lentas o caídas",
+                WEBSITE_INCIDENT_TITLE,
                 summary);
     }
 
@@ -356,14 +390,73 @@ public class OperationsService {
             resolveServiceIncidentIfHealthy(host, service);
             return;
         }
-        boolean critical = apacheRun.getStatus() == OperationsActionRunStatus.FAILED
-                || websiteChecks.stream().anyMatch(check -> "DOWN".equals(check.state()));
+        boolean apacheUnverified = apacheCheckUnverified(apacheRun);
+        boolean apacheFailed = apacheRun.getStatus() == OperationsActionRunStatus.FAILED && !apacheUnverified;
+        boolean websitesDown = websiteChecks.stream().anyMatch(check -> "DOWN".equals(check.state()));
+        String title = apacheFailed ? "Apache requiere atención"
+                : apacheUnverified && websitesDown ? "Webs caídas y diagnóstico remoto no verificable"
+                : apacheUnverified && websiteChecks.stream().anyMatch(check -> !check.healthy())
+                        ? "Webs lentas y diagnóstico remoto no verificable"
+                : apacheUnverified ? "Diagnóstico remoto no verificable; estado de Apache desconocido"
+                : WEBSITE_INCIDENT_TITLE;
         openOrUpdateIncident(
                 host,
                 service,
-                critical ? OperationsSeverity.CRITICAL : OperationsSeverity.WARNING,
-                "Apache o webs degradados",
+                apacheFailed || websitesDown ? OperationsSeverity.CRITICAL : OperationsSeverity.WARNING,
+                title,
                 String.join(" ", errors));
+    }
+
+    private boolean remoteCheckUnavailable(OperationsActionRunEntity run) {
+        return run.getStatus() == OperationsActionRunStatus.FAILED
+                && (run.getExitCode() == null || run.getExitCode() == 255);
+    }
+
+    private boolean apacheCheckUnverified(OperationsActionRunEntity run) {
+        if (run.getStatus() != OperationsActionRunStatus.FAILED) {
+            return false;
+        }
+        if (remoteCheckUnavailable(run)) {
+            return true;
+        }
+        // A failed SSH command alone does not prove Apache is unhealthy.
+        OperationsExecutionReportResponse report = reportFromJson(run.getResultJson());
+        return report == null || !"APACHE_STATUS".equals(report.action())
+                || !"ERROR".equalsIgnoreCase(report.status());
+    }
+
+    private String remoteCheckCause(OperationsActionRunEntity run) {
+        String detail = run.getStderrSummary() == null
+                ? ""
+                : run.getStderrSummary().toLowerCase(Locale.ROOT);
+        if (detail.contains("permission denied")) {
+            return "autenticación rechazada";
+        }
+        if (detail.contains("host key verification failed")) {
+            return "verificación de identidad SSH fallida";
+        }
+        if (detail.contains("could not resolve hostname") || detail.contains("name or service not known")) {
+            return "nombre del servidor no resuelto";
+        }
+        if (detail.contains("connection refused")) {
+            return "conexión rechazada";
+        }
+        if (detail.contains("connection timed out")) {
+            return "tiempo de conexión agotado";
+        }
+        if (detail.contains("timed out")) {
+            return "tiempo de comprobación agotado";
+        }
+        if (detail.contains("no route to host")) {
+            return "sin ruta de red al servidor";
+        }
+        if (detail.contains("a password is required") || detail.contains("not in the sudoers file")) {
+            return "permiso sudo insuficiente";
+        }
+        if (detail.contains("command not found") || detail.contains("no such file or directory")) {
+            return "runbook remoto no disponible";
+        }
+        return null;
     }
 
     private String monitoringWebsiteError(WebsiteCheckResponse check) {

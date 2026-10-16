@@ -1,6 +1,7 @@
 package com.atenea.service.operations;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -23,6 +24,7 @@ import com.atenea.persistence.operations.OperationsActionRunRepository;
 import com.atenea.persistence.operations.OperationsIncidentEntity;
 import com.atenea.persistence.operations.OperationsIncidentRepository;
 import com.atenea.persistence.operations.OperationsIncidentStatus;
+import com.atenea.persistence.operations.OperationsSeverity;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -277,6 +279,41 @@ class OperationsServiceTest {
     }
 
     @Test
+    void healthyWebsiteReadingDoesNotResolveUnknownApacheIncident() {
+        ManagedHostEntity host = host();
+        ManagedServiceEntity service = service(host);
+        ManagedWebsiteEntity website = website(host);
+        OperationsIncidentEntity incident = new OperationsIncidentEntity();
+        incident.setHost(host);
+        incident.setService(service);
+        incident.setStatus(OperationsIncidentStatus.OPEN);
+        incident.setTitle("Diagnóstico remoto no verificable; estado de Apache desconocido");
+
+        when(managedHostRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(host));
+        when(operationsActionRunRepository.save(any(OperationsActionRunEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(operationsRemoteExecutor.execute(eq(host), eq("sudo /usr/local/sbin/atenea-host-status"), any()))
+                .thenReturn(new RemoteCommandResult(255, "", ""));
+        when(managedWebsiteRepository.findByHostIdAndActiveTrueOrderByNameAsc(3L)).thenReturn(List.of(website));
+        when(operationsWebsiteCheckService.check(website))
+                .thenReturn(new WebsiteCheckResponse(
+                        30L, "Cliente", "https://cliente.test", 200, 200, 120, 2500, 10000,
+                        "OK", true, null));
+        when(managedServiceRepository.findFirstByHostIdAndServiceTypeAndActiveTrueOrderByNameAsc(
+                3L, ManagedServiceType.WEB_SERVER)).thenReturn(Optional.of(service));
+        when(managedServiceRepository.findByHostIdAndActiveTrueOrderByNameAsc(3L)).thenReturn(List.of(service));
+        when(operationsIncidentRepository.findFirstByHostIdAndServiceIdAndStatusInOrderByLastActivityAtDesc(
+                eq(3L), eq(9L), any())).thenReturn(Optional.of(incident));
+        when(operationsIncidentRepository.findByStatusInOrderByLastActivityAtDesc(any()))
+                .thenReturn(List.of(incident));
+
+        OperationsHostStatusResponse response = operationsService.getHostStatus(3L);
+
+        assertEquals(OperationsIncidentStatus.OPEN, response.openIncidents().getFirst().status());
+        verify(operationsIncidentRepository, never()).save(any(OperationsIncidentEntity.class));
+    }
+
+    @Test
     void monitoringCheckReturnsConcreteApacheAndWebsiteErrors() {
         ManagedHostEntity host = host();
         ManagedServiceEntity service = service(host);
@@ -294,7 +331,9 @@ class OperationsServiceTest {
             return run;
         });
         when(operationsRemoteExecutor.execute(eq(host), eq("sudo /usr/local/sbin/atenea-apache-status"), any()))
-                .thenReturn(new RemoteCommandResult(1, "Apache inactive", "systemctl reported inactive"));
+                .thenReturn(new RemoteCommandResult(1,
+                        "{\"action\":\"APACHE_STATUS\",\"status\":\"ERROR\","
+                                + "\"summary\":\"Apache inactive\"}", ""));
         when(managedWebsiteRepository.findByHostIdAndActiveTrueOrderByNameAsc(3L)).thenReturn(List.of(website));
         when(operationsWebsiteCheckService.check(website))
                 .thenReturn(new WebsiteCheckResponse(
@@ -319,14 +358,77 @@ class OperationsServiceTest {
         OperationsMonitoringResult result = operationsService.checkApacheAndWebsites(3L);
 
         assertEquals(List.of(
-                "Apache: systemctl reported inactive",
+                "Apache: Apache inactive",
                 "Web Cliente (https://cliente.test): DEGRADED - Slow response 3200ms above 2500ms threshold"),
                 result.errors());
         assertEquals(List.of("apache", "website:30:DEGRADED"),
                 result.issues().stream().map(OperationsMonitoringIssue::key).toList());
         assertEquals(List.of(false, true),
-                result.issues().stream().map(OperationsMonitoringIssue::confirmSlowResponse).toList());
+                result.issues().stream().map(OperationsMonitoringIssue::requiresConfirmation).toList());
         verify(operationsIncidentRepository).save(any(OperationsIncidentEntity.class));
+    }
+
+    @Test
+    void sshExit255WithHealthyWebsiteReportsUnverifiedApacheAsWarning() {
+        ManagedHostEntity host = host();
+        ManagedServiceEntity service = service(host);
+        ManagedWebsiteEntity website = website(host);
+
+        when(managedHostRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(host));
+        when(managedServiceRepository.findFirstByHostIdAndServiceTypeAndActiveTrueOrderByNameAsc(
+                3L, ManagedServiceType.WEB_SERVER)).thenReturn(Optional.of(service));
+        when(operationsActionRunRepository.save(any(OperationsActionRunEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(operationsRemoteExecutor.execute(eq(host), eq("sudo /usr/local/sbin/atenea-apache-status"), any()))
+                .thenReturn(new RemoteCommandResult(255, "", ""));
+        when(managedWebsiteRepository.findByHostIdAndActiveTrueOrderByNameAsc(3L)).thenReturn(List.of(website));
+        when(operationsWebsiteCheckService.check(website))
+                .thenReturn(new WebsiteCheckResponse(
+                        30L, "Cliente", "https://cliente.test", 200, 200, 120, 2500, 10000,
+                        "OK", true, null));
+        when(operationsIncidentRepository.findFirstByHostIdAndServiceIdAndStatusInOrderByLastActivityAtDesc(
+                eq(3L), eq(9L), any())).thenReturn(Optional.empty());
+        when(operationsIncidentRepository.save(any(OperationsIncidentEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        OperationsMonitoringResult result = operationsService.checkApacheAndWebsites(3L);
+
+        assertEquals(List.of("ssh"), result.issues().stream().map(OperationsMonitoringIssue::key).toList());
+        assertTrue(result.issues().getFirst().requiresConfirmation());
+        assertEquals("No se pudo comprobar Apache por SSH (código 255); su estado es desconocido.",
+                result.errors().getFirst());
+        org.mockito.ArgumentCaptor<OperationsIncidentEntity> incident =
+                org.mockito.ArgumentCaptor.forClass(OperationsIncidentEntity.class);
+        verify(operationsIncidentRepository).save(incident.capture());
+        assertEquals(OperationsSeverity.WARNING, incident.getValue().getSeverity());
+        assertEquals("Diagnóstico remoto no verificable; estado de Apache desconocido",
+                incident.getValue().getTitle());
+    }
+
+    @Test
+    void failedRemoteCommandWithoutApacheReportDoesNotClaimApacheFailure() {
+        ManagedHostEntity host = host();
+        ManagedServiceEntity service = service(host);
+
+        when(managedHostRepository.findByIdAndActiveTrue(3L)).thenReturn(Optional.of(host));
+        when(managedServiceRepository.findFirstByHostIdAndServiceTypeAndActiveTrueOrderByNameAsc(
+                3L, ManagedServiceType.WEB_SERVER)).thenReturn(Optional.of(service));
+        when(operationsActionRunRepository.save(any(OperationsActionRunEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(operationsRemoteExecutor.execute(eq(host), eq("sudo /usr/local/sbin/atenea-apache-status"), any()))
+                .thenReturn(new RemoteCommandResult(1, "", "sudo: a password is required"));
+        when(managedWebsiteRepository.findByHostIdAndActiveTrueOrderByNameAsc(3L)).thenReturn(List.of());
+        when(operationsIncidentRepository.findFirstByHostIdAndServiceIdAndStatusInOrderByLastActivityAtDesc(
+                eq(3L), eq(9L), any())).thenReturn(Optional.empty());
+        when(operationsIncidentRepository.save(any(OperationsIncidentEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        OperationsMonitoringResult result = operationsService.checkApacheAndWebsites(3L);
+
+        assertEquals(List.of("ssh"), result.issues().stream().map(OperationsMonitoringIssue::key).toList());
+        assertEquals("No se pudo comprobar Apache con el diagnóstico remoto (código 1); "
+                        + "su estado es desconocido. Causa: permiso sudo insuficiente.",
+                result.errors().getFirst());
     }
 
     private ManagedHostEntity host() {

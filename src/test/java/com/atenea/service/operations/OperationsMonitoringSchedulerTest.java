@@ -95,6 +95,29 @@ class OperationsMonitoringSchedulerTest {
     }
 
     @Test
+    void transientSshFailureDoesNotSendPushButPersistentFailureDoes() {
+        when(operationsService.listHosts()).thenReturn(List.of(host));
+        String unknown = "No se pudo comprobar Apache por SSH (código 255); su estado es desconocido.";
+        when(operationsService.checkApacheAndWebsites(3L)).thenReturn(
+                result(issue("ssh", unknown, true)), result(),
+                result(issue("ssh", unknown, true)), result(issue("ssh", unknown, true)),
+                result(issue("ssh", unknown, true)));
+
+        for (int cycle = 0; cycle < 4; cycle++) {
+            scheduler.runCheckCycle();
+        }
+        verify(mobilePushDispatchService, never()).notifyOperationsDegradation(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        verify(mobilePushDispatchService, never()).notifyOperationsVerificationFailure(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+
+        scheduler.runCheckCycle();
+        verify(mobilePushDispatchService).notifyOperationsVerificationFailure(3L, host.name(), List.of(unknown));
+    }
+
+    @Test
     void intermittentSlowResponseDoesNotSendPush() {
         when(operationsService.listHosts()).thenReturn(List.of(host));
         when(operationsService.checkApacheAndWebsites(3L)).thenReturn(
@@ -163,8 +186,8 @@ class OperationsMonitoringSchedulerTest {
         verify(mobilePushDispatchService, times(2)).notifyOperationsDegradation(3L, host.name(), List.of("down"));
     }
 
-    private OperationsMonitoringIssue issue(String key, String message, boolean confirmSlowResponse) {
-        return new OperationsMonitoringIssue(key, message, confirmSlowResponse);
+    private OperationsMonitoringIssue issue(String key, String message, boolean requiresConfirmation) {
+        return new OperationsMonitoringIssue(key, message, requiresConfirmation);
     }
 
     private OperationsMonitoringResult result(OperationsMonitoringIssue... issues) {
