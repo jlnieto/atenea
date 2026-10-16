@@ -3,6 +3,8 @@ package com.atenea.delivery;
 import com.atenea.auth.AuthenticatedOperator;
 import com.atenea.auth.AuthenticatedSession;
 import com.atenea.auth.action.PrivilegedActionAuthorizationGrant;
+import com.atenea.api.worksession.DevelopmentChangeValidationEvidenceResponse;
+import com.atenea.service.worksession.ClosedValidationOperationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.HashSet;
@@ -11,6 +13,8 @@ import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,25 +27,28 @@ public class MobileDeliveryController {
     private final SourceUpdateService sourceUpdates;
     private final SourceFinalizationService finalizations;
     private final MobileChangeCompletionService completion;
+    private final ClosedValidationOperationService validation;
     public MobileDeliveryController(MobileDeliveryService service, SourceUpdateService sourceUpdates,
-            SourceFinalizationService finalizations, MobileChangeCompletionService completion) {
+            SourceFinalizationService finalizations, MobileChangeCompletionService completion,
+            ClosedValidationOperationService validation) {
         this.service = service; this.sourceUpdates = sourceUpdates; this.finalizations=finalizations;
-        this.completion=completion;
+        this.completion=completion; this.validation=validation;
     }
 
     @GetMapping("/api/mobile/sessions/{sessionId}/delivery")
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public DeliveryState list(@PathVariable Long sessionId,
             @AuthenticationPrincipal AuthenticatedOperator actor) {
         return new DeliveryState(service.isEnabled(),service.list(sessionId, actor),
                 service.observeIntegration(sessionId, actor), sourceUpdates.isEnabled(), sourceUpdates.observe(sessionId, actor),
                 service.isEnabled(), service.observeDeployment(sessionId, actor), completion.isEnabled(),
-                service.observeDelivery(sessionId,actor));
+                service.observeDelivery(sessionId,actor), validation.findDevelopmentChangeEvidence(sessionId).orElse(null));
     }
     public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations,
             MobileDeliveryService.IntegrationObservation integration, boolean sourceUpdateEnabled,
             SourceUpdateOperation.View sourceUpdate, boolean releaseRecoveryEnabled,
             MobileDeliveryService.DeploymentObservation deployment, boolean completionEnabled,
-            ChangeDeliveryReadiness readiness) { }
+            ChangeDeliveryReadiness readiness, DevelopmentChangeValidationEvidenceResponse validation) { }
 
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/finalize")
     public DeliveryOperation.DeliveryView complete(@PathVariable Long sessionId,

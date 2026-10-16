@@ -40,6 +40,35 @@ class MobileDeliveryTest {
         assertFalse(state.releaseRecoveryEnabled)
         assertNull(state.deployment)
         assertFalse(state.completionEnabled)
+        assertNull(state.validation)
+    }
+
+    private fun validation(sessionId: Long = 21) = JSONObject().put("changeKey",id.toString()).put("workSessionId",sessionId)
+        .put("sourceRevision",5).put("sourceFingerprintSha256","5".repeat(64)).put("validationState","STALE")
+        .put("passedOperations",0).put("requiredOperations",4).put("operations",org.json.JSONArray())
+        .put("lastAttempt",JSONObject.NULL)
+
+    @Test fun deliveryIncludesRevisionBoundValidationAndRejectsMalformedOrFabricatedPassedCounts() {
+        val root=JSONObject().put("enabled",true).put("operations",org.json.JSONArray()).put("validation",validation())
+        val proof=parseMobileDeliveryState(root).validation!!
+        assertEquals(5,proof.sourceRevision);assertEquals("STALE",proof.validationState);assertEquals(0,proof.passedOperations)
+        assertFailsWith<IllegalArgumentException> { parseMobileDeliveryState(root.put("validation","invalid")) }
+        assertFailsWith<IllegalArgumentException> { parseMobileDeliveryState(root.put("validation",validation().put("passedOperations",4))) }
+    }
+
+    @Test fun deliveryReadIsAuthenticatedAndForeignValidationCannotEnterTheSession() {
+        val server=MockWebServer();server.start()
+        try {
+            val client=AteneaApiClient(server.url("/").toString().trimEnd('/'),{"synthetic-access"})
+            val body=JSONObject().put("enabled",true).put("operations",org.json.JSONArray()).put("validation",validation())
+            server.enqueue(MockResponse().setBody(body.toString()))
+            assertEquals(5,runBlocking { client.fetchDelivery(21) }.validation!!.sourceRevision)
+            val request=server.takeRequest()
+            assertEquals("GET",request.method);assertEquals("/api/mobile/sessions/21/delivery",request.path)
+            assertEquals("Bearer synthetic-access",request.getHeader("Authorization"))
+            server.enqueue(MockResponse().setBody(body.put("validation",validation(22)).toString()))
+            assertFailsWith<IllegalArgumentException> { runBlocking { client.fetchDelivery(21) } }
+        } finally { server.shutdown() }
     }
 
     @Test fun completionIsAnEmptyAuthenticatedIntentAndReconciliationKeepsTheSameOperation() {

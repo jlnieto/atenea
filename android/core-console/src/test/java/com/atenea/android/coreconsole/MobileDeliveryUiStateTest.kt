@@ -21,6 +21,12 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
+    private fun snapshot(enabled: Boolean, operations: List<MobileDeliveryOperation>, integration: MobileDeliveryIntegration? = null,
+        sourceUpdateEnabled: Boolean = false, sourceUpdate: MobileSourceUpdate? = null, releaseRecoveryEnabled: Boolean = false,
+        deployment: MobileDeploymentObservation? = null, completionEnabled: Boolean = false,
+        readiness: com.atenea.android.api.MobileChangeDeliveryReadiness? = null) =
+        MobileDeliveryState(enabled, operations, integration, sourceUpdateEnabled, sourceUpdate, releaseRecoveryEnabled,
+            deployment, completionEnabled, readiness, workflowEvidence(21, sourceUpdate?.sourceRevision ?: 1))
     @Test fun `blocked completion reason stays visible without expanding historical receipts`() {
         val blocked=operation().copy(kind="FINALIZE",state="BLOCKED",errorCode="COMPLETION_WORKSPACE_NOT_CLEAN_OR_EXACT")
         val integrated=operation().copy(kind="INTEGRATE",state="SUCCEEDED")
@@ -34,7 +40,7 @@ class MobileDeliveryUiStateTest {
             var supported=false
             var observed=deployed()
             var operations=listOf(operation().copy(kind="INTEGRATE",state="SUCCEEDED",mergeCommit="3".repeat(40)))
-            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,operations,
+            val state=MobileDeliveryUiState(21,scope) { snapshot(true,operations,
                 deployment=observed,completionEnabled=supported,
                 readiness=com.atenea.android.api.MobileChangeDeliveryReadiness(21,"CONFIRMED","1".repeat(40),"3".repeat(40),
                     listOf(MobileDeliveryTarget.APP_PROD),observed.healthy,null,"UNAVAILABLE",System.currentTimeMillis()/1000)) }
@@ -53,7 +59,7 @@ class MobileDeliveryUiStateTest {
             val completed=operation().copy(kind="FINALIZE",state="SUCCEEDED")
             val state=MobileDeliveryUiState(21,scope) {
                 if (!online) error("offline")
-                MobileDeliveryState(true,listOf(completed),completionEnabled=true)
+                snapshot(true,listOf(completed),completionEnabled=true)
             }
             state.refresh();assertTrue(state.completed);assertFalse(state.completing)
             assertFalse(state.canPrepareBackend);assertFalse(state.canPrepareReleaseRecovery(true,false))
@@ -67,7 +73,7 @@ class MobileDeliveryUiStateTest {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {
             var pending=operation().copy(kind="FINALIZE",state="APPLYING")
-            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,listOf(pending),completionEnabled=true) }
+            val state=MobileDeliveryUiState(21,scope) { snapshot(true,listOf(pending),completionEnabled=true) }
             state.refresh();assertTrue(state.completing);assertFalse(state.canFinalize(true,false))
             assertFalse(state.canReconcileCompletion(false));assertFalse(state.canPrepareBackend)
             pending=pending.copy(state="BLOCKED");state.refresh();assertTrue(state.canReconcileCompletion(false))
@@ -83,7 +89,7 @@ class MobileDeliveryUiStateTest {
             val integration=operation().copy(kind="INTEGRATE",state="SUCCEEDED",mergeCommit="3".repeat(40))
             val update=MobileSourceUpdate(UUID.randomUUID(),21,"PUBLISHED","2".repeat(40),5,111,null)
             val state=MobileDeliveryUiState(21,scope) {
-                MobileDeliveryState(true,listOf(integration),MobileDeliveryIntegration(21,"1".repeat(40),"MERGED",false,null),
+                snapshot(true,listOf(integration),MobileDeliveryIntegration(21,"1".repeat(40),"MERGED",false,null),
                     true,update,true,deployed())
             }
             state.refresh()
@@ -99,7 +105,7 @@ class MobileDeliveryUiStateTest {
     @Test fun `merged PR pending durable integration does not restart old conflict resolution`() = runBlocking<Unit> {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {
-            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,
+            val state=MobileDeliveryUiState(21,scope) { snapshot(true,
                 listOf(operation().copy(kind="INTEGRATE",state="WAITING_CI")),
                 MobileDeliveryIntegration(21,"1".repeat(40),"MERGED",false,null),true,
                 MobileSourceUpdate(UUID.randomUUID(),21,"PUBLISHED","2".repeat(40),5,111,null),true) }
@@ -114,7 +120,7 @@ class MobileDeliveryUiStateTest {
             var online=true
             val state=MobileDeliveryUiState(21,scope) {
                 if (!online) error("offline")
-                MobileDeliveryState(true,listOf(operation().copy(kind="INTEGRATE",state="SUCCEEDED",mergeCommit="3".repeat(40))),
+                snapshot(true,listOf(operation().copy(kind="INTEGRATE",state="SUCCEEDED",mergeCommit="3".repeat(40))),
                     releaseRecoveryEnabled=true,deployment=observed)
             }
             state.refresh(); assertTrue(state.appDeployed)
@@ -131,7 +137,7 @@ class MobileDeliveryUiStateTest {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {
             val old=operation().copy(kind="INTEGRATE",state="SUCCEEDED",mergeCommit="3".repeat(40))
-            val current=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,listOf(old),
+            val current=MobileDeliveryUiState(21,scope) { snapshot(true,listOf(old),
                 MobileDeliveryIntegration(21,"1".repeat(40),"STALE_SOURCE",false,"PUBLISHED_OWNERSHIP_MISMATCH"),
                 deployment=deployed().copy(status="NOT_INTEGRATED",healthy=false)) }
             current.refresh();assertFalse(current.integrated);assertFalse(current.sourcePhaseComplete);assertFalse(current.appDeployed)
@@ -145,7 +151,7 @@ class MobileDeliveryUiStateTest {
             var online=true
             val state=MobileDeliveryUiState(21,scope) {
                 if (!online) error("offline")
-                MobileDeliveryState(true,operations,releaseRecoveryEnabled=supported)
+                snapshot(true,operations,releaseRecoveryEnabled=supported)
             }
             state.refresh(); assertFalse(state.canPrepareReleaseRecovery(true,false))
             supported=true; state.refresh(); assertTrue(state.canPrepareReleaseRecovery(true,false))
@@ -160,7 +166,7 @@ class MobileDeliveryUiStateTest {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {
             var operations=listOf(operation().copy(kind="INTEGRATE",state="WAITING_CI"))
-            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,operations,releaseRecoveryEnabled=true) }
+            val state=MobileDeliveryUiState(21,scope) { snapshot(true,operations,releaseRecoveryEnabled=true) }
             state.refresh(); assertFalse(state.canPrepareReleaseRecovery(true,false))
             operations=listOf(operation().copy(kind="INTEGRATE",state="SUCCEEDED"),operation().copy(kind="RELEASE",state="ROLLBACK_FAILED"))
             state.refresh(); assertFalse(state.canPrepareReleaseRecovery(true,false))
@@ -174,7 +180,7 @@ class MobileDeliveryUiStateTest {
         try {
             var update=MobileSourceUpdate(UUID.randomUUID(),21,"ATTENTION","2".repeat(40),null,null,"SOURCE_UPDATE_REF_MOVED",true)
             var operation=operation().copy(kind="PUBLISH_PR",state="BLOCKED")
-            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,listOf(operation),null,true,update) }
+            val state=MobileDeliveryUiState(21,scope) { snapshot(true,listOf(operation),null,true,update) }
             state.refresh();assertTrue(state.canRecoverSource(false,false));assertFalse(state.canRecoverSource(false,true))
             update=update.copy(state="FAILED",resolverRunId=105);state.refresh();assertFalse(state.canRecoverSource(true,false))
             update=update.copy(state="READY_TO_FINALIZE",resolverRunId=null);state.refresh()
@@ -191,7 +197,7 @@ class MobileDeliveryUiStateTest {
             var online=true
             val state=MobileDeliveryUiState(21,scope) {
                 if (!online) error("offline")
-                MobileDeliveryState(true,listOf(operation().copy(state="SUCCEEDED")),
+                snapshot(true,listOf(operation().copy(state="SUCCEEDED")),
                     MobileDeliveryIntegration(21,"1".repeat(40),"CONFLICTS",false,null),true,update)
             }
             state.refresh();assertTrue(state.canRetryResolver(false));assertFalse(state.canRetryResolver(true))
@@ -209,7 +215,7 @@ class MobileDeliveryUiStateTest {
             var update=MobileSourceUpdate(UUID.randomUUID(),21,"RESOLVER_COMPLETED","2".repeat(40),5,105,null,baseStatus="CURRENT")
             val state=MobileDeliveryUiState(21,scope) {
                 if (!online) error("offline")
-                MobileDeliveryState(true,listOf(operation().copy(state="SUCCEEDED")),
+                snapshot(true,listOf(operation().copy(state="SUCCEEDED")),
                     MobileDeliveryIntegration(21,"1".repeat(40),"STALE_SOURCE",false,null),true,update)
             }
             state.refresh()
@@ -229,7 +235,7 @@ class MobileDeliveryUiStateTest {
             var online=true
             val state=MobileDeliveryUiState(21,scope) {
                 if (!online) error("offline")
-                MobileDeliveryState(true,listOf(operation().copy(state="SUCCEEDED")),MobileDeliveryIntegration(21,"1".repeat(40),"CONFLICTS",false,null),true,update)
+                snapshot(true,listOf(operation().copy(state="SUCCEEDED")),MobileDeliveryIntegration(21,"1".repeat(40),"CONFLICTS",false,null),true,update)
             }
             state.refresh()
             assertTrue(state.canResolveConflicts(true,false))
@@ -255,10 +261,10 @@ class MobileDeliveryUiStateTest {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {
             val foreign=MobileSourceUpdate(UUID.randomUUID(),22,"RESOLVING","2".repeat(40),4,105,null)
-            val state=MobileDeliveryUiState(21,scope) { MobileDeliveryState(true,listOf(operation()),null,true,foreign) }
+            val state=MobileDeliveryUiState(21,scope) { snapshot(true,listOf(operation()),null,true,foreign) }
             state.refresh(); assertFalse(state.available); assertNull(state.sourceUpdate)
             val legacy=MobileDeliveryUiState(21,scope) {
-                MobileDeliveryState(true,listOf(operation()),MobileDeliveryIntegration(21,"1".repeat(40),"CONFLICTS",false,null))
+                snapshot(true,listOf(operation()),MobileDeliveryIntegration(21,"1".repeat(40),"CONFLICTS",false,null))
             }
             legacy.refresh(); assertFalse(legacy.canResolveConflicts(true,false))
         } finally { scope.cancel() }
@@ -283,7 +289,7 @@ class MobileDeliveryUiStateTest {
             var reads = 0
             val result = MobileDeliveryIntegration(21, "1".repeat(40), "CONFLICTS", false, null)
             val state = MobileDeliveryUiState(21, scope) {
-                reads++; MobileDeliveryState(true, listOf(operation()), result)
+                reads++; snapshot(true, listOf(operation()), result)
             }
             state.refresh(); state.refresh()
             assertEquals(2, reads)
@@ -298,7 +304,7 @@ class MobileDeliveryUiStateTest {
             var fail = false
             val state = MobileDeliveryUiState(21, scope) {
                 if (fail) error("offline")
-                MobileDeliveryState(true, listOf(operation()), MobileDeliveryIntegration(21, "1".repeat(40), "MERGEABLE", true, null))
+                snapshot(true, listOf(operation()), MobileDeliveryIntegration(21, "1".repeat(40), "MERGEABLE", true, null))
             }
             state.refresh(); assertTrue(state.integration!!.allowsRequest)
             fail = true; state.refresh()
@@ -311,7 +317,7 @@ class MobileDeliveryUiStateTest {
         val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
         try {
             val state = MobileDeliveryUiState(21, scope) {
-                MobileDeliveryState(true, listOf(operation()), MobileDeliveryIntegration(22, "1".repeat(40), "MERGEABLE", true, null))
+                snapshot(true, listOf(operation()), MobileDeliveryIntegration(22, "1".repeat(40), "MERGEABLE", true, null))
             }
             state.refresh()
             assertFalse(state.available); assertNull(state.integration)
@@ -323,7 +329,7 @@ class MobileDeliveryUiStateTest {
         try {
             val operation = operation()
             var reads = 0
-            val state = MobileDeliveryUiState(21, scope) { reads++; MobileDeliveryState(true, listOf(operation)) }
+            val state = MobileDeliveryUiState(21, scope) { reads++; snapshot(true, listOf(operation)) }
             state.refresh()
             state.refresh()
             assertEquals(operation.id, state.operations.single().id)
@@ -340,10 +346,12 @@ class MobileDeliveryUiStateTest {
         try {
             val completion = CompletableDeferred<Unit>()
             var actions = 0
-            val state = MobileDeliveryUiState(21, scope) { MobileDeliveryState(true, listOf(operation())) }
-            state.act { actions++; completion.await() }
+            val receipt = operation()
+            val state = MobileDeliveryUiState(21, scope) { snapshot(true, listOf(receipt)) }
+            state.refresh()
+            state.submitDelivery(DeliveryStepAction.CREATE_PR) { actions++; completion.await(); receipt }
             assertTrue(state.busy)
-            state.act { actions++ }
+            state.submitDelivery(DeliveryStepAction.CREATE_PR) { actions++; receipt }
             assertEquals(1, actions)
             completion.complete(Unit)
             assertFalse(state.busy)
@@ -359,7 +367,7 @@ class MobileDeliveryUiStateTest {
             val operation = operation()
             var unavailable = false
             val state = MobileDeliveryUiState(21, scope) {
-                if (unavailable) error("Sin conexión") else MobileDeliveryState(true, listOf(operation))
+                if (unavailable) error("Sin conexión") else snapshot(true, listOf(operation))
             }
             state.refresh()
             unavailable = true
@@ -378,7 +386,7 @@ class MobileDeliveryUiStateTest {
     fun `foreign session receipt is not adopted`() = runBlocking<Unit> {
         val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
         try {
-            val state = MobileDeliveryUiState(21, scope) { MobileDeliveryState(true, listOf(operation().copy(sessionId = 22))) }
+            val state = MobileDeliveryUiState(21, scope) { snapshot(true, listOf(operation().copy(sessionId = 22))) }
             state.refresh()
             assertFalse(state.available)
             assertTrue(state.operations.isEmpty())

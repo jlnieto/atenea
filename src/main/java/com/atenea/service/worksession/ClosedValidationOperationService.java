@@ -31,6 +31,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,6 +64,13 @@ public class ClosedValidationOperationService {
 
     @Transactional(readOnly = true)
     public DevelopmentChangeValidationEvidenceResponse getDevelopmentChangeEvidence(Long sessionId) {
+        return findDevelopmentChangeEvidence(sessionId).orElseThrow(() ->
+                new WorkSessionOperationBlockedException("Validation evidence requires the bound DevelopmentChange"));
+    }
+
+    /** Optional observation does not throw or mark the enclosing snapshot rollback-only on an unconfirmed identity. */
+    @Transactional(readOnly = true)
+    public Optional<DevelopmentChangeValidationEvidenceResponse> findDevelopmentChangeEvidence(Long sessionId) {
         // No lock, worker call, source observation, projection promotion or retry on this path.
         WorkSessionEntity session = workSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
@@ -76,7 +84,7 @@ public class ClosedValidationOperationService {
                 || !Objects.equals(session.getWorkspaceBranch(), change.getWorkspaceBranch())
                 || session.getSelectedWorkerId() == null
                 || !Objects.equals(session.getSelectedWorkerId(), change.getSelectedWorkerId())) {
-            throw new WorkSessionOperationBlockedException("Validation evidence requires the bound DevelopmentChange");
+            return Optional.empty();
         }
         String fingerprint = change.getSourceFingerprintSha256();
         List<ValidationOperationEntity> results = fingerprint == null ? List.of()
@@ -89,10 +97,10 @@ public class ClosedValidationOperationService {
                 .map(this::response).orElse(null);
         int passed = (int) latest.values().stream()
                 .filter(value -> value.getStatus() == ValidationOperationStatus.SUCCEEDED).count();
-        return new DevelopmentChangeValidationEvidenceResponse(
+        return Optional.of(new DevelopmentChangeValidationEvidenceResponse(
                 change.getChangeKey(), sessionId, change.getSourceRevision(), fingerprint,
                 change.getValidationState(), passed, ValidationOperationKind.values().length,
-                evidence, lastAttempt);
+                evidence, lastAttempt));
     }
 
     @Transactional

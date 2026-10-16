@@ -61,3 +61,42 @@ Ayuda explica este paso antes de sugerir validar o actualizar la PR. Un rechazo
 de finalización sin nuevo commit no queda oculto detrás del recibo satisfactorio
 de una publicación anterior. Los resultados de pruebas guardados se mantienen:
 una base desactualizada no se presenta como `TESTS_FAILED`.
+
+## Una revisión, un estado de pantalla
+
+`GET /api/mobile/sessions/{id}/delivery` incluye la evidencia `validation` de
+esa misma WorkSession. La lectura DB es `REPEATABLE_READ` y de sólo lectura:
+preparación, revisión, huella y pruebas no se componen con lecturas de otra
+revisión. Una identidad no confirmable conserva el historial de operaciones,
+pero devuelve evidencia nula, que nunca habilita publicación.
+
+Android usa esa observación para la tarjeta principal, las pruebas y todos los
+botones de entrega. El `CURRENT` guardado en la conversación no autoriza una
+revisión recién preparada. Preparar main invalida el estado local anterior;
+cuando termina sin conflictos, se muestra **Validar cambio**. Sólo las cuatro
+pruebas de esa revisión habilitan **Actualizar la misma PR**.
+
+Los operadores sin rol administrador conservan la consulta y validación ya
+permitidas mediante su endpoint de evidencia existente; no reciben recibos ni
+capacidades de publicación administrativas.
+
+La pulsación se bloquea antes de enviar HTTP y conserva el recibo aceptado hasta
+observar esa misma operación. Una respuesta perdida sólo habilita consultar;
+el polling y volver del segundo plano nunca repiten el POST. Las lecturas
+antiguas, las revisiones inferiores y las huellas contradictorias no sustituyen
+el estado actual. Validar e inspeccionar siguen siendo acciones diferentes.
+
+Mientras se trabaja, la pantalla mantiene una tarjeta y un mensaje de espera.
+Las versiones/APK y el historial quedan plegados, separados del siguiente paso.
+El estado de conversación también se refresca cuando cambia la preparación,
+aunque no se haya iniciado ningún AgentRun.
+
+La entrega requiere backend antes que APK: una APK nueva sin la evidencia de
+esta API conserva la consulta, pero no se apoya en un `CURRENT` antiguo. No se
+necesitan migraciones, flags nuevos ni cambios Platform.
+
+Regresión de pantalla: `ChangeWorkflowJourneyTest` recorre la conversación real
+con HTTP sintético, resumen de conversación deliberadamente antiguo, petición
+lenta, segundo plano, nueva revisión, cuatro pruebas y actualización de la misma
+PR. `ChangeWorkflowCoherenceTest` cubre lecturas fuera de orden, respuestas
+perdidas y ausencia de duplicados, sin fixtures ni operaciones en PROD.

@@ -33,15 +33,28 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
     nowSeconds: Long = System.currentTimeMillis() / 1000, validationInProgress: Boolean = false): DeliveryStepUi {
     if (completed) return DeliveryStepUi(DeliveryStepStatus.COMPLETE, "Cambio completado",
         "El ticket está cerrado. La conversación y los recibos se conservan como historia.")
+    if (busy && !validationRequested) return DeliveryStepUi(
+        if (pendingUnconfirmed) DeliveryStepStatus.CHECKING else DeliveryStepStatus.WORKING,
+        when (pendingAction) {
+            DeliveryStepAction.UPDATE_BASE -> "Actualizando base con main"
+            DeliveryStepAction.RESOLVE -> "Preparando código y conflictos"
+            DeliveryStepAction.UPDATE_PR -> "Actualizando la misma PR"
+            DeliveryStepAction.CREATE_PR -> "Creando la PR"
+            DeliveryStepAction.PREPARE_BACKEND -> "Preparando ${pendingTarget.label}"
+            DeliveryStepAction.PREPARE_ANDROID -> "Preparando Android estable"
+            DeliveryStepAction.INTEGRATE -> "Integrando la PR"
+            DeliveryStepAction.FINALIZE, DeliveryStepAction.RECONCILE_FINALIZE -> "Finalizando cambio"
+            else -> "Confirmando la operación"
+        }, if (pendingUnconfirmed) "La solicitud está por confirmar. Consulta la misma operación; no vuelvas a enviarla."
+            else "Atenea está confirmando esta solicitud. Puedes salir de la app; no hace falta volver a pulsar.",
+        if (pendingUnconfirmed) DeliveryStepAction.REFRESH else DeliveryStepAction.NONE)
     if (loadError != null || !available) return DeliveryStepUi(DeliveryStepStatus.CHECKING,
         if (!loaded && loadError == null) "Consultando estado" else "Entrega no disponible",
         loadError ?: if (loaded) "La entrega no está habilitada. Ayuda explica los permisos y capacidades necesarios."
             else "Atenea está leyendo el estado. Consultar no inicia operaciones.", DeliveryStepAction.REFRESH)
-    if (busy) return DeliveryStepUi(DeliveryStepStatus.WORKING, "Registrando tu acción",
-        "Atenea está comprobando la solicitud. No vuelvas a pulsar; se conserva la misma operación.")
     if (runInProgress) return DeliveryStepUi(DeliveryStepStatus.WORKING, "Codex está trabajando",
         "Espera al resultado. Puedes salir de la app; no hace falta enviar otra vez el prompt.")
-    if (validationInProgress) return DeliveryStepUi(DeliveryStepStatus.WORKING, "Validando cambio",
+    if (validationInProgress || validationRunning) return DeliveryStepUi(DeliveryStepStatus.WORKING, "Validando cambio",
         "Atenea está comprobando esta revisión. Espera al resultado; no actualices la base ni repitas la validación mientras siga en curso.")
     completion?.let {
         return if (it.state == "BLOCKED") DeliveryStepUi(DeliveryStepStatus.ATTENTION, "Finalización detenida",
@@ -51,7 +64,7 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
     }
     sourceUpdate?.takeIf { !sourcePhaseComplete && it.state != "PUBLISHED"
         && (it.state !in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") || operations.none { op -> !op.terminal })
-        && (validated || it.state !in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") || it.baseStatus != "CURRENT") }?.let { update ->
+        && (validated && validationCurrent || it.state !in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") || it.baseStatus != "CURRENT") }?.let { update ->
         val prepared = update.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
         val action = when {
             canRecoverSource(validated, false) -> DeliveryStepAction.RECOVER_SOURCE
@@ -68,6 +81,7 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
             prepared && action == DeliveryStepAction.REFRESH -> "Base por confirmar"
             stopped -> "Actualización detenida"
             update.state in setOf("QUEUED", "PREPARE_CLAIMED") -> "Preparando código y conflictos"
+            update.state in setOf("READY_TO_RESOLVE", "RETRY_REQUESTED", "RESOLVING") -> "Resolviendo conflictos con Codex"
             else -> "Actualizar la misma PR"
         }
         val message = when (action) {
@@ -83,7 +97,9 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
             else if (action != DeliveryStepAction.NONE) DeliveryStepStatus.ACTION
             else DeliveryStepStatus.WORKING, title, message, action)
     }
-    if (!validated && !sourcePhaseComplete) return DeliveryStepUi(DeliveryStepStatus.ACTION, "Validación pendiente",
+    if (!validationCoherent && !sourcePhaseComplete) return DeliveryStepUi(DeliveryStepStatus.CHECKING, "Revisión por confirmar",
+        "Falta una lectura coherente de la revisión y sus pruebas. Consulta el estado; no repitas la publicación.", DeliveryStepAction.REFRESH)
+    if ((!validated || !validationCurrent) && !sourcePhaseComplete) return DeliveryStepUi(DeliveryStepStatus.ACTION, "Validación pendiente",
         "Primero comprueba esta revisión. Después vendrán PR, integración y publicación.")
     operations.firstOrNull { !it.terminal }?.let { op ->
         if (op.kind == "RELEASE" && op.state == "READY") {
@@ -104,7 +120,7 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
             op.state == "WAITING_CI" -> "Esperando comprobaciones de GitHub"
             preparing -> "Preparando ${op.target.label}"
             op.kind == "INTEGRATE" -> "Integrando la PR"
-            op.kind == "PUBLISH_PR" -> "Creando la PR"
+            op.kind == "PUBLISH_PR" -> if (sourceUpdate != null) "Actualizando la misma PR" else "Creando la PR"
             op.state == "ROLLING_BACK" -> "Restaurando la versión anterior"
             op.state == "QUARANTINED" -> "Evidencia contradictoria"
             else -> "Publicando ${op.target.label}"

@@ -438,9 +438,10 @@ class AteneaApiClient(
     }
 
     suspend fun fetchDelivery(sessionId: Long): MobileDeliveryState = getJson(
-        path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true,
-        parser = ::parseMobileDeliveryState
-    )
+        path = "/api/mobile/sessions/$sessionId/delivery", authenticated = true
+    ) { json -> parseMobileDeliveryState(json).also { state ->
+        require(state.validation?.workSessionId?.let { it == sessionId } != false)
+    } }
 
     suspend fun fetchChangeHelp(sessionId: Long): ChangeHelp = requestJson(
         path = "/api/mobile/sessions/$sessionId/help", method = "GET", body = null,
