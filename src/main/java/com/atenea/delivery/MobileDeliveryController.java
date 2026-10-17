@@ -42,13 +42,14 @@ public class MobileDeliveryController {
         return new DeliveryState(service.isEnabled(),service.list(sessionId, actor),
                 service.observeIntegration(sessionId, actor), sourceUpdates.isEnabled(), sourceUpdates.observe(sessionId, actor),
                 service.isEnabled(), service.observeDeployment(sessionId, actor), completion.isEnabled(),
-                service.observeDelivery(sessionId,actor), validation.findDevelopmentChangeEvidence(sessionId).orElse(null));
+                service.observeDelivery(sessionId,actor), validation.findDevelopmentChangeEvidence(sessionId).orElse(null), service.isEnabled());
     }
     public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations,
             MobileDeliveryService.IntegrationObservation integration, boolean sourceUpdateEnabled,
             SourceUpdateOperation.View sourceUpdate, boolean releaseRecoveryEnabled,
             MobileDeliveryService.DeploymentObservation deployment, boolean completionEnabled,
-            ChangeDeliveryReadiness readiness, DevelopmentChangeValidationEvidenceResponse validation) { }
+            ChangeDeliveryReadiness readiness, DevelopmentChangeValidationEvidenceResponse validation,
+            boolean androidVersionPreparationEnabled) { }
 
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/finalize")
     public DeliveryOperation.DeliveryView complete(@PathVariable Long sessionId,
@@ -119,6 +120,18 @@ public class MobileDeliveryController {
             @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
         exact(request,Set.of());
         return service.requestReleaseRecovery(sessionId,actor,DeliveryTarget.ANDROID_STABLE);
+    }
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/android-version")
+    public DeliveryOperation.DeliveryView androidVersion(@PathVariable Long sessionId,
+            @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request, Set.of());
+        return service.requestAndroidVersion(sessionId, actor);
+    }
+    @PostMapping("/api/mobile/sessions/{sessionId}/delivery/android-version/{id}/integrate")
+    public DeliveryOperation.DeliveryView integrateAndroidVersion(@PathVariable Long sessionId, @PathVariable UUID id,
+            @AuthenticationPrincipal AuthenticatedOperator actor, @RequestBody JsonNode request) {
+        exact(request, Set.of());
+        return service.integrateAndroidVersion(sessionId, id, actor);
     }
     @PostMapping("/api/mobile/delivery/{id}/authorize")
     public PrivilegedActionAuthorizationGrant authorize(@PathVariable UUID id, Authentication authentication,

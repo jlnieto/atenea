@@ -97,6 +97,36 @@ class DevelopmentChangeValidationEvidenceServiceTest {
     }
 
     @Test
+    void progressReadsRetainExactBrokerPhaseAndTimestampWithoutProbingOrAdvancingWorker() {
+        var running = attempt(ValidationOperationKind.ANDROID_BUILD, ValidationOperationStatus.RUNNING, tree);
+        running.setWorkerState("QUEUED");
+        running.setWorkerObservedAt(Instant.parse("2026-10-17T10:02:00Z"));
+        when(validations.findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(21L, tree))
+                .thenReturn(List.of(running));
+        var first = service.getDevelopmentChangeEvidence(21L);
+        var second = service.getDevelopmentChangeEvidence(21L);
+        assertEquals(first, second);
+        assertEquals("QUEUED", first.operations().getFirst().workerState());
+        assertEquals(running.getWorkerObservedAt(), first.operations().getFirst().workerObservedAt());
+        assertNull(first.operations().getFirst().workerStartedAt());
+        verifyNoInteractions(worker, runs, acceptance);
+        verify(validations, never()).save(any());
+        verify(validations, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void legacyEvidenceDoesNotInventWorkerConfirmationOrExecutionStart() {
+        var legacy = attempt(ValidationOperationKind.BACKEND_TEST, ValidationOperationStatus.RUNNING, tree);
+        when(validations.findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(21L, tree))
+                .thenReturn(List.of(legacy));
+        var result = service.getDevelopmentChangeEvidence(21L).operations().getFirst();
+        assertNull(result.workerState());
+        assertNull(result.workerObservedAt());
+        assertNull(result.workerStartedAt());
+        verifyNoInteractions(worker, acceptance);
+    }
+
+    @Test
     void obsoleteDefinitionNeverCountsAsPassed() {
         var obsolete = attempt(ValidationOperationKind.BACKEND_TEST, ValidationOperationStatus.SUCCEEDED, tree);
         obsolete.setDefinitionRevision("previous-definition");

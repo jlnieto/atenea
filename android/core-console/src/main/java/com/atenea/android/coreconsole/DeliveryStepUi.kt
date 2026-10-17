@@ -22,6 +22,7 @@ internal enum class DeliveryStepStatus(val label: String) {
 
 internal enum class DeliveryStepAction {
     NONE, CREATE_PR, INTEGRATE, CONFIRM_RELEASE, PREPARE_BACKEND, PREPARE_ANDROID, FINALIZE, RECONCILE_FINALIZE,
+    PREPARE_ANDROID_VERSION, INTEGRATE_ANDROID_VERSION,
     RESOLVE, UPDATE_PR, UPDATE_BASE, RETRY_RESOLVER, RECOVER_SOURCE, REFRESH
 }
 
@@ -42,6 +43,8 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
             DeliveryStepAction.CREATE_PR -> "Creando la PR"
             DeliveryStepAction.PREPARE_BACKEND -> "Preparando ${pendingTarget.label}"
             DeliveryStepAction.PREPARE_ANDROID -> "Preparando Android estable"
+            DeliveryStepAction.PREPARE_ANDROID_VERSION -> "Preparando una versión Android nueva"
+            DeliveryStepAction.INTEGRATE_ANDROID_VERSION -> "Integrando la versión Android"
             DeliveryStepAction.INTEGRATE -> "Integrando la PR"
             DeliveryStepAction.FINALIZE, DeliveryStepAction.RECONCILE_FINALIZE -> "Finalizando cambio"
             else -> "Confirmando la operación"
@@ -102,6 +105,12 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
     if ((!validated || !validationCurrent) && !sourcePhaseComplete) return DeliveryStepUi(DeliveryStepStatus.ACTION, "Validación pendiente",
         "Primero comprueba esta revisión. Después vendrán PR, integración y publicación.")
     operations.firstOrNull { !it.terminal }?.let { op ->
+        if (op.kind == "ANDROID_VERSION") return DeliveryStepUi(
+            if (op.state == "READY") DeliveryStepStatus.ACTION else DeliveryStepStatus.WORKING,
+            if (op.state == "READY") "Versión Android lista para integrar" else "Preparando versión Android",
+            if (op.state == "READY") "La PR técnica sólo cambia la versión a ${op.versionName} / ${op.versionCode}. Revisa e integra esa PR; después se construirá la APK. Todavía no se publica."
+            else "Atenea prepara y comprueba la PR de versión. Puedes salir de la app; tu PR original se conserva y no se publica ninguna APK.",
+            if (op.state == "READY") DeliveryStepAction.INTEGRATE_ANDROID_VERSION else DeliveryStepAction.NONE, op)
         if (op.kind == "RELEASE" && op.state == "READY") {
             return if (op.canConfirm(nowSeconds)) DeliveryStepUi(DeliveryStepStatus.ACTION,
                 "${op.target.label}: listo para publicar",
@@ -134,33 +143,49 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
         return DeliveryStepUi(DeliveryStepStatus.ATTENTION, "Restauración fallida",
             "La publicación sigue bloqueada. Consulta el resultado; no inicies otra operación.", operation = it)
     }
-    operations.filter { it.kind == "RELEASE" && it.target != MobileDeliveryTarget.APP_PROD }
-        .distinctBy { it.target }.firstOrNull { it.state in setOf("FAILED", "BLOCKED", "ROLLED_BACK") }?.let {
-            return DeliveryStepUi(DeliveryStepStatus.ATTENTION, "${it.target.label}: necesita atención",
-                (it.errorCode?.let(::deliveryErrorLabel) ?: "La última publicación de este destino no terminó correctamente.") +
-                    " Un backend sano no confirma la entrega de Android o Worker. Consulta esta operación en Otras publicaciones y sus detalles.",
-                DeliveryStepAction.REFRESH, it)
-        }
     if (integrated && readiness?.requirementsStatus != "CONFIRMED") return DeliveryStepUi(DeliveryStepStatus.CHECKING,
         "Entregas por confirmar", "Falta confirmar el diff y sus publicaciones. Un backend sano no demuestra una APK publicada.", DeliveryStepAction.REFRESH)
-    if (integrated && readiness?.requiredTargets?.contains(MobileDeliveryTarget.ANDROID_STABLE) == true
-        && readiness?.androidStatus == "UNAVAILABLE") return DeliveryStepUi(DeliveryStepStatus.CHECKING,
-        "APK por confirmar", "No se pudo leer la evidencia del canal Android. Consulta el estado; no se da por publicada.", DeliveryStepAction.REFRESH)
-    if (integrated && readiness?.requiredTargets?.contains(MobileDeliveryTarget.ANDROID_STABLE) == true
-        && readiness?.androidStatus != "INCLUDED") return DeliveryStepUi(DeliveryStepStatus.ACTION,
-        "Publicar Android estable", "Este cambio modifica Android. Falta una APK que lo contenga; preparar no publica. La versión se genera automáticamente.", DeliveryStepAction.PREPARE_ANDROID)
-    if (allRequiredDelivered) return DeliveryStepUi(DeliveryStepStatus.ACTION, "Entregas del cambio: confirmadas",
-        "Las publicaciones que requiere este diff contienen el cambio. Ya puedes finalizar el ticket; instalar la APK en el móvil es una acción separada.",
-        if (completionEnabled) DeliveryStepAction.FINALIZE else DeliveryStepAction.NONE)
-    if (integrated) {
-        if (!canPrepareBackend) return DeliveryStepUi(DeliveryStepStatus.CHECKING, "Despliegue por confirmar",
+    if (integrated && readiness?.fresh(nowSeconds) != true) return DeliveryStepUi(DeliveryStepStatus.CHECKING,
+        "Entregas por confirmar", "La observación ha caducado. Consulta el estado antes de continuar; no se publica ni se reintenta nada.", DeliveryStepAction.REFRESH)
+    if (integrated && readiness?.requiredTargets?.contains(MobileDeliveryTarget.APP_PROD) == true && !appDeployed) {
+        if (!canPrepareBackend) return DeliveryStepUi(DeliveryStepStatus.CHECKING, "Backend PROD por confirmar",
             deploymentLabel(deployment, false), DeliveryStepAction.REFRESH)
         val release = operations.firstOrNull { it.kind == "RELEASE" && it.target == MobileDeliveryTarget.APP_PROD }
         return DeliveryStepUi(if (release?.errorCode != null) DeliveryStepStatus.ATTENTION else DeliveryStepStatus.ACTION,
-            "Publicar Backend PROD", release?.errorCode?.let(::deliveryErrorLabel)
-                ?: "Tu PR ya está integrada. Prepara la versión aprobada; después podrás confirmarla. Preparar no despliega.",
+            "Publicar Backend PROD", "Primero publica el backend que requiere este cambio. Después Atenea te guiará con Android, si también hace falta. Preparar no despliega.",
             DeliveryStepAction.PREPARE_BACKEND, release)
     }
+    if (integrated && readiness?.requiredTargets?.contains(MobileDeliveryTarget.ANDROID_STABLE) == true
+        && (readiness?.androidStatus == "UNAVAILABLE" || readiness?.android == null
+            || readiness?.android?.observedAt?.let { it !in (nowSeconds - 60)..(nowSeconds + 5) } == true)) return DeliveryStepUi(DeliveryStepStatus.CHECKING,
+        "APK por confirmar", "No se pudo leer la evidencia del canal Android. Consulta el estado; no se da por publicada.", DeliveryStepAction.REFRESH)
+    if (integrated && readiness?.requiredTargets?.contains(MobileDeliveryTarget.ANDROID_STABLE) == true
+        && !targetDelivered(MobileDeliveryTarget.ANDROID_STABLE)) {
+        val release = operations.firstOrNull { it.kind == "RELEASE" && it.target == MobileDeliveryTarget.ANDROID_STABLE }
+        val version = operations.firstOrNull { it.kind == "ANDROID_VERSION" }
+        val preparedAfterFailure = version?.state == "SUCCEEDED" && (release == null || operations.indexOf(version) < operations.indexOf(release))
+        if (version?.state in setOf("BLOCKED", "FAILED") && (release == null || operations.indexOf(version) < operations.indexOf(release))
+            && version?.errorCode !in setOf("CANONICAL_MAIN_MOVED", "ANDROID_CHANNEL_MOVED")) return DeliveryStepUi(DeliveryStepStatus.ATTENTION,
+            "Preparación de versión detenida", deliveryErrorLabel(version?.errorCode ?: "ANDROID_VERSION_IDENTITY_MISMATCH"), DeliveryStepAction.REFRESH, version)
+        if (release?.errorCode == "APK_VERSION_NOT_NEWER" && !preparedAfterFailure
+            || version?.errorCode in setOf("CANONICAL_MAIN_MOVED", "ANDROID_CHANNEL_MOVED")) return DeliveryStepUi(DeliveryStepStatus.ATTENTION,
+            "Android necesita una versión nueva",
+            if (androidVersionPreparationEnabled) "La APK candidata no supera la del canal. Prepara una PR que sólo incremente la versión; Atenea comprobará sus tests antes de que la integres. Tu cambio original se conserva."
+            else "La APK candidata no supera la del canal. El backend necesita la capacidad de preparar la versión; consultar no cambia el número ni reintenta la publicación.",
+            if (androidVersionPreparationEnabled) DeliveryStepAction.PREPARE_ANDROID_VERSION else DeliveryStepAction.REFRESH, release)
+        if (version?.state in setOf("BLOCKED", "FAILED") && !preparedAfterFailure) return DeliveryStepUi(DeliveryStepStatus.ATTENTION,
+            "Preparación de versión detenida", deliveryErrorLabel(version?.errorCode ?: "ANDROID_VERSION_IDENTITY_MISMATCH"), DeliveryStepAction.REFRESH, version)
+        if (release?.state in setOf("BLOCKED", "FAILED", "ROLLED_BACK") && !preparedAfterFailure
+            && release?.errorCode !in setOf("PLAN_EXPIRED", "CANONICAL_MAIN_MOVED")) return DeliveryStepUi(DeliveryStepStatus.ATTENTION,
+            "Android estable: necesita atención", deliveryErrorLabel(release?.errorCode ?: "RELEASE_EVIDENCE_MISMATCH"), DeliveryStepAction.REFRESH, release)
+        return DeliveryStepUi(DeliveryStepStatus.ACTION, "Publicar Android estable",
+            "Falta una APK que contenga este cambio. Preparar obtiene el artefacto comprobado; después confirmarás su publicación. Si falta incrementar la versión, Atenea mostrará ese paso por separado.", DeliveryStepAction.PREPARE_ANDROID)
+    }
+    if (allRequiredDelivered) return DeliveryStepUi(DeliveryStepStatus.ACTION, "Entregas del cambio: confirmadas",
+        "Las publicaciones que requiere este diff contienen el cambio. Ya puedes finalizar el ticket; instalar la APK en el móvil es una acción separada.",
+        if (completionEnabled) DeliveryStepAction.FINALIZE else DeliveryStepAction.NONE)
+    if (integrated) return DeliveryStepUi(DeliveryStepStatus.CHECKING, "Entregas por confirmar",
+        "Falta evidencia vigente de las publicaciones requeridas. Consulta el estado; no se confirma una entrega por su historial.", DeliveryStepAction.REFRESH)
     if (integration?.mergeState == "CONFLICTS") return DeliveryStepUi(DeliveryStepStatus.ACTION,
         "Resolver conflictos con main", deliveryIntegrationLabel("CONFLICTS"), DeliveryStepAction.RESOLVE)
     if (operations.any { it.kind == "PUBLISH_PR" && it.state == "SUCCEEDED" }) {

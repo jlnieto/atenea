@@ -88,6 +88,45 @@ el estado actual. Validar e inspeccionar siguen siendo acciones diferentes.
 
 Mientras se trabaja, la pantalla mantiene una tarjeta y un mensaje de espera.
 Las versiones/APK y el historial quedan plegados, separados del siguiente paso.
+
+## Progreso real de la validación
+
+La tarjeta de validación muestra las cuatro comprobaciones fijas en orden:
+pruebas de backend, compilación web, compilación Android y prueba del flujo web.
+Se distinguen correctas, pendientes, en cola, en ejecución y resultado por
+confirmar. El contador es el número de pruebas correctas de la misma revisión y
+fingerprint; no es un porcentaje de trabajo ni una estimación del tiempo restante.
+Un resultado de una revisión anterior nunca se cuenta en ese progreso.
+
+V100 añade metadata nullable a `validation_operation`: `worker_state`,
+`worker_observed_at` y `worker_started_at`. Se guarda únicamente al recibir una
+respuesta del broker cuyo ownership ya ha sido comprobado, en los caminos de
+inicio/inspección existentes. No se cambian el protocolo Platform, la admisión,
+las cuatro pruebas, los reintentos ni la autoridad de publicación. No se
+rellenan artificialmente las filas antiguas: una fase desconocida se muestra
+como tal. `ValidationOperationResponse` expone esos tres campos de forma
+aditiva, y Android también utiliza la duración terminal ya existente.
+
+`worker_observed_at` significa **confirmación recibida por App**, no heartbeat,
+salida de logs ni progreso del proceso. La lectura de evidencia no renueva esa
+hora y no llama al worker. Si faltan datos, falla la consulta o transcurren más
+de 30 segundos sin otra confirmación, Android muestra el último estado como
+histórico/por confirmar; no afirma que siga ejecutándose ni que haya fallado.
+Una hora incompatible con la del dispositivo también se indica sin inventar
+tiempos negativos. No se infieren fases a partir del texto del resumen.
+
+Los tiempos distinguen duración terminal medida por el worker, tiempo real
+desde su inicio de ejecución cuando existe, y tiempo desde la solicitud
+(incluye cola). El total se etiqueta como tiempo desde la primera solicitud de
+esa revisión; al terminar o detenerse queda fijado al último resultado guardado.
+El reloj visual sólo funciona con la pantalla en primer plano y no hace HTTP.
+Volver a la app recompone el progreso desde evidencia durable, no desde el clic
+local. Ni ese reloj ni desplegar los detalles avanzan o reintentan pruebas.
+
+La acción principal y su bloqueo se conservan. Al acabar, la lista de pruebas
+y sus tiempos queda en **Ver pruebas y detalles**, sin desplazar el siguiente
+paso de entrega. El despliegue futuro necesita backend con V100 antes de la APK;
+crear/probar esta migración no la aplica a PROD.
 El estado de conversación también se refresca cuando cambia la preparación,
 aunque no se haya iniciado ningún AgentRun.
 

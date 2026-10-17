@@ -1,6 +1,7 @@
 package com.atenea.android.api
 
 import org.json.JSONObject
+import java.time.Instant
 import java.util.UUID
 
 data class DevelopmentChangeValidationEvidence(
@@ -25,7 +26,11 @@ data class DevelopmentChangeValidationAttempt(
     val exitCode: Int?,
     val summary: String,
     val startedAt: String?,
-    val finishedAt: String?
+    val finishedAt: String?,
+    val durationMillis: Long? = null,
+    val workerState: String? = null,
+    val workerObservedAt: String? = null,
+    val workerStartedAt: String? = null
 ) {
     val errorCode: String? get() = Regex("^\\[([A-Z][A-Z0-9_]+)]").find(summary)?.groupValues?.get(1)
 }
@@ -58,8 +63,16 @@ internal fun parseDevelopmentChangeValidationEvidence(json: JSONObject): Develop
     )
 }
 
-private fun parseValidationAttempt(json: JSONObject, expectedSessionId: Long): DevelopmentChangeValidationAttempt =
-    DevelopmentChangeValidationAttempt(
+private fun parseValidationAttempt(json: JSONObject, expectedSessionId: Long): DevelopmentChangeValidationAttempt {
+    val workerState = json.evidenceNullableString("workerState")
+    val workerObservedAt = json.evidenceNullableString("workerObservedAt")
+    val workerStartedAt = json.evidenceNullableString("workerStartedAt")
+    require(workerState == null || workerState in setOf("QUEUED", "RUNNING", "CANCELLING", "RECONCILING",
+        "SUCCEEDED", "CANDIDATE_FAILED", "INFRASTRUCTURE_FAILED", "POLICY_FAILED", "VALIDATION_FAILED", "OWNERSHIP_FAILED", "CANCELLED"))
+    require((workerState == null) == (workerObservedAt == null))
+    require(workerStartedAt == null || workerState != null)
+    listOfNotNull(workerObservedAt, workerStartedAt).forEach { Instant.parse(it) }
+    return DevelopmentChangeValidationAttempt(
         id = UUID.fromString(json.getString("id")),
         workSessionId = json.getLong("workSessionId").also { require(it == expectedSessionId) },
         operation = json.getString("operation").also {
@@ -75,7 +88,12 @@ private fun parseValidationAttempt(json: JSONObject, expectedSessionId: Long): D
         exitCode = if (json.isNull("exitCode")) null else json.getInt("exitCode"),
         summary = json.optString("summary").take(500),
         startedAt = json.evidenceNullableString("startedAt"),
-        finishedAt = json.evidenceNullableString("finishedAt")
+        finishedAt = json.evidenceNullableString("finishedAt"),
+        durationMillis = if (json.isNull("durationMillis")) null else json.getLong("durationMillis").also { require(it >= 0) },
+        workerState = workerState,
+        workerObservedAt = workerObservedAt,
+        workerStartedAt = workerStartedAt
     )
+}
 
 private fun JSONObject.evidenceNullableString(key: String): String? = if (isNull(key)) null else getString(key)

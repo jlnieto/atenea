@@ -13,7 +13,8 @@ data class MobileDeliveryState(val enabled: Boolean, val operations: List<Mobile
     val deployment: MobileDeploymentObservation? = null,
     val completionEnabled: Boolean = false,
     val readiness: MobileChangeDeliveryReadiness? = null,
-    val validation: DevelopmentChangeValidationEvidence? = null)
+    val validation: DevelopmentChangeValidationEvidence? = null,
+    val androidVersionPreparationEnabled: Boolean = false)
 
 data class MobileAndroidChannel(val sourceCommit: String, val versionName: String, val versionCode: Int,
     val apkSha256: String, val observedAt: Long)
@@ -145,7 +146,8 @@ internal fun parseMobileDeliveryState(json: JSONObject): MobileDeliveryState {
         json.optJSONObject("deployment")?.let(::parseDeploymentObservation),
         json.opt("completionEnabled") == true,
         json.optJSONObject("readiness")?.let(::parseDeliveryReadiness),
-        json.optJSONObject("validation")?.let(::parseDevelopmentChangeValidationEvidence))
+        json.optJSONObject("validation")?.let(::parseDevelopmentChangeValidationEvidence),
+        json.opt("androidVersionPreparationEnabled") == true)
 }
 
 data class MobileReleaseRecovery(val integrationOperationId: UUID, val publishedHeadCommit: String,

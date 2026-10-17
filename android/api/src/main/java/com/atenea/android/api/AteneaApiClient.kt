@@ -527,6 +527,18 @@ class AteneaApiClient(
             && it.releaseRecovery != null)
     } }
 
+    suspend fun prepareAndroidVersion(sessionId: Long): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/android-version", body = JSONObject(), authenticated = true
+    ) { json -> parseMobileDeliveryOperation(json).also {
+        require(it.sessionId == sessionId && it.kind == "ANDROID_VERSION" && it.target == MobileDeliveryTarget.ANDROID_STABLE)
+    } }
+
+    suspend fun integrateAndroidVersion(sessionId: Long, id: UUID): MobileDeliveryOperation = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/android-version/$id/integrate", body = JSONObject(), authenticated = true
+    ) { json -> parseMobileDeliveryOperation(json).also {
+        require(it.sessionId == sessionId && it.id == id && it.kind == "ANDROID_VERSION" && it.target == MobileDeliveryTarget.ANDROID_STABLE)
+    } }
+
     suspend fun retryDeliveryResolver(sessionId: Long, operationId: UUID, runId: Long): MobileSourceUpdate = postJson(
         path = "/api/mobile/sessions/$sessionId/delivery/source-updates/$operationId/resolver-runs/$runId/retry",
         body = JSONObject(), authenticated = true

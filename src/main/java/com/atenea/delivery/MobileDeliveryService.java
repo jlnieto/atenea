@@ -7,6 +7,7 @@ import com.atenea.auth.action.PrivilegedActionAuthorizationService;
 import com.atenea.auth.action.PrivilegedActionBinding;
 import com.atenea.auth.recovery.OperatorRecoveryService;
 import com.atenea.github.GitHubClient;
+import com.atenea.github.AndroidProductVersion;
 import com.atenea.github.GitHubIntegrationException;
 import com.atenea.github.GitHubMergeState;
 import com.atenea.github.GitHubRepositoryRef;
@@ -224,6 +225,137 @@ public class MobileDeliveryService {
             return store.create(sessionId, actor.operatorId(), "RELEASE", target, selected,
                     "PLANNING", mapper.createObjectNode().set(ReleaseRecoverySource.FIELD, proof.json(mapper))).view();
         }));
+    }
+
+    /** Empty mobile request: the server pins main, original integration and the verified installed channel. */
+    public DeliveryOperation.DeliveryView requestAndroidVersion(Long sessionId, AuthenticatedOperator actor) {
+        enabled(); administrator(actor.operatorId());
+        return Objects.requireNonNull(transaction.execute(ignored -> {
+            WorkSessionEntity session = session(sessionId, true);
+            owned(session); idle(sessionId); published(session);
+            store.lockReleaseIntent();
+            var active = store.activeRelease();
+            if (active.isPresent()) {
+                DeliveryOperation retained = active.get();
+                if ("ANDROID_VERSION".equals(retained.kind()) && retained.sessionId().equals(sessionId)
+                        && retained.operatorId().equals(actor.operatorId())) { requireVersionIdentity(retained, session); return retained.view(); }
+                throw new DeliveryRejectedException("RELEASE_IN_PROGRESS");
+            }
+            if (session.getAcceptanceState()!=WorkSessionAcceptanceState.INTEGRATION_READY
+                    || session.getPullRequestStatus()!=WorkSessionPullRequestStatus.MERGED) throw new DeliveryRejectedException("EXACT_CHANGE_NOT_INTEGRATED");
+            DeliveryOperation integrated = store.integrated(sessionId, session.getFinalCommitSha())
+                    .orElseThrow(() -> new DeliveryRejectedException("EXACT_CHANGE_NOT_INTEGRATED"));
+            if (!"INTEGRATE".equals(integrated.kind()) || !"SUCCEEDED".equals(integrated.state())
+                    || integrated.target()!=DeliveryTarget.APP_PROD || !sessionId.equals(integrated.sessionId())
+                    || !session.getFinalCommitSha().equals(integrated.sourceCommit())) throw new DeliveryRejectedException("RELEASE_SOURCE_EVIDENCE_MISMATCH");
+            String source = recoveryCanonicalMain();
+            ReleaseRecoverySource proof = ReleaseRecoverySource.create(integrated, source);
+            requireRecoveryAncestry(session, proof);
+            var observed = ReleaseControlClient.verifyAndroidObservation(executor.observeAndroid());
+            try {
+                AndroidProductVersion declared = github.androidProductVersion(source);
+                AndroidProductVersion channel = new AndroidProductVersion(observed.versionCode(), observed.versionName());
+                AndroidProductVersion next = declared.code()>channel.code() ? declared : declared.nextAfter(channel);
+                if (declared.code()<=channel.code() && !next.equals(declared.nextAfter(declared))) throw new DeliveryRejectedException("ANDROID_VERSION_POLICY_REJECTED");
+                ObjectNode evidence = mapper.createObjectNode().put("versionCode", next.code()).put("versionName", next.name());
+                evidence.set("versionSource", proof.json(mapper));
+                evidence.set("versionPredecessor", versionPredecessor(observed));
+                var retained = store.list(sessionId).stream().filter(op -> "ANDROID_VERSION".equals(op.kind())
+                        && op.operatorId().equals(actor.operatorId()) && source.equals(op.sourceCommit())
+                        && op.terminal() && op.evidence().path("versionSource").equals(evidence.path("versionSource"))
+                        && op.evidence().path("versionPredecessor").equals(evidence.path("versionPredecessor"))).findFirst();
+                if (retained.isPresent()) return retained.get().view();
+                return store.create(sessionId, actor.operatorId(), "ANDROID_VERSION", DeliveryTarget.ANDROID_STABLE, source,
+                        declared.code()>channel.code() ? "SUCCEEDED" : "QUEUED", evidence).view();
+            } catch (GitHubIntegrationException rejected) { throw new DeliveryRejectedException(rejected.getMessage()); }
+        }));
+    }
+
+    public DeliveryOperation.DeliveryView integrateAndroidVersion(Long sessionId, UUID id, AuthenticatedOperator actor) {
+        enabled(); administrator(actor.operatorId());
+        return Objects.requireNonNull(transaction.execute(ignored -> {
+            DeliveryOperation op = store.get(id, true);
+            if (!sessionId.equals(op.sessionId()) || !actor.operatorId().equals(op.operatorId()) || !"ANDROID_VERSION".equals(op.kind()))
+                throw new DeliveryRejectedException("OPERATION_OWNER_MISMATCH");
+            WorkSessionEntity session = session(sessionId, true); owned(session); idle(sessionId); published(session);
+            requireVersionIdentity(op, session);
+            if (!"READY".equals(op.state())) return op.view(); // Replays cannot initiate a second merge.
+            store.update(op, "ACCEPTED", null, null, op.evidence());
+            return store.get(id, false).view();
+        }));
+    }
+
+    private ObjectNode versionPredecessor(ReleaseControlClient.AndroidObservation observed) {
+        return mapper.createObjectNode().put("sourceCommit", observed.sourceCommit()).put("versionCode", observed.versionCode())
+                .put("versionName", observed.versionName()).put("apkSha256", observed.apkSha256())
+                .put("certificateSha256", observed.certificateSha256()).put("planId", observed.planId().toString())
+                .put("operationId", observed.operationId().toString()).put("receiptSha256", observed.receiptSha256());
+    }
+    private void requireVersionIdentity(DeliveryOperation op, WorkSessionEntity session) {
+        if (op.target()!=DeliveryTarget.ANDROID_STABLE || session.getAcceptanceState()!=WorkSessionAcceptanceState.INTEGRATION_READY
+                || session.getPullRequestStatus()!=WorkSessionPullRequestStatus.MERGED) throw new DeliveryRejectedException("RELEASE_SOURCE_EVIDENCE_MISMATCH");
+        var integration = store.integrated(session.getId(), session.getFinalCommitSha())
+                .orElseThrow(() -> new DeliveryRejectedException("EXACT_CHANGE_NOT_INTEGRATED"));
+        var expected = ReleaseRecoverySource.create(integration, op.sourceCommit());
+        if (!"INTEGRATE".equals(integration.kind()) || !"SUCCEEDED".equals(integration.state()) || integration.target()!=DeliveryTarget.APP_PROD
+                || !session.getId().equals(integration.sessionId()) || !expected.json(mapper).equals(op.evidence().path("versionSource")))
+            throw new DeliveryRejectedException("RELEASE_SOURCE_EVIDENCE_MISMATCH");
+        requireRecoveryAncestry(session, expected);
+    }
+
+    private void advanceAndroidVersion(DeliveryOperation op) {
+        try {
+            administrator(op.operatorId());
+            WorkSessionEntity session = session(op.sessionId(), false); owned(session); idle(op.sessionId()); published(session);
+            requireVersionIdentity(op, session);
+            ObjectNode evidence = op.evidence().deepCopy();
+            JsonNode predecessor = evidence.path("versionPredecessor");
+            AndroidProductVersion channel = new AndroidProductVersion(predecessor.path("versionCode").asInt(), predecessor.path("versionName").asText());
+            String head = evidence.path("headCommit").asText();
+            if ("ACCEPTED".equals(op.state())) {
+                // Observe a lost merge response before testing whether main advanced.
+                var pr = github.getPullRequest(APP, github.extractPullRequestNumber(evidence.path("pullRequestUrl").asText()));
+                if (pr.merged()) {
+                    github.requireAndroidVersionHead(op.sourceCommit(), head, channel);
+                    String merge = github.integrateExact(APP, pr.number(), GitHubClient.androidVersionBranch(op.id()), head);
+                    store.update(op, "SUCCEEDED", null, null, evidence.put("mergeCommit", merge)); return;
+                }
+            }
+            if (!op.sourceCommit().equals(recoveryCanonicalMain())) throw new DeliveryRejectedException("CANONICAL_MAIN_MOVED");
+            if (!predecessor.equals(versionPredecessor(ReleaseControlClient.verifyAndroidObservation(executor.observeAndroid()))))
+                throw new DeliveryRejectedException("ANDROID_CHANNEL_MOVED");
+            if ("QUEUED".equals(op.state())) {
+                head = github.prepareAndroidVersion(op.id(), op.sourceCommit(), channel, op.createdAt());
+                store.update(op, "WAITING_CI", null, null, evidence.put("headCommit", head)); return;
+            }
+            github.requireAndroidVersionHead(op.sourceCommit(), head, channel);
+            if ("WAITING_CI".equals(op.state())) {
+                var pr = github.androidVersionPullRequest(op.id(), head,
+                        new AndroidProductVersion(evidence.path("versionCode").asInt(), evidence.path("versionName").asText()));
+                store.update(op, "READY", null, null, evidence.put("pullRequestUrl", pr.htmlUrl()));
+            } else if ("ACCEPTED".equals(op.state())) {
+                String merge = github.integrateExact(APP, github.extractPullRequestNumber(evidence.path("pullRequestUrl").asText()),
+                        GitHubClient.androidVersionBranch(op.id()), head);
+                store.update(op, "SUCCEEDED", null, null, evidence.put("mergeCommit", merge));
+            }
+        } catch (DeliveryRejectedException rejected) {
+            if (!"RELEASE_TRANSPORT_UNAVAILABLE".equals(rejected.code()) && !"GITHUB_UNAVAILABLE".equals(rejected.code()))
+                store.update(op, "BLOCKED", rejected.code(), null, op.evidence());
+            else store.update(op, op.state(), rejected.code(), null, op.evidence());
+        } catch (GitHubIntegrationException failure) {
+            String message = failure.getMessage()==null ? "" : failure.getMessage();
+            if (List.of("ANDROID_VERSION_POLICY_REJECTED","ANDROID_VERSION_IDENTITY_MISMATCH","ANDROID_VERSION_PR_CLOSED","CANONICAL_MAIN_MOVED").contains(message))
+                store.update(op, "BLOCKED", message, null, op.evidence());
+            else if (message.startsWith("UFD_FAILED:") || message.startsWith("CI_FAILED:") || message.startsWith("PR_MERGE_CONFLICTS:") || message.startsWith("PR_PROTECTED:"))
+                store.update(op, "BLOCKED", "GITHUB_CHECKS_FAILED", null, op.evidence());
+            else if (message.startsWith("UFD_NOT_STARTED:") && Instant.now().isAfter(op.createdAt().plusSeconds(600)))
+                store.update(op, "BLOCKED", "UFD_NOT_STARTED", null, op.evidence());
+            else if (List.of("UFD_PENDING:","UFD_QUEUED:","UFD_NOT_STARTED:","CI_PENDING:","PR_MERGEABILITY_PENDING:").stream().anyMatch(message::startsWith))
+                store.update(op, op.state(), "CI_PENDING", null, op.evidence());
+            else if (List.of("PR_OWNERSHIP_MISMATCH","COMMIT_IDENTITY_INVALID","CI_EVIDENCE_INCOMPLETE","PR_CLOSED:","MERGE_REJECTED").stream().anyMatch(message::startsWith))
+                store.update(op, "BLOCKED", "ANDROID_VERSION_IDENTITY_MISMATCH", null, op.evidence());
+            else store.update(op, op.state(), "GITHUB_UNAVAILABLE", null, op.evidence());
+        }
     }
 
     public IntegrationObservation observeIntegration(Long sessionId, AuthenticatedOperator actor) {
@@ -480,6 +612,7 @@ public class MobileDeliveryService {
 
     private void advance(DeliveryOperation op) {
         if (op.terminal()) return;
+        if ("ANDROID_VERSION".equals(op.kind())) { advanceAndroidVersion(op); return; }
         if (op.state().equals("READY")) {
             if (op.evidence().path("expiresAt").asLong(0) <= Instant.now().getEpochSecond()) {
                 store.update(op,"BLOCKED","PLAN_EXPIRED",op.planSha256(),op.evidence());

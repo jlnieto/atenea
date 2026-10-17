@@ -90,6 +90,92 @@ class MobileDeliveryServiceTest {
     private MobileDeliveryService service;
     private WorkSessionEntity session;
     private OperatorEntity operator;
+    private DeliveryOperation versionOperation(String state) {
+        var integrated=integratedRecoveryFixture();
+        var channel=androidObservation("2".repeat(40)).put("versionCode",160).put("versionName","0.5.127");
+        when(executor.observeAndroid()).thenReturn(channel);
+        var evidence=mapper.createObjectNode().put("versionCode",161).put("versionName","0.5.128");
+        evidence.set("versionSource",ReleaseRecoverySource.create(integrated,"4".repeat(40)).json(mapper));
+        var predecessor=evidence.putObject("versionPredecessor");
+        for (String field:List.of("sourceCommit","versionCode","versionName","apkSha256","certificateSha256","planId","operationId","receiptSha256")) predecessor.set(field,channel.path(field));
+        if (!"QUEUED".equals(state)) evidence.put("headCommit","5".repeat(40));
+        if (List.of("READY","ACCEPTED").contains(state)) evidence.put("pullRequestUrl","https://github.com/jlnieto/atenea/pull/73");
+        return new DeliveryOperation(id,21L,7L,"ANDROID_VERSION",DeliveryTarget.ANDROID_STABLE,"4".repeat(40),execution,state,null,evidence,null,Instant.now(),Instant.now());
+    }
+    @Test void versionPreparationPinsOriginalTicketChannelAndSinglePatchWithoutPublishingAnything() {
+        versionOperation("QUEUED");
+        when(github.androidProductVersion("4".repeat(40))).thenReturn(new com.atenea.github.AndroidProductVersion(160,"0.5.127"));
+        when(store.create(eq(21L),eq(7L),eq("ANDROID_VERSION"),eq(DeliveryTarget.ANDROID_STABLE),eq("4".repeat(40)),eq("QUEUED"),any()))
+                .thenAnswer(call -> new DeliveryOperation(id,21L,7L,"ANDROID_VERSION",DeliveryTarget.ANDROID_STABLE,call.getArgument(4),execution,
+                        "QUEUED",null,call.getArgument(6),null,Instant.now(),Instant.now()));
+        var result=service.requestAndroidVersion(21L,actor);
+        assertEquals(161,result.versionCode());assertEquals("0.5.128",result.versionName());assertEquals("QUEUED",result.state());
+        verify(executor,never()).plan(any(),any(),any());verify(executor,never()).execute(any(),any(),any());
+        verify(github,never()).prepareAndroidVersion(any(),any(),any(),any());verifyNoInteractions(publication,factors,grants);
+    }
+    @Test void versionDoubleTapRetainsSameIntentAndOtherPublicationCannotRaceIt() {
+        var op=versionOperation("WAITING_CI");when(store.activeRelease()).thenReturn(Optional.of(op));
+        assertEquals(id,service.requestAndroidVersion(21L,actor).id());
+        assertEquals("RELEASE_IN_PROGRESS",assertThrows(DeliveryRejectedException.class,()->service.requestReleaseRecovery(21L,actor)).code());
+        verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
+    }
+    @Test void versionPreparationRequiresAdminAndIntegratedTicketWithNoActiveRun() {
+        versionOperation("QUEUED");operator.setCodexOperationsRole(CodexOperationsRole.ROUTINE_OPERATOR);
+        assertEquals("PLATFORM_ADMINISTRATOR_REQUIRED",assertThrows(DeliveryRejectedException.class,()->service.requestAndroidVersion(21L,actor)).code());
+        operator.setCodexOperationsRole(CodexOperationsRole.PLATFORM_ADMINISTRATOR);when(runs.existsBySessionIdAndStatusIn(eq(21L),any())).thenReturn(true);
+        assertEquals("ACTIVE_AGENT_RUN",assertThrows(DeliveryRejectedException.class,()->service.requestAndroidVersion(21L,actor)).code());
+        when(runs.existsBySessionIdAndStatusIn(eq(21L),any())).thenReturn(false);when(store.integrated(anyLong(),anyString())).thenReturn(Optional.empty());
+        assertEquals("EXACT_CHANGE_NOT_INTEGRATED",assertThrows(DeliveryRejectedException.class,()->service.requestAndroidVersion(21L,actor)).code());
+        verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
+    }
+    @Test void versionReconcilerPreparesOnlyPinnedGitCommitAndWaitsForItsCi() {
+        var op=versionOperation("QUEUED");var saved=durableOutbox(op);
+        when(github.prepareAndroidVersion(eq(id),eq(op.sourceCommit()),any(),eq(op.createdAt()))).thenReturn("5".repeat(40));
+        service.reconcile();assertEquals("WAITING_CI",saved.get().state());assertEquals("5".repeat(40),saved.get().evidence().path("headCommit").asText());
+        verify(github,never()).androidVersionPullRequest(any(),any(),any());verify(github,never()).integrateExact(any(),anyLong(),any(),any());
+        verifyNoInteractions(publication,factors,grants);verify(executor,never()).execute(any(),any(),any());
+    }
+    @Test void versionPrRequiresSeparateExplicitIntegrationThenReconcilesLostMergeReply() {
+        var op=versionOperation("WAITING_CI");var saved=durableOutbox(op);
+        when(github.androidVersionPullRequest(eq(id),eq("5".repeat(40)),any())).thenReturn(
+                new com.atenea.github.GitHubPullRequest(73,"https://github.com/jlnieto/atenea/pull/73","open",false));
+        service.reconcile();assertEquals("READY",saved.get().state());verify(github,never()).integrateExact(any(),anyLong(),any(),any());
+        assertEquals("ACCEPTED",service.integrateAndroidVersion(21L,id,actor).state());
+        when(github.extractPullRequestNumber("https://github.com/jlnieto/atenea/pull/73")).thenReturn(73L);
+        when(github.getPullRequest(any(),eq(73L))).thenReturn(new com.atenea.github.GitHubPullRequest(73,"https://github.com/jlnieto/atenea/pull/73","closed",true));
+        when(github.canonicalMain(any())).thenReturn("6".repeat(40));
+        when(github.integrateExact(any(),eq(73L),eq(GitHubClient.androidVersionBranch(id)),eq("5".repeat(40)))).thenReturn("6".repeat(40));
+        service.reconcile();assertEquals("SUCCEEDED",saved.get().state());assertEquals("6".repeat(40),saved.get().evidence().path("mergeCommit").asText());
+        verify(github,atLeastOnce()).requireAndroidVersionHead(eq("4".repeat(40)),eq("5".repeat(40)),any());
+        verify(executor,never()).execute(any(),any(),any());
+    }
+    @Test void versionMainOrChannelMovingFailsClosedWithoutRebasingOrWritingAnotherCommit() {
+        var op=versionOperation("QUEUED");var saved=durableOutbox(op);when(github.canonicalMain(any())).thenReturn("6".repeat(40));
+        service.reconcile();assertEquals("BLOCKED",saved.get().state());assertEquals("CANONICAL_MAIN_MOVED",saved.get().errorCode());
+        verify(github,never()).prepareAndroidVersion(any(),any(),any(),any());
+    }
+    @Test void changedAndroidChannelIsNotSilentlyAdoptedByVersionPreparation() {
+        var op=versionOperation("QUEUED");var saved=durableOutbox(op);
+        when(executor.observeAndroid()).thenReturn(androidObservation("2".repeat(40)).put("versionCode",161).put("versionName","0.5.128"));
+        service.reconcile();assertEquals("BLOCKED",saved.get().state());assertEquals("ANDROID_CHANNEL_MOVED",saved.get().errorCode());
+        verify(github,never()).prepareAndroidVersion(any(),any(),any(),any());verify(executor,never()).execute(any(),any(),any());
+    }
+    @Test void approvedNewerSourceVersionIsReusedWithoutAnotherVersionCommitOrPr() {
+        versionOperation("QUEUED");
+        when(github.androidProductVersion("4".repeat(40))).thenReturn(new com.atenea.github.AndroidProductVersion(161,"0.5.128"));
+        when(store.create(eq(21L),eq(7L),eq("ANDROID_VERSION"),eq(DeliveryTarget.ANDROID_STABLE),eq("4".repeat(40)),eq("SUCCEEDED"),any()))
+                .thenAnswer(call -> new DeliveryOperation(id,21L,7L,"ANDROID_VERSION",DeliveryTarget.ANDROID_STABLE,call.getArgument(4),execution,
+                        "SUCCEEDED",null,call.getArgument(6),null,Instant.now(),Instant.now()));
+        var result=service.requestAndroidVersion(21L,actor);assertEquals("SUCCEEDED",result.state());assertEquals(161,result.versionCode());
+        verify(github,never()).prepareAndroidVersion(any(),any(),any(),any());verify(github,never()).androidVersionPullRequest(any(),any(),any());
+    }
+    @Test void versionCiFailureAndForeignOperationCannotBeIntegrated() {
+        var op=versionOperation("WAITING_CI");var saved=durableOutbox(op);
+        when(github.androidVersionPullRequest(any(),any(),any())).thenThrow(new GitHubIntegrationException("UFD_FAILED: synthetic"));
+        service.reconcile();assertEquals("BLOCKED",saved.get().state());assertEquals("GITHUB_CHECKS_FAILED",saved.get().errorCode());
+        assertEquals("OPERATION_OWNER_MISMATCH",assertThrows(DeliveryRejectedException.class,()->service.integrateAndroidVersion(22L,id,actor)).code());
+        verify(github,never()).integrateExact(any(),anyLong(),any(),any());
+    }
     @BeforeEach void setup() {
         when(tm.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         when(executor.enabled()).thenReturn(true);

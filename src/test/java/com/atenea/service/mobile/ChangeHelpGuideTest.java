@@ -4,6 +4,25 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 
 class ChangeHelpGuideTest {
+    @Test void apkVersionCollisionExplainsAUsableVersionPrInsteadOfAnEndlessConsultLoop() {
+        var f=new ChangeHelpFixture();f.validation="CURRENT";f.passed=4;f.pr="MERGED";
+        f.deliveryKind="RELEASE";f.deliveryTarget="ANDROID_STABLE";f.deliveryState="BLOCKED";f.deliveryError="APK_VERSION_NOT_NEWER";
+        f.deploymentStatus="DEPLOYED";
+        f.readiness=new com.atenea.delivery.ChangeDeliveryReadiness(22L,"CONFIRMED","1".repeat(40),"2".repeat(40),
+                java.util.List.of(com.atenea.delivery.DeliveryTarget.ANDROID_STABLE),false,null,null,"NOT_INCLUDED",null,java.time.Instant.now().getEpochSecond());
+        var result=ChangeHelpGuide.explain(f.build(),"¿Qué hago?",false);
+        assertEquals("ANDROID_PUBLICATION_REQUIRED",result.stage());assertTrue(result.answer().contains("Preparar versión Android nueva"));
+        assertTrue(result.answer().contains("PR original"));assertFalse(result.answer().contains("SSH"));
+        var apk=new com.atenea.delivery.ReleaseControlClient.AndroidObservation("8".repeat(40),"0.5.127",160,"a".repeat(64),"b".repeat(64),
+                java.time.Instant.now().getEpochSecond(),java.util.UUID.randomUUID(),java.util.UUID.randomUUID(),"c".repeat(64));
+        f.readiness=new com.atenea.delivery.ChangeDeliveryReadiness(22L,"CONFIRMED","1".repeat(40),"2".repeat(40),
+                java.util.List.of(com.atenea.delivery.DeliveryTarget.ANDROID_STABLE),false,null,apk,"NOT_INCLUDED",null,java.time.Instant.now().getEpochSecond());
+        assertEquals("ANDROID_PUBLICATION_REQUIRED",ChangeHelpGuide.explain(f.build(),"No puedo publicar Android: APK_VERSION_NOT_NEWER",false).stage());
+        f.readiness=new com.atenea.delivery.ChangeDeliveryReadiness(22L,"CONFIRMED","1".repeat(40),"2".repeat(40),
+                java.util.List.of(com.atenea.delivery.DeliveryTarget.APP_PROD,com.atenea.delivery.DeliveryTarget.ANDROID_STABLE),false,null,null,"NOT_INCLUDED",null,java.time.Instant.now().getEpochSecond());
+        f.deploymentStatus="NOT_INCLUDED";
+        assertTrue(ChangeHelpGuide.explain(f.build(),"¿Qué hago?",false).answer().contains("Primero falta publicar Backend PROD"));
+    }
     @Test void outdatedBaseComesBeforeValidationAndOldSuccessfulPrEvenWhenAllFourChecksPassed() {
         var f=new ChangeHelpFixture();f.pr="OPEN";f.sourceBaseStatus="UPDATE_REQUIRED";
         f.deliveryKind="PUBLISH_PR";f.deliveryState="BLOCKED";f.deliveryError="SOURCE_FINALIZATION_MAIN_MOVED";

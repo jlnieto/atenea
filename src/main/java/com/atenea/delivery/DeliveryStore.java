@@ -42,7 +42,7 @@ public class DeliveryStore {
         if (finalization == null || finalization != 0L) throw new DeliveryRejectedException("SOURCE_FINALIZATION_IN_PROGRESS");
     }
     public java.util.Optional<DeliveryOperation> activeRelease() {
-        return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE kind='RELEASE' "
+        return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE kind IN ('RELEASE','ANDROID_VERSION') "
                 + "AND state NOT IN ('SUCCEEDED','ROLLED_BACK','FAILED','BLOCKED') LIMIT 1", this::row).stream().findFirst();
     }
     public java.util.Optional<DeliveryOperation> integrated(Long sessionId, String head) {

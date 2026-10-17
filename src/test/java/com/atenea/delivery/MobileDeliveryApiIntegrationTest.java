@@ -175,6 +175,31 @@ class MobileDeliveryApiIntegrationTest {
         verify(executor,never()).execute(any(),any(),any());
     }
 
+    @Test void queuedWorkerProgressIsPersistedReadOnlyWithItsRevisionNotInferredFromSummary() throws Exception {
+        sessionId=createSession(true);
+        var change=sessions.findById(sessionId).orElseThrow().getDevelopmentChange();
+        UUID id=UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO validation_operation(id,work_session_id,operation,status,source_tree_fingerprint_sha256,definition_revision,
+                identity_sha256,summary,started_at,created_at,updated_at,worker_state,worker_observed_at)
+            VALUES (?,?,'ANDROID_BUILD','RUNNING',?,'atenea-android-build-v2',?,'Not used to infer a phase',now(),now(),now(),'QUEUED',now())
+            """,id,sessionId,change.getSourceFingerprintSha256(),"c".repeat(64));
+        String before=jdbc.queryForObject("SELECT to_jsonb(v)::text FROM validation_operation v WHERE id=?",String.class,id);
+        for (int i=0;i<2;i++) {
+            mvc.perform(get("/api/mobile/sessions/{id}/delivery",sessionId).with(auth(admin)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.validation.operations[0].id").value(id.toString()))
+                    .andExpect(jsonPath("$.validation.operations[0].workerState").value("QUEUED"))
+                    .andExpect(jsonPath("$.validation.operations[0].workerObservedAt").isNotEmpty())
+                    .andExpect(jsonPath("$.validation.operations[0].workerStartedAt").isEmpty())
+                    .andExpect(jsonPath("$.validation.operations[0].durationMillis").isEmpty());
+        }
+        assertEquals(before,jdbc.queryForObject("SELECT to_jsonb(v)::text FROM validation_operation v WHERE id=?",String.class,id));
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM validation_operation",Integer.class));
+        verifyNoInteractions(publication,factors,grants);
+        verify(executor,never()).execute(any(),any(),any());
+    }
+
     @Test void unconfirmedValidationIdentityPreservesReadOnlyDurableHistoryButNeverInventsEvidence() throws Exception {
         var op=store.create(sessionId,admin.getId(),"PUBLISH_PR",DeliveryTarget.APP_PROD,null,"BLOCKED",mapper.createObjectNode());
         new org.springframework.transaction.support.TransactionTemplate(manager).executeWithoutResult(transaction -> {
@@ -406,6 +431,45 @@ class MobileDeliveryApiIntegrationTest {
         }
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation",Integer.class));
         verify(executor,never()).execute(any(),any(),any()); verifyNoInteractions(factors,grants);
+    }
+
+    @Test void androidVersionEndpointsAreClosedAndRequireEffectiveAdministrator() throws Exception {
+        for (String endpoint:List.of("/android-version","/android-version/"+UUID.randomUUID()+"/integrate")) {
+            mvc.perform(post("/api/mobile/sessions/"+sessionId+"/delivery"+endpoint).with(auth(routine))
+                    .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
+            for (String extra:List.of("versionCode","versionName","path","command","sha","branch"))
+                mvc.perform(post("/api/mobile/sessions/"+sessionId+"/delivery"+endpoint).with(auth(admin))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\""+extra+"\":\"foreign\"}"))
+                        .andExpect(status().isConflict());
+        }
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation",Integer.class));
+        verifyNoInteractions(publication,factors,grants);verify(executor,never()).execute(any(),any(),any());
+    }
+
+    @Test void androidVersionDoubleTapPersistsSingleIntentBoundToOriginalIntegrationAndDoesNotDispatchFromHttp() throws Exception {
+        publishedValidatedFixture();
+        var session=sessions.findById(sessionId).orElseThrow();session.setAcceptanceState(WorkSessionAcceptanceState.INTEGRATION_READY);
+        session.setIntegrationReadyAt(Instant.now());session.setPullRequestStatus(WorkSessionPullRequestStatus.MERGED);sessions.saveAndFlush(session);
+        var integrated=store.create(sessionId,admin.getId(),"INTEGRATE",DeliveryTarget.APP_PROD,"1".repeat(40),"SUCCEEDED",mapper.createObjectNode().put("mergeCommit","3".repeat(40)));
+        when(github.canonicalMain(any())).thenReturn("4".repeat(40));when(github.extractPullRequestNumber(anyString())).thenReturn(42L);
+        when(github.androidProductVersion("4".repeat(40))).thenReturn(new com.atenea.github.AndroidProductVersion(160,"0.5.127"));
+        var channel=mapper.createObjectNode().put("protocol","atenea-android-observation/v1").put("target","ANDROID_STABLE").put("state","OBSERVED")
+                .put("sourceCommit","2".repeat(40)).put("versionCode",160).put("versionName","0.5.127").put("apkSha256","a".repeat(64)).put("certificateSha256","b".repeat(64))
+                .put("observedAt",Instant.now().getEpochSecond()).put("planId",UUID.randomUUID().toString()).put("operationId",UUID.randomUUID().toString()).put("receiptSha256","c".repeat(64)).put("finishedAt",1);
+        when(executor.observeAndroid()).thenReturn(channel);
+        UUID id=null;
+        for (int i=0;i<2;i++) {
+            var response=mvc.perform(post("/api/mobile/sessions/{id}/delivery/android-version",sessionId).with(auth(admin))
+                    .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.kind").value("ANDROID_VERSION")).andExpect(jsonPath("$.state").value("QUEUED"))
+                    .andExpect(jsonPath("$.versionCode").value(161)).andExpect(jsonPath("$.versionName").value("0.5.128"))
+                    .andExpect(jsonPath("$.releaseRecovery").isEmpty()).andReturn().getResponse().getContentAsString();
+            UUID observed=UUID.fromString(mapper.readTree(response).path("id").asText());if (id==null) id=observed;else assertEquals(id,observed);
+        }
+        assertEquals(integrated.id().toString(),store.get(id,false).evidence().path("versionSource").path("integrationOperationId").asText());
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation WHERE kind='ANDROID_VERSION'",Integer.class));
+        verify(github,never()).prepareAndroidVersion(any(),any(),any(),any());verify(github,never()).integrateExact(any(),anyLong(),any(),any());
+        verify(executor,never()).execute(any(),any(),any());verifyNoInteractions(publication,factors,grants);
     }
 
     @Test void pollingInstalledOperatorReleasePreservesDatabaseHistoryAndDoesNotAdoptPublication() throws Exception {
