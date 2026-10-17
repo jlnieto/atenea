@@ -16,6 +16,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
 import androidx.compose.ui.unit.dp
@@ -68,13 +70,14 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
     var confirmMerge by remember(sessionId) { mutableStateOf(false) }
     var confirmFinalize by remember(sessionId) { mutableStateOf(false) }
     var showHistory by remember(sessionId) { mutableStateOf(false) }
-    var showOtherTargets by remember(sessionId) { mutableStateOf(false) }
+    var versionToIntegrate by remember(sessionId) { mutableStateOf<MobileDeliveryOperation?>(null) }
     var showVersions by remember(sessionId) { mutableStateOf(false) }
     val context = LocalContext.current
     val passkey = remember(context) { AndroidPasskeyCoordinator(context) }
 
     fun deliver(kind: DeliveryStepAction,
-        target: MobileDeliveryTarget = if (kind == DeliveryStepAction.PREPARE_ANDROID) MobileDeliveryTarget.ANDROID_STABLE else MobileDeliveryTarget.APP_PROD,
+        target: MobileDeliveryTarget = if (kind in setOf(DeliveryStepAction.PREPARE_ANDROID, DeliveryStepAction.PREPARE_ANDROID_VERSION,
+            DeliveryStepAction.INTEGRATE_ANDROID_VERSION)) MobileDeliveryTarget.ANDROID_STABLE else MobileDeliveryTarget.APP_PROD,
         action: suspend () -> MobileDeliveryOperation) = state.submitDelivery(kind, target, action)
     fun source(kind: DeliveryStepAction, action: suspend () -> MobileSourceUpdate) = state.submitSource(kind, action)
     val pr = operations.firstOrNull { it.kind == "PUBLISH_PR" }
@@ -104,6 +107,16 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                 DeliveryStepAction.PREPARE_ANDROID -> AteneaButton("Preparar Android estable",
                     enabled = available && checksCurrent && !runInProgress && !busy && !active && !releasePlanned,
                     onClick = { deliver(DeliveryStepAction.PREPARE_ANDROID) { api.prepareAndroidRecovery(sessionId) } })
+                DeliveryStepAction.PREPARE_ANDROID_VERSION -> AteneaButton("Preparar versión Android nueva",
+                    enabled = available && state.androidVersionPreparationEnabled && checksCurrent && !runInProgress && !busy && !active && !releasePlanned,
+                    onClick = { deliver(DeliveryStepAction.PREPARE_ANDROID_VERSION) { api.prepareAndroidVersion(sessionId) } })
+                DeliveryStepAction.INTEGRATE_ANDROID_VERSION -> step.operation?.let { version ->
+                    AteneaButton("Integrar versión Android", enabled = available && checksCurrent && !runInProgress && !busy && !active,
+                        onClick = { versionToIntegrate = version })
+                    version.pullRequestUrl?.takeIf { it.matches(Regex("https://github\\.com/jlnieto/atenea/pull/[1-9][0-9]*")) }?.let { url ->
+                        TextButton(onClick = { uriHandler.openUri(url) }) { Text("Revisar PR de versión") }
+                    }
+                }
                 DeliveryStepAction.FINALIZE -> AteneaButton("Finalizar cambio", enabled = state.canFinalize(checksCurrent, runInProgress),
                     onClick = { confirmFinalize = true })
                 DeliveryStepAction.RECONCILE_FINALIZE -> AteneaButton("Reconciliar finalización", enabled = state.canReconcileCompletion(runInProgress),
@@ -122,12 +135,13 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                     AteneaButton("Reintentar resolución", enabled = state.canRetryResolver(runInProgress),
                         onClick = { source(DeliveryStepAction.RETRY_RESOLVER) { api.retryDeliveryResolver(sessionId, update.id, run) } })
                 } }
-                DeliveryStepAction.REFRESH -> AteneaOutlinedButton("Consultar estado", enabled = !state.sending && !state.refreshing,
-                    onClick = { scope.launch { state.refresh() } })
+                DeliveryStepAction.REFRESH -> AteneaOutlinedButton(if (state.manualRefreshing) "Consultando…" else "Consultar estado", enabled = state.canConsult,
+                    onClick = { scope.launch { state.consult() } })
                 DeliveryStepAction.NONE -> Unit
             }
         }
         state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.consultationMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("delivery-consultation-result")) }
         if (state.integrated || state.completed) Text("✓ PR integrada", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (state.appDeployed) Text(deploymentLabel(state.deployment, true), style = MaterialTheme.typography.bodySmall)
@@ -160,27 +174,13 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                 } ?: Text("No se ha podido confirmar la APK publicada. Consultar no publica nada.")
             }
         }
-        if (state.integrated) {
-            TextButton(onClick = { showOtherTargets = !showOtherTargets }) {
-                Text(if (showOtherTargets) "Ocultar otras publicaciones" else "Otras publicaciones (Worker / Android)")
+        if (state.integrated && state.readiness?.requirementsStatus == "CONFIRMED") {
+            Text("Entregas necesarias", style = MaterialTheme.typography.titleSmall)
+            state.readiness?.requiredTargets.orEmpty().forEach { target ->
+                Text("${target.label}: " + if (state.targetDelivered(target)) "confirmada" else "pendiente",
+                    style = MaterialTheme.typography.bodySmall)
             }
-            if (showOtherTargets && sessionOpen && state.completion == null) listOf(MobileDeliveryTarget.AX42_PLATFORM, MobileDeliveryTarget.ANDROID_STABLE).forEach { target ->
-                Text(target.label, style = MaterialTheme.typography.titleSmall)
-                val plan = operations.firstOrNull { it.kind == "RELEASE" && it.target == target }
-                if (plan?.canConfirm(System.currentTimeMillis() / 1000) == true && step.operation?.id != plan.id) {
-                    AteneaButton("Confirmar ${target.label}", enabled = available && !busy && !runInProgress
-                        && checksCurrent,
-                        onClick = { confirmation = plan })
-                } else if (plan == null || plan.terminal) {
-                    Text("Preparar obtiene un plan; no publica ni instala.", style = MaterialTheme.typography.bodySmall)
-                    AteneaOutlinedButton("Preparar ${target.label}", enabled = available && checksCurrent && !runInProgress && !busy && !active && !releasePlanned,
-                        onClick = { deliver(if (target==MobileDeliveryTarget.ANDROID_STABLE) DeliveryStepAction.PREPARE_ANDROID else DeliveryStepAction.PREPARE_BACKEND, target) { if (target==MobileDeliveryTarget.ANDROID_STABLE) api.prepareAndroidRecovery(sessionId)
-                            else api.prepareRelease(sessionId, target) } })
-                } else Text("${deliveryStateLabel(plan.state)}. Sigue la operación que aparece arriba.")
-                if (plan?.state == "SUCCEEDED" && target == MobileDeliveryTarget.ANDROID_STABLE) {
-                    Text("APK ${plan.versionName} / ${plan.versionCode} publicada. Instálala en Ajustes → Actualizaciones.")
-                }
-            }
+            Text("El siguiente paso se muestra arriba. No necesitas preparar componentes ajenos a este cambio.", style = MaterialTheme.typography.bodySmall)
         }
         HorizontalDivider()
         TextButton(onClick = { showHistory = !showHistory }) {
@@ -230,6 +230,16 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                 confirmMerge = false; deliver(DeliveryStepAction.INTEGRATE) { api.integrateDelivery(sessionId) }
             }) { Text("Integrar") } },
             dismissButton = { TextButton(onClick = { confirmMerge = false }) { Text("Cancelar") } })
+    }
+    versionToIntegrate?.let { version ->
+        AlertDialog(onDismissRequest = { versionToIntegrate = null }, title = { Text("Integrar sólo la versión Android") },
+            text = { Text("Se integrará la PR técnica de versión ${version.versionName} / ${version.versionCode}, sin recrear tu cambio. Atenea comprobará el diff exacto y CI. No publica la APK: después tendrás que prepararla y confirmar su publicación.") },
+            confirmButton = { TextButton(enabled = available && checksCurrent && !runInProgress && !busy && !active
+                && operations.any { it.id == version.id && it.kind == "ANDROID_VERSION" && it.state == "READY" }, onClick = {
+                    versionToIntegrate = null
+                    deliver(DeliveryStepAction.INTEGRATE_ANDROID_VERSION) { api.integrateAndroidVersion(sessionId, version.id) }
+                }) { Text("Integrar versión") } },
+            dismissButton = { TextButton(onClick = { versionToIntegrate = null }) { Text("Cancelar") } })
     }
     confirmation?.let { plan ->
         ReleaseAuthorizationDialog(plan,
@@ -313,6 +323,7 @@ internal fun deliveryIntegrationLabel(mergeState: String?): String = when (merge
 }
 
 internal fun deliveryKindLabel(operation: MobileDeliveryOperation): String = when (operation.kind) {
+    "ANDROID_VERSION" -> "Preparación de versión Android"
     "FINALIZE" -> "Finalización del cambio"
     "PUBLISH_PR" -> "PR"; "INTEGRATE" -> "Integración"; else -> operation.target.label
 }
@@ -331,6 +342,10 @@ internal fun deliveryStateLabel(state: String): String = when (state) {
 }
 
 internal fun deliveryErrorLabel(code: String): String = when (code) {
+    "APK_VERSION_NOT_NEWER" -> "La APK candidata tiene una versión igual o anterior a la del canal. No se ha publicado. Hace falta preparar e integrar una versión nueva; consultar no cambia el número."
+    "ANDROID_CHANNEL_MOVED" -> "El canal Android cambió desde esta preparación. Tu código se conserva; prepara de nuevo con la versión vigente."
+    "ANDROID_VERSION_POLICY_REJECTED", "ANDROID_VERSION_IDENTITY_MISMATCH" -> "La versión o el diff no cumplen el incremento cerrado previsto. La operación está detenida sin publicar; revisa la PR técnica."
+    "ANDROID_VERSION_PR_CLOSED" -> "La PR técnica de versión se cerró sin integrar. No se crea otra automáticamente ni se publica una APK."
     "SOURCE_FINALIZATION_MAIN_MOVED" -> "La base preparada es anterior a main. Pulsa Actualizar base con main; después valida la revisión resultante y actualiza la misma PR. Tu código se conserva."
     "SOURCE_BASE_OBSERVATION_UNAVAILABLE" -> "No se pudo comprobar la base en GitHub. Consulta el estado; no repitas las pruebas ni la publicación."
     "HEALTHY_DELIVERED_CHANGE_REQUIRED" -> "Atenea no pudo confirmar un despliegue sano que contenga este cambio. El ticket no se ha completado."

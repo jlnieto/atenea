@@ -165,15 +165,58 @@ class DeliveryStepUiTest {
         val failed = operation("RELEASE", "FAILED", MobileDeliveryTarget.ANDROID_STABLE).copy(errorCode = "RELEASE_BUILD_FAILED")
         val observed = MobileDeploymentObservation(22, "DEPLOYED", "OPERATOR", "3".repeat(40), "2".repeat(40),
             true, now, UUID.randomUUID(), UUID.randomUUID(), "5".repeat(64), null)
-        state(snapshot(failed, operation("INTEGRATE", "SUCCEEDED")).copy(deployment = observed)) {
+        val missing=com.atenea.android.api.MobileChangeDeliveryReadiness(22,"CONFIRMED","1".repeat(40),"2".repeat(40),
+            listOf(MobileDeliveryTarget.APP_PROD,MobileDeliveryTarget.ANDROID_STABLE),false,
+            com.atenea.android.api.MobileAndroidChannel("3".repeat(40),"0.5.127",160,"5".repeat(64),now),"NOT_INCLUDED",now)
+        state(snapshot(failed, operation("INTEGRATE", "SUCCEEDED")).copy(deployment = observed,readiness=missing)) {
             val step = it.currentStep(true, false, now)
             assertEquals(DeliveryStepStatus.ATTENTION, step.status)
             assertEquals(DeliveryStepAction.REFRESH, step.action)
             assertEquals(failed.id, step.operation?.id)
         }
         state(snapshot(operation("RELEASE", "SUCCEEDED", MobileDeliveryTarget.ANDROID_STABLE), failed,
-            operation("INTEGRATE", "SUCCEEDED")).copy(deployment = observed)) {
+            operation("INTEGRATE", "SUCCEEDED")).copy(deployment = observed,readiness=missing.copy(ready=true,androidStatus="INCLUDED"))) {
             assertEquals(DeliveryStepAction.FINALIZE, it.currentStep(true, false, now).action)
+        }
+    }
+    @Test fun `backend is first and a version collision has a real mobile recovery action`() {
+        val failed=operation("RELEASE","BLOCKED",MobileDeliveryTarget.ANDROID_STABLE).copy(errorCode="APK_VERSION_NOT_NEWER")
+        val facts=com.atenea.android.api.MobileChangeDeliveryReadiness(22,"CONFIRMED","1".repeat(40),"2".repeat(40),
+            listOf(MobileDeliveryTarget.APP_PROD,MobileDeliveryTarget.ANDROID_STABLE),false,
+            com.atenea.android.api.MobileAndroidChannel("3".repeat(40),"0.5.127",160,"5".repeat(64),now),"NOT_INCLUDED",now)
+        val value=snapshot(failed,operation("INTEGRATE","SUCCEEDED")).copy(readiness=facts,androidVersionPreparationEnabled=true)
+        state(value) { assertEquals(DeliveryStepAction.PREPARE_BACKEND,it.currentStep(true,false,now).action) }
+        val deployed=MobileDeploymentObservation(22,"DEPLOYED","OPERATOR","3".repeat(40),"2".repeat(40),true,now,UUID.randomUUID(),UUID.randomUUID(),"5".repeat(64),null)
+        state(value.copy(deployment=deployed)) {
+            val step=it.currentStep(true,false,now)
+            assertEquals(DeliveryStepAction.PREPARE_ANDROID_VERSION,step.action)
+            assertTrue(step.message.contains("sólo incremente"));assertTrue(step.message.contains("original"))
+        }
+        state(value.copy(deployment=deployed,androidVersionPreparationEnabled=false)) {
+            assertEquals(DeliveryStepAction.REFRESH,it.currentStep(true,false,now).action)
+        }
+        val version=operation("ANDROID_VERSION","READY",MobileDeliveryTarget.ANDROID_STABLE).copy(versionCode=161,versionName="0.5.128")
+        state(value.copy(operations=listOf(version)+value.operations,deployment=deployed)) {
+            assertEquals(DeliveryStepAction.INTEGRATE_ANDROID_VERSION,it.currentStep(true,false,now).action)
+            assertFalse(it.currentStep(true,false,now).message.contains("autenticador"))
+        }
+        state(value.copy(operations=listOf(version.copy(state="SUCCEEDED"))+value.operations,deployment=deployed)) {
+            assertEquals(DeliveryStepAction.PREPARE_ANDROID,it.currentStep(true,false,now).action)
+        }
+    }
+    @Test fun `verified current delivery supersedes historical failure but stale observations and failed rollback do not`() {
+        val failed=operation("RELEASE","BLOCKED",MobileDeliveryTarget.ANDROID_STABLE).copy(errorCode="APK_VERSION_NOT_NEWER")
+        val facts=com.atenea.android.api.MobileChangeDeliveryReadiness(22,"CONFIRMED","1".repeat(40),"2".repeat(40),
+            listOf(MobileDeliveryTarget.ANDROID_STABLE),true,
+            com.atenea.android.api.MobileAndroidChannel("3".repeat(40),"0.5.128",161,"5".repeat(64),now),"INCLUDED",now)
+        val value=snapshot(failed,operation("INTEGRATE","SUCCEEDED")).copy(readiness=facts)
+        state(value) { assertEquals(DeliveryStepAction.FINALIZE,it.currentStep(true,false,now).action);assertEquals(failed,it.operations.first()) }
+        state(value.copy(readiness=facts.copy(observedAt=now-61))) { assertEquals(DeliveryStepAction.REFRESH,it.currentStep(true,false,now).action) }
+        state(value.copy(readiness=facts.copy(android=facts.android!!.copy(observedAt=now-61)))) {
+            assertEquals(DeliveryStepAction.REFRESH,it.currentStep(true,false,now).action);assertFalse(it.canFinalize(true,false))
+        }
+        state(value.copy(operations=listOf(failed.copy(state="ROLLBACK_FAILED"))+value.operations.drop(1))) {
+            assertEquals(DeliveryStepStatus.ATTENTION,it.currentStep(true,false,now).status);assertFalse(it.canFinalize(true,false))
         }
     }
     @Test fun `rollback failure and unavailable observations never offer a second publication`() {

@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,6 +22,37 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
+    @Test fun `background refresh never disables consult and manual consult gives unchanged feedback`() = runBlocking {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            val value=snapshot(true,emptyList())
+            var response: CompletableDeferred<MobileDeliveryState>?=null
+            var reads=0
+            val state=MobileDeliveryUiState(21,scope) { reads++;response?.await() ?: value }
+            state.refresh();assertTrue(state.canConsult)
+            response=CompletableDeferred()
+            val poll=scope.launch { state.refresh() }
+            assertTrue(state.refreshing);assertTrue(state.canConsult);assertFalse(state.manualRefreshing)
+            val manual=scope.launch { state.consult() }
+            assertTrue(state.manualRefreshing);assertFalse(state.canConsult)
+            state.consult();assertEquals(3,reads)
+            response!!.complete(value);poll.join();manual.join()
+            assertTrue(state.canConsult);assertFalse(state.manualRefreshing)
+            assertTrue(state.consultationMessage!!.contains("sin cambios"))
+            state.refresh();assertTrue(state.consultationMessage!!.contains("sin cambios"))
+        } finally { scope.cancel() }
+    }
+    @Test fun `failed manual consult preserves history but reports uncertainty without authorizing actions`() = runBlocking {
+        val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
+        try {
+            var online=true
+            val op=operation().copy(state="BLOCKED",errorCode="APK_VERSION_NOT_NEWER")
+            val state=MobileDeliveryUiState(21,scope) { if (!online) error("offline");snapshot(true,listOf(op)) }
+            state.refresh();online=false;state.consult()
+            assertEquals(listOf(op),state.operations);assertFalse(state.available);assertTrue(state.canConsult)
+            assertTrue(state.consultationMessage!!.contains("No se pudo confirmar"))
+        } finally { scope.cancel() }
+    }
     private fun snapshot(enabled: Boolean, operations: List<MobileDeliveryOperation>, integration: MobileDeliveryIntegration? = null,
         sourceUpdateEnabled: Boolean = false, sourceUpdate: MobileSourceUpdate? = null, releaseRecoveryEnabled: Boolean = false,
         deployment: MobileDeploymentObservation? = null, completionEnabled: Boolean = false,

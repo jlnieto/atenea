@@ -101,7 +101,7 @@ class WorkSessionControllerTest {
                         "5".repeat(64),
                         "Closed validation passed",
                         Instant.parse("2026-07-30T12:00:00Z"),
-                        Instant.parse("2026-07-30T12:00:00.007Z")));
+                        Instant.parse("2026-07-30T12:00:00.007Z"), null, null, null));
 
         mockMvc.perform(post("/api/sessions/12/validations/WEB_BUILD"))
                 .andExpect(status().isOk())
@@ -122,7 +122,7 @@ class WorkSessionControllerTest {
                 ValidationOperationKind.BACKEND_TEST, ValidationOperationStatus.BLOCKED,
                 "4".repeat(64), "atenea-backend-test-v2", 2, 100L, null,
                 "[TEST_DATABASE_SETUP_FAILED] No se pudo preparar PostgreSQL de pruebas.",
-                Instant.parse("2026-10-05T10:00:00Z"), Instant.parse("2026-10-05T10:00:00.100Z"));
+                Instant.parse("2026-10-05T10:00:00Z"), Instant.parse("2026-10-05T10:00:00.100Z"), null, null, null);
         when(closedValidationOperationService.getDevelopmentChangeEvidence(21L)).thenReturn(
                 new DevelopmentChangeValidationEvidenceResponse(changeKey, 21L, 2, "4".repeat(64),
                         DevelopmentChangeProjectionState.BLOCKED, 0, 4, List.of(failed), failed));

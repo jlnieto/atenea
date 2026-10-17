@@ -43,8 +43,9 @@ Si un fallo antiguo sólo conservó un resumen genérico, no se inventa su causa
    mergeability; no fuerza protecciones. Integrar no despliega.
 5. Pulsar **Preparar Backend PROD** si todavía no contiene el ticket. Con
    recuperación habilitada, selecciona explícitamente el main aprobado que
-   contiene el merge, aunque main haya avanzado. Worker y Android están
-   separados bajo **Otras publicaciones (Worker / Android)**. Se obtiene un plan con SHA, hash y caducidad, a partir
+   contiene el merge, aunque main haya avanzado. Después, si el diff lo requiere,
+   Atenea muestra **Preparar Android estable**. No se ofrecen publicaciones de
+   Worker AX42 ajenas al cambio App. Se obtiene un plan con SHA, hash y caducidad, a partir
    de un artefacto de GitHub main. Si su build está en curso, el mismo plan
    espera, sin crear otra operación ni desplegar.
 6. Pulsar **Confirmar** y elegir **Confirmar con el móvil**: la passkey requiere
@@ -59,6 +60,58 @@ Si un fallo antiguo sólo conservó un resumen genérico, no se inventa su causa
 8. Hacer el smoke funcional de la capacidad publicada. En **Cambio**, pulsar
    **Finalizar cambio** y confirmar. No finalizar antes de publicar y comprobar
    el resultado funcional.
+
+### Recuperar APK_VERSION_NOT_NEWER desde el mismo cambio
+
+El publicador sigue rechazando una APK cuyo `versionCode` no supera el del
+canal. Consultar no cambia ese número y no reintenta. La compilación continúa
+usando exclusivamente la versión explícita y committeada del producto: no se
+deriva de un contador CI ni se modifica una APK ya construida.
+
+**Preparar versión Android nueva** persiste una intención `ANDROID_VERSION`
+en la misma WorkSession (V101). El cuerpo HTTP es `{}`: no admite versiones,
+repositorios, comandos, rutas ni ramas. App verifica rol, ownership, ausencia
+de AgentRuns de esa sesión, la integración original y su inclusión en main.
+Fija el SHA de main y la observación firmada/durable del canal existente;
+incrementa sólo un patch y un `versionCode` en la misma línea de producto
+(por ejemplo 0.5.127/160 → 0.5.128/161). Una línea inesperada o un salto no
+previsto se rechaza. Si main ya declara un código superior, conserva esa
+versión aprobada y no crea otro commit.
+
+El reconciliador usa las autoridades GitHub existentes de App, no el token
+root read-only del publicador. Crea objetos Git deterministas y una rama fija
+derivada del UUID de operación, sin force push ni escritura directa en main.
+El workflow UFD reconoce el evento `create` de esa rama técnica creada por la
+API; no presupone un evento push. La evidencia sigue ligada a repositorio,
+workflow, rama, head y evento exactos, con el mismo `validate-change` sin overrides.
+El diff debe ser exclusivamente los dos literales de
+`android/app/build.gradle.kts`. Espera el PASS de `validate-change`/UFD de
+ese head antes de crear una única PR técnica draft. No crea DevelopmentChange,
+WorkSession ni AgentRun. La PR original del ticket permanece intacta.
+
+**Revisar PR de versión → Integrar versión Android** es una decisión explícita
+independiente. Se comprueban otra vez diff exacto, main fijado, canal, CI y
+protecciones de la PR. Una respuesta perdida se reconcilia con la misma rama,
+head y PR; si main/canal cambian se bloquea, nunca se rebasa o integra a la fuerza.
+Después del merge se construye el artefacto inmutable normal. **Preparar Android
+estable** selecciona main con la prueba de inclusión del ticket; **Confirmar**
+conserva el factor/grant de publicación habitual. Ni preparar ni integrar la
+versión firman, publican o instalan una APK.
+
+El panel muestra una sola acción principal: Backend PROD si hace falta,
+Android si hace falta y, finalmente, finalizar. El historial conserva todos
+los errores; una observación fresca, propia y positiva del destino puede
+retirar un fallo histórico del paso principal. Una restauración fallida o
+evidencia ausente/caducada no se ocultan. «Consultar estado» sólo se deshabilita
+por una consulta manual o un envío, no por cada poll automático, y confirma
+visiblemente si no cambió el resultado. Los errores de lectura no autorizan acciones.
+
+Puesta en marcha pendiente: integrar App, backup y migración V100/V101 en PROD,
+backend y APK compatible con autorización de publicación separada. Esta
+capacidad no necesita cambios Platform ni debilita su guarda monotónica.
+
+Contrato GitHub utilizado: [evento create](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#create)
+y [referencias Git REST](https://docs.github.com/en/rest/git/refs#create-a-reference).
 
 ### Finalizar un cambio entregado
 

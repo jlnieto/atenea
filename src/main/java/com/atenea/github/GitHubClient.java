@@ -95,6 +95,22 @@ public class GitHubClient {
                     && "push".equals(run.path("event").asText())
                     && (latest == null || run.path("id").asLong() > latest.path("id").asLong())) latest = run;
         }
+        if (latest == null && "jlnieto".equals(repository.owner()) && "atenea".equals(repository.repo())
+                && branch != null && branch.matches("atenea/android-version-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+            // Git references created through the REST API have a create event.
+            // Do not assume that a push event will also be emitted.
+            JsonNode created = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(
+                    "/repos/" + repo + "/actions/workflows/ufd-validation-v1.yml/runs?head_sha="
+                            + sha + "&branch=" + encode(branch) + "&event=create&per_page=100"), null);
+            if (!created.path("workflow_runs").isArray() || created.path("workflow_runs").size() >= 100)
+                throw new GitHubIntegrationException("UFD_EVIDENCE_INCOMPLETE");
+            for (JsonNode run : created.path("workflow_runs")) {
+                if (sha.equals(run.path("head_sha").asText()) && branch.equals(run.path("head_branch").asText())
+                        && repo.equals(run.path("head_repository").path("full_name").asText())
+                        && UFD_WORKFLOW.equals(run.path("path").asText()) && "create".equals(run.path("event").asText())
+                        && (latest==null || run.path("id").asLong()>latest.path("id").asLong())) latest=run;
+            }
+        }
         if (latest == null && ownedHead(repository, branch)) {
             latest = ownedHeadUfdRun(repository, sha, branch);
         }
@@ -209,6 +225,100 @@ public class GitHubClient {
                 .path("object").path("sha").asText();
         requireSha(sha);
         return sha;
+    }
+
+    private static final GitHubRepositoryRef ANDROID_REPOSITORY = new GitHubRepositoryRef("jlnieto", "atenea");
+    private static final String ANDROID_VERSION_FILE = "android/app/build.gradle.kts";
+    public AndroidProductVersion androidProductVersion(String source) {
+        requireSha(source);
+        return AndroidProductVersion.read(androidVersionSource(source));
+    }
+    private String androidVersionSource(String source) {
+        JsonNode file = content(ANDROID_REPOSITORY, ANDROID_VERSION_FILE, source);
+        if (!"file".equals(file.path("type").asText()) || !ANDROID_VERSION_FILE.equals(file.path("path").asText())
+                || !"base64".equals(file.path("encoding").asText()) || file.path("size").asLong(-1) > 100_000
+                || file.path("size").asLong(-1) < 1) throw new GitHubIntegrationException("ANDROID_VERSION_POLICY_REJECTED");
+        try {
+            byte[] bytes = Base64.getMimeDecoder().decode(file.path("content").asText());
+            String value = new String(bytes, StandardCharsets.UTF_8);
+            if (bytes.length != file.path("size").asInt(-1) || !java.util.Arrays.equals(bytes, value.getBytes(StandardCharsets.UTF_8)))
+                throw new IllegalArgumentException();
+            return value;
+        } catch (IllegalArgumentException rejected) { throw new GitHubIntegrationException("ANDROID_VERSION_POLICY_REJECTED"); }
+    }
+
+    public static String androidVersionBranch(UUID operation) { return "atenea/android-version-" + operation; }
+
+    /** Fixed file/repository/branch and deterministic Git objects. No force update, paths or scripts from a caller. */
+    public String prepareAndroidVersion(UUID operation, String base, AndroidProductVersion channel, Instant createdAt) {
+        ensureConfigured(); requireSha(base);
+        String root = "/repos/jlnieto/atenea";
+        String branch = androidVersionBranch(operation);
+        String before = androidVersionSource(base);
+        AndroidProductVersion old = AndroidProductVersion.read(before);
+        // Only one normal patch increment; an unexpected version lineage needs review, not a jump.
+        AndroidProductVersion next = old.nextAfter(channel);
+        if (!next.equals(old.nextAfter(old))) throw new GitHubIntegrationException("ANDROID_VERSION_POLICY_REJECTED");
+        String after = old.replace(before, next);
+        if (!base.equals(canonicalMain(ANDROID_REPOSITORY))) throw new GitHubIntegrationException("CANONICAL_MAIN_MOVED");
+        JsonNode parent = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(root + "/git/commits/" + base), null);
+        String tree = parent.path("tree").path("sha").asText(); requireSha(tree);
+        var blob = objectMapper.createObjectNode().put("encoding", "utf-8").put("content", after);
+        String blobSha = sendJsonRequest("POST", properties.getApiBaseUrl().resolve(root + "/git/blobs"), blob.toString()).path("sha").asText(); requireSha(blobSha);
+        var treeBody = objectMapper.createObjectNode().put("base_tree", tree);
+        treeBody.putArray("tree").addObject().put("path", ANDROID_VERSION_FILE).put("mode", "100644").put("type", "blob").put("sha", blobSha);
+        String treeSha = sendJsonRequest("POST", properties.getApiBaseUrl().resolve(root + "/git/trees"), treeBody.toString()).path("sha").asText(); requireSha(treeSha);
+        var commit = objectMapper.createObjectNode().put("message", "chore(android): prepare " + next.name() + " / " + next.code() + "\n\nAtenea version preparation " + operation).put("tree", treeSha);
+        commit.putArray("parents").add(base);
+        commit.putObject("author").put("name", "Atenea").put("email", "atenea@users.noreply.github.com")
+                .put("date", createdAt.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString());
+        commit.set("committer", commit.path("author"));
+        String head = sendJsonRequest("POST", properties.getApiBaseUrl().resolve(root + "/git/commits"), commit.toString()).path("sha").asText(); requireSha(head);
+        // A lost reply may have created this exact ref. Observe it; never move an existing ref.
+        JsonNode ref = sendJsonRequest("GET", properties.getApiBaseUrl().resolve(root + "/git/ref/heads/" + branch), null, true);
+        if (ref.isMissingNode()) {
+            if (!base.equals(canonicalMain(ANDROID_REPOSITORY))) throw new GitHubIntegrationException("CANONICAL_MAIN_MOVED");
+            ref = sendJsonRequest("POST", properties.getApiBaseUrl().resolve(root + "/git/refs"),
+                    objectMapper.createObjectNode().put("ref", "refs/heads/" + branch).put("sha", head).toString());
+        }
+        if (!head.equals(ref.path("object").path("sha").asText())) throw new GitHubIntegrationException("ANDROID_VERSION_IDENTITY_MISMATCH");
+        return head;
+    }
+
+    /** Only called after validate-change's exact-head UFD PASS, before creating the technical PR. */
+    public GitHubPullRequest androidVersionPullRequest(UUID operation, String head, AndroidProductVersion version) {
+        String branch = androidVersionBranch(operation); requireUfdValidation(ANDROID_REPOSITORY, head, branch);
+        JsonNode matches = sendJsonRequest("GET", properties.getApiBaseUrl().resolve("/repos/jlnieto/atenea/pulls?state=all&head="
+                + encode("jlnieto:" + branch) + "&base=main&per_page=2"), null);
+        if (!matches.isArray() || matches.size() > 1) throw new GitHubIntegrationException("ANDROID_VERSION_IDENTITY_MISMATCH");
+        if (matches.size() == 1) {
+            JsonNode pr = matches.get(0); requireExactPullRequest(ANDROID_REPOSITORY, pr.path("number").asLong(), branch, head, pr);
+            if (!"open".equals(pr.path("state").asText()) && !pr.path("merged_at").isTextual()) throw new GitHubIntegrationException("ANDROID_VERSION_PR_CLOSED");
+            return toPullRequest(pr);
+        }
+        GitHubPullRequest pr = createPullRequest(ANDROID_REPOSITORY, "Preparar Atenea Android " + version.name() + " / " + version.code(),
+                "Incremento exclusivo de la versión Android, preparado por Atenea. No publica ni modifica el cambio original.\n\nOperación: " + operation,
+                branch, "main");
+        if (pr.number() < 1 || !("https://github.com/jlnieto/atenea/pull/" + pr.number()).equals(pr.htmlUrl())
+                || !"jlnieto/atenea".equals(pr.baseRepository()) || !"jlnieto/atenea".equals(pr.headRepository())
+                || !"main".equals(pr.baseRef()) || !branch.equals(pr.headRef()) || !head.equals(pr.headSha()))
+            throw new GitHubIntegrationException("ANDROID_VERSION_IDENTITY_MISMATCH");
+        // The normal exact-head integration still checks CI, mergeability and branch protections.
+        return pr;
+    }
+
+    public void requireAndroidVersionHead(String base, String head, AndroidProductVersion channel) {
+        requireSha(base); requireSha(head);
+        String original = androidVersionSource(base);
+        AndroidProductVersion old = AndroidProductVersion.read(original);
+        String expected = old.replace(original, old.nextAfter(channel));
+        JsonNode commit = sendJsonRequest("GET", properties.getApiBaseUrl().resolve("/repos/jlnieto/atenea/commits/" + head), null);
+        if (!head.equals(commit.path("sha").asText()) || commit.path("parents").size() != 1
+                || !base.equals(commit.path("parents").path(0).path("sha").asText())
+                || !commit.path("files").isArray() || commit.path("files").size() != 1
+                || !ANDROID_VERSION_FILE.equals(commit.path("files").path(0).path("filename").asText())
+                || !"modified".equals(commit.path("files").path(0).path("status").asText())
+                || !expected.equals(androidVersionSource(head))) throw new GitHubIntegrationException("ANDROID_VERSION_IDENTITY_MISMATCH");
     }
 
     public record MergedChange(long number,String title,String summary,String branch,String headCommit,String mergeCommit,Instant mergedAt,String url) { }

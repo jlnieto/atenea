@@ -210,12 +210,16 @@ class ClosedValidationOperationServiceTest {
         assertNull(operation.getExitCode());
         assertNull(operation.getDurationMillis());
         assertNull(operation.getFinishedAt());
+        assertEquals("QUEUED", operation.getWorkerState());
+        assertNotNull(operation.getWorkerObservedAt());
 
         var terminal = service.advanceDevelopmentChange(41L);
         assertEquals("BLOCKED", terminal.state());
         assertEquals(ValidationOperationStatus.BLOCKED, operation.getStatus());
         assertEquals(0L, operation.getDurationMillis());
         assertNotNull(operation.getFinishedAt());
+        assertEquals("OWNERSHIP_FAILED", operation.getWorkerState());
+        assertNotNull(operation.getWorkerObservedAt());
         verify(remoteWorkerClient, times(1))
                 .startValidation(any(), any(), anyString(), anyString());
 
@@ -245,10 +249,64 @@ class ClosedValidationOperationServiceTest {
                         "RUNNING", 0));
 
         assertEquals("RUNNING", service.advanceDevelopmentChange(41L).state());
+        assertEquals("QUEUED", operations.getFirst().getWorkerState());
+        var queuedObservation = operations.getFirst().getWorkerObservedAt();
         assertEquals("RUNNING", service.advanceDevelopmentChange(41L).state());
+        assertEquals("RUNNING", operations.getFirst().getWorkerState());
+        assertNotNull(operations.getFirst().getWorkerObservedAt());
+        org.junit.jupiter.api.Assertions.assertFalse(operations.getFirst().getWorkerObservedAt().isBefore(queuedObservation));
+        assertEquals(Instant.parse("2026-09-25T10:00:00Z"), operations.getFirst().getWorkerStartedAt());
         assertEquals(1, operations.size());
         verify(remoteWorkerClient, times(1))
                 .startValidation(any(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void unavailableWorkerInspectionRetainsLastConfirmationWithoutFabricatingProgressOrRestarting() {
+        configureChangeOwnedSession();
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> durableResult(invocation.getArgument(3), invocation.getArgument(1), "QUEUED", 0));
+        service.advanceDevelopmentChange(41L);
+        var observed = operations.getFirst().getWorkerObservedAt();
+        when(remoteWorkerClient.inspectValidation(any(), anyString()))
+                .thenThrow(new RemoteWorkerException("Unavailable", 503));
+        assertEquals("RUNNING", service.advanceDevelopmentChange(41L).state());
+        assertEquals("QUEUED", operations.getFirst().getWorkerState());
+        assertEquals(observed, operations.getFirst().getWorkerObservedAt());
+        verify(remoteWorkerClient, times(1)).startValidation(any(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void foreignBrokerObservationNeverBecomesProgressEvidence() {
+        configureChangeOwnedSession();
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> progressResponse(invocation.getArgument(3), "foreign-session", "2026-10-17T10:00:00Z"));
+        assertEquals("BLOCKED", service.advanceDevelopmentChange(41L).state());
+        assertNull(operations.getFirst().getWorkerState());
+        assertNull(operations.getFirst().getWorkerObservedAt());
+        assertNull(operations.getFirst().getWorkerStartedAt());
+        verify(remoteWorkerClient, times(1)).startValidation(any(), any(), anyString(), anyString());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"invalid", "+1000000000-12-31T23:59:59Z"})
+    void malformedOptionalExecutionTimestampDoesNotTurnTelemetryIntoAnAdmissionBlocker(String startedAt) {
+        configureChangeOwnedSession();
+        when(remoteWorkerClient.startValidation(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> progressResponse(invocation.getArgument(3), session.getRemoteSessionId().toString(), startedAt));
+        assertEquals("RUNNING", service.advanceDevelopmentChange(41L).state());
+        assertEquals("RUNNING", operations.getFirst().getWorkerState());
+        assertNotNull(operations.getFirst().getWorkerObservedAt());
+        assertNull(operations.getFirst().getWorkerStartedAt());
+    }
+
+    private RemoteWorkerClient.DurableValidationResult progressResponse(String id, String sessionId, String startedAt) {
+        var result = durableResult(id, ValidationOperationKind.BACKEND_TEST, "RUNNING", 0);
+        return new RemoteWorkerClient.DurableValidationResult(result.schemaVersion(), result.protocolVersion(), result.operationId(),
+                sessionId, result.workspaceIdentity(), result.projectId(), result.sourceRevision(), result.sourceTreeFingerprintSha256(),
+                result.validationDefinition(), result.definitionRevision(), result.state(), result.terminalCause(), result.transportState(),
+                result.exitCode(), result.durationMillis(), result.artifactManifestSha256(), result.summary(), result.createdAt(), startedAt,
+                result.finishedAt(), result.updatedAt(), result.revision(), result.valuesExposed());
     }
 
     @Test

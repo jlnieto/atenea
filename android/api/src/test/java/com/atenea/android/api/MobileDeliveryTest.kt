@@ -13,6 +13,24 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.MockResponse
 
 class MobileDeliveryTest {
+    @Test fun versionPreparationAndIntegrationSendOnlyEmptyRequestsToFixedSessionEndpoints() = runBlocking<Unit> {
+        val server=MockWebServer();server.start()
+        try {
+            val id=UUID.randomUUID()
+            val response=JSONObject().put("id",id.toString()).put("operationId",UUID.randomUUID().toString())
+                .put("sessionId",21).put("kind","ANDROID_VERSION").put("target","ANDROID_STABLE")
+                .put("sourceCommit","1".repeat(40)).put("state","QUEUED").put("versionCode",161).put("versionName","0.5.128")
+            server.enqueue(MockResponse().setBody(response.toString()));server.enqueue(MockResponse().setBody(response.put("state","ACCEPTED").toString()))
+            val client=AteneaApiClient(server.url("/").toString(),{ "synthetic-token" })
+            assertEquals(id,client.prepareAndroidVersion(21).id);assertEquals(id,client.integrateAndroidVersion(21,id).id)
+            assertFalse(parseMobileDeliveryState(JSONObject("{\"enabled\":true,\"operations\":[]}")).androidVersionPreparationEnabled)
+            for (path in listOf("/api/mobile/sessions/21/delivery/android-version","/api/mobile/sessions/21/delivery/android-version/$id/integrate")) {
+                val request=server.takeRequest();assertEquals(path,request.path);assertEquals("POST",request.method);assertEquals("{}",request.body.readUtf8())
+            }
+            server.enqueue(MockResponse().setBody(response.put("sessionId",22).toString()))
+            assertFailsWith<IllegalArgumentException> { client.prepareAndroidVersion(21) }
+        } finally { server.shutdown() }
+    }
     private val id=UUID.randomUUID()
     private fun plan(state: String="READY", expires: Long=100): MobileDeliveryOperation =
         parseMobileDeliveryOperation(JSONObject().put("id",id.toString()).put("operationId",UUID.randomUUID().toString())

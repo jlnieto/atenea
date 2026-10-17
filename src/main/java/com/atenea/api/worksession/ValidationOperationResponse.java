@@ -17,6 +17,9 @@ public record ValidationOperationResponse(
         String artifactManifestSha256,
         String summary,
         Instant startedAt,
-        Instant finishedAt
+        Instant finishedAt,
+        String workerState,
+        Instant workerObservedAt,
+        Instant workerStartedAt
 ) {
 }

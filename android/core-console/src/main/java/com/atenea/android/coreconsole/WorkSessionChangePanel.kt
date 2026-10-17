@@ -58,6 +58,8 @@ internal fun WorkSessionChangePanel(
                 if (validation.checking) AteneaOutlinedButton("Consultar estado", enabled = !loading, onClick = onReadEvidence)
                 else if (validation.visible && !runInProgress) AteneaButton(validation.label,
                     enabled = validation.canStart, onClick = onValidate)
+                if (!runInProgress) ValidationProgressPanel(evidence, sessionId, validation.inProgress,
+                    observationConfirmed = !validation.checking && readError == null)
             }
         }
         if (!validation.current && !completed && !deliveryBeforeValidation && !validation.inProgress && !runInProgress) deliveryContent()
@@ -66,16 +68,20 @@ internal fun WorkSessionChangePanel(
         }
         if (showValidationDetails) {
             HorizontalDivider()
-            ValidationEvidenceDetails(evidence, loading, readError, onReadEvidence)
+            ValidationEvidenceDetails(evidence, loading, readError, onReadEvidence,
+                progressInDetails = completed || deliveryBeforeValidation || validation.current || runInProgress,
+                sessionId = sessionId, observationConfirmed = !validation.checking && readError == null)
         }
     }
 }
 
 @Composable
 private fun ValidationEvidenceDetails(evidence: DevelopmentChangeValidationEvidence?, loading: Boolean,
-    readError: String?, onReadEvidence: () -> Unit) {
+    readError: String?, onReadEvidence: () -> Unit, progressInDetails: Boolean, sessionId: Long, observationConfirmed: Boolean) {
     Text("Resultados guardados · consultar no ejecuta pruebas", style = MaterialTheme.typography.titleSmall)
     if (evidence != null) {
+        if (progressInDetails) ValidationProgressPanel(evidence, sessionId, validationRequested = false,
+            observationConfirmed = observationConfirmed)
         Text("${evidence.passedOperations}/${evidence.requiredOperations} comprobaciones de la revisión ${evidence.sourceRevision}")
         val failure = evidence.operations.firstOrNull { it.status in setOf("FAILED", "BLOCKED") }
         val reason = failure ?: evidence.lastAttempt

@@ -26,6 +26,14 @@ class ReleaseVersionPolicyTest(unittest.TestCase):
             self.assertNotIn('ATENEA_STABLE_BUILD_NUMBER',source)
         self.assertIn('python3 -B scripts/test-android-artifact-version.py',workflow)
 
+    def test_api_created_version_branch_has_an_explicit_ufd_trigger_without_overrides(self):
+        workflow=(REPOSITORY/'.github/workflows/ufd-validation-v1.yml').read_text()
+        self.assertIn('\n  create:\n',workflow)
+        self.assertIn("github.event.ref_type == 'branch'",workflow)
+        self.assertIn("startsWith(github.event.ref, 'atenea/android-version-')",workflow)
+        self.assertIn('run: ./scripts/validate-change',workflow)
+        self.assertNotIn('contents: write',workflow)
+
 
 class ActualVersionTest(unittest.TestCase):
     def setUp(self):

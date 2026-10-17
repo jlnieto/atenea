@@ -17,7 +17,8 @@ public final class ChangeHelpGuide {
         boolean sourceQuestion=normalized.matches("(?s).*\\b(pr|pull request|base|conflictos)\\b.*");
         boolean apkQuestion=normalized.matches("(?s).*(apk|android|version|menu|publicaciones|actualiza[^.?!]*(app|atenea)).*")
                 && (!sourceQuestion || normalized.matches("(?s).*\\b(apk|android)\\b.*"));
-        if (apkQuestion && readiness!=null && readiness.android()!=null) {
+        boolean versionBlocked="APK_VERSION_NOT_NEWER".equals(c.deliveryError()) && readiness!=null && !readiness.ready();
+        if (apkQuestion && readiness!=null && readiness.android()!=null && !versionBlocked) {
             var apk=readiness.android();
             stage="ANDROID_CHANNEL";
             answer="La APK realmente publicada es "+apk.versionName()+" / "+apk.versionCode()+", fuente "+apk.sourceCommit().substring(0,12)+". "
@@ -136,6 +137,11 @@ public final class ChangeHelpGuide {
                 shortAnswer="La preparación está lista. Ahora te toca: Cambio → Confirmar " + c.deliveryTargetLabel() + ".";
                 label="Ir a Confirmar " + c.deliveryTargetLabel(); reason="Abre la confirmación; esta ayuda no publica ni concede permisos.";
             }
+        } else if ("ANDROID_VERSION".equals(c.deliveryKind()) && "READY".equals(c.deliveryState())) {
+            stage="PUBLICATION_CONFIRMATION";
+            answer="La PR técnica de versión está comprobada. En Cambio, revisa la PR de versión y pulsa Integrar versión Android. Después prepara Android estable y confirma su publicación. Tu PR original se conserva; todavía no se ha publicado la APK.";
+            shortAnswer="Ahora te toca integrar la PR de versión Android; después preparar y confirmar la APK.";
+            destination="DELIVERY"; label="Ir a Integrar versión Android"; reason="Integrar sólo cambia el código aprobado; no publica ni instala.";
         } else if (c.deliveryState() != null && !List.of("SUCCEEDED","FAILED","BLOCKED","ROLLED_BACK","ROLLBACK_FAILED").contains(c.deliveryState())) {
             stage="DELIVERY_PENDING";
             if ("WAITING_CI".equals(c.deliveryState())) {
@@ -150,7 +156,11 @@ public final class ChangeHelpGuide {
             }
             label="Ver progreso de entrega"; reason="Consulta la misma operación; no vuelve a solicitarla.";
         } else if ("RELEASE".equals(c.deliveryKind()) && !"APP_PROD".equals(c.deliveryTarget())
-                && List.of("FAILED","BLOCKED","ROLLED_BACK","ROLLBACK_FAILED").contains(c.deliveryState())) {
+                && List.of("FAILED","BLOCKED","ROLLED_BACK","ROLLBACK_FAILED").contains(c.deliveryState())
+                && ("ROLLBACK_FAILED".equals(c.deliveryState()) || !"APK_VERSION_NOT_NEWER".equals(c.deliveryError()))
+                && ("ROLLBACK_FAILED".equals(c.deliveryState()) || readiness==null || !"CONFIRMED".equals(readiness.requirementsStatus())
+                    || !readiness.ready() && !(readiness.requiredTargets().contains(com.atenea.delivery.DeliveryTarget.APP_PROD)
+                        && !"DEPLOYED".equals(c.deploymentStatus())))) {
             stage="DELIVERY_ATTENTION";
             answer="La última publicación de " + c.deliveryTargetLabel() + " necesita atención. Que Backend PROD esté sano no confirma la entrega de otro destino. Consulta el resultado de esa operación; esta ayuda no hace un segundo intento ni da el ticket por terminado.";
             shortAnswer=c.deliveryTargetLabel() + " necesita atención. Consulta esa publicación antes de dar el cambio por terminado.";
@@ -164,6 +174,18 @@ public final class ChangeHelpGuide {
             answer="Atenea ha confirmado todas las publicaciones que requiere el diff de este cambio. Ya puedes comprobar el resultado y utilizar Finalizar cambio. Si se ha publicado Android, instalar esa actualización en el móvil es una acción separada.";
             shortAnswer="Las entregas requeridas están confirmadas. Comprueba el resultado y finaliza el cambio.";
             destination="DELIVERY"; label="Ir a Finalizar cambio"; reason="El cierre vuelve a comprobar las entregas y conserva el historial.";
+        } else if (readiness!=null && "CONFIRMED".equals(readiness.requirementsStatus())
+                && readiness.requiredTargets().contains(com.atenea.delivery.DeliveryTarget.APP_PROD)
+                && !"DEPLOYED".equals(c.deploymentStatus())) {
+            stage="PUBLICATION";
+            answer="Primero falta publicar Backend PROD, que también requiere este cambio. En Cambio, utiliza Preparar Backend PROD y después confirma ese plan. Una vez verificado, Atenea mostrará el paso de Android. No necesitas preparar Worker AX42 ni otro cambio.";
+            shortAnswer="Primero prepara y confirma Backend PROD. Después vendrá Android.";
+            destination="DELIVERY"; label="Ver publicación Backend PROD"; reason="Preparar no publica; la confirmación mantiene su autorización.";
+        } else if ("APK_VERSION_NOT_NEWER".equals(c.deliveryError())) {
+            stage="ANDROID_PUBLICATION_REQUIRED";
+            answer="No se ha publicado la APK: su número no supera el del canal. Consultar no cambia ese número. En Cambio, utiliza Preparar versión Android nueva; revisa e integra la PR técnica cuando termine la validación. Después prepara Android estable y confirma la publicación. Se conserva tu cambio y su PR original.";
+            shortAnswer="Hace falta preparar e integrar una versión Android nueva, no repetir la publicación fallida.";
+            destination="DELIVERY"; label="Preparar versión Android nueva"; reason="La preparación crea sólo código de versión; no publica ni elige comandos o números del cliente.";
         } else if (readiness!=null && "CONFIRMED".equals(readiness.requirementsStatus())
                 && readiness.requiredTargets().contains(com.atenea.delivery.DeliveryTarget.ANDROID_STABLE)
                 && !"INCLUDED".equals(readiness.androidStatus())) {

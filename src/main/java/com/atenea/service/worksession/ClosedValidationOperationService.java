@@ -364,6 +364,11 @@ public class ClosedValidationOperationService {
         };
         Instant updatedAt = Instant.now();
         entity.setStatus(status);
+        // Preserve the already ownership-checked broker observation. Reading
+        // progress never inspects a worker, advances a check or changes authority.
+        entity.setWorkerState(result.state());
+        entity.setWorkerObservedAt(updatedAt);
+        entity.setWorkerStartedAt(progressInstant(result.startedAt()));
         if (status == ValidationOperationStatus.RUNNING) {
             entity.setExitCode(null);
             entity.setDurationMillis(null);
@@ -628,6 +633,20 @@ public class ClosedValidationOperationService {
                 entity.getArtifactManifestSha256(),
                 entity.getSummary(),
                 entity.getStartedAt(),
-                entity.getFinishedAt());
+                entity.getFinishedAt(),
+                entity.getWorkerState(),
+                entity.getWorkerObservedAt(),
+                entity.getWorkerStartedAt());
+    }
+
+    private Instant progressInstant(String value) {
+        // Missing/malformed optional telemetry cannot block or fabricate test
+        // execution. Existing validation ownership and result checks still apply.
+        if (value == null) return null;
+        try {
+            Instant parsed = Instant.parse(value);
+            int year = parsed.atOffset(java.time.ZoneOffset.UTC).getYear();
+            return year >= 1 && year <= 9999 ? parsed : null;
+        } catch (java.time.DateTimeException ignored) { return null; }
     }
 }

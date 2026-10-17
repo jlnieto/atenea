@@ -3,6 +3,7 @@ run-name: ${{ github.event_name == 'repository_dispatch' && format('Atenea UFD o
 on:
   push:
     branches-ignore: [main]
+  create:
   repository_dispatch:
     types: [atenea-ufd-owned-head-v1]
 permissions:
@@ -12,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   ufd-validation:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'create' && github.event.ref_type == 'branch' && startsWith(github.event.ref, 'atenea/android-version-'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:

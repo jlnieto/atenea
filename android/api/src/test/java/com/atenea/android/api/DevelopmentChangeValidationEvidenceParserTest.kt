@@ -56,6 +56,43 @@ class DevelopmentChangeValidationEvidenceParserTest {
         }
     }
 
+    @Test fun `broker phase execution start observation and measured duration survive parsing`() {
+        val item = attempt().put("status", "RUNNING").put("workerState", "QUEUED")
+            .put("workerObservedAt", "2026-10-17T10:02:00Z").put("durationMillis", JSONObject.NULL)
+        val json = evidence().put("operations", JSONArray().put(item)).put("lastAttempt", item)
+        val queued = parseDevelopmentChangeValidationEvidence(json).operations.single()
+        assertEquals("QUEUED", queued.workerState)
+        assertEquals("2026-10-17T10:02:00Z", queued.workerObservedAt)
+        assertNull(queued.workerStartedAt)
+        assertNull(queued.durationMillis)
+        item.put("status", "SUCCEEDED").put("workerState", "SUCCEEDED")
+            .put("workerStartedAt", "2026-10-17T10:01:10Z").put("durationMillis", 50_000)
+        json.put("operations", JSONArray().put(item)).put("passedOperations", 1).put("lastAttempt", item)
+        val done = parseDevelopmentChangeValidationEvidence(json).operations.single()
+        assertEquals(50_000L, done.durationMillis)
+        assertEquals("2026-10-17T10:01:10Z", done.workerStartedAt)
+    }
+
+    @Test fun `legacy optional progress is unknown not inferred from a summary`() {
+        val result = parseDevelopmentChangeValidationEvidence(evidence()).operations.single()
+        assertNull(result.workerState); assertNull(result.workerObservedAt); assertNull(result.workerStartedAt)
+        assertNull(result.durationMillis)
+    }
+
+    @Test fun `invalid or incomplete worker metadata is rejected`() {
+        val variants = listOf(
+            attempt().put("durationMillis", -1),
+            attempt().put("workerState", "ARBITRARY"),
+            attempt().put("workerState", "RUNNING"),
+            attempt().put("workerObservedAt", "2026-10-17T10:02:00Z"),
+            attempt().put("workerStartedAt", "2026-10-17T10:01:00Z"),
+            attempt().put("workerState", "RUNNING").put("workerObservedAt", "invalid")
+        )
+        variants.forEach { item ->
+            assertFailsWith<RuntimeException> { parseDevelopmentChangeValidationEvidence(evidence().put("operations", JSONArray().put(item))) }
+        }
+    }
+
     private fun evidence() = JSONObject()
         .put("changeKey", "59315b6e-59bc-4884-9def-356e1ca86ef4")
         .put("workSessionId", 21).put("sourceRevision", 2)

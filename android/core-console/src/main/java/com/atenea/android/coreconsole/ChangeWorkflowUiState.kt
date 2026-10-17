@@ -41,6 +41,10 @@ internal class MobileDeliveryUiState(
         private set
     var refreshing by mutableStateOf(false)
         private set
+    var manualRefreshing by mutableStateOf(false)
+        private set
+    var consultationMessage by mutableStateOf<String?>(null)
+        private set
     var loadError by mutableStateOf<String?>(null)
         private set
     var actionError by mutableStateOf<String?>(null)
@@ -53,6 +57,8 @@ internal class MobileDeliveryUiState(
     val sourceUpdate get() = snapshot?.sourceUpdate
     val sourceUpdateEnabled get() = available && snapshot?.sourceUpdateEnabled == true
     val releaseRecoveryEnabled get() = available && snapshot?.releaseRecoveryEnabled == true
+    val androidVersionPreparationEnabled get() = available && snapshot?.androidVersionPreparationEnabled == true
+    val canConsult get() = !sending && !manualRefreshing
     val completionEnabled get() = available && snapshot?.completionEnabled == true
     val readiness get() = snapshot?.readiness?.takeIf { available }
     val deployment get() = snapshot?.deployment?.takeIf { available }
@@ -75,7 +81,20 @@ internal class MobileDeliveryUiState(
     val allRequiredDelivered get() = readiness?.let {
         it.requirementsStatus == "CONFIRMED" && it.ready && it.fresh(System.currentTimeMillis() / 1000)
             && it.integratedMergeCommit == operations.firstOrNull { op -> op.kind == "INTEGRATE" }?.mergeCommit
+            && it.requiredTargets.all(::targetDelivered)
     } == true
+    fun targetDelivered(target: MobileDeliveryTarget): Boolean {
+        val now = System.currentTimeMillis() / 1000
+        val facts = readiness ?: return false
+        if (!available || !integrated || facts.requirementsStatus != "CONFIRMED" || !facts.fresh(now)
+            || facts.integratedMergeCommit != operations.firstOrNull { it.kind == "INTEGRATE" }?.mergeCommit) return false
+        return when (target) {
+            MobileDeliveryTarget.APP_PROD -> appDeployed
+            MobileDeliveryTarget.ANDROID_STABLE -> facts.androidStatus == "INCLUDED"
+                && facts.android?.observedAt?.let { it in (now - 60)..(now + 5) } == true
+            MobileDeliveryTarget.AX42_PLATFORM -> false
+        }
+    }
     val appDeployed get() = available && integrated
         && operations.firstOrNull { it.kind == "INTEGRATE" }?.mergeCommit == deployment?.integratedMergeCommit
         && deployment?.isDeployed(System.currentTimeMillis() / 1000) == true
@@ -156,8 +175,26 @@ internal class MobileDeliveryUiState(
         && operations.firstOrNull { it.kind == "INTEGRATE" }?.state == "SUCCEEDED"
         && operations.none { !it.terminal || it.state == "ROLLBACK_FAILED" }
 
-    suspend fun refresh() {
-        if (sending) return
+    suspend fun consult() {
+        if (!canConsult) return
+        manualRefreshing = true
+        val before = snapshot
+        consultationMessage = "Consultando el estado; no se ejecuta ni reintenta ninguna operación."
+        try {
+            refresh(manual = true)
+            consultationMessage = loadError ?: if (before?.operations == snapshot?.operations
+                && before?.sourceUpdate == snapshot?.sourceUpdate && before?.validation == snapshot?.validation
+                && before?.integration == snapshot?.integration && before?.deployment?.sourceCommit == snapshot?.deployment?.sourceCommit
+                && before?.deployment?.status == snapshot?.deployment?.status && before?.deployment?.healthy == snapshot?.deployment?.healthy
+                && before?.readiness?.requiredTargets == snapshot?.readiness?.requiredTargets
+                && before?.readiness?.ready == snapshot?.readiness?.ready && before?.readiness?.androidStatus == snapshot?.readiness?.androidStatus)
+                "Estado consultado: sin cambios. Sigue la acción indicada arriba; consultar no reintenta ni publica."
+            else "Estado actualizado. El siguiente paso aparece arriba; no se ha iniciado ninguna operación."
+        } finally { manualRefreshing = false }
+    }
+
+    suspend fun refresh(manual: Boolean = false) {
+        if (sending || manualRefreshing && !manual) return
         val epoch = generation
         val sequence = ++readSequence
         refreshing = true
@@ -193,7 +230,8 @@ internal class MobileDeliveryUiState(
 
     fun submitSource(kind: DeliveryStepAction, action: suspend () -> MobileSourceUpdate) = submit(kind) { Receipt.Source(action()) }
     fun submitDelivery(kind: DeliveryStepAction,
-        target: MobileDeliveryTarget = if (kind == DeliveryStepAction.PREPARE_ANDROID) MobileDeliveryTarget.ANDROID_STABLE else MobileDeliveryTarget.APP_PROD,
+        target: MobileDeliveryTarget = if (kind in setOf(DeliveryStepAction.PREPARE_ANDROID, DeliveryStepAction.PREPARE_ANDROID_VERSION,
+            DeliveryStepAction.INTEGRATE_ANDROID_VERSION)) MobileDeliveryTarget.ANDROID_STABLE else MobileDeliveryTarget.APP_PROD,
         action: suspend () -> MobileDeliveryOperation) = submit(kind, target) { Receipt.Operation(action()) }
 
     private fun submit(kind: DeliveryStepAction, target: MobileDeliveryTarget = MobileDeliveryTarget.APP_PROD, action: suspend () -> Receipt) {
@@ -203,6 +241,7 @@ internal class MobileDeliveryUiState(
         generation++
         readSequence++
         refreshing = false
+        consultationMessage = null
         actionError = null
         pending = PendingAction(kind, snapshot!!, sending = true, target = target)
         scope.launch { perform(action) }
@@ -275,6 +314,7 @@ internal class MobileDeliveryUiState(
                         DeliveryStepAction.CREATE_PR, DeliveryStepAction.UPDATE_PR -> "PUBLISH_PR"
                         DeliveryStepAction.INTEGRATE -> "INTEGRATE"
                         DeliveryStepAction.FINALIZE, DeliveryStepAction.RECONCILE_FINALIZE -> "FINALIZE"
+                        DeliveryStepAction.PREPARE_ANDROID_VERSION, DeliveryStepAction.INTEGRATE_ANDROID_VERSION -> "ANDROID_VERSION"
                         else -> "RELEASE"
                     }
                     current.kind == kind && (intent.expectedId?.let { current.id == it } ?: (current.target == intent.target))

@@ -64,6 +64,15 @@ public class ValidationOperationEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "worker_state", length = 32)
+    private String workerState;
+
+    @Column(name = "worker_observed_at")
+    private Instant workerObservedAt;
+
+    @Column(name = "worker_started_at")
+    private Instant workerStartedAt;
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     public WorkSessionEntity getWorkSession() { return workSession; }
@@ -94,4 +103,10 @@ public class ValidationOperationEntity {
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+    public String getWorkerState() { return workerState; }
+    public void setWorkerState(String value) { workerState = value; }
+    public Instant getWorkerObservedAt() { return workerObservedAt; }
+    public void setWorkerObservedAt(Instant value) { workerObservedAt = value; }
+    public Instant getWorkerStartedAt() { return workerStartedAt; }
+    public void setWorkerStartedAt(Instant value) { workerStartedAt = value; }
 }
