@@ -215,6 +215,8 @@ class ValidationRecoveryIntegrationTest {
     }
     @Test void immutableIntentCannotBeRetargetedAndMigrationIsSuccessful() {
         var v=ready();assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE mobile_validation_recovery SET source_revision=99 WHERE id=?",v.id()));
-        assertEquals("99",jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class));
+        // V99 must be installed successfully; later expand migrations are legitimate.
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version='99' AND success",Long.class));
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success",Long.class));
     }
 }
