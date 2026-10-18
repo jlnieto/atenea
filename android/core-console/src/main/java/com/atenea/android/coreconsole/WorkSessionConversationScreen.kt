@@ -79,6 +79,7 @@ internal fun WorkSessionConversationScreen(
     var draftModelId by remember { mutableStateOf("") }
     var draftEffort by remember { mutableStateOf("") }
     var runDetail by remember { mutableStateOf<CodexRunDetail?>(null) }
+    var expectedRunId by remember(sessionId) { mutableStateOf<Long?>(null) }
     var runProgress by remember { mutableStateOf<CodexProgressReplay?>(null) }
     var progressRunId by remember { mutableStateOf<Long?>(null) }
     var progressCursor by remember { mutableStateOf(0L) }
@@ -172,6 +173,9 @@ internal fun WorkSessionConversationScreen(
             error = null
             try {
                 val summary = apiClient.fetchMobileWorkSessionSummary(id)
+                val retainedRunId = listOfNotNull(expectedRunId, conversation?.latestRun?.id).maxOrNull()
+                if (!acceptsRunObservation(summary.conversation.latestRun?.id, retainedRunId)) return@launch
+                expectedRunId = summary.conversation.latestRun?.id ?: expectedRunId
                 operatorState = summary.operatorState
                 remoteCloseCoordinator?.accept(summary.operatorState)
                 val loaded = summary.conversation
@@ -475,8 +479,8 @@ internal fun WorkSessionConversationScreen(
 
     LaunchedEffect(sessionId) { refresh() }
 
-    LaunchedEffect(conversation?.latestRun?.id, conversation?.runInProgress) {
-        while (conversation?.runInProgress == true) {
+    LaunchedEffect(conversation?.latestRun?.id, conversation?.runInProgress, expectedRunId) {
+        while (conversation?.runInProgress == true || (expectedRunId != null && conversation?.latestRun?.id != expectedRunId)) {
             delay(3_000)
             refresh(silent = true, includeProfile = false)
         }
@@ -680,6 +684,9 @@ internal fun WorkSessionConversationScreen(
     }
 
     val current = conversation
+    val runUnconfirmed = expectedRunId != null && current?.latestRun?.id != expectedRunId
+    val visibleRunId = expectedRunId ?: current?.latestRun?.id
+    val visibleRunDetail = runDetail?.takeIf { it.runId == visibleRunId && it.workSessionId == sessionId }
     val profileDirty = profile?.let {
         draftModelId != it.model.modelId || draftEffort != it.reasoningEffort
     } == true
@@ -693,13 +700,13 @@ internal fun WorkSessionConversationScreen(
         // buttons themselves still use the single delivery/validation snapshot.
         if (deliveryState.loaded) refresh(silent = true, includeProfile = false)
     }
-    val composerEnabled = current?.canCreateTurn == true && profileReady && !profileDirty && deliveryState.completion == null
+    val composerEnabled = current?.canCreateTurn == true && !runUnconfirmed && profileReady && !profileDirty && deliveryState.completion == null
         && profileError == null && !validationPending && !deliveryState.busy && !deliveryState.validationRunning
         && !deliveryState.deliveryBeforeValidation(false)
     val changeValidationUi = deliveryState.validationUi(current?.session, current?.runInProgress == true)
     ConversationSurface(
         title = current?.session?.title ?: "WorkSession $sessionId",
-        status = "Sesión $sessionId · " + conversationStatusLabel(current?.runInProgress == true,
+        status = if (runUnconfirmed) "Consultando la tarea $expectedRunId" else "Sesión $sessionId · " + conversationStatusLabel(current?.runInProgress == true,
             deliveryState.validationEvidence?.validationState, current?.session?.status,
             current?.latestRun?.status, validationInProgress = validationPending),
         surfaceKey = "work-session-$sessionId",
@@ -727,10 +734,10 @@ internal fun WorkSessionConversationScreen(
             }
         },
         runContent = if (
-            operatorState?.surfaceEnabled == true || current?.latestRun != null || runDetail != null || operationError != null
+            operatorState?.surfaceEnabled == true || visibleRunId != null || visibleRunDetail != null || operationError != null
         ) {
             {
-                operatorState?.let { currentState ->
+                operatorState?.takeIf { !runUnconfirmed }?.let { currentState ->
                     RemoteCloseOperatorPanel(
                         serverState = currentState,
                         actionState = remoteCloseActionState,
@@ -739,13 +746,13 @@ internal fun WorkSessionConversationScreen(
                         dark = true
                     )
                 }
-                if (runDetail == null && current?.latestRun != null) {
-                    Text("Consultando la tarea ${current.latestRun?.id}; no se muestra una ejecución anterior.")
+                if (visibleRunDetail == null && visibleRunId != null) {
+                    Text("Consultando la tarea $visibleRunId; no se muestra una ejecución anterior.")
                 }
-                if (runDetail != null || operationError != null) {
+                if (visibleRunDetail != null || operationError != null) {
                     CodexRunProgressCard(
-                        detail = runDetail,
-                        progress = runProgress,
+                        detail = visibleRunDetail,
+                        progress = runProgress.takeIf { progressRunId == visibleRunId },
                         pending = operationPending,
                         error = operationError,
                         notice = operationNotice,
@@ -772,7 +779,7 @@ internal fun WorkSessionConversationScreen(
                 onReadEvidence = { if (!deliveryState.refreshing) scope.launch { deliveryState.refresh() } },
                 onValidate = { validateChange(deliveryState) },
                 completed = loaded.session.status == "CLOSED" || deliveryState.completion != null,
-                runInProgress = loaded.runInProgress,
+                runInProgress = loaded.runInProgress || runUnconfirmed,
                 deliveryBeforeValidation = deliveryState.deliveryBeforeValidation(loaded.runInProgress || changeValidationUi.inProgress)
             ) {
                 if (closedSessionHistoryOnly(loaded.session.status, deliveryState.completion != null)) {
@@ -788,7 +795,7 @@ internal fun WorkSessionConversationScreen(
                 } else {
                     MobileDeliveryPanel(apiClient, sessionId,
                         validated = deliveryState.validationCurrent,
-                        runInProgress = loaded.runInProgress, state = deliveryState,
+                        runInProgress = loaded.runInProgress || runUnconfirmed, state = deliveryState,
                         sessionOpen = loaded.session.status == "OPEN", onOpenUpdates = onOpenUpdates,
                         validationInProgress = changeValidationUi.inProgress)
                 }
@@ -797,7 +804,11 @@ internal fun WorkSessionConversationScreen(
         // Help must remain accessible even if loading the worker-backed conversation failed.
         helpContent = { navigate ->
             ChangeHelpScreen(apiClient, sessionId, current?.session?.developmentChangeKey, navigate,
-                onRunChanged = { refresh(silent = true, includeProfile = false) })
+                onRunChanged = { runId ->
+                    expectedRunId = maxOf(expectedRunId ?: runId, runId)
+                    if (runDetail?.runId != expectedRunId) { runDetail = null; runProgress = null; progressRunId = null }
+                    refresh(silent = true, includeProfile = false)
+                })
         },
         onPaneChanged = { if (it == ConversationPane.ACTIVITY) refresh(silent = true, includeProfile = false) },
         profileContent = if (!profileUnavailable) {
