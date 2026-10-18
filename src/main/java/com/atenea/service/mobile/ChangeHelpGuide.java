@@ -49,8 +49,15 @@ public final class ChangeHelpGuide {
             shortAnswer="Falta confirmar qué acciones están soportadas para este proyecto.";
             destination="CHAT"; label="Volver a la conversación"; reason="No se inventa un catálogo ni se lanza otra tarea.";
         } else if (c.runInProgress()) {
-            stage="RUNNING"; answer="Codex todavía está trabajando. No envíes otra vez la misma petición ni reintentes la tarea. Puedes consultar su progreso y volver a preguntar cuando termine.";
-            shortAnswer="La tarea sigue en marcha. Espera; no hace falta repetirla.";
+            stage="RUNNING";
+            answer=switch(c.latestRunStatus()==null?"":c.latestRunStatus()) {
+                case "QUEUED" -> "La tarea está pendiente de arrancar; todavía no se ha confirmado que Codex esté ejecutándola. Atenea conserva la misma petición y comprueba su arranque. No la repitas. Puedes consultar el estado de esta tarea.";
+                case "STARTING" -> "Atenea está preparando esta ejecución. Todavía no confirma que Codex haya empezado. No repitas la petición; consulta esta misma tarea.";
+                case "RECONCILING" -> "Atenea está comprobando qué ocurrió con esta misma ejecución. No está confirmando que Codex siga trabajando. No repitas la petición.";
+                case "CANCELLING" -> "Atenea está confirmando la cancelación de esta tarea. No inicies otra hasta que se confirme su resultado.";
+                default -> "Codex todavía está trabajando. No envíes otra vez la misma petición ni reintentes la tarea. Puedes consultar su progreso y volver a preguntar cuando termine.";
+            };
+            shortAnswer="QUEUED".equals(c.latestRunStatus())?"Pendiente de arrancar. Codex aún no ha empezado; no repitas la petición.":answer;
             destination="ACTIVITY"; label="Ver progreso"; reason="Abre el detalle de la ejecución actual.";
         } else if (c.validationInProgress()) {
             stage="VALIDATING"; answer="Las pruebas ya están en curso. Consultar su resultado no inicia ni repite pruebas. Cuando terminen, Atenea mostrará qué pasó.";

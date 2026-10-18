@@ -42,6 +42,16 @@ class ValidationRecoveryTest {
         assertFailsWith<IllegalArgumentException> { parseValidationRecovery(overview().put("workSessionId", 27), 26) }
         assertFailsWith<IllegalArgumentException> { parseValidationRecovery(overview().put("protocolVersion", "foreign"), 26) }
         assertFailsWith<IllegalArgumentException> { parseValidationRecoveryOperation(operation().put("state", "EXECUTE_SHELL")) }
+        assertFailsWith<IllegalArgumentException> { parseValidationRecoveryOperation(operation().put("runStatus", "EXECUTE_SHELL")) }
+    }
+    @Test fun `investigation status comes from its bound run not the operation state`() {
+        val value = operation().put("kind", "INVESTIGATION").put("state", "INVESTIGATED").put("runId", 126)
+        assertNull(parseValidationRecoveryOperation(value).runStatus)
+        for (status in listOf("QUEUED", "STARTING", "RUNNING", "RECONCILING", "SUCCEEDED", "FAILED", "CANCELLED")) {
+            val parsed = parseValidationRecoveryOperation(value.put("runStatus", status))
+            assertEquals(126L, parsed.runId); assertEquals(status, parsed.runStatus)
+            assertEquals("INVESTIGATED", parsed.state)
+        }
     }
     @Test fun `missing endpoint never falls back to duplicate prompt or validation`() = withServer { server, client ->
         server.enqueue(MockResponse().setResponseCode(404).setBody("{}"))

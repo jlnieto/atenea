@@ -140,21 +140,26 @@ internal fun WorkSessionConversationScreen(
             operationError = null
             return
         }
+        if (runDetail?.runId != runId) {
+            runDetail = null; runProgress = null; progressRunId = null; progressCursor = 0
+        }
         try {
-            runDetail = apiClient.fetchCodexRunDetail(runId)
+            val loadedDetail = apiClient.fetchCodexRunDetail(runId)
+            if (conversation?.latestRun?.id != runId) return
+            require(loadedDetail.runId == runId && loadedDetail.workSessionId == id)
+            runDetail = loadedDetail
             if (progressRunId != runId) {
                 progressRunId = runId
                 progressCursor = 0
                 runProgress = null
             }
             val replay = apiClient.fetchCodexRunProgress(runId, progressCursor)
+            if (conversation?.latestRun?.id != runId) return
             runProgress = mergeCodexProgressReplay(runProgress, replay)
             progressCursor = runProgress?.latestObservedSequence() ?: progressCursor
             operationError = null
         } catch (runLoadError: AteneaApiException) {
-            if (runLoadError.status != 404) {
-                operationError = "No se pudo actualizar la ejecución. ${runLoadError.message}"
-            }
+            operationError = "No se pudo confirmar el detalle de la tarea $runId. No se muestra otra ejecución en su lugar."
         } catch (runLoadError: Exception) {
             operationError = "No se pudo actualizar la ejecución. ${runLoadError.message ?: "Reintenta la sincronización."}"
         }
@@ -169,7 +174,9 @@ internal fun WorkSessionConversationScreen(
                 val summary = apiClient.fetchMobileWorkSessionSummary(id)
                 operatorState = summary.operatorState
                 remoteCloseCoordinator?.accept(summary.operatorState)
-                conversation = summary.conversation.also { loaded ->
+                val loaded = summary.conversation
+                conversation = loaded
+                run {
                     AteneaDiagnostics.info(
                         area = "conversation",
                         event = "loaded",
@@ -720,7 +727,7 @@ internal fun WorkSessionConversationScreen(
             }
         },
         runContent = if (
-            operatorState?.surfaceEnabled == true || runDetail != null || operationError != null
+            operatorState?.surfaceEnabled == true || current?.latestRun != null || runDetail != null || operationError != null
         ) {
             {
                 operatorState?.let { currentState ->
@@ -731,6 +738,9 @@ internal fun WorkSessionConversationScreen(
                         onPrimaryAction = ::runRemoteClosePrimaryAction,
                         dark = true
                     )
+                }
+                if (runDetail == null && current?.latestRun != null) {
+                    Text("Consultando la tarea ${current.latestRun?.id}; no se muestra una ejecución anterior.")
                 }
                 if (runDetail != null || operationError != null) {
                     CodexRunProgressCard(
@@ -786,8 +796,10 @@ internal fun WorkSessionConversationScreen(
         } },
         // Help must remain accessible even if loading the worker-backed conversation failed.
         helpContent = { navigate ->
-            ChangeHelpScreen(apiClient, sessionId, current?.session?.developmentChangeKey, navigate)
+            ChangeHelpScreen(apiClient, sessionId, current?.session?.developmentChangeKey, navigate,
+                onRunChanged = { refresh(silent = true, includeProfile = false) })
         },
+        onPaneChanged = { if (it == ConversationPane.ACTIVITY) refresh(silent = true, includeProfile = false) },
         profileContent = if (!profileUnavailable) {
             {
                 CodexExecutionProfileStrip(

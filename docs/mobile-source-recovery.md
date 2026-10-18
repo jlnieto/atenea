@@ -1,5 +1,29 @@
 # Recuperar la actualización de la misma PR
 
+## Investigación de una validación fallida
+
+«Investigar este bloqueo» conserva un único intent, turno y AgentRun vinculados
+al fallo y a la revisión. El envío ocurre después del commit de la transacción;
+un rollback no envía nada. Un reconciliador retoma las investigaciones que sigan
+en cola desde su intención durable, con el mismo run/dispatch y comprobando de
+nuevo operador, sesión, cambio y huella. Un observador por run evita bucles de
+envío concurrentes. Leer o refrescar no crea trabajo ni repite la validación.
+
+El estado `INVESTIGATED` sólo significa que se registró la investigación, no
+que Codex terminó. `runStatus` comunica de forma aditiva el estado del AgentRun
+vinculado. Se conserva su consulta al avanzar la revisión como resultado de la
+investigación. Una identidad no confirmada no se presenta como ejecución sana.
+
+Android muestra en la misma pantalla la tarea concreta, cola, arranque,
+ejecución, resultado y último evento confirmado. Se actualiza automáticamente;
+no requiere volver a la ayuda para descubrir otro botón. El resultado se toma
+únicamente de la respuesta asociada a ese run. Nunca sustituye una ejecución
+sin confirmar por el detalle completado de una tarea anterior. La ayuda distingue
+cola, preparación y reconciliación de trabajo de Codex. Terminar la investigación
+no valida, integra ni publica el cambio.
+
+## Actualización de la misma PR
+
 Resolver conflictos no repite el prompt funcional ni crea otra conversación.
 La operación guarda el commit exacto de main aprobado, el HEAD publicado y la
 evidencia de ownership antes de preparar nada. Si AX42 no tiene ese commit,

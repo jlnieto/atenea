@@ -100,6 +100,16 @@ class ChangeHelpGuideTest {
         var r=ChangeHelpGuide.explain(f.build(),"Publica ahora",false);
         assertEquals("RUNNING",r.stage()); assertEquals("ACTIVITY",r.nextAction().destination());
     }
+    @Test void queuedStartingAndReconcilingNeverClaimCodexIsWorking() {
+        for (String status:java.util.List.of("QUEUED","STARTING","RECONCILING","CANCELLING")) {
+            var f=new ChangeHelpFixture(); f.activeRun=true; f.runStatus=status;
+            var result=ChangeHelpGuide.explain(f.build(),"Qué hago",false);
+            assertEquals("RUNNING",result.stage());
+            assertFalse(result.answer().contains("Codex todavía está trabajando"));
+            assertTrue(result.answer().contains("misma") || result.answer().contains("esta tarea") || result.answer().contains("esta ejecución"));
+            assertEquals("ACTIVITY",result.nextAction().destination());
+        }
+    }
     @Test void runningValidationDoesNotOfferAnotherValidation() {
         var f=new ChangeHelpFixture(); f.activeValidation=true;
         assertEquals("VALIDATING",stage(f));

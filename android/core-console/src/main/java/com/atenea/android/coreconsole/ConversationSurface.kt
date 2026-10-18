@@ -119,9 +119,11 @@ internal fun ConversationSurface(
     onResetAttachmentSubmission: (() -> Unit)? = null,
     onOpenHistoricalAttachment: ((SessionTurnAttachment) -> Unit)? = null,
     onEnableImages: (() -> Unit)? = null,
-    onOpenUpdates: () -> Unit = {}
+    onOpenUpdates: () -> Unit = {},
+    onPaneChanged: (ConversationPane) -> Unit = {}
 ) {
     var pane by rememberSaveable(surfaceKey) { mutableStateOf(ConversationPane.CHAT) }
+    LaunchedEffect(pane) { onPaneChanged(pane) }
     var showAttachmentHelp by remember { mutableStateOf(false) }
     val transcriptState = rememberLazyListState()
     val userDragging by transcriptState.interactionSource.collectIsDraggedAsState()

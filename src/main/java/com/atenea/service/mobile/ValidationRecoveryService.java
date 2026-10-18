@@ -17,6 +17,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** Durable, explicit recovery. Reading help or polling never creates a run or retries tests. */
 @Service
@@ -54,7 +56,7 @@ public class ValidationRecoveryService {
                     : e.state().equals("APPLIED") && Objects.equals(e.resultFingerprint(),change.getSourceFingerprintSha256())))
                 .findFirst().orElse(null);
         var investigation=entries.stream().filter(e->e.operatorId().equals(actor.operatorId())&&e.kind().equals("INVESTIGATION")
-                && failed!=null && e.validationId().equals(failed.getId()))
+                && (failed==null || e.validationId().equals(failed.getId())))
                 .findFirst().orElse(null);
         boolean available=false; String code=failed==null?null:failureCode(failed.getSummary());
         if (failed!=null && knownFailure(failed) && repair==null && store.idle()) {
@@ -63,7 +65,7 @@ public class ValidationRecoveryService {
         }
         return new Overview(sessionId,change.getChangeKey(),change.getSourceRevision(),code,
                 available,failed!=null && !runs.existsBySessionIdAndStatusIn(sessionId,AgentRunStatus.nonTerminalStatuses()),
-                repair==null?null:repair.view(),investigation==null?null:investigation.view());
+                repair==null?null:repair.view(),investigation==null?null:investigationView(investigation));
     }
     public ValidationRecoveryStore.View prepare(Long sessionId,AuthenticatedOperator actor) {
         administrator(actor);
@@ -98,7 +100,7 @@ public class ValidationRecoveryService {
             store.admissionLock(); var session=session(sessionId,true); var change=owner(session);
             var failed=requireFailure(session,change);
             var existing=store.list(sessionId).stream().filter(e->e.kind().equals("INVESTIGATION")&&e.validationId().equals(failed.getId())).findFirst();
-            if (existing.isPresent()) { requireActor(existing.get(),actor); return existing.get().view(); }
+            if (existing.isPresent()) { requireActor(existing.get(),actor); return investigationView(existing.get()); }
             requireIdle(session);
             UUID id=UUID.randomUUID();
             var entry=store.create(id,sessionId,actor.operatorId(),failed.getId(),"INVESTIGATION",change.getSourceRevision(),
@@ -107,8 +109,11 @@ public class ValidationRecoveryService {
             turn.setActor(SessionTurnActor.ATENEA);turn.setInternal(false);turn.setCreatedAt(now);
             turn.setMessageText(investigationPrompt(failed,change.getSourceRevision()));turns.saveAndFlush(turn);
             var run=agentRuns.createRemoteQueuedRun(session,turn,WorkloadClass.NORMAL);
-            store.investigated(entry.id(),run.getId());coordinator.dispatchAfterCommit(run.getId());
-            return store.get(id,false).view();
+            store.investigated(entry.id(),run.getId());
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { coordinator.dispatchAfterCommit(run.getId()); }
+            });
+            return store.get(id,false).view(run.getStatus().name());
         });
     }
     public ValidationRecoveryStore.View recover(Long sessionId,UUID id,AuthenticatedOperator actor) {
@@ -148,6 +153,37 @@ public class ValidationRecoveryService {
                 tx.executeWithoutResult(ignored->store.state(id,"ATTENTION","VALIDATION_REPAIR_NEEDS_INSPECTION"));
             }
         }
+        // The committed intent, not an in-memory callback, is the authority.
+        // Resume only the exact already-authorized run; never create a turn/run.
+        for (var entry:store.queuedInvestigations()) {
+            Long runId=tx.execute(ignored->{
+                try {
+                    administrator(new AuthenticatedOperator(entry.operatorId(),"",""));
+                    var session=session(entry.sessionId(),true); var change=owner(session);
+                    var run=runs.findWithSessionById(entry.runId()).orElse(null);
+                    return boundInvestigation(entry,run) && run.getStatus()==AgentRunStatus.QUEUED
+                        && entry.sourceRevision()==change.getSourceRevision()
+                        && entry.sourceFingerprint().equals(change.getSourceFingerprintSha256()) ? run.getId() : null;
+                } catch (DeliveryRejectedException stopped) { return null; }
+            });
+            if (runId!=null) coordinator.dispatchAfterCommit(runId);
+        }
+    }
+    private ValidationRecoveryStore.View investigationView(ValidationRecoveryStore.Entry entry) {
+        var run=entry.runId()==null?null:runs.findWithSessionById(entry.runId()).orElse(null);
+        return entry.view(boundInvestigation(entry,run)?run.getStatus().name():null);
+    }
+    private boolean boundInvestigation(ValidationRecoveryStore.Entry entry,AgentRunEntity run) {
+        return run!=null && run.getSession()!=null && Objects.equals(run.getSession().getId(),entry.sessionId())
+            && run.getExecutionTarget()==ExecutionTarget.REMOTE && run.getOriginTurn()!=null
+            && run.getOriginTurn().getActor()==SessionTurnActor.ATENEA && !run.getOriginTurn().isInternal()
+            && run.getSession().getDevelopmentChange()!=null
+            && Objects.equals(run.getDevelopmentChangeKey(),run.getSession().getDevelopmentChange().getChangeKey())
+            && Objects.equals(run.getChangeSourceRevision(),entry.sourceRevision())
+            && Objects.equals(run.getChangeSourceFingerprintSha256(),entry.sourceFingerprint())
+            && Objects.equals(run.getWorkspaceIdentity(),run.getSession().getWorkspaceIdentity())
+            && Objects.equals(run.getSelectedWorkerId(),ProjectCodexIdentity.WORKER_ID)
+            && ProjectCodexIdentity.CHANGE_WORKLOAD_KIND.equals(run.getWorkloadKind());
     }
     public void process(UUID id) {
         var entry=tx.execute(ignored->{

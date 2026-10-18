@@ -23,7 +23,7 @@ public record ChangeHelpContext(
         var facts = new java.util.ArrayList<String>();
         facts.add("Cambio: " + readable(changeStatus) + "; sesión: " + readable(sessionStatus) + ".");
         facts.add("Espacio de trabajo: " + readable(workspaceState) + "; código: " + readable(sourceState) + ".");
-        if (latestRunId != null) facts.add("Última tarea " + latestRunId + ": " + readable(latestRunStatus) + ".");
+        if (latestRunId != null) facts.add("Última tarea " + latestRunId + ": " + readableRun(latestRunStatus) + ".");
         facts.add(requiredChecks > 0 ? "Pruebas de esta revisión: " + passedChecks + "/" + requiredChecks + " correctas."
                 : "No hay un catálogo de comprobaciones confirmado para este proyecto.");
         if (failedCheck != null) facts.add("Comprobación con atención pendiente: " + failedCheck + ".");
@@ -78,6 +78,18 @@ public record ChangeHelpContext(
             case "RESOLVING" -> "Codex está resolviendo los conflictos";
             case "UNKNOWN" -> "no confirmado";
             default -> status;
+        };
+    }
+    private static String readableRun(String status) {
+        if (status==null) return "no confirmado";
+        return switch(status) {
+            case "QUEUED" -> "pendiente de arrancar; Codex todavía no ha empezado";
+            case "STARTING" -> "preparando esta ejecución";
+            case "RUNNING" -> "en ejecución";
+            case "RECONCILING" -> "comprobando el estado de esta ejecución";
+            case "CANCELLING" -> "confirmando la cancelación";
+            case "CANCELLED" -> "cancelada";
+            default -> readable(status);
         };
     }
 }

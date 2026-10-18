@@ -176,6 +176,26 @@ class ValidationRecoveryIntegrationTest {
     @Test void unknownFailureCannotUseKnownRecipeButInvestigationCreatesOnlyOneBoundRun() {
         jdbc.update("UPDATE validation_operation SET summary='[NEW_UNKNOWN_FAILURE] detail' WHERE id=?",validationId);
         assertThrows(DeliveryRejectedException.class,()->service.prepare(sessionId,actor));
+        stubInvestigationRun();
+        doAnswer(call->{
+            var independent=new TransactionTemplate(manager);
+            independent.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            Long visible=independent.execute(ignored->jdbc.queryForObject(
+                "SELECT count(*) FROM agent_run WHERE id=?",Long.class,call.getArgument(0,Long.class)));
+            assertEquals(1L,visible.longValue());
+            return null;
+        }).when(coordinator).dispatchAfterCommit(anyLong());
+        assertFalse(service.observe(sessionId,actor).canPrepareRepair());
+        var first=service.investigate(sessionId,actor);var second=service.investigate(sessionId,actor);
+        assertEquals(first.id(),second.id());assertEquals(first.runId(),second.runId());assertNotNull(first.runId());
+        assertEquals("QUEUED",service.observe(sessionId,actor).investigation().runStatus());
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM session_turn WHERE session_id=?",Long.class,sessionId));
+        verify(agentRuns,times(1)).createRemoteQueuedRun(any(),any(),eq(WorkloadClass.NORMAL));
+        verify(coordinator,times(1)).dispatchAfterCommit(first.runId());
+        verify(gateway,never()).call(any(),eq(Action.PREPARE));
+    }
+    private void stubInvestigationRun() {
         when(agentRuns.createRemoteQueuedRun(any(),any(),eq(WorkloadClass.NORMAL))).thenAnswer(call->{
             // The existing factory owns profile/admission tests. Persist its
             // synthetic result here to exercise the real run FK and deduplication.
@@ -192,14 +212,38 @@ class ValidationRecoveryIntegrationTest {
             run.setChangeWorkspaceOwnershipFingerprintSha256(before);run.setDispatchId(UUID.randomUUID());
             run.setStartedAt(now);run.setCreatedAt(now);return runs.saveAndFlush(run);
         });
-        assertFalse(service.observe(sessionId,actor).canPrepareRepair());
-        var first=service.investigate(sessionId,actor);var second=service.investigate(sessionId,actor);
-        assertEquals(first.id(),second.id());assertEquals(first.runId(),second.runId());assertNotNull(first.runId());
-        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+    }
+    @Test void investigationRolledBackBeforeCommitIsNeverDispatched() {
+        stubInvestigationRun();
+        tx.executeWithoutResult(status->{
+            service.investigate(sessionId,actor);
+            verifyNoInteractions(coordinator);
+            status.setRollbackOnly();
+        });
+        verifyNoInteractions(coordinator);
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Long.class,sessionId));
+        assertEquals(0,store.list(sessionId).size());
+    }
+    @Test void lostDispatchCallbackResumesSameBoundQueuedRunWithoutCreatingWork() {
+        stubInvestigationRun();var original=service.investigate(sessionId,actor);clearInvocations(coordinator,agentRuns);
+        service.reconcile();
+        verify(coordinator).dispatchAfterCommit(original.runId());verifyNoInteractions(agentRuns);
+        assertEquals(original.runId(),store.get(original.id(),false).runId());
         assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM session_turn WHERE session_id=?",Long.class,sessionId));
-        verify(agentRuns,times(1)).createRemoteQueuedRun(any(),any(),eq(WorkloadClass.NORMAL));
-        verify(coordinator,times(1)).dispatchAfterCommit(first.runId());
-        verify(gateway,never()).call(any(),eq(Action.PREPARE));
+        jdbc.update("UPDATE agent_run SET status='SUCCEEDED',finished_at=now() WHERE id=?",original.runId());
+        clearInvocations(coordinator);service.reconcile();verifyNoInteractions(coordinator);
+        assertEquals("SUCCEEDED",service.observe(sessionId,actor).investigation().runStatus());
+        jdbc.update("UPDATE development_change SET source_revision=2,source_fingerprint_sha256=? WHERE id=?",after,changeId);
+        assertEquals(original.runId(),service.observe(sessionId,actor).investigation().runId());
+    }
+    @Test void queuedInvestigationWithChangedOwnershipOrRevisionIsNeverResumed() {
+        stubInvestigationRun();var original=service.investigate(sessionId,actor);clearInvocations(coordinator,agentRuns);
+        jdbc.update("UPDATE agent_run SET change_source_fingerprint_sha256=? WHERE id=?","7".repeat(64),original.runId());
+        service.reconcile();verifyNoInteractions(coordinator,agentRuns);
+        assertNull(service.observe(sessionId,actor).investigation().runStatus());
+        jdbc.update("UPDATE agent_run SET change_source_fingerprint_sha256=? WHERE id=?",before,original.runId());
+        jdbc.update("UPDATE development_change SET source_revision=2 WHERE id=?",changeId);
+        service.reconcile();verifyNoInteractions(coordinator,agentRuns);
     }
     @Test void callerRoleSessionAndOperationOwnershipAreRechecked() {
         var v=ready();assertThrows(RuntimeException.class,()->service.apply(sessionId+10000,v.id(),actor));
