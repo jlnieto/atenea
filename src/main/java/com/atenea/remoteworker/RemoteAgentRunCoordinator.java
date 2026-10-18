@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -63,6 +65,7 @@ public class RemoteAgentRunCoordinator {
     private final DevelopmentChangeAgentRunSourceAdvanceService sourceAdvanceService;
     private final TransactionTemplate transaction;
     private final ExecutorService executor;
+    private final Set<Long> observingRuns = ConcurrentHashMap.newKeySet();
 
     public RemoteAgentRunCoordinator(
             AgentRunRepository agentRunRepository,
@@ -94,7 +97,23 @@ public class RemoteAgentRunCoordinator {
     }
 
     public void dispatchAfterCommit(Long runId) {
-        executor.submit(() -> observe(runId));
+        if (!observingRuns.add(runId)) return;
+        try {
+            executor.submit(() -> {
+                try {
+                    observe(runId);
+                } catch (RuntimeException stopped) {
+                    // Do not expose candidate output or credentials. A retained queued
+                    // investigation can be resumed with the same durable dispatch ID.
+                    log.warn("Remote execution observer stopped runId={}", runId);
+                } finally {
+                    observingRuns.remove(runId);
+                }
+            });
+        } catch (RuntimeException rejected) {
+            observingRuns.remove(runId);
+            throw rejected;
+        }
     }
 
     public int reconcileAfterStartup() {

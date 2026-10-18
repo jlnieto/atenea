@@ -4,7 +4,7 @@ import org.json.JSONObject
 import java.util.UUID
 
 data class ValidationRecoveryOperation(val id: UUID, val kind: String, val state: String,
-    val sourceRevision: Long, val runId: Long?, val errorCode: String?) {
+    val sourceRevision: Long, val runId: Long?, val errorCode: String?, val runStatus: String? = null) {
     val working: Boolean get() = state in setOf("PREPARE_REQUESTED", "PREPARING", "APPLY_REQUESTED", "APPLYING")
 }
 data class ValidationRecovery(val workSessionId: Long, val changeKey: UUID, val sourceRevision: Long,
@@ -18,9 +18,11 @@ internal fun parseValidationRecoveryOperation(value: JSONObject): ValidationReco
     require(state in setOf("PREPARE_REQUESTED", "PREPARING", "READY", "APPLY_REQUESTED", "APPLYING", "APPLIED",
         "ATTENTION", "CANCELLED", "INVESTIGATING", "INVESTIGATED"))
     require(value.getLong("sourceRevision") >= 0)
+    val runStatus = if (value.isNull("runStatus")) null else value.getString("runStatus")
+    require(runStatus == null || runStatus in setOf("QUEUED", "STARTING", "RUNNING", "CANCELLING", "RECONCILING", "SUCCEEDED", "FAILED", "CANCELLED"))
     return ValidationRecoveryOperation(UUID.fromString(value.getString("id")), kind, state,
         value.getLong("sourceRevision"), if (value.isNull("runId")) null else value.getLong("runId"),
-        if (value.isNull("errorCode")) null else value.getString("errorCode"))
+        if (value.isNull("errorCode")) null else value.getString("errorCode"), runStatus)
 }
 internal fun parseValidationRecovery(value: JSONObject, sessionId: Long): ValidationRecovery {
     require(value.getString("protocolVersion") == "validation-recovery/v1")

@@ -60,6 +60,15 @@ public class ValidationRecoveryStore {
              ('PREPARE_REQUESTED','PREPARING','APPLY_REQUESTED','APPLYING') ORDER BY created_at LIMIT 4
             """,UUID.class);
     }
+    public List<Entry> queuedInvestigations() {
+        return jdbc.query("""
+            SELECT e.* FROM mobile_validation_recovery e
+             JOIN agent_run r ON r.id=e.run_id AND r.session_id=e.session_id
+            WHERE e.kind='INVESTIGATION' AND e.state='INVESTIGATED'
+              AND r.execution_target='REMOTE' AND r.status='QUEUED'
+            ORDER BY e.created_at LIMIT 4
+            """,this::row);
+    }
     private Entry row(ResultSet rs,int ignored) throws SQLException {
         try {
             String command=rs.getString("command_json");
@@ -78,9 +87,13 @@ public class ValidationRecoveryStore {
     public record Entry(UUID id,Long sessionId,Long operatorId,UUID validationId,String kind,String state,
             long sourceRevision,String sourceFingerprint,ValidationRecoveryCommand command,JsonNode evidence,
             String resultFingerprint,Long runId,String errorCode,Instant createdAt) {
-        public View view() { return new View(id,kind,state,sourceRevision,runId,errorCode); }
+        public View view() { return view(null); }
+        public View view(String runStatus) { return new View(id,kind,state,sourceRevision,runId,errorCode,runStatus); }
     }
-    public record View(UUID id,String kind,String state,long sourceRevision,Long runId,String errorCode) {
+    public record View(UUID id,String kind,String state,long sourceRevision,Long runId,String errorCode,String runStatus) {
+        public View(UUID id,String kind,String state,long sourceRevision,Long runId,String errorCode) {
+            this(id,kind,state,sourceRevision,runId,errorCode,null);
+        }
         public String getProtocolVersion() { return "validation-recovery/v1"; }
     }
 }

@@ -1,6 +1,8 @@
 package com.atenea.remoteworker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -104,6 +106,24 @@ class RemoteAgentRunCoordinatorTest {
     @AfterEach
     void tearDown() {
         coordinator.shutdown();
+    }
+    @Test
+    void repeatedResumeWhileObserverIsActiveNeverStartsAnotherObserver() throws Exception {
+        AgentRunEntity run=projectRun();
+        var entered=new java.util.concurrent.CountDownLatch(1);
+        var release=new java.util.concurrent.CountDownLatch(1);
+        when(agentRunRepository.findWithSessionById(run.getId())).thenAnswer(call->{
+            entered.countDown();
+            assertTrue(release.await(3,java.util.concurrent.TimeUnit.SECONDS));
+            return Optional.empty();
+        });
+        try {
+            coordinator.dispatchAfterCommit(run.getId());
+            assertTrue(entered.await(3,java.util.concurrent.TimeUnit.SECONDS));
+            for(int i=0;i<10;i++) coordinator.dispatchAfterCommit(run.getId());
+            verify(agentRunRepository,times(1)).findWithSessionById(run.getId());
+            verifyNoInteractions(client);
+        } finally { release.countDown(); }
     }
 
     @Test

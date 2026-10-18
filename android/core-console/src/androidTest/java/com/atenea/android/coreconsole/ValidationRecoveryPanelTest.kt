@@ -65,4 +65,39 @@ class ValidationRecoveryPanelTest {
         compose.onNodeWithText("Abrir acceso privado").performClick()
         assertEquals(1, opened)
     }
+    @Test fun investigationShowsQueuedRunningAndCompletedInlineWithoutBackNavigation() {
+        val current = androidx.compose.runtime.mutableStateOf("QUEUED")
+        compose.setContent { AteneaOperatorTheme { ValidationRecoveryPanel(
+            value(known = false).copy(investigation = ValidationRecoveryOperation(id, "INVESTIGATION", "INVESTIGATED", 1, 126, null, current.value)),
+            false, null, {}, {}, {}, {}, {}, {}, {}, {}, {}) } }
+        compose.onNodeWithText("Pendiente de arrancar").assertIsDisplayed()
+        compose.onNodeWithText("Investigación · tarea 126 · revisión 1").assertIsDisplayed()
+        compose.onNodeWithText("Investigar este bloqueo").assertDoesNotExist()
+        compose.onNodeWithText("El bloqueo necesita investigación").assertDoesNotExist()
+        compose.runOnIdle { current.value = "RUNNING" }
+        compose.onNodeWithText("Investigación en curso").assertIsDisplayed()
+        compose.runOnIdle { current.value = "SUCCEEDED" }
+        compose.onNodeWithText("Investigación terminada").assertIsDisplayed()
+        compose.onNodeWithText("Ver diagnóstico en conversación").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Ir a Validar cambio").assertDoesNotExist()
+    }
+    @Test fun onlyANewRevisionWithoutTheSameFailureOffersValidationAfterInvestigation() {
+        compose.setContent { AteneaOperatorTheme { ValidationRecoveryPanel(
+            value(known = false).copy(sourceRevision = 2, failureCode = null,
+                investigation = ValidationRecoveryOperation(id, "INVESTIGATION", "INVESTIGATED", 1, 126, null, "SUCCEEDED")),
+            false, null, {}, {}, {}, {}, {}, {}, {}, {}, {}) } }
+        compose.onNodeWithText("Ir a Validar cambio").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Ver diagnóstico en conversación").assertDoesNotExist()
+    }
+    @Test fun wrongRunDetailCannotReplaceTheBoundInvestigationWithAnOlderSuccess() {
+        val old = com.atenea.android.api.CodexRunDetail(125, 26, "SUCCEEDED", null, null, null, null, null, null,
+            "COMPLETED", 0, 0, 100, "NONE", null)
+        compose.setContent { AteneaOperatorTheme { ValidationRecoveryPanel(
+            value(known = false).copy(investigation = ValidationRecoveryOperation(id, "INVESTIGATION", "INVESTIGATED", 1, 126, null, "QUEUED")),
+            false, null, {}, {}, {}, {}, {}, {}, {}, {}, {}, investigationDetail = old,
+            investigationAnswer = "Respuesta de la tarea anterior") } }
+        compose.onNodeWithText("Pendiente de arrancar").assertIsDisplayed()
+        compose.onNodeWithText("Respuesta de la tarea anterior").assertDoesNotExist()
+        compose.onNodeWithText("Estado confirmado: SUCCEEDED").assertDoesNotExist()
+    }
 }

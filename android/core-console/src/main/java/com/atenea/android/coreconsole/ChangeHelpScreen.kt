@@ -39,7 +39,8 @@ internal fun ChangeHelpScreen(
     apiClient: AteneaApiClient,
     sessionId: Long,
     changeKey: String?,
-    onNavigate: (ChangeHelpDestination) -> Unit
+    onNavigate: (ChangeHelpDestination) -> Unit,
+    onRunChanged: (Long) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     var turns by remember(sessionId) { mutableStateOf<List<ChangeHelpTurn>>(emptyList()) }
@@ -51,7 +52,7 @@ internal fun ChangeHelpScreen(
 
     if (recovering) {
         ValidationRecoveryScreen(apiClient, sessionId, changeKey,
-            onBack = { recovering = false }, onNavigate = onNavigate)
+            onBack = { recovering = false }, onNavigate = onNavigate, onRunChanged = onRunChanged)
         return
     }
 

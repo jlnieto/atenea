@@ -25,6 +25,24 @@ import java.util.UUID
 class ChangeHelpNavigationTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun progressNavigationRefreshesTheCurrentTaskInsteadOfKeepingTheOlderCompletedOne() {
+        var reads=0;var sends=0
+        compose.setContent {
+            var displayedRun by remember { mutableStateOf(125L) }
+            ConversationSurface(title="Cambio actual",status="Investigando",turns=emptyList(),input="Mi borrador",pending=false,
+                placeholder="Prompt",onInputChange={},onSend={sends++},onBack={},onRefresh={},error=null,
+                runContent={ Text("Detalle de tarea $displayedRun") },
+                onPaneChanged={ if (it==ConversationPane.ACTIVITY) { reads++;displayedRun=126L } },
+                helpContent={ navigate -> AteneaButton("Ver progreso",onClick={navigate(ChangeHelpDestination.ACTIVITY)}) })
+        }
+        compose.onNodeWithContentDescription("Opciones de conversación").performClick()
+        compose.onNodeWithText("Ayuda con este cambio").performClick()
+        compose.onNodeWithText("Ver progreso").performClick()
+        compose.onNodeWithText("Detalle de tarea 126").assertIsDisplayed()
+        compose.onNodeWithText("Detalle de tarea 125").assertDoesNotExist()
+        assertEquals(1,reads);assertEquals(0,sends)
+    }
+
     @Test fun helpOpensRealAndroidUpdatesWithoutSendingOrValidatingADiagnosticQuestion() {
         var updates=0;var sends=0
         compose.setContent {
