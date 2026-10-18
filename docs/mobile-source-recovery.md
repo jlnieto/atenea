@@ -21,6 +21,10 @@ no requiere volver a la ayuda para descubrir otro botón. El resultado se toma
 sin confirmar por el detalle completado de una tarea anterior. La ayuda distingue
 cola, preparación y reconciliación de trabajo de Codex. Terminar la investigación
 no valida, integra ni publica el cambio.
+Una tarea `SUCCEEDED` puede haber identificado un límite sin corregirlo. Si no
+hay una revisión nueva sin el mismo fallo vigente, la pantalla conserva **Bloqueo
+pendiente** y ofrece consultar su diagnóstico, no repetir pruebas ni investigar
+de nuevo. El tiempo mostrado incluye la espera desde la solicitud.
 
 ## Actualización de la misma PR
 

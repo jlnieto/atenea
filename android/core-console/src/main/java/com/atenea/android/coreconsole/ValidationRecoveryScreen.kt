@@ -119,7 +119,7 @@ internal fun ValidationRecoveryPanel(state: ValidationRecovery?, pending: Boolea
                 val exact = investigationDetail?.takeIf { it.runId == investigation.runId && it.workSessionId == state?.workSessionId }
                 if (exact != null) {
                     Text("Estado confirmado: ${exact.status}", style = MaterialTheme.typography.bodySmall)
-                    Text("Tiempo transcurrido: ${formatCodexElapsed(exact.elapsedMillis)}", style = MaterialTheme.typography.bodySmall)
+                    Text("Tiempo desde la solicitud: ${formatCodexElapsed(exact.elapsedMillis)} (incluye la espera)", style = MaterialTheme.typography.bodySmall)
                     investigationProgress?.latestEvent?.let { Text("Último evento: ${it.message}") }
                     if (investigationAnswer != null) {
                         Text("Resultado de esta investigación", style = MaterialTheme.typography.titleSmall)
@@ -127,8 +127,14 @@ internal fun ValidationRecoveryPanel(state: ValidationRecovery?, pending: Boolea
                     }
                 }
                 if (status == "SUCCEEDED") {
-                    AteneaButton("Ir a Validar cambio", enabled = !pending, onClick = onChange)
-                    AteneaTextButton("Ver respuesta en conversación", enabled = !pending, onClick = onConversation)
+                    if (state != null && state.sourceRevision > investigation.sourceRevision && state.failureCode == null) {
+                        Text("Hay una revisión nueva pendiente de validar. Las pruebas anteriores se conservan como historial.")
+                        AteneaButton("Ir a Validar cambio", enabled = !pending, onClick = onChange)
+                        AteneaTextButton("Ver respuesta en conversación", enabled = !pending, onClick = onConversation)
+                    } else {
+                        Text("Bloqueo pendiente: la investigación terminó, pero no hay una revisión corregida confirmada. Revisa su resultado; no repitas las pruebas ni la investigación.")
+                        AteneaButton("Ver diagnóstico en conversación", enabled = !pending, onClick = onConversation)
+                    }
                 } else if (status in setOf("FAILED", "CANCELLED")) {
                     AteneaButton("Ver tarea y recuperación", enabled = !pending, onClick = onActivity)
                 }
@@ -195,7 +201,7 @@ internal fun investigationExplanation(status: String?): String = when (status) {
     "QUEUED" -> "La petición está guardada, pero Codex todavía no ha arrancado. Atenea comprueba el arranque de esta misma tarea; no la repitas."
     "STARTING" -> "Atenea está preparando esta tarea. Todavía no confirma que Codex haya empezado."
     "RUNNING" -> "La investigación está en curso. El último evento indica su fase confirmada. Puedes salir de la app; no repitas la petición."
-    "SUCCEEDED" -> "Consulta el resultado debajo. Terminar la investigación no valida ni publica el cambio. El siguiente paso es validar la revisión corregida."
+    "SUCCEEDED" -> "Consulta el resultado debajo. Terminar la investigación no confirma una corrección, no valida ni publica el cambio."
     "FAILED", "CANCELLED" -> "La tarea no terminó correctamente. Tu cambio se conserva; consulta esta misma tarea antes de hacer otro intento."
     "RECONCILING", "CANCELLING" -> "Atenea está confirmando qué ocurrió con esta misma tarea. No está afirmando que Codex siga trabajando."
     else -> "No se ha confirmado todavía el estado actual. No se muestra una ejecución anterior como si fuera esta investigación."
