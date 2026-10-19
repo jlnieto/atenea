@@ -50,6 +50,14 @@ de reparación y sus rechazos; tests Android API/interfaz y contrato CI PASS.
 La prueba vertical usa una DB PostgreSQL 16 efímera independiente, no otros
 esquemas de un runtime compartido. No aplica migraciones a PROD ni ejecuta Codex.
 
+La primera integración pasó el control completo de PR, pero su construcción
+inmutable detectó un deadlock previo en el manejador de errores de recuperación.
+Se corrige el orden admisión → fila también al fallar y se impide sobrescribir
+un resultado ya confirmado. Ocho regresiones cubren ambos casos. Las pruebas de
+recuperación aíslan su DB efímera y su scheduler de los contextos cacheados;
+la suite completa vuelve a ejecutarse sin reducir la caché de contextos.
+Los diagnósticos de CI distinguen advertencias del compilador de errores reales.
+
 Estado de esta sección: **pendiente de integración, despliegue y aceptación
 Samsung; un PASS local no acredita ninguna de ellas**. Las secciones posteriores conservan
 la historia de entregas anteriores, no ordenan repetirlas.
