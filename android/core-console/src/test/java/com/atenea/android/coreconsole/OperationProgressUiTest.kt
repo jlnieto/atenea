@@ -62,6 +62,21 @@ class OperationProgressUiTest {
         assertEquals(DeliveryStepAction.NONE,state.currentStep(true,false,now).action)
         assertEquals("Comprobando la PR en GitHub",state.currentStep(true,false,now).title)
     }
+    @Test fun `main advancing offers the existing explicit base update not an endless GitHub wait`() = runBlocking {
+        val progress=MobileOperationProgress(id,28,"PR_CHECKS","PENDING",now-300,now,now,github("BASE_CHANGED"))
+        for (stale in listOf(false,true)) {
+            val state=MobileDeliveryUiState(28,this) { MobileDeliveryState(true,listOf(operation.copy(state="SUCCEEDED")),
+                integration=MobileDeliveryIntegration(28,"a".repeat(40),"MERGEABLE",true,null),
+                sourceUpdateEnabled=true,validation=workflowEvidence(28),
+                progress=if(stale) progress.copy(github=github("BASE_CHANGED").copy(observedAt=now-200)) else progress) }
+            state.refresh()
+            assertEquals(!stale,state.canUpdateBase(false));assertFalse(state.canUpdateBase(true))
+            assertEquals(if(stale) DeliveryStepAction.REFRESH else DeliveryStepAction.UPDATE_BASE,
+                state.currentStep(true,false,now).action)
+            assertEquals(DeliveryStepStatus.ATTENTION,state.currentStep(true,false,now).status)
+            assertTrue(state.currentStep(true,false,now).message.contains("misma PR"))
+        }
+    }
     @Test fun `background reads keep the consult button stable and last success while waiting`() = runBlocking {
         val blocked=CompletableDeferred<Unit>();var count=0
         val state=MobileDeliveryUiState(28,this) {

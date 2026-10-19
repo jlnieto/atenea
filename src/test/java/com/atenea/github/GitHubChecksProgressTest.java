@@ -68,8 +68,10 @@ class GitHubChecksProgressTest {
             {"total_count":1,"jobs":[{"name":"backend-merge-%s","status":"completed","conclusion":"success"}]}
             """.formatted("c".repeat(40))));
         var value=reader().observe(source,branch,false,true);
-        assertEquals("UNAVAILABLE",value.state());
-        assertEquals("UNAVAILABLE",value.checks().getLast().state());
+        assertEquals("BASE_CHANGED",value.state());
+        assertEquals("BASE_CHANGED",value.checks().getLast().state());
+        // This only offers the existing explicit base-update action; it never changes a PR.
+        verify(github,never()).requireUfdValidation(any(),any(),any());
     }
     @Test void unknownJobTextAndTruncatedEvidenceNeverLeakOrClaimSuccess() throws Exception {
         run("completed","success");

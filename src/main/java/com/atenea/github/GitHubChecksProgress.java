@@ -45,6 +45,7 @@ public class GitHubChecksProgress {
             }
             String state=checks.stream().anyMatch(c->c.state().equals("FAILED")) ? "FAILED"
                     : checks.stream().anyMatch(c->c.state().equals("UNAVAILABLE")) ? "UNAVAILABLE"
+                    : checks.stream().anyMatch(c->c.state().equals("BASE_CHANGED")) ? "BASE_CHANGED"
                     : checks.stream().anyMatch(c->c.state().equals("RUNNING")) ? "RUNNING"
                     : checks.stream().anyMatch(c->c.state().equals("QUEUED")) ? "QUEUED"
                     : checks.stream().anyMatch(c->c.state().equals("NOT_STARTED")) ? "NOT_STARTED"
@@ -90,7 +91,7 @@ public class GitHubChecksProgress {
             if("skipped".equals(job.path("conclusion").asText())) continue;
             String name=job.path("name").asText();
             if(requiredBase!=null && !name.equals("backend-merge-"+requiredBase)) {
-                result.add(new Check(label,"UNAVAILABLE",null,null));return;
+                result.add(new Check(label,name.matches("backend-merge-[0-9a-f]{40}") ? "BASE_CHANGED" : "UNAVAILABLE",null,null));return;
             }
             String safeLabel=switch(name) {
                 case "ufd-validation","ufd-owned-head" -> "Validación del cambio";

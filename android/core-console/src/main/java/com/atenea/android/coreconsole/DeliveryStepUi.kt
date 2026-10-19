@@ -224,6 +224,11 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
         "Resolver conflictos con main", deliveryIntegrationLabel("CONFLICTS"), DeliveryStepAction.RESOLVE)
     if (operations.any { it.kind == "PUBLISH_PR" && it.state == "SUCCEEDED" }) {
         progress?.takeIf { it.kind=="PR_CHECKS" }?.github?.let { checks ->
+            if (checks.state=="BASE_CHANGED") return DeliveryStepUi(DeliveryStepStatus.ATTENTION,
+                "Main avanzó después de las pruebas",
+                "GitHub comprobó una base anterior. Actualiza la base, valida la revisión resultante y actualiza la misma PR; no repitas el prompt ni crees otro cambio.",
+                if(canUpdateBase(runInProgress)) DeliveryStepAction.UPDATE_BASE else DeliveryStepAction.REFRESH,
+                operations.firstOrNull { it.id==progress?.operationId })
             return DeliveryStepUi(when(checks.state) {
                 "FAILED" -> DeliveryStepStatus.ATTENTION
                 "UNAVAILABLE" -> DeliveryStepStatus.CHECKING

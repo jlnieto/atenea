@@ -29,6 +29,7 @@ internal fun githubProgressTitle(progress: MobileGitHubProgress, now: Long = Ins
     "CLOSING" -> "Pruebas correctas · esperando confirmación de GitHub"
     "PASSED" -> "Comprobaciones correctas · confirmando el siguiente paso"
     "FAILED" -> "GitHub ha registrado una comprobación fallida"
+    "BASE_CHANGED" -> "Main cambió: hay que actualizar la base de la misma PR"
     else -> "Estado de GitHub por confirmar"
     }
 }
@@ -62,7 +63,7 @@ internal fun OperationProgressPanel(state: MobileDeliveryUiState, step: Delivery
             if(github.checks.isNotEmpty()) Text((if(fresh) "" else "Último detalle: ")+"${github.checks.count { it.state=="PASSED" }} de ${github.checks.size} comprobaciones correctas",style=MaterialTheme.typography.bodySmall)
             github.checks.forEach { check ->
                 val label=(if(fresh) "" else "Último estado: ")+when(check.state) { "PASSED" -> "✓ Correcta";"FAILED" -> "! Fallida";"RUNNING" -> "En ejecución";
-                    "QUEUED" -> "En cola"; "NOT_STARTED" -> "Todavía no registrada"; else -> "Por confirmar" }
+                    "QUEUED" -> "En cola"; "NOT_STARTED" -> "Todavía no registrada"; "BASE_CHANGED" -> "Base anterior a main"; else -> "Por confirmar" }
                 val end=check.finishedAt ?: (if(fresh) now else github.observedAt).takeIf { check.state=="RUNNING" }
                 val duration=check.startedAt?.let { first -> end?.takeIf { it>=first }?.let { " · ${validationDuration(it-first)}" } }.orEmpty()
                 Text("${check.label}: $label$duration",style=MaterialTheme.typography.bodySmall)

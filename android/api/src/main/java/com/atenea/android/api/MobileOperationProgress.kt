@@ -15,14 +15,14 @@ internal fun parseOperationProgress(json: JSONObject): MobileOperationProgress {
     val id=UUID.fromString(json.getString("operationId"));require(id.toString()==json.getString("operationId"))
     val github=json.optJSONObject("github")?.let { value ->
         val source=value.getString("sourceCommit");require(source.matches(Regex("[0-9a-f]{40}")))
-        val state=value.getString("state");require(state in setOf("NOT_STARTED","QUEUED","RUNNING","CLOSING","PASSED","FAILED","UNAVAILABLE"))
+        val state=value.getString("state");require(state in setOf("NOT_STARTED","QUEUED","RUNNING","CLOSING","PASSED","FAILED","UNAVAILABLE","BASE_CHANGED"))
         val service=value.getString("serviceState");require(service in setOf("OPERATIONAL","DEGRADED","UNKNOWN"))
         val checks=value.getJSONArray("checks");require(checks.length()<=200)
         MobileGitHubProgress(source,state,time(value,"observedAt"),service,List(checks.length()) { index ->
             val check=checks.getJSONObject(index)
             val label=check.getString("label");require(label in setOf("Validación del cambio","Construcción de la versión",
                 "Backend combinado con main","Construcción y pruebas backend","Construcción y pruebas Android"))
-            val status=check.getString("state");require(status in setOf("NOT_STARTED","QUEUED","RUNNING","PASSED","FAILED","UNAVAILABLE"))
+            val status=check.getString("state");require(status in setOf("NOT_STARTED","QUEUED","RUNNING","PASSED","FAILED","UNAVAILABLE","BASE_CHANGED"))
             val start=optionalTime(check,"startedAt");val end=optionalTime(check,"finishedAt")
             // Provider timestamps can be inconsistent during an outage; do not invent a duration.
             MobileProgressCheck(label,status,start,end?.takeIf { start==null || it>=start })

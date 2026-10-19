@@ -457,6 +457,10 @@ La caché de consultas GitHub es de 30 segundos y la pública de 60; la UI
 etiqueta observaciones antiguas y no renueva su fecha al fallar una lectura.
 Estas proyecciones nunca sustituyen UFD, validación de la combinación con main,
 ownership, autorizaciones o recibos de publicación.
+Si el job del head exacto comprobó otro main, `BASE_CHANGED` lo distingue de
+una cola o un fallo de lectura. La UI ofrece la acción existente y explícita
+«Actualizar base con main», nunca modifica la PR al consultar ni rebaja sus
+controles. Una observación antigua sólo permite volver a consultar.
 
 V105 añade un outbox de avisos por operación/hito y dispositivo del operador
 que solicitó esa operación. Se registra junto al cambio durable de estado;

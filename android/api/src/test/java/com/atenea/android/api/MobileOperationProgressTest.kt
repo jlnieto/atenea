@@ -25,6 +25,14 @@ class MobileOperationProgressTest {
             assertFails { parseOperationProgress(root().put("github",bad)) }
         }
     }
+    @Test fun `previous main is a closed distinct state not a running or successful check`() {
+        val value=root()
+        value.getJSONObject("github").put("state","BASE_CHANGED").getJSONArray("checks")
+            .getJSONObject(0).put("label","Backend combinado con main").put("state","BASE_CHANGED")
+        val parsed=parseOperationProgress(value)
+        assertEquals("BASE_CHANGED",parsed.github?.state)
+        assertEquals("BASE_CHANGED",parsed.github?.checks?.first()?.state)
+    }
     @Test fun `old backend does not invent progress and invalid timestamps do not invent durations`() {
         assertNull(parseMobileDeliveryState(JSONObject("{\"enabled\":true,\"operations\":[]}")).progress)
         val value=root();value.getJSONObject("github").getJSONArray("checks").getJSONObject(0).put("finishedAt",600)
