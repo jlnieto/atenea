@@ -175,7 +175,7 @@ public class OperationsService {
 
         syncMonitoringIncident(host, service, apacheRun, websiteChecks,
                 issues.stream().map(OperationsMonitoringIssue::message).toList());
-        return new OperationsMonitoringResult(host.getId(), host.getName(), issues);
+        return new OperationsMonitoringResult(host.getId(), host.getName(), issues,apacheRun.getId());
     }
 
     @Transactional

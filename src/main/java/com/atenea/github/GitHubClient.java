@@ -321,7 +321,12 @@ public class GitHubClient {
                 || !expected.equals(androidVersionSource(head))) throw new GitHubIntegrationException("ANDROID_VERSION_IDENTITY_MISMATCH");
     }
 
-    public record MergedChange(long number,String title,String summary,String branch,String headCommit,String mergeCommit,Instant mergedAt,String url) { }
+    public record ProductCopy(String locale,String title,String summary) { }
+    public record MergedChange(long number,String title,String summary,String branch,String headCommit,String mergeCommit,Instant mergedAt,String url,ProductCopy productCopy) {
+        public MergedChange(long number,String title,String summary,String branch,String headCommit,String mergeCommit,Instant mergedAt,String url) {
+            this(number,title,summary,branch,headCommit,mergeCommit,mergedAt,url,null);
+        }
+    }
     public record MergedChangesPage(List<MergedChange> changes,boolean more) { }
 
     /** Fixed-size read-only history. Repository selection is server-owned, not an API input. */
@@ -334,6 +339,19 @@ public class GitHubClient {
         var changes=new ArrayList<MergedChange>();
         for (JsonNode pr:values) {
             if (!pr.path("merged_at").isTextual()) continue;
+            changes.add(mergedChange(repository,pr));
+        }
+        return new MergedChangesPage(List.copyOf(changes),values.size()==5 && page<50);
+    }
+    public MergedChange mergedChange(GitHubRepositoryRef repository,long number) {
+        ensureConfigured();
+        if(number<1)throw new GitHubIntegrationException("HISTORY_EVIDENCE_INCOMPLETE");
+        JsonNode pr=sendJsonRequest("GET",properties.getApiBaseUrl().resolve(
+            "/repos/"+repository.owner()+"/"+repository.repo()+"/pulls/"+number),null);
+        if(pr.path("number").asLong(-1)!=number)throw new GitHubIntegrationException("HISTORY_EVIDENCE_INCOMPLETE");
+        return mergedChange(repository,pr);
+    }
+    private MergedChange mergedChange(GitHubRepositoryRef repository,JsonNode pr) {
             long number=pr.path("number").asLong(-1);String branch=pr.path("head").path("ref").asText();String head=pr.path("head").path("sha").asText();
             requireSha(head);requireSha(pr.path("merge_commit_sha").asText());requireExactPullRequest(repository,number,branch,head,pr);
             Instant merged=Instant.parse(pr.path("merged_at").asText());
@@ -341,13 +359,17 @@ public class GitHubClient {
             String title=productText(pr.path("title").asText(),200);
             if (title.isBlank()) title="Mejora de Atenea";
             String summary=productSummary(pr.path("body").asText(),title);
-            changes.add(new MergedChange(number,title,summary,branch,head,pr.path("merge_commit_sha").asText(),merged,
-                    "https://github.com/"+repository.owner()+"/"+repository.repo()+"/pull/"+number));
-        }
-        return new MergedChangesPage(List.copyOf(changes),values.size()==5 && page<50);
+            return new MergedChange(number,title,summary,branch,head,pr.path("merge_commit_sha").asText(),merged,
+                    "https://github.com/"+repository.owner()+"/"+repository.repo()+"/pull/"+number,declaredProductCopy(pr.path("body").asText()));
+    }
+    static ProductCopy declaredProductCopy(String body) {
+        var match=Pattern.compile("(?s)## Novedades para el usuario\\s*\\n<!-- atenea-news:es -->\\s*\\nTítulo: ([^\\n]+)\\n(.*?)(?:\\n## |\\z)").matcher(body==null ? "" : body);
+        if(!match.find())return null;
+        String title=productText(match.group(1),200),summary=productSummary("## Novedades para el usuario\n"+match.group(2),"");
+        return title.isBlank() || summary.isBlank() ? null : new ProductCopy("es",title,summary);
     }
     static String productText(String text,int maximum) {
-        if (text==null || text.matches("(?is).*(https?://|/srv/|/home/|bearer |password|secret|\\b(?:sudo|ssh|curl|bash|docker|python|git)\\b).*")) return "";
+        if (text==null || text.matches("(?is).*(https?://|/srv/|/home/|bearer |password|secret|\\b(?:sudo|curl|bash|docker|python|git)\\b|\\bssh\\s+(?:-|[^\\s]*@)).*")) return "";
         String clean=text.replaceAll("[\\p{Cntrl}`]"," ").replaceAll("\\s+"," ").trim();
         return clean.substring(0,Math.min(maximum,clean.length()));
     }

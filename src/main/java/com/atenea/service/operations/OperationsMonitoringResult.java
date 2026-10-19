@@ -5,8 +5,12 @@ import java.util.List;
 public record OperationsMonitoringResult(
         Long hostId,
         String hostName,
-        List<OperationsMonitoringIssue> issues
+        List<OperationsMonitoringIssue> issues,
+        Long checkRunId
 ) {
+    public OperationsMonitoringResult(Long hostId,String hostName,List<OperationsMonitoringIssue> issues) {
+        this(hostId,hostName,issues,null);
+    }
     public OperationsMonitoringResult {
         issues = List.copyOf(issues);
     }

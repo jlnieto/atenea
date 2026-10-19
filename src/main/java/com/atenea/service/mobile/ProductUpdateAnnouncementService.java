@@ -77,7 +77,7 @@ public class ProductUpdateAnnouncementService {
         try {
             fcm.send(selected.stream().map(device -> new FcmPushSender.FcmPushMessage(device.getPushToken(),
                     "Atenea ya está operativa",
-                    "Actualiza a "+apk.versionName()+" / "+apk.versionCode()+" en Ajustes → Actualizaciones. Después abre el menú → Novedades para ver las mejoras y continúa tu Cambio. Las imágenes no requieren otra conversación.",
+                    "Actualiza a "+apk.versionName()+" / "+apk.versionCode()+" en Ajustes → Actualizaciones. Después abre el menú → Novedades para ver las mejoras y continúa tu mismo Cambio.",
                     Map.of("schemaVersion","atenea-product-update-data-v1","eventType","PRODUCT_UPDATE","type","PRODUCT_UPDATE",
                             "templateVersion","product-update-safe-v1","notificationEventId",id.toString(),
                             "deepLinkKind","ATENEA_UPDATES","deepLink","atenea://updates"))).toList());

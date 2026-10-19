@@ -8,6 +8,23 @@ import org.json.JSONObject
 import kotlin.test.*
 
 class AteneaUpdatesTest {
+    @Test fun `saved news highlights are validated and corrupt or oversized cache is ignored`() {
+        val json=payload().put("refreshState","REFRESHING").put("highlights",payload().getJSONArray("entries"))
+        val cached=decodeAteneaUpdatesSnapshot(json.toString())!!
+        assertEquals("REFRESHING",cached.refreshState);assertEquals("app:71",cached.highlights.single().id)
+        assertNull(decodeAteneaUpdatesSnapshot("broken json"));assertNull(decodeAteneaUpdatesSnapshot("x".repeat(100001)))
+        assertNull(decodeAteneaUpdatesSnapshot(json.put("refreshState","PUBLISHED").toString()))
+        assertEquals("READY",parseAteneaUpdates(payload()).refreshState)
+    }
+    @Test fun `disk cache failure does not hide a successful authenticated news read`() {
+        val server=MockWebServer();server.start()
+        try {
+            server.enqueue(MockResponse().setBody(payload().toString()))
+            val client=AteneaApiClient(server.url("/").toString().trimEnd('/'),{"synthetic"})
+            val result=runBlocking { client.fetchAteneaUpdates(1) { error("synthetic disk unavailable") } }
+            assertEquals("app:71",result.entries.single().id)
+        } finally { server.shutdown() }
+    }
     private fun payload()=JSONObject().put("protocolVersion","atenea-updates/v1").put("observedAt","2026-10-15T12:00:00Z")
         .put("historyState","CURRENT").put("backend",JSONObject().put("sourceCommit","8".repeat(40)).put("healthy",true))
         .put("android",JSONObject().put("sourceCommit","8".repeat(40)).put("versionCode",1000042).put("versionName","0.6.42")

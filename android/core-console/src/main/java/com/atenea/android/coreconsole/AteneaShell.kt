@@ -41,7 +41,9 @@ internal fun AteneaShell(
     currentVersionCode: Int,
     currentVersionName: String,
     onLogout: () -> Unit,
-    requestedConversation: AteneaNotificationRoute? = null
+    requestedConversation: AteneaNotificationRoute? = null,
+    loadNewsSnapshot: ()->String? = { null },
+    saveNewsSnapshot: (String)->Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -333,6 +335,7 @@ internal fun AteneaShell(
                     AteneaDestination.COSTS -> CostsScreen(apiClient = apiClient)
                     AteneaDestination.DIAGNOSTICS -> DiagnosticsScreen(apiClient = apiClient)
                     AteneaDestination.NEWS -> AteneaUpdatesScreen(apiClient,currentVersionCode,currentVersionName,
+                        loadCached=loadNewsSnapshot,saveCached=saveNewsSnapshot,
                         onOpenUpdates={ selectedDestination=AteneaDestination.SETTINGS
                             scope.launch {
                                 checkingUpdate=true;updateMessage=null

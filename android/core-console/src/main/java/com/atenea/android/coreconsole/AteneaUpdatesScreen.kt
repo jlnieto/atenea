@@ -14,11 +14,13 @@ import androidx.compose.ui.unit.dp
 import com.atenea.android.api.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 @Composable
-internal fun AteneaUpdatesScreen(api: AteneaApiClient,currentVersionCode: Int,currentVersionName: String,onOpenUpdates: () -> Unit) {
+internal fun AteneaUpdatesScreen(api: AteneaApiClient,currentVersionCode: Int,currentVersionName: String,
+    loadCached: ()->String? = {null},saveCached: (String)->Unit = {},onOpenUpdates: () -> Unit) {
     val scope=rememberCoroutineScope()
-    var state by remember { mutableStateOf<AteneaProductUpdates?>(null) }
+    var state by remember(api) { mutableStateOf(decodeAteneaUpdatesSnapshot(loadCached())?.copy(historyState="CACHED",refreshState="REFRESHING")) }
     var pending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     fun load(page: Int) {
@@ -26,11 +28,18 @@ internal fun AteneaUpdatesScreen(api: AteneaApiClient,currentVersionCode: Int,cu
         scope.launch {
             pending=true;error=null
             try {
-                val fresh=api.fetchAteneaUpdates(page)
+                var fresh=api.fetchAteneaUpdates(page,saveCached)
+                var polls=0
+                while(fresh.refreshState in setOf("PENDING","REFRESHING") && polls++<10) {
+                    if(state==null && page==1)state=fresh
+                    delay(2000)
+                    fresh=api.fetchAteneaUpdates(page,saveCached)
+                }
                 val previous=state
                 val sameSources=previous?.backend?.sourceCommit==fresh.backend?.sourceCommit
                     && previous?.android?.sourceCommit==fresh.android?.sourceCommit && previous?.platform?.sourceCommit==fresh.platform?.sourceCommit
-                state=if(page==1)fresh else if(!sameSources)api.fetchAteneaUpdates(1)
+                state=if(fresh.refreshState=="PENDING" && previous!=null)previous.copy(historyState="CACHED",refreshState="UNAVAILABLE")
+                    else if(page==1)fresh else if(!sameSources)api.fetchAteneaUpdates(1,saveCached)
                     else fresh.copy(entries=((previous?.entries ?: emptyList())+fresh.entries).distinctBy { it.id })
             } catch(cancelled: CancellationException) { throw cancelled }
             catch(failure: Exception) { error="No se pudieron consultar las novedades. No se ha publicado ni ejecutado nada." }
@@ -55,6 +64,8 @@ internal fun AteneaUpdatesContent(state: AteneaProductUpdates?,installedCode: In
         item { AteneaOutlinedButton(if(pending)"Consultando…" else "Actualizar información",enabled=!pending,onClick=onRefresh) }
         error?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
         state?.let { value ->
+            if(value.refreshState!="PENDING")item { Text("Última verificación: "+newsDate(value.observedAt),style=MaterialTheme.typography.labelSmall) }
+            if(pending && value.entries.isNotEmpty())item { Text("Actualizando en segundo plano. Puedes seguir leyendo.",style=MaterialTheme.typography.bodySmall) }
             item { Card { Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
                 Text("Qué tienes que hacer",style=MaterialTheme.typography.titleMedium)
                 Text("Tu móvil: $installedName / $installedCode")
@@ -69,7 +80,8 @@ internal fun AteneaUpdatesContent(state: AteneaProductUpdates?,installedCode: In
                 Text("Worker: "+when(value.workerHealthy) {true -> "conectado";false -> "necesita atención";null -> "sin confirmar"})
                 if(value.platform==null)Text("La versión instalada del worker no se ha confirmado.",style=MaterialTheme.typography.bodySmall)
             } } }
-            if(value.historyState!="CURRENT")item { Text(if(value.historyState=="CACHED")"Historial guardado; no se pudo refrescar ahora."
+            if(value.historyState!="CURRENT")item { Text(if(value.historyState=="CACHED")"Información guardada. Consulta la fecha de verificación; se actualizará en segundo plano."
+                else if(value.refreshState=="PENDING")"Preparando las novedades. Puedes salir y volver; no hay ninguna publicación en curso por esta consulta."
                 else "Historial temporalmente no disponible. Las versiones se comprueban por separado.") }
             item { Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                 listOf(null to "Todo",MobileDeliveryTarget.ANDROID_STABLE to "Móvil",MobileDeliveryTarget.APP_PROD to "Backend",
@@ -77,10 +89,12 @@ internal fun AteneaUpdatesContent(state: AteneaProductUpdates?,installedCode: In
                     FilterChip(selected=filter==target,onClick={filter=target},label={Text(label)})
                 }
             } }
-                items(value.entries.filter { filter==null || it.requiredTargets?.contains(filter)==true },key={it.id}) { entry ->
+                val highlighted=value.highlights.filter { filter==null || it.requiredTargets?.contains(filter)==true }
+                if(highlighted.isNotEmpty())item { Text("Mejora destacada",style=MaterialTheme.typography.titleMedium) }
+                items((highlighted+value.entries.filter { filter==null || it.requiredTargets?.contains(filter)==true }).distinctBy { it.id },key={it.id}) { entry ->
                     Card { Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                         Text(entry.title,style=MaterialTheme.typography.titleMedium)
-                        Text(newsDate(entry.integratedAt)+" · Integrado",style=MaterialTheme.typography.labelSmall)
+                        Text(newsDate(entry.integratedAt),style=MaterialTheme.typography.labelSmall)
                         if(entry.summary.isNotBlank() && entry.summary!=entry.title)Text(entry.summary)
                         val targets=entry.requiredTargets
                         if(targets==null)Text("Destinos y publicación sin confirmar.")
@@ -104,5 +118,5 @@ internal fun AteneaUpdatesContent(state: AteneaProductUpdates?,installedCode: In
 
 private fun newsDate(value: String): String = runCatching {
     java.time.Instant.parse(value).atZone(java.time.ZoneId.systemDefault()).format(
-        java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM,java.time.format.FormatStyle.SHORT))
+        java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM,java.time.format.FormatStyle.SHORT).withLocale(java.util.Locale.forLanguageTag("es")))
 }.getOrDefault(value)

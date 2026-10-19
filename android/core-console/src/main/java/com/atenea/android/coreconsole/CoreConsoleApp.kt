@@ -99,7 +99,9 @@ fun CoreConsoleApp(
                     pushRegistrationAttempted = false
                 }
             },
-            requestedConversation = requestedConversation
+            requestedConversation = requestedConversation,
+            loadNewsSnapshot = { sessionStore.loadProductNews() },
+            saveNewsSnapshot = { raw -> session?.operator?.id?.let { sessionStore.saveProductNews(it,raw) } }
         )
     }
 }
