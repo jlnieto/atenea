@@ -1,5 +1,28 @@
 # Estabilización de validación y sesión móvil
 
+## Lectura cerrada del diagnóstico (2026-10-19)
+
+La lectura autenticada `GET /api/mobile/sessions/{id}/validation-recovery/diagnostic`
+no ejecuta ni reintenta pruebas. Exige administrador, la propiedad exacta del
+Cambio/WorkSession abierta y el fallo de la revisión/fingerprint actuales.
+Consulta únicamente la evidencia terminal retenida mediante el contrato
+Platform `closed-validation-diagnostic/v1`; contrasta operación, sesión,
+workspace, proyecto, definición, fingerprint y manifest antes de devolverla.
+Rechaza stdout, mensajes de excepción, comandos, rutas y campos adicionales.
+
+Investigar persiste esa proyección verificada en su turno ATENEA antes de crear
+el AgentRun y conserva la deduplicación por validación. Una recuperación o un
+dispatch repetido consume el mismo prompt durable. Una investigación terminal
+no se altera ni se convierte en una nueva ejecución al consultar resultados.
+Los informes antiguos no contienen la aserción: `NOT_RECORDED` no es una
+autorización para inventarla. `testClasses` enumera menciones, no fallos probados.
+Las validaciones nuevas pueden conservar método, tipo y línea de fallo; nunca
+valores esperados/reales, argumentos ni logs arbitrarios.
+
+No hay migración ni APK nuevas para esta capacidad. Desplegar primero Platform,
+después App PROD, con sus procedimientos y salvaguardas existentes. La lectura
+no autoriza publicar el trabajo funcional de la WorkSession.
+
 ## Alcance y autoridad
 
 La corrección afecta al contrato Android de renovación y al corredor de

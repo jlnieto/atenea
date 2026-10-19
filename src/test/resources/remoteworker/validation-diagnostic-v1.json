@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "closed-validation-diagnostic/v1",
+  "workspaceIdentity": "remote:ax42-01:change:11111111-1111-4111-8111-111111111111",
+  "projectId": "atenea",
+  "artifactManifestSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "diagnosticSha256": "7777777777777777777777777777777777777777777777777777777777777777",
+  "failureDetailsState": "RECORDED",
+  "diagnostic": {
+    "schemaVersion": 1,
+    "operationId": "22222222-2222-4222-8222-222222222222",
+    "sessionId": "33333333-3333-4333-8333-333333333333",
+    "operation": "BACKEND_TEST",
+    "definitionRevision": "atenea-backend-test-v2",
+    "sourceTreeFingerprintSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "phase": "TESTS", "errorCode": "TESTS_FAILED", "failureClass": "CANDIDATE",
+    "exitCode": 1, "durationMillis": 50,
+    "outputSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "testClasses": ["com.atenea.api.ExampleTest"],
+    "testFailures": [{"testClass": "com.atenea.api.ExampleTest", "testMethod": "inbox", "failureType": "org.opentest4j.AssertionFailedError", "sourceLine": 42}],
+    "valuesExposed": false
+  },
+  "valuesExposed": false
+}

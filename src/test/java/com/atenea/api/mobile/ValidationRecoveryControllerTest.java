@@ -45,9 +45,16 @@ class ValidationRecoveryControllerTest {
         }
         verifyNoInteractions(service);
     }
+    @Test void diagnosticIsAuthenticatedReadOnlyAndDoesNotInvestigate() throws Exception {
+        when(service.diagnostic(26L,actor)).thenReturn(new com.fasterxml.jackson.databind.ObjectMapper().readTree("{\"protocolVersion\":\"closed-validation-diagnostic/v1\"}"));
+        mvc.perform(get("/api/mobile/sessions/26/validation-recovery/diagnostic")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.protocolVersion").value("closed-validation-diagnostic/v1"));
+        verify(service).diagnostic(26L,actor);verifyNoMoreInteractions(service);
+    }
     @Test void unauthenticatedReadAndActionsAreDenied() throws Exception {
         SecurityContextHolder.clearContext();
         mvc.perform(get("/api/mobile/sessions/26/validation-recovery")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/mobile/sessions/26/validation-recovery/diagnostic")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/mobile/sessions/26/validation-recovery/prepare").contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isUnauthorized());verifyNoInteractions(service);
     }
