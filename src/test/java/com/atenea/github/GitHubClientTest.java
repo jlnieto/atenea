@@ -16,6 +16,20 @@ import org.junit.jupiter.api.io.TempDir;
 
 class GitHubClientTest {
 
+    @Test void explicitSpanishProductCopyAllowsDescriptiveSshButNeverCommandsOrSecrets() {
+        var copy=GitHubClient.declaredProductCopy("## Novedades para el usuario\n<!-- atenea-news:es -->\nTítulo: Menos avisos falsos\n- Un fallo SSH no equivale a una caída de Apache.\n- ssh -i /private/key server\n## Tests\nInternal details");
+        assertThat(copy.locale()).isEqualTo("es");assertThat(copy.title()).isEqualTo("Menos avisos falsos");
+        assertThat(copy.summary()).isEqualTo("Un fallo SSH no equivale a una caída de Apache.");
+        assertThat(GitHubClient.declaredProductCopy("## Summary\nEnglish only")).isNull();
+        assertThat(GitHubClient.productText("ssh operator@server",200)).isEmpty();
+    }
+    @Test void featuredReadRequiresTheExactRequestedPullRequestIdentity() throws Exception {
+        withFixture(path->exactPr(1),client->{
+            assertThat(client.mergedChange(new GitHubRepositoryRef("jlnieto","atenea"),42).number()).isEqualTo(42);
+            org.junit.jupiter.api.Assertions.assertThrows(GitHubIntegrationException.class,()->client.mergedChange(new GitHubRepositoryRef("jlnieto","atenea"),72));
+        });
+    }
+
     private static final String HEAD="6".repeat(40), MERGE="7".repeat(40);
     private static String exactPr(int count) {
         return """

@@ -16,6 +16,12 @@ public class SchedulingConfiguration {
     public ThreadPoolTaskScheduler taskScheduler() { return scheduler("atenea-scheduled-"); }
     @Bean(name = "mobileDeliveryScheduler")
     public ThreadPoolTaskScheduler mobileDeliveryScheduler() { return scheduler("atenea-delivery-"); }
+    @Bean(name = "productNewsScheduler")
+    public ThreadPoolTaskScheduler productNewsScheduler() { return scheduler("atenea-news-"); }
+    @Bean(name = "operationsProbeScheduler")
+    public ThreadPoolTaskScheduler operationsMonitoringScheduler() { return scheduler("atenea-monitor-"); }
+    @Bean(name = "operationsPushScheduler")
+    public ThreadPoolTaskScheduler operationsPushScheduler() { return scheduler("atenea-monitor-push-"); }
     private ThreadPoolTaskScheduler scheduler(String name) {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(1);

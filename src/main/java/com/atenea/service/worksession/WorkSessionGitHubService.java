@@ -228,6 +228,11 @@ public class WorkSessionGitHubService {
             WorkSessionEntity session,
             DevelopmentChangeBranchPublicationService.PublishedIdentity identity) {
         return """
+                ## Novedades para el usuario
+                <!-- atenea-news:es -->
+                Título: %s
+                - Se ha integrado el cambio solicitado desde Atenea. Su disponibilidad se indica por separado para cada componente; integrar no significa publicar.
+
                 ## Summary
 
                 - Publishes the exact server-owned DevelopmentChange branch.
@@ -244,6 +249,7 @@ public class WorkSessionGitHubService {
                 - Source fingerprint: `%s`
                 - Publication receipt: `%s`
                 """.formatted(
+                session.getTitle().replaceAll("[\\p{Cntrl}]"," ").strip(),
                 identity.headBranch(),
                 identity.baseBranch(),
                 identity.headSha(),

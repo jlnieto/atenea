@@ -10,8 +10,10 @@ pruebas, publicaciones ni AgentRuns.
 ## Integrado no significa publicado
 
 El historial se obtiene de PRs integradas en los dos repositorios fijos. Se
-muestran el título y, si existe, la sección explícita de la PR
-`## Novedades para el usuario`. No se muestran cuerpos completos, logs,
+muestran notas revisadas vinculadas al merge exacto o la sección explícita de
+producto declarada en español (`## Novedades para el usuario` con el marcador
+`<!-- atenea-news:es -->`). Sin esa copia se usa una descripción genérica en
+español, no el título técnico. No se muestran cuerpos completos, logs,
 credenciales ni instrucciones de terminal. Los textos orientados al usuario
 deben explicar la mejora y qué hacer, no detalles internos de despliegue.
 
@@ -36,7 +38,12 @@ recibos de publicación móvil para despliegues hechos por el operador.
 La selección de repositorios y las operaciones son cerradas; no acepta rutas,
 fuentes, comandos ni destinos aportados por el cliente. Una observación fallida
 se presenta como **sin confirmar**, nunca como éxito. El historial cacheado se
-identifica como tal; las observaciones de versiones se renuevan en cada consulta.
+identifica como tal. Las observaciones se renuevan en segundo plano, con su fecha
+real; el GET no consulta GitHub ni al worker. Android conserva la primera página
+por operador y la muestra al abrir. Esta copia sólo sirve para presentar
+Novedades y **no** autoriza ninguna publicación. Las acciones de entrega y
+finalización conservan su verificación fresca. Los detalles del read model V104
+y del aviso SSH destacado están en [Novedades y avisos de operaciones](product-news-and-monitoring.md).
 
 El panel Cambio muestra el canal Android y la versión instalada incluso antes
 de validar o en historia cerrada. Ayuda puede abrir directamente Ajustes →

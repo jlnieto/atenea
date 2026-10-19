@@ -23,7 +23,9 @@ class AteneaSessionStore(context: Context) {
     }
 
     fun save(session: MobileAuthSession) {
-        preferences.edit()
+        val edit=preferences.edit()
+        if(preferences.getLong("operatorId",0)!=session.operator.id)edit.remove("productNewsSnapshot")
+        edit
             .putString("accessToken", session.accessToken)
             .putString("accessTokenExpiresAt", session.accessTokenExpiresAt)
             .putString("refreshToken", session.refreshToken)
@@ -54,5 +56,11 @@ class AteneaSessionStore(context: Context) {
 
     fun clear() {
         preferences.edit().clear().apply()
+    }
+
+    fun loadProductNews(): String? = preferences.getString("productNewsSnapshot",null)
+    fun saveProductNews(operatorId: Long,raw: String) {
+        if(preferences.getLong("operatorId",0)==operatorId && raw.length<=100_000)
+            preferences.edit().putString("productNewsSnapshot",raw).apply()
     }
 }

@@ -20,6 +20,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,17 +83,7 @@ internal fun AteneaTopChrome(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Box(
-                    modifier = Modifier.height(40.dp).clickable(onClick = onNotificationsClick)
-                        .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (unreadCount > 0) "🔔 ${if (unreadCount > 99) "99+" else unreadCount}" else "🔔",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
+                AteneaNotificationsButton(unreadCount,onNotificationsClick)
                 AteneaHealthDot(
                     snapshot = healthSnapshot,
                     loading = healthLoading,
@@ -100,6 +96,19 @@ internal fun AteneaTopChrome(
                     .height(1.dp)
                     .background(MaterialTheme.colorScheme.outlineVariant)
             )
+        }
+    }
+}
+
+@Composable
+internal fun AteneaNotificationsButton(unreadCount: Long,onClick: ()->Unit) {
+    IconButton(onClick=onClick,modifier=Modifier.size(40.dp)) {
+        BadgedBox(badge={if(unreadCount>0)Badge(Modifier.clearAndSetSemantics {}) {
+            Text(if(unreadCount>99)"99+" else unreadCount.toString())
+        }}) {
+            Icon(painterResource(R.drawable.ic_notifications_outline),
+                contentDescription=if(unreadCount>0)"Notificaciones, $unreadCount sin leer" else "Notificaciones",
+                modifier=Modifier.size(24.dp),tint=MaterialTheme.colorScheme.onSurface)
         }
     }
 }

@@ -31,9 +31,14 @@ class AteneaApiClient(
     }
 
     fun currentOperatorRole(): String? = operatorRoleProvider()
-    suspend fun fetchAteneaUpdates(page: Int = 1): AteneaProductUpdates {
+    suspend fun fetchAteneaUpdates(page: Int = 1,onSnapshot: (String)->Unit = {}): AteneaProductUpdates {
         require(page in 1..50)
-        return getJson(path="/api/mobile/atenea/updates?page=$page",authenticated=true,parser=::parseAteneaUpdates)
+        return getJson(path="/api/mobile/atenea/updates?page=$page",authenticated=true) { json ->
+            parseAteneaUpdates(json).also {
+                // A local cache failure must not hide a successful authenticated read.
+                if(page==1 && it.refreshState!="PENDING")runCatching { onSnapshot(json.toString()) }
+            }
+        }
     }
     @Volatile private var installedVersionCode: Int? = null
     fun reportInstalledVersion(code: Int) { require(code>0); installedVersionCode=code }

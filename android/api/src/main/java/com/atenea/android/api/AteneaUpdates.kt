@@ -8,7 +8,12 @@ data class AteneaProductEntry(val id: String, val title: String, val summary: St
 data class AteneaInstalledComponent(val sourceCommit: String, val healthy: Boolean?)
 data class AteneaProductUpdates(val observedAt: String, val historyState: String, val entries: List<AteneaProductEntry>,
     val backend: AteneaInstalledComponent?, val android: MobileAndroidChannel?, val platform: AteneaInstalledComponent?,
-    val workerHealthy: Boolean?, val nextPage: Int?, val unavailable: List<String>)
+    val workerHealthy: Boolean?, val nextPage: Int?, val unavailable: List<String>,
+    val highlights: List<AteneaProductEntry> = emptyList(), val refreshState: String = "READY")
+
+fun decodeAteneaUpdatesSnapshot(raw: String?): AteneaProductUpdates? = raw?.takeIf { it.length <= 100_000 }?.let {
+    runCatching { parseAteneaUpdates(JSONObject(it)) }.getOrNull()
+}
 
 internal fun parseAteneaUpdates(json: JSONObject): AteneaProductUpdates {
     require(json.getString("protocolVersion")=="atenea-updates/v1")
@@ -22,7 +27,8 @@ internal fun parseAteneaUpdates(json: JSONObject): AteneaProductUpdates {
         MobileAndroidChannel(sha(value.getString("sourceCommit"),40),value.getString("versionName"),value.getInt("versionCode"),
             sha(value.getString("apkSha256"),64),value.getLong("observedAt"))
     }
-    val values=json.getJSONArray("entries");require(values.length()<=10)
+    fun entries(values: org.json.JSONArray): List<AteneaProductEntry> {
+    require(values.length()<=10)
     val entries=List(values.length()) { index ->
         val value=values.getJSONObject(index);val id=value.getString("id");require(id.matches(Regex("(app|platform):[1-9][0-9]*")))
         val targets=value.optJSONArray("requiredTargets")?.let { targets -> List(targets.length()) { MobileDeliveryTarget.valueOf(targets.getString(it)) } }
@@ -35,8 +41,13 @@ internal fun parseAteneaUpdates(json: JSONObject): AteneaProductUpdates {
         AteneaProductEntry(id,title,summary,value.getString("integratedAt"),value.getString("component"),targets,publications,url,sha(value.getString("mergeCommit"),40))
     }
     require(entries.map { it.id }.distinct().size==entries.size)
+    return entries
+    }
+    val values=entries(json.getJSONArray("entries"))
+    val highlights=json.optJSONArray("highlights")?.let(::entries) ?: emptyList()
+    val refresh=json.optString("refreshState","READY");require(refresh in setOf("READY","PENDING","REFRESHING","UNAVAILABLE"))
     val next=if(json.isNull("nextPage"))null else json.getInt("nextPage").also { require(it in 2..50) }
     val missing=json.getJSONArray("unavailable");require(missing.length()<=5)
-    return AteneaProductUpdates(json.getString("observedAt"),history,entries,component("backend"),channel,component("platform"),
-        if(json.isNull("workerHealthy"))null else json.getBoolean("workerHealthy"),next,List(missing.length()) { missing.getString(it) })
+    return AteneaProductUpdates(json.getString("observedAt"),history,values,component("backend"),channel,component("platform"),
+        if(json.isNull("workerHealthy"))null else json.getBoolean("workerHealthy"),next,List(missing.length()) { missing.getString(it) },highlights,refresh)
 }
