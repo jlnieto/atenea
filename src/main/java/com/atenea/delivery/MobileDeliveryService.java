@@ -55,6 +55,73 @@ public class MobileDeliveryService {
     // Positive immutable ancestry proofs only. Runtime/health/role/owner are read on every poll.
     private final java.util.Map<String, Long> observedAncestry = new java.util.LinkedHashMap<>();
     private final java.util.Map<String, List<DeliveryTarget>> immutableRequirements = new java.util.LinkedHashMap<>();
+    private com.atenea.github.GitHubReleaseBuild builds;
+    private ReleaseRepairStore repairs;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setBuildRecovery(com.atenea.github.GitHubReleaseBuild builds,ReleaseRepairStore repairs) {
+        this.builds=builds;this.repairs=repairs;
+    }
+    private record CachedBuild(long expires,com.atenea.github.GitHubReleaseBuild.Evidence evidence) { }
+    private final java.util.Map<String,CachedBuild> buildCache=new java.util.LinkedHashMap<>();
+    public record BuildStatus(com.atenea.github.GitHubReleaseBuild.Evidence evidence,boolean canRepair,String errorCode) { }
+    public BuildStatus observeBuild(Long sessionId,AuthenticatedOperator actor) {
+        administrator(actor.operatorId());var session=session(sessionId,false);
+        if(session.getPullRequestStatus()!=WorkSessionPullRequestStatus.MERGED || builds==null) return null;
+        try {
+            owned(session);published(session);
+            String source=recoveryCanonicalMain();
+            var integrated=store.integrated(sessionId,session.getFinalCommitSha()).orElseThrow();
+            requireRecoveryAncestry(session,ReleaseRecoverySource.create(integrated,source));
+            com.atenea.github.GitHubReleaseBuild.Evidence evidence;
+            synchronized(buildCache) {
+                var cached=buildCache.get(source);long now=System.currentTimeMillis();
+                if(cached==null || cached.expires()<now) {
+                    evidence=builds.observe(source);
+                    if(buildCache.size()>=32) buildCache.remove(buildCache.keySet().iterator().next());
+                    buildCache.put(source,new CachedBuild(now+15000,evidence));
+                } else evidence=cached.evidence();
+            }
+            boolean failed="FAILED".equals(evidence.state());
+            return new BuildStatus(evidence,failed && !runs.existsBySessionIdAndStatusIn(sessionId,AgentRunStatus.nonTerminalStatuses()),null);
+        } catch(RuntimeException unavailable) { return new BuildStatus(null,false,"BUILD_STATUS_UNAVAILABLE"); }
+    }
+
+    SourceUpdateService.BuildRepair buildRepair(Long sessionId,AuthenticatedOperator actor) {
+        enabled();administrator(actor.operatorId());var session=session(sessionId,false);
+        var failed=store.list(sessionId).stream().filter(op -> "RELEASE".equals(op.kind())
+            && actor.operatorId().equals(op.operatorId()) && "RELEASE_BUILD_FAILED".equals(op.errorCode()))
+            .findFirst().orElse(null);
+        var retained=failed==null ? null : repairs.failed(failed.id());
+        if(retained!=null && retained.originalPrUrl().equals(session.getPullRequestUrl())) {
+            if(!retained.operatorId().equals(actor.operatorId()) || !retained.sessionId().equals(sessionId)) throw new DeliveryRejectedException("RELEASE_REPAIR_OWNER_MISMATCH");
+            try { return new SourceUpdateService.BuildRepair(failed,mapper.treeToValue(retained.diagnostic(),
+                com.atenea.github.GitHubReleaseBuild.Evidence.class),retained.originalMerge(),repairs.retainedTargets(sessionId)); }
+            catch(com.fasterxml.jackson.core.JsonProcessingException bad) { throw new DeliveryRejectedException("RELEASE_REPAIR_EVIDENCE_MISMATCH"); }
+        }
+        owned(session);idle(sessionId);published(session);
+        String main=recoveryCanonicalMain();
+        var integrated=store.integrated(sessionId,session.getFinalCommitSha()).orElseThrow(()->new DeliveryRejectedException("EXACT_CHANGE_NOT_INTEGRATED"));
+        var proof=ReleaseRecoverySource.create(integrated,main);requireRecoveryAncestry(session,proof);
+        var evidence=builds.observe(main); // Never authorize from the UI/poll cache.
+        if(!"FAILED".equals(evidence.state()) || evidence.runId()==null
+                || !main.equals(recoveryCanonicalMain())) throw new DeliveryRejectedException("RELEASE_REPAIR_SOURCE_MOVED");
+        var readiness=observeDelivery(sessionId,actor);
+        if(!"CONFIRMED".equals(readiness.requirementsStatus()) || readiness.ready()) throw new DeliveryRejectedException("RELEASE_REPAIR_EVIDENCE_MISMATCH");
+        var exactFailure=transaction.execute(ignored->{
+            store.lockReleaseIntent();store.lockAdmissionAndRequireIdle();
+            if(store.activeRelease().isPresent()) throw new DeliveryRejectedException("RELEASE_IN_PROGRESS");
+            var existing=store.list(sessionId).stream().filter(op->"RELEASE".equals(op.kind())
+                && actor.operatorId().equals(op.operatorId()) && main.equals(op.sourceCommit())
+                && "RELEASE_BUILD_FAILED".equals(op.errorCode())).findFirst();
+            if(existing.isPresent()) return existing.get();
+            // An explicit repair may be requested before any failed Prepare.
+            // Record the authoritative CI failure, not a fabricated publication receipt.
+            var entry=store.create(sessionId,actor.operatorId(),"RELEASE",DeliveryTarget.APP_PROD,main,"BLOCKED",
+                mapper.createObjectNode().set("buildFailureObservation",mapper.valueToTree(evidence)));
+            store.update(entry,"BLOCKED","RELEASE_BUILD_FAILED",null,entry.evidence());return store.get(entry.id(),false);
+        });
+        return new SourceUpdateService.BuildRepair(exactFailure,evidence,proof.integratedMergeCommit(),readiness.requiredTargets());
+    }
 
     public MobileDeliveryService(DeliveryStore store, WorkSessionRepository sessions, AgentRunRepository runs,
             OperatorRepository operators, DevelopmentChangeBranchPublicationService ownership,
@@ -111,6 +178,10 @@ public class MobileDeliveryService {
                     if (immutableRequirements.size()>=128) immutableRequirements.remove(immutableRequirements.keySet().iterator().next());
                     immutableRequirements.put(requirementKey,targets);
                 }
+            }
+            if(repairs!=null) {
+                var retained=new java.util.TreeSet<DeliveryTarget>(targets);retained.addAll(repairs.retainedTargets(sessionId));
+                targets=List.copyOf(retained);
             }
             String androidStatus=android==null ? "UNAVAILABLE" : "NOT_INCLUDED";
             if (android!=null) {
@@ -222,6 +293,12 @@ public class MobileDeliveryService {
                 return completed.get().view();
             }
             requireRecoveryAncestry(session, proof);
+            var failed=store.list(sessionId).stream().filter(op -> "RELEASE".equals(op.kind()) && op.target()==target
+                && actor.operatorId().equals(op.operatorId()) && selected.equals(op.sourceCommit())
+                && "RELEASE_BUILD_FAILED".equals(op.errorCode())).findFirst();
+            if(failed.isPresent() && builds!=null) {
+                if("FAILED".equals(builds.observe(selected).state())) return failed.get().view();
+            }
             return store.create(sessionId, actor.operatorId(), "RELEASE", target, selected,
                     "PLANNING", mapper.createObjectNode().set(ReleaseRecoverySource.FIELD, proof.json(mapper))).view();
         }));
@@ -399,6 +476,8 @@ public class MobileDeliveryService {
                 }
                 if ("PUBLISH_PR".equals(kind)) {
                     if (session.getPullRequestStatus() != null && session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED
+                            && !(session.getPullRequestStatus()==WorkSessionPullRequestStatus.MERGED && repairs!=null
+                                && repairs.replacement(session,session.getFinalCommitSha())!=null)
                             && Objects.equals(session.getDevelopmentChange().getSourceRevision(), session.getPublishedSourceRevision())
                             && Objects.equals(session.getDevelopmentChange().getSourceFingerprintSha256(),session.getPublishedSourceFingerprintSha256())) {
                         var receipt = store.list(sessionId).stream().filter(op -> op.kind().equals(kind) && op.state().equals("SUCCEEDED")
@@ -677,6 +756,8 @@ public class MobileDeliveryService {
                     store.update(op, "WAITING_CI", "PR_MERGEABILITY_PENDING", null, op.evidence());
                 } else if (message != null && message.startsWith("PR_MERGE_CONFLICTS:")) {
                     store.update(op, "BLOCKED", "PR_MERGE_CONFLICTS", null, op.evidence());
+                } else if(message!=null && message.startsWith("PR_BASE_VALIDATION_MOVED:")) {
+                    store.update(op,"BLOCKED","PR_BASE_VALIDATION_MOVED",null,op.evidence());
                 } else if (message != null && message.startsWith("PR_PROTECTED:")) {
                     store.update(op, "BLOCKED", "PR_PROTECTED", null, op.evidence());
                 } else if (message != null && (message.startsWith("UFD_FAILED:") || message.startsWith("CI_FAILED:"))) {

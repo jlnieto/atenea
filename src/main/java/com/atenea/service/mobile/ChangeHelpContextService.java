@@ -34,6 +34,9 @@ public class ChangeHelpContextService {
     private final MobileDeliveryService deliveryObservations;
     private final com.atenea.delivery.SourceUpdateStore sourceUpdates;
     private final com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard;
+    private com.atenea.delivery.ReleaseRepairStore repairs;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setRepairs(com.atenea.delivery.ReleaseRepairStore value) { repairs=value; }
 
     public ChangeHelpContextService(WorkSessionRepository sessions, AgentRunRepository runs,
             ValidationOperationRepository validations, OperatorRepository operators, DeliveryStore deliveries,
@@ -124,7 +127,20 @@ public class ChangeHelpContextService {
                 && recordedSource.preparation()==null && recordedSource.resolverRunId()==null;
         boolean preparing=sessions.existsActiveSourceUpdateBySessionId(id) || preparationBlocked;
         boolean sourcePending=preparing || sessions.existsActiveSourceFinalizationBySessionId(id);
-        var sourceUpdate=preparing ? recordedSource : null;
+        boolean buildRepair=recordedSource!=null && !recordedSource.state().equals("PUBLISHED")
+            && repairs!=null && repairs.preparation(recordedSource.id())!=null;
+        var sourceUpdate=preparing || buildRepair ? recordedSource : null;
+        String deliveryError=delivery==null ? null : safeCode(delivery.errorCode());
+        String deliveryKind=delivery==null ? null : delivery.kind(),deliveryState=delivery==null ? null : delivery.state();
+        if(!buildRepair && readiness!=null && "CONFIRMED".equals(readiness.requirementsStatus()) && !readiness.ready()
+                && (delivery==null || delivery.terminal())) {
+            var build=deliveryObservations.observeBuild(id,actor);
+            if(build!=null && build.evidence()!=null) {
+                if("READY".equals(build.evidence().state()) && "RELEASE_BUILD_FAILED".equals(deliveryError)) deliveryError=null;
+                else if("FAILED".equals(build.evidence().state())) { deliveryKind="RELEASE";deliveryState="BLOCKED";deliveryError="RELEASE_BUILD_FAILED"; }
+                else if("PENDING".equals(build.evidence().state())) { deliveryKind="RELEASE_BUILD";deliveryState="PENDING";deliveryError=null; }
+            }
+        }
         return new ChangeHelpContext(id, session.getProject().getId(), change.getChangeKey(), change.getSourceRevision(),
                 Instant.now(), name(change.getStatus()), name(session.getStatus()), name(change.getWorkspaceState()),
                 name(change.getSourceState()), name(change.getValidationState()), name(session.getPullRequestStatus()),
@@ -136,9 +152,9 @@ public class ChangeHelpContextService {
                 run == null ? null : name(run.getStatus()), run == null ? null : safeCode(run.getFailureCode()),
                 gitInstructions, passed, Long.valueOf(1).equals(session.getProject().getId()) ? ValidationOperationKind.values().length : 0,
                 failed == null ? null : name(failed.getOperation()), failed == null ? null : safeText(failed.getSummary()),
-                sourceUpdate != null ? "SOURCE_UPDATE" : delivery == null ? null : delivery.kind(),
-                sourceUpdate != null ? sourceUpdate.state() : delivery == null ? null : delivery.state(),
-                sourceUpdate != null ? safeCode(sourceUpdate.errorCode()) : delivery == null ? null : safeCode(delivery.errorCode()),
+                buildRepair ? "BUILD_REPAIR" : sourceUpdate != null ? "SOURCE_UPDATE" : deliveryKind,
+                sourceUpdate != null ? sourceUpdate.state() : deliveryState,
+                sourceUpdate != null ? safeCode(sourceUpdate.errorCode()) : deliveryError,
                 name(operator.getCodexOperationsRole()), deliveryEnabled,
                 run != null && run.getStatus() == AgentRunStatus.FAILED ? safeText(run.getErrorSummary()) : null,
                 delivery == null ? null : name(delivery.target()),

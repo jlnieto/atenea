@@ -14,16 +14,18 @@ public record SourceUpdateOperation(UUID id, Long sessionId, Long operatorId, St
     static final Set<String> TERMINAL = Set.of("RESOLVER_COMPLETED", "READY_TO_FINALIZE", "FAILED", "BLOCKED", "PUBLISHED");
     public View view() {
         return new View(id, sessionId, state, command.targetMainCommit(), resultRevision == null ? resolverSourceRevision : resultRevision,
-                resolverRunId, errorCode, updatedAt, false, SourceUpdateBaseGuard.Status.NOT_REQUIRED);
+                resolverRunId, errorCode, updatedAt, false, SourceUpdateBaseGuard.Status.NOT_REQUIRED,"BASE_UPDATE");
     }
     public record View(UUID id, Long sessionId, String state, String targetMainCommit,
             Long sourceRevision, Long resolverRunId, String errorCode, Instant updatedAt, boolean recoveryAvailable,
-            SourceUpdateBaseGuard.Status baseStatus) {
+            SourceUpdateBaseGuard.Status baseStatus,String purpose) {
         public View withRecoveryAvailable(boolean value) {
-            return new View(id,sessionId,state,targetMainCommit,sourceRevision,resolverRunId,errorCode,updatedAt,value,baseStatus);
+            return new View(id,sessionId,state,targetMainCommit,sourceRevision,resolverRunId,errorCode,updatedAt,value,baseStatus,purpose);
         }
         public View withBaseStatus(SourceUpdateBaseGuard.Status value) {
-            return new View(id,sessionId,state,targetMainCommit,sourceRevision,resolverRunId,errorCode,updatedAt,recoveryAvailable,value);
+            return new View(id,sessionId,state,targetMainCommit,sourceRevision,resolverRunId,errorCode,updatedAt,recoveryAvailable,value,purpose);
         }
+        public View withPurpose(String value) { return new View(id,sessionId,state,targetMainCommit,sourceRevision,resolverRunId,errorCode,
+            updatedAt,recoveryAvailable,baseStatus,value); }
     }
 }

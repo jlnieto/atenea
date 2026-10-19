@@ -1,0 +1,43 @@
+name: Atenea backend merge validation v1
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: backend-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  backend:
+    name: backend-merge-${{ github.event.pull_request.base.sha }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: atenea_test
+          POSTGRES_USER: atenea
+          POSTGRES_PASSWORD: atenea
+        ports: [5432:5432]
+        options: --health-cmd "pg_isready -U atenea -d atenea_test" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify the exact GitHub merge preview and unchanged test authority
+        env:
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE"
+          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD"
+          for path in scripts/ci-backend-test.sh scripts/test.sh; do
+            test "$(git rev-parse "HEAD:$path")" = "$(git rev-parse "HEAD^1:$path")"
+          done
+      - name: Backend tests using the same recipe as immutable releases
+        run: ./scripts/ci-backend-test.sh
+      - name: Closed diagnostic and merge workflow regressions
+        run: python3 -B scripts/test-build-diagnostic-v1.py

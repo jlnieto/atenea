@@ -13,6 +13,29 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.MockResponse
 
 class MobileDeliveryTest {
+    @Test fun releaseRepairIsOneEmptyAuthenticatedRequestForTheSameSession() = runBlocking<Unit> {
+        val server=MockWebServer();server.start()
+        try {
+            val response=JSONObject().put("id",UUID.randomUUID().toString()).put("sessionId",21).put("state","QUEUED")
+                .put("targetMainCommit","1".repeat(40)).put("sourceRevision",JSONObject.NULL).put("resolverRunId",JSONObject.NULL)
+                .put("errorCode",JSONObject.NULL).put("purpose","BUILD_REPAIR")
+            server.enqueue(MockResponse().setBody(response.toString()))
+            val client=AteneaApiClient(server.url("/").toString(),{"synthetic-token"})
+            assertEquals(21,client.repairReleaseBuild(21).sessionId)
+            val request=server.takeRequest();assertEquals("/api/mobile/sessions/21/delivery/build-repair",request.path)
+            assertEquals("POST",request.method);assertEquals("{}",request.body.readUtf8());assertEquals("Bearer synthetic-token",request.getHeader("Authorization"))
+        } finally { server.shutdown() }
+    }
+    @Test fun structuredBuildStatusCannotIntroduceArbitraryUrlsOrFailurePaths() {
+        val evidence=JSONObject().put("state","FAILED").put("sourceCommit","a".repeat(40)).put("phase","BACKEND_COMPILATION")
+            .put("url","https://github.com/jlnieto/atenea/actions/runs/91").put("failures",org.json.JSONArray())
+        val root=JSONObject().put("evidence",evidence).put("canRepair",true).put("errorCode",JSONObject.NULL)
+        assertTrue(parseBuildStatus(root).canRepair)
+        evidence.put("url","https://foreign.invalid/action")
+        assertFailsWith<IllegalArgumentException> { parseBuildStatus(root) }
+        evidence.put("url",JSONObject.NULL).put("state","READY")
+        assertFailsWith<IllegalArgumentException> { parseBuildStatus(root) }
+    }
     @Test fun versionPreparationAndIntegrationSendOnlyEmptyRequestsToFixedSessionEndpoints() = runBlocking<Unit> {
         val server=MockWebServer();server.start()
         try {

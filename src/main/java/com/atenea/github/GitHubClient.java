@@ -458,6 +458,7 @@ public class GitHubClient {
             throw new GitHubIntegrationException("PR_MERGE_CONFLICTS: hay conflictos que resolver antes de integrar");
         }
         requireUfdValidation(repository, headSha, headBranch);
+        String validatedBase = requireBackendMergeValidation(repository, number, headBranch, headSha, pr);
         if (pr.path("draft").asBoolean()) {
             String nodeId = pr.path("node_id").asText();
             if (nodeId.isBlank()) throw new GitHubIntegrationException("PR_IDENTITY_INVALID");
@@ -501,12 +502,56 @@ public class GitHubClient {
                 || (statuses.path("total_count").asInt() > 0 && !"success".equals(statuses.path("state").asText()))) {
             throw new GitHubIntegrationException("CI_PENDING: estado de integración pendiente");
         }
+        if (validatedBase != null && !validatedBase.equals(canonicalMain(repository))) {
+            throw new GitHubIntegrationException("PR_BASE_VALIDATION_MOVED: main avanzó después de comprobar el backend");
+        }
         JsonNode merged = sendJsonRequest("PUT", properties.getApiBaseUrl().resolve(path + "/merge"),
                 "{\"sha\":" + jsonString(headSha) + ",\"merge_method\":\"merge\"}");
         if (!merged.path("merged").asBoolean()) throw new GitHubIntegrationException("MERGE_REJECTED");
         String sha = merged.path("sha").asText();
         requireSha(sha);
         return sha;
+    }
+
+    /** UFD is additional evidence, not a replacement for compiling the merged backend. */
+    String requireBackendMergeValidation(GitHubRepositoryRef repository, long number,
+            String branch, String head, JsonNode pr) {
+        if (!"jlnieto".equals(repository.owner()) || !"atenea".equals(repository.repo())) return null;
+        String base=canonicalMain(repository);
+        String workflow=".github/workflows/backend-merge-validation-v1.yml";
+        JsonNode authority=content(repository,workflow,base), candidate=content(repository,workflow,head);
+        if (!authority.path("sha").asText().matches("[0-9a-f]{40}")
+                || !authority.path("sha").asText().equals(candidate.path("sha").asText()))
+            throw new GitHubIntegrationException("CI_EVIDENCE_INCOMPLETE: falta el workflow backend aprobado");
+        JsonNode runs=sendJsonRequest("GET",properties.getApiBaseUrl().resolve(
+            "/repos/jlnieto/atenea/actions/workflows/backend-merge-validation-v1.yml/runs?head_sha="+head+"&event=pull_request&per_page=100"),null);
+        if (!runs.path("workflow_runs").isArray() || runs.path("workflow_runs").size()>=100)
+            throw new GitHubIntegrationException("CI_EVIDENCE_INCOMPLETE");
+        JsonNode latest=null;
+        for (var run:runs.path("workflow_runs")) {
+            boolean owned=false;
+            for (var item:run.path("pull_requests"))
+                if (item.path("number").asLong()==number && head.equals(item.path("head").path("sha").asText())) owned=true;
+            if (owned && head.equals(run.path("head_sha").asText()) && branch.equals(run.path("head_branch").asText())
+                    && "pull_request".equals(run.path("event").asText()) && workflow.equals(run.path("path").asText())
+                    && "jlnieto/atenea".equals(run.path("head_repository").path("full_name").asText())
+                    && (latest==null || run.path("id").asLong()>latest.path("id").asLong())) latest=run;
+        }
+        if (latest==null) throw new GitHubIntegrationException("CI_PENDING: falta la validación backend combinada con main");
+        long id=latest.path("id").asLong();if(id<1) throw new GitHubIntegrationException("CI_EVIDENCE_INCOMPLETE");
+        JsonNode jobs=sendJsonRequest("GET",properties.getApiBaseUrl().resolve(
+            "/repos/jlnieto/atenea/actions/runs/"+id+"/jobs?filter=latest&per_page=100"),null);
+        if (!jobs.path("jobs").isArray() || jobs.path("total_count").asInt(-1)<1 || jobs.path("total_count").asInt()>100)
+            throw new GitHubIntegrationException("CI_EVIDENCE_INCOMPLETE");
+        var matches=new ArrayList<JsonNode>();
+        for(var job:jobs.path("jobs")) if (("backend-merge-"+base).equals(job.path("name").asText())) matches.add(job);
+        if(matches.size()!=1) throw new GitHubIntegrationException("PR_BASE_VALIDATION_MOVED: hay que actualizar y validar la base actual");
+        var job=matches.getFirst();
+        if(!"completed".equals(job.path("status").asText())) throw new GitHubIntegrationException("CI_PENDING: comprobando el backend con main");
+        if(!"success".equals(job.path("conclusion").asText())) throw new GitHubIntegrationException("CI_FAILED: falló el backend combinado con main");
+        if(!"completed".equals(latest.path("status").asText()) || !"success".equals(latest.path("conclusion").asText()))
+            throw new GitHubIntegrationException("CI_PENDING: falta el cierre de la validación backend");
+        return base;
     }
 
     private void requireExactPullRequest(GitHubRepositoryRef repository, long number, String branch, String sha, JsonNode pr) {
@@ -601,8 +646,51 @@ public class GitHubClient {
         }
     }
 
-    private JsonNode sendJsonRequest(String method, URI uri, String body) {
+    JsonNode sendJsonRequest(String method, URI uri, String body) {
         return sendJsonRequest(method, uri, body, false);
+    }
+
+    JsonNode buildApi(String path) {
+        if (!path.startsWith("/repos/jlnieto/atenea/actions/")) throw new GitHubIntegrationException("BUILD_EVIDENCE_INVALID");
+        return sendJsonRequest("GET",properties.getApiBaseUrl().resolve(path),null);
+    }
+
+    /** Download one digest-bound diagnostic, with no credentials forwarded to blob storage. */
+    JsonNode buildDiagnostic(long artifactId, String archiveSha256) {
+        if(artifactId<1 || archiveSha256==null || !archiveSha256.matches("[0-9a-f]{64}"))
+            throw new GitHubIntegrationException("BUILD_EVIDENCE_INVALID");
+        try {
+            var request=HttpRequest.newBuilder(properties.getApiBaseUrl().resolve(
+                "/repos/jlnieto/atenea/actions/artifacts/"+artifactId+"/zip"))
+                .timeout(properties.getReadTimeout()).header("Authorization","Bearer "+configuredToken()).GET().build();
+            var redirect=httpClient.send(request,HttpResponse.BodyHandlers.discarding());
+            if(redirect.statusCode()!=302) throw new GitHubIntegrationException("BUILD_DIAGNOSTIC_UNAVAILABLE");
+            URI location=URI.create(redirect.headers().firstValue("Location").orElseThrow());
+            String host=location.getHost();
+            if(!"https".equals(location.getScheme()) || location.getUserInfo()!=null || location.getFragment()!=null
+                    || (location.getPort()!=-1 && location.getPort()!=443) || host==null
+                    || !(host.endsWith(".blob.core.windows.net") || host.endsWith(".githubusercontent.com")))
+                throw new GitHubIntegrationException("BUILD_DIAGNOSTIC_UNAVAILABLE");
+            var response=httpClient.send(HttpRequest.newBuilder(location).timeout(properties.getReadTimeout()).GET().build(),
+                HttpResponse.BodyHandlers.ofInputStream());
+            byte[] archive;
+            try(var input=response.body()) {
+                if(response.statusCode()!=200) throw new GitHubIntegrationException("BUILD_DIAGNOSTIC_UNAVAILABLE");
+                archive=input.readNBytes(131073);
+            }
+            if(archive.length>131072 || !archiveSha256.equals(java.util.HexFormat.of().formatHex(
+                    java.security.MessageDigest.getInstance("SHA-256").digest(archive))))
+                throw new GitHubIntegrationException("BUILD_EVIDENCE_INVALID");
+            try(var zip=new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(archive))) {
+                var entry=zip.getNextEntry();
+                if(entry==null || !"diagnostic.json".equals(entry.getName()) || entry.isDirectory())
+                    throw new GitHubIntegrationException("BUILD_EVIDENCE_INVALID");
+                byte[] data=zip.readNBytes(32769);
+                if(data.length>32768 || zip.getNextEntry()!=null) throw new GitHubIntegrationException("BUILD_EVIDENCE_INVALID");
+                return objectMapper.readTree(data);
+            }
+        } catch(GitHubIntegrationException failure) { throw failure; }
+        catch(Exception failure) { throw new GitHubIntegrationException("BUILD_DIAGNOSTIC_UNAVAILABLE"); }
     }
 
     private JsonNode sendJsonRequest(String method, URI uri, String body, boolean missingAllowed) {

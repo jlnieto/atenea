@@ -14,7 +14,40 @@ data class MobileDeliveryState(val enabled: Boolean, val operations: List<Mobile
     val completionEnabled: Boolean = false,
     val readiness: MobileChangeDeliveryReadiness? = null,
     val validation: DevelopmentChangeValidationEvidence? = null,
-    val androidVersionPreparationEnabled: Boolean = false)
+    val androidVersionPreparationEnabled: Boolean = false,
+    val build: MobileBuildStatus? = null)
+
+data class MobileBuildStatus(val state: String?, val sourceCommit: String?, val phase: String?, val runUrl: String?,
+    val canRepair: Boolean, val errorCode: String?, val failureLocations: List<String>)
+
+internal fun parseBuildStatus(json: JSONObject): MobileBuildStatus {
+    val evidence=json.optJSONObject("evidence")
+    val source=evidence?.getString("sourceCommit")?.also { require(it.matches(Regex("[0-9a-f]{40}"))) }
+    val state=evidence?.getString("state")?.also { require(it in setOf("READY","FAILED","PENDING")) }
+    val url=evidence?.nullableDeliveryString("url")?.also { require(it.matches(Regex("https://github\\.com/jlnieto/atenea/actions/runs/[1-9][0-9]*"))) }
+    val phase=evidence?.getString("phase")?.also { require(it in setOf("WAITING_CI","BUILDING","COMPLETED","BUILD","ANDROID_BUILD","BACKEND_BUILD","BACKEND_TEST_COMPILE_OR_TEST","BACKEND_COMPILATION")) }
+    val locations=evidence?.getJSONArray("failures")?.let { list ->
+        require(list.length()<=40)
+        List(list.length()) { index ->
+            val f=list.getJSONObject(index)
+            when(f.getString("kind")) {
+                "COMPILATION" -> {
+                    val path=f.getString("path"); val line=f.getInt("line")
+                    require(path.matches(Regex("src/(test|main)/java/([A-Za-z0-9_]+/)*[A-Za-z0-9_]+\\.java")) && line in 1..999999)
+                    "$path:$line"
+                }
+                "TEST" -> {
+                    val test=f.getString("testClass");val method=f.getString("testMethod")
+                    require(test.matches(Regex("[A-Za-z_$][A-Za-z0-9_$.]{0,240}")) && method.matches(Regex("[A-Za-z_$][A-Za-z0-9_$.]{0,240}")))
+                    "$test.$method"
+                }
+                else -> error("Unexpected diagnostic kind")
+            }
+        }
+    }.orEmpty()
+    val canRepair=json.getBoolean("canRepair");require(!canRepair || state=="FAILED" && source!=null)
+    return MobileBuildStatus(state,source,phase,url,canRepair,json.nullableDeliveryString("errorCode"),locations)
+}
 
 data class MobileAndroidChannel(val sourceCommit: String, val versionName: String, val versionCode: Int,
     val apkSha256: String, val observedAt: Long)
@@ -96,7 +129,7 @@ internal fun parseDeploymentObservation(json: JSONObject): MobileDeploymentObser
 data class MobileSourceUpdate(val id: UUID, val sessionId: Long, val state: String,
     val targetMainCommit: String, val sourceRevision: Long?, val resolverRunId: Long?, val errorCode: String?,
     val recoveryAvailable: Boolean = false, val baseStatus: String = "UNAVAILABLE",
-    val updatedAt: String? = null)
+    val updatedAt: String? = null, val purpose: String = "BASE_UPDATE")
 
 internal fun parseMobileSourceUpdate(json: JSONObject): MobileSourceUpdate {
     val state = json.getString("state")
@@ -115,7 +148,8 @@ internal fun parseMobileSourceUpdate(json: JSONObject): MobileSourceUpdate {
     require(baseStatus in setOf("NOT_REQUIRED", "CURRENT", "UPDATE_REQUIRED", "UNAVAILABLE"))
     return MobileSourceUpdate(id, positive("sessionId")!!,
         state, main, positive("sourceRevision"), positive("resolverRunId"), json.nullableDeliveryString("errorCode"),
-        json.opt("recoveryAvailable") == true, baseStatus, json.nullableDeliveryString("updatedAt"))
+        json.opt("recoveryAvailable") == true, baseStatus, json.nullableDeliveryString("updatedAt"),
+        json.optString("purpose","BASE_UPDATE").also { require(it in setOf("BASE_UPDATE","BUILD_REPAIR")) })
 }
 
 data class MobileDeliveryIntegration(
@@ -147,7 +181,8 @@ internal fun parseMobileDeliveryState(json: JSONObject): MobileDeliveryState {
         json.opt("completionEnabled") == true,
         json.optJSONObject("readiness")?.let(::parseDeliveryReadiness),
         json.optJSONObject("validation")?.let(::parseDevelopmentChangeValidationEvidence),
-        json.opt("androidVersionPreparationEnabled") == true)
+        json.opt("androidVersionPreparationEnabled") == true,
+        json.optJSONObject("build")?.let(::parseBuildStatus))
 }
 
 data class MobileReleaseRecovery(val integrationOperationId: UUID, val publishedHeadCommit: String,

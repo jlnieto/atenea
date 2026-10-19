@@ -171,8 +171,12 @@ public class SourceUpdateStore {
         var retry=jdbc.query("SELECT source_revision,observed_fingerprint_sha256 FROM mobile_source_resolver_retry WHERE operation_id=? AND run_id=?",
             (rs,index)->java.util.Objects.equals(run.getChangeSourceRevision(),rs.getLong(1))
                 && java.util.Objects.equals(run.getChangeSourceFingerprintSha256(),rs.getString(2)),op.id(),run.getId());
-        return retry.isEmpty() ? java.util.Objects.equals(run.getChangeSourceRevision(),op.preparedRevision())
-            && java.util.Objects.equals(run.getChangeSourceFingerprintSha256(),op.preparation().preparedFingerprintSha256()) : retry.getFirst();
+        if(!retry.isEmpty()) return retry.getFirst();
+        String fingerprint=op.preparation().preparedFingerprintSha256();
+        if(fingerprint==null) fingerprint=jdbc.query("SELECT prepared_fingerprint FROM mobile_release_build_repair WHERE preparation_id=?",
+            (rs,index)->rs.getString(1),op.id()).stream().findFirst().orElse(null);
+        return fingerprint!=null && java.util.Objects.equals(run.getChangeSourceRevision(),op.preparedRevision())
+            && java.util.Objects.equals(run.getChangeSourceFingerprintSha256(),fingerprint);
     }
 
     public void retried(UUID retryId, Long runId, UUID operationId) {

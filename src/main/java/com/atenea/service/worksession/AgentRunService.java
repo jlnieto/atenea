@@ -663,10 +663,13 @@ public class AgentRunService {
                   AND op.prepared_revision=? AND op.publication_receipt_sha256=?
                   AND op.command_json->'owner'->>'changeKey'=?
                   AND op.command_json->'owner'->>'sourceCommit'=?
-                  AND op.preparation_json->>'preparedFingerprintSha256'=?
+                  AND (op.preparation_json->>'preparedFingerprintSha256'=? OR
+                    (op.preparation_json->>'preparedFingerprintSha256' IS NULL AND EXISTS (
+                      SELECT 1 FROM mobile_release_build_repair b WHERE b.preparation_id=op.id
+                        AND b.session_id=op.session_id AND b.prepared_fingerprint=?)))
                 """, Long.class, sourceUpdateId, session.getId(), originTurnId, change.getSourceRevision(),
                 session.getPublicationReceiptSha256(), change.getChangeKey().toString(),
-                change.getObservedCanonicalCommit(), change.getSourceFingerprintSha256()));
+                change.getObservedCanonicalCommit(), change.getSourceFingerprintSha256(),change.getSourceFingerprintSha256()));
         if (sourceUpdateId != null && !resolverAdmitted) {
             resolverAdmitted = Long.valueOf(1).equals(jdbcTemplate.queryForObject("""
                 SELECT count(*) FROM mobile_source_update_operation op JOIN mobile_source_resolver_retry r ON r.operation_id=op.id

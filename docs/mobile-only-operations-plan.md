@@ -12,6 +12,48 @@ su prueba de aceptación con el dispositivo real.
 
 ## Estado actual y siguiente paso
 
+### Estabilización activa: construcción y entrega completas (2026-10-19)
+
+El caso activo es «mejorar alertas push», Cambio
+`1b72e36e-68e2-4532-8d31-e3d88fd8519a`, WorkSession 27, PR original 80 integrada.
+No recrear el ticket ni reabrir su PR. Sus 4/4 validaciones pertenecen a la
+revisión 2; no demuestran por sí solas que el código integrado sea publicable.
+El run de release 39237868850 falló compilando tests del backend y no produjo
+imagen. PROD conserva la entrega anterior sana; repetir Preparar no repara CI.
+
+Esta entrega cubre cuatro criterios, sin añadir nuevas funcionalidades:
+
+1. El backend combinado con el main concreto se compila y ejecuta con la misma
+   receta completa antes de integrar. UFD se conserva como comprobación adicional.
+   Cambiar main invalida esa evidencia; no se acepta otro head, repositorio,
+   workflow, base o un job omitido como PASS.
+2. Ayuda y Cambio distinguen construcción, preparación, confirmación y despliegue.
+   El fallo durable se conserva; una construcción aprobada nueva puede retirar
+   el fallo histórico de la acción principal, pero nunca acredita despliegue.
+3. Investigar y reparar construcción crea una sola preparación y un solo resolver
+   del mismo Cambio/WorkSession. V103 conserva integración original, run/attempt,
+   diagnóstico estructural y destinos requeridos. Reutiliza los contratos de
+   preparación/finalización de Platform; no añade root, comandos, credenciales
+   ni inputs de ejecución elegibles por el móvil. Una corrección validada admite
+   una PR de reparación vinculada; no modifica ni reabre la PR integrada.
+4. La entrega no se acepta hasta publicar backend y APK, comprobar la función y
+   finalizar desde Samsung. Otro cambio pequeño y un fallo/recuperación ensayado
+   en entorno efímero deben confirmar el recorrido sin intervención desde CLI.
+
+CI conserva sólo diagnósticos estructurales versionados: fuente, fase, archivo
+relativo/línea o identidad de test; nunca stdout, mensajes de excepción, valores
+de aserciones o secretos. Para runs antiguos sin ese artefacto, la app declara
+la ausencia del detalle, no inventa la aserción. Consultar no crea operaciones.
+
+Evidencia local: suite backend completa 1389/1389 PASS, incluyendo el recorrido
+de reparación y sus rechazos; tests Android API/interfaz y contrato CI PASS.
+La prueba vertical usa una DB PostgreSQL 16 efímera independiente, no otros
+esquemas de un runtime compartido. No aplica migraciones a PROD ni ejecuta Codex.
+
+Estado de esta sección: **pendiente de integración, despliegue y aceptación
+Samsung; un PASS local no acredita ninguna de ellas**. Las secciones posteriores conservan
+la historia de entregas anteriores, no ordenan repetirlas.
+
 Actualización 2026-10-16: WS21/PR47 y el ticket original Apache ya se completaron;
 las unidades descritas más abajo son el registro histórico de esa entrega, no
 una orden de recrear o reintentar WS21. El modelo actual es sólo Cambio con su

@@ -45,6 +45,9 @@ public class SourceFinalizationService {
     private final RemoteWorkerProperties worker;
     private final GitHubClient github;
     private final TransactionTemplate transaction;
+    private ReleaseRepairStore repairs;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setRepairs(ReleaseRepairStore repairs) { this.repairs=repairs; }
     public SourceFinalizationService(SourceUpdateStore updates, JdbcTemplate jdbc, ObjectMapper mapper,
             WorkSessionRepository sessions, OperatorRepository operators, DevelopmentChangeSourceFinalizationGateway gateway,
             RemoteRoutingSelector routing, RemoteWorkerProperties worker, GitHubClient github, PlatformTransactionManager manager) {
@@ -158,7 +161,8 @@ public class SourceFinalizationService {
             if (!Objects.equals(github.canonicalMain(APP), source.targetMainCommit())) throw reject("SOURCE_FINALIZATION_MAIN_MOVED");
             var merge=github.observeMergeState(APP, github.extractPullRequestNumber(session.getPullRequestUrl()),
                 validated.workspaceBranch(), session.getFinalCommitSha());
-            if (merge==null || merge==GitHubMergeState.MERGED || merge==GitHubMergeState.CLOSED) throw reject("SOURCE_FINALIZATION_SAME_OPEN_PR_REQUIRED");
+            if (merge==null || merge==GitHubMergeState.CLOSED || merge==GitHubMergeState.MERGED
+                    && (repairs==null || !repairs.permitsFinalization(update.id(),session))) throw reject("SOURCE_FINALIZATION_SAME_OPEN_PR_REQUIRED");
             var command=new DevelopmentChangeSourceFinalizationCommand(validated, source.targetMainCommit(), source.publicationReceiptSha256(),
                 update.id(), update.preparation().receiptSha256(), session.getValidationProjectionSha256());
             intent=new Intent(command,null,new Predecessor(session.getFinalCommitSha(),session.getPublishedSourceRevision(),
@@ -196,6 +200,7 @@ public class SourceFinalizationService {
                 || !Objects.equals(session.getPullRequestUrl(), intent.predecessor().pullRequestUrl())) throw reject("SOURCE_FINALIZATION_RECEIPT_MISMATCH");
         jdbc.update("UPDATE mobile_source_finalization SET state='PUBLISHED',result_json=?::jsonb,updated_at=now(),lease_until=now() WHERE id=?",
             json(result),command.owner().operationId());
+        if(repairs!=null) repairs.finalized(command.preparationOperationId(),session,result.publishedHeadSha());
         session.setFinalCommitSha(result.publishedHeadSha());
         session.setPublishedSourceRevision(command.owner().sourceRevision());
         session.setPublishedSourceFingerprintSha256(change.getSourceFingerprintSha256());
