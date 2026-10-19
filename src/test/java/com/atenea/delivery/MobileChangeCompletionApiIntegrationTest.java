@@ -47,6 +47,7 @@ class MobileChangeCompletionApiIntegrationTest {
     @Autowired DevelopmentChangeService changeService;
     @Autowired DeliveryStore store;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ValidationOperationRepository validations;
     @Autowired ObjectMapper mapper;
     @MockBean MobileDeliveryService delivery;
     @MockBean DevelopmentChangeBranchPublicationService ownership;
@@ -55,6 +56,24 @@ class MobileChangeCompletionApiIntegrationTest {
     OperatorEntity admin, routine;
     WorkSessionEntity session;
     DevelopmentChangeEntity change;
+
+    @Test void pendingValidationQuerySelectsOnlyExistingRunningOperationAndItsOwner() {
+        UUID pending=UUID.randomUUID(),terminal=UUID.randomUUID();
+        for (UUID id:List.of(pending,terminal)) {
+            boolean running=id.equals(pending);
+            jdbc.update("""
+                INSERT INTO validation_operation(id,work_session_id,operation,status,source_tree_fingerprint_sha256,
+                    definition_revision,identity_sha256,started_at,created_at,updated_at,duration_millis,finished_at)
+                VALUES (?,?,'ANDROID_BUILD',?,?,'atenea-android-build-v2',?,now(),now(),now(),?,?)
+                """,id,session.getId(),running?"RUNNING":"SUCCEEDED","5".repeat(64),
+                id.toString().replace("-","").repeat(2),running?null:10L,
+                running?null:java.sql.Timestamp.from(Instant.now()));
+        }
+        var results=validations.pendingResults(org.springframework.data.domain.PageRequest.of(0,10));
+        assertEquals(1,results.size());
+        assertEquals(pending,results.getFirst().getId());
+        assertEquals(session.getId(),results.getFirst().getSessionId());
+    }
 
     @BeforeEach void fixture() {
         when(delivery.isEnabled()).thenReturn(true);
