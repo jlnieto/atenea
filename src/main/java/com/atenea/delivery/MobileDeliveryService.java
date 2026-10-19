@@ -71,7 +71,8 @@ public class MobileDeliveryService {
         var operations=store.list(sessionId);
         var active=operations.stream().filter(op->!op.terminal() && !"READY".equals(op.state())).findFirst().orElse(null);
         if(active==null) active=operations.stream().filter(op->"RELEASE".equals(op.kind())).findFirst()
-                .filter(op->java.util.Set.of("RELEASE_STORAGE_INSUFFICIENT","RETENTION_REQUIRES_INSPECTION","RETENTION_EVIDENCE_MISMATCH")
+                .filter(op->java.util.Set.of("RELEASE_STORAGE_INSUFFICIENT","RETENTION_REQUIRES_INSPECTION","RETENTION_EVIDENCE_MISMATCH",
+                        "RETENTION_RECOVERY_CONTENT_MISSING","RETENTION_CURRENT_RECEIPT_REQUIRED","RETENTION_RESOURCE_MOVED","RETENTION_PRODUCTION_MOVED")
                     .contains(Objects.toString(op.errorCode(),""))).orElse(null);
         if(active==null) {
             if(checksProgress==null) return null;
