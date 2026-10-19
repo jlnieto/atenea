@@ -84,7 +84,7 @@ class ChangeWorkflowCoherenceTest {
                 sourceUpdate = server.sourceUpdate!!.copy(state = "PUBLISHED"))
             state.refresh()
             assertFalse(state.busy)
-            assertEquals(DeliveryStepStatus.WORKING, state.currentStep(true, false).status)
+            assertEquals(DeliveryStepStatus.WAITING, state.currentStep(true, false).status)
             assertFalse(state.canUpdatePullRequest(true, false))
             assertEquals(1, preparations); assertEquals(1, publications)
         } finally { scope.cancel() }

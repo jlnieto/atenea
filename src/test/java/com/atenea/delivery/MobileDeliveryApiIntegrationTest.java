@@ -62,6 +62,10 @@ class MobileDeliveryApiIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper mapper;
     @Autowired org.springframework.transaction.PlatformTransactionManager manager;
+    @Autowired ChangeProgressNotifications progressNotifications;
+    @Autowired ChangeProgressDeliveryStore progressDeliveries;
+    @Autowired com.atenea.persistence.auth.OperatorPushDeviceRepository pushDevices;
+    @MockBean com.atenea.github.GitHubServiceHealth githubServiceHealth;
     @MockBean ReleaseControlClient executor;
     @MockBean GitHubClient github;
     @MockBean DevelopmentChangeBranchPublicationService ownership;
@@ -74,9 +78,73 @@ class MobileDeliveryApiIntegrationTest {
     Long sessionId;
     @BeforeEach void fixture() {
         when(executor.enabled()).thenReturn(true);
+        when(githubServiceHealth.observe()).thenReturn("OPERATIONAL");
         admin=operator(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
         routine=operator(CodexOperationsRole.ROUTINE_OPERATOR);
         sessionId=createSession(false);
+    }
+    private void device(OperatorEntity owner) {
+        var device=new com.atenea.persistence.auth.OperatorPushDeviceEntity();device.setOperator(owner);
+        device.setPushToken("synthetic-"+UUID.randomUUID());device.setPlatform("android");device.setActive(true);
+        device.setCreatedAt(Instant.now());device.setUpdatedAt(Instant.now());device.setLastRegisteredAt(Instant.now());
+        pushDevices.saveAndFlush(device);
+    }
+    private DeliveryOperation readyNotice() {
+        device(admin);device(routine);
+        var evidence=mapper.createObjectNode().put("headCommit","a".repeat(40));
+        var op=store.create(sessionId,admin.getId(),"PUBLISH_PR",DeliveryTarget.APP_PROD,null,"QUEUED",evidence);
+        store.update(op,"SUCCEEDED",null,null,evidence);
+        op=store.get(op.id(),false);
+        progressNotifications.record(op,"INTEGRATION_READY");operators.flush();return op;
+    }
+    @Test void progressNoticeIsDurableIdempotentAndTargetsOnlyItsOperator() {
+        var op=readyNotice();progressNotifications.record(op,"INTEGRATION_READY");operators.flush();
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_change_progress_notice WHERE operation_id=?",Long.class,op.id()));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_change_progress_delivery d JOIN mobile_change_progress_notice n ON n.id=d.notice_id WHERE n.operation_id=?",Long.class,op.id()));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM mobile_notification_inbox WHERE operator_id=? AND category='CHANGE_PROGRESS'",Long.class,admin.getId()));
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM mobile_notification_inbox WHERE operator_id=? AND category='CHANGE_PROGRESS'",Long.class,routine.getId()));
+    }
+    @Test void noticeLeaseFencesLateAcknowledgementsAndAcceptedIsNotDeviceDelivery() {
+        readyNotice();var id=progressDeliveries.pending().getFirst();
+        var first=progressDeliveries.claim(id);assertNotNull(first);assertNull(progressDeliveries.claim(id));
+        jdbc.update("UPDATE mobile_change_progress_delivery SET next_attempt_at=now()-interval '1 second' WHERE id=?",id);
+        var next=progressDeliveries.claim(id);assertNotEquals(first.claim(),next.claim());
+        progressDeliveries.accepted(first);
+        assertEquals("SENDING",jdbc.queryForObject("SELECT state FROM mobile_change_progress_delivery WHERE id=?",String.class,id));
+        progressDeliveries.accepted(next);
+        assertEquals("ACCEPTED",jdbc.queryForObject("SELECT state FROM mobile_change_progress_delivery WHERE id=?",String.class,id));
+    }
+    @Test void expiredOrNoLongerAuthorizedNoticeIsNotSent() {
+        readyNotice();var id=progressDeliveries.pending().getFirst();
+        jdbc.update("UPDATE mobile_change_progress_delivery SET expires_at=now()-interval '1 second' WHERE id=?",id);
+        assertNull(progressDeliveries.claim(id));
+        assertEquals("EXPIRED",jdbc.queryForObject("SELECT state FROM mobile_change_progress_delivery WHERE id=?",String.class,id));
+    }
+    @Test void advanceBeyondReadyInvalidatesPendingIntegrationNotice() {
+        readyNotice();var id=progressDeliveries.pending().getFirst();
+        store.create(sessionId,admin.getId(),"INTEGRATE",DeliveryTarget.APP_PROD,"a".repeat(40),"QUEUED",mapper.createObjectNode());
+        assertNull(progressDeliveries.claim(id));
+    }
+    @Test void retryKeepsSameEventAndExhaustedFailuresDoNotLoop() {
+        readyNotice();var id=progressDeliveries.pending().getFirst();var first=progressDeliveries.claim(id);
+        var retryable=new com.atenea.mobilepush.FcmDeliveryException(com.atenea.mobilepush.FcmDeliveryException.FailureKind.RETRYABLE,"FCM_TRANSPORT_ERROR",null);
+        progressDeliveries.failed(first,retryable);
+        assertEquals("PENDING",jdbc.queryForObject("SELECT state FROM mobile_change_progress_delivery WHERE id=?",String.class,id));
+        assertNull(progressDeliveries.claim(id));
+        jdbc.update("UPDATE mobile_change_progress_delivery SET next_attempt_at=now()-interval '1 second',attempts=4 WHERE id=?",id);
+        var last=progressDeliveries.claim(id);assertEquals(first.event(),last.event());progressDeliveries.failed(last,retryable);
+        assertEquals("FAILED",jdbc.queryForObject("SELECT state FROM mobile_change_progress_delivery WHERE id=?",String.class,id));
+        assertEquals("FCM_TRANSPORT_ERROR",jdbc.queryForObject("SELECT diagnostic_code FROM mobile_change_progress_delivery WHERE id=?",String.class,id));
+        assertNull(progressDeliveries.claim(id));
+    }
+    @Test void invalidTokenStopsOnlyTheBoundDeviceAndRetainsTypedFailure() {
+        readyNotice();var command=progressDeliveries.claim(progressDeliveries.pending().getFirst());
+        progressDeliveries.failed(command,new com.atenea.mobilepush.FcmDeliveryException(
+                com.atenea.mobilepush.FcmDeliveryException.FailureKind.INVALID_TOKEN,"FCM_INVALID_TOKEN",null));
+        assertEquals(false,jdbc.queryForObject("SELECT active FROM operator_push_device WHERE push_token=?",Boolean.class,command.token()));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM operator_push_device WHERE operator_id=? AND active",Long.class,routine.getId()));
+        assertEquals("FAILED",jdbc.queryForObject("SELECT state FROM mobile_change_progress_delivery WHERE id=?",String.class,command.id()));
+        assertNull(progressDeliveries.claim(command.id()));
     }
     @Test void buildRepairRequiresAdministratorAndRejectsCallerAuthority() throws Exception {
         mvc.perform(post("/api/mobile/sessions/{id}/delivery/build-repair",sessionId).with(auth(routine))
@@ -157,7 +225,10 @@ class MobileDeliveryApiIntegrationTest {
                 .andExpect(jsonPath("$.operations[0].path").doesNotExist()).andExpect(jsonPath("$.operations[0].token").doesNotExist());
         verifyNoInteractions(factors,grants);
         verify(executor,never()).inspect(any());
-        verifyNoInteractions(github,publication);
+        verifyNoInteractions(publication);
+        assertTrue(mockingDetails(github).getInvocations().stream().allMatch(call ->
+                call.getMethod().getName().equals("buildApi") && call.getArgument(0).toString().equals(
+                        "/repos/jlnieto/atenea/actions/workflows/release-artifacts-v1.yml/runs?head_sha="+"1".repeat(40)+"&event=push&per_page=100")));
     }
 
     @Test void preparationAndValidationReferToTheSameCurrentRevisionWithoutReusingOldFlags() throws Exception {

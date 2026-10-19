@@ -141,6 +141,7 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                     onClick = { scope.launch { state.consult() } })
                 DeliveryStepAction.NONE -> Unit
             }
+            OperationProgressPanel(state, step)
         }
         state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.build?.let { build ->

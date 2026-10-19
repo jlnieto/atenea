@@ -22,6 +22,10 @@ public class SchedulingConfiguration {
     public ThreadPoolTaskScheduler operationsMonitoringScheduler() { return scheduler("atenea-monitor-"); }
     @Bean(name = "operationsPushScheduler")
     public ThreadPoolTaskScheduler operationsPushScheduler() { return scheduler("atenea-monitor-push-"); }
+    @Bean(name = "changeProgressScheduler")
+    public ThreadPoolTaskScheduler changeProgressScheduler() { return scheduler("atenea-change-progress-"); }
+    @Bean(name = "changeProgressPushScheduler")
+    public ThreadPoolTaskScheduler changeProgressPushScheduler() { return scheduler("atenea-change-progress-push-"); }
     private ThreadPoolTaskScheduler scheduler(String name) {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(1);

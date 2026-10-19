@@ -435,3 +435,47 @@ compatible y versionCode mayor, y comprobar SHA-256/descarga del canal.
 El ensayo de rollback se realiza en fixtures aislados; no inducir un fallo
 real en PROD para probarlo. La aceptación móvil real y la retirada de toda
 dependencia rutinaria del portátil siguen pendientes hasta esta prueba.
+
+## Progreso confirmado y avisos de siguiente acción
+
+La pantalla Cambio utiliza el mismo criterio para sus pasos largos: fase,
+tiempo desde la solicitud (no una estimación), última consulta confirmada y
+separación entre trabajo, espera externa y atención. La validación conserva
+sus cuatro operaciones y las observaciones del worker; preparación de base,
+integración, finalización y publicación muestran su estado durable. Una lectura
+HTTP reciente no demuestra que un worker esté ejecutando una tarea.
+
+`GET /api/mobile/sessions/{id}/delivery` incluye `progress`, una proyección
+opcional vinculada a sesión, operación y estado. Para GitHub muestra sólo
+identidades de workflows/jobs cerradas: cola, ejecución, pruebas terminadas
+esperando cierre del run, resultado y falta de evidencia. No devuelve logs,
+rutas, comandos ni mensajes arbitrarios del proveedor. Los jobs omitidos no
+cuentan como pruebas pendientes. No contiene porcentajes ni tiempo restante.
+El estado público de Actions es un aviso de la URL fija de GitHub Status;
+si no se puede comprobar, queda UNKNOWN, no "sano" ni "incidencia" inventada.
+La caché de consultas GitHub es de 30 segundos y la pública de 60; la UI
+etiqueta observaciones antiguas y no renueva su fecha al fallar una lectura.
+Estas proyecciones nunca sustituyen UFD, validación de la combinación con main,
+ownership, autorizaciones o recibos de publicación.
+Si el job del head exacto comprobó otro main, `BASE_CHANGED` lo distingue de
+una cola o un fallo de lectura. La UI ofrece la acción existente y explícita
+«Actualizar base con main», nunca modifica la PR al consultar ni rebaja sus
+controles. Una observación antigua sólo permite volver a consultar.
+
+V105 añade un outbox de avisos por operación/hito y dispositivo del operador
+que solicitó esa operación. Se registra junto al cambio durable de estado;
+FCM se envía aparte, con lease y token de fencing, cinco intentos como máximo,
+caducidad y el mismo ID/tag en los reintentos. El historial tiene un único
+aviso por hito. ACCEPTED significa aceptado por FCM, no entrega física probada.
+Una respuesta de transporte ambigua puede reintentarse con el mismo evento;
+no se promete exactly-once en el teléfono.
+
+Crear una PR no genera el aviso "listo para integrar". Ese aviso requiere una
+lectura de la misma PR/head, UFD, backend combinado con el main vigente,
+check-runs y statuses; sólo GET, sin marcar un draft ready ni integrar.
+Preparación lista, integración, publicación, finalización y bloqueos tienen
+textos distintos; preparar e integrar nunca se anuncian como desplegar.
+La notificación abre la misma conversación, donde está la pantalla Cambio.
+No se fabrican AgentRuns para generar avisos ni se crean nuevas operaciones
+por consultar el progreso. La migración y la APK deben publicarse por el
+procedimiento normal antes de aceptar el flujo en el móvil real.

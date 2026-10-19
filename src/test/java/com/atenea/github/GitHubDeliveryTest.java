@@ -70,6 +70,18 @@ class GitHubDeliveryTest {
         client=new GitHubClient(new ObjectMapper(),properties);
     }
     @AfterEach void cleanup() { server.stop(0); }
+    @Test void readyNotificationRequiresAllChecksAndNeverMarksDraftReadyOrMerges() {
+        draft=true;
+        client.requireIntegrationReadiness(REPO,42,BRANCH,SHA);
+        assertTrue(writes.isEmpty());assertTrue(draft);assertFalse(merged);
+        backendState="in_progress";
+        assertThrows(GitHubIntegrationException.class,()->client.requireIntegrationReadiness(REPO,42,BRANCH,SHA));
+        backendState="completed";checksFailed=true;
+        assertThrows(GitHubIntegrationException.class,()->client.requireIntegrationReadiness(REPO,42,BRANCH,SHA));
+        checksFailed=false;backendBase="9".repeat(40);
+        assertThrows(GitHubIntegrationException.class,()->client.requireIntegrationReadiness(REPO,42,BRANCH,SHA));
+        assertTrue(writes.isEmpty());assertTrue(draft);assertFalse(merged);
+    }
     @Test void exactMergeUsesShaPreconditionAndNoBypass() {
         assertEquals(MERGE,client.integrateExact(REPO,42,BRANCH,SHA));
         assertEquals(1,writes.size()); assertTrue(writes.getFirst().contains("\"sha\":\""+SHA+"\""));

@@ -15,7 +15,8 @@ data class MobileDeliveryState(val enabled: Boolean, val operations: List<Mobile
     val readiness: MobileChangeDeliveryReadiness? = null,
     val validation: DevelopmentChangeValidationEvidence? = null,
     val androidVersionPreparationEnabled: Boolean = false,
-    val build: MobileBuildStatus? = null)
+    val build: MobileBuildStatus? = null,
+    val progress: MobileOperationProgress? = null)
 
 data class MobileBuildStatus(val state: String?, val sourceCommit: String?, val phase: String?, val runUrl: String?,
     val canRepair: Boolean, val errorCode: String?, val failureLocations: List<String>)
@@ -173,6 +174,7 @@ internal fun parseMobileDeliveryState(json: JSONObject): MobileDeliveryState {
     require(!json.has("sourceUpdate") || json.isNull("sourceUpdate") || json.opt("sourceUpdate") is JSONObject)
     require(!json.has("deployment") || json.isNull("deployment") || json.opt("deployment") is JSONObject)
     require(!json.has("validation") || json.isNull("validation") || json.opt("validation") is JSONObject)
+    require(!json.has("progress") || json.isNull("progress") || json.opt("progress") is JSONObject)
     return MobileDeliveryState(json.getBoolean("enabled"),
         List(items.length()) { parseMobileDeliveryOperation(items.getJSONObject(it)) }, integration,
         json.opt("sourceUpdateEnabled") == true, json.optJSONObject("sourceUpdate")?.let(::parseMobileSourceUpdate),
@@ -182,7 +184,8 @@ internal fun parseMobileDeliveryState(json: JSONObject): MobileDeliveryState {
         json.optJSONObject("readiness")?.let(::parseDeliveryReadiness),
         json.optJSONObject("validation")?.let(::parseDevelopmentChangeValidationEvidence),
         json.opt("androidVersionPreparationEnabled") == true,
-        json.optJSONObject("build")?.let(::parseBuildStatus))
+        json.optJSONObject("build")?.let(::parseBuildStatus),
+        json.optJSONObject("progress")?.let(::parseOperationProgress))
 }
 
 data class MobileReleaseRecovery(val integrationOperationId: UUID, val publishedHeadCommit: String,
@@ -206,7 +209,8 @@ data class MobileDeliveryOperation(
     val effectiveSourceCommit: String?,
     val resultSha256: String?,
     val releaseRecovery: MobileReleaseRecovery? = null,
-    val updatedAt: String? = null
+    val updatedAt: String? = null,
+    val createdAt: String? = null
 ) {
     val terminal: Boolean get() = state in setOf("SUCCEEDED", "ROLLED_BACK", "FAILED", "BLOCKED", "ROLLBACK_FAILED")
     fun canConfirm(nowSeconds: Long): Boolean = kind == "RELEASE" && state == "READY"
@@ -231,7 +235,8 @@ internal fun parseMobileDeliveryOperation(json: JSONObject): MobileDeliveryOpera
     effectiveSourceCommit = json.nullableDeliveryString("effectiveSourceCommit"),
     resultSha256 = json.nullableDeliveryString("resultSha256"),
     releaseRecovery = parseReleaseRecovery(json),
-    updatedAt = json.nullableDeliveryString("updatedAt")
+    updatedAt = json.nullableDeliveryString("updatedAt"),
+    createdAt = json.nullableDeliveryString("createdAt")
 )
 
 private fun parseReleaseRecovery(operation: JSONObject): MobileReleaseRecovery? {

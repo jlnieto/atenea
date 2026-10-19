@@ -39,6 +39,8 @@ internal class MobileDeliveryUiState(
         private set
     var loaded by mutableStateOf(false)
         private set
+    var lastObservedAt by mutableStateOf<Instant?>(null)
+        private set
     var refreshing by mutableStateOf(false)
         private set
     var manualRefreshing by mutableStateOf(false)
@@ -62,6 +64,13 @@ internal class MobileDeliveryUiState(
     val completionEnabled get() = available && snapshot?.completionEnabled == true
     val readiness get() = snapshot?.readiness?.takeIf { available }
     val build get() = snapshot?.build?.takeIf { available }
+    val progress get() = snapshot?.progress?.takeIf { value -> available && operations.any {
+        it.id==value.operationId && it.sessionId==value.sessionId && (it.kind==value.kind && it.state==value.state && !it.terminal
+            || value.kind=="BUILD" && it.kind=="INTEGRATE" && it.state=="SUCCEEDED" && build?.state=="PENDING"
+                && value.github?.sourceCommit==build?.sourceCommit
+            || value.kind=="PR_CHECKS" && it.kind=="PUBLISH_PR" && it.state=="SUCCEEDED" && !integrated
+                && value.github?.sourceCommit!=null && value.github?.sourceCommit==integration?.sourceCommit)
+    } }
     val repairingBuild get() = sourceUpdate?.purpose == "BUILD_REPAIR" && sourceUpdate?.state != "PUBLISHED"
     fun canRepairBuild(runInProgress: Boolean) = available && build?.canRepair == true && sourceUpdateEnabled
         && integrated && validationCurrent && !runInProgress && !busy && !validationRunning
@@ -160,6 +169,9 @@ internal class MobileDeliveryUiState(
     fun canUpdateBase(runInProgress: Boolean) = available && sourceUpdateEnabled && !sourcePhaseComplete
         && ((sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") && sourceUpdate?.baseStatus == "UPDATE_REQUIRED")
             || operations.firstOrNull { it.kind == "INTEGRATE" }?.errorCode == "PR_BASE_VALIDATION_MOVED"
+                && (sourceUpdate == null || sourceUpdate?.state == "PUBLISHED")
+            || progress?.takeIf { it.kind == "PR_CHECKS" }?.github?.let { it.state == "BASE_CHANGED"
+                && it.observedAt in (System.currentTimeMillis() / 1000 - 90)..(System.currentTimeMillis() / 1000 + 5) } == true
                 && (sourceUpdate == null || sourceUpdate?.state == "PUBLISHED"))
         && sourceUpdate?.recoveryAvailable != true
         && !runInProgress && !busy && !validationRunning
@@ -212,7 +224,7 @@ internal class MobileDeliveryUiState(
             if (epoch != generation || sequence != readSequence) return
             require(next.operations.all { it.sessionId == sessionId })
             require(listOf(next.integration?.sessionId, next.sourceUpdate?.sessionId, next.deployment?.sessionId,
-                next.readiness?.sessionId, next.validation?.workSessionId).all { it == null || it == sessionId })
+                next.readiness?.sessionId, next.validation?.workSessionId, next.progress?.sessionId).all { it == null || it == sessionId })
             next.validation?.let {
                 require(changeKey == null || changeKey == it.changeKey)
                 if (it.sourceRevision < highestRevision) return
@@ -225,6 +237,7 @@ internal class MobileDeliveryUiState(
             available = next.enabled
             loaded = true
             loadError = null
+            lastObservedAt = Instant.now()
             pending?.let { if (observes(it, next)) pending = null }
         } catch (cancelled: CancellationException) {
             throw cancelled
