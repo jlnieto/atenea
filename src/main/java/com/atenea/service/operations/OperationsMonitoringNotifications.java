@@ -31,7 +31,8 @@ public class OperationsMonitoringNotifications {
         var row=jdbc.queryForMap("SELECT * FROM operations_monitor_state WHERE host_id=? FOR UPDATE",result.hostId());
         var last=(Number)row.get("last_check_run_id");
         if(last!=null && last.longValue()>=result.checkRunId())return;
-        var active=devices.findByActiveTrueOrderByUpdatedAtDesc().stream().filter(d->"android".equalsIgnoreCase(d.getPlatform())).toList();
+        var active=devices.findByActiveTrueOrderByUpdatedAtDesc().stream()
+            .filter(d->d.getOperator().isActive() && "android".equalsIgnoreCase(d.getPlatform())).toList();
         var decision=OperationsAlertPolicy.observe(decode(row.get("issue_state_json").toString()),result.issues(),!active.isEmpty());
         if(!decision.alerts().isEmpty()) {
             String kind=decision.alerts().stream().allMatch(i->i.key().equals("ssh")) ? "OPERATIONS_VERIFICATION_FAILURE" : "OPERATIONS_DEGRADATION";

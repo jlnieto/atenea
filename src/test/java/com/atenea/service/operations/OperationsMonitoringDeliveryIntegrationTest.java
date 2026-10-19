@@ -131,4 +131,9 @@ class OperationsMonitoringDeliveryIntegrationTest {
         var run=check(down);assertThrows(IllegalArgumentException.class,()->notifications.record(new OperationsMonitoringResult(host+10000,"Foreign",run.issues(),run.checkRunId())));
         assertEquals(0,deliveries());
     }
+    @Test void inactiveOperatorDoesNotConsumeVerificationWarningOrReceiveAnEvent(){
+        var o=operators.findById(operator).orElseThrow();o.setActive(false);operators.saveAndFlush(o);
+        for(int i=0;i<3;i++)notifications.record(check(ssh));assertEquals(0,deliveries());
+        o.setActive(true);operators.saveAndFlush(o);notifications.record(check(ssh));assertEquals(2,deliveries());
+    }
 }
