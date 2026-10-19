@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atenea.yudri.es/contracts/atenea-build-diagnostic-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "sourceCommit", "target", "failures"],
+  "properties": {
+    "protocol": {"const": "atenea-build-diagnostic/v1"},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "target": {"const": "APP_PROD"},
+    "failures": {
+      "type": "array", "maxItems": 40,
+      "items": {
+        "oneOf": [
+          {"type": "object", "additionalProperties": false,
+           "required": ["kind", "path", "line"],
+           "properties": {"kind": {"const": "COMPILATION"},
+             "path": {"type": "string", "pattern": "^src/(test|main)/java/([A-Za-z0-9_]+/)*[A-Za-z0-9_]+\\.java$"},
+             "line": {"type": "integer", "minimum": 1, "maximum": 999999}}},
+          {"type": "object", "additionalProperties": false,
+           "required": ["kind", "testClass", "testMethod"],
+           "properties": {"kind": {"const": "TEST"},
+             "testClass": {"type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$.]{0,240}$"},
+             "testMethod": {"type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$.]{0,240}$"}}}
+        ]
+      }
+    }
+  }
+}

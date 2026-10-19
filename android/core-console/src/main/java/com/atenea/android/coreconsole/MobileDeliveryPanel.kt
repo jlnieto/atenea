@@ -123,7 +123,7 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                     onClick = { deliver(DeliveryStepAction.RECONCILE_FINALIZE) { api.finalizeDelivery(sessionId, reconcile = true) } })
                 DeliveryStepAction.RESOLVE -> AteneaButton("Resolver conflictos", enabled = state.canResolveConflicts(checksCurrent, runInProgress),
                     onClick = { source(DeliveryStepAction.RESOLVE) { api.resolveDeliveryConflicts(sessionId) } })
-                DeliveryStepAction.UPDATE_PR -> AteneaButton("Actualizar la misma PR", enabled = state.canUpdatePullRequest(checksCurrent, runInProgress),
+                DeliveryStepAction.UPDATE_PR -> AteneaButton(if (state.repairingBuild) "Crear PR de reparación" else "Actualizar la misma PR", enabled = state.canUpdatePullRequest(checksCurrent, runInProgress),
                     onClick = { deliver(DeliveryStepAction.UPDATE_PR) { api.createDeliveryPullRequest(sessionId) } })
                 DeliveryStepAction.UPDATE_BASE -> AteneaButton("Actualizar base con main", enabled = state.canUpdateBase(runInProgress || validationInProgress),
                     onClick = { source(DeliveryStepAction.UPDATE_BASE) { api.resolveDeliveryConflicts(sessionId) } })
@@ -131,6 +131,8 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                     AteneaButton("Recuperar operación", enabled = state.canRecoverSource(checksCurrent, runInProgress),
                         onClick = { source(DeliveryStepAction.RECOVER_SOURCE) { api.recoverDeliverySource(sessionId, update.id) } })
                 }
+                DeliveryStepAction.REPAIR_BUILD -> AteneaButton("Investigar y reparar construcción", enabled = state.canRepairBuild(runInProgress),
+                    onClick = { source(DeliveryStepAction.REPAIR_BUILD) { api.repairReleaseBuild(sessionId) } })
                 DeliveryStepAction.RETRY_RESOLVER -> state.sourceUpdate?.let { update -> update.resolverRunId?.let { run ->
                     AteneaButton("Reintentar resolución", enabled = state.canRetryResolver(runInProgress),
                         onClick = { source(DeliveryStepAction.RETRY_RESOLVER) { api.retryDeliveryResolver(sessionId, update.id, run) } })
@@ -141,6 +143,14 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
             }
         }
         state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.build?.let { build ->
+            if (build.state == "FAILED") {
+                Text("Fase: ${buildPhaseLabel(build.phase)}. Fuente: ${build.sourceCommit?.take(12).orEmpty()}.",style = MaterialTheme.typography.bodySmall)
+                if (build.failureLocations.isEmpty()) Text("Esta ejecución no conservó el detalle estructurado. No se inventa su causa; la investigación comprobará el código.", style = MaterialTheme.typography.bodySmall)
+                build.failureLocations.take(5).forEach { Text(it,style = MaterialTheme.typography.bodySmall) }
+                build.runUrl?.let { url -> TextButton(onClick = { uriHandler.openUri(url) }) { Text("Ver construcción GitHub") } }
+            }
+        }
         state.consultationMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("delivery-consultation-result")) }
         if (state.integrated || state.completed) Text("✓ PR integrada", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -322,6 +332,17 @@ internal fun deliveryIntegrationLabel(mergeState: String?): String = when (merge
     else -> "No se pudo confirmar el estado de integración. Consulta de nuevo antes de continuar."
 }
 
+internal fun buildPhaseLabel(phase: String?): String = when (phase) {
+    "BACKEND_COMPILATION" -> "Compilación del backend o sus pruebas"
+    "BACKEND_TEST_COMPILE_OR_TEST" -> "Compilación y pruebas del backend"
+    "BACKEND_BUILD" -> "Construcción de la imagen del backend"
+    "ANDROID_BUILD" -> "Construcción de Android"
+    "WAITING_CI" -> "Pendiente de comenzar en GitHub"
+    "BUILDING" -> "Construcción en GitHub"
+    "COMPLETED" -> "Construcción completada"
+    else -> "Construcción de la versión"
+}
+
 internal fun deliveryKindLabel(operation: MobileDeliveryOperation): String = when (operation.kind) {
     "ANDROID_VERSION" -> "Preparación de versión Android"
     "FINALIZE" -> "Finalización del cambio"
@@ -370,7 +391,9 @@ internal fun deliveryErrorLabel(code: String): String = when (code) {
     "RELEASE_CHANGE_NOT_INCLUDED", "RELEASE_INTEGRATION_EVIDENCE_MISMATCH", "RELEASE_SOURCE_EVIDENCE_MISMATCH",
     "RELEASE_ANCESTRY_EVIDENCE_INCOMPLETE" -> "Atenea no pudo comprobar que esta versión contiene el ticket integrado. No se ha publicado."
     "RELEASE_TRANSPORT_UNAVAILABLE", "GITHUB_UNAVAILABLE" -> "No se pudo confirmar el estado del servidor. Atenea conserva la misma operación y vuelve a consultarlo."
-    "GITHUB_REJECTED", "RELEASE_BUILD_FAILED" -> "GitHub ha rechazado una comprobación o la integración. No se ha saltado la validación; consulta la PR."
+    "GITHUB_REJECTED" -> "GitHub ha rechazado una comprobación o la integración. No se ha saltado la validación; consulta la PR."
+    "RELEASE_BUILD_FAILED" -> "Falló la construcción posterior a integrar. No se ha desplegado esa versión. Consulta el diagnóstico y la reparación; no repitas Preparar."
+    "PR_BASE_VALIDATION_MOVED" -> "Main avanzó. Actualiza la base y comprueba la combinación actual antes de integrar."
     "ACTIVE_AGENT_RUN", "ACTIVE_WORKLOAD", "WORKER_NOT_IDLE_OR_HEALTHY" -> "Hay trabajo activo o el worker no está preparado. No se ha iniciado otra publicación."
     "VALIDATED_OWNERSHIP_REQUIRED" -> "El código actual necesita una validación válida antes de continuar."
     "RELEASE_EVIDENCE_MISMATCH" -> "La evidencia del servidor no coincide con esta operación. No repitas la publicación."

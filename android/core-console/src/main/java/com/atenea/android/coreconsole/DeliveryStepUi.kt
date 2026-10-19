@@ -23,7 +23,7 @@ internal enum class DeliveryStepStatus(val label: String) {
 internal enum class DeliveryStepAction {
     NONE, CREATE_PR, INTEGRATE, CONFIRM_RELEASE, PREPARE_BACKEND, PREPARE_ANDROID, FINALIZE, RECONCILE_FINALIZE,
     PREPARE_ANDROID_VERSION, INTEGRATE_ANDROID_VERSION,
-    RESOLVE, UPDATE_PR, UPDATE_BASE, RETRY_RESOLVER, RECOVER_SOURCE, REFRESH
+    RESOLVE, UPDATE_PR, UPDATE_BASE, RETRY_RESOLVER, RECOVER_SOURCE, REPAIR_BUILD, REFRESH
 }
 
 /** A presentation of current evidence, never an authorization or an automatic action. */
@@ -39,6 +39,7 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
         when (pendingAction) {
             DeliveryStepAction.UPDATE_BASE -> "Actualizando base con main"
             DeliveryStepAction.RESOLVE -> "Preparando código y conflictos"
+            DeliveryStepAction.REPAIR_BUILD -> "Preparando diagnóstico y reparación"
             DeliveryStepAction.UPDATE_PR -> "Actualizando la misma PR"
             DeliveryStepAction.CREATE_PR -> "Creando la PR"
             DeliveryStepAction.PREPARE_BACKEND -> "Preparando ${pendingTarget.label}"
@@ -55,7 +56,7 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
         if (!loaded && loadError == null) "Consultando estado" else "Entrega no disponible",
         loadError ?: if (loaded) "La entrega no está habilitada. Ayuda explica los permisos y capacidades necesarios."
             else "Atenea está leyendo el estado. Consultar no inicia operaciones.", DeliveryStepAction.REFRESH)
-    if (runInProgress) return DeliveryStepUi(DeliveryStepStatus.WORKING, "Codex está trabajando",
+    if (runInProgress) return DeliveryStepUi(DeliveryStepStatus.WORKING, if (repairingBuild) "Reparación en curso" else "Codex está trabajando",
         "Espera al resultado. Puedes salir de la app; no hace falta enviar otra vez el prompt.")
     if (validationInProgress || validationRunning) return DeliveryStepUi(DeliveryStepStatus.WORKING, "Validando cambio",
         "Atenea está comprobando esta revisión. Espera al resultado; no actualices la base ni repitas la validación mientras siga en curso.")
@@ -85,12 +86,17 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
             stopped -> "Actualización detenida"
             update.state in setOf("QUEUED", "PREPARE_CLAIMED") -> "Preparando código y conflictos"
             update.state in setOf("READY_TO_RESOLVE", "RETRY_REQUESTED", "RESOLVING") -> "Resolviendo conflictos con Codex"
-            else -> "Actualizar la misma PR"
+            else -> if (repairingBuild) "Crear PR de reparación" else "Actualizar la misma PR"
         }
         val message = when (action) {
             DeliveryStepAction.UPDATE_BASE -> "La base preparada es anterior a main. Atenea está detenida; tu código y la misma PR se conservan. Actualiza la base primero; después valida la revisión resultante y actualiza esa PR. No repitas el prompt ni valides la base antigua."
             DeliveryStepAction.REFRESH -> "No se pudo confirmar la vigencia de la base en GitHub. Consulta el estado; no repitas las pruebas ni la publicación."
-            else -> sourceUpdateLabel(update.state, update.errorCode)
+            else -> if (repairingBuild) when(update.state) {
+                "QUEUED", "PREPARE_CLAIMED", "UNCERTAIN" -> "Atenea prepara el main fijado y conserva la evidencia del fallo. No repitas la solicitud."
+                "READY_TO_RESOLVE", "RESOLVING", "RETRY_REQUESTED" -> "La reparación continúa en esta misma conversación. La PR integrada se conserva; no se publica nada."
+                "RESOLVER_COMPLETED", "READY_TO_FINALIZE" -> "La corrección está guardada. Valida esta revisión; después crea su PR de reparación. La PR original no se reabre."
+                else -> sourceUpdateLabel(update.state,update.errorCode)
+            } else sourceUpdateLabel(update.state, update.errorCode)
         } +
             if (action == DeliveryStepAction.RECOVER_SOURCE)
                 " Pulsa Recuperar operación para continuar con la versión exacta aprobada. No crea otra PR ni repite tu prompt."
@@ -147,11 +153,25 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
         "Entregas por confirmar", "Falta confirmar el diff y sus publicaciones. Un backend sano no demuestra una APK publicada.", DeliveryStepAction.REFRESH)
     if (integrated && readiness?.fresh(nowSeconds) != true) return DeliveryStepUi(DeliveryStepStatus.CHECKING,
         "Entregas por confirmar", "La observación ha caducado. Consulta el estado antes de continuar; no se publica ni se reintenta nada.", DeliveryStepAction.REFRESH)
+    if (integrated && !allRequiredDelivered && build?.state == "FAILED") return DeliveryStepUi(DeliveryStepStatus.ATTENTION,
+        "La construcción de la versión falló", "No hay un despliegue trabajando. Tu PR integrada se conserva. " +
+            "Consulta el diagnóstico de abajo y solicita una reparación en la misma conversación. Repetir Preparar no corrige el código.",
+        if (canRepairBuild(runInProgress)) DeliveryStepAction.REPAIR_BUILD else DeliveryStepAction.REFRESH)
+    if (integrated && !allRequiredDelivered && build?.state == "PENDING") return DeliveryStepUi(DeliveryStepStatus.WORKING,
+        "GitHub está construyendo la versión", "La PR ya está integrada. Falta terminar la construcción publicable; todavía no se despliega. Puedes salir de la app.",
+        DeliveryStepAction.REFRESH)
+    if (integrated && !allRequiredDelivered && build?.errorCode != null) return DeliveryStepUi(DeliveryStepStatus.CHECKING,
+        "Construcción por confirmar", "No se pudo leer el estado de GitHub. Consulta otra vez; no se solicita otra preparación.", DeliveryStepAction.REFRESH)
+    if (operations.firstOrNull { it.kind == "INTEGRATE" }?.errorCode == "PR_BASE_VALIDATION_MOVED") return DeliveryStepUi(
+        DeliveryStepStatus.ATTENTION,"Main avanzó después de las pruebas", "Actualiza la base, valida y actualiza la misma PR antes de integrar.",DeliveryStepAction.UPDATE_BASE)
     if (integrated && readiness?.requiredTargets?.contains(MobileDeliveryTarget.APP_PROD) == true && !appDeployed) {
         if (!canPrepareBackend) return DeliveryStepUi(DeliveryStepStatus.CHECKING, "Backend PROD por confirmar",
             deploymentLabel(deployment, false), DeliveryStepAction.REFRESH)
         val release = operations.firstOrNull { it.kind == "RELEASE" && it.target == MobileDeliveryTarget.APP_PROD }
-        return DeliveryStepUi(if (release?.errorCode != null) DeliveryStepStatus.ATTENTION else DeliveryStepStatus.ACTION,
+        if (release?.errorCode == "RELEASE_BUILD_FAILED" && build == null) return DeliveryStepUi(DeliveryStepStatus.ATTENTION,
+            "Construcción fallida", "Consulta el diagnóstico de la construcción; no repitas Preparar Backend PROD.",DeliveryStepAction.REFRESH,release)
+        val currentError = release?.errorCode != null && !(release.errorCode == "RELEASE_BUILD_FAILED" && build?.state == "READY")
+        return DeliveryStepUi(if (currentError) DeliveryStepStatus.ATTENTION else DeliveryStepStatus.ACTION,
             "Publicar Backend PROD", "Primero publica el backend que requiere este cambio. Después Atenea te guiará con Android, si también hace falta. Preparar no despliega.",
             DeliveryStepAction.PREPARE_BACKEND, release)
     }

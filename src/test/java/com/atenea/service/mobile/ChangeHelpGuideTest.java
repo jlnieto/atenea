@@ -4,6 +4,25 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 
 class ChangeHelpGuideTest {
+    @Test void failedBuildOverridesPrepareBackendGuidanceEvenAfterFourChecksAndMerge() {
+        var f=new ChangeHelpFixture();f.validation="CURRENT";f.passed=4;f.pr="MERGED";
+        f.deliveryKind="RELEASE";f.deliveryState="BLOCKED";f.deliveryError="RELEASE_BUILD_FAILED";
+        f.deploymentStatus="NOT_INCLUDED";
+        f.readiness=new com.atenea.delivery.ChangeDeliveryReadiness(22L,"CONFIRMED","1".repeat(40),"2".repeat(40),
+            java.util.List.of(com.atenea.delivery.DeliveryTarget.APP_PROD,com.atenea.delivery.DeliveryTarget.ANDROID_STABLE),
+            false,null,null,"NOT_INCLUDED",null,java.time.Instant.now().getEpochSecond());
+        var answer=ChangeHelpGuide.explain(f.build(),"¿Qué hago?",false);
+        assertEquals("BUILD_ATTENTION",answer.stage());assertEquals("DELIVERY",answer.nextAction().destination());
+        assertTrue(answer.answer().contains("No repitas Preparar"));assertTrue(answer.answer().contains("PR de reparación"));
+        assertFalse(answer.answer().contains("Primero falta publicar Backend"));
+        assertEquals("BUILD_ATTENTION",ChangeHelpGuide.explain(f.build(),"Explícamelo más fácil",true).stage());
+    }
+    @Test void validatedRepairDoesNotOfferTheOriginalMergedPrOrAnotherInvestigation() {
+        var f=new ChangeHelpFixture();f.validation="CURRENT";f.passed=4;f.pr="MERGED";
+        f.deliveryKind="BUILD_REPAIR";f.deliveryState="RESOLVER_COMPLETED";
+        var result=ChangeHelpGuide.explain(f.build(),"Qué hago",false);
+        assertEquals("REPAIR_PR_REQUIRED",result.stage());assertEquals("Crear PR de reparación",result.nextAction().label());
+    }
     @Test void apkVersionCollisionExplainsAUsableVersionPrInsteadOfAnEndlessConsultLoop() {
         var f=new ChangeHelpFixture();f.validation="CURRENT";f.passed=4;f.pr="MERGED";
         f.deliveryKind="RELEASE";f.deliveryTarget="ANDROID_STABLE";f.deliveryState="BLOCKED";f.deliveryError="APK_VERSION_NOT_NEWER";

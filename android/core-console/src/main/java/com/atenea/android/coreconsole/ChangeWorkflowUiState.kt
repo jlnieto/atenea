@@ -61,6 +61,11 @@ internal class MobileDeliveryUiState(
     val canConsult get() = !sending && !manualRefreshing
     val completionEnabled get() = available && snapshot?.completionEnabled == true
     val readiness get() = snapshot?.readiness?.takeIf { available }
+    val build get() = snapshot?.build?.takeIf { available }
+    val repairingBuild get() = sourceUpdate?.purpose == "BUILD_REPAIR" && sourceUpdate?.state != "PUBLISHED"
+    fun canRepairBuild(runInProgress: Boolean) = available && build?.canRepair == true && sourceUpdateEnabled
+        && integrated && validationCurrent && !runInProgress && !busy && !validationRunning
+        && operations.none { !it.terminal || it.state == "ROLLBACK_FAILED" }
     val deployment get() = snapshot?.deployment?.takeIf { available }
     val validationEvidence get() = snapshot?.validation
     val busy get() = pending != null || validationRequested
@@ -153,8 +158,10 @@ internal class MobileDeliveryUiState(
         && validated && validationCurrent && !runInProgress && !busy
         && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
     fun canUpdateBase(runInProgress: Boolean) = available && sourceUpdateEnabled && !sourcePhaseComplete
-        && sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE")
-        && sourceUpdate?.baseStatus == "UPDATE_REQUIRED" && sourceUpdate?.recoveryAvailable != true
+        && ((sourceUpdate?.state in setOf("RESOLVER_COMPLETED", "READY_TO_FINALIZE") && sourceUpdate?.baseStatus == "UPDATE_REQUIRED")
+            || operations.firstOrNull { it.kind == "INTEGRATE" }?.errorCode == "PR_BASE_VALIDATION_MOVED"
+                && (sourceUpdate == null || sourceUpdate?.state == "PUBLISHED"))
+        && sourceUpdate?.recoveryAvailable != true
         && !runInProgress && !busy && !validationRunning
         && operations.none { !it.terminal || it.state == "ROLLBACK_FAILED" }
     fun deliveryBeforeValidation(runInProgress: Boolean) = !runInProgress && (pending != null
@@ -171,6 +178,8 @@ internal class MobileDeliveryUiState(
                 && operations.any { it.kind == "PUBLISH_PR" && it.state in setOf("BLOCKED", "FAILED") }))
         && operations.none { (!it.terminal && it.state != "READY") || it.state == "ROLLBACK_FAILED" }
     fun canPrepareReleaseRecovery(validated: Boolean, runInProgress: Boolean) = available && releaseRecoveryEnabled && canPrepareBackend
+        && build?.state != "FAILED" && build?.errorCode == null
+        && !(build == null && operations.firstOrNull { it.kind == "RELEASE" && it.target == MobileDeliveryTarget.APP_PROD }?.errorCode == "RELEASE_BUILD_FAILED")
         && validated && validationCurrent && !runInProgress && !busy
         && operations.firstOrNull { it.kind == "INTEGRATE" }?.state == "SUCCEEDED"
         && operations.none { !it.terminal || it.state == "ROLLBACK_FAILED" }
@@ -303,7 +312,7 @@ internal class MobileDeliveryUiState(
                 && (observed.state == receipt.value.state || observed.updatedAt != null && receipt.value.updatedAt != null
                     || intent.before.operations.firstOrNull { it.id == observed.id } != observed) }
             null -> when (intent.kind) {
-                DeliveryStepAction.UPDATE_BASE, DeliveryStepAction.RESOLVE, DeliveryStepAction.RECOVER_SOURCE, DeliveryStepAction.RETRY_RESOLVER ->
+                DeliveryStepAction.UPDATE_BASE, DeliveryStepAction.RESOLVE, DeliveryStepAction.REPAIR_BUILD, DeliveryStepAction.RECOVER_SOURCE, DeliveryStepAction.RETRY_RESOLVER ->
                     state.sourceUpdate?.let { next ->
                         val before = intent.before.sourceUpdate
                         next.id != before?.id || next.state != before.state || next.updatedAt != before.updatedAt

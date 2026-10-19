@@ -1708,7 +1708,9 @@ class RemoteWorkerClientTest {
             String dispatchId,
             JsonNode request
     ) {
-        return java.util.Map.ofEntries(
+        // Keep the heterogeneous fixture's types explicit across the two JDK 21
+        // distributions used by the isolated worker and immutable release CI.
+        return java.util.Map.<String, Object>ofEntries(
                 java.util.Map.entry("schemaVersion", "agent-run-doctor-v1"),
                 java.util.Map.entry("workerId", "ax42-01"),
                 java.util.Map.entry("dispatchId", dispatchId),

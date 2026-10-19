@@ -464,6 +464,11 @@ class AteneaApiClient(
         authenticated = true, headers = versionHeaders()
     ) { json -> parseChangeHelp(json, sessionId) }
 
+    suspend fun repairReleaseBuild(sessionId: Long): MobileSourceUpdate = postJson(
+        path = "/api/mobile/sessions/$sessionId/delivery/build-repair", body = JSONObject(), authenticated = true,
+        parser = ::parseMobileSourceUpdate
+    ).also { require(it.sessionId == sessionId) }
+
     suspend fun fetchValidationRecovery(sessionId: Long): ValidationRecovery = getJson(
         path = "/api/mobile/sessions/$sessionId/validation-recovery", authenticated = true
     ) { json -> parseValidationRecovery(json, sessionId) }

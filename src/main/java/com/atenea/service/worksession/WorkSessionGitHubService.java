@@ -38,6 +38,9 @@ public class WorkSessionGitHubService {
     private final GitHubClient gitHubClient;
     private final MobilePushDispatchService mobilePushDispatchService;
     private final DevelopmentChangeBranchPublicationService changeBranchPublicationService;
+    private com.atenea.delivery.ReleaseRepairStore releaseRepairs;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setReleaseRepairs(com.atenea.delivery.ReleaseRepairStore value) { this.releaseRepairs=value; }
 
     public WorkSessionGitHubService(
             WorkSessionRepository workSessionRepository,
@@ -166,6 +169,7 @@ public class WorkSessionGitHubService {
         gitHubClient.requireUfdValidation(repository, identity.headSha(), identity.headBranch());
         List<GitHubPullRequest> candidates = gitHubClient.findOpenPullRequests(
                 repository, identity.headBranch(), identity.baseBranch());
+        var repair=releaseRepairs==null ? null : releaseRepairs.replacement(session,identity.headSha());
         if (candidates.size() > 1) {
             throw new WorkSessionPublishConflictException(session.getId(),
                     "multiple open pull requests match the exact change-owned branch");
@@ -174,13 +178,13 @@ public class WorkSessionGitHubService {
         if (candidates.size() == 1) {
             pullRequest = candidates.getFirst();
         } else {
-            if (session.getPullRequestUrl() != null) {
+            if (session.getPullRequestUrl() != null && repair==null) {
                 throw new WorkSessionPublishConflictException(session.getId(), "existing change-owned PR disappeared; a replacement is not authorized");
             }
             pullRequest = gitHubClient.createPullRequest(
                     repository,
                     pullRequestTitle,
-                    buildChangeOwnedPullRequestBody(session, identity),
+                    buildChangeOwnedPullRequestBody(session, identity)+(repair==null ? "" : "\nReparación de construcción de "+repair.originalPrUrl()+". Se conserva el mismo Cambio y WorkSession.\n"),
                     identity.headBranch(),
                     identity.baseBranch());
         }
@@ -190,11 +194,12 @@ public class WorkSessionGitHubService {
         }
         WorkSessionPullRequestIdentity.validateChangeOwned(
                 session, repository, pullRequest);
-        if (session.getPullRequestUrl() != null && !session.getPullRequestUrl().equals(pullRequest.htmlUrl())) {
+        if (session.getPullRequestUrl() != null && !session.getPullRequestUrl().equals(pullRequest.htmlUrl()) && repair==null) {
             throw new WorkSessionPublishConflictException(session.getId(), "existing change-owned PR identity changed");
         }
 
         Instant now = Instant.now();
+        if(repair!=null) releaseRepairs.published(repair,pullRequest.htmlUrl());
         session.setPullRequestUrl(pullRequest.htmlUrl());
         session.setPullRequestStatus(mapPullRequestStatus(pullRequest));
         session.setPublishedAt(now);
@@ -314,7 +319,9 @@ public class WorkSessionGitHubService {
         }
 
         if (session.getPullRequestStatus() != null && session.getPullRequestStatus() != WorkSessionPullRequestStatus.NOT_CREATED
-                && !(deliveryReplay && session.getDevelopmentChange()!=null && session.getPullRequestStatus()==WorkSessionPullRequestStatus.OPEN)) {
+                && !(deliveryReplay && session.getDevelopmentChange()!=null && (session.getPullRequestStatus()==WorkSessionPullRequestStatus.OPEN
+                    || session.getPullRequestStatus()==WorkSessionPullRequestStatus.MERGED && releaseRepairs!=null
+                        && (releaseRepairs.mayPrepareReplacement(session) || releaseRepairs.replacement(session,session.getFinalCommitSha())!=null)))) {
             throw new WorkSessionPublishConflictException(session.getId(),
                     "pull request creation requires status NOT_CREATED");
         }

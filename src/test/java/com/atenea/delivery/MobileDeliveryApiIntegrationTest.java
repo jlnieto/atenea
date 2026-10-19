@@ -78,6 +78,14 @@ class MobileDeliveryApiIntegrationTest {
         routine=operator(CodexOperationsRole.ROUTINE_OPERATOR);
         sessionId=createSession(false);
     }
+    @Test void buildRepairRequiresAdministratorAndRejectsCallerAuthority() throws Exception {
+        mvc.perform(post("/api/mobile/sessions/{id}/delivery/build-repair",sessionId).with(auth(routine))
+            .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().is4xxClientError());
+        for(String body:List.of("{\"command\":\"anything\"}","{\"sourceCommit\":\"main\"}","{\"path\":\"/tmp\"}","{\"runId\":91}"))
+            mvc.perform(post("/api/mobile/sessions/{id}/delivery/build-repair",sessionId).with(auth(admin))
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().is4xxClientError());
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM mobile_release_build_repair WHERE session_id=?",Long.class,sessionId));
+    }
     private Long createSession(boolean remote) {
         ProjectEntity project=new ProjectEntity(); project.setName("Delivery API "+UUID.randomUUID());
         project.setRepoPath("/synthetic"); project.setDefaultBaseBranch("main");

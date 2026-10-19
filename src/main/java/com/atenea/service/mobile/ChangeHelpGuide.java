@@ -76,6 +76,12 @@ public final class ChangeHelpGuide {
                 : stopped?"Está detenida. Abre Ver actualización de base para recuperar la misma operación; tu trabajo se conserva."
                 :"La preparación del mismo cambio está en curso. Consulta su estado; no repitas la acción.";
             label="Ver actualización de base"; reason="Las opciones de recuperación conservan la operación existente.";
+            if("BUILD_REPAIR".equals(c.deliveryKind())) {
+                answer=stopped ? "La reparación de construcción está detenida. Tu código, conversación y PR integrada se conservan. Consulta el error de esta misma operación y su recuperación; no repitas la preparación de publicación."
+                    : "Atenea está preparando o investigando la reparación de construcción en esta misma conversación. La PR integrada se conserva. Después se validará la corrección y se abrirá su PR de reparación; todavía no se publica nada. No repitas la solicitud.";
+                shortAnswer=stopped ? "La reparación está detenida; consulta su error y recuperación." : "La reparación está en curso en esta conversación. Espera al resultado.";
+                label="Ver reparación de construcción";
+            }
         } else if (!"READY".equals(c.workspaceState()) || "BLOCKED".equals(c.sourceState())
                 || "STALE".equals(c.sourceState()) || "BLOCKED".equals(c.remoteCloseState())) {
             stage="WORKSPACE_ATTENTION"; answer="Atenea no confirma ahora un workspace listo y coherente para continuar. El trabajo sigue vinculado al mismo cambio. Abre sus acciones para ver el motivo y las comprobaciones disponibles; no cambies identidades ni crees otra sesión.";
@@ -127,6 +133,29 @@ public final class ChangeHelpGuide {
                     : "El código consta validado, pero tu rol actual no permite las operaciones administrativas de entrega. Consultar esta ayuda no concede esos permisos. Debe resolverse por el mecanismo de autorización previsto, sin recrear el ticket.";
             shortAnswer="Las pruebas están registradas; falta habilitación o autorización para la entrega.";
             label="Ver estado de entrega"; reason="No se inventan permisos ni se ofrece publicar por terminal.";
+        } else if("RELEASE_BUILD".equals(c.deliveryKind()) && "PENDING".equals(c.deliveryState())) {
+            stage="BUILD_PENDING";answer="La PR está integrada y GitHub está construyendo la versión publicable. Todavía no hay un despliegue en curso. Puedes salir de la app; consulta este mismo cambio sin repetir Preparar.";
+            shortAnswer="GitHub está construyendo la versión. Espera; todavía no se despliega.";
+            destination="DELIVERY";label="Ver construcción";reason="Sólo consulta el mismo run de GitHub.";
+        } else if("BUILD_REPAIR".equals(c.deliveryKind()) && "CURRENT".equals(c.validationState())
+                && java.util.Set.of("RESOLVER_COMPLETED","READY_TO_FINALIZE").contains(c.deliveryState())) {
+            stage="REPAIR_PR_REQUIRED";answer="La reparación de construcción está validada. En Cambio, pulsa Crear PR de reparación. "
+                +"La PR original integrada se conserva; esta PR revisa sólo la corrección en el mismo Cambio y conversación. Después GitHub comprobará el backend combinado con main antes de integrar.";
+            shortAnswer="La reparación está validada. Crea su PR de reparación desde Cambio.";
+            label="Crear PR de reparación";reason="No se reabre ni se reescribe la PR integrada.";
+        } else if ("RELEASE".equals(c.deliveryKind()) && "RELEASE_BUILD_FAILED".equals(c.deliveryError())
+                && (readiness==null || !readiness.ready())) {
+            stage="BUILD_ATTENTION";
+            answer="GitHub no pudo construir la versión publicable. Tu PR integrada y el trabajo se conservan; no se ha desplegado esa versión. "
+                +"Las 4/4 pruebas del cambio no sustituyen la construcción del código integrado. No repitas Preparar Backend PROD. "
+                +"En Cambio, consulta el diagnóstico de construcción y utiliza Investigar y reparar construcción. "
+                +"Atenea preparará una corrección en esta misma conversación; si hace falta código, se revisará en una PR de reparación vinculada, sin reabrir la PR integrada. "
+                +"Después habrá que validar, integrar y confirmar la publicación.";
+            shortAnswer="La construcción falló, no hay un despliegue trabajando. Abre el diagnóstico y la reparación del mismo cambio; no repitas Preparar.";
+            destination="DELIVERY";label="Ver diagnóstico y reparación";reason="Consultar no ejecuta ni reintenta; reparar necesita tu acción explícita.";
+        } else if ("INTEGRATE".equals(c.deliveryKind()) && "PR_BASE_VALIDATION_MOVED".equals(c.deliveryError())) {
+            stage="SOURCE_BASE_UPDATE_REQUIRED";answer="Main avanzó y la prueba backend anterior no cubre la combinación actual. En Cambio, utiliza Actualizar base con main, valida y actualiza la PR. No se ha integrado ni publicado.";
+            shortAnswer="Hay que actualizar y comprobar la base actual antes de integrar.";label="Actualizar base con main";reason="No se reutilizan pruebas de otra combinación.";
         } else if ("RELEASE".equals(c.deliveryKind()) && "READY".equals(c.deliveryState())) {
             if (c.deliveryExpiresAt() == null || !c.deliveryPlanVerified()) {
                 stage="DELIVERY_ATTENTION";

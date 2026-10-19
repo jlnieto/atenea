@@ -20,6 +20,8 @@ class GitHubDeliveryTest {
     private boolean draft, merged, foreign, checksFailed;
     private String mergeability = "clean";
     private String ufdConclusion = "success";
+    private String backendConclusion="success",backendState="completed",backendBase=MERGE;
+    private boolean backendMissing,backendForeign,changedWorkflow;
     @BeforeEach void setup() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/", exchange -> {
@@ -27,7 +29,18 @@ class GitHubDeliveryTest {
             String method = exchange.getRequestMethod();
             String response;
             if (!method.equals("GET")) writes.add(method + " " + path + " " + new String(exchange.getRequestBody().readAllBytes()));
-            if (path.endsWith("/runs")) response = """
+            if(path.endsWith("/git/ref/heads/main")) response="{\"object\":{\"sha\":\""+MERGE+"\"}}";
+            else if(path.contains("/contents/.github/workflows/backend-merge-validation-v1.yml")) response="{\"sha\":\""+
+                (changedWorkflow && exchange.getRequestURI().getQuery().contains(SHA) ? "b" : "a").repeat(40)+"\"}";
+            else if(path.endsWith("/backend-merge-validation-v1.yml/runs")) response=backendMissing ? "{\"workflow_runs\":[]}" : """
+                {"workflow_runs":[{"id":5,"head_sha":"%s","head_branch":"%s","event":"pull_request",
+                "head_repository":{"full_name":"%s"},"path":".github/workflows/backend-merge-validation-v1.yml",
+                "pull_requests":[{"number":42,"head":{"sha":"%s"}}],"status":"%s","conclusion":"%s"}]}
+                """.formatted(SHA,BRANCH,backendForeign?"foreign/atenea":"jlnieto/atenea",SHA,backendState,backendConclusion);
+            else if(path.endsWith("/actions/runs/5/jobs")) response="""
+                {"total_count":1,"jobs":[{"name":"backend-merge-%s","status":"%s","conclusion":"%s"}]}
+                """.formatted(backendBase,backendState,backendConclusion);
+            else if (path.endsWith("/runs")) response = """
                 {"workflow_runs":[{"id":4,"head_sha":"%s","head_branch":"%s","event":"push",
                 "head_repository":{"full_name":"jlnieto/atenea"},"path":".github/workflows/ufd-validation-v1.yml",
                 "status":"completed","conclusion":"%s"}]}
@@ -76,6 +89,30 @@ class GitHubDeliveryTest {
         assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA));
         checksFailed=false; mergeability="blocked";
         assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA));
+        assertTrue(writes.isEmpty());
+    }
+    @Test void backendCompilationFailureCannotMergeEvenWithGreenUfd() {
+        backendConclusion="failure";
+        assertTrue(assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA)).getMessage().startsWith("CI_FAILED:"));
+        assertTrue(writes.isEmpty());
+    }
+    @Test void backendProofMustCoverTheCurrentMainAndExactOwnedPr() {
+        backendBase="9".repeat(40);
+        assertTrue(assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA)).getMessage().startsWith("PR_BASE_VALIDATION_MOVED:"));
+        backendBase=MERGE;backendForeign=true;
+        assertTrue(assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA)).getMessage().startsWith("CI_PENDING:"));
+        assertTrue(writes.isEmpty());
+    }
+    @Test void missingAndRunningBackendProofWaitWithoutMergingOrChangingThePr() {
+        backendMissing=true;
+        assertTrue(assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA)).getMessage().startsWith("CI_PENDING:"));
+        backendMissing=false;backendState="in_progress";
+        assertTrue(assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA)).getMessage().startsWith("CI_PENDING:"));
+        assertTrue(writes.isEmpty());
+    }
+    @Test void candidateCannotReplaceTheApprovedMergeWorkflowToForgeGreenEvidence() {
+        changedWorkflow=true;
+        assertTrue(assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA)).getMessage().startsWith("CI_EVIDENCE_INCOMPLETE"));
         assertTrue(writes.isEmpty());
     }
 }

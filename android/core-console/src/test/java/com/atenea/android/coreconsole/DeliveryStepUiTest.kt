@@ -18,6 +18,38 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DeliveryStepUiTest {
+    @Test fun `failed release build offers one repair instead of repeating backend preparation`() {
+        val failed=operation("RELEASE","BLOCKED").copy(errorCode="RELEASE_BUILD_FAILED")
+        val build=com.atenea.android.api.MobileBuildStatus("FAILED","2".repeat(40),"BACKEND_COMPILATION",
+            "https://github.com/jlnieto/atenea/actions/runs/91",true,null,listOf("src/test/java/com/atenea/Test.java:71"))
+        state(snapshot(failed,operation("INTEGRATE","SUCCEEDED")).copy(sourceUpdateEnabled=true,build=build)) {
+            assertEquals(DeliveryStepAction.REPAIR_BUILD,it.currentStep(true,false,now).action)
+            assertTrue(it.canRepairBuild(false));assertFalse(it.canRepairBuild(true))
+            assertFalse(it.canPrepareReleaseRecovery(true,false))
+            assertEquals(DeliveryStepStatus.ATTENTION,it.currentStep(true,false,now).status)
+        }
+    }
+    @Test fun `unknown or legacy failed build cannot advertise another preparation`() {
+        val failed=operation("RELEASE","BLOCKED").copy(errorCode="RELEASE_BUILD_FAILED")
+        state(snapshot(failed,operation("INTEGRATE","SUCCEEDED"))) {
+            assertEquals(DeliveryStepAction.REFRESH,it.currentStep(true,false,now).action)
+            assertFalse(it.canRepairBuild(false))
+        }
+        state(snapshot(failed,operation("INTEGRATE","SUCCEEDED")).copy(build=
+            com.atenea.android.api.MobileBuildStatus(null,null,null,null,false,"BUILD_STATUS_UNAVAILABLE",emptyList()))) {
+            assertEquals(DeliveryStepStatus.CHECKING,it.currentStep(true,false,now).status)
+            assertFalse(it.canPrepareReleaseRecovery(true,false))
+        }
+    }
+    @Test fun `newer successful build retires historical failure without claiming deployment`() {
+        val failed=operation("RELEASE","BLOCKED").copy(errorCode="RELEASE_BUILD_FAILED")
+        state(snapshot(failed,operation("INTEGRATE","SUCCEEDED")).copy(build=
+            com.atenea.android.api.MobileBuildStatus("READY","3".repeat(40),"COMPLETED",null,false,null,emptyList()))) {
+            assertEquals(DeliveryStepAction.PREPARE_BACKEND,it.currentStep(true,false,now).action)
+            assertEquals(DeliveryStepStatus.ACTION,it.currentStep(true,false,now).status)
+            assertFalse(it.appDeployed);assertTrue(it.canPrepareReleaseRecovery(true,false))
+        }
+    }
     private val now = System.currentTimeMillis() / 1000
     private fun operation(kind: String, state: String, target: MobileDeliveryTarget = MobileDeliveryTarget.APP_PROD) =
         MobileDeliveryOperation(UUID.randomUUID(), UUID.randomUUID(), 22, kind, target, "1".repeat(40), state,
