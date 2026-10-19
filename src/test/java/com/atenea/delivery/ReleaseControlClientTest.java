@@ -133,4 +133,32 @@ class ReleaseControlClientTest {
         client.observeAndroid();client.observePlatform();
         assertEquals(java.util.List.of(java.util.Map.of("operation","OBSERVE_ANDROID"),java.util.Map.of("operation","OBSERVE_PLATFORM")),requests);
     }
+    private ObjectNode storage() {
+        return mapper.createObjectNode().put("protocol","atenea-release-storage/v1").put("planId",id.toString())
+                .put("target","APP_PROD").put("sourceCommit",source).put("phase","INSUFFICIENT_SPACE")
+                .put("observedAt",java.time.Instant.now().getEpochSecond()).put("freeBytes",5L)
+                .put("requiredBytes",20L).put("missingBytes",15L).put("reclaimedBytes",2L);
+    }
+    @Test void storageIsClosedBoundReadOnlyAndNotAnExecutionReceipt() {
+        var requests=new java.util.ArrayList<java.util.Map<String,String>>();
+        var client=new ReleaseControlClient(mapper,true) {
+            @Override protected com.fasterxml.jackson.databind.JsonNode exchange(java.util.Map<String,String> request) {
+                requests.add(request);return storage();
+            }
+        };
+        assertEquals(15L,ReleaseControlClient.verifyStorage(client.observeStorage(id),id,DeliveryTarget.APP_PROD,source).missingBytes());
+        assertEquals(java.util.List.of(java.util.Map.of("operation","OBSERVE_STORAGE","planId",id.toString())),requests);
+        for(String field:java.util.List.of("planId","target","sourceCommit","phase","protocol")) {
+            assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verifyStorage(storage().put(field,"foreign"),id,DeliveryTarget.APP_PROD,source));
+        }
+        for(String field:java.util.List.of("path","command","imageId","token","host")) {
+            assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verifyStorage(storage().put(field,"foreign"),id,DeliveryTarget.APP_PROD,source));
+        }
+        for(String field:java.util.List.of("freeBytes","requiredBytes","missingBytes","reclaimedBytes")) {
+            assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verifyStorage(storage().put(field,-1),id,DeliveryTarget.APP_PROD,source));
+            assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verifyStorage(storage().put(field,"12"),id,DeliveryTarget.APP_PROD,source));
+        }
+        assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verifyStorage(storage().put("missingBytes",1),id,DeliveryTarget.APP_PROD,source));
+        assertThrows(DeliveryRejectedException.class,()->ReleaseControlClient.verify(storage(),id,DeliveryTarget.APP_PROD,source,hash,execution,true));
+    }
 }

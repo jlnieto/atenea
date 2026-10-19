@@ -65,7 +65,9 @@ internal class MobileDeliveryUiState(
     val readiness get() = snapshot?.readiness?.takeIf { available }
     val build get() = snapshot?.build?.takeIf { available }
     val progress get() = snapshot?.progress?.takeIf { value -> available && operations.any {
-        it.id==value.operationId && it.sessionId==value.sessionId && (it.kind==value.kind && it.state==value.state && !it.terminal
+        it.id==value.operationId && it.sessionId==value.sessionId
+            && (value.storage==null || value.storage?.sourceCommit==it.sourceCommit && value.storage?.target==it.target)
+            && (it.kind==value.kind && it.state==value.state && (!it.terminal || value.storage?.phase in setOf("INSUFFICIENT_SPACE","ATTENTION"))
             || value.kind=="BUILD" && it.kind=="INTEGRATE" && it.state=="SUCCEEDED" && build?.state=="PENDING"
                 && value.github?.sourceCommit==build?.sourceCommit
             || value.kind=="PR_CHECKS" && it.kind=="PUBLISH_PR" && it.state=="SUCCEEDED" && !integrated

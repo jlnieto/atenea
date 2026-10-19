@@ -88,4 +88,22 @@ class OperationProgressUiTest {
         assertEquals(DeliveryStepStatus.WAITING,state.currentStep(true,false,now).status)
         blocked.complete(Unit);read.join();assertTrue(state.canConsult)
     }
+    @Test fun `storage phases explain real work and shortage without fake percentage`() {
+        val storage=MobileStorageProgress("a".repeat(40),MobileDeliveryTarget.APP_PROD,"RECLAIMING",now,5_000_000_000,20_000_000_000,15_000_000_000,0)
+        assertTrue(storageProgressTitle(storage).contains("Retirando"))
+        assertTrue(storageProgressTitle(storage.copy(phase="SPACE_READY")).contains("Espacio preparado"))
+        assertTrue(storageCapacityDetail(storage.copy(phase="INSUFFICIENT_SPACE")).contains("15,0 GB"))
+        assertTrue(storageCapacityDetail(storage.copy(phase="INSUFFICIENT_SPACE")).contains("No se ha desplegado"))
+        assertFalse(storageProgressTitle(storage).contains("%"))
+    }
+    @Test fun `storage from another source cannot describe the current publication`() = runBlocking {
+        val release=operation.copy(kind="RELEASE",state="PREPARING",errorCode=null)
+        val storage=MobileStorageProgress("a".repeat(40),MobileDeliveryTarget.APP_PROD,"RECLAIMING",now,5,20,15,0)
+        for(source in listOf("a".repeat(40),"b".repeat(40))) {
+            val progress=MobileOperationProgress(id,28,"RELEASE","PREPARING",now-300,now,now,null,storage.copy(sourceCommit=source))
+            val state=MobileDeliveryUiState(28,this) { MobileDeliveryState(true,listOf(release),validation=workflowEvidence(28),progress=progress) }
+            state.refresh();assertEquals(source==release.sourceCommit,state.progress!=null)
+            assertTrue(state.canConsult)
+        }
+    }
 }
