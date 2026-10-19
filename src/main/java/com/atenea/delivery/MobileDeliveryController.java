@@ -43,14 +43,14 @@ public class MobileDeliveryController {
                 service.observeIntegration(sessionId, actor), sourceUpdates.isEnabled(), sourceUpdates.observe(sessionId, actor),
                 service.isEnabled(), service.observeDeployment(sessionId, actor), completion.isEnabled(),
                 service.observeDelivery(sessionId,actor), validation.findDevelopmentChangeEvidence(sessionId).orElse(null), service.isEnabled(),
-                service.observeBuild(sessionId,actor));
+                service.observeBuild(sessionId,actor), service.observeProgress(sessionId,actor));
     }
     public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations,
             MobileDeliveryService.IntegrationObservation integration, boolean sourceUpdateEnabled,
             SourceUpdateOperation.View sourceUpdate, boolean releaseRecoveryEnabled,
             MobileDeliveryService.DeploymentObservation deployment, boolean completionEnabled,
             ChangeDeliveryReadiness readiness, DevelopmentChangeValidationEvidenceResponse validation,
-            boolean androidVersionPreparationEnabled,MobileDeliveryService.BuildStatus build) { }
+            boolean androidVersionPreparationEnabled,MobileDeliveryService.BuildStatus build, MobileDeliveryService.Progress progress) { }
 
     @PostMapping("/api/mobile/sessions/{sessionId}/delivery/build-repair")
     public SourceUpdateOperation.View repairBuild(@PathVariable Long sessionId,

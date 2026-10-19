@@ -200,6 +200,50 @@ class MobileDeliveryServiceTest {
                 () -> service.request(21L,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD)).code());
         verifyNoInteractions(store);
     }
+    @Test void progressIsExactOperationReadOnlyAndCannotMakePendingChecksIntegratable() {
+        var reader=mock(com.atenea.github.GitHubChecksProgress.class);service.setChecksProgress(reader);
+        var op=operation("PUBLISH_PR","WAITING_CI");when(store.list(21L)).thenReturn(List.of(op));
+        session.setFinalCommitSha("a".repeat(40));session.setPublishedHeadBranch("atenea/change-00000000-0000-4000-8000-000000000001");
+        var evidence=new com.atenea.github.GitHubChecksProgress.Evidence("a".repeat(40),"CLOSING",1L,"DEGRADED",List.of());
+        when(reader.observe("a".repeat(40),session.getPublishedHeadBranch(),false,false)).thenReturn(evidence);
+        var value=service.observeProgress(21L,actor);
+        assertEquals(id,value.operationId());assertEquals(21L,value.sessionId());assertSame(evidence,value.github());
+        when(reader.observe(anyString(),anyString(),anyBoolean(),anyBoolean())).thenThrow(new GitHubIntegrationException("PROGRESS_EVIDENCE_INCOMPLETE"));
+        assertEquals("UNAVAILABLE",service.observeProgress(21L,actor).github().state());
+        verify(store,never()).update(any(),any(),any(),any(),any());verifyNoInteractions(publication,github,executor,owner,factors,grants);
+    }
+    @Test void progressContinuesAfterPrCreationWhileBackendChecksAreStillPending() {
+        var reader=mock(com.atenea.github.GitHubChecksProgress.class);service.setChecksProgress(reader);
+        var evidence=mapper.createObjectNode().put("headCommit","a".repeat(40));
+        var op=new DeliveryOperation(id,21L,7L,"PUBLISH_PR",DeliveryTarget.APP_PROD,null,execution,"SUCCEEDED",null,evidence,null,Instant.now(),Instant.now());
+        when(store.list(21L)).thenReturn(List.of(op));session.setFinalCommitSha("a".repeat(40));
+        session.setPublishedHeadBranch("atenea/change-00000000-0000-4000-8000-000000000001");session.setPullRequestUrl("https://github.com/jlnieto/atenea/pull/84");
+        when(reader.observe(anyString(),anyString(),eq(false),eq(true))).thenReturn(
+                new com.atenea.github.GitHubChecksProgress.Evidence("a".repeat(40),"RUNNING",1L,"OPERATIONAL",List.of()));
+        assertEquals("PR_CHECKS",service.observeProgress(21L,actor).kind());
+        verify(store,never()).update(any(),any(),any(),any(),any());verifyNoInteractions(publication,github,executor);
+    }
+    @Test void storageProgressReadsTheSamePlanWithoutPreparingExecutingOrChangingEvidence() {
+        var op=operation("RELEASE","PREPARING");when(store.list(21L)).thenReturn(List.of(op));
+        var evidence=mapper.createObjectNode().put("protocol","atenea-release-storage/v1").put("planId",id.toString())
+                .put("target","APP_PROD").put("sourceCommit",op.sourceCommit()).put("phase","RECLAIMING")
+                .put("observedAt",Instant.now().getEpochSecond()).put("freeBytes",10L).put("requiredBytes",20L)
+                .put("missingBytes",10L).put("reclaimedBytes",0L);
+        when(executor.observeStorage(id)).thenReturn(evidence);
+        assertEquals("RECLAIMING",service.observeProgress(21L,actor).storage().phase());
+        evidence.put("sourceCommit","f".repeat(40));
+        assertNull(service.observeProgress(21L,actor).storage());
+        when(executor.observeStorage(id)).thenThrow(new DeliveryRejectedException("CLOSED_REQUEST_REQUIRED"));
+        assertNull(service.observeProgress(21L,actor).storage());
+        verify(store,never()).update(any(),any(),any(),any(),any());
+        verify(executor,never()).plan(any(),any(),any());verify(executor,never()).execute(any(),any(),any());
+        verifyNoInteractions(publication,github,owner,factors,grants);
+    }
+    @Test void publishingNeverShowsAnOldPreparationPhaseAsIfConfirmationWereStillPending() {
+        when(store.list(21L)).thenReturn(List.of(operation("RELEASE","APPLYING")));
+        assertNull(service.observeProgress(21L,actor).storage());
+        verifyNoInteractions(executor);
+    }
     @Test void existingActiveIntentIsReturnedWithoutAnotherOperationOrExternalEffect() {
         var op = operation("PUBLISH_PR","QUEUED"); when(store.list(21L)).thenReturn(List.of(op));
         assertEquals(id,service.request(21L,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD).id());

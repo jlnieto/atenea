@@ -163,12 +163,12 @@ class DeliveryStepUiTest {
             assertEquals(expired.id, it.operations.first().id)
         }
     }
-    @Test fun `preparing waiting CI and applying only report working and preserve operation`() {
+    @Test fun `preparing and applying work while CI waits without repeating the operation`() {
         for (status in listOf("PREPARING", "WAITING_CI", "APPLYING")) {
             val op = operation("RELEASE", status)
             state(snapshot(op, operation("INTEGRATE", "SUCCEEDED"))) {
                 val step = it.currentStep(true, false, now)
-                assertEquals(DeliveryStepStatus.WORKING, step.status)
+                assertEquals(if(status=="WAITING_CI") DeliveryStepStatus.WAITING else DeliveryStepStatus.WORKING, step.status)
                 assertEquals(DeliveryStepAction.NONE, step.action)
                 assertEquals(op.id, step.operation?.id)
                 assertTrue(step.message.contains("Puedes salir"))

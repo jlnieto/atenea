@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -45,6 +46,7 @@ public class ClosedValidationOperationService {
     private final RemoteWorkerClient remoteWorkerClient;
     private final WorkSessionAcceptanceService acceptanceService;
     private final com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard;
+    private final JdbcTemplate jdbc;
 
     public ClosedValidationOperationService(
             WorkSessionRepository workSessionRepository,
@@ -52,7 +54,8 @@ public class ClosedValidationOperationService {
             ValidationOperationRepository validationOperationRepository,
             RemoteWorkerClient remoteWorkerClient,
             WorkSessionAcceptanceService acceptanceService,
-            com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard
+            com.atenea.delivery.SourceUpdateBaseGuard sourceBaseGuard,
+            JdbcTemplate jdbc
     ) {
         this.workSessionRepository = workSessionRepository;
         this.agentRunRepository = agentRunRepository;
@@ -60,6 +63,7 @@ public class ClosedValidationOperationService {
         this.remoteWorkerClient = remoteWorkerClient;
         this.acceptanceService = acceptanceService;
         this.sourceBaseGuard = sourceBaseGuard;
+        this.jdbc = jdbc;
     }
 
     @Transactional(readOnly = true)
@@ -105,6 +109,7 @@ public class ClosedValidationOperationService {
 
     @Transactional
     public ValidationOperationResponse run(Long sessionId, ValidationOperationKind operation) {
+        admissionLock();
         WorkSessionEntity session = workSessionRepository.findLockedWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
         requireExactIdleSession(session);
@@ -177,6 +182,7 @@ public class ClosedValidationOperationService {
 
     @Transactional
     public DevelopmentChangeValidationResponse advanceDevelopmentChange(Long sessionId) {
+        admissionLock();
         WorkSessionEntity session = workSessionRepository
                 .findLockedWithProjectAndDevelopmentChangeById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
@@ -305,6 +311,33 @@ public class ClosedValidationOperationService {
                 change, results, state, entity.getOperation().name(), entity.getSummary());
     }
 
+    /** Collect only an already admitted operation.
+     * No fingerprint refresh, new check, retry, acceptance promotion or main-base gate.
+     * Results remain bound to their original tree even if main/the change has advanced.
+     */
+    @Transactional(timeout = 30)
+    public ValidationOperationResponse reconcileRetainedResult(Long sessionId, UUID operationId) {
+        admissionLock();
+        WorkSessionEntity session = workSessionRepository
+                .findLockedWithProjectAndDevelopmentChangeById(sessionId)
+                .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
+        requireExactDevelopmentChange(session);
+        ValidationOperationEntity entity = validationOperationRepository.findById(operationId)
+                .filter(value -> Objects.equals(value.getWorkSession().getId(), sessionId))
+                .orElseThrow(() -> new WorkSessionOperationBlockedException("Validation ownership is not exact"));
+        if (entity.getStatus() == ValidationOperationStatus.RUNNING) {
+            applyDurableResult(entity, session,
+                    remoteWorkerClient.inspectValidation(session, operationId.toString()));
+        }
+        return response(entity);
+    }
+
+    private void admissionLock() {
+        // Operator install/admission and foreground/background validation all
+        // acquire this before a session/result row, avoiding an inverted lock order.
+        jdbc.execute("SELECT pg_advisory_xact_lock(814205002)");
+    }
+
     private ValidationOperationEntity newValidationEntity(
             WorkSessionEntity session,
             ValidationOperationKind operation,
@@ -337,7 +370,7 @@ public class ClosedValidationOperationService {
             WorkSessionEntity session,
             RemoteWorkerClient.DurableValidationResult result
     ) {
-        if (result.schemaVersion() != 1
+        if (result == null || result.schemaVersion() != 1
                 || !"closed-validation-broker/v1".equals(result.protocolVersion())
                 || !entity.getId().toString().equals(result.operationId())
                 || !session.getRemoteSessionId().toString().equals(result.sessionId())
@@ -362,6 +395,17 @@ public class ClosedValidationOperationService {
             default -> throw new RemoteWorkerException(
                     "Validation returned an unsupported durable state", 409);
         };
+        if ((status == ValidationOperationStatus.SUCCEEDED || status == ValidationOperationStatus.FAILED)
+                && (!"CONFIRMED".equals(result.transportState())
+                    || result.artifactManifestSha256() == null
+                    || !result.artifactManifestSha256().matches("[0-9a-f]{64}")
+                    || result.exitCode() == null
+                    || progressInstant(result.finishedAt()) == null
+                    || !Objects.equals(result.terminalCause(), status == ValidationOperationStatus.SUCCEEDED ? "NONE" : "CANDIDATE")
+                    || (status == ValidationOperationStatus.SUCCEEDED && result.exitCode() != 0)
+                    || (status == ValidationOperationStatus.FAILED && result.exitCode() == 0))) {
+            throw new RemoteWorkerException("Durable validation terminal evidence is incomplete or conflicting", 409);
+        }
         Instant updatedAt = Instant.now();
         entity.setStatus(status);
         // Preserve the already ownership-checked broker observation. Reading

@@ -10,6 +10,15 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AteneaNotificationRouteParserTest {
+    @Test fun `progress notification opens same session without accepting commands or foreign owners`() {
+        val link="atenea://work-sessions/28/conversation"
+        val event="adad1f5a-18b8-43d2-8e9c-c5f92037f693"
+        val data=mapOf("schemaVersion" to "atenea-change-progress-v1","eventType" to "CHANGE_PROGRESS","type" to "CHANGE_PROGRESS",
+            "notificationEventId" to event,"sessionId" to "28","deepLinkKind" to "WORK_SESSION_CONVERSATION","deepLink" to link)
+        assertEquals(AteneaNotificationRoute(28,event),AteneaNotificationRouteParser.parse(link,data))
+        for (bad in listOf(data+("command" to "anything"),data+("sessionId" to "29"),data+("notificationEventId" to "invalid")))
+            assertNull(AteneaNotificationRouteParser.parse(link,bad))
+    }
     private val eventId = "adad1f5a-18b8-43d2-8e9c-c5f92037f693"
     private val validData = mapOf(
         "schemaVersion" to "atenea-notification-data-v1",

@@ -141,6 +141,7 @@ internal fun MobileDeliveryPanel(api: AteneaApiClient, sessionId: Long, validate
                     onClick = { scope.launch { state.consult() } })
                 DeliveryStepAction.NONE -> Unit
             }
+            OperationProgressPanel(state, step)
         }
         state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.build?.let { build ->
@@ -363,6 +364,10 @@ internal fun deliveryStateLabel(state: String): String = when (state) {
 }
 
 internal fun deliveryErrorLabel(code: String): String = when (code) {
+    "RELEASE_STORAGE_INSUFFICIENT" -> "Falta espacio seguro para preparar esta versión. Atenea ya ha retirado lo permitido por la retención; no se ha desplegado."
+    "RETENTION_BUSY" -> "Hay otra operación protegida en curso. No se ha forzado la limpieza ni la publicación."
+    "RETENTION_RECOVERY_CONTENT_MISSING", "RETENTION_CURRENT_RECEIPT_REQUIRED" -> "Falta una copia o un recibo protegido de recuperación. Atenea no ha forzado la limpieza ni el despliegue. Hace falta revisar esa evidencia."
+    "RETENTION_EVIDENCE_MISMATCH", "RETENTION_RESOURCE_MOVED", "RETENTION_PRODUCTION_MOVED", "RETENTION_REQUIRES_INSPECTION" -> "La retención necesita revisar su evidencia. Se han conservado la operación y los datos; no repitas la publicación."
     "APK_VERSION_NOT_NEWER" -> "La APK candidata tiene una versión igual o anterior a la del canal. No se ha publicado. Hace falta preparar e integrar una versión nueva; consultar no cambia el número."
     "ANDROID_CHANNEL_MOVED" -> "El canal Android cambió desde esta preparación. Tu código se conserva; prepara de nuevo con la versión vigente."
     "ANDROID_VERSION_POLICY_REJECTED", "ANDROID_VERSION_IDENTITY_MISMATCH" -> "La versión o el diff no cumplen el incremento cerrado previsto. La operación está detenida sin publicar; revisa la PR técnica."

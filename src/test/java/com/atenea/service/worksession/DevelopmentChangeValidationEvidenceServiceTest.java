@@ -21,7 +21,8 @@ class DevelopmentChangeValidationEvidenceServiceTest {
     private final RemoteWorkerClient worker = mock(RemoteWorkerClient.class);
     private final WorkSessionAcceptanceService acceptance = mock(WorkSessionAcceptanceService.class);
     private final ClosedValidationOperationService service = new ClosedValidationOperationService(
-            sessions, runs, validations, worker, acceptance, mock(com.atenea.delivery.SourceUpdateBaseGuard.class));
+            sessions, runs, validations, worker, acceptance, mock(com.atenea.delivery.SourceUpdateBaseGuard.class),
+            mock(org.springframework.jdbc.core.JdbcTemplate.class));
     private final String tree = "4".repeat(64);
     private WorkSessionEntity session;
     private DevelopmentChangeEntity change;
