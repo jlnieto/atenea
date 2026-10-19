@@ -46,7 +46,9 @@ V104 persiste observación, contadores, evento por ciclo, bandeja por operador y
 entrega por dispositivo en una transacción. Repetir el mismo check no duplica el
 evento. Reiniciar App conserva la política. La entrega FCM tiene lease de 60 s,
 fencing por intento, hasta cinco intentos y caducidad de diez minutos; retiene
-errores terminales y no marca aceptado un proveedor deshabilitado. Reintentar una
+errores terminales y no marca aceptado un proveedor deshabilitado. La caducidad
+restante también se envía como TTL a FCM: un reintento no prolonga el plazo ni
+deja un aviso antiguo en su cola durante semanas. Reintentar una
 entrega conserva su event ID; el siguiente ciclo degradado usa otro ID y por
 tanto no se deduplica como incidente. La bandeja conserva el aviso aunque FCM
 falle; los mensajes incluyen la hora de comprobación UTC. Aceptado por FCM no

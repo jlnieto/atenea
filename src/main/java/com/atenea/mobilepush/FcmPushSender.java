@@ -106,6 +106,14 @@ public class FcmPushSender {
         if (notificationEventId instanceof String value && !value.isBlank()) {
             androidNotification.put("tag", value);
         }
+        Map<String,Object> android = new HashMap<>();
+        android.put("notification",Map.copyOf(androidNotification));
+        if (message.expiresAt() != null) {
+            long remaining = Duration.between(Instant.now(),message.expiresAt()).getSeconds();
+            if (remaining <= 0) throw new FcmDeliveryException(
+                    FcmDeliveryException.FailureKind.PERMANENT,"DELIVERY_EXPIRED",null);
+            android.put("ttl",Math.min(600L,remaining)+"s");
+        }
         return Map.of(
                 "message", Map.of(
                         "token", message.to(),
@@ -114,9 +122,7 @@ public class FcmPushSender {
                                 "body", message.body() == null ? "" : message.body()
                         ),
                         "data", stringData(message.data()),
-                        "android", Map.of(
-                                "notification", Map.copyOf(androidNotification)
-                        )
+                        "android", Map.copyOf(android)
                 )
         );
     }
@@ -254,7 +260,11 @@ public class FcmPushSender {
             String to,
             String title,
             String body,
-            Map<String, Object> data
+            Map<String, Object> data,
+            Instant expiresAt
     ) {
+        public FcmPushMessage(String to,String title,String body,Map<String,Object> data) {
+            this(to,title,body,data,null);
+        }
     }
 }

@@ -116,6 +116,9 @@ class OperationsMonitoringDeliveryIntegrationTest {
     @Test void expiredAlertAndUnreadyFcmCannotBecomeDelivered(){
         notifications.record(check(down));var id=store.pending().getFirst();jdbc.update("UPDATE operations_alert_delivery SET expires_at=now()-interval '1 second' WHERE id=?",id);
         assertNull(store.claim(id));assertEquals("EXPIRED",jdbc.queryForObject("SELECT state FROM operations_alert_delivery WHERE id=?",String.class,id));
+        var expiresAfterClaim=store.claim(store.pending().getFirst());
+        store.failed(expiresAfterClaim,new FcmDeliveryException(FcmDeliveryException.FailureKind.PERMANENT,"DELIVERY_EXPIRED",null));
+        assertEquals("EXPIRED",jdbc.queryForObject("SELECT state FROM operations_alert_delivery WHERE id=?",String.class,expiresAfterClaim.id()));
         var sender=mock(FcmPushSender.class);new OperationsAlertDispatcher(store,sender).dispatch();verify(sender,never()).send(anyList());
         assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM operations_alert_delivery WHERE host_id=? AND state='DELIVERED'",Long.class,host));
     }

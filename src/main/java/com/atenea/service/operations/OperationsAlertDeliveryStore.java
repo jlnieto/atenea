@@ -12,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class OperationsAlertDeliveryStore {
     private final JdbcTemplate jdbc;
     public OperationsAlertDeliveryStore(JdbcTemplate jdbc){this.jdbc=jdbc;}
-    public record Command(UUID id,int attempt,UUID eventId,Long hostId,String kind,String title,String body,Long deviceId,String pushToken) { }
+    public record Command(UUID id,int attempt,UUID eventId,Long hostId,String kind,String title,String body,Long deviceId,String pushToken,Instant expiresAt) { }
     public List<UUID> pending(){return jdbc.queryForList("""
         SELECT id FROM operations_alert_delivery WHERE state='PENDING'
          OR state='RETRY_WAIT' AND next_attempt_at<=now() OR state='SENDING' AND lease_until<=now()
@@ -37,7 +37,7 @@ public class OperationsAlertDeliveryStore {
         jdbc.update("UPDATE operations_alert_delivery SET state='SENDING',attempt_count=?,lease_until=?,next_attempt_at=NULL,diagnostic_code=NULL,updated_at=now() WHERE id=?",
             attempt,Timestamp.from(now.plusSeconds(60)),id);
         return new Command(id,attempt,(UUID)r.get("event_id"),((Number)r.get("host_id")).longValue(),(String)r.get("kind"),
-            (String)r.get("title"),(String)r.get("body"),((Number)r.get("device_id")).longValue(),(String)r.get("push_token"));
+            (String)r.get("title"),(String)r.get("body"),((Number)r.get("device_id")).longValue(),(String)r.get("push_token"),((Timestamp)r.get("expires_at")).toInstant());
     }
     private void terminal(UUID id,String state,String code){jdbc.update("UPDATE operations_alert_delivery SET state=?,diagnostic_code=?,lease_until=NULL,next_attempt_at=NULL,updated_at=now() WHERE id=?",state,code,id);}
     @Transactional
@@ -50,7 +50,8 @@ public class OperationsAlertDeliveryStore {
         if(failure.failureKind()==FcmDeliveryException.FailureKind.INVALID_TOKEN) {
             state="INVALID_TOKEN";
             jdbc.update("UPDATE operator_push_device SET active=false,updated_at=now() WHERE id=? AND push_token=?",command.deviceId(),command.pushToken());
-        }else if(failure.failureKind()==FcmDeliveryException.FailureKind.PERMANENT)state="FAILED";
+        }else if("DELIVERY_EXPIRED".equals(code))state="EXPIRED";
+        else if(failure.failureKind()==FcmDeliveryException.FailureKind.PERMANENT)state="FAILED";
         else {
             next=Instant.now().plusSeconds(30L << (command.attempt()-1));
             if(!next.isBefore(((Timestamp)rows.getFirst().get("expires_at")).toInstant())){state="EXPIRED";code="DELIVERY_EXPIRED";next=null;}

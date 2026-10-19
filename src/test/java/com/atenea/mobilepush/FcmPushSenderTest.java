@@ -13,6 +13,19 @@ import org.junit.jupiter.api.Test;
 
 class FcmPushSenderTest {
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void monitoringExpiryIsPropagatedToFcmWithoutExtendingAnOldAlertsLifetime() {
+        var message=new FcmPushSender.FcmPushMessage("synthetic","Degradación","Apache inactive",Map.of(),java.time.Instant.now().plusSeconds(120));
+        var value=(Map<String,Object>)sender.payload(message).get("message");
+        String ttl=(String)((Map<String,Object>)value.get("android")).get("ttl");
+        long seconds=Long.parseLong(ttl.substring(0,ttl.length()-1));assertTrue(seconds>0 && seconds<=120);assertTrue(ttl.endsWith("s"));
+        var expired=new FcmPushSender.FcmPushMessage("synthetic","Degradación","Apache inactive",Map.of(),java.time.Instant.now().minusSeconds(1));
+        var failure=org.junit.jupiter.api.Assertions.assertThrows(FcmDeliveryException.class,()->sender.payload(expired));assertEquals("DELIVERY_EXPIRED",failure.diagnosticCode());
+        var generic=(Map<String,Object>)sender.payload(new FcmPushSender.FcmPushMessage("synthetic","Tarea","Terminada",Map.of())).get("message");
+        assertFalse(((Map<String,Object>)generic.get("android")).containsKey("ttl"));
+    }
+
     private FcmPushSender sender;
 
     @BeforeEach

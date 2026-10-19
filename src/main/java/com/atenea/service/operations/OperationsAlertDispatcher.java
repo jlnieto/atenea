@@ -23,7 +23,7 @@ public class OperationsAlertDispatcher {
                 sender.send(List.of(new FcmPushSender.FcmPushMessage(command.pushToken(),command.title(),command.body(),Map.of(
                     "schemaVersion","atenea-operations-notification-v1","eventType","OPERATIONS_ALERT","type",command.kind(),
                     "notificationEventId",command.eventId().toString(),"hostId",command.hostId(),"deepLinkKind","OPERATIONS_HOST",
-                    "deepLink","atenea://operations/"+command.hostId()))));
+                    "deepLink","atenea://operations/"+command.hostId()),command.expiresAt())));
                 store.delivered(command);
             }catch(FcmDeliveryException failure){store.failed(command,failure);log.warn("Operations push retained deliveryId={} code={}",id,failure.diagnosticCode());}
             catch(RuntimeException failure){store.failed(command,new FcmDeliveryException(FcmDeliveryException.FailureKind.RETRYABLE,"FCM_TRANSPORT_ERROR",failure));log.warn("Operations push retained deliveryId={}",id);}
