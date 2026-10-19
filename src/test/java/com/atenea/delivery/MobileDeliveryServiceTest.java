@@ -239,6 +239,11 @@ class MobileDeliveryServiceTest {
         verify(executor,never()).plan(any(),any(),any());verify(executor,never()).execute(any(),any(),any());
         verifyNoInteractions(publication,github,owner,factors,grants);
     }
+    @Test void publishingNeverShowsAnOldPreparationPhaseAsIfConfirmationWereStillPending() {
+        when(store.list(21L)).thenReturn(List.of(operation("RELEASE","APPLYING")));
+        assertNull(service.observeProgress(21L,actor).storage());
+        verifyNoInteractions(executor);
+    }
     @Test void existingActiveIntentIsReturnedWithoutAnotherOperationOrExternalEffect() {
         var op = operation("PUBLISH_PR","QUEUED"); when(store.list(21L)).thenReturn(List.of(op));
         assertEquals(id,service.request(21L,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD).id());

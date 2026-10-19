@@ -105,7 +105,8 @@ public class MobileDeliveryService {
                 active.updatedAt().getEpochSecond(),Instant.now().getEpochSecond(),githubEvidence,storageProgress(active));
     }
     private ReleaseControlClient.StorageProgress storageProgress(DeliveryOperation operation) {
-        if(!"RELEASE".equals(operation.kind()) || operation.target()==DeliveryTarget.AX42_PLATFORM) return null;
+        if(!"RELEASE".equals(operation.kind()) || operation.target()==DeliveryTarget.AX42_PLATFORM
+                || !List.of("PLANNING","PREPARING","BLOCKED").contains(operation.state())) return null;
         try { return ReleaseControlClient.verifyStorage(executor.observeStorage(operation.id()),operation.id(),operation.target(),operation.sourceCommit()); }
         catch(RuntimeException unavailable) { return null; } // Optional read-only projection, including older publishers.
     }
