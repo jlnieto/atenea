@@ -61,6 +61,26 @@ Si un fallo antiguo sólo conservó un resumen genérico, no se inventa su causa
    **Finalizar cambio** y confirmar. No finalizar antes de publicar y comprobar
    el resultado funcional.
 
+### Espacio y retención durante la preparación
+
+El publicador VPS mantiene automáticamente su retención antes de descargar,
+después de publicar y diariamente: backend actual y dos anteriores verificadas;
+APK actual y dos anteriores, con gracia de descarga de siete días. También
+protege cualquier referencia de una operación o recuperación pendiente. El
+historial, recibos y backups no se borran. Sólo expira contenido binario propio
+y verificado; nunca hace una limpieza general de Docker ni toca otros proyectos.
+
+El panel muestra la fase realmente observada: comprobar espacio, retirar copias
+antiguas, descargar, extraer y preparar. Indica cuándo se confirmó por última vez;
+no simula porcentajes ni tiempo restante. La observación está vinculada al mismo
+plan, destino y source, y no dispara otra preparación ni modifica la retención.
+
+Si la política segura no consigue el espacio necesario, la preparación termina
+con `RELEASE_STORAGE_INSUFFICIENT`, explica cuánto falta y no despliega. Consultar
+sigue siendo read-only; no fuerza una limpieza más amplia. Este slice no exige
+migraciones ni otro flag. La instalación del publicador VPS precede al despliegue
+App/APK; los publicadores anteriores no ofrecen esa proyección opcional.
+
 ### Recuperar APK_VERSION_NOT_NEWER desde el mismo cambio
 
 El publicador sigue rechazando una APK cuyo `versionCode` no supera el del

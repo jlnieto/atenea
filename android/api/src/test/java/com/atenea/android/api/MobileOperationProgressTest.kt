@@ -38,4 +38,17 @@ class MobileOperationProgressTest {
         val value=root();value.getJSONObject("github").getJSONArray("checks").getJSONObject(0).put("finishedAt",600)
         assertNull(parseOperationProgress(value).github?.checks?.first()?.finishedAt)
     }
+    private fun storage(): JSONObject=JSONObject().put("sourceCommit","a".repeat(40)).put("target","APP_PROD")
+        .put("phase","RECLAIMING").put("observedAt",1000).put("freeBytes",10L).put("requiredBytes",20L)
+        .put("missingBytes",10L).put("reclaimedBytes",0L)
+    @Test fun `storage is informational and old backends remain compatible`() {
+        assertNull(parseOperationProgress(root()).storage)
+        val value=parseOperationProgress(root().put("kind","RELEASE").put("storage",storage()))
+        assertEquals("RECLAIMING",value.storage?.phase);assertEquals(10L,value.storage?.missingBytes)
+        for(bad in listOf(storage().put("path","/secret"),storage().put("target","AX42_PLATFORM"),
+            storage().put("phase","DELETE_ANYTHING"),storage().put("freeBytes",-1),storage().put("missingBytes",0),
+            storage().put("requiredBytes","20"),storage().put("reclaimedBytes",2.5))) {
+            assertFails { parseOperationProgress(root().put("kind","RELEASE").put("storage",bad)) }
+        }
+    }
 }

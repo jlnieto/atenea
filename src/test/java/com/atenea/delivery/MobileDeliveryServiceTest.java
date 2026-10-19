@@ -223,6 +223,22 @@ class MobileDeliveryServiceTest {
         assertEquals("PR_CHECKS",service.observeProgress(21L,actor).kind());
         verify(store,never()).update(any(),any(),any(),any(),any());verifyNoInteractions(publication,github,executor);
     }
+    @Test void storageProgressReadsTheSamePlanWithoutPreparingExecutingOrChangingEvidence() {
+        var op=operation("RELEASE","PREPARING");when(store.list(21L)).thenReturn(List.of(op));
+        var evidence=mapper.createObjectNode().put("protocol","atenea-release-storage/v1").put("planId",id.toString())
+                .put("target","APP_PROD").put("sourceCommit",op.sourceCommit()).put("phase","RECLAIMING")
+                .put("observedAt",Instant.now().getEpochSecond()).put("freeBytes",10L).put("requiredBytes",20L)
+                .put("missingBytes",10L).put("reclaimedBytes",0L);
+        when(executor.observeStorage(id)).thenReturn(evidence);
+        assertEquals("RECLAIMING",service.observeProgress(21L,actor).storage().phase());
+        evidence.put("sourceCommit","f".repeat(40));
+        assertNull(service.observeProgress(21L,actor).storage());
+        when(executor.observeStorage(id)).thenThrow(new DeliveryRejectedException("CLOSED_REQUEST_REQUIRED"));
+        assertNull(service.observeProgress(21L,actor).storage());
+        verify(store,never()).update(any(),any(),any(),any(),any());
+        verify(executor,never()).plan(any(),any(),any());verify(executor,never()).execute(any(),any(),any());
+        verifyNoInteractions(publication,github,owner,factors,grants);
+    }
     @Test void existingActiveIntentIsReturnedWithoutAnotherOperationOrExternalEffect() {
         var op = operation("PUBLISH_PR","QUEUED"); when(store.list(21L)).thenReturn(List.of(op));
         assertEquals(id,service.request(21L,actor,"PUBLISH_PR",DeliveryTarget.APP_PROD).id());

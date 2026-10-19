@@ -6,8 +6,10 @@ import java.util.UUID
 data class MobileProgressCheck(val label: String, val state: String, val startedAt: Long?, val finishedAt: Long?)
 data class MobileGitHubProgress(val sourceCommit: String, val state: String, val observedAt: Long,
     val serviceState: String, val checks: List<MobileProgressCheck>)
+data class MobileStorageProgress(val sourceCommit: String, val target: MobileDeliveryTarget, val phase: String,
+    val observedAt: Long, val freeBytes: Long, val requiredBytes: Long, val missingBytes: Long, val reclaimedBytes: Long)
 data class MobileOperationProgress(val operationId: UUID, val sessionId: Long, val kind: String, val state: String,
-    val startedAt: Long, val updatedAt: Long, val observedAt: Long, val github: MobileGitHubProgress?)
+    val startedAt: Long, val updatedAt: Long, val observedAt: Long, val github: MobileGitHubProgress?, val storage: MobileStorageProgress? = null)
 
 internal fun parseOperationProgress(json: JSONObject): MobileOperationProgress {
     fun time(value: JSONObject, key: String): Long = value.getLong(key).also { require(it > 0) }
@@ -28,6 +30,17 @@ internal fun parseOperationProgress(json: JSONObject): MobileOperationProgress {
             MobileProgressCheck(label,status,start,end?.takeIf { start==null || it>=start })
         })
     }
+    val storage=json.optJSONObject("storage")?.let { value ->
+        require(value.keys().asSequence().toSet()==setOf("sourceCommit","target","phase","observedAt","freeBytes","requiredBytes","missingBytes","reclaimedBytes"))
+        val source=value.getString("sourceCommit");require(source.matches(Regex("[0-9a-f]{40}")))
+        val target=MobileDeliveryTarget.valueOf(value.getString("target"));require(target!=MobileDeliveryTarget.AX42_PLATFORM)
+        require(json.getString("kind")=="RELEASE")
+        val phase=value.getString("phase");require(phase in setOf("CHECKING_SPACE","RECLAIMING","SPACE_READY","DOWNLOADING","EXTRACTING","STAGING","READY","INSUFFICIENT_SPACE","ATTENTION"))
+        fun bytes(key: String)=value.getLong(key).also { require(it in 0..(1L shl 50) && value.get(key) is Number && value.get(key).toString().toLongOrNull()==it) }
+        val free=bytes("freeBytes");val required=bytes("requiredBytes");val missing=bytes("missingBytes")
+        require(missing==maxOf(0,required-free))
+        MobileStorageProgress(source,target,phase,time(value,"observedAt"),free,required,missing,bytes("reclaimedBytes"))
+    }
     return MobileOperationProgress(id,json.getLong("sessionId").also { require(it>0) },json.getString("kind"),
-        json.getString("state"),time(json,"startedAt"),time(json,"updatedAt"),time(json,"observedAt"),github)
+        json.getString("state"),time(json,"startedAt"),time(json,"updatedAt"),time(json,"observedAt"),github,storage)
 }

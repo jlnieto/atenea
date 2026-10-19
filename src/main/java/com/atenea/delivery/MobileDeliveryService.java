@@ -61,7 +61,8 @@ public class MobileDeliveryService {
     @org.springframework.beans.factory.annotation.Autowired
     void setChecksProgress(com.atenea.github.GitHubChecksProgress value) { checksProgress=value; }
     public record Progress(UUID operationId, Long sessionId, String kind, String state,
-            long startedAt, long updatedAt, long observedAt, com.atenea.github.GitHubChecksProgress.Evidence github) { }
+            long startedAt, long updatedAt, long observedAt, com.atenea.github.GitHubChecksProgress.Evidence github,
+            ReleaseControlClient.StorageProgress storage) { }
 
     /** Informational only: never advances, retries or authorizes an operation. */
     public Progress observeProgress(Long sessionId, AuthenticatedOperator actor) {
@@ -69,6 +70,9 @@ public class MobileDeliveryService {
         var session=session(sessionId,false);
         var operations=store.list(sessionId);
         var active=operations.stream().filter(op->!op.terminal() && !"READY".equals(op.state())).findFirst().orElse(null);
+        if(active==null) active=operations.stream().filter(op->"RELEASE".equals(op.kind())).findFirst()
+                .filter(op->java.util.Set.of("RELEASE_STORAGE_INSUFFICIENT","RETENTION_REQUIRES_INSPECTION","RETENTION_EVIDENCE_MISMATCH")
+                    .contains(Objects.toString(op.errorCode(),""))).orElse(null);
         if(active==null) {
             if(checksProgress==null) return null;
             if(session.getPullRequestStatus()!=WorkSessionPullRequestStatus.MERGED) {
@@ -78,14 +82,14 @@ public class MobileDeliveryService {
                 var evidence=progressChecks(session.getFinalCommitSha(),session.getPublishedHeadBranch(),false,true);
                 if(evidence==null || "PASSED".equals(evidence.state())) return null;
                 return new Progress(published.id(),sessionId,"PR_CHECKS","PENDING",published.createdAt().getEpochSecond(),
-                        published.updatedAt().getEpochSecond(),Instant.now().getEpochSecond(),evidence);
+                        published.updatedAt().getEpochSecond(),Instant.now().getEpochSecond(),evidence,null);
             }
             var build=observeBuild(sessionId,actor);
             var integrated=store.integrated(sessionId,session.getFinalCommitSha()).orElse(null);
             if(build==null || build.evidence()==null || !"PENDING".equals(build.evidence().state()) || integrated==null) return null;
             return new Progress(integrated.id(),sessionId,"BUILD","PENDING",integrated.updatedAt().getEpochSecond(),
                     integrated.updatedAt().getEpochSecond(),Instant.now().getEpochSecond(),
-                    progressChecks(build.evidence().sourceCommit(),"main",true,false));
+                    progressChecks(build.evidence().sourceCommit(),"main",true,false),null);
         }
         com.atenea.github.GitHubChecksProgress.Evidence githubEvidence=null;
         if(checksProgress!=null && "WAITING_CI".equals(active.state())) {
@@ -98,7 +102,12 @@ public class MobileDeliveryService {
             githubEvidence=progressChecks(active.sourceCommit(),"main",true,false);
         }
         return new Progress(active.id(),sessionId,active.kind(),active.state(),active.createdAt().getEpochSecond(),
-                active.updatedAt().getEpochSecond(),Instant.now().getEpochSecond(),githubEvidence);
+                active.updatedAt().getEpochSecond(),Instant.now().getEpochSecond(),githubEvidence,storageProgress(active));
+    }
+    private ReleaseControlClient.StorageProgress storageProgress(DeliveryOperation operation) {
+        if(!"RELEASE".equals(operation.kind()) || operation.target()==DeliveryTarget.AX42_PLATFORM) return null;
+        try { return ReleaseControlClient.verifyStorage(executor.observeStorage(operation.id()),operation.id(),operation.target(),operation.sourceCommit()); }
+        catch(RuntimeException unavailable) { return null; } // Optional read-only projection, including older publishers.
     }
     private com.atenea.github.GitHubChecksProgress.Evidence progressChecks(String source,String branch,boolean build,boolean hasPr) {
         try { return checksProgress.observe(source,branch,build,hasPr); }

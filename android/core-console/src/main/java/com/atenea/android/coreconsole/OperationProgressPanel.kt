@@ -17,8 +17,26 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.atenea.android.api.MobileGitHubProgress
+import com.atenea.android.api.MobileStorageProgress
 import java.time.Instant
 import kotlinx.coroutines.delay
+
+internal fun storageProgressTitle(storage: MobileStorageProgress): String = when(storage.phase) {
+    "CHECKING_SPACE" -> "Comprobando espacio para publicar"
+    "RECLAIMING" -> "Retirando artefactos antiguos de Atenea"
+    "SPACE_READY" -> "Espacio preparado"
+    "DOWNLOADING" -> "Descargando la versión verificada"
+    "EXTRACTING" -> "Verificando y extrayendo el artefacto"
+    "STAGING" -> "Preparando la versión para publicar"
+    "READY" -> "Versión preparada · falta confirmar la publicación"
+    "INSUFFICIENT_SPACE" -> "No hay suficiente espacio seguro para preparar la versión"
+    else -> "La retención necesita revisión · los datos se conservan"
+}
+internal fun storageCapacityDetail(storage: MobileStorageProgress): String {
+    fun gb(bytes: Long)=String.format(java.util.Locale.forLanguageTag("es"),"%.1f GB",bytes/1_000_000_000.0)
+    return if(storage.phase=="INSUFFICIENT_SPACE") "Faltan ${gb(storage.missingBytes)}. No se ha desplegado ni se han borrado datos protegidos."
+        else "Espacio libre observado: ${gb(storage.freeBytes)}."
+}
 
 internal fun githubProgressTitle(progress: MobileGitHubProgress, now: Long = Instant.now().epochSecond): String = when {
     progress.observedAt !in (now-90)..(now+5) -> "Último estado de GitHub · pendiente de confirmar"
@@ -44,7 +62,10 @@ internal fun progressAge(observedAt: Long?, now: Long): String = when {
 /** A passive presentation. The local clock never polls, starts work or estimates completion. */
 @Composable
 internal fun OperationProgressPanel(state: MobileDeliveryUiState, step: DeliveryStepUi) {
-    if(step.status !in setOf(DeliveryStepStatus.WORKING,DeliveryStepStatus.WAITING,DeliveryStepStatus.CHECKING)) return
+    val progress=state.progress?.takeIf { it.operationId==step.operation?.id || it.kind=="BUILD" && step.operation==null }
+    val storage=progress?.storage
+    if(step.status !in setOf(DeliveryStepStatus.WORKING,DeliveryStepStatus.WAITING,DeliveryStepStatus.CHECKING)
+        && !(step.status==DeliveryStepStatus.ATTENTION && storage!=null)) return
     val owner=LocalLifecycleOwner.current
     var now by remember { mutableStateOf(Instant.now().epochSecond) }
     LaunchedEffect(owner) {
@@ -52,12 +73,15 @@ internal fun OperationProgressPanel(state: MobileDeliveryUiState, step: Delivery
             while(true) { now=Instant.now().epochSecond;delay(1_000) }
         }
     }
-    val progress=state.progress?.takeIf { it.operationId==step.operation?.id || it.kind=="BUILD" && step.operation==null }
     val github=progress?.github
     val start=progress?.startedAt ?: step.operation?.createdAt?.let { runCatching { Instant.parse(it).epochSecond }.getOrNull() }
     Column(Modifier.testTag("operation-progress"),verticalArrangement=Arrangement.spacedBy(6.dp)) {
         if(start!=null && start<=now) Text((if(progress?.kind=="BUILD") "Desde la integración: " else "Desde la solicitud: ")+validationDuration(now-start),style=MaterialTheme.typography.bodySmall)
-        if(github!=null) {
+        if(storage!=null) {
+            Text((if(storage.observedAt in (now-90)..(now+5)) "" else "Última fase confirmada: ")+storageProgressTitle(storage),style=MaterialTheme.typography.titleSmall)
+            Text(storageCapacityDetail(storage),style=MaterialTheme.typography.bodySmall)
+            Text(progressAge(storage.observedAt,now),style=MaterialTheme.typography.bodySmall)
+        } else if(github!=null) {
             val fresh=github.state!="UNAVAILABLE" && github.observedAt in (now-90)..(now+5)
             Text(githubProgressTitle(github,now),style=MaterialTheme.typography.titleSmall)
             if(github.checks.isNotEmpty()) Text((if(fresh) "" else "Último detalle: ")+"${github.checks.count { it.state=="PASSED" }} de ${github.checks.size} comprobaciones correctas",style=MaterialTheme.typography.bodySmall)

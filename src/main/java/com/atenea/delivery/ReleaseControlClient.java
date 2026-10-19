@@ -55,6 +55,39 @@ public class ReleaseControlClient {
     public JsonNode inspect(UUID id) {
         return exchange(Map.of("operation", "INSPECT", "planId", id.toString()));
     }
+    public JsonNode observeStorage(UUID id) {
+        return exchange(Map.of("operation", "OBSERVE_STORAGE", "planId", id.toString()));
+    }
+    public record StorageProgress(String sourceCommit, DeliveryTarget target, String phase, long observedAt,
+            long freeBytes, long requiredBytes, long missingBytes, long reclaimedBytes) { }
+
+    /** Informational only: this projection is never a plan, receipt or authorization. */
+    public static StorageProgress verifyStorage(JsonNode value, UUID id, DeliveryTarget target, String source) {
+        var fields=new java.util.HashSet<String>();
+        if(value!=null) value.fieldNames().forEachRemaining(fields::add);
+        if(value==null || !value.isObject() || !fields.equals(Set.of("protocol","planId","target","sourceCommit",
+                "phase","observedAt","freeBytes","requiredBytes","missingBytes","reclaimedBytes"))
+                || !"atenea-release-storage/v1".equals(value.path("protocol").asText())
+                || !id.toString().equals(value.path("planId").asText())
+                || target==DeliveryTarget.AX42_PLATFORM || !target.name().equals(value.path("target").asText())
+                || source==null || !source.matches("[0-9a-f]{40}") || !source.equals(value.path("sourceCommit").asText())
+                || !Set.of("CHECKING_SPACE","RECLAIMING","SPACE_READY","DOWNLOADING","EXTRACTING","STAGING","READY",
+                    "INSUFFICIENT_SPACE","ATTENTION").contains(value.path("phase").asText())
+                || !value.path("observedAt").isIntegralNumber() || !value.path("observedAt").canConvertToLong()
+                || value.path("observedAt").asLong()<1 || value.path("observedAt").asLong()>Instant.now().getEpochSecond()+5) {
+            throw new DeliveryRejectedException("RELEASE_STORAGE_EVIDENCE_MISMATCH");
+        }
+        for(String key:java.util.List.of("freeBytes","requiredBytes","missingBytes","reclaimedBytes")) {
+            var number=value.path(key);
+            if(!number.isIntegralNumber() || !number.canConvertToLong() || number.asLong()<0 || number.asLong()>(1L<<50))
+                throw new DeliveryRejectedException("RELEASE_STORAGE_EVIDENCE_MISMATCH");
+        }
+        if(value.path("missingBytes").asLong()!=Math.max(0,value.path("requiredBytes").asLong()-value.path("freeBytes").asLong()))
+            throw new DeliveryRejectedException("RELEASE_STORAGE_EVIDENCE_MISMATCH");
+        return new StorageProgress(source,target,value.path("phase").asText(),value.path("observedAt").asLong(),
+                value.path("freeBytes").asLong(),value.path("requiredBytes").asLong(),
+                value.path("missingBytes").asLong(),value.path("reclaimedBytes").asLong());
+    }
     public JsonNode observeApp() {
         return exchange(Map.of("operation", "OBSERVE_APP"));
     }
