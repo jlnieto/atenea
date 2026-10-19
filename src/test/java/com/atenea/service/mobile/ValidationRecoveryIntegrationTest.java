@@ -20,13 +20,37 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** PostgreSQL16 fixtures belong only to the caller-owned ephemeral test runtime. */
 @SpringBootTest(properties={"atenea.auth.bootstrap.enabled=false","atenea.remote-worker.enabled=true",
     "atenea.validation-recovery.poll-ms=3600000"})
+@DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 class ValidationRecoveryIntegrationTest {
+    // Cached application contexts retain their own scheduled reconcilers. They
+    // must never observe or mutate another context's synthetic recovery intent.
+    static final String DATABASE="atenea_test_validation_repair_"+UUID.randomUUID().toString().replace("-","");
+    @DynamicPropertySource static void isolatedDatabase(DynamicPropertyRegistry properties) {
+        String url=System.getenv("SPRING_DATASOURCE_URL");
+        if(url==null || !url.matches("jdbc:postgresql://(?:127\\.0\\.0\\.1|db-test):[0-9]+/atenea_test"))
+            throw new IllegalStateException("Caller-owned ephemeral PostgreSQL required");
+        try(var db=java.sql.DriverManager.getConnection(url,System.getenv("SPRING_DATASOURCE_USERNAME"),
+                System.getenv("SPRING_DATASOURCE_PASSWORD"));var s=db.createStatement()) {
+            s.execute("CREATE DATABASE \""+DATABASE+"\"");
+        } catch(java.sql.SQLException failed) { throw new IllegalStateException("Ephemeral recovery database unavailable",failed); }
+        properties.add("spring.datasource.url",()->url.substring(0,url.length()-"atenea_test".length())+DATABASE);
+    }
+    @AfterAll static void removeEphemeralDatabase() throws Exception {
+        try(var db=java.sql.DriverManager.getConnection(System.getenv("SPRING_DATASOURCE_URL"),
+                System.getenv("SPRING_DATASOURCE_USERNAME"),System.getenv("SPRING_DATASOURCE_PASSWORD"));var s=db.createStatement()) {
+            s.execute("DROP DATABASE \""+DATABASE+"\" WITH (FORCE)");
+        }
+    }
     @Autowired ValidationRecoveryService service;
     @Autowired ValidationRecoveryStore store;
     @Autowired WorkSessionRepository sessions;
@@ -41,6 +65,7 @@ class ValidationRecoveryIntegrationTest {
     @MockBean RemoteWorkerClient worker;
     @MockBean RemoteAgentRunCoordinator coordinator;
     @MockBean com.atenea.service.worksession.AgentRunService agentRuns;
+    @MockBean(name="taskScheduler") ThreadPoolTaskScheduler scheduler;
     TransactionTemplate tx;
     Long sessionId,changeId,projectId,operatorId;
     UUID validationId;

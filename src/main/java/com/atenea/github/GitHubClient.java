@@ -519,7 +519,18 @@ public class GitHubClient {
         if (!"jlnieto".equals(repository.owner()) || !"atenea".equals(repository.repo())) return null;
         String base=canonicalMain(repository);
         String workflow=".github/workflows/backend-merge-validation-v1.yml";
-        JsonNode authority=content(repository,workflow,base), candidate=content(repository,workflow,head);
+        String preview=pr.path("merge_commit_sha").asText();
+        if(preview.isBlank()) throw new GitHubIntegrationException("PR_MERGEABILITY_PENDING: GitHub está calculando la combinación exacta");
+        requireSha(preview);
+        JsonNode commit=sendJsonRequest("GET",properties.getApiBaseUrl().resolve(
+            "/repos/jlnieto/atenea/git/commits/"+preview),null);
+        if(!preview.equals(commit.path("sha").asText()) || !commit.path("parents").isArray() || commit.path("parents").size()!=2
+                || !base.equals(commit.path("parents").get(0).path("sha").asText())
+                || !head.equals(commit.path("parents").get(1).path("sha").asText()))
+            throw new GitHubIntegrationException("PR_BASE_VALIDATION_MOVED: falta la combinación de main actual y este head");
+        // An older head may legitimately predate this workflow. The approved
+        // authority must survive in the exact merge preview, not in that old head.
+        JsonNode authority=content(repository,workflow,base), candidate=content(repository,workflow,preview);
         if (!authority.path("sha").asText().matches("[0-9a-f]{40}")
                 || !authority.path("sha").asText().equals(candidate.path("sha").asText()))
             throw new GitHubIntegrationException("CI_EVIDENCE_INCOMPLETE: falta el workflow backend aprobado");

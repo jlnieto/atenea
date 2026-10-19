@@ -16,10 +16,16 @@ def diagnostic(source, target, log, reports):
     # CI owns the log. Only an allowlisted structural projection leaves CI.
     content = log.read_bytes()[-4 * 1024 * 1024:].decode("utf8", "replace")
     failures = []
-    for match in LOCATION.finditer(content):
-        item = {"kind": "COMPILATION", "path": match[1], "line": int(match[2])}
-        if item not in failures:
-            failures.append(item)
+    for line in content.splitlines():
+        # javac emits the same path/line shape for deprecation warnings.
+        # They are not failures and must never hide the actual JUnit identity.
+        if not line.startswith("[ERROR] "):
+            continue
+        match = LOCATION.search(line)
+        if match:
+            item = {"kind": "COMPILATION", "path": match[1], "line": int(match[2])}
+            if item not in failures:
+                failures.append(item)
     for path in sorted(reports.glob("TEST-*.xml"))[:300]:
         raw = path.read_bytes()
         if len(raw) > 4 * 1024 * 1024 or b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:

@@ -161,7 +161,17 @@ public class ValidationRecoveryService {
         for (var id:store.pending()) {
             try { process(id); }
             catch (RuntimeException failed) {
-                tx.executeWithoutResult(ignored->store.state(id,"ATTENTION","VALIDATION_REPAIR_NEEDS_INSPECTION"));
+                tx.executeWithoutResult(ignored->{
+                    // The error path must use the same admission -> row lock order
+                    // as apply/process. An UPDATE first locks the tuple before its
+                    // trigger takes the admission lock, deadlocking a concurrent poll.
+                    store.admissionLock();var current=store.get(id,true);
+                    // Another reconciler may already have persisted the remote result.
+                    // A late failure must not overwrite READY/APPLIED/CANCELLED proof.
+                    if (current.kind().equals("REPAIR") && List.of("PREPARE_REQUESTED","PREPARING",
+                            "APPLY_REQUESTED","APPLYING").contains(current.state()))
+                        store.state(id,"ATTENTION","VALIDATION_REPAIR_NEEDS_INSPECTION");
+                });
             }
         }
         // The committed intent, not an in-memory callback, is the authority.
