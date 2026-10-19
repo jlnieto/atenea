@@ -22,16 +22,22 @@ class GitHubDeliveryTest {
     private String ufdConclusion = "success";
     private String backendConclusion="success",backendState="completed",backendBase=MERGE;
     private boolean backendMissing,backendForeign,changedWorkflow;
+    private static final String PREVIEW="8".repeat(40);
+    private boolean movedPreview,previewPending;
     @BeforeEach void setup() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
             String method = exchange.getRequestMethod();
             String response;
+            int status=200;
             if (!method.equals("GET")) writes.add(method + " " + path + " " + new String(exchange.getRequestBody().readAllBytes()));
             if(path.endsWith("/git/ref/heads/main")) response="{\"object\":{\"sha\":\""+MERGE+"\"}}";
-            else if(path.contains("/contents/.github/workflows/backend-merge-validation-v1.yml")) response="{\"sha\":\""+
-                (changedWorkflow && exchange.getRequestURI().getQuery().contains(SHA) ? "b" : "a").repeat(40)+"\"}";
+            else if(path.endsWith("/git/commits/"+PREVIEW)) response="{\"sha\":\""+PREVIEW+"\",\"parents\":[{\"sha\":\""+(movedPreview ? "9".repeat(40) : MERGE)+"\"},{\"sha\":\""+SHA+"\"}]}";
+            else if(path.contains("/contents/.github/workflows/backend-merge-validation-v1.yml")) {
+                if(exchange.getRequestURI().getQuery().contains(SHA)) { status=404;response="{}"; }
+                else response="{\"sha\":\""+(changedWorkflow && exchange.getRequestURI().getQuery().contains(PREVIEW) ? "b" : "a").repeat(40)+"\"}";
+            }
             else if(path.endsWith("/backend-merge-validation-v1.yml/runs")) response=backendMissing ? "{\"workflow_runs\":[]}" : """
                 {"workflow_runs":[{"id":5,"head_sha":"%s","head_branch":"%s","event":"pull_request",
                 "head_repository":{"full_name":"%s"},"path":".github/workflows/backend-merge-validation-v1.yml",
@@ -54,8 +60,8 @@ class GitHubDeliveryTest {
                  "node_id":"PR_test","draft":%s,"merged":%s,"merge_commit_sha":"%s","mergeable":true,"mergeable_state":"%s",
                  "base":{"ref":"main","repo":{"full_name":"jlnieto/atenea"}},
                  "head":{"ref":"%s","sha":"%s","repo":{"full_name":"%s"}}}
-                """.formatted(draft,merged,MERGE,mergeability,BRANCH,SHA,foreign?"foreign/atenea":"jlnieto/atenea");
-            byte[] bytes=response.getBytes(); exchange.sendResponseHeaders(200,bytes.length);
+                """.formatted(draft,merged,merged ? MERGE : previewPending ? "" : PREVIEW,mergeability,BRANCH,SHA,foreign?"foreign/atenea":"jlnieto/atenea");
+            byte[] bytes=response.getBytes(); exchange.sendResponseHeaders(status,bytes.length);
             exchange.getResponseBody().write(bytes); exchange.close();
         });
         server.start();
@@ -113,6 +119,21 @@ class GitHubDeliveryTest {
     @Test void candidateCannotReplaceTheApprovedMergeWorkflowToForgeGreenEvidence() {
         changedWorkflow=true;
         assertTrue(assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA)).getMessage().startsWith("CI_EVIDENCE_INCOMPLETE"));
+        assertTrue(writes.isEmpty());
+    }
+    @Test void anOlderHeadDoesNotNeedToCopyAnUnchangedWorkflowFromMainJustToIntegrate() {
+        // The fixture supplies only main and merge-preview workflow content.
+        // A read against the old head is rejected rather than yielding authority.
+        assertEquals(MERGE,client.integrateExact(REPO,42,BRANCH,SHA));
+    }
+    @Test void mergePreviewWithAnotherParentCannotReuseGreenHeadOrBaseChecks() {
+        movedPreview=true;
+        assertTrue(assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA)).getMessage().startsWith("PR_BASE_VALIDATION_MOVED:"));
+        assertTrue(writes.isEmpty());
+    }
+    @Test void previewStillBeingCalculatedWaitsInsteadOfInventingAnIdentityFailure() {
+        previewPending=true;
+        assertTrue(assertThrows(GitHubIntegrationException.class,()->client.integrateExact(REPO,42,BRANCH,SHA)).getMessage().startsWith("PR_MERGEABILITY_PENDING:"));
         assertTrue(writes.isEmpty());
     }
 }
