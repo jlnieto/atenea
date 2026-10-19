@@ -12,5 +12,6 @@ public interface OperatorPushDeviceRepository extends JpaRepository<OperatorPush
 
     List<OperatorPushDeviceEntity> findByOperatorIdOrderByUpdatedAtDesc(Long operatorId);
 
+    @EntityGraph(attributePaths = "operator")
     List<OperatorPushDeviceEntity> findByActiveTrueOrderByUpdatedAtDesc();
 }

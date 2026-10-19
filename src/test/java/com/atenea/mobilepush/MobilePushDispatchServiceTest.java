@@ -204,6 +204,22 @@ class MobilePushDispatchServiceTest {
                 messagesCaptor.getValue().getFirst().title());
     }
 
+    @Test
+    void structuredOperationsReportIsNotDumpedIntoNotification() {
+        when(operatorPushDeviceRepository.findByActiveTrueOrderByUpdatedAtDesc())
+                .thenReturn(List.of(buildDevice()));
+        mobilePushDispatchService.notifyOperationsDegradation(3L, "dedicado-principal",
+                List.of("Apache: {\"action\":\"APACHE_STATUS\",\"steps\":[1,2,3]}"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<FcmPushSender.FcmPushMessage>> messagesCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(fcmPushSender).send(messagesCaptor.capture());
+        var message = messagesCaptor.getValue().getFirst();
+        assertEquals("Revisa el estado del host y las incidencias en Operaciones.", message.body());
+        assertEquals("atenea://operations/3", message.data().get("deepLink"));
+    }
+
     private static WorkSessionEntity buildSession(Long id, String projectName, String title) {
         ProjectEntity project = new ProjectEntity();
         project.setId(7L);

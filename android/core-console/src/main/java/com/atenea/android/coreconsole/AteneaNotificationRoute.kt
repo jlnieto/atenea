@@ -3,10 +3,11 @@ package com.atenea.android.coreconsole
 data class AteneaNotificationRoute(
     val sessionId: Long?,
     val requestKey: String,
-    val destination: AteneaNotificationDestination = AteneaNotificationDestination.CONVERSATION
+    val destination: AteneaNotificationDestination = AteneaNotificationDestination.CONVERSATION,
+    val hostId: Long? = null
 )
 
-enum class AteneaNotificationDestination { CONVERSATION, UPDATES }
+enum class AteneaNotificationDestination { CONVERSATION, OPERATIONS, UPDATES }
 
 internal data class AteneaConversationNavigation(
     val sessionId: Long,

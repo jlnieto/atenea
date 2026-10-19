@@ -12,6 +12,7 @@ import com.atenea.persistence.notification.NotificationPreferenceRepository;
 import com.atenea.persistence.worksession.AgentRunEntity;
 import com.atenea.persistence.worksession.AgentRunRepository;
 import com.atenea.persistence.worksession.AgentRunStatus;
+import com.atenea.service.mobile.MobileNotificationInboxService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -19,6 +20,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -40,6 +42,12 @@ public class NotificationOutboxService {
     private final NotificationPreferenceRepository preferenceRepository;
     private final OperatorPushDeviceRepository deviceRepository;
     private final Clock clock;
+    private MobileNotificationInboxService inboxService;
+
+    @Autowired
+    void setInboxService(MobileNotificationInboxService inboxService) {
+        this.inboxService = inboxService;
+    }
 
     @Autowired
     public NotificationOutboxService(
@@ -108,6 +116,7 @@ public class NotificationOutboxService {
 
         List<OperatorPushDeviceEntity> devices = deviceRepository.findByActiveTrueOrderByUpdatedAtDesc();
         int deliveries = 0;
+        var recordedOperatorIds = new HashSet<Long>();
         for (OperatorPushDeviceEntity device : devices) {
             boolean enabled = preferenceRepository.findByDeviceIdAndCategory(device.getId(), category)
                     .map(preference -> preference.isEnabled())
@@ -125,6 +134,10 @@ public class NotificationOutboxService {
             delivery.setCreatedAt(now);
             delivery.setUpdatedAt(now);
             deliveryRepository.save(delivery);
+            if (inboxService != null && recordedOperatorIds.add(device.getOperator().getId())) {
+                inboxService.record(device.getOperator(), event.getId().toString(), category.name(),
+                        template.title(), template.body(), "CONVERSATION", run.getSession().getId());
+            }
             deliveries++;
         }
         return new NotificationOutboxResult(event, true, deliveries);

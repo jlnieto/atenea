@@ -24,6 +24,29 @@ class AteneaNotificationRouteParserTest {
         "deepLink" to "atenea://work-sessions/12/conversation"
     )
 
+    @Test fun `operations alert opens its host and rejects foreign data`() {
+        val link = "atenea://operations/7"
+        val data = mapOf("schemaVersion" to "atenea-operations-notification-v1",
+            "eventType" to "OPERATIONS_ALERT", "type" to "OPERATIONS_DEGRADATION",
+            "notificationEventId" to eventId, "hostId" to "7",
+            "deepLinkKind" to "OPERATIONS_HOST", "deepLink" to link)
+        assertEquals(AteneaNotificationRoute(null, eventId, AteneaNotificationDestination.OPERATIONS, 7),
+            AteneaNotificationRouteParser.parse(link, data))
+        assertNull(AteneaNotificationRouteParser.parse(link, data + ("hostId" to "8")))
+        assertNull(AteneaNotificationRouteParser.parse(link, data + ("command" to "anything")))
+        assertNull(AteneaNotificationRouteParser.parse("atenea://operations/7?x=1", emptyMap()))
+    }
+
+    @Test fun `legacy session push now opens the conversation`() {
+        val link = "atenea://work-sessions/12/conversation"
+        val data = mapOf("schemaVersion" to "atenea-legacy-session-notification-v1",
+            "eventType" to "CLOSE_BLOCKED", "type" to "CLOSE_BLOCKED",
+            "notificationEventId" to eventId, "sessionId" to "12",
+            "deepLinkKind" to "WORK_SESSION_CONVERSATION", "deepLink" to link)
+        assertEquals(AteneaNotificationRoute(12, eventId), AteneaNotificationRouteParser.parse(link, data))
+        assertNull(AteneaNotificationRouteParser.parse(link, data + ("sessionId" to "13")))
+    }
+
     @Test fun `product ready push opens global news without inventing a session`() {
         val data=mapOf("schemaVersion" to "atenea-product-update-data-v1","eventType" to "PRODUCT_UPDATE",
             "type" to "PRODUCT_UPDATE","templateVersion" to "product-update-safe-v1","notificationEventId" to eventId,

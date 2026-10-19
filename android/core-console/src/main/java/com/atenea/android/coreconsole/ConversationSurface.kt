@@ -100,6 +100,8 @@ internal fun ConversationSurface(
     onSend: () -> Unit,
     onMicrophoneClick: (() -> Unit)? = null,
     onBack: () -> Unit,
+    onOpenNotifications: () -> Unit = {},
+    unreadNotifications: Long = 0,
     onRefresh: () -> Unit,
     error: String?,
     commandContent: @Composable (() -> Unit)? = null,
@@ -149,6 +151,8 @@ internal fun ConversationSurface(
                 status = if (pane == ConversationPane.CHAT) status else title,
                 pending = pending,
                 onBack = { if (pane == ConversationPane.CHAT) onBack() else pane = ConversationPane.CHAT },
+                onOpenNotifications = onOpenNotifications,
+                unreadNotifications = unreadNotifications,
                 onRefresh = onRefresh,
                 showChange = changeContent != null,
                 changeNeedsAttention = changeNeedsAttention,
@@ -322,6 +326,8 @@ private fun ConversationTopBar(
     status: String?,
     pending: Boolean,
     onBack: () -> Unit,
+    onOpenNotifications: () -> Unit,
+    unreadNotifications: Long,
     onRefresh: () -> Unit,
     showChange: Boolean,
     changeNeedsAttention: Boolean,
@@ -363,6 +369,10 @@ private fun ConversationTopBar(
                     .background(ConversationColors.warning, CircleShape)
             )
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(if (unreadNotifications > 0) "Notificaciones ($unreadNotifications)" else "Notificaciones") },
+                    onClick = { menuOpen = false; onOpenNotifications() }
+                )
                 onAttachments?.let { action -> DropdownMenuItem(
                     text = { Text(if (attachmentsReady) "Adjuntar imágenes" else if (attachmentsRecoverable) "Activar imágenes" else "Imágenes no disponibles") },
                     leadingIcon = { PaperclipIcon(if (attachmentsReady) ConversationColors.action else ConversationColors.mutedText) },
