@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.atenea.android.api.AteneaApiClient
+import java.util.UUID
 import kotlinx.coroutines.launch
 
 @Composable
@@ -69,6 +70,8 @@ internal fun AteneaShell(
     var checkingUpdate by remember { mutableStateOf(false) }
     var healthSnapshot by remember { mutableStateOf(ShellHealthSnapshot.UNKNOWN) }
     var healthLoading by remember { mutableStateOf(false) }
+    var unreadNotifications by remember { mutableStateOf(0L) }
+    var preferredOperationsHostId by remember { mutableStateOf<Long?>(null) }
     val immersiveWorkSurface = selectedDestination == AteneaDestination.CONVERSATION
 
     fun refreshHeaderHealth() {
@@ -97,11 +100,28 @@ internal fun AteneaShell(
     LaunchedEffect(selectedDestination, selectedProjectId, selectedSessionId) {
         navigationStore.saveRoute(selectedDestination, selectedProjectId, selectedSessionId)
     }
+    LaunchedEffect(apiClient, selectedDestination) {
+        runCatching { apiClient.fetchNotifications().unreadCount }
+            .onSuccess { unreadNotifications = it }
+    }
     LaunchedEffect(requestedConversation?.requestKey) {
         requestedConversation ?: return@LaunchedEffect
-        if (requestedConversation.destination==AteneaNotificationDestination.UPDATES) {
-            selectedDestination=AteneaDestination.NEWS
-            return@LaunchedEffect
+        runCatching { UUID.fromString(requestedConversation.requestKey) }.getOrNull()?.let { eventId ->
+            runCatching { apiClient.markNotificationOpened(eventId) }
+            runCatching { apiClient.fetchNotifications().unreadCount }
+                .onSuccess { unreadNotifications = it }
+        }
+        when (requestedConversation.destination) {
+            AteneaNotificationDestination.UPDATES -> {
+                selectedDestination = AteneaDestination.NEWS
+                return@LaunchedEffect
+            }
+            AteneaNotificationDestination.OPERATIONS -> {
+                preferredOperationsHostId = requestedConversation.hostId
+                selectedDestination = AteneaDestination.OPERATIONS
+                return@LaunchedEffect
+            }
+            AteneaNotificationDestination.CONVERSATION -> Unit
         }
         val conversationNavigation = requestedConversation.toConversationNavigation()
         selectedProjectId = null
@@ -130,6 +150,14 @@ internal fun AteneaShell(
                         color = MaterialTheme.colorScheme.outlineVariant
                     )
                     AteneaDrawerSection("Trabajo")
+                    AteneaDrawerRow(
+                        label = if (unreadNotifications > 0) "Notificaciones ($unreadNotifications)" else "Notificaciones",
+                        selected = selectedDestination == AteneaDestination.NOTIFICATIONS,
+                        onClick = {
+                            selectedDestination = AteneaDestination.NOTIFICATIONS
+                            scope.launch { drawerState.close() }
+                        }
+                    )
                     listOf(AteneaDestination.HOME, AteneaDestination.PROJECTS, AteneaDestination.CORE, AteneaDestination.VOICE).forEach { destination ->
                         DrawerDestination(
                             destination = destination,
@@ -148,6 +176,7 @@ internal fun AteneaShell(
                                 selectedDestination = selectedDestination,
                                 onSelect = {
                                     selectedDestination = it
+                                    if (it == AteneaDestination.OPERATIONS) preferredOperationsHostId = null
                                     scope.launch { drawerState.close() }
                                 }
                             )
@@ -187,6 +216,8 @@ internal fun AteneaShell(
                         title = selectedDestination.title,
                         healthSnapshot = healthSnapshot,
                         healthLoading = healthLoading,
+                        unreadCount = unreadNotifications,
+                        onNotificationsClick = { selectedDestination = AteneaDestination.NOTIFICATIONS },
                         onMenuClick = { scope.launch { drawerState.open() } },
                         onHealthClick = { selectedDestination = AteneaDestination.HEALTH }
                     )
@@ -209,6 +240,25 @@ internal fun AteneaShell(
                 when (selectedDestination) {
                     AteneaDestination.HOME -> HomeScreen(
                         apiClient = apiClient
+                    )
+                    AteneaDestination.NOTIFICATIONS -> NotificationsScreen(
+                        apiClient = apiClient,
+                        onUnreadChanged = { unreadNotifications = it },
+                        onOpen = { item ->
+                            when (item.destination) {
+                                "CONVERSATION" -> {
+                                    selectedProjectId = null
+                                    selectedSessionId = item.targetId
+                                    conversationRequestKey = item.id.toString()
+                                    selectedDestination = AteneaDestination.CONVERSATION
+                                }
+                                "OPERATIONS" -> {
+                                    preferredOperationsHostId = item.targetId
+                                    selectedDestination = AteneaDestination.OPERATIONS
+                                }
+                                "UPDATES" -> selectedDestination = AteneaDestination.NEWS
+                            }
+                        }
                     )
                     AteneaDestination.HEALTH -> HealthScreen(
                         apiClient = apiClient,
@@ -252,6 +302,8 @@ internal fun AteneaShell(
                             apiClient = apiClient,
                             projectId = selectedProjectId,
                             sessionId = selectedSessionId,
+                            onOpenNotifications = { selectedDestination = AteneaDestination.NOTIFICATIONS },
+                            unreadNotifications = unreadNotifications,
                             onOpenUpdates = {
                                 selectedDestination = AteneaDestination.SETTINGS
                                 scope.launch {
@@ -270,10 +322,13 @@ internal fun AteneaShell(
                             }
                         )
                     }
-                    AteneaDestination.OPERATIONS -> OperationsScreen(
-                        apiClient = apiClient,
-                        onHealthSnapshotChanged = { healthSnapshot = it }
-                    )
+                    AteneaDestination.OPERATIONS -> key(requestedConversation?.requestKey, preferredOperationsHostId) {
+                        OperationsScreen(
+                            apiClient = apiClient,
+                            preferredHostId = preferredOperationsHostId,
+                            onHealthSnapshotChanged = { healthSnapshot = it }
+                        )
+                    }
                     AteneaDestination.FILES -> FilesScreen(apiClient = apiClient)
                     AteneaDestination.COSTS -> CostsScreen(apiClient = apiClient)
                     AteneaDestination.DIAGNOSTICS -> DiagnosticsScreen(apiClient = apiClient)
@@ -365,6 +420,7 @@ private enum class AteneaDestination(
     val title: String
 ) {
     HOME("Inicio", "Inicio"),
+    NOTIFICATIONS("Notificaciones", "Notificaciones"),
     PROJECTS("Proyectos", "Proyectos"),
     CHANGES("Cambios", "Cambios"),
     SESSION("Cambio", "Cambio"),

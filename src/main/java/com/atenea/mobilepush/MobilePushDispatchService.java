@@ -10,6 +10,7 @@ import com.atenea.persistence.worksession.WorkSessionEntity;
 import com.atenea.codexoperations.CodexSessionOperationsProperties;
 import com.atenea.persistence.notification.NotificationCategory;
 import com.atenea.service.notification.NotificationOutboxService;
+import com.atenea.service.mobile.MobileNotificationInboxService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,12 @@ public class MobilePushDispatchService {
     private final FcmPushSender fcmPushSender;
     private final CodexSessionOperationsProperties codexOperationsProperties;
     private final NotificationOutboxService notificationOutboxService;
+    private MobileNotificationInboxService inboxService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setInboxService(MobileNotificationInboxService inboxService) {
+        this.inboxService = inboxService;
+    }
 
     public MobilePushDispatchService(
             OperatorPushDeviceRepository operatorPushDeviceRepository,
@@ -59,12 +66,7 @@ public class MobilePushDispatchService {
                 run.getId(),
                 null,
                 "Codex ha respondido",
-                "%s · %s".formatted(run.getSession().getProject().getName(), run.getSession().getTitle()),
-                Map.of(
-                        "type", "RUN_SUCCEEDED",
-                        "sessionId", run.getSession().getId(),
-                        "runId", run.getId()
-                )
+                "%s · %s".formatted(run.getSession().getProject().getName(), run.getSession().getTitle())
         );
     }
 
@@ -97,12 +99,7 @@ public class MobilePushDispatchService {
                 null,
                 null,
                 "Session close blocked",
-                "%s · %s".formatted(session.getProject().getName(), reason),
-                Map.of(
-                        "type", "CLOSE_BLOCKED",
-                        "sessionId", session.getId(),
-                        "state", blockedState
-                )
+                "%s · %s".formatted(session.getProject().getName(), reason)
         );
     }
 
@@ -115,11 +112,7 @@ public class MobilePushDispatchService {
                 null,
                 null,
                 "Pull request merged",
-                "%s · %s".formatted(session.getProject().getName(), session.getTitle()),
-                Map.of(
-                        "type", "PULL_REQUEST_MERGED",
-                        "sessionId", session.getId()
-                )
+                "%s · %s".formatted(session.getProject().getName(), session.getTitle())
         );
     }
 
@@ -135,11 +128,6 @@ public class MobilePushDispatchService {
                 "%s · %s".formatted(
                         deliverable.getSession().getProject().getName(),
                         deliverable.getTitle() == null ? deliverable.getSession().getTitle() : deliverable.getTitle()
-                ),
-                Map.of(
-                        "type", "BILLING_READY",
-                        "sessionId", deliverable.getSession().getId(),
-                        "deliverableId", deliverable.getId()
                 )
         );
     }
@@ -158,7 +146,15 @@ public class MobilePushDispatchService {
         if (devices.isEmpty()) {
             return;
         }
-        String body = String.join("\n", errors);
+        String candidateBody = errors.isEmpty() || errors.stream().anyMatch(error -> error.contains("{"))
+                ? "Revisa el estado del host y las incidencias en Operaciones."
+                : String.join("\n", errors);
+        String body = candidateBody.length() > 300 ? candidateBody.substring(0, 299) + "…" : candidateBody;
+        String eventId = java.util.UUID.randomUUID().toString();
+        if (inboxService != null) {
+            devices.stream().map(OperatorPushDeviceEntity::getOperator).distinct().forEach(operator ->
+                    inboxService.record(operator, eventId, type, title, body, "OPERATIONS", hostId));
+        }
         try {
             List<FcmPushSender.FcmPushMessage> fcmMessages = devices.stream()
                     .map(device -> new FcmPushSender.FcmPushMessage(
@@ -166,9 +162,13 @@ public class MobilePushDispatchService {
                             title,
                             body,
                             Map.of(
+                                    "schemaVersion", "atenea-operations-notification-v1",
+                                    "eventType", "OPERATIONS_ALERT",
                                     "type", type,
+                                    "notificationEventId", eventId,
                                     "hostId", hostId,
-                                    "errors", body)))
+                                    "deepLinkKind", "OPERATIONS_HOST",
+                                    "deepLink", "atenea://operations/" + hostId)))
                     .toList();
             fcmPushSender.send(fcmMessages);
         } catch (Exception exception) {
@@ -183,8 +183,7 @@ public class MobilePushDispatchService {
             Long runId,
             Long deliverableId,
             String title,
-            String body,
-            Map<String, Object> data
+            String body
     ) {
         if (mobilePushNotificationLogRepository.existsByEventKey(eventKey)) {
             return;
@@ -193,15 +192,28 @@ public class MobilePushDispatchService {
         if (devices.isEmpty()) {
             return;
         }
+        String notificationEventId = java.util.UUID.randomUUID().toString();
         try {
             List<FcmPushSender.FcmPushMessage> fcmMessages = devices.stream()
                     .map(device -> new FcmPushSender.FcmPushMessage(
                             device.getPushToken(),
                             title,
                             body,
-                            data))
+                            Map.of(
+                                    "schemaVersion", "atenea-legacy-session-notification-v1",
+                                    "eventType", eventType,
+                                    "type", eventType,
+                                    "notificationEventId", notificationEventId,
+                                    "sessionId", sessionId,
+                                    "deepLinkKind", "WORK_SESSION_CONVERSATION",
+                                    "deepLink", "atenea://work-sessions/" + sessionId + "/conversation")))
                     .toList();
             fcmPushSender.send(fcmMessages);
+            if (inboxService != null) {
+                devices.stream().map(OperatorPushDeviceEntity::getOperator).distinct().forEach(operator ->
+                        inboxService.record(operator, notificationEventId, eventType, title, body,
+                                "CONVERSATION", sessionId));
+            }
             Instant now = Instant.now();
             MobilePushNotificationLogEntity logEntry = new MobilePushNotificationLogEntity();
             logEntry.setEventKey(eventKey);

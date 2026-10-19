@@ -70,6 +70,7 @@ internal class AteneaNotificationPresenter(private val context: Context) {
             "notificationEventId",
             "runId",
             "sessionId",
+            "hostId",
             "deepLinkKind",
             "deepLink"
         )

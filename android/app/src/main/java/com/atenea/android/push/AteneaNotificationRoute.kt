@@ -17,6 +17,21 @@ object AteneaNotificationRouteParser {
         extras.filterKeys { !it.startsWith("google.") && !it.startsWith("gcm.") && it !in setOf("from","collapse_key") })
 
     fun parse(deepLink: String?, data: Map<String, String>): AteneaNotificationRoute? {
+        val operationsId = parseOperationsUri(deepLink)
+        if (operationsId != null) {
+            if (data.isEmpty()) return AteneaNotificationRoute(null, "deep-link:operations:$operationsId",
+                com.atenea.android.coreconsole.AteneaNotificationDestination.OPERATIONS, operationsId)
+            if (data.keys != setOf("schemaVersion", "eventType", "type", "notificationEventId", "hostId", "deepLinkKind", "deepLink") ||
+                data["schemaVersion"] != "atenea-operations-notification-v1" ||
+                data["eventType"] != "OPERATIONS_ALERT" ||
+                data["type"] !in setOf("OPERATIONS_DEGRADATION", "OPERATIONS_VERIFICATION_FAILURE") ||
+                data["deepLinkKind"] != "OPERATIONS_HOST" || data["deepLink"] != deepLink ||
+                data["hostId"]?.toLongOrNull() != operationsId) return null
+            val id = runCatching { UUID.fromString(data["notificationEventId"]) }.getOrNull() ?: return null
+            if (id.toString() != data["notificationEventId"]) return null
+            return AteneaNotificationRoute(null, id.toString(),
+                com.atenea.android.coreconsole.AteneaNotificationDestination.OPERATIONS, operationsId)
+        }
         if (deepLink=="atenea://updates") {
             if (data.isEmpty()) return AteneaNotificationRoute(null,"deep-link:updates",com.atenea.android.coreconsole.AteneaNotificationDestination.UPDATES)
             if (data.keys!=setOf("schemaVersion","eventType","type","templateVersion","notificationEventId","deepLinkKind","deepLink")
@@ -30,6 +45,16 @@ object AteneaNotificationRouteParser {
         val parsedUri = parseUri(deepLink ?: return null) ?: return null
         if (data.isEmpty()) {
             return AteneaNotificationRoute(parsedUri, "deep-link:$parsedUri")
+        }
+        if (data["schemaVersion"] == "atenea-legacy-session-notification-v1") {
+            if (data.keys != setOf("schemaVersion", "eventType", "type", "notificationEventId", "sessionId", "deepLinkKind", "deepLink") ||
+                data["eventType"] !in setOf("RUN_SUCCEEDED", "CLOSE_BLOCKED", "PULL_REQUEST_MERGED", "BILLING_READY") ||
+                data["type"] != data["eventType"] ||
+                data["sessionId"]?.toLongOrNull() != parsedUri ||
+                data["deepLinkKind"] != DEEP_LINK_KIND || data["deepLink"] != deepLink) return null
+            val id = runCatching { UUID.fromString(data["notificationEventId"]) }.getOrNull() ?: return null
+            if (id.toString() != data["notificationEventId"]) return null
+            return AteneaNotificationRoute(parsedUri, id.toString())
         }
         if (data["schemaVersion"] != SCHEMA_VERSION ||
             data["eventType"] != EVENT_TYPE ||
@@ -58,6 +83,13 @@ object AteneaNotificationRouteParser {
             return null
         }
         return parts[0].toLongOrNull()?.takeIf { it > 0 }
+    }
+
+    private fun parseOperationsUri(value: String?): Long? {
+        val uri = runCatching { URI(value ?: return null) }.getOrNull() ?: return null
+        if (uri.scheme != "atenea" || uri.host != "operations" || uri.query != null || uri.fragment != null) return null
+        val parts = uri.path.orEmpty().split('/').filter { it.isNotEmpty() }
+        return if (parts.size == 1) parts[0].toLongOrNull()?.takeIf { it > 0 } else null
     }
 }
 

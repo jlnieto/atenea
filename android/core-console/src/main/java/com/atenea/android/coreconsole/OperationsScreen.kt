@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +38,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun OperationsScreen(
     apiClient: AteneaApiClient,
+    preferredHostId: Long? = null,
     onHealthSnapshotChanged: (ShellHealthSnapshot) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
@@ -55,6 +57,11 @@ internal fun OperationsScreen(
     suspend fun loadOperationsData(preferredHostId: Long? = selectedHostId) {
         val nextHosts = apiClient.fetchOperationsHosts()
         hosts = nextHosts
+        if (preferredHostId != null && nextHosts.none { it.id == preferredHostId }) {
+            selectedHostId = null
+            hostStatus = null
+            throw IllegalStateException("El host de esta notificación ya no está disponible.")
+        }
         val nextHost = nextHosts.firstOrNull { it.id == preferredHostId }
             ?: nextHosts.firstOrNull { it.name.contains("dedicado", ignoreCase = true) }
             ?: nextHosts.firstOrNull()
@@ -87,6 +94,10 @@ internal fun OperationsScreen(
                 pendingOperation = null
             }
         }
+    }
+
+    LaunchedEffect(preferredHostId) {
+        refreshOperations(preferredHostId)
     }
 
     fun runOperationCommand(commandInput: String, label: String) {

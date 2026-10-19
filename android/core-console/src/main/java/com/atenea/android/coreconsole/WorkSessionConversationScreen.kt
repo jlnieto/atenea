@@ -51,7 +51,9 @@ internal fun WorkSessionConversationScreen(
     projectId: Long?,
     sessionId: Long?,
     onBackToSession: () -> Unit,
-    onOpenUpdates: () -> Unit = {}
+    onOpenUpdates: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
+    unreadNotifications: Long = 0
 ) {
     val context = LocalContext.current
     val historyUriHandler = LocalUriHandler.current
@@ -706,6 +708,8 @@ internal fun WorkSessionConversationScreen(
         onSend = ::send,
         onMicrophoneClick = ::requestVoicePrompt,
         onBack = onBackToSession,
+        onOpenNotifications = onOpenNotifications,
+        unreadNotifications = unreadNotifications,
         onRefresh = { refresh(); scope.launch { deliveryState.refresh() } },
         error = error,
         commandContent = activeCommand?.takeIf { it.isVisibleConversationCommand() }?.let { command ->

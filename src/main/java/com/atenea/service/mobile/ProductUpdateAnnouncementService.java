@@ -17,6 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** One explicit, durable product-ready notice, never a fabricated AgentRun notification. */
 @Service
 public class ProductUpdateAnnouncementService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ProductUpdateAnnouncementService.class);
     private final OperatorRepository operators;
     private final OperatorPushDeviceRepository devices;
     private final ReleaseControlClient release;
@@ -27,6 +28,9 @@ public class ProductUpdateAnnouncementService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final TransactionTemplate transaction;
+    private MobileNotificationInboxService inboxService;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setInboxService(MobileNotificationInboxService inboxService) { this.inboxService = inboxService; }
     public ProductUpdateAnnouncementService(OperatorRepository operators,OperatorPushDeviceRepository devices,
             ReleaseControlClient release,RemoteWorkerClient worker,AttachmentAdmissionPolicy attachments,
             AttachmentWorkerClient attachmentWorker,FcmPushSender fcm,JdbcTemplate jdbc,ObjectMapper mapper,PlatformTransactionManager manager) {
@@ -83,6 +87,15 @@ public class ProductUpdateAnnouncementService {
             if(jdbc.update("UPDATE product_update_announcement SET state=?,error_code=?,finished_at=CURRENT_TIMESTAMP WHERE id=? AND state='CLAIMED'",finalState,finalCode,id)!=1)
                 throw new DeliveryRejectedException("ANNOUNCEMENT_EVIDENCE_MISMATCH");
         });
+        if (inboxService != null) {
+            try {
+                operators.findById(actor.operatorId()).ifPresent(operator -> inboxService.record(operator,
+                        id.toString(), "PRODUCT_UPDATE", "Atenea ya está operativa",
+                        "Hay una actualización disponible. Revisa Novedades y Ajustes.", "UPDATES", null));
+            } catch (RuntimeException exception) {
+                log.warn("Could not record product update in notification inbox announcementId={}", id, exception);
+            }
+        }
         return new Announcement(id,state,app.sourceCommit(),apk.versionName(),apk.versionCode(),selected.size(),code);
     }
     private void administrator(AuthenticatedOperator actor) {

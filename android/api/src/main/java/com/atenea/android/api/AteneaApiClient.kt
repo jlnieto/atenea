@@ -155,6 +155,22 @@ class AteneaApiClient(
         ) { Unit }
     }
 
+    suspend fun fetchNotifications(page: Int = 0): MobileNotificationInbox {
+        require(page in 0..99)
+        return getJson("/api/mobile/notifications?page=$page", true, ::parseMobileNotificationInbox)
+    }
+
+    suspend fun markNotificationRead(id: UUID): MobileNotification = postJson(
+        path = "/api/mobile/notifications/$id/read",
+        body = JSONObject(),
+        authenticated = true,
+        parser = ::parseMobileNotification
+    )
+
+    suspend fun markNotificationOpened(eventId: UUID) {
+        requestBody("/api/mobile/notifications/$eventId/opened", "POST", JSONObject(), authenticated = true)
+    }
+
     suspend fun runCoreCommand(
         input: String,
         scope: CoreScope = CoreScope.GLOBAL,

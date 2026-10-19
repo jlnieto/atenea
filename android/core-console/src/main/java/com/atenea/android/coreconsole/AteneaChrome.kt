@@ -35,6 +35,8 @@ internal fun AteneaTopChrome(
     title: String,
     healthSnapshot: ShellHealthSnapshot,
     healthLoading: Boolean,
+    unreadCount: Long = 0,
+    onNotificationsClick: () -> Unit = {},
     onMenuClick: () -> Unit,
     onHealthClick: () -> Unit
 ) {
@@ -73,6 +75,17 @@ internal fun AteneaTopChrome(
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Box(
+                    modifier = Modifier.height(40.dp).clickable(onClick = onNotificationsClick)
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (unreadCount > 0) "🔔 ${if (unreadCount > 99) "99+" else unreadCount}" else "🔔",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 AteneaHealthDot(
