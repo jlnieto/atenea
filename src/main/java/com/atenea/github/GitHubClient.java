@@ -181,7 +181,7 @@ public class GitHubClient {
                 && branch != null && branch.matches("atenea/change-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
     }
 
-    private JsonNode ownedHeadUfdRun(GitHubRepositoryRef repository, String sha, String branch) {
+    JsonNode ownedHeadUfdRun(GitHubRepositoryRef repository, String sha, String branch) {
         String title = "Atenea UFD owned-head " + ufdRequestId(sha, branch) + " " + sha;
         JsonNode latest = null;
         // An immutable run is discoverable even if the dispatch HTTP reply was lost.
@@ -459,6 +459,28 @@ public class GitHubClient {
                 "/repos/" + repository.owner() + "/" + repository.repo() + "/pulls/" + number), null);
         requireExactPullRequest(repository, number, headBranch, headSha, pr);
         return GitHubMergeState.observe(pr);
+    }
+
+    /** Read-only notification proof; mergeability alone does not mean that tests passed. */
+    public void requireIntegrationReadiness(GitHubRepositoryRef repository, long number, String headBranch, String headSha) {
+        ensureConfigured(); requireSha(headSha);
+        String root="/repos/"+repository.owner()+"/"+repository.repo();
+        JsonNode pr=sendJsonRequest("GET",properties.getApiBaseUrl().resolve(root+"/pulls/"+number),null);
+        requireExactPullRequest(repository,number,headBranch,headSha,pr);
+        if(GitHubMergeState.observe(pr)!=GitHubMergeState.MERGEABLE) throw new GitHubIntegrationException("CI_PENDING: mergeability");
+        requireUfdValidation(repository,headSha,headBranch);
+        String base=requireBackendMergeValidation(repository,number,headBranch,headSha,pr);
+        JsonNode checks=sendJsonRequest("GET",properties.getApiBaseUrl().resolve(root+"/commits/"+headSha+"/check-runs?per_page=100&filter=latest"),null);
+        if(!checks.path("check_runs").isArray() || checks.path("total_count").asInt(-1)<0 || checks.path("total_count").asInt()>100
+                || checks.path("total_count").asInt()!=checks.path("check_runs").size()) throw new GitHubIntegrationException("CI_EVIDENCE_INCOMPLETE");
+        for(var check:checks.path("check_runs")) if(!"completed".equals(check.path("status").asText())
+                || !java.util.Set.of("success","neutral","skipped").contains(check.path("conclusion").asText()))
+            throw new GitHubIntegrationException("CI_PENDING: checks");
+        JsonNode statuses=sendJsonRequest("GET",properties.getApiBaseUrl().resolve(root+"/commits/"+headSha+"/status"),null);
+        int count=statuses.path("total_count").asInt(-1);
+        if(count<0 || java.util.Set.of("failure","error").contains(statuses.path("state").asText())
+                || count>0 && !"success".equals(statuses.path("state").asText())) throw new GitHubIntegrationException("CI_PENDING: statuses");
+        if(base!=null && !base.equals(canonicalMain(repository))) throw new GitHubIntegrationException("CI_PENDING: base moved");
     }
 
     /** No caller-selected PR/head/base and no protection bypass. Lost responses reconcile by GET. */

@@ -14,6 +14,9 @@ import org.springframework.stereotype.Repository;
 public class DeliveryStore {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private ChangeProgressNotifications notifications;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setProgressNotifications(ChangeProgressNotifications value) { notifications=value; }
     public DeliveryStore(JdbcTemplate jdbc, ObjectMapper mapper) { this.jdbc = jdbc; this.mapper = mapper; }
     public List<DeliveryOperation> list(Long sessionId) {
         return jdbc.query("SELECT * FROM mobile_delivery_operation WHERE session_id=? ORDER BY created_at DESC LIMIT 30", this::row, sessionId);
@@ -146,6 +149,7 @@ public class DeliveryStore {
                 UPDATE mobile_delivery_operation SET state=?,error_code=?,plan_sha256=?,evidence_json=?::jsonb,
                   updated_at=now(),finished_at=CASE WHEN ? THEN now() ELSE NULL END WHERE id=?
                 """, state, code, planSha, retained.toString(), DeliveryOperation.TERMINAL.contains(state), op.id());
+        if(notifications!=null && !state.equals(op.state())) notifications.record(op,state);
     }
     static JsonNode retainRecoverySource(DeliveryOperation op, JsonNode observed) {
         if (!observed.isObject()) throw new DeliveryRejectedException("RELEASE_EVIDENCE_MISMATCH");
@@ -169,6 +173,17 @@ public class DeliveryStore {
     public List<UUID> pendingCompletions() {
         return jdbc.query("SELECT id FROM mobile_delivery_operation WHERE kind='FINALIZE' AND state IN ('QUEUED','APPLYING') "
                 + "ORDER BY updated_at LIMIT 10", (rs, index) -> rs.getObject("id", UUID.class));
+    }
+    public List<DeliveryOperation> awaitingIntegrationNotice() {
+        return jdbc.query("""
+                SELECT o.* FROM mobile_delivery_operation o JOIN work_session w ON w.id=o.session_id
+                WHERE o.kind='PUBLISH_PR' AND o.state='SUCCEEDED' AND w.status='OPEN'
+                  AND o.evidence_json->>'headCommit'=w.final_commit_sha
+                  AND NOT EXISTS(SELECT 1 FROM mobile_delivery_operation i WHERE i.session_id=o.session_id
+                    AND i.kind='INTEGRATE' AND i.state NOT IN ('FAILED','BLOCKED','ROLLED_BACK'))
+                  AND NOT EXISTS(SELECT 1 FROM mobile_change_progress_notice n WHERE n.operation_id=o.id AND n.outcome='INTEGRATION_READY')
+                ORDER BY o.created_at DESC LIMIT 10
+                """,this::row);
     }
     private DeliveryOperation row(ResultSet rs, int index) throws SQLException {
         try {

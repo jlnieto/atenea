@@ -46,6 +46,14 @@ object AteneaNotificationRouteParser {
         if (data.isEmpty()) {
             return AteneaNotificationRoute(parsedUri, "deep-link:$parsedUri")
         }
+        if (data["schemaVersion"] == "atenea-change-progress-v1") {
+            if (data.keys != setOf("schemaVersion","eventType","type","notificationEventId","sessionId","deepLinkKind","deepLink") ||
+                data["eventType"] != "CHANGE_PROGRESS" || data["type"] != "CHANGE_PROGRESS" ||
+                data["sessionId"] != parsedUri.toString() || data["deepLinkKind"] != DEEP_LINK_KIND || data["deepLink"] != deepLink) return null
+            val id=runCatching { UUID.fromString(data["notificationEventId"]) }.getOrNull() ?: return null
+            if(id.toString()!=data["notificationEventId"]) return null
+            return AteneaNotificationRoute(parsedUri,id.toString())
+        }
         if (data["schemaVersion"] == "atenea-legacy-session-notification-v1") {
             if (data.keys != setOf("schemaVersion", "eventType", "type", "notificationEventId", "sessionId", "deepLinkKind", "deepLink") ||
                 data["eventType"] !in setOf("RUN_SUCCEEDED", "CLOSE_BLOCKED", "PULL_REQUEST_MERGED", "BILLING_READY") ||

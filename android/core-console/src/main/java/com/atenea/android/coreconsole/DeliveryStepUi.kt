@@ -16,7 +16,7 @@ import com.atenea.android.api.MobileDeliveryOperation
 import com.atenea.android.api.MobileDeliveryTarget
 
 internal enum class DeliveryStepStatus(val label: String) {
-    WORKING("Atenea está trabajando"), ACTION("Te toca a ti"), ATTENTION("Necesita atención"),
+    WORKING("Atenea está trabajando"), WAITING("Esperando a otro servicio"), ACTION("Te toca a ti"), ATTENTION("Necesita atención"),
     COMPLETE("Terminado"), CHECKING("Estado por confirmar")
 }
 
@@ -112,7 +112,8 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
         "Primero comprueba esta revisión. Después vendrán PR, integración y publicación.")
     operations.firstOrNull { !it.terminal }?.let { op ->
         if (op.kind == "ANDROID_VERSION") return DeliveryStepUi(
-            if (op.state == "READY") DeliveryStepStatus.ACTION else DeliveryStepStatus.WORKING,
+            if (op.state == "READY") DeliveryStepStatus.ACTION
+            else if(op.state=="WAITING_CI" && progress?.github?.state!="RUNNING") DeliveryStepStatus.WAITING else DeliveryStepStatus.WORKING,
             if (op.state == "READY") "Versión Android lista para integrar" else "Preparando versión Android",
             if (op.state == "READY") "La PR técnica sólo cambia la versión a ${op.versionName} / ${op.versionCode}. Revisa e integra esa PR; después se construirá la APK. Todavía no se publica."
             else "Atenea prepara y comprueba la PR de versión. Puedes salir de la app; tu PR original se conserva y no se publica ninguna APK.",
@@ -140,10 +141,18 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
             op.state == "QUARANTINED" -> "Evidencia contradictoria"
             else -> "Publicando ${op.target.label}"
         }
-        return DeliveryStepUi(if (op.state == "QUARANTINED") DeliveryStepStatus.ATTENTION else DeliveryStepStatus.WORKING,
+        val github=progress?.takeIf { it.operationId==op.id }?.github
+        val status=when {
+            op.state=="QUARANTINED" -> DeliveryStepStatus.ATTENTION
+            op.state=="WAITING_CI" && (github?.state in setOf("UNAVAILABLE","FAILED") || github!=null && github.observedAt !in (nowSeconds-90)..(nowSeconds+5)) -> DeliveryStepStatus.CHECKING
+            op.state=="WAITING_CI" && github?.state !in setOf("RUNNING","FAILED") -> DeliveryStepStatus.WAITING
+            else -> DeliveryStepStatus.WORKING
+        }
+        return DeliveryStepUi(status,
             title, if (op.state == "QUARANTINED") "La operación está detenida. Consulta sus detalles; no repitas la publicación."
             else if (preparing) "Puedes salir de la app. Preparar no publica; cuando termine faltará tu confirmación."
-            else "Puedes salir de la app. Atenea continuará con esta operación; no tienes que repetirla.", operation = op)
+            else "Puedes salir de la app. Atenea continuará con esta operación; no tienes que repetirla.",
+            action = if(status==DeliveryStepStatus.CHECKING) DeliveryStepAction.REFRESH else DeliveryStepAction.NONE, operation = op)
     }
     operations.firstOrNull { it.state == "ROLLBACK_FAILED" }?.let {
         return DeliveryStepUi(DeliveryStepStatus.ATTENTION, "Restauración fallida",
@@ -157,7 +166,12 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
         "La construcción de la versión falló", "No hay un despliegue trabajando. Tu PR integrada se conserva. " +
             "Consulta el diagnóstico de abajo y solicita una reparación en la misma conversación. Repetir Preparar no corrige el código.",
         if (canRepairBuild(runInProgress)) DeliveryStepAction.REPAIR_BUILD else DeliveryStepAction.REFRESH)
-    if (integrated && !allRequiredDelivered && build?.state == "PENDING") return DeliveryStepUi(DeliveryStepStatus.WORKING,
+    if (integrated && !allRequiredDelivered && build?.state == "PENDING") return DeliveryStepUi(
+        when(progress?.takeIf { it.kind=="BUILD" }?.github?.state) {
+            "NOT_STARTED","QUEUED","CLOSING","PASSED" -> DeliveryStepStatus.WAITING
+            "UNAVAILABLE","FAILED" -> DeliveryStepStatus.CHECKING
+            else -> DeliveryStepStatus.WORKING
+        },
         "GitHub está construyendo la versión", "La PR ya está integrada. Falta terminar la construcción publicable; todavía no se despliega. Puedes salir de la app.",
         DeliveryStepAction.REFRESH)
     if (integrated && !allRequiredDelivered && build?.errorCode != null) return DeliveryStepUi(DeliveryStepStatus.CHECKING,
@@ -209,6 +223,18 @@ internal fun MobileDeliveryUiState.currentStep(validated: Boolean, runInProgress
     if (integration?.mergeState == "CONFLICTS") return DeliveryStepUi(DeliveryStepStatus.ACTION,
         "Resolver conflictos con main", deliveryIntegrationLabel("CONFLICTS"), DeliveryStepAction.RESOLVE)
     if (operations.any { it.kind == "PUBLISH_PR" && it.state == "SUCCEEDED" }) {
+        progress?.takeIf { it.kind=="PR_CHECKS" }?.github?.let { checks ->
+            return DeliveryStepUi(when(checks.state) {
+                "FAILED" -> DeliveryStepStatus.ATTENTION
+                "UNAVAILABLE" -> DeliveryStepStatus.CHECKING
+                "RUNNING" -> DeliveryStepStatus.WORKING
+                else -> DeliveryStepStatus.WAITING
+            },"Comprobando la PR en GitHub",
+                if(checks.state=="FAILED") "Una comprobación no ha pasado. Consulta el detalle y Ayuda con este cambio; no se ha integrado ni publicado."
+                else "La PR ya existe. Atenea sigue comprobando esta revisión antes de ofrecer Integrar cambio. Puedes salir de la app.",
+                if(checks.state in setOf("FAILED","UNAVAILABLE")) DeliveryStepAction.REFRESH else DeliveryStepAction.NONE,
+                operations.firstOrNull { it.id==progress?.operationId })
+        }
         return DeliveryStepUi(if (integration?.allowsRequest == true) DeliveryStepStatus.ACTION else DeliveryStepStatus.CHECKING,
             "Integrar cambio", deliveryIntegrationLabel(integration?.mergeState),
             if (integration?.allowsRequest == true) DeliveryStepAction.INTEGRATE else DeliveryStepAction.REFRESH)
@@ -230,7 +256,7 @@ internal fun DeliveryStepCard(step: DeliveryStepUi, primaryAction: @Composable (
                     else MaterialTheme.colorScheme.primary)
             Text(step.title, style = MaterialTheme.typography.titleMedium)
             Text(step.message, style = MaterialTheme.typography.bodyMedium)
-            if (step.status == DeliveryStepStatus.WORKING) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (step.status in setOf(DeliveryStepStatus.WORKING, DeliveryStepStatus.WAITING)) LinearProgressIndicator(Modifier.fillMaxWidth())
             primaryAction()
         }
     }

@@ -57,6 +57,56 @@ public class MobileDeliveryService {
     private final java.util.Map<String, List<DeliveryTarget>> immutableRequirements = new java.util.LinkedHashMap<>();
     private com.atenea.github.GitHubReleaseBuild builds;
     private ReleaseRepairStore repairs;
+    private com.atenea.github.GitHubChecksProgress checksProgress;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setChecksProgress(com.atenea.github.GitHubChecksProgress value) { checksProgress=value; }
+    public record Progress(UUID operationId, Long sessionId, String kind, String state,
+            long startedAt, long updatedAt, long observedAt, com.atenea.github.GitHubChecksProgress.Evidence github) { }
+
+    /** Informational only: never advances, retries or authorizes an operation. */
+    public Progress observeProgress(Long sessionId, AuthenticatedOperator actor) {
+        administrator(actor.operatorId());
+        var session=session(sessionId,false);
+        var operations=store.list(sessionId);
+        var active=operations.stream().filter(op->!op.terminal() && !"READY".equals(op.state())).findFirst().orElse(null);
+        if(active==null) {
+            if(checksProgress==null) return null;
+            if(session.getPullRequestStatus()!=WorkSessionPullRequestStatus.MERGED) {
+                var published=operations.stream().filter(op->"PUBLISH_PR".equals(op.kind()) && "SUCCEEDED".equals(op.state())
+                        && op.evidence().path("headCommit").asText().equals(session.getFinalCommitSha())).findFirst().orElse(null);
+                if(published==null || session.getPullRequestUrl()==null || session.getPublishedHeadBranch()==null) return null;
+                var evidence=progressChecks(session.getFinalCommitSha(),session.getPublishedHeadBranch(),false,true);
+                if(evidence==null || "PASSED".equals(evidence.state())) return null;
+                return new Progress(published.id(),sessionId,"PR_CHECKS","PENDING",published.createdAt().getEpochSecond(),
+                        published.updatedAt().getEpochSecond(),Instant.now().getEpochSecond(),evidence);
+            }
+            var build=observeBuild(sessionId,actor);
+            var integrated=store.integrated(sessionId,session.getFinalCommitSha()).orElse(null);
+            if(build==null || build.evidence()==null || !"PENDING".equals(build.evidence().state()) || integrated==null) return null;
+            return new Progress(integrated.id(),sessionId,"BUILD","PENDING",integrated.updatedAt().getEpochSecond(),
+                    integrated.updatedAt().getEpochSecond(),Instant.now().getEpochSecond(),
+                    progressChecks(build.evidence().sourceCommit(),"main",true,false));
+        }
+        com.atenea.github.GitHubChecksProgress.Evidence githubEvidence=null;
+        if(checksProgress!=null && "WAITING_CI".equals(active.state())) {
+            String head="ANDROID_VERSION".equals(active.kind()) ? active.evidence().path("headCommit").asText() : session.getFinalCommitSha();
+            String branch="ANDROID_VERSION".equals(active.kind()) ? GitHubClient.androidVersionBranch(active.id()) : session.getPublishedHeadBranch();
+            if(head!=null && branch!=null) githubEvidence=progressChecks(head,branch,false,
+                    active.evidence().has("pullRequestUrl") || session.getPullRequestUrl()!=null);
+        } else if(checksProgress!=null && List.of("PLANNING","PREPARING").contains(active.state()) && active.sourceCommit()!=null
+                && active.target()!=DeliveryTarget.AX42_PLATFORM) {
+            githubEvidence=progressChecks(active.sourceCommit(),"main",true,false);
+        }
+        return new Progress(active.id(),sessionId,active.kind(),active.state(),active.createdAt().getEpochSecond(),
+                active.updatedAt().getEpochSecond(),Instant.now().getEpochSecond(),githubEvidence);
+    }
+    private com.atenea.github.GitHubChecksProgress.Evidence progressChecks(String source,String branch,boolean build,boolean hasPr) {
+        try { return checksProgress.observe(source,branch,build,hasPr); }
+        catch(RuntimeException unavailable) {
+            return source!=null && source.matches("[0-9a-f]{40}")
+                    ? new com.atenea.github.GitHubChecksProgress.Evidence(source,"UNAVAILABLE",Instant.now().getEpochSecond(),"UNKNOWN",List.of()) : null;
+        }
+    }
     @org.springframework.beans.factory.annotation.Autowired
     void setBuildRecovery(com.atenea.github.GitHubReleaseBuild builds,ReleaseRepairStore repairs) {
         this.builds=builds;this.repairs=repairs;
@@ -143,6 +193,14 @@ public class MobileDeliveryService {
         return store.list(sessionId).stream().map(DeliveryOperation::view).toList();
     }
     public boolean isEnabled() { return executor.enabled(); }
+    WorkSessionEntity publishedSessionForNotice(DeliveryOperation op) {
+        administrator(op.operatorId());
+        var value=session(op.sessionId(),false); owned(value); published(value);
+        if(!op.evidence().path("pullRequestUrl").asText().equals(value.getPullRequestUrl())
+                || !op.evidence().path("headCommit").asText().equals(value.getFinalCommitSha()))
+            throw new DeliveryRejectedException("PUBLISHED_HEAD_MOVED");
+        return value;
+    }
 
     /** Read-only global APK facts plus exact-change ancestry and diff-derived requirements. */
     public ChangeDeliveryReadiness observeDelivery(Long sessionId, AuthenticatedOperator actor) {
