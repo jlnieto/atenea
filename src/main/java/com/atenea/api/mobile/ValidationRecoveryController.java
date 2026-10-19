@@ -24,6 +24,11 @@ public class ValidationRecoveryController {
             @org.springframework.security.core.annotation.AuthenticationPrincipal AuthenticatedOperator actor) {
         empty(body);return service.prepare(sessionId,authenticated(actor));
     }
+    @GetMapping("/diagnostic")
+    public JsonNode diagnostic(@PathVariable Long sessionId,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal AuthenticatedOperator actor) {
+        return service.diagnostic(sessionId,authenticated(actor));
+    }
     @PostMapping("/{operationId}/apply")
     public ValidationRecoveryStore.View apply(@PathVariable Long sessionId,@PathVariable UUID operationId,
             @RequestBody(required=false) JsonNode body,

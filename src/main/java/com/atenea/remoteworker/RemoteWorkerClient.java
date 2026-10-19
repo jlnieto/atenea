@@ -768,6 +768,18 @@ public class RemoteWorkerClient {
                 properties.getWorkspaceProvisionTimeout());
     }
 
+    public JsonNode validationDiagnostic(WorkSessionEntity session, String operationId) {
+        Map<String, Object> body = Map.of(
+                "schemaVersion", 1,
+                "protocolVersion", "closed-validation-broker/v1",
+                "operationId", operationId,
+                "sessionId", session.getRemoteSessionId().toString(),
+                "workspaceIdentity", session.getWorkspaceIdentity(),
+                "projectId", ProjectCodexIdentity.PROJECT_IDENTITY);
+        return exchange("POST", "/v1/project-workspaces/validations/diagnostic", body,
+                JsonNode.class, operationId, properties.getWorkspaceProvisionTimeout());
+    }
+
     private Map<String, Object> validationBody(
             WorkSessionEntity session,
             ValidationOperationKind operation,

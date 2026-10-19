@@ -269,6 +269,10 @@ class RemoteWorkerClientTest {
         server.createContext("/v1/project-workspaces/validations", exchange -> {
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
             JsonNode request = requestBody.get();
+            if (exchange.getRequestURI().getPath().endsWith("/diagnostic")) {
+                byte[] response=getClass().getResourceAsStream("/remoteworker/validation-diagnostic-v1.json").readAllBytes();
+                exchange.sendResponseHeaders(200,response.length);exchange.getResponseBody().write(response);exchange.close();return;
+            }
             if (exchange.getRequestURI().getPath().endsWith("/start")) {
                 byte[] response = objectMapper.writeValueAsBytes(java.util.Map.ofEntries(
                         java.util.Map.entry("schemaVersion", 1),
@@ -1542,6 +1546,18 @@ class RemoteWorkerClientTest {
         assertNull(body.get("slot"));
         assertNull(body.get("credential"));
         assertEquals("QUEUED", result.state());
+    }
+
+    @Test void diagnosticReadSendsOnlyTheExactOwnerAndOperationNotExecutionInputs() {
+        var session=projectRun(null).getSession();
+        session.setWorkspaceIdentity("remote:ax42-01:change:11111111-1111-4111-8111-111111111111");
+        String operationId="22222222-2222-4222-8222-222222222222";
+        assertEquals("closed-validation-diagnostic/v1",client.validationDiagnostic(session,operationId).path("protocolVersion").asText());
+        var body=requestBody.get();assertEquals(6,body.size());assertEquals(operationId,body.path("operationId").asText());
+        assertEquals(session.getRemoteSessionId().toString(),body.path("sessionId").asText());
+        assertEquals(session.getWorkspaceIdentity(),body.path("workspaceIdentity").asText());
+        assertEquals("closed-validation-broker/v1",body.path("protocolVersion").asText());
+        for(var field:java.util.List.of("path","command","image","sourceRevision","credential","host"))assertEquals(false,body.has(field));
     }
 
     @Test

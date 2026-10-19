@@ -94,6 +94,16 @@ class ValidationRecoveryIntegrationTest {
         when(worker.fingerprintSourceTree(any())).thenAnswer(call->{var s=call.getArgument(0,WorkSessionEntity.class);
             return new RemoteWorkerClient.SourceTreeFingerprint("observed",s.getRemoteSessionId().toString(),s.getWorkspaceIdentity(),
                 "atenea",head,after,1,0,0,false);});
+        jdbc.update("UPDATE validation_operation SET artifact_manifest_sha256=? WHERE id=?","6".repeat(64),validationId);
+        when(worker.validationDiagnostic(any(),anyString())).thenAnswer(call->{
+            var s=call.getArgument(0,WorkSessionEntity.class);
+            var value=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree(getClass().getResourceAsStream("/remoteworker/validation-diagnostic-v1.json"));
+            value.put("workspaceIdentity",s.getWorkspaceIdentity());
+            var d=(com.fasterxml.jackson.databind.node.ObjectNode)value.get("diagnostic");
+            d.put("operationId",validationId.toString());d.put("sessionId",s.getRemoteSessionId().toString());
+            d.put("operation","ANDROID_BUILD");d.put("definitionRevision","atenea-android-build-v2");d.put("sourceTreeFingerprintSha256",before);
+            return value;
+        });
         clearInvocations(gateway,worker,agentRuns,coordinator);
     }
     @AfterEach void cleanup() {
@@ -118,6 +128,16 @@ class ValidationRecoveryIntegrationTest {
         assertTrue(service.observe(sessionId,actor).canPrepareRepair());assertTrue(service.observe(sessionId,actor).canPrepareRepair());
         assertEquals(0,store.list(sessionId).size());verify(gateway,times(2)).call(any(),eq(Action.DIAGNOSE));
         verifyNoInteractions(worker,agentRuns,coordinator);
+    }
+    @Test void diagnosticReadDoesNotCreateRunValidationOrRecoveryIntent() {
+        assertEquals("RECORDED",service.diagnostic(sessionId,actor).path("failureDetailsState").asText());
+        assertEquals(0,store.list(sessionId).size());verifyNoInteractions(agentRuns,coordinator);
+        verify(worker).validationDiagnostic(any(),eq(validationId.toString()));
+    }
+    @Test void mismatchedDiagnosticCannotCreateInvestigation() {
+        jdbc.update("UPDATE validation_operation SET artifact_manifest_sha256=? WHERE id=?","8".repeat(64),validationId);
+        assertThrows(RemoteWorkerException.class,()->service.investigate(sessionId,actor));
+        assertEquals(0,store.list(sessionId).size());verifyNoInteractions(agentRuns,coordinator);
     }
     @Test void prepareAndApplyAreSeparateIdempotentAndInvalidateHistoricalResults() {
         var v=service.prepare(sessionId,actor);assertEquals(v.id(),service.prepare(sessionId,actor).id());
@@ -193,6 +213,10 @@ class ValidationRecoveryIntegrationTest {
         assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM session_turn WHERE session_id=?",Long.class,sessionId));
         verify(agentRuns,times(1)).createRemoteQueuedRun(any(),any(),eq(WorkloadClass.NORMAL));
         verify(coordinator,times(1)).dispatchAfterCommit(first.runId());
+        var prompt=jdbc.queryForObject("SELECT message_text FROM session_turn WHERE session_id=?",String.class,sessionId);
+        assertTrue(prompt.contains("closed-validation-diagnostic/v1"));assertTrue(prompt.contains("testFailures"));
+        assertTrue(prompt.contains("NO demuestra cuáles fallaron"));
+        verify(worker,times(1)).validationDiagnostic(any(),eq(validationId.toString()));
         verify(gateway,never()).call(any(),eq(Action.PREPARE));
     }
     private void stubInvestigationRun() {
