@@ -76,12 +76,18 @@ class ChangeWorkflowJourneyTest {
             compose.onNodeWithText("Revisión 5 pendiente de validar · 0/4 comprobaciones.").assertIsDisplayed()
             screenshot("revision-5-needs-validation")
             compose.onNode(hasText("Validar cambio") and hasClickAction()).performClick()
-            compose.waitUntil(15_000) { backend.checks.get()>0 }
+            compose.waitUntil(15_000) { backend.validationRequests.get()==1 }
             compose.onNode(hasText("Actualizar la misma PR") and hasClickAction()).assertDoesNotExist()
-            compose.onNodeWithText("Validando cambio").assertIsDisplayed()
+            compose.waitUntil(15_000) { compose.onAllNodes(hasText("Validando cambio")).fetchSemanticsNodes().isNotEmpty() }
             screenshot("validating")
+            // Server ticks, not four mobile POSTs, finish this workflow. The
+            // app may leave/resume without resubmitting or driving the checks.
+            compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+            backend.completeValidation()
+            compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
             waitForButton("Actualizar la misma PR",30_000)
             assertEquals(4,backend.checks.get())
+            assertEquals(1,backend.validationRequests.get())
             compose.onNode(hasText("Actualizar la misma PR") and hasClickAction()).performClick()
             compose.waitUntil(15_000) { backend.publications.get()==1 }
             compose.onNode(hasText("Actualizar la misma PR") and hasClickAction()).assertDoesNotExist()
@@ -109,6 +115,7 @@ class ChangeWorkflowJourneyTest {
     private class JourneyBackend {
         @Volatile var stage="OLD_BASE"
         val preparations=AtomicInteger();val checks=AtomicInteger();val publications=AtomicInteger()
+        val validationRequests=AtomicInteger()
         val preparationStarted=CountDownLatch(1);val allowPreparationReply=CountDownLatch(1)
         val change="00000000-0000-4000-8000-000000000001"
         val oldSource="00000000-0000-4000-8000-000000000004"
@@ -125,13 +132,9 @@ class ChangeWorkflowJourneyTest {
                     stage="PREPARED"
                     source(5,"READY_TO_FINALIZE","CURRENT")
                 }
-                request.method=="POST" && path=="/api/sessions/26/validate-change" -> {
-                    val passed=checks.incrementAndGet();stage=if(passed==4) "VALIDATED" else "VALIDATING"
-                    JSONObject().put("changeKey",change).put("sourceRevision",5).put("sourceState","DIRTY")
-                        .put("sourceFingerprintSha256","5".repeat(64))
-                        .put("validationState",if(passed==4) "CURRENT" else "STALE")
-                        .put("state",if(passed==4) "SUCCEEDED" else "ADVANCING").put("passedOperations",passed)
-                        .put("requiredOperations",4).put("summary","Comprobación $passed terminada")
+                request.method=="POST" && path=="/api/sessions/26/validation-workflows" -> {
+                    validationRequests.incrementAndGet();stage="VALIDATING"
+                    workflow("RUNNING")
                 }
                 request.method=="POST" && path=="/api/mobile/sessions/26/delivery/pr" -> {
                     publications.incrementAndGet();stage="PR_WAITING";operation("QUEUED")
@@ -140,6 +143,12 @@ class ChangeWorkflowJourneyTest {
             }
             return JourneyHttpResponse(200,value.toString())
         }
+        fun completeValidation() { checks.set(4);stage="VALIDATED" }
+        private fun workflow(state:String)=JSONObject().put("id","00000000-0000-4000-8000-000000000003")
+            .put("workSessionId",26).put("sourceRevision",5).put("sourceFingerprintSha256","5".repeat(64))
+            .put("state",state).put("phase",if(state=="SUCCEEDED") "FINISHED" else "QUEUED")
+            .put("startedAt","2026-10-16T15:17:00Z").put("updatedAt","2026-10-16T15:18:00Z")
+            .put("finishedAt",if(state=="SUCCEEDED") "2026-10-16T15:18:00Z" else JSONObject.NULL)
         private fun summary()=JSONObject().put("conversation",JSONObject().put("view",JSONObject()
             .put("session",JSONObject().put("id",26).put("projectId",1).put("title","Mismo cambio").put("status","OPEN")
                 .put("developmentChangeKey",change).put("developmentChangeValidationState","CURRENT")
@@ -172,7 +181,10 @@ class ChangeWorkflowJourneyTest {
             return JSONObject().put("enabled",true).put("operations",operations).put("sourceUpdateEnabled",true)
                 .put("sourceUpdate",source(revision,if(s in setOf("PR_WAITING","PR_READY")) "PUBLISHED"
                     else if(old) "RESOLVER_COMPLETED" else "READY_TO_FINALIZE",if(old) "UPDATE_REQUIRED" else "CURRENT"))
-                .put("validation",proof(revision,if(old || validated) 4 else checks.get(),old || validated))
+                .put("validation",proof(revision,if(old || validated) 4 else checks.get(),old || validated).also {
+                    if(s in setOf("VALIDATING","VALIDATED","PR_WAITING","PR_READY"))
+                        it.put("workflow",workflow(if(validated) "SUCCEEDED" else "RUNNING"))
+                })
                 .put("integration",JSONObject().put("sessionId",26).put("sourceCommit","2".repeat(40))
                     .put("mergeState",if(s=="PR_READY") "MERGEABLE" else "STALE_SOURCE").put("canRequestIntegration",s=="PR_READY"))
                 .also { if(s=="NO_PROOF") it.remove("validation") }
