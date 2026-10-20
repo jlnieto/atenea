@@ -10,6 +10,8 @@ import com.atenea.persistence.developmentchange.*;
 import com.atenea.persistence.project.*;
 import com.atenea.persistence.worksession.*;
 import com.atenea.remoteworker.*;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
@@ -19,21 +21,35 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Caller-owned ephemeral PostgreSQL16 only; worker/source responses are synthetic. */
-// The full suite keeps other Spring contexts (and their real scheduled readers)
-// cached against public. Give these durable RUNNING fixtures their own schema:
-// an unrelated cached scheduler must never adopt them or race their teardown.
-@SpringBootTest(properties={"atenea.auth.bootstrap.enabled=false","atenea.remote-worker.enabled=true",
-        "spring.datasource.hikari.schema=server_owned_validation_test",
-        "spring.flyway.schemas=server_owned_validation_test",
-        "spring.flyway.default-schema=server_owned_validation_test",
-        "spring.jpa.properties.hibernate.default_schema=server_owned_validation_test"})
+// Other Spring contexts retain scheduled readers against the job's base DB.
+// Use a private database in that same caller-owned ephemeral PostgreSQL runtime.
+// A schema alone is insufficient: historical V45 inspects information_schema
+// across schemas, so migrating a second schema can incorrectly skip its rename.
+@SpringBootTest(properties={"atenea.auth.bootstrap.enabled=false","atenea.remote-worker.enabled=true"})
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 class ChangeValidationWorkflowIntegrationTest {
     static final String COMMIT="1".repeat(40), TREE="4".repeat(64);
+    static final String DATABASE="server_validation_"+UUID.randomUUID().toString().replace("-","");
+
+    @DynamicPropertySource static void isolatedDatabase(DynamicPropertyRegistry properties) throws SQLException {
+        String url=System.getenv("SPRING_DATASOURCE_URL");
+        String user=System.getenv("SPRING_DATASOURCE_USERNAME"),password=System.getenv("SPRING_DATASOURCE_PASSWORD");
+        if (url==null || !url.matches("jdbc:postgresql://(127\\.0\\.0\\.1|db-test):[0-9]+/atenea_test")
+                || !"atenea".equals(user) || !"atenea".equals(password))
+            throw new IllegalStateException("Caller-owned ephemeral PostgreSQL and synthetic credentials required");
+        try (var db=DriverManager.getConnection(url,user,password);var sql=db.createStatement()) {
+            sql.execute("CREATE DATABASE \""+DATABASE+"\"");
+        }
+        properties.add("spring.datasource.url",()->url.substring(0,url.length()-"atenea_test".length())+DATABASE);
+        // The owning test container/job removes this DB with its PostgreSQL
+        // runtime. No shared DEV/PROD database or server configuration is used.
+    }
     @Autowired ChangeValidationCoordinator coordinator;
     @Autowired ChangeValidationWorkflowStore store;
     @Autowired ClosedValidationOperationService validation;
@@ -112,8 +128,9 @@ class ChangeValidationWorkflowIntegrationTest {
     }
 
     @Test void fixturesAreIsolatedFromOtherCachedApplicationSchedulers() {
-        assertEquals("server_owned_validation_test",jdbc.queryForObject("SELECT current_schema()",String.class));
-        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM server_owned_validation_test.work_session WHERE id=?",Integer.class,sessionId));
+        assertEquals(DATABASE,jdbc.queryForObject("SELECT current_database()",String.class));
+        assertEquals("public",jdbc.queryForObject("SELECT current_schema()",String.class));
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM work_session WHERE id=?",Integer.class,sessionId));
         assertTrue(mockingDetails(scheduler).isMock());
         assertTrue(mockingDetails(resultCollector).isMock());
     }
