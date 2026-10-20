@@ -14,6 +14,12 @@ public record DevelopmentChangeValidationEvidenceResponse(
         int passedOperations,
         int requiredOperations,
         List<ValidationOperationResponse> operations,
-        ValidationOperationResponse lastAttempt
+        ValidationOperationResponse lastAttempt,
+        ChangeValidationWorkflowResponse workflow
 ) {
+    public DevelopmentChangeValidationEvidenceResponse(UUID changeKey, Long sessionId, long revision, String fingerprint,
+            DevelopmentChangeProjectionState state, int passed, int required, List<ValidationOperationResponse> operations,
+            ValidationOperationResponse lastAttempt) {
+        this(changeKey,sessionId,revision,fingerprint,state,passed,required,operations,lastAttempt,null);
+    }
 }

@@ -77,6 +77,7 @@ public class SourceUpdateStore {
         Long active = jdbc.queryForObject("""
                 SELECT (SELECT count(*) FROM agent_run WHERE status NOT IN ('SUCCEEDED','FAILED','CANCELLED'))
                      + (SELECT count(*) FROM validation_operation WHERE status='RUNNING')
+                     + (SELECT count(*) FROM change_validation_workflow WHERE state='RUNNING')
                      + (SELECT count(*) FROM mobile_source_finalization WHERE state <> 'PUBLISHED')
                      + (SELECT count(*) FROM mobile_delivery_operation WHERE state NOT IN
                          ('SUCCEEDED','ROLLED_BACK','FAILED','BLOCKED','ROLLBACK_FAILED'))

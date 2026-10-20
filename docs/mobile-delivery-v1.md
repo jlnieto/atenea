@@ -61,6 +61,40 @@ Si un fallo antiguo sólo conservó un resumen genérico, no se inventa su causa
    **Finalizar cambio** y confirmar. No finalizar antes de publicar y comprobar
    el resultado funcional.
 
+### Validación completa coordinada por el servidor
+
+`Validar cambio` registra una sola intención durable (`change_validation_workflow`,
+Flyway V106), ligada a WorkSession, Cambio, proyecto, worker, revisión, fingerprint
+y commit canónicos observados. Android envía una sola petición con idempotency key
+a `POST /api/sessions/{id}/validation-workflows`; no encadena POSTs desde la pantalla.
+Después sólo consulta la evidencia/entrega. Cambiar de aplicación, cerrar Atenea o
+reiniciar App no cancela ni pierde la secuencia autorizada.
+
+El scheduler dedicado ejecuta las cuatro definiciones cerradas en orden. Antes de
+admitir cada prueba persiste su UUID y lo confirma en otra transacción; ante una
+respuesta perdida reconcilia/reenvía únicamente esa identidad idempotente. Sólo
+un `VALIDATION_NOT_FOUND` autenticado autoriza el primer envío/reenvío. Fallo de
+prueba, ownership, revisión/base obsoleta o evidencia inválida detiene el workflow;
+nunca reintenta automáticamente una prueba terminal. Un reintento explícito con
+otra key conserva los resultados correctos y la auditoría anterior.
+Si main avanza después de una admisión ya confirmada en DB, esa misma prueba
+puede terminar; no se deja un intento fantasma sin enviar. Antes de admitir la
+siguiente y de promover el resultado final se vuelve a comprobar la base.
+
+La migración no adopta ni continúa validaciones históricas por su cuenta. El
+reconciliador anterior sigue recogiendo sólo resultados ya admitidos. El endpoint
+histórico `validate-change` vincula su polling a una única intención; no interpreta
+posts repetidos como permisos para reintentar fallos o validar otra revisión.
+
+`GET validation-evidence` incorpora `workflow` con estado/fase e identidad; leer
+no inicia, reconcilia ni reintenta pruebas. Android muestra `Validando…` durante
+toda la secuencia, incluso entre pruebas y después de recrear la pantalla. No
+ofrece `Continuar validación` mientras trabaja el servidor. Source updates,
+finalización, retirada y nuevos AgentRuns no pueden atravesar ese intervalo.
+
+El despliegue requiere backup y aplicación de V106, backend y APK compatible;
+implementar/probar esta capacidad no autoriza aplicarla sobre datos reales.
+
 ### Espacio y retención durante la preparación
 
 El publicador VPS mantiene automáticamente su retención antes de descargar,

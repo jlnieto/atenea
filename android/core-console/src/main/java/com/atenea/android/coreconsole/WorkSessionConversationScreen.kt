@@ -89,6 +89,7 @@ internal fun WorkSessionConversationScreen(
     var operationNotice by remember { mutableStateOf<String?>(null) }
     var operationPending by remember { mutableStateOf(false) }
     var validationPending by remember { mutableStateOf(false) }
+    var validationRequestKey by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
     var wasBackgrounded by remember { mutableStateOf(false) }
     var attachmentDraft by remember(sessionId) { mutableStateOf(WorkSessionAttachmentDraft()) }
     var openingAttachmentId by remember { mutableStateOf<UUID?>(null) }
@@ -657,25 +658,16 @@ internal fun WorkSessionConversationScreen(
         scope.launch {
             error = null
             try {
-                while (true) {
-                    val result = apiClient.advanceDevelopmentChangeValidation(id)
-                    workflow.refresh()
-                    when (result.state) {
-                        "RUNNING", "ADVANCING" -> delay(3_000)
-                        "SUCCEEDED" -> {
-                            refresh(silent = true, includeProfile = false)
-                            break
-                        }
-                        else -> {
-                            error = result.summary
-                            refresh(silent = true, includeProfile = false)
-                            break
-                        }
-                    }
-                }
+                val key = validationRequestKey ?: UUID.randomUUID().toString().also { validationRequestKey = it }
+                // One durable request. The server owns admission, polling,
+                // sequencing and completion; lifecycle refreshes only read.
+                apiClient.startDevelopmentChangeValidation(id, UUID.fromString(key))
+                validationRequestKey = null
+                workflow.refresh()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (validationError: Exception) {
+                if (validationError is AteneaApiException && validationError.status in 400..499) validationRequestKey = null
                 error = sourceBaseFailureMessage(validationError.message)
                     ?: validationError.message ?: "No se pudo validar el cambio."
                 refresh(silent = true, includeProfile = false)

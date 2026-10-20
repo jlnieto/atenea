@@ -13,8 +13,31 @@ data class DevelopmentChangeValidationEvidence(
     val passedOperations: Int,
     val requiredOperations: Int,
     val operations: List<DevelopmentChangeValidationAttempt>,
-    val lastAttempt: DevelopmentChangeValidationAttempt?
+    val lastAttempt: DevelopmentChangeValidationAttempt?,
+    val workflow: ChangeValidationWorkflow? = null
 )
+
+data class ChangeValidationWorkflow(val id: UUID, val workSessionId: Long, val sourceRevision: Long,
+    val sourceFingerprintSha256: String, val state: String, val phase: String, val activeOperationId: UUID?,
+    val errorCode: String?, val startedAt: String, val updatedAt: String, val finishedAt: String?) {
+    val running get() = state == "RUNNING"
+}
+
+internal fun parseChangeValidationWorkflow(json: JSONObject): ChangeValidationWorkflow {
+    val state = json.getString("state").also { require(it in setOf("RUNNING", "SUCCEEDED", "FAILED", "BLOCKED", "STALE")) }
+    val phase = json.getString("phase").also { require(it in setOf("QUEUED", "DISPATCHING", "MONITORING", "FINISHED")) }
+    val finished = json.evidenceNullableString("finishedAt")
+    require(if (state == "RUNNING") phase != "FINISHED" && finished == null else phase == "FINISHED" && finished != null)
+    val active = json.evidenceNullableString("activeOperationId")?.let(UUID::fromString)
+    require(phase !in setOf("DISPATCHING", "MONITORING") || active != null)
+    val started = json.getString("startedAt"); val updated = json.getString("updatedAt")
+    listOfNotNull(started, updated, finished).forEach(Instant::parse)
+    return ChangeValidationWorkflow(UUID.fromString(json.getString("id")), json.getLong("workSessionId"),
+        json.getLong("sourceRevision").also { require(it >= 0) },
+        json.getString("sourceFingerprintSha256").also { require(it.matches(Regex("[0-9a-f]{64}"))) },
+        state, phase, active, json.evidenceNullableString("errorCode")?.also { require(it.matches(Regex("[A-Z][A-Z0-9_]+"))) },
+        started, updated, finished)
+}
 
 data class DevelopmentChangeValidationAttempt(
     val id: UUID,
@@ -59,7 +82,11 @@ internal fun parseDevelopmentChangeValidationEvidence(json: JSONObject): Develop
         passedOperations = passed,
         requiredOperations = required,
         operations = operations,
-        lastAttempt = json.optJSONObject("lastAttempt")?.let { parseValidationAttempt(it, sessionId) }
+        lastAttempt = json.optJSONObject("lastAttempt")?.let { parseValidationAttempt(it, sessionId) },
+        workflow = json.optJSONObject("workflow")?.let(::parseChangeValidationWorkflow)?.also {
+            require(it.workSessionId == sessionId && it.sourceRevision == json.getLong("sourceRevision")
+                && it.sourceFingerprintSha256 == fingerprint)
+        }
     )
 }
 

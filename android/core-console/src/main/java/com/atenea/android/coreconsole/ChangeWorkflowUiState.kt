@@ -124,6 +124,7 @@ internal class MobileDeliveryUiState(
     } == true
     private val validationObserved get() = loaded && loadError == null
     val validationCurrent: Boolean get() = validationObserved && validationCoherent
+        && validationEvidence?.workflow?.let { it.state == "SUCCEEDED" } != false
         && pendingAction !in setOf(DeliveryStepAction.UPDATE_BASE, DeliveryStepAction.RESOLVE,
             DeliveryStepAction.RECOVER_SOURCE, DeliveryStepAction.RETRY_RESOLVER) && validationEvidence?.let {
         it.validationState == "CURRENT" && it.requiredOperations == 4 && it.passedOperations == 4
@@ -131,27 +132,32 @@ internal class MobileDeliveryUiState(
                 && attempt.sourceTreeFingerprintSha256 == it.sourceFingerprintSha256 }
     } == true
     val validationRunning get() = validationRequested || validationObserved && validationCoherent
-        && validationEvidence?.operations?.any { it.status == "RUNNING" } == true
+        && (validationEvidence?.workflow?.running ?: (validationEvidence?.operations?.any { it.status == "RUNNING" } == true))
 
     fun validationUi(session: MobileWorkSession?, runInProgress: Boolean): DevelopmentChangeValidationUiState {
         if (session?.developmentChangeKey == null) return DevelopmentChangeValidationUiState(false, false, "Validar cambio", "")
         val evidence = validationEvidence
         val matches = validationObserved && validationCoherent && evidence?.changeKey?.toString() == session.developmentChangeKey
         val current = matches && validationCurrent
-        val running = matches && validationRequested
-        val resumable = matches && !validationRequested && validationRunning
+        val running = matches && validationRunning
         return DevelopmentChangeValidationUiState(true,
             matches && !current && !busy && !running && !runInProgress && evidence?.sourceFingerprintSha256 != null
                 && !deliveryBeforeValidation(false) && !sourcePhaseComplete && session.status == "OPEN",
-            if (running) "Validando…" else if (resumable) "Continuar validación" else "Validar cambio",
+            if (running) "Validando…" else if (evidence?.workflow?.state in setOf("FAILED", "BLOCKED")) "Reintentar validación" else "Validar cambio",
             when {
                 !matches -> loadError ?: if (!loaded || refreshing) "Consultando la revisión y sus pruebas. No hay que repetir ninguna acción."
                     else "No se pudo confirmar la revisión y sus pruebas. Consulta el estado o abre Ayuda con este cambio."
-                running -> "Comprobando la revisión ${evidence!!.sourceRevision} · ${evidence.passedOperations}/4 pruebas completadas."
-                resumable -> "Hay una validación iniciada de la revisión ${evidence!!.sourceRevision}. Continúa la misma comprobación; no se crea otro cambio."
+                running -> "El servidor comprueba la revisión ${evidence!!.sourceRevision} · ${evidence.passedOperations}/4 pruebas completadas. Puedes salir de Atenea."
                 current -> "Revisión ${evidence!!.sourceRevision} validada · 4/4 comprobaciones correctas."
+                evidence?.workflow?.state in setOf("FAILED", "BLOCKED", "STALE") -> when (evidence?.workflow?.errorCode) {
+                    "VALIDATION_CHECK_FAILED" -> "La validación se ha detenido en una prueba. Revisa su resultado antes de reintentar; las pruebas correctas se conservan."
+                    "VALIDATION_SOURCE_CHANGED", "VALIDATION_SOURCE_OR_OWNER_CHANGED" -> "La revisión o su identidad cambiaron. La validación se ha detenido; no se ha validado otra revisión."
+                    "SOURCE_FINALIZATION_MAIN_MOVED" -> "Main ha avanzado. Actualiza la base antes de validar la revisión nueva."
+                    else -> "La validación del servidor necesita atención. Consulta los detalles o Ayuda con este cambio; no se repiten pruebas automáticamente."
+                }
                 else -> "Revisión ${evidence!!.sourceRevision} pendiente de validar · ${evidence.passedOperations}/4 comprobaciones."
-            }, current, matches && evidence?.validationState == "BLOCKED", running, checking = !matches)
+            }, current, matches && !running && (evidence?.validationState == "BLOCKED"
+                || evidence?.workflow?.state in setOf("FAILED", "BLOCKED", "STALE")), running, checking = !matches)
     }
 
     fun canFinalize(validated: Boolean, runInProgress: Boolean) = available && completionEnabled && completion == null
@@ -304,7 +310,7 @@ internal class MobileDeliveryUiState(
     }
 
     fun beginValidation(): Boolean {
-        if (busy || !validationObserved || !validationCoherent || validationCurrent || deliveryBeforeValidation(false)
+        if (busy || validationRunning || !validationObserved || !validationCoherent || validationCurrent || deliveryBeforeValidation(false)
             || sourcePhaseComplete || validationEvidence?.sourceFingerprintSha256 == null) return false
         generation++
         readSequence++

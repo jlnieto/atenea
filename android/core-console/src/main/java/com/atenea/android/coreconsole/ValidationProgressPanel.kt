@@ -27,7 +27,7 @@ import kotlinx.coroutines.delay
 internal fun ValidationProgressPanel(evidence: DevelopmentChangeValidationEvidence?, sessionId: Long,
     validationRequested: Boolean, observationConfirmed: Boolean) {
     val owner = LocalLifecycleOwner.current
-    val ticking = validationRequested || evidence?.operations?.any { it.status == "RUNNING" } == true
+    val ticking = validationRequested || (evidence?.workflow?.running ?: (evidence?.operations?.any { it.status == "RUNNING" } == true))
     var now by remember(sessionId) { mutableStateOf(Instant.now()) }
     LaunchedEffect(owner, ticking, evidence) {
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {

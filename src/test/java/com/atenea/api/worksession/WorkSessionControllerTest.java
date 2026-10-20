@@ -3,6 +3,7 @@ package com.atenea.api.worksession;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -56,6 +57,8 @@ class WorkSessionControllerTest {
     private ClosedValidationOperationService closedValidationOperationService;
     @Mock
     private RepositoryRoleSetService repositoryRoleSetService;
+    @Mock
+    private com.atenea.service.worksession.ChangeValidationCoordinator changeValidationCoordinator;
 
     private MockMvc mockMvc;
 
@@ -65,7 +68,7 @@ class WorkSessionControllerTest {
                         workSessionService,
                         workSessionGitHubService,
                         closedValidationOperationService,
-                        repositoryRoleSetService))
+                        repositoryRoleSetService, changeValidationCoordinator))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json().build()))
@@ -165,7 +168,7 @@ class WorkSessionControllerTest {
     @Test
     void validateChangeEndpointReturnsOnlyDurableProgressProjection() throws Exception {
         UUID changeKey = UUID.fromString("59315b6e-59bc-4884-9def-356e1ca86ef4");
-        when(closedValidationOperationService.advanceDevelopmentChange(21L))
+        when(changeValidationCoordinator.legacyRequest(21L))
                 .thenReturn(new DevelopmentChangeValidationResponse(
                         changeKey, 2, "4".repeat(64),
                         DevelopmentChangeProjectionState.NOT_STARTED,
@@ -181,6 +184,31 @@ class WorkSessionControllerTest {
                 .andExpect(jsonPath("$.currentOperation").value("ANDROID_BUILD"))
                 .andExpect(jsonPath("$.passedOperations").value(2))
                 .andExpect(jsonPath("$.requiredOperations").value(4));
+    }
+
+    @Test
+    void oneValidationRequestAcceptsOnlyTheIdempotencyKeyAndReturnsTheServerIntent() throws Exception {
+        UUID key=UUID.randomUUID();
+        when(changeValidationCoordinator.request(21L,key)).thenReturn(new com.atenea.api.worksession.ChangeValidationWorkflowResponse(
+                key,21L,3,"4".repeat(64),"RUNNING","QUEUED",null,null,
+                Instant.parse("2026-10-20T10:00:00Z"),Instant.parse("2026-10-20T10:00:00Z"),null));
+        mockMvc.perform(post("/api/sessions/21/validation-workflows").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"idempotencyKey\":\""+key+"\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(key.toString()))
+                .andExpect(jsonPath("$.phase").value("QUEUED")).andExpect(jsonPath("$.sourceRevision").value(3));
+        verify(changeValidationCoordinator).request(21L,key);
+        verifyNoMoreInteractions(changeValidationCoordinator);
+        verifyNoInteractions(closedValidationOperationService);
+    }
+
+    @Test
+    void arbitraryPathsCommandsAndMalformedIntentKeysAreRejected() throws Exception {
+        for(String body:List.of("{}","{\"idempotencyKey\":\"not-a-uuid\"}",
+                "{\"idempotencyKey\":\""+UUID.randomUUID()+"\",\"command\":\"arbitrary\"}")) {
+            mockMvc.perform(post("/api/sessions/21/validation-workflows").contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(changeValidationCoordinator,closedValidationOperationService);
     }
 
     @Test

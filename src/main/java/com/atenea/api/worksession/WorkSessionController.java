@@ -3,6 +3,7 @@ package com.atenea.api.worksession;
 import com.atenea.service.worksession.WorkSessionService;
 import com.atenea.service.worksession.WorkSessionGitHubService;
 import com.atenea.service.worksession.ClosedValidationOperationService;
+import com.atenea.service.worksession.ChangeValidationCoordinator;
 import com.atenea.service.worksession.RepositoryRoleSetService;
 import com.atenea.persistence.worksession.ValidationOperationKind;
 import jakarta.validation.Valid;
@@ -21,17 +22,20 @@ public class WorkSessionController {
     private final WorkSessionGitHubService workSessionGitHubService;
     private final ClosedValidationOperationService closedValidationOperationService;
     private final RepositoryRoleSetService repositoryRoleSetService;
+    private final ChangeValidationCoordinator changeValidationCoordinator;
 
     public WorkSessionController(
             WorkSessionService workSessionService,
             WorkSessionGitHubService workSessionGitHubService,
             ClosedValidationOperationService closedValidationOperationService,
-            RepositoryRoleSetService repositoryRoleSetService
+            RepositoryRoleSetService repositoryRoleSetService,
+            ChangeValidationCoordinator changeValidationCoordinator
     ) {
         this.workSessionService = workSessionService;
         this.workSessionGitHubService = workSessionGitHubService;
         this.closedValidationOperationService = closedValidationOperationService;
         this.repositoryRoleSetService = repositoryRoleSetService;
+        this.changeValidationCoordinator = changeValidationCoordinator;
     }
 
     @GetMapping("/api/sessions/{sessionId}")
@@ -52,7 +56,20 @@ public class WorkSessionController {
     public DevelopmentChangeValidationResponse validateDevelopmentChange(
             @PathVariable Long sessionId
     ) {
-        return closedValidationOperationService.advanceDevelopmentChange(sessionId);
+        return changeValidationCoordinator.legacyRequest(sessionId);
+    }
+
+    public record StartValidationRequest(@jakarta.validation.constraints.NotNull java.util.UUID idempotencyKey) {
+        @com.fasterxml.jackson.annotation.JsonAnySetter
+        public void rejectUnexpected(String key, Object value) {
+            throw new IllegalArgumentException("Only idempotencyKey is accepted");
+        }
+    }
+
+    @PostMapping("/api/sessions/{sessionId}/validation-workflows")
+    public ChangeValidationWorkflowResponse startValidationWorkflow(@PathVariable Long sessionId,
+            @Valid @RequestBody StartValidationRequest request) {
+        return changeValidationCoordinator.request(sessionId,request.idempotencyKey());
     }
 
     @GetMapping("/api/sessions/{sessionId}/validation-evidence")

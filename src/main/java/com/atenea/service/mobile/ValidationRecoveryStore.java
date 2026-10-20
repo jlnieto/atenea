@@ -22,6 +22,7 @@ public class ValidationRecoveryStore {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
             SELECT NOT EXISTS(SELECT 1 FROM agent_run WHERE status NOT IN ('SUCCEEDED','FAILED','CANCELLED'))
              AND NOT EXISTS(SELECT 1 FROM validation_operation WHERE status='RUNNING')
+             AND NOT EXISTS(SELECT 1 FROM change_validation_workflow WHERE state='RUNNING')
              AND NOT EXISTS(SELECT 1 FROM mobile_delivery_operation WHERE kind='RELEASE'
                  AND state NOT IN ('SUCCEEDED','ROLLED_BACK','FAILED','BLOCKED'))
             """,Boolean.class));

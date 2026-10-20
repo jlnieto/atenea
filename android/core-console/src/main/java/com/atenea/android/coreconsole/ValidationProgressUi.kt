@@ -37,7 +37,8 @@ internal fun validationProgressUi(evidence: DevelopmentChangeValidationEvidence?
     val fresh = active.isNotEmpty() && active.all { confirmedRecently(it, now, observationConfirmed) }
     val steps = validationSteps.map { (kind, label) ->
         val attempt = attempts[kind]
-        val phaseFresh = attempt != null && confirmedRecently(attempt, now, observationConfirmed)
+        val phaseFresh = attempt != null && evidence.workflow?.running != false && evidence.workflow?.errorCode == null
+            && confirmedRecently(attempt, now, observationConfirmed)
         val (status, text) = when (attempt?.status) {
             null -> ValidationProgressStatus.PENDING to "Pendiente"
             "SUCCEEDED" -> ValidationProgressStatus.PASSED to "Correcta"
@@ -58,12 +59,18 @@ internal fun validationProgressUi(evidence: DevelopmentChangeValidationEvidence?
         }
         ValidationProgressStep(kind, label, status, text, attempt?.let { timing(it, now, phaseFresh) })
     }
-    val first = evidence.operations.mapNotNull { progressInstant(it.startedAt) }.minOrNull()
-    val end = if (active.isNotEmpty() || validationRequested) now
+    val first = progressInstant(evidence.workflow?.startedAt)
+        ?: evidence.operations.mapNotNull { progressInstant(it.startedAt) }.minOrNull()
+    val end = progressInstant(evidence.workflow?.finishedAt) ?: if (active.isNotEmpty() || validationRequested || evidence.workflow?.running == true) now
         else evidence.operations.mapNotNull { progressInstant(it.finishedAt) }.maxOrNull()
     val total = if (first != null && end != null) "Tiempo desde la primera solicitud: ${validationElapsed(first, end)}" else null
     val confirmation = when {
         !observationConfirmed -> "No se pudo actualizar el estado. Estos son los últimos resultados guardados; no se ha repetido ninguna prueba."
+        evidence.workflow?.errorCode == "VALIDATION_WORKER_UNCONFIRMED" -> "Esperando confirmación del worker. Se conserva la misma operación; no se ha duplicado ninguna prueba."
+        evidence.workflow?.errorCode == "VALIDATION_SOURCE_UNCONFIRMED" -> "Esperando confirmar el código en el worker. Todavía no se admite otra prueba."
+        evidence.workflow?.running == false && evidence.workflow?.state != "SUCCEEDED" ->
+            "La validación del servidor está detenida. Los resultados se conservan; no se inicia ninguna prueba adicional."
+        active.isEmpty() && evidence.workflow?.running == true -> "El servidor está preparando la siguiente comprobación. Puedes salir de Atenea."
         active.isEmpty() -> null
         observed == null -> "El worker todavía no ha confirmado su fase. No se presupone que esté ejecutando pruebas."
         observed.isAfter(now.plusSeconds(5)) -> "La hora de confirmación no coincide con la del dispositivo. La fase está por confirmar."
@@ -71,7 +78,7 @@ internal fun validationProgressUi(evidence: DevelopmentChangeValidationEvidence?
         else -> "Sin confirmación reciente del worker (última: hace ${validationElapsed(observed, now)}). Esto no demuestra un fallo; no repitas la validación."
     }
     return ValidationProgressUi(evidence.sourceRevision, evidence.passedOperations, steps, total, confirmation,
-        !observationConfirmed || active.isNotEmpty() && !fresh)
+        !observationConfirmed || evidence.workflow?.errorCode != null || active.isNotEmpty() && !fresh)
 }
 
 private fun confirmedRecently(attempt: DevelopmentChangeValidationAttempt, now: Instant, observationConfirmed: Boolean): Boolean {

@@ -161,6 +161,7 @@ public class SessionTurnService {
             throw new IllegalArgumentException("Turn message must not be blank");
         }
 
+        agentRunService.lockWorkAdmission();
         WorkSessionEntity session = (request.clientRequestId() == null
                 ? workSessionRepository.findWithProjectById(sessionId)
                 : workSessionRepository.findLockedWithProjectById(sessionId))
