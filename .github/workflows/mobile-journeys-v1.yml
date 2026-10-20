@@ -26,7 +26,9 @@ jobs:
       - name: Run the reviewed journey suite with temporary KVM group only
         run: |
           journey_operator="$(id -un)"
-          sudo -n -u "$journey_operator" -g kvm env \
+          journey_groups=()
+          for journey_group in $(id -Gn); do journey_groups+=(-G "$journey_group"); done
+          sudo -n /usr/sbin/runuser -u "$journey_operator" -g kvm "${journey_groups[@]}" -- env \
             "ANDROID_HOME=$ANDROID_HOME" "ANDROID_SDK_ROOT=$ANDROID_HOME" \
             bash ./scripts/test-mobile-journeys.sh
       - name: Retain isolated test reports
