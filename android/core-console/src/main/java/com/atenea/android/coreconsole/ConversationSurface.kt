@@ -79,6 +79,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.atenea.android.api.MobileConversationTurn
 import com.atenea.android.api.SessionTurnAttachment
@@ -375,7 +376,10 @@ private fun ConversationTopBar(
                 )
                 onAttachments?.let { action -> DropdownMenuItem(
                     text = { Text(if (attachmentsReady) "Adjuntar imágenes" else if (attachmentsRecoverable) "Activar imágenes" else "Imágenes no disponibles") },
-                    leadingIcon = { PaperclipIcon(if (attachmentsReady) ConversationColors.action else ConversationColors.mutedText) },
+                    leadingIcon = { AttachmentImageGlyph(
+                        if (attachmentsReady) ConversationColors.action else ConversationColors.mutedText,
+                        iconSize = 22.dp
+                    ) },
                     onClick = { menuOpen = false; action() }
                 ) }
                 if (showChange) DropdownMenuItem(
@@ -1025,31 +1029,8 @@ private fun MicrophoneIcon(color: Color) {
 }
 
 @Composable
-private fun PaperclipIcon(color: Color) {
-    Canvas(modifier = Modifier.size(21.dp)) {
-        val stroke = 1.8.dp.toPx()
-        val path = Path().apply {
-            moveTo(size.width * 0.68f, size.height * 0.26f)
-            cubicTo(
-                size.width * 0.84f, size.height * 0.42f,
-                size.width * 0.82f, size.height * 0.62f,
-                size.width * 0.66f, size.height * 0.77f
-            )
-            lineTo(size.width * 0.38f, size.height * 0.77f)
-            cubicTo(
-                size.width * 0.20f, size.height * 0.77f,
-                size.width * 0.16f, size.height * 0.54f,
-                size.width * 0.30f, size.height * 0.40f
-            )
-            lineTo(size.width * 0.56f, size.height * 0.20f)
-        }
-        drawPath(path, color = color, style = Stroke(stroke, cap = StrokeCap.Round))
-    }
-}
-
-@Composable
-private fun AttachmentImageGlyph(color: Color) {
-    Canvas(modifier = Modifier.size(18.dp)) {
+private fun AttachmentImageGlyph(color: Color, iconSize: Dp = 18.dp) {
+    Canvas(modifier = Modifier.size(iconSize)) {
         val stroke = 1.5.dp.toPx()
         drawRoundRect(
             color = color,
