@@ -155,8 +155,9 @@ public class MobileChangeCompletionService {
             var after = requireDeployment(operation.sessionId(), actor, binding);
             transaction.executeWithoutResult(ignored -> complete(id, after, workspaceAfter));
         } catch (DeliveryRejectedException rejected) {
-            if ("APP_OBSERVATION_BUSY".equals(rejected.code())) waitForDeploymentObservation(id);
-            else block(id, rejected.code());
+            var observation = rejected instanceof DeliveryObservationRejected observed ? observed.observation : null;
+            if (observationBusy(rejected.code())) waitForDeploymentObservation(id, rejected.code(), observation);
+            else block(id, rejected.code(), observation);
         } catch (WorkSessionCloseBlockedException blocked) {
             WorkSessionEntity retained = session(operation.sessionId(), false);
             if (retained.getRemoteCloseState() == RemoteCloseState.RECONCILING) return;
@@ -206,16 +207,20 @@ public class MobileChangeCompletionService {
     }
 
     private void block(UUID id, String code) {
+        block(id, code, null);
+    }
+    private void block(UUID id, String code, ChangeDeliveryReadiness observation) {
         transaction.executeWithoutResult(ignored -> {
             DeliveryOperation op = store.get(id, true);
             if (op.terminal()) return;
             ObjectNode evidence = op.evidence().deepCopy();
             var attempts = evidence.withArray("blockedAttempts");
             attempts.addObject().put("code", code).put("at", Instant.now().toString());
+            if (observation != null) evidence.set("requiredDeliveryObservation", mapper.valueToTree(observation));
             store.update(op, "BLOCKED", code, op.planSha256(), evidence);
         });
     }
-    private void waitForDeploymentObservation(UUID id) {
+    private void waitForDeploymentObservation(UUID id, String code, ChangeDeliveryReadiness observation) {
         transaction.executeWithoutResult(ignored -> {
             DeliveryOperation op = store.get(id, true);
             if (op.terminal()) return;
@@ -223,11 +228,12 @@ public class MobileChangeCompletionService {
             ObjectNode wait = evidence.withObject("deploymentObservationWait");
             String now = Instant.now().toString();
             if (!wait.has("firstObservedAt")) wait.put("firstObservedAt", now);
-            wait.put("lastObservedAt", now).put("code", "APP_OBSERVATION_BUSY")
+            wait.put("lastObservedAt", now).put("code", code)
                     .put("attempts", wait.path("attempts").asLong(0) + 1);
+            if (observation != null) evidence.set("requiredDeliveryObservation", mapper.valueToTree(observation));
             // Busy is not healthy evidence, nor a terminal refusal. The existing
             // scheduler rechecks fresh evidence with this exact intent/close UUID.
-            store.update(op, "APPLYING", "APP_OBSERVATION_BUSY", op.planSha256(), evidence);
+            store.update(op, "APPLYING", code, op.planSha256(), evidence);
         });
     }
     private DevelopmentChangeWorkspaceObservation requireWorkspace(ChangeCompletionEvidence binding, UUID inspectionId) {
@@ -253,16 +259,48 @@ public class MobileChangeCompletionService {
     private void requireDeploymentProof(ChangeDeliveryReadiness result, Long id, ChangeCompletionEvidence binding) {
         // Keep the symbolic cause instead of turning a concurrent read into a
         // definitive unhealthy deployment. Only BUSY is retried automatically.
+        if (result != null && observationBusy(result.errorCode()) && !exactBusyObservation(result, id, binding))
+            throw new DeliveryObservationRejected("COMPLETION_DELIVERY_EVIDENCE_MISMATCH", result);
         if (result != null && id.equals(result.sessionId()) && ("UNAVAILABLE".equals(result.requirementsStatus())
-                    || result.backend()!=null && "UNAVAILABLE".equals(result.backend().status()))
+                    || result.backend()!=null && "UNAVAILABLE".equals(result.backend().status())
+                    || result.requiredTargets()!=null && result.requiredTargets().contains(DeliveryTarget.ANDROID_STABLE)
+                        && "UNAVAILABLE".equals(result.androidStatus()))
                 && result.errorCode() != null
                 && result.errorCode().matches("[A-Z][A-Z0-9_]{2,79}")) {
-            throw new DeliveryRejectedException(result.errorCode());
+            throw new DeliveryObservationRejected(result.errorCode(), result);
         }
         if (result == null || !ChangeDeliveryReadiness.verifiedForClose(mapper.valueToTree(result),id,
                 binding.publishedHeadCommit(),binding.integratedMergeCommit())) {
-            throw new DeliveryRejectedException(result != null && result.requiredTargets().contains(DeliveryTarget.ANDROID_STABLE)
-                    && !"INCLUDED".equals(result.androidStatus()) ? "ANDROID_DELIVERY_REQUIRED" : "HEALTHY_DELIVERED_CHANGE_REQUIRED");
+            throw new DeliveryObservationRejected(result != null && result.requiredTargets()!=null
+                    && result.requiredTargets().contains(DeliveryTarget.ANDROID_STABLE)
+                    && !"INCLUDED".equals(result.androidStatus()) ? "ANDROID_DELIVERY_REQUIRED" : "HEALTHY_DELIVERED_CHANGE_REQUIRED", result);
+        }
+    }
+    private static boolean observationBusy(String code) {
+        return "APP_OBSERVATION_BUSY".equals(code) || "ANDROID_OBSERVATION_BUSY".equals(code);
+    }
+    private static boolean exactBusyObservation(ChangeDeliveryReadiness result, Long id, ChangeCompletionEvidence binding) {
+        // Busy permits another read, never foreign/stale evidence or a close.
+        long now=Instant.now().getEpochSecond();
+        if (!id.equals(result.sessionId()) || !binding.publishedHeadCommit().equals(result.headCommit())
+                || !binding.integratedMergeCommit().equals(result.integratedMergeCommit()) || result.ready()
+                || !("CONFIRMED".equals(result.requirementsStatus()) || "UNAVAILABLE".equals(result.requirementsStatus()))
+                || result.observedAt()<now-60 || result.observedAt()>now+5 || result.requiredTargets()==null
+                || result.requiredTargets().isEmpty() || result.requiredTargets().size()>2
+                || result.requiredTargets().stream().distinct().count()!=result.requiredTargets().size()
+                || result.requiredTargets().stream().anyMatch(t->t!=DeliveryTarget.APP_PROD && t!=DeliveryTarget.ANDROID_STABLE)) return false;
+        if ("ANDROID_OBSERVATION_BUSY".equals(result.errorCode()))
+            return result.requiredTargets().contains(DeliveryTarget.ANDROID_STABLE) && result.android()==null
+                    && "UNAVAILABLE".equals(result.androidStatus());
+        return result.requiredTargets().contains(DeliveryTarget.APP_PROD) && result.backend()!=null
+                && id.equals(result.backend().sessionId()) && "UNAVAILABLE".equals(result.backend().status())
+                && "APP_OBSERVATION_BUSY".equals(result.backend().errorCode());
+    }
+    /** Fixed typed facts only; no raw transport response, command or credential. */
+    private static final class DeliveryObservationRejected extends DeliveryRejectedException {
+        private final ChangeDeliveryReadiness observation;
+        private DeliveryObservationRejected(String code, ChangeDeliveryReadiness observation) {
+            super(code); this.observation=observation;
         }
     }
     private void owned(WorkSessionEntity session) {

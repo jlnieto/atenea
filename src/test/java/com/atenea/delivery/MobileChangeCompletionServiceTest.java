@@ -19,6 +19,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
@@ -317,5 +319,134 @@ class MobileChangeCompletionServiceTest {
         service.advance(id);
         assertEquals("SUCCEEDED",durable.get().state()); verify(close,times(1)).closeSession(21L);
         verify(executor,never()).execute(any(),any(),any()); verify(executor,never()).plan(any(),any(),any());
+    }
+
+    @Test void androidOnlyChangeCompletesUsingItsPublishedApkWithoutRequiringABackendDelivery() {
+        var observed=actualAndroidOnlyDelivery();
+        service.request(21L,actor,false);service.advance(id);
+        assertEquals("SUCCEEDED",durable.get().state());assertEquals(DevelopmentChangeStatus.COMPLETED,change.getStatus());
+        assertTrue(durable.get().evidence().path("requiredDeliveryAfter").path("backend").isNull());
+        verify(close,times(1)).closeSession(21L);
+        verify(observed.executor(),never()).observeApp();
+        verify(observed.executor(),never()).execute(any(),any(),any());
+        verify(observed.executor(),never()).plan(any(),any(),any());
+    }
+
+    @Test void actualAndroidBusyWaitsOnTheSameIntentAndRetainsTheObservationCause() {
+        var observed=actualAndroidOnlyDelivery();service.request(21L,actor,false);
+        String binding=durable.get().evidence().path("completionBindingSha256").asText();
+        doThrow(new DeliveryRejectedException("ANDROID_OBSERVATION_BUSY")).when(observed.executor()).observeAndroid();
+        service.advance(id);service.advance(id);
+        var waiting=durable.get();
+        assertEquals("APPLYING",waiting.state());assertEquals("ANDROID_OBSERVATION_BUSY",waiting.errorCode());
+        assertEquals(2,waiting.evidence().path("deploymentObservationWait").path("attempts").asLong());
+        var proof=waiting.evidence().path("requiredDeliveryObservation");
+        assertEquals("ANDROID_OBSERVATION_BUSY",proof.path("errorCode").asText());
+        assertEquals("CONFIRMED",proof.path("requirementsStatus").asText());
+        assertEquals("UNAVAILABLE",proof.path("androidStatus").asText());assertTrue(proof.path("backend").isNull());
+        assertEquals(WorkSessionStatus.CLOSING,session.getStatus());verifyNoInteractions(close);
+        doAnswer(call->androidObservation()).when(observed.executor()).observeAndroid();
+        service.advance(id);
+        assertEquals("SUCCEEDED",durable.get().state());assertEquals(id,durable.get().id());
+        assertEquals(execution,durable.get().executionId());
+        assertEquals(binding,durable.get().evidence().path("completionBindingSha256").asText());
+        verify(close,times(1)).closeSession(21L);
+        verify(store,times(1)).create(any(),any(),any(),any(),any(),any(),any());
+        verify(observed.executor(),never()).execute(any(),any(),any());
+        verify(observed.executor(),never()).plan(any(),any(),any());
+    }
+
+    @Test void androidBusyBeforeAdmissionExposesTheCauseWithoutStartingAClosingSession() {
+        var observed=actualAndroidOnlyDelivery();
+        doThrow(new DeliveryRejectedException("ANDROID_OBSERVATION_BUSY")).when(observed.executor()).observeAndroid();
+        assertEquals("ANDROID_OBSERVATION_BUSY",assertThrows(DeliveryRejectedException.class,
+                ()->service.request(21L,actor,false)).code());
+        assertNull(durable.get());assertEquals(WorkSessionStatus.OPEN,session.getStatus());
+        verifyNoInteractions(close,workspaces);
+        verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
+    }
+
+    @Test void androidBusyAfterRemoteReleaseDoesNotRepeatTheCloseEffect() {
+        var observed=actualAndroidOnlyDelivery();service.request(21L,actor,false);
+        doAnswer(call->androidObservation()).doThrow(new DeliveryRejectedException("ANDROID_OBSERVATION_BUSY"))
+                .when(observed.executor()).observeAndroid();
+        service.advance(id);
+        UUID closeId=session.getRemoteCloseOperationId();
+        assertEquals("APPLYING",durable.get().state());assertEquals("ANDROID_OBSERVATION_BUSY",durable.get().errorCode());
+        assertEquals(WorkSessionStatus.CLOSED,session.getStatus());assertEquals(DevelopmentChangeStatus.OPEN,change.getStatus());
+        doAnswer(call->androidObservation()).when(observed.executor()).observeAndroid();
+        service.advance(id);
+        assertEquals("SUCCEEDED",durable.get().state());assertEquals(closeId,session.getRemoteCloseOperationId());
+        assertEquals(execution,durable.get().executionId());verify(close,times(1)).closeSession(21L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"ANDROID_OBSERVATION_EVIDENCE_MISMATCH","ANDROID_OBSERVATION_NOT_VERIFIED",
+            "ANDROID_OBSERVATION_MOVED","RELEASE_TRANSPORT_UNAVAILABLE"})
+    void realAndroidRefusalsKeepTheirCodeAndDoNotAutoRetry(String code) {
+        var observed=actualAndroidOnlyDelivery();service.request(21L,actor,false);
+        doThrow(new DeliveryRejectedException(code)).when(observed.executor()).observeAndroid();
+        service.advance(id);
+        assertEquals("BLOCKED",durable.get().state());assertEquals(code,durable.get().errorCode());
+        assertEquals(code,durable.get().evidence().path("requiredDeliveryObservation").path("errorCode").asText());
+        assertEquals(code,durable.get().evidence().path("blockedAttempts").get(0).path("code").asText());
+        assertEquals(WorkSessionStatus.CLOSING,session.getStatus());verifyNoInteractions(close);
+        clearInvocations(observed.executor());service.advance(id);verifyNoInteractions(observed.executor());
+    }
+
+    @Test void missingChangeInTheApkIsStillADeterministicDeliveryBlock() {
+        var observed=actualAndroidOnlyDelivery();service.request(21L,actor,false);
+        doAnswer(call->androidObservation().put("sourceCommit","0".repeat(40))).when(observed.executor()).observeAndroid();
+        doThrow(new com.atenea.github.GitHubIntegrationException("RELEASE_CHANGE_NOT_INCLUDED"))
+                .when(observed.github()).requireIntegratedChangeInSource(any(),anyLong(),anyString(),anyString(),anyString(),eq("0".repeat(40)));
+        service.advance(id);
+        assertEquals("BLOCKED",durable.get().state());assertEquals("ANDROID_DELIVERY_REQUIRED",durable.get().errorCode());
+        assertEquals("NOT_INCLUDED",durable.get().evidence().path("requiredDeliveryObservation").path("androidStatus").asText());
+        verifyNoInteractions(close);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"SESSION","HEAD","MERGE","STALE","FUTURE","READY","TARGET","DUPLICATE_TARGET"})
+    void busyCannotAuthorizeForeignStaleOrContradictoryEvidence(String mismatch) {
+        var apk=new ReleaseControlClient.AndroidObservation("8".repeat(40),"0.5.1",1,"a".repeat(64),"b".repeat(64),
+                Instant.now().getEpochSecond(),UUID.randomUUID(),UUID.randomUUID(),"c".repeat(64));
+        when(delivery.observeDelivery(eq(21L),any())).thenReturn(new ChangeDeliveryReadiness(21L,"CONFIRMED",
+                session.getFinalCommitSha(),"4".repeat(40),List.of(DeliveryTarget.ANDROID_STABLE),true,null,apk,"INCLUDED",null,Instant.now().getEpochSecond()));
+        service.request(21L,actor,false);
+        long now=Instant.now().getEpochSecond();
+        when(delivery.observeDelivery(eq(21L),any())).thenReturn(new ChangeDeliveryReadiness(
+                mismatch.equals("SESSION")?22L:21L,"CONFIRMED",mismatch.equals("HEAD")?"0".repeat(40):session.getFinalCommitSha(),
+                mismatch.equals("MERGE")?"0".repeat(40):"4".repeat(40),
+                mismatch.equals("TARGET")?List.of(DeliveryTarget.AX42_PLATFORM):mismatch.equals("DUPLICATE_TARGET")
+                        ?List.of(DeliveryTarget.ANDROID_STABLE,DeliveryTarget.ANDROID_STABLE):List.of(DeliveryTarget.ANDROID_STABLE),
+                mismatch.equals("READY"),null,null,"UNAVAILABLE","ANDROID_OBSERVATION_BUSY",
+                mismatch.equals("STALE")?now-90:mismatch.equals("FUTURE")?now+90:now));
+        service.advance(id);
+        assertEquals("BLOCKED",durable.get().state());assertEquals("COMPLETION_DELIVERY_EVIDENCE_MISMATCH",durable.get().errorCode());
+        assertEquals("ANDROID_OBSERVATION_BUSY",durable.get().evidence().path("requiredDeliveryObservation").path("errorCode").asText());
+        verifyNoInteractions(close);
+    }
+
+    private record AndroidDelivery(ReleaseControlClient executor,com.atenea.github.GitHubClient github) { }
+    private AndroidDelivery actualAndroidOnlyDelivery() {
+        var executor=mock(ReleaseControlClient.class);var github=mock(com.atenea.github.GitHubClient.class);
+        when(executor.enabled()).thenReturn(true);
+        when(github.extractPullRequestNumber(session.getPullRequestUrl())).thenReturn(47L);
+        when(github.changedFiles(any(),eq(47L),anyString(),anyString())).thenReturn(List.of("android/core-console/Example.kt"));
+        when(executor.observeAndroid()).thenAnswer(call->androidObservation());
+        var realDelivery=new MobileDeliveryService(store,sessions,mock(AgentRunRepository.class),operators,ownership,
+                mock(WorkSessionGitHubService.class),new WorkSessionAcceptanceService(sessions),github,executor,
+                mock(com.atenea.auth.recovery.OperatorRecoveryService.class),mock(com.atenea.auth.action.PrivilegedActionAuthorizationService.class),
+                mapper,manager,mock(SourceUpdateBaseGuard.class));
+        service=new MobileChangeCompletionService(store,sessions,changes,operators,ownership,realDelivery,
+                workspaces,close,properties,mapper,manager);
+        return new AndroidDelivery(executor,github);
+    }
+    private com.fasterxml.jackson.databind.node.ObjectNode androidObservation() {
+        return mapper.createObjectNode().put("protocol","atenea-android-observation/v1").put("target","ANDROID_STABLE")
+                .put("state","OBSERVED").put("sourceCommit","8".repeat(40)).put("versionCode",1).put("versionName","0.5.1")
+                .put("apkSha256","a".repeat(64)).put("certificateSha256","b".repeat(64)).put("observedAt",Instant.now().getEpochSecond())
+                .put("planId",deployed.planId().toString()).put("operationId",deployed.operationId().toString())
+                .put("receiptSha256","c".repeat(64)).put("finishedAt",1L);
     }
 }
