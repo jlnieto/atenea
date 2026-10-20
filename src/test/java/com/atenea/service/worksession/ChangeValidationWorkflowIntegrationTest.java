@@ -18,11 +18,20 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Caller-owned ephemeral PostgreSQL16 only; worker/source responses are synthetic. */
-@SpringBootTest(properties={"atenea.auth.bootstrap.enabled=false","atenea.remote-worker.enabled=true"})
+// The full suite keeps other Spring contexts (and their real scheduled readers)
+// cached against public. Give these durable RUNNING fixtures their own schema:
+// an unrelated cached scheduler must never adopt them or race their teardown.
+@SpringBootTest(properties={"atenea.auth.bootstrap.enabled=false","atenea.remote-worker.enabled=true",
+        "spring.datasource.hikari.schema=server_owned_validation_test",
+        "spring.flyway.schemas=server_owned_validation_test",
+        "spring.flyway.default-schema=server_owned_validation_test",
+        "spring.jpa.properties.hibernate.default_schema=server_owned_validation_test"})
+@DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 class ChangeValidationWorkflowIntegrationTest {
     static final String COMMIT="1".repeat(40), TREE="4".repeat(64);
     @Autowired ChangeValidationCoordinator coordinator;
@@ -100,6 +109,13 @@ class ChangeValidationWorkflowIntegrationTest {
             if (projectId!=null) {projects.deleteById(projectId);projects.flush();}
             if (createdWorker) jdbc.update("DELETE FROM worker_node WHERE id='ax42-01'");
         });
+    }
+
+    @Test void fixturesAreIsolatedFromOtherCachedApplicationSchedulers() {
+        assertEquals("server_owned_validation_test",jdbc.queryForObject("SELECT current_schema()",String.class));
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM server_owned_validation_test.work_session WHERE id=?",Integer.class,sessionId));
+        assertTrue(mockingDetails(scheduler).isMock());
+        assertTrue(mockingDetails(resultCollector).isMock());
     }
 
     @Test void oneRequestRunsAllFourWithoutAnotherMobileCall() {
