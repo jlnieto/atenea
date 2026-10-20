@@ -12,6 +12,111 @@ su prueba de aceptación con el dispositivo real.
 
 ## Estado actual y siguiente paso
 
+### Estabilización del recorrido completo (2026-10-20; autoridad vigente)
+
+Esta sección sustituye las indicaciones de «estado actual», «entrega activa» y
+«pendiente» de los registros históricos que siguen. No ordena repetir aquellas
+operaciones. Se congelan las funcionalidades nuevas hasta demostrar el recorrido;
+únicamente entran correcciones necesarias para sus criterios de aceptación.
+
+Caso conservado: «mejorar vista alertas», Cambio
+`7a9487aa-66d4-4643-8d9a-d40bf7cf4c7e`, WorkSession 29. La última lectura
+autenticada encontró OPEN/READY/DIRTY, sesión OPEN/IDLE, revisión 1 y ninguna
+validación admitida. No recrear ni reintentar ese Cambio durante las pruebas.
+El anterior cierre de WS28 necesitó recuperación de operador: es evidencia de
+recuperación, **no** una aceptación autónoma del recorrido móvil.
+
+Base integrada comprobada: `0c489fa6ed9b73cae021a39612f55d4fe6642366`.
+La corrección `bfd75c7ac3ba63cfc0a43421dcdda4549ff4ecf2` está committeada y
+probada, pero al iniciar esta estabilización no tiene PR ni publicación. La
+APK conocida es 0.5.134/167. No confundir implementación, integración,
+publicación y aceptación. Toda entrega debe identificar por separado la fuente
+del backend y la APK realmente instalada; no deducirlas del main actual.
+
+#### Contrato de aceptación
+
+Recorrido: crear Cambio y workspace → implementar → validar 4/4 → publicar la
+misma rama/PR → esperar comprobaciones del head/base exactos → integrar →
+preparar/confirmar los destinos exigidos por el diff → verificar entrega sana
+que incluya el merge → finalizar y conservar historia. AgentRun terminado,
+validación, integración, entrega y finalización son evidencias distintas.
+
+En cada operación:
+
+- Una intención durable y un propietario de cada efecto; las proyecciones no
+  conceden autoridad. No borrar ni fabricar recibos para avanzar.
+- Consulta y reapertura no ejecutan efectos. Una respuesta perdida se recupera
+  con la misma identidad. Un rechazo explica qué no empezó y la acción segura.
+- Cambiar de app o recrear la pantalla no cancela trabajo ya admitido ni borra
+  la explicación. No mostrar una prueba ejecutándose sin evidencia del servidor.
+- Un fallo de etapa impide avanzar. Fuente, base, ownership y destinos deben
+  seguir siendo los exactos; no flexibilizar validadores para conseguir PASS.
+
+#### Niveles de evidencia, sin equivalencias implícitas
+
+| Nivel | Qué acredita | Qué no acredita |
+| --- | --- | --- |
+| Regresión de componente | Una regla/caso y sus rechazos | Integración ni publicación |
+| Recorrido App aislado | API autenticada, PostgreSQL 16, servicios reales y transportes contra pares sintéticos cerrados; sin promover estados a mano entre etapas | Ejecución real de Codex/tests del worker, GitHub o despliegue PROD |
+| Pantalla Android instrumentada | Cliente, pantalla, ciclo de vida y peticiones contra fixture HTTP | Backend, worker y GitHub reales |
+| CI y artefactos inmutables | Código/artefactos del SHA concreto aprobados | Versión ejecutada/instalada ni aceptación móvil |
+| Aceptación móvil real | Recorrido con App/AX42/GitHub/publicador reales y recibos, sin reparación desde consola | Inmunidad ante cualquier avería futura |
+
+Los ensayos usan sólo recursos efímeros y credenciales sintéticas; no App DEV
+permanente, canary, fixtures PROD ni operaciones sobre WS29. Las pruebas deben
+partir también de una aceptación sin observación previa, no preparar VALIDATED,
+MERGED o DELIVERED como atajo para demostrar el recorrido completo.
+
+#### Puertas para cerrar la estabilización
+
+- [x] Recorrido aislado desde primera validación hasta cierre, con backend,
+      Android y ambos destinos; mismo Cambio/WorkSession e identidades durables.
+- [x] Respuestas perdidas e interrupciones recuperadas sin duplicar efectos;
+      lectura repetida no hace avanzar ni reintenta.
+- [x] Rechazos de fuente/ownership/base y fallos de pruebas/entrega impiden el
+      avance y conservan una explicación visible y verificable.
+- [x] Pruebas de pantalla usan el protocolo vigente, no la antigua cadena de
+      cuatro POSTs dirigida por Android.
+- [ ] Integración y entrega coordinadas de versiones identificadas, con sus
+      gates, backup y firma habituales; no atribuir una publicación al ticket
+      si sólo se ha publicado una corrección operativa independiente.
+- [ ] WS29 llega al final desde el móvil sin recrearlo ni reparación manual.
+- [ ] Tres recorridos representativos consecutivos sin intervención CLI,
+      incluyendo segundo plano y una recuperación controlada; registrar las
+      evidencias y no convertir pruebas sintéticas en recorridos reales.
+
+Evidencia de implementación, aún no de entrega:
+
+- `MobileChangeLifecycleIntegrationTest`: siete casos con DB PostgreSQL 16
+  independiente por caso, login FAMILY_V1, TOTP y grants reales de test,
+  orquestadores reales de validación/entrega/cierre y transportes HTTP/Unix
+  reales hacia pares sintéticos. Se controlan los ticks de scheduler y se
+  sustituye la reconciliación de AgentRuns, que no forma parte de este ensayo.
+  Cubre backend, Android, ambos, ACK perdidos en validación/merge/publicación,
+  BUSY durante cierre, entrega no sana y recuperación de la misma finalización,
+  fuente ajena y test fallido. No ejecuta Codex ni compilaciones/despliegues en
+  esos pares. La fixture inicial representa un workspace preparado tras un run;
+  crear/provisionar/ejecutar y la aceptación Samsung siguen siendo otras puertas.
+- La suite backend normal incluye esos casos: 1527 tests PASS en el runtime
+  efímero sin red. No se ha cambiado su autoridad de ejecución.
+- `scripts/test-mobile-journeys.sh`: compila sólo tests de biblioteca sin
+  Firebase/firma/canal; arranca su propio emulador/ADB con puertos privados;
+  comprueba que no sea un teléfono real y exige las cuatro regresiones de
+  pantalla/HTTP/ciclo de vida. Limpia su emulador y AVD, no dispositivos ajenos.
+- `.github/workflows/mobile-journeys-v1.yml` incorpora ese corredor en PR/main,
+  sin secretos y sin modificar permisos KVM del host. Su primer CI todavía
+  debe comprobarse antes de integrar. Los XML y el informe se conservan siete
+  días. No se omite ni sustituye UFD ni la suite backend de merge.
+- Versión candidata Android 0.5.135/168; es candidata hasta que exista recibo
+  de publicación y descarga verificada. La instalación en Samsung se comprueba
+  aparte, no se deduce del recibo del canal.
+
+El rescate privado independiente sigue siendo necesario cuando App no está
+disponible. Este trabajo no promete reparar cualquier incidente desconocido ni
+concede shell/root a clientes o AgentRuns. Si una frontera exige intervención
+de operador no disponible desde móvil, se registra como límite pendiente, no
+como autonomía conseguida.
+
 ### Estabilización activa: construcción y entrega completas (2026-10-19)
 
 El caso activo es «mejorar alertas push», Cambio

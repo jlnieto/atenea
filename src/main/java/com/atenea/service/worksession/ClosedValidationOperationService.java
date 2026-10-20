@@ -368,8 +368,16 @@ public class ClosedValidationOperationService {
         return entity;
     }
 
-    void beginManagedProjection(WorkSessionEntity session) {
-        String fingerprint=session.getDevelopmentChange().getSourceFingerprintSha256();
+    void beginManagedProjection(WorkSessionEntity session, RemoteWorkerClient.SourceTreeFingerprint source) {
+        // Admission already holds the session/source locks and passed the base
+        // gate. Persist that fresh, exact observation before marking VALIDATING:
+        // a new session (or a completed AgentRun) legitimately has no accepted
+        // source observation yet. Never infer it from the Change row alone.
+        validateSourceObservation(session,source);
+        String fingerprint=source.fingerprintSha256();
+        if (!fingerprint.equals(session.getDevelopmentChange().getSourceFingerprintSha256()))
+            throw new WorkSessionOperationBlockedException("VALIDATION_SOURCE_CHANGED");
+        acceptanceService.observeSourceTree(session.getId(),fingerprint);
         acceptanceService.markValidating(session.getId(),fingerprint,projectionSha256(session.getId(),fingerprint),profileRevision());
         session.getDevelopmentChange().setValidationState(DevelopmentChangeProjectionState.STALE);
     }

@@ -86,7 +86,7 @@ public class ChangeValidationCoordinator {
             if (!bound(active.get(),session)) throw blocked("VALIDATION_REVISION_IN_PROGRESS");
             throw blocked("VALIDATION_ALREADY_RUNNING");
         }
-        confirmSource(session);
+        var source=confirmSource(session);
         base.requireCurrent(sessionId);
         if (operations.findByWorkSessionIdAndStatus(sessionId,ValidationOperationStatus.RUNNING).stream().anyMatch(o->
                 !c.getSourceFingerprintSha256().equals(o.getSourceTreeFingerprintSha256())
@@ -95,7 +95,7 @@ public class ChangeValidationCoordinator {
         var latest=validation.latestByOperation(results(session));
         UUID failed=latest.values().stream().filter(o->o.getStatus()==ValidationOperationStatus.FAILED
                 ||o.getStatus()==ValidationOperationStatus.BLOCKED).map(ValidationOperationEntity::getId).findFirst().orElse(null);
-        validation.beginManagedProjection(session);
+        validation.beginManagedProjection(session,source);
         return store.create(id,session,failed);
     }
 
@@ -217,11 +217,12 @@ public class ChangeValidationCoordinator {
         }
         return false;
     }
-    private void confirmSource(WorkSessionEntity session) {
+    private RemoteWorkerClient.SourceTreeFingerprint confirmSource(WorkSessionEntity session) {
         var source=worker.fingerprintSourceTree(session);
         validation.validateSourceObservation(session,source);
         if (!source.fingerprintSha256().equals(session.getDevelopmentChange().getSourceFingerprintSha256()))
             throw blocked("VALIDATION_SOURCE_CHANGED");
+        return source;
     }
     private java.util.List<ValidationOperationEntity> results(WorkSessionEntity s) {
         return operations.findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(

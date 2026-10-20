@@ -16,6 +16,8 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -53,6 +55,7 @@ class ChangeValidationWorkflowIntegrationTest {
     @Autowired ChangeValidationCoordinator coordinator;
     @Autowired ChangeValidationWorkflowStore store;
     @Autowired ClosedValidationOperationService validation;
+    @Autowired WorkSessionAcceptanceService acceptance;
     @Autowired WorkSessionRepository sessions;
     @Autowired DevelopmentChangeRepository changes;
     @Autowired ProjectRepository projects;
@@ -87,10 +90,10 @@ class ChangeValidationWorkflowIntegrationTest {
             c.setBaseRef("refs/heads/main");c.setBaseCommit(COMMIT);c.setProjectPolicyRevision(1);
             c.setWorkspaceIdentity("remote:ax42-01:change:"+key);c.setWorkspaceBranch("atenea/change-"+key);
             c.setSelectedWorkerId("ax42-01");c.setStatus(DevelopmentChangeStatus.OPEN);
-            c.setSourceRevision(3);c.setObservedCanonicalCommit(COMMIT);c.setSourceFingerprintSha256(TREE);
+            c.setSourceRevision(1);c.setObservedCanonicalCommit(COMMIT);c.setSourceFingerprintSha256(TREE);
             c.setSourceState(DevelopmentChangeSourceState.DIRTY);c.setWorkspaceState(DevelopmentChangeWorkspaceState.READY);
             c.setWorkspaceObservationSha256("2".repeat(64));c.setWorkspaceOwnershipFingerprintSha256("3".repeat(64));
-            c.setWorkspaceOperationRevision(1);c.setWorkspaceUpdatedAt(now);c.setValidationState(DevelopmentChangeProjectionState.STALE);
+            c.setWorkspaceOperationRevision(1);c.setWorkspaceUpdatedAt(now);c.setValidationState(DevelopmentChangeProjectionState.NOT_STARTED);
             c.setCreatedAt(now);c.setUpdatedAt(now);changes.saveAndFlush(c);changeId=c.getId();
             var s=new WorkSessionEntity();s.setProject(p);s.setDevelopmentChange(c);s.setTitle(c.getTitle());
             s.setStatus(WorkSessionStatus.OPEN);s.setExecutionTarget(ExecutionTarget.REMOTE);s.setBaseBranch("main");
@@ -98,7 +101,10 @@ class ChangeValidationWorkflowIntegrationTest {
             s.setWorkspaceBranch(c.getWorkspaceBranch());s.setWorkspaceIdentity(c.getWorkspaceIdentity());s.setSelectedWorkerId("ax42-01");
             s.setRemoteSessionId(remoteSession);s.setRemoteWorkloadKind(ProjectCodexIdentity.WORKLOAD_KIND);
             s.setCanonicalSourceCommit(COMMIT);s.setCanonicalSourceRef("refs/heads/main");s.setCanonicalSourceObservedAt(now);
-            s.setCanonicalSourceObservationSha256("2".repeat(64));s.setSourceTreeFingerprintSha256(TREE);s.setSourceTreeObservedAt(now);
+            s.setCanonicalSourceObservationSha256("2".repeat(64));
+            // Real first/post-run validation: only the Change knows its source.
+            // Do not pre-fill the acceptance observation the request must own.
+            s.setAcceptanceState(WorkSessionAcceptanceState.DRAFT);
             s.setOpenedAt(now);s.setLastActivityAt(now);s.setCreatedAt(now);s.setUpdatedAt(now);sessions.saveAndFlush(s);sessionId=s.getId();
         });
         when(worker.fingerprintSourceTree(any())).thenAnswer(call->{
@@ -136,8 +142,13 @@ class ChangeValidationWorkflowIntegrationTest {
     }
 
     @Test void oneRequestRunsAllFourWithoutAnotherMobileCall() {
+        assertUnobservedFreshSession();
         UUID id=UUID.randomUUID();var receipt=coordinator.request(sessionId,id);
         assertEquals("RUNNING",receipt.state());assertEquals("QUEUED",receipt.phase());
+        var observed=sessions.findById(sessionId).orElseThrow();
+        assertEquals(TREE,observed.getSourceTreeFingerprintSha256());assertNotNull(observed.getSourceTreeObservedAt());
+        assertEquals(WorkSessionAcceptanceState.VALIDATING,observed.getAcceptanceState());
+        assertEquals(1,receipt.sourceRevision());
         assertEquals(0,countChecks());verify(worker,never()).startValidation(any(),any(),anyString(),anyString());
         complete(id);
         assertEquals("SUCCEEDED",store.find(id).orElseThrow().state());
@@ -145,6 +156,63 @@ class ChangeValidationWorkflowIntegrationTest {
         for (var kind:ValidationOperationKind.values()) verify(worker,times(1)).startValidation(any(),eq(kind),eq(TREE),anyString());
         assertEquals(DevelopmentChangeProjectionState.CURRENT,changes.findById(changeId).orElseThrow().getValidationState());
         assertEquals(WorkSessionAcceptanceState.VALIDATED,sessions.findById(sessionId).orElseThrow().getAcceptanceState());
+    }
+
+    @Test void completedRunInvalidationCanAdmitItsFreshlyVerifiedSourceWithoutAnOldValidation() {
+        tx(()->{
+            var s=sessions.findById(sessionId).orElseThrow();
+            s.setSourceTreeFingerprintSha256("8".repeat(64));s.setSourceTreeObservedAt(Instant.now());
+            s.setAcceptanceState(WorkSessionAcceptanceState.VALIDATED);
+            s.setValidationProjectionSha256("9".repeat(64));s.setValidatedAt(Instant.now());
+            acceptance.invalidateForNewRun(s);
+        });
+        assertUnobservedFreshSession();
+        UUID id=UUID.randomUUID();coordinator.request(sessionId,id);complete(id);
+        assertEquals("SUCCEEDED",store.find(id).orElseThrow().state());
+        assertEquals(TREE,sessions.findById(sessionId).orElseThrow().getSourceTreeFingerprintSha256());
+        assertEquals(4,countChecks());
+    }
+
+    @Test void freshEvidenceReadsNeverBackfillAnObservationOrStartAWorkflow() {
+        for(int i=0;i<3;i++) {
+            var evidence=validation.getDevelopmentChangeEvidence(sessionId);
+            assertEquals(DevelopmentChangeProjectionState.NOT_STARTED,evidence.validationState());
+            assertEquals(0,evidence.passedOperations());assertNull(evidence.workflow());
+        }
+        assertUnobservedFreshSession();assertEquals(0,countChecks());assertTrue(store.latestSession(sessionId).isEmpty());
+        verifyNoInteractions(worker);
+    }
+
+    @ParameterizedTest @ValueSource(strings={"STATE","SESSION","WORKSPACE","PROJECT","COMMIT","TREE","EXPOSED"})
+    void untrustedFreshSourceCannotInitializeAcceptanceOrAdmitAWorkflow(String mismatch) {
+        doReturn(new RemoteWorkerClient.SourceTreeFingerprint(
+                mismatch.equals("STATE")?"unavailable":"observed",mismatch.equals("SESSION")?UUID.randomUUID().toString():remoteSession.toString(),
+                mismatch.equals("WORKSPACE")?"remote:ax42-01:change:"+UUID.randomUUID():"remote:ax42-01:change:"+key,
+                mismatch.equals("PROJECT")?"other":"atenea",mismatch.equals("COMMIT")?"0".repeat(40):COMMIT,
+                mismatch.equals("TREE")?"f".repeat(64):TREE,1,0,0,mismatch.equals("EXPOSED"))).when(worker).fingerprintSourceTree(any());
+        assertThrows(WorkSessionOperationBlockedException.class,()->coordinator.request(sessionId,UUID.randomUUID()));
+        assertUnobservedFreshSession();assertEquals(0,countChecks());assertTrue(store.latestSession(sessionId).isEmpty());
+        verify(worker,never()).startValidation(any(),any(),anyString(),anyString());
+    }
+
+    @Test void freshSourceIsNotPersistedWhenTheBaseGateRefusesAdmission() {
+        doThrow(new DeliveryRejectedException("SOURCE_FINALIZATION_MAIN_MOVED")).when(base).requireCurrent(sessionId);
+        assertThrows(DeliveryRejectedException.class,()->coordinator.request(sessionId,UUID.randomUUID()));
+        assertUnobservedFreshSession();assertTrue(store.latestSession(sessionId).isEmpty());assertEquals(0,countChecks());
+        verify(worker,times(1)).fingerprintSourceTree(any());
+        verify(worker,never()).startValidation(any(),any(),anyString(),anyString());
+    }
+
+    @Test void admissionRollbackDoesNotLeaveAnAcceptedSourceOrAWorkflowAndTheSameKeyCanBeUsed() {
+        UUID id=UUID.randomUUID();
+        assertThrows(IllegalStateException.class,()->tx(()->{
+            coordinator.request(sessionId,id);
+            throw new IllegalStateException("synthetic failure before admission transaction commit");
+        }));
+        assertUnobservedFreshSession();assertTrue(store.find(id).isEmpty());assertEquals(0,countChecks());
+        verify(worker,never()).startValidation(any(),any(),anyString(),anyString());
+        coordinator.request(sessionId,id);complete(id);
+        assertEquals("SUCCEEDED",store.find(id).orElseThrow().state());assertEquals(4,countChecks());
     }
 
     @Test void repeatedPostAndConcurrentClickCannotCreateAnotherWorkflow() {
@@ -353,6 +421,12 @@ class ChangeValidationWorkflowIntegrationTest {
         assertTrue(store.find(id).orElseThrow().terminal(),"bounded scheduler simulation must reach a terminal outcome");
     }
     private int countChecks() {return jdbc.queryForObject("SELECT count(*) FROM validation_operation WHERE work_session_id=?",Integer.class,sessionId);}
+    private void assertUnobservedFreshSession() {
+        var s=sessions.findById(sessionId).orElseThrow();
+        assertNull(s.getSourceTreeFingerprintSha256());assertNull(s.getSourceTreeObservedAt());
+        assertEquals(WorkSessionAcceptanceState.DRAFT,s.getAcceptanceState());
+        assertEquals(DevelopmentChangeProjectionState.NOT_STARTED,changes.findById(changeId).orElseThrow().getValidationState());
+    }
     private void tx(Runnable code) {new TransactionTemplate(transactions).executeWithoutResult(ignored->code.run());}
     private RemoteWorkerException absent() {
         return new RemoteWorkerException("synthetic not found",404,"VALIDATION_NOT_FOUND",RemoteWorkerFailureCategory.VALIDATION,

@@ -134,21 +134,29 @@ internal class MobileDeliveryUiState(
     val validationRunning get() = validationRequested || validationObserved && validationCoherent
         && (validationEvidence?.workflow?.running ?: (validationEvidence?.operations?.any { it.status == "RUNNING" } == true))
 
-    fun validationUi(session: MobileWorkSession?, runInProgress: Boolean): DevelopmentChangeValidationUiState {
+    fun validationUi(session: MobileWorkSession?, runInProgress: Boolean,
+        requestFailure: ValidationRequestFailure? = null): DevelopmentChangeValidationUiState {
         if (session?.developmentChangeKey == null) return DevelopmentChangeValidationUiState(false, false, "Validar cambio", "")
         val evidence = validationEvidence
         val matches = validationObserved && validationCoherent && evidence?.changeKey?.toString() == session.developmentChangeKey
         val current = matches && validationCurrent
         val running = matches && validationRunning
+        val requesting = matches && validationRequested && evidence?.workflow?.running != true
+            && evidence?.operations?.none { it.status == "RUNNING" } == true
+        val failure = requestFailure?.takeIf { matches && !current && !running && !runInProgress && it.matches(evidence) }
         return DevelopmentChangeValidationUiState(true,
             matches && !current && !busy && !running && !runInProgress && evidence?.sourceFingerprintSha256 != null
                 && !deliveryBeforeValidation(false) && !sourcePhaseComplete && session.status == "OPEN",
-            if (running) "Validando…" else if (evidence?.workflow?.state in setOf("FAILED", "BLOCKED")) "Reintentar validación" else "Validar cambio",
+            if (requesting) "Solicitando…" else if (running) "Validando…" else if (failure != null) {
+                if (failure.rejected) "Volver a solicitar" else "Recuperar solicitud"
+            } else if (evidence?.workflow?.state in setOf("FAILED", "BLOCKED")) "Reintentar validación" else "Validar cambio",
             when {
                 !matches -> loadError ?: if (!loaded || refreshing) "Consultando la revisión y sus pruebas. No hay que repetir ninguna acción."
                     else "No se pudo confirmar la revisión y sus pruebas. Consulta el estado o abre Ayuda con este cambio."
+                requesting -> "Enviando la solicitud de validación. Todavía no se ha confirmado su aceptación; no vuelvas a pulsar."
                 running -> "El servidor comprueba la revisión ${evidence!!.sourceRevision} · ${evidence.passedOperations}/4 pruebas completadas. Puedes salir de Atenea."
                 current -> "Revisión ${evidence!!.sourceRevision} validada · 4/4 comprobaciones correctas."
+                failure != null -> failure.message
                 evidence?.workflow?.state in setOf("FAILED", "BLOCKED", "STALE") -> when (evidence?.workflow?.errorCode) {
                     "VALIDATION_CHECK_FAILED" -> "La validación se ha detenido en una prueba. Revisa su resultado antes de reintentar; las pruebas correctas se conservan."
                     "VALIDATION_SOURCE_CHANGED", "VALIDATION_SOURCE_OR_OWNER_CHANGED" -> "La revisión o su identidad cambiaron. La validación se ha detenido; no se ha validado otra revisión."
@@ -156,8 +164,8 @@ internal class MobileDeliveryUiState(
                     else -> "La validación del servidor necesita atención. Consulta los detalles o Ayuda con este cambio; no se repiten pruebas automáticamente."
                 }
                 else -> "Revisión ${evidence!!.sourceRevision} pendiente de validar · ${evidence.passedOperations}/4 comprobaciones."
-            }, current, matches && !running && (evidence?.validationState == "BLOCKED"
-                || evidence?.workflow?.state in setOf("FAILED", "BLOCKED", "STALE")), running, checking = !matches)
+            }, current, matches && !running && (failure != null || evidence?.validationState == "BLOCKED"
+                || evidence?.workflow?.state in setOf("FAILED", "BLOCKED", "STALE")), running, checking = !matches, requesting = requesting)
     }
 
     fun canFinalize(validated: Boolean, runInProgress: Boolean) = available && completionEnabled && completion == null

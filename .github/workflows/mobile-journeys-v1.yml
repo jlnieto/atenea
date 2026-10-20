@@ -1,0 +1,43 @@
+name: Atenea mobile journey regressions v1
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mobile-journeys-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+jobs:
+  android-journeys:
+    name: Android screen HTTP and lifecycle journeys
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Install ephemeral emulator tooling (no application credentials)
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'emulator' 'system-images;android-34;default;x86_64'
+      - name: Run the reviewed journey suite with temporary KVM group only
+        run: |
+          journey_operator="$(id -un)"
+          journey_groups=()
+          for journey_group in $(id -Gn); do journey_groups+=(-G "$journey_group"); done
+          sudo -n /usr/sbin/runuser -u "$journey_operator" -g kvm "${journey_groups[@]}" -- env \
+            "ANDROID_HOME=$ANDROID_HOME" "ANDROID_SDK_ROOT=$ANDROID_HOME" \
+            bash ./scripts/test-mobile-journeys.sh
+      - name: Retain isolated test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobile-journey-reports
+          path: |
+            target/mobile-journeys/instrumentation.log
+            target/mobile-journeys/emulator.log
+            android/core-console/build/test-results/testDebugUnitTest/*.xml
+          retention-days: 7

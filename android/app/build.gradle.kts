@@ -13,8 +13,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // Product release version, reviewed in Git; CI run numbers are not app versions.
-        versionCode = 167
-        versionName = "0.5.134"
+        versionCode = 168
+        versionName = "0.5.135"
         manifestPlaceholders["appName"] = "Atenea"
 
         val ateneaApiBaseUrl = providers.gradleProperty("ATENEA_API_BASE_URL")

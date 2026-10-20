@@ -67,8 +67,17 @@ Si un fallo antiguo sólo conservó un resumen genérico, no se inventa su causa
 Flyway V106), ligada a WorkSession, Cambio, proyecto, worker, revisión, fingerprint
 y commit canónicos observados. Android envía una sola petición con idempotency key
 a `POST /api/sessions/{id}/validation-workflows`; no encadena POSTs desde la pantalla.
-Después sólo consulta la evidencia/entrega. Cambiar de aplicación, cerrar Atenea o
-reiniciar App no cancela ni pierde la secuencia autorizada.
+Después sólo consulta la evidencia/entrega. Una vez aceptada la intención por el
+servidor, cambiar de aplicación, cerrar Atenea o reiniciar App no cancela ni
+pierde la secuencia autorizada.
+
+La admisión de una sesión nueva o recién invalidada por un AgentRun confirma
+primero la observación autenticada del árbol, ownership, revisión/fingerprint y
+base. Registra esa misma observación en la proyección de aceptación antes de
+marcar `VALIDATING`, dentro de la transacción que crea la intención. No exige
+una validación anterior ni rellena observaciones a partir del Cambio sin
+verificación del worker. Un rechazo o rollback no deja observación, workflow ni
+pruebas a medias; las lecturas no realizan ese registro.
 
 El scheduler dedicado ejecuta las cuatro definiciones cerradas en orden. Antes de
 admitir cada prueba persiste su UUID y lo confirma en otra transacción; ante una
@@ -91,6 +100,15 @@ no inicia, reconcilia ni reintenta pruebas. Android muestra `Validando…` duran
 toda la secuencia, incluso entre pruebas y después de recrear la pantalla. No
 ofrece `Continuar validación` mientras trabaja el servidor. Source updates,
 finalización, retirada y nuevos AgentRuns no pueden atravesar ese intervalo.
+
+Android diferencia `Solicitando…` (aceptación aún sin confirmar) de `Validando…`
+(workflow/prueba observados en el servidor). El error de admisión se conserva
+separado del refresco de conversación, también al pasar a segundo plano o
+restaurar la pantalla, ligado a sesión, Cambio, revisión y fingerprint. No se
+presenta como una prueba fallida. Un rechazo definitivo ofrece `Volver a
+solicitar`; una respuesta ambigua conserva la key y `Recuperar solicitud` usa
+esa misma identidad. Consultar o reanudar la pantalla nunca envía otro POST.
+La evidencia vigente del servidor prevalece sobre un error local anterior.
 
 El despliegue requiere backup y aplicación de V106, backend y APK compatible;
 implementar/probar esta capacidad no autoriza aplicarla sobre datos reales.
