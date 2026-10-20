@@ -170,10 +170,11 @@ y [referencias Git REST](https://docs.github.com/en/rest/git/refs#create-a-refer
 ### Finalizar un cambio entregado
 
 **Finalizar cambio** es una operación distinta de cerrar una sesión antigua,
-integrar una PR o publicar. En este slice acredita la entrega de Backend PROD
-del cambio Atenea: validación CURRENT de la revisión publicada, integración
-durable exacta y observación fresca del publicador que prueba que el backend
-está sano y contiene ese merge. La publicación puede proceder del móvil o
+integrar una PR o publicar. Acredita los entregables exigidos por el diff:
+Backend PROD y/o Android estable, validación CURRENT de la revisión publicada,
+integración durable exacta y observaciones frescas del publicador que prueban
+la inclusión del cambio (y health del backend cuando corresponde). Un cambio
+sólo Android no exige un recibo Backend adicional. La publicación puede proceder del móvil o
 del operador; no se fabrica un recibo RELEASE para un despliegue externo.
 No sustituye la aceptación funcional ni certifica una APK/Platform no publicados.
 
@@ -209,6 +210,19 @@ finalización** llama a `/delivery/finalize/reconcile` con `{}`, revalida las
 precondiciones y retoma esa intención, sin fabricar éxito ni una segunda operación.
 Si el cierre ya quedó confirmado antes de una interrupción, sólo se termina
 la persistencia pendiente. Para trabajo funcional posterior, abrir otro cambio.
+
+`APP_OBSERVATION_BUSY` y `ANDROID_OBSERVATION_BUSY` significan que aún no se
+puede confirmar una lectura, no que falte publicar. Una finalización ya admitida
+permanece APPLYING y el scheduler vuelve a consultar con la misma identidad,
+incluso si el cierre remoto ya terminó: no lo repite. La observación ocupada debe
+ser fresca y corresponder al mismo head/merge y entregable; no autoriza el cierre.
+`deploymentObservationWait` conserva el código real y los tiempos/contador,
+y `requiredDeliveryObservation` conserva la última evidencia tipada rechazada.
+Una negativa determinista, evidencia contradictoria o entrega realmente ausente
+sigue bloqueando con su causa, sin reintento automático. No se transforma una
+observación Android no disponible en `ANDROID_DELIVERY_REQUIRED`. Los intentos
+históricos conservan sus códigos originales; la recuperación explícita consume
+la misma finalización mediante `/delivery/finalize/reconcile`, no reescribe recibos.
 
 Puesta en marcha: integrar y validar el código, desplegar App PROD con V92 y
 publicar la APK compatible por el canal existente, con autorización independiente.

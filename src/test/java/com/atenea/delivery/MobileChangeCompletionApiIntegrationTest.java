@@ -185,6 +185,64 @@ class MobileChangeCompletionApiIntegrationTest {
         assertEquals(2,store.list(session.getId()).size()); verify(close,times(1)).closeSession(session.getId());
         assertEquals(binding,store.get(id,false).evidence().path("completionBindingSha256").asText());
     }
+    @Test void androidOnlyWaitKeepsTheSameDurableCompletionAndExecution() throws Exception {
+        when(delivery.observeDelivery(eq(session.getId()),any())).thenAnswer(call->androidOnly(null));
+        UUID id=request();var original=store.get(id,false);
+        String binding=original.evidence().path("completionBindingSha256").asText();
+        when(delivery.observeDelivery(eq(session.getId()),any())).thenAnswer(call->androidOnly("ANDROID_OBSERVATION_BUSY"));
+        completion.advance(id);
+        var waiting=store.get(id,false);
+        assertEquals("APPLYING",waiting.state());assertEquals("ANDROID_OBSERVATION_BUSY",waiting.errorCode());
+        assertEquals("ANDROID_OBSERVATION_BUSY",waiting.evidence().path("requiredDeliveryObservation").path("errorCode").asText());
+        assertTrue(waiting.evidence().path("requiredDeliveryObservation").path("backend").isNull());
+        assertEquals("UNAVAILABLE",waiting.evidence().path("requiredDeliveryObservation").path("androidStatus").asText());
+        assertEquals(original.executionId(),waiting.executionId());assertTrue(store.pendingCompletions().contains(id));
+        assertEquals(binding,waiting.evidence().path("completionBindingSha256").asText());
+        verifyNoInteractions(close);
+        mvc.perform(post("/api/mobile/sessions/{id}/delivery/finalize/reconcile",session.getId()).with(auth(admin))
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.state").value("APPLYING"));
+        when(delivery.observeDelivery(eq(session.getId()),any())).thenAnswer(call->androidOnly(null));
+        completion.advance(id);
+        assertEquals("SUCCEEDED",store.get(id,false).state());assertEquals(original.executionId(),store.get(id,false).executionId());
+        assertEquals(binding,store.get(id,false).evidence().path("completionBindingSha256").asText());
+        assertEquals(2,store.list(session.getId()).size());verify(close,times(1)).closeSession(session.getId());
+        assertEquals(DevelopmentChangeStatus.COMPLETED,changes.findById(change.getId()).orElseThrow().getStatus());
+    }
+    @Test void existingAndroidBlockedCompletionRecoversThroughNormalApiWithoutLosingHistory() throws Exception {
+        when(delivery.observeDelivery(eq(session.getId()),any())).thenAnswer(call->androidOnly(null));
+        UUID id=request();var original=store.get(id,false);
+        String binding=original.evidence().path("completionBindingSha256").asText();
+        var history=(com.fasterxml.jackson.databind.node.ObjectNode)original.evidence().deepCopy();
+        history.withArray("blockedAttempts").addObject().put("code","ANDROID_DELIVERY_REQUIRED").put("at",Instant.now().toString());
+        // Ephemeral fixture of the retained legacy error, never a real DB repair.
+        store.update(original,"BLOCKED","ANDROID_DELIVERY_REQUIRED",null,history);
+        mvc.perform(post("/api/mobile/sessions/{id}/delivery/finalize/reconcile",session.getId()).with(auth(admin))
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.operationId").value(original.executionId().toString()))
+                .andExpect(jsonPath("$.state").value("APPLYING"));
+        when(delivery.observeDelivery(eq(session.getId()),any())).thenAnswer(call->androidOnly("ANDROID_OBSERVATION_BUSY"));
+        completion.advance(id);
+        assertEquals("APPLYING",store.get(id,false).state());assertEquals("ANDROID_OBSERVATION_BUSY",store.get(id,false).errorCode());
+        assertEquals(1,store.get(id,false).evidence().path("blockedAttempts").size());
+        when(delivery.observeDelivery(eq(session.getId()),any())).thenAnswer(call->androidOnly(null));
+        completion.advance(id);
+        var complete=store.get(id,false);
+        assertEquals("SUCCEEDED",complete.state());assertEquals(original.executionId(),complete.executionId());
+        assertEquals(binding,complete.evidence().path("completionBindingSha256").asText());
+        assertEquals("ANDROID_DELIVERY_REQUIRED",complete.evidence().path("blockedAttempts").get(0).path("code").asText());
+        assertEquals(2,store.list(session.getId()).size());verify(close,times(1)).closeSession(session.getId());
+        assertEquals(id,request());
+    }
+    private ChangeDeliveryReadiness androidOnly(String error) {
+        long now=Instant.now().getEpochSecond();
+        var apk=error==null ? new ReleaseControlClient.AndroidObservation("8".repeat(40),"0.5.1",1,"a".repeat(64),"b".repeat(64),
+                now,UUID.randomUUID(),UUID.randomUUID(),"c".repeat(64)) : null;
+        return new ChangeDeliveryReadiness(session.getId(),"CONFIRMED",session.getFinalCommitSha(),"4".repeat(40),
+                List.of(DeliveryTarget.ANDROID_STABLE),error==null,null,apk,error==null?"INCLUDED":"UNAVAILABLE",error,now);
+    }
     @Test void roleAndClosedProtocolRejectAdditionalAuthority() throws Exception {
         mvc.perform(post("/api/mobile/sessions/{id}/delivery/finalize",session.getId()).with(auth(routine))
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
