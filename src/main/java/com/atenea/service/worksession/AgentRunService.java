@@ -45,6 +45,10 @@ public class AgentRunService {
 
     private static final String INTERNAL_ORIGIN_TURN_MESSAGE = "Internal AgentRun origin";
 
+    /** Called before session/run row locks, shared with validation admission. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void lockWorkAdmission() { jdbcTemplate.execute("SELECT pg_advisory_xact_lock(814205002)"); }
+
     private final WorkSessionRepository workSessionRepository;
     private final AgentRunRepository agentRunRepository;
     private final SessionTurnRepository sessionTurnRepository;
@@ -91,6 +95,7 @@ public class AgentRunService {
 
     @Transactional
     public AgentRunEntity createRunningRun(Long sessionId) {
+        lockWorkAdmission();
         WorkSessionEntity session = workSessionRepository.findWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
         Instant now = Instant.now();
@@ -155,6 +160,7 @@ public class AgentRunService {
     private AgentRunEntity createRemoteQueuedRun(WorkSessionEntity session, SessionTurnEntity originTurn,
             WorkloadClass workloadClass, AgentRunEntity retryOfRun,
             TurnAttachmentSelectionValidator.ValidatedSelection attachmentSelection, UUID sourceUpdateId) {
+        lockWorkAdmission();
         Instant now = Instant.now();
         lockCodexActivation(session.getSelectedWorkerId());
         ensureNoNonTerminalRun(session.getId());
@@ -241,6 +247,7 @@ public class AgentRunService {
     }
 
     private AgentRunEntity createRemoteRetryRun(Long sourceRunId, UUID sourceUpdateId) {
+        lockWorkAdmission();
         AgentRunEntity source = agentRunRepository.findByIdForUpdate(sourceRunId)
                 .orElseThrow(() -> new AgentRunNotFoundException(sourceRunId));
         if (source.getStatus() != AgentRunStatus.FAILED
@@ -557,6 +564,7 @@ public class AgentRunService {
     }
 
     private AgentRunEntity createRunningRun(WorkSessionEntity session, SessionTurnEntity originTurn, Instant now) {
+        lockWorkAdmission();
         Long sessionId = session.getId();
         ensureNoNonTerminalRun(sessionId);
         workSessionAcceptanceService.invalidateForNewRun(session);
@@ -919,6 +927,8 @@ public class AgentRunService {
     }
 
     private void ensureNoNonTerminalRun(Long sessionId) {
+        if (workSessionRepository.existsActiveValidationWorkflowBySessionId(sessionId))
+            throw new WorkSessionOperationBlockedException("La validación de este cambio sigue en curso en el servidor.");
         if (hasNonTerminalRun(sessionId)) {
             throw new AgentRunAlreadyRunningException(sessionId);
         }

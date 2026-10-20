@@ -255,6 +255,7 @@ public class SourceFinalizationService {
         Long active=jdbc.queryForObject("""
             SELECT (SELECT count(*) FROM agent_run WHERE status NOT IN ('SUCCEEDED','FAILED','CANCELLED'))
                 + (SELECT count(*) FROM validation_operation WHERE status='RUNNING')
+                + (SELECT count(*) FROM change_validation_workflow WHERE state='RUNNING')
                 + (SELECT count(*) FROM mobile_delivery_operation WHERE kind='RELEASE'
                     AND state NOT IN ('SUCCEEDED','ROLLED_BACK','FAILED','BLOCKED','ROLLBACK_FAILED'))
             """,Long.class);

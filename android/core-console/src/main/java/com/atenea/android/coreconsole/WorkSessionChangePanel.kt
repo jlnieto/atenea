@@ -80,6 +80,11 @@ private fun ValidationEvidenceDetails(evidence: DevelopmentChangeValidationEvide
     readError: String?, onReadEvidence: () -> Unit, progressInDetails: Boolean, sessionId: Long, observationConfirmed: Boolean) {
     Text("Resultados guardados · consultar no ejecuta pruebas", style = MaterialTheme.typography.titleSmall)
     if (evidence != null) {
+        evidence.workflow?.let {
+            Text("Validación del servidor · ${if (it.running) "En curso" else if (it.state == "SUCCEEDED") "Completada" else "Necesita atención"}")
+            it.errorCode?.let { code -> Text("Código: $code", style = MaterialTheme.typography.bodySmall) }
+            Text("Validación ID: ${it.id}", style = MaterialTheme.typography.bodySmall)
+        }
         if (progressInDetails) ValidationProgressPanel(evidence, sessionId, validationRequested = false,
             observationConfirmed = observationConfirmed)
         Text("${evidence.passedOperations}/${evidence.requiredOperations} comprobaciones de la revisión ${evidence.sourceRevision}")

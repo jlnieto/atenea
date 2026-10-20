@@ -13,6 +13,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface WorkSessionRepository extends JpaRepository<WorkSessionEntity, Long> {
 
+    @Query(value = "SELECT EXISTS (SELECT 1 FROM change_validation_workflow WHERE session_id=:sessionId AND state='RUNNING')", nativeQuery=true)
+    boolean existsActiveValidationWorkflowBySessionId(@Param("sessionId") Long sessionId);
+
     @Query(value = """
             SELECT EXISTS (SELECT 1 FROM mobile_source_update_operation WHERE session_id=:sessionId
                 AND state IN ('QUEUED','PREPARE_CLAIMED','UNCERTAIN','ATTENTION','READY_TO_RESOLVE','RETRY_REQUESTED','RESOLVING'))

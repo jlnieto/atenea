@@ -146,7 +146,8 @@ public class ChangeHelpContextService {
                 name(change.getSourceState()), name(change.getValidationState()), name(session.getPullRequestStatus()),
                 name(change.getIntegrationState()), name(change.getReleaseState()),
                 runs.existsBySessionIdAndStatusIn(id, AgentRunStatus.nonTerminalStatuses()),
-                validations.existsByWorkSessionIdAndStatus(id, ValidationOperationStatus.RUNNING),
+                validations.existsByWorkSessionIdAndStatus(id, ValidationOperationStatus.RUNNING)
+                    || sessions.existsActiveValidationWorkflowBySessionId(id),
                 sourcePending,
                 name(session.getRemoteCloseState()), run == null ? null : run.getId(),
                 run == null ? null : name(run.getStatus()), run == null ? null : safeCode(run.getFailureCode()),

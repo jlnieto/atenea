@@ -28,6 +28,8 @@ public class SchedulingConfiguration {
     public ThreadPoolTaskScheduler changeProgressPushScheduler() { return scheduler("atenea-change-progress-push-"); }
     @Bean(name = "validationResultScheduler")
     public ThreadPoolTaskScheduler validationResultScheduler() { return scheduler("atenea-validation-result-"); }
+    @Bean(name = "changeValidationTaskScheduler")
+    public ThreadPoolTaskScheduler changeValidationTaskScheduler() { return scheduler("atenea-change-validation-"); }
     private ThreadPoolTaskScheduler scheduler(String name) {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(1);

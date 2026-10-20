@@ -22,6 +22,8 @@ public interface ValidationOperationRepository extends JpaRepository<ValidationO
 
     boolean existsByWorkSessionIdAndStatus(Long workSessionId, ValidationOperationStatus status);
 
+    List<ValidationOperationEntity> findByWorkSessionIdAndStatus(Long workSessionId, ValidationOperationStatus status);
+
     Optional<ValidationOperationEntity> findFirstByWorkSessionIdOrderByStartedAtDescIdDesc(Long workSessionId);
 
     @EntityGraph(attributePaths = {"workSession", "workSession.project"})

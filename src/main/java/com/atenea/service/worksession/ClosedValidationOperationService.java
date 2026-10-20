@@ -104,12 +104,15 @@ public class ClosedValidationOperationService {
         return Optional.of(new DevelopmentChangeValidationEvidenceResponse(
                 change.getChangeKey(), sessionId, change.getSourceRevision(), fingerprint,
                 change.getValidationState(), passed, ValidationOperationKind.values().length,
-                evidence, lastAttempt));
+                evidence, lastAttempt, ChangeValidationWorkflowStore.latest(jdbc,sessionId,change.getSourceRevision(),fingerprint)
+                        .map(ChangeValidationWorkflowStore.Workflow::response).orElse(null)));
     }
 
     @Transactional
     public ValidationOperationResponse run(Long sessionId, ValidationOperationKind operation) {
         admissionLock();
+        if (workSessionRepository.existsActiveValidationWorkflowBySessionId(sessionId))
+            throw new WorkSessionOperationBlockedException("El servidor ya está validando este cambio.");
         WorkSessionEntity session = workSessionRepository.findLockedWithProjectById(sessionId)
                 .orElseThrow(() -> new WorkSessionNotFoundException(sessionId));
         requireExactIdleSession(session);
@@ -338,7 +341,7 @@ public class ClosedValidationOperationService {
         jdbc.execute("SELECT pg_advisory_xact_lock(814205002)");
     }
 
-    private ValidationOperationEntity newValidationEntity(
+    ValidationOperationEntity newValidationEntity(
             WorkSessionEntity session,
             ValidationOperationKind operation,
             String fingerprint,
@@ -365,7 +368,13 @@ public class ClosedValidationOperationService {
         return entity;
     }
 
-    private void applyDurableResult(
+    void beginManagedProjection(WorkSessionEntity session) {
+        String fingerprint=session.getDevelopmentChange().getSourceFingerprintSha256();
+        acceptanceService.markValidating(session.getId(),fingerprint,projectionSha256(session.getId(),fingerprint),profileRevision());
+        session.getDevelopmentChange().setValidationState(DevelopmentChangeProjectionState.STALE);
+    }
+
+    void applyDurableResult(
             ValidationOperationEntity entity,
             WorkSessionEntity session,
             RemoteWorkerClient.DurableValidationResult result
@@ -429,7 +438,7 @@ public class ClosedValidationOperationService {
         validationOperationRepository.save(entity);
     }
 
-    private DevelopmentChangeEntity requireExactDevelopmentChange(WorkSessionEntity session) {
+    DevelopmentChangeEntity requireExactDevelopmentChange(WorkSessionEntity session) {
         DevelopmentChangeEntity change = session.getDevelopmentChange();
         if (change == null
                 || change.getStatus() != DevelopmentChangeStatus.OPEN
@@ -512,7 +521,7 @@ public class ClosedValidationOperationService {
         validationOperationRepository.save(entity);
     }
 
-    private void projectAcceptance(Long sessionId, String fingerprint) {
+    void projectAcceptance(Long sessionId, String fingerprint) {
         List<ValidationOperationEntity> results =
                 validationOperationRepository
                         .findByWorkSessionIdAndSourceTreeFingerprintSha256OrderByStartedAtAscIdAsc(
@@ -578,7 +587,7 @@ public class ClosedValidationOperationService {
         return sha256(canonical.toString());
     }
 
-    private Map<ValidationOperationKind, ValidationOperationEntity> latestByOperation(
+    Map<ValidationOperationKind, ValidationOperationEntity> latestByOperation(
             List<ValidationOperationEntity> results
     ) {
         Map<ValidationOperationKind, ValidationOperationEntity> latest =
@@ -610,7 +619,7 @@ public class ClosedValidationOperationService {
         }
     }
 
-    private void validateSourceObservation(
+    void validateSourceObservation(
             WorkSessionEntity session,
             RemoteWorkerClient.SourceTreeFingerprint source
     ) {

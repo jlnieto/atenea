@@ -451,6 +451,12 @@ class AteneaApiClient(
         parser = ::parseDevelopmentChangeValidation
     )
 
+    suspend fun startDevelopmentChangeValidation(sessionId: Long, idempotencyKey: UUID): ChangeValidationWorkflow = postJson(
+        path = "/api/sessions/$sessionId/validation-workflows",
+        body = JSONObject().put("idempotencyKey", idempotencyKey.toString()),
+        authenticated = true
+    ) { json -> parseChangeValidationWorkflow(json).also { require(it.workSessionId == sessionId) } }
+
     suspend fun fetchDevelopmentChangeValidationEvidence(sessionId: Long): DevelopmentChangeValidationEvidence = getJson(
         path = "/api/sessions/$sessionId/validation-evidence",
         authenticated = true

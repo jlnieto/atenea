@@ -95,6 +95,7 @@ public class WorkSessionRetirementStore {
         if (!Boolean.TRUE.equals(jdbc.queryForObject("""
             SELECT NOT EXISTS (SELECT 1 FROM agent_run WHERE status NOT IN ('SUCCEEDED','FAILED','CANCELLED'))
                 AND NOT EXISTS (SELECT 1 FROM validation_operation WHERE status='RUNNING')
+                AND NOT EXISTS (SELECT 1 FROM change_validation_workflow WHERE state='RUNNING')
                 AND NOT EXISTS (SELECT 1 FROM mobile_source_update_operation WHERE session_id=?
                     AND state IN ('QUEUED','PREPARE_CLAIMED','UNCERTAIN','ATTENTION','READY_TO_RESOLVE','RETRY_REQUESTED','RESOLVING'))
                 AND NOT EXISTS (SELECT 1 FROM mobile_source_finalization WHERE session_id=? AND state<>'PUBLISHED')
