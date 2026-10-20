@@ -90,6 +90,9 @@ internal fun WorkSessionConversationScreen(
     var operationPending by remember { mutableStateOf(false) }
     var validationPending by remember { mutableStateOf(false) }
     var validationRequestKey by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
+    var validationRequestFailure by rememberSaveable(sessionId, stateSaver = ValidationRequestFailure.Saver) {
+        mutableStateOf<ValidationRequestFailure?>(null)
+    }
     var wasBackgrounded by remember { mutableStateOf(false) }
     var attachmentDraft by remember(sessionId) { mutableStateOf(WorkSessionAttachmentDraft()) }
     var openingAttachmentId by remember { mutableStateOf<UUID?>(null) }
@@ -653,8 +656,10 @@ internal fun WorkSessionConversationScreen(
 
     fun validateChange(workflow: MobileDeliveryUiState) {
         val id = sessionId ?: return
+        val source = workflow.validationEvidence ?: return
         if (validationPending || conversation?.runInProgress == true || !workflow.beginValidation()) return
         validationPending = true
+        validationRequestFailure = null
         scope.launch {
             error = null
             try {
@@ -665,11 +670,14 @@ internal fun WorkSessionConversationScreen(
                 validationRequestKey = null
                 workflow.refresh()
             } catch (cancelled: CancellationException) {
+                if (validationRequestKey != null) validationRequestFailure = ValidationRequestFailure.capture(source, cancelled)
                 throw cancelled
             } catch (validationError: Exception) {
-                if (validationError is AteneaApiException && validationError.status in 400..499) validationRequestKey = null
-                error = sourceBaseFailureMessage(validationError.message)
-                    ?: validationError.message ?: "No se pudo validar el cambio."
+                val failure = ValidationRequestFailure.capture(source, validationError)
+                if (failure.rejected) validationRequestKey = null
+                // Conversation/passive/lifecycle refreshes must not erase an
+                // admission refusal or turn it into a fictitious failed test.
+                validationRequestFailure = failure
                 refresh(silent = true, includeProfile = false)
             } finally {
                 try { workflow.finishValidation() } finally { validationPending = false }
@@ -697,7 +705,7 @@ internal fun WorkSessionConversationScreen(
     val composerEnabled = current?.canCreateTurn == true && !runUnconfirmed && profileReady && !profileDirty && deliveryState.completion == null
         && profileError == null && !validationPending && !deliveryState.busy && !deliveryState.validationRunning
         && !deliveryState.deliveryBeforeValidation(false)
-    val changeValidationUi = deliveryState.validationUi(current?.session, current?.runInProgress == true)
+    val changeValidationUi = deliveryState.validationUi(current?.session, current?.runInProgress == true, validationRequestFailure)
     ConversationSurface(
         title = current?.session?.title ?: "WorkSession $sessionId",
         status = if (runUnconfirmed) "Consultando la tarea $expectedRunId" else "Sesión $sessionId · " + conversationStatusLabel(current?.runInProgress == true,
@@ -761,7 +769,7 @@ internal fun WorkSessionConversationScreen(
                 }
             }
         } else null,
-        changeNeedsAttention = deliveryState.validationEvidence?.validationState == "BLOCKED"
+        changeNeedsAttention = changeValidationUi.needsAttention
             || deliveryState.currentStep(deliveryState.validationCurrent,
                 current?.runInProgress == true, validationInProgress = changeValidationUi.inProgress).status == DeliveryStepStatus.ATTENTION,
         changeContent = current?.takeIf { it.session.developmentChangeKey != null }?.let { loaded -> {

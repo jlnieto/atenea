@@ -1,5 +1,7 @@
 package com.atenea.android.coreconsole
 
+import androidx.compose.runtime.saveable.SaverScope
+import com.atenea.android.api.AteneaApiException
 import com.atenea.android.api.ChangeValidationWorkflow
 import com.atenea.android.api.DevelopmentChangeValidationAttempt
 import com.atenea.android.api.MobileDeliveryState
@@ -93,5 +95,93 @@ class ServerOwnedValidationUiTest {
         assertFalse(state.validationCurrent)
         assertFalse(state.validationUi(session(), false).canStart)
         assertTrue(state.validationUi(session(), false).inProgress)
+    }
+
+    @Test fun `admission refusal survives passive manual and foreground style reads without becoming a failed test`() = runBlocking {
+        val evidence = workflowEvidence(26, 3, "NOT_STARTED", 0)
+        var reads = 0
+        val state = MobileDeliveryUiState(26, this) { reads++; MobileDeliveryState(true, emptyList(), validation = evidence) }
+        state.refresh(); assertTrue(state.beginValidation())
+        val failure = ValidationRequestFailure.capture(evidence, AteneaApiException(422,
+            "Acceptance projection does not own the current source tree; validation state was not promoted"))
+        state.finishValidation()
+        repeat(3) { state.refresh() }; state.consult()
+        val ui = state.validationUi(session(), false, failure)
+        assertEquals("Volver a solicitar", ui.label); assertTrue(ui.needsAttention); assertTrue(ui.canStart)
+        assertFalse(ui.inProgress); assertTrue(ui.message.contains("El servidor no aceptó"))
+        assertTrue(ui.message.contains("Tu código se conserva")); assertFalse(ui.message.contains("Fallida"))
+        assertNull(state.validationEvidence!!.workflow); assertTrue(state.validationEvidence!!.operations.isEmpty())
+        assertEquals(0, state.validationEvidence!!.passedOperations); assertEquals(6, reads)
+    }
+
+    @Test fun `saved admission error restores on a fresh screen but never belongs to another session or revision`() = runBlocking {
+        val evidence = workflowEvidence(26, 3, "NOT_STARTED", 0)
+        val failure = ValidationRequestFailure.capture(evidence, AteneaApiException(422, "VALIDATION_SOURCE_CHANGED"))
+        val saveScope = object : SaverScope { override fun canBeSaved(value: Any) = true }
+        val saved = with(ValidationRequestFailure.Saver) { saveScope.save(failure) }!!
+        val restored = ValidationRequestFailure.Saver.restore(saved)!!
+        assertEquals(failure, restored)
+        var server = evidence
+        val state = MobileDeliveryUiState(26, this) { MobileDeliveryState(true, emptyList(), validation = server) }
+        state.refresh(); assertTrue(state.validationUi(session(), false, restored).needsAttention)
+        assertFalse(restored.matches(evidence.copy(workSessionId = 27)))
+        assertFalse(restored.matches(evidence.copy(changeKey = UUID.randomUUID())))
+        assertFalse(restored.matches(evidence.copy(sourceFingerprintSha256 = "f".repeat(64))))
+        server = evidence.copy(sourceRevision = 4, sourceFingerprintSha256 = "f".repeat(64))
+        state.refresh()
+        assertFalse(state.validationUi(session(), false, restored).needsAttention)
+        assertEquals("Validar cambio", state.validationUi(session(), false, restored).label)
+    }
+
+    @Test fun `unconfirmed request is not presented as running and a confirmed server workflow takes precedence`() = runBlocking {
+        var evidence = workflowEvidence(26, 3, "NOT_STARTED", 0)
+        val failure = ValidationRequestFailure.capture(evidence, java.io.IOException("synthetic lost response"))
+        val state = MobileDeliveryUiState(26, this) { MobileDeliveryState(true, emptyList(), validation = evidence) }
+        state.refresh()
+        var ui = state.validationUi(session(), false, failure)
+        assertEquals("Recuperar solicitud", ui.label); assertTrue(ui.canStart); assertTrue(ui.needsAttention)
+        assertFalse(ui.inProgress); assertTrue(ui.message.contains("mismo identificador"))
+        evidence = evidence.copy(validationState = "STALE", workflow = workflow())
+        state.refresh(); ui = state.validationUi(session(), false, failure)
+        assertTrue(ui.inProgress); assertFalse(ui.needsAttention); assertFalse(ui.canStart)
+        assertEquals("Validando…", ui.label); assertFalse(state.beginValidation())
+        evidence = workflowEvidence(26, 3, "CURRENT", 4).copy(workflow = workflow("SUCCEEDED", "FINISHED"))
+        state.refresh(); ui = state.validationUi(session(), false, failure)
+        assertTrue(ui.current); assertFalse(ui.needsAttention); assertFalse(ui.canStart)
+    }
+
+    @Test fun `offline read never enables retry from a retained admission error`() = runBlocking {
+        val evidence = workflowEvidence(26, 3, "NOT_STARTED", 0)
+        val failure = ValidationRequestFailure.capture(evidence, AteneaApiException(422, "VALIDATION_SOURCE_CHANGED"))
+        var online = true
+        val state = MobileDeliveryUiState(26, this) {
+            if (!online) error("offline")
+            MobileDeliveryState(true, emptyList(), validation = evidence)
+        }
+        state.refresh(); online = false; state.refresh()
+        val ui = state.validationUi(session(), false, failure)
+        assertFalse(ui.canStart); assertTrue(ui.checking); assertFalse(state.beginValidation())
+        online = true; state.refresh()
+        assertTrue(state.validationUi(session(), false, failure).needsAttention)
+    }
+
+    @Test fun `sending a request is not falsely presented as an admitted server validation`() = runBlocking {
+        var evidence = workflowEvidence(26, 3, "NOT_STARTED", 0)
+        val state = MobileDeliveryUiState(26, this) { MobileDeliveryState(true, emptyList(), validation = evidence) }
+        state.refresh(); assertTrue(state.beginValidation())
+        var ui = state.validationUi(session(), false)
+        assertTrue(ui.requesting); assertTrue(ui.inProgress); assertFalse(ui.canStart)
+        assertEquals("Solicitando…", ui.label); assertTrue(ui.message.contains("Todavía no se ha confirmado"))
+        state.refresh(); assertTrue(state.validationUi(session(), false).requesting)
+        evidence = evidence.copy(validationState = "STALE", workflow = workflow())
+        state.refresh(); ui = state.validationUi(session(), false)
+        assertFalse(ui.requesting); assertTrue(ui.inProgress); assertEquals("Validando…", ui.label)
+        state.finishValidation(); assertTrue(state.validationUi(session(), false).inProgress)
+    }
+
+    @Test fun `request timeout is uncertain and not permission to discard the idempotency key`() {
+        val evidence = workflowEvidence(26, 3, "NOT_STARTED", 0)
+        val failure = ValidationRequestFailure.capture(evidence, AteneaApiException(408, "Timeout"))
+        assertFalse(failure.rejected); assertTrue(failure.message.contains("mismo identificador"))
     }
 }

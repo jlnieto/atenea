@@ -51,14 +51,15 @@ internal fun WorkSessionChangePanel(
             }
             DeliveryStepCard(DeliveryStepUi(status,
                 if (validation.checking) "Estado por confirmar"
-                else if (runInProgress) "Codex está trabajando" else if (validation.inProgress) "Validando cambio" else "Validar cambio",
+                else if (runInProgress) "Codex está trabajando" else if (validation.requesting) "Solicitando validación"
+                else if (validation.inProgress) "Validando cambio" else "Validar cambio",
                 if (runInProgress) "Puedes salir de la app. Espera al resultado; no repitas el prompt."
-                else if (validation.inProgress) "Atenea está comprobando esta revisión. Puedes salir de la app; no repitas la validación."
+                else if (validation.inProgress && !validation.requesting) "Atenea está comprobando esta revisión. Puedes salir de la app; no repitas la validación."
                 else validation.message)) {
                 if (validation.checking) AteneaOutlinedButton("Consultar estado", enabled = !loading, onClick = onReadEvidence)
                 else if (validation.visible && !runInProgress) AteneaButton(validation.label,
                     enabled = validation.canStart, onClick = onValidate)
-                if (!runInProgress) ValidationProgressPanel(evidence, sessionId, validation.inProgress,
+                if (!runInProgress) ValidationProgressPanel(evidence, sessionId, validation.inProgress && !validation.requesting,
                     observationConfirmed = !validation.checking && readError == null)
             }
         }

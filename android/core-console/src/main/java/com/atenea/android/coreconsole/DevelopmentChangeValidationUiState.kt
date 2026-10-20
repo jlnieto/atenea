@@ -10,7 +10,8 @@ internal data class DevelopmentChangeValidationUiState(
     val current: Boolean = false,
     val needsAttention: Boolean = false,
     val inProgress: Boolean = false,
-    val checking: Boolean = false
+    val checking: Boolean = false,
+    val requesting: Boolean = false
 )
 
 internal fun developmentChangeValidationUiState(
