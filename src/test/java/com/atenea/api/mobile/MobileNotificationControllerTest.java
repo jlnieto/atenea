@@ -108,6 +108,8 @@ class MobileNotificationControllerTest {
         when(inboxService.list(4L, 0)).thenReturn(new MobileNotificationInboxService.Inbox(
                 "atenea-mobile-notification-inbox/v1", List.of(item), 1L, null));
         when(inboxService.markRead(4L, id)).thenReturn(item);
+        when(inboxService.markAllRead(4L)).thenReturn(new MobileNotificationInboxService.ReadAllResult(
+                Instant.parse("2026-10-16T06:30:00Z"), 0L));
         mockMvc.perform(get("/api/mobile/notifications"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.unreadCount").value(1))
@@ -115,5 +117,9 @@ class MobileNotificationControllerTest {
         mockMvc.perform(post("/api/mobile/notifications/{id}/read", id))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id.toString()));
+        mockMvc.perform(post("/api/mobile/notifications/read-all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.unreadCount").value(0))
+                .andExpect(jsonPath("$.readAt").value("2026-10-16T06:30:00Z"));
     }
 }
