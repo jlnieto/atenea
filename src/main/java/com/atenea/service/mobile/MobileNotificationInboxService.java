@@ -1,5 +1,6 @@
 package com.atenea.service.mobile;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.atenea.persistence.auth.OperatorEntity;
 import com.atenea.persistence.notification.MobileNotificationInboxEntity;
 import com.atenea.persistence.notification.MobileNotificationInboxRepository;
@@ -55,6 +56,13 @@ public class MobileNotificationInboxService {
     }
 
     @Transactional
+    public ReadAllResult markAllRead(Long operatorId) {
+        Instant readAt = Instant.now();
+        repository.markAllRead(operatorId, readAt);
+        return new ReadAllResult(readAt, repository.countByOperatorIdAndReadAtIsNull(operatorId));
+    }
+
+    @Transactional
     public void markOpened(Long operatorId, UUID eventId) {
         repository.findByOperatorIdAndEventKey(operatorId, eventId.toString()).ifPresent(item -> {
             if (item.getReadAt() == null) item.setReadAt(Instant.now());
@@ -62,6 +70,7 @@ public class MobileNotificationInboxService {
     }
 
     public record Inbox(String protocolVersion, List<Item> items, long unreadCount, Integer nextPage) {}
+    public record ReadAllResult(@JsonFormat(shape = JsonFormat.Shape.STRING) Instant readAt, long unreadCount) {}
     public record Item(UUID id, String category, String title, String body, String destination,
                        Long targetId, Instant createdAt, Instant readAt) {
         static Item from(MobileNotificationInboxEntity entity) {

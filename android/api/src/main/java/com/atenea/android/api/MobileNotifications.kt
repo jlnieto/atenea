@@ -1,6 +1,7 @@
 package com.atenea.android.api
 
 import org.json.JSONObject
+import java.time.Instant
 import java.util.UUID
 
 data class MobileNotification(
@@ -19,6 +20,17 @@ data class MobileNotificationInbox(
     val unreadCount: Long,
     val nextPage: Int?
 )
+
+data class MobileNotificationsReadAllResult(
+    val readAt: String,
+    val unreadCount: Long
+)
+
+internal fun parseMobileNotificationsReadAllResult(json: JSONObject): MobileNotificationsReadAllResult =
+    MobileNotificationsReadAllResult(
+        readAt = json.getString("readAt").also { Instant.parse(it) },
+        unreadCount = json.getLong("unreadCount").also { require(it >= 0) }
+    )
 
 internal fun parseMobileNotification(json: JSONObject): MobileNotification {
     val destination = json.getString("destination")

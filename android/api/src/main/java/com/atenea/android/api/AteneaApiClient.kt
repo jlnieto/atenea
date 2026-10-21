@@ -172,6 +172,13 @@ class AteneaApiClient(
         parser = ::parseMobileNotification
     )
 
+    suspend fun markAllNotificationsRead(): MobileNotificationsReadAllResult = postJson(
+        path = "/api/mobile/notifications/read-all",
+        body = JSONObject(),
+        authenticated = true,
+        parser = ::parseMobileNotificationsReadAllResult
+    )
+
     suspend fun markNotificationOpened(eventId: UUID) {
         requestBody("/api/mobile/notifications/$eventId/opened", "POST", JSONObject(), authenticated = true)
     }

@@ -44,6 +44,12 @@ public class MobileNotificationController {
         return inboxService.markRead(operator.operatorId(), id);
     }
 
+    @PostMapping("/read-all")
+    public MobileNotificationInboxService.ReadAllResult markAllRead(
+            @AuthenticationPrincipal AuthenticatedOperator operator) {
+        return inboxService.markAllRead(operator.operatorId());
+    }
+
     @PostMapping("/{eventId}/opened")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void markOpened(@AuthenticationPrincipal AuthenticatedOperator operator,
