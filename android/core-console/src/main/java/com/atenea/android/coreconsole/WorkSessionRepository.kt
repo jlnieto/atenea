@@ -11,10 +11,13 @@ import com.atenea.android.api.MobileSessionPreview
 import com.atenea.android.api.SessionDeliverable
 import com.atenea.android.api.SessionDeliverablesView
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -29,51 +32,31 @@ internal class WorkSessionRepository(
     private val remoteCloseCoordinator = RemoteCloseOperatorCoordinator(apiClient, sessionId)
     val remoteCloseState: StateFlow<RemoteCloseActionUiState> = remoteCloseCoordinator.state
 
-    private var syncJob: Job? = null
+    private val snapshotReads = CoalescingRead<Long, Unit>(scope)
+    private val eventReads = CoalescingRead<Long, Boolean>(scope)
+    private val detailReads = CoalescingRead<Pair<Long, Long>, SessionDeliverable>(scope)
+    private var generation = 0L
     private var eventCursor: String? = null
 
-    fun start() {
-        if (syncJob != null) {
-            return
-        }
-        syncJob = scope.launch {
-            refreshSnapshot(initial = true)
-            runCatching { refreshEvents() }
-            var failures = 0
-            while (true) {
-                val current = mutableState.value
-                val active = current.summary?.conversation?.runInProgress == true ||
-                    current.pendingAction != null ||
-                    current.activeCommand?.status in setOf("RUNNING", "PENDING")
-                val delayMs = when {
-                    active -> 3_000L
-                    failures > 0 -> 15_000L
-                    else -> 10_000L
-                }
-                delay(delayMs)
+    /** The screen's STARTED lifecycle is the sole owner of this periodic observer. */
+    suspend fun observeWhileStarted() {
+        refreshSnapshot(initial = mutableState.value.summary == null)
+        refreshEventsQuietly()
+        state.map { it.pollDelayMillis }.distinctUntilChanged().collectLatest { interval ->
+            if (interval != null) while (true) {
+                delay(interval)
                 try {
                     val changed = refreshEvents()
-                    if (changed || active) {
-                        refreshSnapshot(initial = false)
-                    }
-                    failures = 0
+                    val current = mutableState.value
+                    if (changed || current.active || current.summary == null || current.stale) refreshSnapshot(initial = false)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (syncError: Exception) {
-                    failures += 1
-                    mutableState.update {
-                        it.copy(
-                            stale = true,
-                            syncLabel = "Sincronizacion degradada",
-                            error = syncError.message ?: "No se pudo sincronizar la sesion."
-                        )
-                    }
+                    mutableState.update { it.copy(stale = true, syncLabel = "Sincronizacion degradada",
+                        error = syncError.message ?: "No se pudo sincronizar la sesion.") }
                 }
             }
         }
-    }
-
-    fun stop() {
-        syncJob?.cancel()
-        syncJob = null
     }
 
     fun refreshNow() {
@@ -81,6 +64,8 @@ internal class WorkSessionRepository(
             refreshSnapshot(initial = false)
             try {
                 refreshEvents()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (syncError: Exception) {
                 mutableState.update {
                     it.copy(
@@ -99,10 +84,11 @@ internal class WorkSessionRepository(
 
     fun runRemoteClosePrimaryAction() {
         val operatorState = mutableState.value.summary?.operatorState ?: return
+        beginEffectObservationEpoch()
         scope.launch {
             if (remoteCloseCoordinator.runPrimaryAction(operatorState)) {
                 refreshSnapshot(initial = false)
-                runCatching { refreshEvents() }
+                refreshEventsQuietly()
             }
         }
     }
@@ -130,6 +116,7 @@ internal class WorkSessionRepository(
             return
         }
 
+        val epoch = generation
         scope.launch {
             mutableState.update {
                 it.copy(
@@ -138,14 +125,18 @@ internal class WorkSessionRepository(
                 )
             }
             try {
-                val detail = apiClient.fetchMobileSessionDeliverable(sessionId, deliverableId)
+                val detail = detailReads.read(epoch to deliverableId) { apiClient.fetchMobileSessionDeliverable(sessionId, deliverableId) }
+                if (epoch != generation) return@launch
                 mutableState.update {
                     it.copy(
                         deliverableDetails = it.deliverableDetails + (deliverableId to detail),
                         deliverableDetailLoadingId = null
                     )
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (detailError: Exception) {
+                if (epoch != generation) return@launch
                 mutableState.update {
                     it.copy(
                         deliverableDetailLoadingId = null,
@@ -157,6 +148,7 @@ internal class WorkSessionRepository(
     }
 
     fun runCoreAction(label: String, input: String) {
+        beginEffectObservationEpoch()
         scope.launch {
             mutableState.update {
                 it.copy(
@@ -181,6 +173,8 @@ internal class WorkSessionRepository(
                     )
                 }
                 refreshAfterCommand(command)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (actionError: Exception) {
                 mutableState.update {
                     it.copy(
@@ -195,14 +189,19 @@ internal class WorkSessionRepository(
 
     fun confirmActiveCommand(token: String) {
         val commandId = mutableState.value.activeCommand?.commandId ?: return
+        beginEffectObservationEpoch()
         scope.launch {
             mutableState.update { it.copy(commandPending = true, error = null) }
             try {
                 val command = apiClient.confirmCoreCommand(commandId, token)
                 mutableState.update { it.copy(activeCommand = command, commandPending = false) }
                 refreshAfterCommand(command)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (confirmError: Exception) {
-                val refreshedCommand = runCatching { apiClient.fetchCoreCommand(commandId) }.getOrNull()
+                val refreshedCommand = try { apiClient.fetchCoreCommand(commandId) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { null }
                 mutableState.update {
                     it.copy(
                         commandPending = false,
@@ -210,8 +209,8 @@ internal class WorkSessionRepository(
                         error = confirmError.message ?: "No se pudo confirmar el comando."
                     )
                 }
-                runCatching { refreshSnapshot(initial = false) }
-                runCatching { refreshEvents() }
+                refreshSnapshot(initial = false)
+                refreshEventsQuietly()
             }
         }
     }
@@ -227,6 +226,12 @@ internal class WorkSessionRepository(
     }
 
     private suspend fun refreshSnapshot(initial: Boolean) {
+        val epoch = generation
+        snapshotReads.read(epoch) { refreshSnapshotAt(epoch, initial) }
+    }
+
+    private suspend fun refreshSnapshotAt(epoch: Long, initial: Boolean) {
+        if (epoch != generation) return
         mutableState.update {
             it.copy(
                 loading = initial && it.summary == null,
@@ -237,13 +242,19 @@ internal class WorkSessionRepository(
         }
         try {
             val summary = apiClient.fetchMobileWorkSessionSummary(sessionId)
-            remoteCloseCoordinator.accept(summary.operatorState)
+            if (epoch != generation) return
+            require(summary.conversation.session.id == sessionId)
             val deliverables = apiClient.fetchMobileSessionDeliverables(sessionId)
+            if (epoch != generation) return
+            require(deliverables.sessionId == sessionId)
             val preview = try {
                 apiClient.fetchMobileSessionPreview(sessionId)
             } catch (previewError: AteneaApiException) {
                 if (previewError.status == 404) null else throw previewError
             }
+            if (epoch != generation) return
+            require(preview == null || preview.workSessionId == sessionId)
+            remoteCloseCoordinator.accept(summary.operatorState)
             mutableState.update {
                 it.copy(
                     loading = false,
@@ -258,7 +269,10 @@ internal class WorkSessionRepository(
                         ?: it.lastSyncedAt
                 )
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (loadError: Exception) {
+            if (epoch != generation) return
             mutableState.update {
                 it.copy(
                     loading = false,
@@ -272,11 +286,19 @@ internal class WorkSessionRepository(
     }
 
     private suspend fun refreshEvents(): Boolean {
+        val epoch = generation
+        return eventReads.read(epoch) { refreshEventsAt(epoch) }
+    }
+
+    private suspend fun refreshEventsAt(epoch: Long): Boolean {
+        if (epoch != generation) return false
         val response = apiClient.fetchMobileSessionEvents(
             sessionId = sessionId,
             after = eventCursor,
             limit = 50
         )
+        if (epoch != generation) return false
+        require(response.sessionId == sessionId)
         val incoming = response.events
         if (incoming.isEmpty()) {
             mutableState.update {
@@ -302,6 +324,17 @@ internal class WorkSessionRepository(
             )
         }
         return true
+    }
+
+    private suspend fun refreshEventsQuietly() {
+        try { refreshEvents() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { /* Preserve the last confirmed snapshot until the next observation. */ }
+    }
+
+    private fun beginEffectObservationEpoch() {
+        generation++
+        mutableState.update { it.copy(refreshing = false, deliverableDetailLoadingId = null) }
     }
 
     private suspend fun refreshAfterCommand(command: CoreCommandResponse) {
@@ -334,3 +367,13 @@ internal data class WorkSessionUiState(
     val lastEventAt: String? = null,
     val lastEventsGeneratedAt: String? = null
 )
+
+private val WorkSessionUiState.active get() = summary?.conversation?.runInProgress == true ||
+    pendingAction != null || activeCommand?.status in setOf("RUNNING", "PENDING")
+
+internal val WorkSessionUiState.pollDelayMillis: Long? get() = when {
+    stale || error != null -> 15_000L
+    summary?.conversation?.session?.status == "CLOSED" -> null
+    active -> 3_000L
+    else -> 30_000L
+}

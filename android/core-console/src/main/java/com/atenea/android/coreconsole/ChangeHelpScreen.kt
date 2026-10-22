@@ -40,6 +40,7 @@ internal fun ChangeHelpScreen(
     sessionId: Long,
     changeKey: String?,
     onNavigate: (ChangeHelpDestination) -> Unit,
+    runReader: CodexRunReader,
     onRunChanged: (Long) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
@@ -51,7 +52,7 @@ internal fun ChangeHelpScreen(
     var recovering by rememberSaveable(sessionId) { mutableStateOf(false) }
 
     if (recovering) {
-        ValidationRecoveryScreen(apiClient, sessionId, changeKey,
+        ValidationRecoveryScreen(apiClient, sessionId, changeKey, runReader,
             onBack = { recovering = false }, onNavigate = onNavigate, onRunChanged = onRunChanged)
         return
     }

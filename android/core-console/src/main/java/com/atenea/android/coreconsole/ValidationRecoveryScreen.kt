@@ -18,20 +18,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 
 @Composable
-internal fun ValidationRecoveryScreen(api: AteneaApiClient, sessionId: Long, changeKey: String?,
+internal fun ValidationRecoveryScreen(api: AteneaApiClient, sessionId: Long, changeKey: String?, runReader: CodexRunReader,
     onBack: () -> Unit, onNavigate: (ChangeHelpDestination) -> Unit, onRunChanged: (Long) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     val reads = remember(api, sessionId) { CoalescingRead<Long, Unit>(scope) }
-    var generation by remember(sessionId) { mutableStateOf(0L) }
-    var state by remember(sessionId) { mutableStateOf<ValidationRecovery?>(null) }
-    var pending by remember(sessionId) { mutableStateOf(false) }
-    var error by remember(sessionId) { mutableStateOf<String?>(null) }
-    var confirm by remember(sessionId) { mutableStateOf(false) }
-    var detail by remember(sessionId) { mutableStateOf<CodexRunDetail?>(null) }
-    var progress by remember(sessionId) { mutableStateOf<CodexProgressReplay?>(null) }
-    var answer by remember(sessionId) { mutableStateOf<String?>(null) }
-    var cursor by remember(sessionId) { mutableStateOf(0L) }
+    var generation by remember(api, sessionId) { mutableStateOf(0L) }
+    var state by remember(api, sessionId) { mutableStateOf<ValidationRecovery?>(null) }
+    var pending by remember(api, sessionId) { mutableStateOf(false) }
+    var error by remember(api, sessionId) { mutableStateOf<String?>(null) }
+    var confirm by remember(api, sessionId) { mutableStateOf(false) }
+    var detail by remember(api, sessionId) { mutableStateOf<CodexRunDetail?>(null) }
+    var progress by remember(api, sessionId) { mutableStateOf<CodexProgressReplay?>(null) }
+    var answer by remember(api, sessionId) { mutableStateOf<String?>(null) }
     suspend fun read(afterAction: Boolean = false) {
         if (pending && !afterAction) return
         val epoch = generation
@@ -43,23 +42,18 @@ internal fun ValidationRecoveryScreen(api: AteneaApiClient, sessionId: Long, cha
             state = value
             val investigation = value.investigation
             val runId = investigation?.runId
-            if (detail?.runId != runId) { detail = null; progress = null; answer = null; cursor = 0 }
+            if (detail?.runId != runId) { detail = null; progress = null; answer = null }
             if (runId != null) {
                 if (previous?.runId != runId || previous?.runStatus != investigation?.runStatus) onRunChanged(runId)
-                val terminal = detail?.takeIf { it.runId == runId && it.status in setOf("SUCCEEDED", "FAILED", "CANCELLED") }
-                val loaded = if (terminal != null && progress?.terminalOutcome != null) terminal else api.fetchCodexRunDetail(runId)
+                val observed = runReader.observe(runId)
                 if (epoch != generation) return@read
-                require(loaded.runId == runId && loaded.workSessionId == sessionId)
-                detail = loaded
-                if (terminal == null || progress?.terminalOutcome == null) {
-                    val replay = api.fetchCodexRunProgress(runId, cursor)
-                    if (epoch != generation) return@read
-                    progress = mergeCodexProgressReplay(progress, replay)
-                    cursor = progress?.latestObservedSequence() ?: cursor
-                }
-                if (loaded.status in setOf("SUCCEEDED", "FAILED", "CANCELLED") && answer == null) {
+                require(observed.detail.runId == runId && observed.detail.workSessionId == sessionId)
+                detail = observed.detail
+                progress = observed.progress
+                if (observed.detail.status in setOf("SUCCEEDED", "FAILED", "CANCELLED") && answer == null) {
                     val conversation = api.fetchMobileWorkSessionConversation(sessionId)
                     if (epoch != generation) return@read
+                    require(conversation.session.id == sessionId)
                     answer = conversation.recentTurns.lastOrNull {
                         it.actor == "CODEX" && it.executionProfile?.runId == runId
                     }?.messageText

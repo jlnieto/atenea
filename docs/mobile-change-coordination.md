@@ -29,13 +29,14 @@ pretende eliminar.
 - Bloque activo: S2, consultas coordinadas y ciclo de vida.
 - La primera parte de S2 está integrada en PR 93: UFD T3 completo con 320 tests,
   backend de merge y ocho journeys PASS. No cierra todo el bloque S2.
-- Siguiente acción: compartir la observación del detalle/progreso de ejecución
-  entre Conversación y Recuperación; añadir sus regresiones HTTP/cursor y
-  cerrar el propietario STARTED de la vista retenida WorkSessionScreen.
-  Conservar las ocho regresiones actuales y el plan UFD íntegro. No modificar
-  permisos del dedicado para forzar instrumentación local.
-- La rama de continuación contiene sólo el checkpoint documental posterior al
-  merge; todavía no hay código nuevo ni PR para los pendientes de S2.
+- La segunda parte S2 está implementada localmente: lector compartido de
+  ejecución, cursores y resultados finales, con propietario STARTED en la vista
+  WorkSession. Suite core-console: 205 tests PASS; los doce journeys aún están
+  pendientes de ejecución en CI.
+- Siguiente acción: revisar el diff, compilar la APK instrumentada, commit y
+  UFD postcommit íntegro antes de abrir PR. Exigir los doce journeys y backend
+  de merge antes de integrar. No modificar permisos del dedicado para forzar
+  instrumentación local ni dar S2 por cerrado sólo por los unitarios.
 - Despliegues, APK, cambios de configuración y operaciones reales sobre el
   Cambio no están incluidos en este paso de implementación. Requieren su
   autorización y preflight correspondientes.
@@ -143,7 +144,7 @@ su commit, comandos/resultados y siguiente acción al terminar una sesión.
 | Bloque | Repositorio | Estado vigente | Dependencia |
 | --- | --- | --- | --- |
 | S1 Navegación estable | App Android | INTEGRADO; PR 92, siete journeys PASS; sin despliegue | A1 |
-| S2 Consultas coordinadas del móvil | App Android | EN CURSO; primera parte integrada PR 93, 320 unitarios y ocho journeys PASS | S1 |
+| S2 Consultas coordinadas del móvil | App Android | EN CURSO; segunda parte local, 205 core-console PASS y doce journeys pendientes; primera parte PR 93 integrada | S1 |
 | S3 Observación coherente del servidor | App y Platform | PENDIENTE | A2 y A3; protocolo antes de consumidor si cambia |
 | S4 Admisión y recuperación durables | App y Platform si el contrato lo requiere | PENDIENTE | S3 |
 | S5 CI y progreso completo | App | PENDIENTE; diff previo preservado | Revisar contra S1 a S4 |
@@ -173,7 +174,7 @@ su commit, comandos/resultados y siguiente acción al terminar una sesión.
   consulta manual durante polling, STOP/START, cambio de sesión, cancelación,
   fallos de red y respuesta tardía. Contar peticiones, no sólo mirar el texto.
 
-Pendientes después de PR 93:
+Completado en la segunda parte local, pendiente de sus doce journeys/CI:
 
 1. Un lector compartido del detalle/progreso de ejecución, ligado al cliente
    autenticado, WorkSession y AgentRun exactos. Conversación y Recuperación no
@@ -187,8 +188,10 @@ Pendientes después de PR 93:
    consultas manuales y automáticas coordinadas y cancelación propagada. La
    vista retenida no puede seguir consultando en segundo plano por permanecer
    compuesta. Conservar las barreras y acciones existentes en este bloque.
-4. Ejecutar las regresiones nuevas junto a las ocho actuales y UFD postcommit
-   completo antes de su PR. Sólo entonces evaluar el cierre de S2 y pasar a S3.
+
+Puerta pendiente: ejecutar las cuatro regresiones nuevas junto a las ocho
+actuales y UFD postcommit completo antes de su PR. Sólo entonces evaluar el
+cierre de S2 y pasar a S3.
 
 ### S3 Observación coherente del servidor
 
@@ -446,6 +449,45 @@ ANDROID_OBSERVATION_BUSY requiere todavía S3/S4. Los pendientes de S2 están
 enumerados arriba; no cerrar todo S2 por este PASS ni abrir otra PR con los
 mismos commits. La rama de continuación parte de este merge y conserva un
 checkpoint documental local para retomar sin repetir estas pruebas.
+
+### 22 de octubre de 2026 Segunda parte S2 implementada
+
+`CodexRunReader` concentra detalle/progreso bajo el cliente autenticado y la
+WorkSession de la conversación. Comparte lecturas simultáneas del mismo run,
+conserva el cursor por ejecución y sólo reutiliza un resultado final cuando
+también recibió el progreso terminal. La ventana de presentación se limita a
+ocho ejecuciones; un elemento expulsado se vuelve a consultar. No es una caché
+global, de permisos ni de autoridad para efectos.
+
+Conversación entrega ese mismo lector a Ayuda y Recuperación. Se mantienen las
+comprobaciones de run/sesión en cada consumidor; Recuperación también verifica
+la sesión de la respuesta final. Un error de lectura no avanza el cursor.
+Cambiar de ejecución comienza en cero; cambiar de cliente/sesión crea otro
+lector, sin reutilizar respuestas o resultados del anterior.
+
+WorkSessionScreen ahora inicia su observación únicamente en STARTED. El
+repositorio comparte snapshots, eventos y detalles equivalentes en vuelo y
+serializa generaciones distintas. Las acciones existentes invalidan respuestas
+anteriores sin deduplicar ni repetir efectos. Se propaga la cancelación; la
+frecuencia cambia reactivamente entre tres segundos con trabajo, treinta en
+reposo y quince tras error. El historial cerrado no mantiene polling. Al volver
+se obtiene estado fresco y un fallo de la primera lectura no impide reconsultar
+la sesión en ciclos posteriores.
+
+Pruebas locales: 205 tests core-console PASS (incluyen nueve nuevos), sin fallos
+ni omitidos. `git diff --check` y sintaxis del corredor PASS. El corredor
+instrumentado exige doce casos: los ocho previos y cuatro nuevos, con HTTP
+loopback, sin Firebase/firma/canal ni recursos PROD. La instrumentación aún
+debe ejecutarse en CI con KVM antes de declarar S2 probado/integrado.
+
+Los nuevos recorridos cubren consulta manual durante GET lento con un segundo
+consumidor, cursor incremental y reintento de lectura sin adelantarlo, STOP de
+una investigación activa, regreso con resultado final, nueva ejecución y
+respuesta tardía de otra sesión. Además recorren Conversación → Ayuda →
+Recuperación para demostrar el lector compartido real, y la vista retenida
+WorkSession con consulta concurrente, STOP/START e historial sin polling.
+Todos cuentan peticiones y exigen cero efectos. No se han ejecutado tareas,
+validaciones ni publicaciones sobre el Cambio real ni se ha tocado Platform.
 
 Al retomar: leer este documento y `AGENTS.md`, comprobar status de ambos repos y
 el bloque activo, revisar el diff y el último resultado de prueba. Actualizar
