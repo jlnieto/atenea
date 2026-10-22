@@ -29,8 +29,9 @@ pretende eliminar.
 - Bloque activo: S2, consultas coordinadas y ciclo de vida.
 - S2 tiene 196 tests core-console PASS y APK instrumentada compilada; falta
   demostrar sus ocho journeys en CI y revisar los lectores entre vistas.
-- Siguiente acción: ejecutar UFD postcommit y PR/CI S2; conservar las siete
-  regresiones previas y exigir también el nuevo contador HTTP/lifecycle.
+- Siguiente acción: completar la misma PR 93 con el temporizador reactivo y
+  comprobar sus ocho journeys sin aumentar timeouts ni retirar regresiones.
+  UFD del checkpoint inicial pasó con 320 tests; revalidar el head corregido.
   No modificar permisos del dedicado para forzar instrumentación local.
 - Despliegues, APK, cambios de configuración y operaciones reales sobre el
   Cambio no están incluidos en este paso de implementación. Requieren su
@@ -371,6 +372,22 @@ No extender un PASS de componente a esos escenarios aún no demostrados.
 
 S3 a S6 siguen pendientes. No hay cambio de backend, Platform, versión/firma APK,
 datos PROD, permisos del host ni operaciones sobre el Cambio real.
+
+### 22 de octubre de 2026 Regresión de temporizador detectada en CI S2
+
+PR <https://github.com/jlnieto/atenea/pull/93>, checkpoint `95088c3`: UFD local y
+CI, suite Android completa de 320 tests y backend de merge PASS. El run de
+pantalla `39785668932` ejecutó ocho casos; siete pasaron, incluido el nuevo
+contador físico de HTTP/STOP/START. El recorrido previo de actualización de la
+misma PR se detuvo en su espera de veinte segundos para Integrar cambio.
+
+El intervalo adaptativo se calculaba al comenzar un delay. Al pasar de reposo
+a trabajo dentro de esos treinta segundos, el delay no se rearmaba y la app
+tardaba demasiado en observar la PR lista. Se sustituye por una observación
+reactiva del intervalo con collectLatest: cambia de ritmo al cambiar la
+actividad, espera antes de cada lectura y sigue respetando STARTED y la
+exclusión de transporte. El timeout y las aserciones del journey se conservan.
+S2 permanece sin integrar hasta validar las ocho regresiones del head corregido.
 
 Al retomar: leer este documento y `AGENTS.md`, comprobar status de ambos repos y
 el bloque activo, revisar el diff y el último resultado de prueba. Actualizar
