@@ -215,6 +215,20 @@ public class MobileDeliveryService {
 
     /** Read-only global APK facts plus exact-change ancestry and diff-derived requirements. */
     public ChangeDeliveryReadiness observeDelivery(Long sessionId, AuthenticatedOperator actor) {
+        // Effect callers retain a fresh observation; no projection/cache authorizes completion.
+        return observeDelivery(sessionId, actor, () -> observeDeployment(sessionId, actor));
+    }
+
+    public record ReleaseStatus(DeploymentObservation deployment, ChangeDeliveryReadiness readiness) { }
+
+    /** One coherent read-only response for Cambio/Help, not an admission or publication receipt. */
+    public ReleaseStatus observeReleaseStatus(Long sessionId, AuthenticatedOperator actor) {
+        var deployment = observeDeployment(sessionId, actor);
+        return new ReleaseStatus(deployment, observeDelivery(sessionId, actor, () -> deployment));
+    }
+
+    private ChangeDeliveryReadiness observeDelivery(Long sessionId, AuthenticatedOperator actor,
+            java.util.function.Supplier<DeploymentObservation> deployment) {
         administrator(actor.operatorId());
         WorkSessionEntity session=session(sessionId,false);
         ReleaseControlClient.AndroidObservation android=null;
@@ -259,7 +273,7 @@ public class MobileDeliveryService {
                     if (!"RELEASE_CHANGE_NOT_INCLUDED".equals(rejected.code())) { androidStatus="UNAVAILABLE"; androidError=rejected.code(); }
                 }
             }
-            var backend=targets.contains(DeliveryTarget.APP_PROD) ? observeDeployment(sessionId,actor) : null;
+            var backend=targets.contains(DeliveryTarget.APP_PROD) ? deployment.get() : null;
             boolean ready=(!targets.contains(DeliveryTarget.APP_PROD) || backend!=null && "DEPLOYED".equals(backend.status()) && backend.healthy())
                     && (!targets.contains(DeliveryTarget.ANDROID_STABLE) || "INCLUDED".equals(androidStatus));
             return new ChangeDeliveryReadiness(sessionId,"CONFIRMED",session.getFinalCommitSha(),merge,targets,ready,

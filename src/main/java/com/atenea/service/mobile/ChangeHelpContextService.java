@@ -94,8 +94,23 @@ public class ChangeHelpContextService {
                 .findFirst().orElse(null);
         String deploymentStatus = "NOT_CONFIRMED";
         boolean deliveryEnabled=releaseControl.enabled();
+        com.atenea.delivery.ChangeDeliveryReadiness readiness=null;
+        boolean observesAtenea=Long.valueOf(1).equals(session.getProject().getId()) && deliveryEnabled
+                && "PLATFORM_ADMINISTRATOR".equals(name(operator.getCodexOperationsRole()));
+        if (observesAtenea) {
+            try {
+                var observed=deliveryObservations.observeReleaseStatus(id,actor);
+                readiness=observed.readiness();
+                if ("MERGED".equals(name(session.getPullRequestStatus())) && observed.deployment()!=null)
+                    deploymentStatus=observed.deployment().status();
+            } catch (RuntimeException unavailable) {
+                if ("MERGED".equals(name(session.getPullRequestStatus()))) deploymentStatus="UNAVAILABLE";
+                readiness=new com.atenea.delivery.ChangeDeliveryReadiness(id,"UNAVAILABLE",session.getFinalCommitSha(),null,
+                        java.util.List.of(),false,null,null,"UNAVAILABLE","DELIVERY_OBSERVATION_UNAVAILABLE",Instant.now().getEpochSecond());
+            }
+        }
         if ("MERGED".equals(name(session.getPullRequestStatus())) && deliveryEnabled
-                && "PLATFORM_ADMINISTRATOR".equals(name(operator.getCodexOperationsRole()))) {
+                && !observesAtenea && "PLATFORM_ADMINISTRATOR".equals(name(operator.getCodexOperationsRole()))) {
             // Same read-only, ownership-checked observation used by the Cambio screen.
             // No plan, grant, reconciliation or publication is requested by help.
             try {
@@ -106,15 +121,6 @@ public class ChangeHelpContextService {
             }
         }
         String response = run == null || run.getResultTurn() == null ? "" : run.getResultTurn().getMessageText();
-        com.atenea.delivery.ChangeDeliveryReadiness readiness=null;
-        if (Long.valueOf(1).equals(session.getProject().getId()) && deliveryEnabled
-                && "PLATFORM_ADMINISTRATOR".equals(name(operator.getCodexOperationsRole()))) {
-            try { readiness=deliveryObservations.observeDelivery(id,actor); }
-            catch (RuntimeException unavailable) {
-                readiness=new com.atenea.delivery.ChangeDeliveryReadiness(id,"UNAVAILABLE",session.getFinalCommitSha(),null,
-                        java.util.List.of(),false,null,null,"UNAVAILABLE","DELIVERY_OBSERVATION_UNAVAILABLE",Instant.now().getEpochSecond());
-            }
-        }
         boolean gitInstructions = response != null && response.contains("github/main")
                 && response.toLowerCase(Locale.ROOT).contains("origin");
         String sourceBaseStatus="NOT_REQUIRED";

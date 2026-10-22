@@ -375,6 +375,29 @@ class ChangeValidationWorkflowIntegrationTest {
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM agent_run WHERE session_id=?",Integer.class,sessionId));
     }
 
+    @Test void residualCollectorSelectsOnlyOrphansAndRechecksTheWorkflowOwnerUnderLock() {
+        UUID id=UUID.randomUUID();coordinator.request(sessionId,id);coordinator.progress(id);
+        UUID operation=store.find(id).orElseThrow().activeOperationId();
+        assertNotNull(operation);
+        var page=org.springframework.data.domain.PageRequest.of(0,10);
+        assertTrue(operations.pendingResults(page).isEmpty());
+        clearInvocations(worker);
+        assertEquals(ValidationOperationStatus.RUNNING,validation.reconcileRetainedResult(sessionId,operation).status());
+        verifyNoInteractions(worker);
+
+        // Only a terminal owner releases the existing result to the residual collector.
+        tx(()->store.finish(store.locked(id),"BLOCKED","VALIDATION_STATUS_UNAVAILABLE"));
+        var pending=operations.pendingResults(page);
+        assertEquals(1,pending.size());assertEquals(operation,pending.getFirst().getId());
+        assertEquals(sessionId,pending.getFirst().getSessionId());
+        remote.put(operation.toString(),result(operation.toString(),ValidationOperationKind.BACKEND_TEST,"SUCCEEDED"));
+        assertEquals(ValidationOperationStatus.SUCCEEDED,validation.reconcileRetainedResult(sessionId,operation).status());
+        assertTrue(operations.pendingResults(page).isEmpty());
+        verify(worker,times(1)).inspectValidation(any(),eq(operation.toString()));
+        verify(worker,never()).startValidation(any(),any(),anyString(),anyString());
+        assertEquals(1,countChecks());assertEquals("BLOCKED",store.find(id).orElseThrow().state());
+    }
+
     @Test void twoDispatchersSerializeTheSameCommittedRequest() throws Exception {
         UUID id=UUID.randomUUID();coordinator.request(sessionId,id);coordinator.progress(id);
         UUID operation=store.find(id).orElseThrow().activeOperationId();

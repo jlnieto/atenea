@@ -15,9 +15,14 @@ public interface ValidationOperationRepository extends JpaRepository<ValidationO
         Long getSessionId();
     }
 
-    @Query("select v.id as id, v.workSession.id as sessionId from ValidationOperationEntity v "
-            + "where v.status = com.atenea.persistence.worksession.ValidationOperationStatus.RUNNING "
-            + "order by v.updatedAt, v.id")
+    // A running workflow owns its session's validation sequence. The residual
+    // collector only observes results without that durable owner.
+    @Query(value = """
+            SELECT v.id AS id, v.work_session_id AS sessionId FROM validation_operation v
+            WHERE v.status='RUNNING' AND NOT EXISTS (
+                SELECT 1 FROM change_validation_workflow w WHERE w.session_id=v.work_session_id AND w.state='RUNNING')
+            ORDER BY v.updated_at, v.id
+            """, nativeQuery = true)
     List<PendingResult> pendingResults(Pageable page);
 
     boolean existsByWorkSessionIdAndStatus(Long workSessionId, ValidationOperationStatus status);

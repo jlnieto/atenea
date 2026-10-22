@@ -328,7 +328,10 @@ public class ClosedValidationOperationService {
         ValidationOperationEntity entity = validationOperationRepository.findById(operationId)
                 .filter(value -> Objects.equals(value.getWorkSession().getId(), sessionId))
                 .orElseThrow(() -> new WorkSessionOperationBlockedException("Validation ownership is not exact"));
-        if (entity.getStatus() == ValidationOperationStatus.RUNNING) {
+        // Recheck under the admission/session locks: a workflow may have been
+        // admitted after the scheduler selected an otherwise orphaned result.
+        if (entity.getStatus() == ValidationOperationStatus.RUNNING
+                && !workSessionRepository.existsActiveValidationWorkflowBySessionId(sessionId)) {
             applyDurableResult(entity, session,
                     remoteWorkerClient.inspectValidation(session, operationId.toString()));
         }
