@@ -62,6 +62,7 @@ internal fun WorkSessionConversationScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val conversationReads = remember(apiClient, sessionId) { CoalescingRead<Boolean, Unit>(scope) }
+    val runReader = remember(apiClient, sessionId) { sessionId?.let { CodexRunReader(apiClient, it, scope) } }
     val promptRecorder = remember(context) { ConversationPromptRecorder(context.applicationContext) }
     val remoteCloseCoordinator = remember(apiClient, sessionId) {
         sessionId?.let { RemoteCloseOperatorCoordinator(apiClient, it) }
@@ -69,8 +70,8 @@ internal fun WorkSessionConversationScreen(
     val remoteCloseActionState by remoteCloseCoordinator?.state?.collectAsState()
         ?: remember { mutableStateOf(RemoteCloseActionUiState()) }
     val attachmentCoordinator = remember(apiClient) { WorkSessionAttachmentCoordinator(apiClient) }
-    var conversation by remember { mutableStateOf<MobileWorkSessionConversation?>(null) }
-    var operatorState by remember { mutableStateOf<MobileSessionOperatorState?>(null) }
+    var conversation by remember(apiClient, sessionId) { mutableStateOf<MobileWorkSessionConversation?>(null) }
+    var operatorState by remember(apiClient, sessionId) { mutableStateOf<MobileSessionOperatorState?>(null) }
     var input by rememberSaveable(sessionId) { mutableStateOf("") }
     var pending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -83,11 +84,10 @@ internal fun WorkSessionConversationScreen(
     var profileError by remember { mutableStateOf<String?>(null) }
     var draftModelId by remember { mutableStateOf("") }
     var draftEffort by remember { mutableStateOf("") }
-    var runDetail by remember { mutableStateOf<CodexRunDetail?>(null) }
+    var runDetail by remember(apiClient, sessionId) { mutableStateOf<CodexRunDetail?>(null) }
     var expectedRunId by remember(sessionId) { mutableStateOf<Long?>(null) }
-    var runProgress by remember { mutableStateOf<CodexProgressReplay?>(null) }
-    var progressRunId by remember { mutableStateOf<Long?>(null) }
-    var progressCursor by remember { mutableStateOf(0L) }
+    var runProgress by remember(apiClient, sessionId) { mutableStateOf<CodexProgressReplay?>(null) }
+    var progressRunId by remember(apiClient, sessionId) { mutableStateOf<Long?>(null) }
     var operationError by remember { mutableStateOf<String?>(null) }
     var operationNotice by remember { mutableStateOf<String?>(null) }
     var operationPending by remember { mutableStateOf(false) }
@@ -149,29 +149,19 @@ internal fun WorkSessionConversationScreen(
             runDetail = null
             runProgress = null
             progressRunId = null
-            progressCursor = 0
             operationError = null
             return
         }
         if (runDetail?.runId != runId) {
-            runDetail = null; runProgress = null; progressRunId = null; progressCursor = 0
+            runDetail = null; runProgress = null; progressRunId = null
         }
-        if (runDetail?.runId == runId && runDetail?.status in setOf("SUCCEEDED", "FAILED", "CANCELLED")
-            && progressRunId == runId && runProgress?.terminalOutcome != null) return
         try {
-            val loadedDetail = apiClient.fetchCodexRunDetail(runId)
+            val observed = runReader?.observe(runId) ?: return
             if (conversation?.latestRun?.id != runId) return
-            require(loadedDetail.runId == runId && loadedDetail.workSessionId == id)
-            runDetail = loadedDetail
-            if (progressRunId != runId) {
-                progressRunId = runId
-                progressCursor = 0
-                runProgress = null
-            }
-            val replay = apiClient.fetchCodexRunProgress(runId, progressCursor)
-            if (conversation?.latestRun?.id != runId) return
-            runProgress = mergeCodexProgressReplay(runProgress, replay)
-            progressCursor = runProgress?.latestObservedSequence() ?: progressCursor
+            require(observed.detail.runId == runId && observed.detail.workSessionId == id)
+            runDetail = observed.detail
+            progressRunId = runId
+            runProgress = observed.progress
             operationError = null
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -812,7 +802,7 @@ internal fun WorkSessionConversationScreen(
         } },
         // Help must remain accessible even if loading the worker-backed conversation failed.
         helpContent = { navigate ->
-            ChangeHelpScreen(apiClient, sessionId, current?.session?.developmentChangeKey, navigate,
+            ChangeHelpScreen(apiClient, sessionId, current?.session?.developmentChangeKey, navigate, runReader = runReader!!,
                 onRunChanged = { runId ->
                     expectedRunId = maxOf(expectedRunId ?: runId, runId)
                     if (runDetail?.runId != expectedRunId) { runDetail = null; runProgress = null; progressRunId = null }

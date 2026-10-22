@@ -16,7 +16,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +28,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.atenea.android.api.ApprovedPriceEstimateSummary
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.api.MobileSessionActions
@@ -59,9 +62,11 @@ internal fun WorkSessionScreen(
     val repository = remember(apiClient, projectId, sessionId) {
         WorkSessionRepository(apiClient, projectId, sessionId, scope)
     }
-    DisposableEffect(repository) {
-        repository.start()
-        onDispose { repository.stop() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(repository, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            repository.observeWhileStarted()
+        }
     }
 
     val state by repository.state.collectAsState()
