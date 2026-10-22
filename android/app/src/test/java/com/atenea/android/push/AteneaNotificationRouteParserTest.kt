@@ -75,7 +75,7 @@ class AteneaNotificationRouteParserTest {
 
     @AfterTest
     fun detachConsumer() {
-        AteneaForegroundNotificationRouter.clearForTest()
+        AteneaForegroundNotificationObserver.clearForTest()
     }
 
     @Test
@@ -120,16 +120,28 @@ class AteneaNotificationRouteParserTest {
     }
 
     @Test
-    fun `foreground delivery consumes once only while attached`() {
+    fun `foreground observer receives hints only while attached`() {
         val delivered = mutableListOf<AteneaNotificationRoute>()
         val consumer: (AteneaNotificationRoute) -> Unit = { delivered += it }
         val route = AteneaNotificationRoute(12, eventId)
 
-        assertFalse(AteneaForegroundNotificationRouter.deliver(route))
-        AteneaForegroundNotificationRouter.attach(consumer)
-        assertTrue(AteneaForegroundNotificationRouter.deliver(route))
+        assertFalse(AteneaForegroundNotificationObserver.deliver(route))
+        AteneaForegroundNotificationObserver.attach(consumer)
+        assertTrue(AteneaForegroundNotificationObserver.deliver(route))
         assertEquals(listOf(route), delivered)
-        AteneaForegroundNotificationRouter.detach(consumer)
-        assertFalse(AteneaForegroundNotificationRouter.deliver(route))
+        AteneaForegroundNotificationObserver.detach(consumer)
+        assertFalse(AteneaForegroundNotificationObserver.deliver(route))
+    }
+
+    @Test
+    fun `detaching an old screen does not remove its replacement observer`() {
+        val delivered = mutableListOf<String>()
+        val previous: (AteneaNotificationRoute) -> Unit = { delivered += "previous" }
+        val current: (AteneaNotificationRoute) -> Unit = { delivered += it.requestKey }
+        AteneaForegroundNotificationObserver.attach(previous)
+        AteneaForegroundNotificationObserver.attach(current)
+        AteneaForegroundNotificationObserver.detach(previous)
+        assertTrue(AteneaForegroundNotificationObserver.deliver(AteneaNotificationRoute(12, eventId)))
+        assertEquals(listOf(eventId), delivered)
     }
 }

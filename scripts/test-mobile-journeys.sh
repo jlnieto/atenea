@@ -75,14 +75,14 @@ done
 "$JOURNEY_SDK/platform-tools/adb" -P 5098 -s emulator-5588 install -r \
     android/core-console/build/outputs/apk/androidTest/debug/core-console-debug-androidTest.apk
 "$JOURNEY_SDK/platform-tools/adb" -P 5098 -s emulator-5588 shell am instrument -w \
-    -e class com.atenea.android.coreconsole.ChangeWorkflowJourneyTest,com.atenea.android.coreconsole.ValidationAdmissionJourneyTest \
+    -e class com.atenea.android.coreconsole.ChangeWorkflowJourneyTest,com.atenea.android.coreconsole.ValidationAdmissionJourneyTest,com.atenea.android.coreconsole.NotificationNavigationJourneyTest \
     com.atenea.android.coreconsole.test/androidx.test.runner.AndroidJUnitRunner \
     | tee target/mobile-journeys/instrumentation.log
 python3 - <<'PY'
 import pathlib,re
 report=pathlib.Path('target/mobile-journeys/instrumentation.log').read_text()
-if not re.search(r'^OK \(4 tests\)\s*$',report,re.MULTILINE) or any(
+if not re.search(r'^OK \(7 tests\)\s*$',report,re.MULTILINE) or any(
         marker in report for marker in ('FAILURES!!!','INSTRUMENTATION_FAILED','FATAL EXCEPTION')):
-    raise SystemExit('ANDROID_JOURNEYS_FAILED: require all four instrumented regressions, not only adb exit 0')
-print('ANDROID_JOURNEYS_PASS: four synthetic-peer screen/HTTP/lifecycle tests; not real mobile acceptance')
+    raise SystemExit('ANDROID_JOURNEYS_FAILED: require all seven instrumented regressions, not only adb exit 0')
+print('ANDROID_JOURNEYS_PASS: seven synthetic-peer screen/HTTP/lifecycle tests; not real mobile acceptance')
 PY

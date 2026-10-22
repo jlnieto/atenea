@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ internal fun AteneaShell(
     currentVersionName: String,
     onLogout: () -> Unit,
     requestedConversation: AteneaNotificationRoute? = null,
+    receivedNotificationKey: String? = null,
     loadNewsSnapshot: ()->String? = { null },
     saveNewsSnapshot: (String)->Unit = {}
 ) {
@@ -64,7 +66,7 @@ internal fun AteneaShell(
     var selectedDestination by rememberSaveable { mutableStateOf(restoredRoute.destination) }
     var selectedProjectId by rememberSaveable { mutableStateOf(restoredRoute.projectId) }
     var selectedSessionId by rememberSaveable { mutableStateOf(restoredRoute.sessionId) }
-    var conversationRequestKey by rememberSaveable { mutableStateOf<String?>(null) }
+    val conversationState = rememberSaveableStateHolder()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var updateState by remember { mutableStateOf<UpdateCheckResult?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
@@ -102,7 +104,7 @@ internal fun AteneaShell(
     LaunchedEffect(selectedDestination, selectedProjectId, selectedSessionId) {
         navigationStore.saveRoute(selectedDestination, selectedProjectId, selectedSessionId)
     }
-    LaunchedEffect(apiClient, selectedDestination) {
+    LaunchedEffect(apiClient, selectedDestination, receivedNotificationKey) {
         runCatching { apiClient.fetchNotifications().unreadCount }
             .onSuccess { unreadNotifications = it }
     }
@@ -126,9 +128,8 @@ internal fun AteneaShell(
             AteneaNotificationDestination.CONVERSATION -> Unit
         }
         val conversationNavigation = requestedConversation.toConversationNavigation()
-        selectedProjectId = null
+        if (selectedSessionId != conversationNavigation.sessionId) selectedProjectId = null
         selectedSessionId = conversationNavigation.sessionId
-        conversationRequestKey = conversationNavigation.requestKey
         selectedDestination = AteneaDestination.CONVERSATION
     }
 
@@ -251,7 +252,6 @@ internal fun AteneaShell(
                                 "CONVERSATION" -> {
                                     selectedProjectId = null
                                     selectedSessionId = item.targetId
-                                    conversationRequestKey = item.id.toString()
                                     selectedDestination = AteneaDestination.CONVERSATION
                                 }
                                 "OPERATIONS" -> {
@@ -299,7 +299,7 @@ internal fun AteneaShell(
                         onOpenCore = { selectedDestination = AteneaDestination.CORE },
                         onBackToProjects = { selectedDestination = AteneaDestination.PROJECTS }
                     )
-                    AteneaDestination.CONVERSATION -> key(conversationRequestKey, selectedSessionId) {
+                    AteneaDestination.CONVERSATION -> conversationState.SaveableStateProvider("work-session-$selectedSessionId") {
                         WorkSessionConversationScreen(
                             apiClient = apiClient,
                             projectId = selectedProjectId,
@@ -324,7 +324,7 @@ internal fun AteneaShell(
                             }
                         )
                     }
-                    AteneaDestination.OPERATIONS -> key(requestedConversation?.requestKey, preferredOperationsHostId) {
+                    AteneaDestination.OPERATIONS -> key(preferredOperationsHostId) {
                         OperationsScreen(
                             apiClient = apiClient,
                             preferredHostId = preferredOperationsHostId,
