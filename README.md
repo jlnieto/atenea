@@ -2,6 +2,7 @@
 
 Documentos clave:
 
+- `docs/mobile-change-coordination.md`: seguimiento vigente de la estabilización móvil, hallazgos, bloques, pruebas y punto de reanudación
 - `docs/atenea-core.md`: definición canónica de `Atenea Core`, su relación con `WorkSession` y el siguiente bloque recomendado
 - `docs/atenea-core-foundation-design.md`: diseño técnico implementable para el primer contrato de `Atenea Core Foundation`
 - `docs/atenea-core-development-operator-surface.md`: siguiente bloque recomendado para convertir `Atenea Core` en la superficie operativa del dominio `development`

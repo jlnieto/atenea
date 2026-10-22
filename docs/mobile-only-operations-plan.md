@@ -6,18 +6,27 @@ y recuperar operaciones. Una recuperación que necesita esta sesión de Codex CL
 no cuenta como aceptación móvil. App tiene un único runtime compartido, PROD;
 los tests y ensayos de fallos usan entornos efímeros, no un App DEV permanente.
 
-Este plan fija cuatro entregas consecutivas. Sólo hay una entrega activa y no se
+El trabajo se organiza en entregas consecutivas. Sólo hay una entrega activa y no se
 declara completa porque compila, tiene CI verde o dispone de botones. Debe pasar
 su prueba de aceptación con el dispositivo real.
 
 ## Estado actual y siguiente paso
 
-### Estabilización del recorrido completo (2026-10-20; autoridad vigente)
+### Coordinación del recorrido móvil desde el 22 de octubre de 2026
 
-Esta sección sustituye las indicaciones de «estado actual», «entrega activa» y
-«pendiente» de los registros históricos que siguen. No ordena repetir aquellas
-operaciones. Se congelan las funcionalidades nuevas hasta demostrar el recorrido;
-únicamente entran correcciones necesarias para sus criterios de aceptación.
+El seguimiento vigente está en
+[Estabilización de la coordinación del flujo móvil](mobile-change-coordination.md):
+incluye la auditoría, la rama de trabajo, los bloques S1 a S6, las pruebas y el
+punto exacto de reanudación. Sustituye las indicaciones de «estado actual»,
+«entrega activa» y «pendiente» de los registros históricos de este documento.
+No ordena repetir aquellas operaciones. Se congelan las funcionalidades nuevas
+hasta demostrar el recorrido; sólo entran correcciones para esa aceptación.
+
+### Registro de estabilización del recorrido del 20 de octubre de 2026
+
+Las referencias y resultados de esta sección corresponden a aquella fecha.
+El avance posterior y los bloqueos actuales se mantienen en el seguimiento
+vigente enlazado arriba. Sus puertas de aceptación móvil siguen siendo exigibles.
 
 Caso conservado: «mejorar vista alertas», Cambio
 `7a9487aa-66d4-4643-8d9a-d40bf7cf4c7e`, WorkSession 29. La última lectura
