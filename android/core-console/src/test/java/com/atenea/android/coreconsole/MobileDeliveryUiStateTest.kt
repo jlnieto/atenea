@@ -22,6 +22,39 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MobileDeliveryUiStateTest {
+    @Test fun `polling is fast for work slower when idle backs off errors and stops completed history`() = runBlocking {
+        var online = true
+        var value = snapshot(true, emptyList())
+        val state = MobileDeliveryUiState(21, this) { if (!online) error("offline"); value }
+        assertEquals(5_000L, state.pollDelayMillis)
+        state.refresh(); assertEquals(30_000L, state.pollDelayMillis)
+        value = value.copy(operations = listOf(operation().copy(state = "WAITING_CI")))
+        state.refresh(); assertEquals(5_000L, state.pollDelayMillis)
+        value = value.copy(operations = listOf(operation().copy(state = "READY")))
+        state.refresh(); assertEquals(30_000L, state.pollDelayMillis)
+        online = false; state.refresh(); assertEquals(15_000L, state.pollDelayMillis)
+        online = true
+        value = value.copy(operations = listOf(operation().copy(kind = "FINALIZE", state = "SUCCEEDED")))
+        state.refresh(); assertNull(state.pollDelayMillis)
+        online = false; state.refresh(); assertNull(state.pollDelayMillis)
+        assertTrue(state.completed); assertFalse(state.available)
+    }
+
+    @Test fun `many simultaneous consultations share one read and never replay an effect`() = runBlocking {
+        val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
+        try {
+            val release = CompletableDeferred<MobileDeliveryState>()
+            var calls = 0
+            val state = MobileDeliveryUiState(21, scope) { calls++; release.await() }
+            val waiters = List(10) { scope.launch { state.refresh() } }
+            assertEquals(1, calls)
+            release.complete(snapshot(true, emptyList()))
+            waiters.forEach { it.join() }
+            assertTrue(state.available); assertFalse(state.refreshing)
+            assertTrue(state.validationCurrent)
+        } finally { scope.cancel() }
+    }
+
     @Test fun `background refresh never disables consult and manual consult gives unchanged feedback`() = runBlocking {
         val scope=CoroutineScope(Job()+Dispatchers.Unconfined)
         try {
@@ -35,7 +68,7 @@ class MobileDeliveryUiStateTest {
             assertTrue(state.refreshing);assertTrue(state.canConsult);assertFalse(state.manualRefreshing)
             val manual=scope.launch { state.consult() }
             assertTrue(state.manualRefreshing);assertFalse(state.canConsult)
-            state.consult();assertEquals(3,reads)
+            state.consult();assertEquals(2,reads)
             response!!.complete(value);poll.join();manual.join()
             assertTrue(state.canConsult);assertFalse(state.manualRefreshing)
             assertTrue(state.consultationMessage!!.contains("sin cambios"))

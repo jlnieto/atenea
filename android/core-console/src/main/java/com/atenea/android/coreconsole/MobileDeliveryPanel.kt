@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
@@ -31,6 +32,7 @@ import com.atenea.android.api.MobileDeliveryTarget
 import com.atenea.android.api.MobileSourceUpdate
 import com.atenea.android.api.MobileDeploymentObservation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 
@@ -41,9 +43,14 @@ internal fun rememberMobileDeliveryUiState(api: AteneaApiClient, sessionId: Long
     val state = remember(api, sessionId) { MobileDeliveryUiState(api, sessionId, scope) }
     LaunchedEffect(state, owner, enabled) {
         if (enabled) owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                state.refresh()
-                delay(5_000)
+            state.refresh()
+            snapshotFlow { state.pollDelayMillis }.collectLatest { interval ->
+                // Work starting during an idle delay must re-arm the timer immediately.
+                // Cancelling this waiter never cancels another consumer's shared read.
+                if (interval != null) while (true) {
+                    delay(interval)
+                    state.refresh()
+                }
             }
         }
     }

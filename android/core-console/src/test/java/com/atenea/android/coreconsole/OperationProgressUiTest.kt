@@ -78,12 +78,13 @@ class OperationProgressUiTest {
         }
     }
     @Test fun `background reads keep the consult button stable and last success while waiting`() = runBlocking {
-        val blocked=CompletableDeferred<Unit>();var count=0
+        val blocked=CompletableDeferred<Unit>();val started=CompletableDeferred<Unit>();var count=0
         val state=MobileDeliveryUiState(28,this) {
-            if(count++>0) blocked.await()
+            if(count++>0) { started.complete(Unit); blocked.await() }
             MobileDeliveryState(true,listOf(operation),validation=workflowEvidence(28))
         }
         state.refresh();val last=state.lastObservedAt;val read=launch(start=CoroutineStart.UNDISPATCHED) { state.refresh() }
+        started.await()
         assertTrue(state.refreshing);assertTrue(state.canConsult);assertEquals(last,state.lastObservedAt)
         assertEquals(DeliveryStepStatus.WAITING,state.currentStep(true,false,now).status)
         blocked.complete(Unit);read.join();assertTrue(state.canConsult)

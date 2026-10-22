@@ -31,7 +31,7 @@ internal class MobileDeliveryUiState(
     private var snapshot by mutableStateOf<MobileDeliveryState?>(null)
     private var pending by mutableStateOf<PendingAction?>(null)
     private var generation = 0L
-    private var readSequence = 0L
+    private val reads = CoalescingRead<Long, Unit>(scope)
     private var highestRevision = -1L
     private var highestFingerprint: String? = null
     private var changeKey: UUID? = null
@@ -61,6 +61,16 @@ internal class MobileDeliveryUiState(
     val releaseRecoveryEnabled get() = available && snapshot?.releaseRecoveryEnabled == true
     val androidVersionPreparationEnabled get() = available && snapshot?.androidVersionPreparationEnabled == true
     val canConsult get() = !sending && !manualRefreshing
+    val pollDelayMillis: Long? get() = when {
+        completed -> null // Read once on resume/manual consultation; completion is immutable history.
+        loadError != null -> 15_000L
+        !loaded || busy || validationRunning || !validationCoherent
+            || operations.any { !it.terminal && it.state != "READY" }
+            || sourceUpdate?.state in setOf("QUEUED", "PREPARE_CLAIMED", "READY_TO_RESOLVE", "RESOLVING", "RETRY_REQUESTED")
+            || build?.state == "PENDING"
+            || progress?.github?.state in setOf("NOT_STARTED", "QUEUED", "RUNNING", "CLOSING") -> 5_000L
+        else -> 30_000L
+    }
     val completionEnabled get() = available && snapshot?.completionEnabled == true
     val readiness get() = snapshot?.readiness?.takeIf { available }
     val build get() = snapshot?.build?.takeIf { available }
@@ -233,36 +243,38 @@ internal class MobileDeliveryUiState(
     suspend fun refresh(manual: Boolean = false) {
         if (sending || manualRefreshing && !manual) return
         val epoch = generation
-        val sequence = ++readSequence
-        refreshing = true
-        try {
-            val next = load()
-            if (epoch != generation || sequence != readSequence) return
-            require(next.operations.all { it.sessionId == sessionId })
-            require(listOf(next.integration?.sessionId, next.sourceUpdate?.sessionId, next.deployment?.sessionId,
-                next.readiness?.sessionId, next.validation?.workSessionId, next.progress?.sessionId).all { it == null || it == sessionId })
-            next.validation?.let {
-                require(changeKey == null || changeKey == it.changeKey)
-                if (it.sourceRevision < highestRevision) return
-                require(it.sourceRevision != highestRevision || highestFingerprint == it.sourceFingerprintSha256)
-                changeKey = it.changeKey
-                highestRevision = it.sourceRevision
-                highestFingerprint = it.sourceFingerprintSha256
+        reads.read(epoch) {
+            if (epoch != generation || sending) return@read
+            refreshing = true
+            try {
+                val next = load()
+                if (epoch != generation) return@read
+                require(next.operations.all { it.sessionId == sessionId })
+                require(listOf(next.integration?.sessionId, next.sourceUpdate?.sessionId, next.deployment?.sessionId,
+                    next.readiness?.sessionId, next.validation?.workSessionId, next.progress?.sessionId).all { it == null || it == sessionId })
+                next.validation?.let {
+                    require(changeKey == null || changeKey == it.changeKey)
+                    if (it.sourceRevision < highestRevision) return@read
+                    require(it.sourceRevision != highestRevision || highestFingerprint == it.sourceFingerprintSha256)
+                    changeKey = it.changeKey
+                    highestRevision = it.sourceRevision
+                    highestFingerprint = it.sourceFingerprintSha256
+                }
+                snapshot = next
+                available = next.enabled
+                loaded = true
+                loadError = null
+                lastObservedAt = Instant.now()
+                pending?.let { if (observes(it, next)) pending = null }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (epoch != generation) return@read
+                available = false
+                loadError = "No se pudo confirmar el estado actual. Consulta de nuevo; no se ha repetido la solicitud."
+            } finally {
+                if (epoch == generation) refreshing = false
             }
-            snapshot = next
-            available = next.enabled
-            loaded = true
-            loadError = null
-            lastObservedAt = Instant.now()
-            pending?.let { if (observes(it, next)) pending = null }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            if (epoch != generation || sequence != readSequence) return
-            available = false
-            loadError = "No se pudo confirmar el estado actual. Consulta de nuevo; no se ha repetido la solicitud."
-        } finally {
-            if (sequence == readSequence) refreshing = false
         }
     }
 
@@ -277,7 +289,6 @@ internal class MobileDeliveryUiState(
         if (kind == DeliveryStepAction.UPDATE_PR && !canUpdatePullRequest(true, false)) return
         if (kind == DeliveryStepAction.UPDATE_BASE && !canUpdateBase(false)) return
         generation++
-        readSequence++
         refreshing = false
         consultationMessage = null
         actionError = null
@@ -312,7 +323,6 @@ internal class MobileDeliveryUiState(
     suspend fun confirmRelease(planId: UUID, action: suspend () -> MobileDeliveryOperation) {
         if (busy || !available || !validationCurrent) error("Estado por confirmar")
         generation++
-        readSequence++
         pending = PendingAction(DeliveryStepAction.CONFIRM_RELEASE, snapshot!!, sending = true, expectedId = planId)
         check(perform { Receipt.Operation(action()) } != null) { actionError ?: "Publicación por confirmar" }
     }
@@ -321,7 +331,6 @@ internal class MobileDeliveryUiState(
         if (busy || validationRunning || !validationObserved || !validationCoherent || validationCurrent || deliveryBeforeValidation(false)
             || sourcePhaseComplete || validationEvidence?.sourceFingerprintSha256 == null) return false
         generation++
-        readSequence++
         refreshing = false
         validationRequested = true
         actionError = null

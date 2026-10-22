@@ -40,6 +40,9 @@ class ValidationAdmissionJourneyTest {
             waitFor("Volver a solicitar", button = true)
             assertEquals(1, backend.requests.get())
             val before = backend.reads.get()
+            // Rejected admission is idle, so the production poll interval is 30 s.
+            // Advance the Compose coroutine clock, not the HTTP deadline or a real sleep.
+            compose.mainClock.advanceTimeBy(30_000)
             compose.waitUntil(15_000) { backend.reads.get() > before }
             waitFor("El servidor no aceptó esta solicitud", substring = true)
             backgroundAndResume()
