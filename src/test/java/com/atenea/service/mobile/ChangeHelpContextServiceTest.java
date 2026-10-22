@@ -207,13 +207,14 @@ class ChangeHelpContextServiceTest {
         operator.setCodexOperationsRole(CodexOperationsRole.PLATFORM_ADMINISTRATOR);
         when(operators.findById(1L)).thenReturn(Optional.of(operator));
         when(releaseControl.enabled()).thenReturn(true);
-        when(observations.observeDeployment(22L,actor)).thenReturn(new MobileDeliveryService.DeploymentObservation(
+        var deployment=new MobileDeliveryService.DeploymentObservation(
                 22L,"DEPLOYED","OPERATOR","3".repeat(40),"2".repeat(40),true,Instant.now().getEpochSecond(),
-                UUID.randomUUID(),UUID.randomUUID(),"4".repeat(64),null));
+                UUID.randomUUID(),UUID.randomUUID(),"4".repeat(64),null);
+        when(observations.observeReleaseStatus(22L,actor)).thenReturn(new MobileDeliveryService.ReleaseStatus(deployment,null));
         assertEquals("DEPLOYED",service.read(22L,actor).deploymentStatus());
-        verify(observations).observeDeployment(22L,actor); verify(observations).observeDelivery(22L,actor); verifyNoMoreInteractions(observations);
+        verify(observations).observeReleaseStatus(22L,actor); verifyNoMoreInteractions(observations);
         verify(deliveries,never()).create(any(),any(),any(),any(),any(),any(),any());
-        when(observations.observeDeployment(22L,actor)).thenThrow(new RuntimeException("transport"));
+        when(observations.observeReleaseStatus(22L,actor)).thenThrow(new RuntimeException("transport"));
         assertEquals("UNAVAILABLE",service.read(22L,actor).deploymentStatus());
     }
     private DeliveryOperation integrated() {

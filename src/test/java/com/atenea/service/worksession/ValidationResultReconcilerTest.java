@@ -97,6 +97,23 @@ class ValidationResultReconcilerTest {
     }
 
     @Test
+    void activeWorkflowOwnsTheResultEvenIfTheResidualCollectorSelectedItEarlier() {
+        when(sessions.existsActiveValidationWorkflowBySessionId(28L)).thenReturn(true);
+        assertEquals(ValidationOperationStatus.RUNNING,service.reconcileRetainedResult(28L,ID).status());
+        verifyNoInteractions(worker,acceptance,base);verify(operations,never()).save(any());
+        var order=inOrder(jdbc,sessions);
+        order.verify(jdbc).execute("SELECT pg_advisory_xact_lock(814205002)");
+        order.verify(sessions).findLockedWithProjectAndDevelopmentChangeById(28L);
+        order.verify(sessions).existsActiveValidationWorkflowBySessionId(28L);
+
+        when(sessions.existsActiveValidationWorkflowBySessionId(28L)).thenReturn(false);
+        when(worker.inspectValidation(session,ID.toString())).thenReturn(result("SUCCEEDED",ID,TREE,0,"a".repeat(64)));
+        assertEquals(ValidationOperationStatus.SUCCEEDED,service.reconcileRetainedResult(28L,ID).status());
+        verify(worker,times(1)).inspectValidation(session,ID.toString());verifyNoMoreInteractions(worker);
+        verifyNoInteractions(acceptance,base);
+    }
+
+    @Test
     void mainOrCurrentFingerprintAdvanceDoesNotDiscardHistoricalResult() {
         change.setSourceRevision(3); change.setSourceFingerprintSha256("b".repeat(64));
         doThrow(new IllegalStateException("main moved")).when(base).requireCurrent(anyLong());

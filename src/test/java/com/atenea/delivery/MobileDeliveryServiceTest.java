@@ -476,6 +476,30 @@ class MobileDeliveryServiceTest {
                 .put("healthy",true).put("observedAt",Instant.now().getEpochSecond()).put("planId",id.toString())
                 .put("operationId",execution.toString()).put("receiptSha256","7".repeat(64)).put("finishedAt",1L);
     }
+    @Test void releaseProjectionReadsEachTargetOnceAndCannotAuthorizeFromAnOlderProjection() {
+        integratedRecoveryFixture();
+        when(github.changedFiles(any(),eq(42L),anyString(),anyString())).thenReturn(List.of("src/main/java/Server.java","android/app/Screen.kt"));
+        when(executor.observeApp()).thenReturn(installedObservation(),installedObservation().put("healthy",false));
+        when(executor.observeAndroid()).thenReturn(androidObservation("4".repeat(40)));
+        var projection=service.observeReleaseStatus(21L,actor);
+        assertEquals("DEPLOYED",projection.deployment().status());
+        assertSame(projection.deployment(),projection.readiness().backend());
+        assertTrue(projection.readiness().ready());
+        verify(executor,times(1)).observeApp();verify(executor,times(1)).observeAndroid();
+
+        // Completion and preparation use observeDelivery, never the display projection.
+        var fresh=service.observeDelivery(21L,actor);
+        assertFalse(fresh.ready());assertEquals("UNHEALTHY",fresh.backend().status());
+        verify(executor,times(2)).observeApp();verify(executor,times(2)).observeAndroid();
+        verify(executor,never()).execute(any(),any(),any());
+        verify(store,never()).create(any(),any(),any(),any(),any(),any(),any());
+        verifyNoInteractions(publication,factors,grants);
+    }
+    @Test void releaseProjectionRejectsForeignRoleBeforeObservingAnyTarget() {
+        integratedRecoveryFixture();operator.setCodexOperationsRole(CodexOperationsRole.ROUTINE_OPERATOR);
+        assertThrows(DeliveryRejectedException.class,()->service.observeReleaseStatus(21L,actor));
+        verifyNoInteractions(executor);
+    }
     @Test void installedOperatorReleaseContainsOwnedTicketButNeverCreatesMobilePublication() {
         var integrated=integratedRecoveryFixture();
         when(executor.observeApp()).thenReturn(installedObservation());

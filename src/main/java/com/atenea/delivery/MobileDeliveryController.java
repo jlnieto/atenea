@@ -39,10 +39,11 @@ public class MobileDeliveryController {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public DeliveryState list(@PathVariable Long sessionId,
             @AuthenticationPrincipal AuthenticatedOperator actor) {
+        var observed = service.observeReleaseStatus(sessionId, actor);
         return new DeliveryState(service.isEnabled(),service.list(sessionId, actor),
                 service.observeIntegration(sessionId, actor), sourceUpdates.isEnabled(), sourceUpdates.observe(sessionId, actor),
-                service.isEnabled(), service.observeDeployment(sessionId, actor), completion.isEnabled(),
-                service.observeDelivery(sessionId,actor), validation.findDevelopmentChangeEvidence(sessionId).orElse(null), service.isEnabled(),
+                service.isEnabled(), observed.deployment(), completion.isEnabled(),
+                observed.readiness(), validation.findDevelopmentChangeEvidence(sessionId).orElse(null), service.isEnabled(),
                 service.observeBuild(sessionId,actor), service.observeProgress(sessionId,actor));
     }
     public record DeliveryState(boolean enabled, List<DeliveryOperation.DeliveryView> operations,

@@ -21,22 +21,27 @@ pretende eliminar.
 
 ## Punto de reanudación
 
-- Rama de continuación: `stabilize/mobile-shared-observations`.
+- Rama de continuación: `stabilize/server-observation-coordination`.
 - Worktree manual: `/home/jose/projects/atenea-mobile-observation`.
-- Base App: `bb96bab57105f112156dbb2d4029b2ba60df9581`.
+- Base App: `57c30d3a05849f4663edd91285cdb1a65f1d2929`.
 - S1 integrado en PR 92, con UFD, backend de merge y siete journeys PASS.
   No está desplegado ni publicado en una APK.
-- Bloque activo: S2, consultas coordinadas y ciclo de vida.
+- S2 integrado completo en PR 93 y PR 94; no está desplegado.
 - La primera parte de S2 está integrada en PR 93: UFD T3 completo con 320 tests,
-  backend de merge y ocho journeys PASS. No cierra todo el bloque S2.
-- La segunda parte S2 está implementada localmente: lector compartido de
-  ejecución, cursores y resultados finales, con propietario STARTED en la vista
-  WorkSession. Suite core-console: 205 tests PASS; los doce journeys aún están
-  pendientes de ejecución en CI.
-- Siguiente acción: revisar el diff, compilar la APK instrumentada, commit y
-  UFD postcommit íntegro antes de abrir PR. Exigir los doce journeys y backend
-  de merge antes de integrar. No modificar permisos del dedicado para forzar
-  instrumentación local ni dar S2 por cerrado sólo por los unitarios.
+  backend de merge y ocho journeys PASS. PR 94 completa sus criterios restantes.
+- PR 94 pasó UFD local/CI T3 con 329 tests, backend de merge y doce journeys.
+  Sus cuatro casos nuevos verifican lectores compartidos, cursores, errores,
+  aislamiento de sesión, STOP/START y ausencia de polling del historial cerrado.
+- S3 implementado en App y Platform, con validación focal PASS; integración
+  en curso. App usa la base anterior; Platform usa `689a004f742a18057ef6cb8eb34991e917ecd810`
+  en `stabilize/publisher-observations`, worktree
+  `/home/jose/projects/platform-server-observation`.
+- S3 no cambia contratos públicos ni crea una caché de autoridad. Cambio/Ayuda
+  comparten la observación backend de su respuesta; el publicador agrupa las
+  lecturas simultáneas de Cambio, Ayuda y Novedades. Se conserva la exclusión
+  de publicaciones reales. Ver el registro de implementación S3 al final.
+- Siguiente bloque tras integrar S3: S4 (admisión durable), separado de S5
+  (CI/progreso). No repetir suites de S2 sin un cambio o gate que lo justifique.
 - Despliegues, APK, cambios de configuración y operaciones reales sobre el
   Cambio no están incluidos en este paso de implementación. Requieren su
   autorización y preflight correspondientes.
@@ -144,8 +149,8 @@ su commit, comandos/resultados y siguiente acción al terminar una sesión.
 | Bloque | Repositorio | Estado vigente | Dependencia |
 | --- | --- | --- | --- |
 | S1 Navegación estable | App Android | INTEGRADO; PR 92, siete journeys PASS; sin despliegue | A1 |
-| S2 Consultas coordinadas del móvil | App Android | EN CURSO; segunda parte local, 205 core-console PASS y doce journeys pendientes; primera parte PR 93 integrada | S1 |
-| S3 Observación coherente del servidor | App y Platform | PENDIENTE | A2 y A3; protocolo antes de consumidor si cambia |
+| S2 Consultas coordinadas del móvil | App Android | INTEGRADO; PR 93 y PR 94, 329 unitarios y doce journeys PASS; sin despliegue | S1 |
+| S3 Observación coherente del servidor | App y Platform | PROBADO LOCAL; integración en curso | A2 y A3; contratos públicos sin cambios |
 | S4 Admisión y recuperación durables | App y Platform si el contrato lo requiere | PENDIENTE | S3 |
 | S5 CI y progreso completo | App | PENDIENTE; diff previo preservado | Revisar contra S1 a S4 |
 | S6 Integración y aceptación móvil | Ambos y dispositivo | PENDIENTE | Todos los anteriores |
@@ -174,7 +179,7 @@ su commit, comandos/resultados y siguiente acción al terminar una sesión.
   consulta manual durante polling, STOP/START, cambio de sesión, cancelación,
   fallos de red y respuesta tardía. Contar peticiones, no sólo mirar el texto.
 
-Completado en la segunda parte local, pendiente de sus doce journeys/CI:
+Criterios cubiertos en la segunda parte, integrada en PR 94:
 
 1. Un lector compartido del detalle/progreso de ejecución, ligado al cliente
    autenticado, WorkSession y AgentRun exactos. Conversación y Recuperación no
@@ -189,9 +194,9 @@ Completado en la segunda parte local, pendiente de sus doce journeys/CI:
    vista retenida no puede seguir consultando en segundo plano por permanecer
    compuesta. Conservar las barreras y acciones existentes en este bloque.
 
-Puerta pendiente: ejecutar las cuatro regresiones nuevas junto a las ocho
-actuales y UFD postcommit completo antes de su PR. Sólo entonces evaluar el
-cierre de S2 y pasar a S3.
+Puerta de integración superada: las cuatro regresiones nuevas y las ocho
+anteriores pasaron juntas, además de UFD postcommit completo y backend de
+merge. S2 queda integrado, no desplegado ni aceptado en el Samsung.
 
 ### S3 Observación coherente del servidor
 
@@ -488,6 +493,83 @@ Recuperación para demostrar el lector compartido real, y la vista retenida
 WorkSession con consulta concurrente, STOP/START e historial sin polling.
 Todos cuentan peticiones y exigen cero efectos. No se han ejecutado tareas,
 validaciones ni publicaciones sobre el Cambio real ni se ha tocado Platform.
+
+### 22 de octubre de 2026 S2 completado e integrado
+
+PR <https://github.com/jlnieto/atenea/pull/94> integrada con merge
+`57c30d3a05849f4663edd91285cdb1a65f1d2929`, head validado
+`843d5d9a03facdbd649109c88ca6c9dcefa3df0e`. Las tres comprobaciones ejecutables
+estaban PASS y la PR MERGEABLE/CLEAN antes del merge, sin bypass ni reintentos
+de CI. El checkpoint documental anterior `de6687c` está incluido en esta PR.
+
+- UFD local postcommit y CI T3 PASS: `ufd-policy` y `android-unit-full`,
+  329 tests. Run `39827659826`. Los 205 core-console forman parte de ese total.
+- Backend de merge contra `bb96bab57105f112156dbb2d4029b2ba60df9581` PASS,
+  run `39827701858`, incluidas las regresiones cerradas del workflow.
+- Emulador con KVM: `OK (12 tests)`, 79,44 segundos de instrumentación,
+  run `39827701938`. Conserva los ocho casos anteriores. Informe descargado en
+  `target/s2-ci-39827701938/target/mobile-journeys/instrumentation.log` del
+  worktree S2; artefactos GitHub con retención de siete días. Es prueba contra
+  pares sintéticos, no aceptación móvil con App/worker/GitHub/publicador reales.
+- Compilación de APK instrumentada, `bash -n` y `git diff --check` PASS.
+- `main` y `github/main` locales actualizados por fast-forward al merge.
+  `origin/main` conserva `6e3912d0...`, ancestro del merge; no se propagó éste
+  al mirror operativo. Platform permanece limpio y sin cambios.
+
+S1 y S2 quedan integrados, sin desplegar. No se ha publicado APK ni cambiado
+versión, firma, backend, configuración, permisos o datos PROD. WS29 no se ha
+reintentado ni modificado. El error original ANDROID_OBSERVATION_BUSY sigue
+pendiente de S3/S4. S5 y la aceptación S6 siguen pendientes; no atribuir un
+recorrido móvil completo al PASS de estas doce pruebas sintéticas.
+
+### S3 Observaciones del servidor
+
+App añade `observeReleaseStatus`: Cambio y Ayuda usan la misma observación del
+backend para despliegue y requisitos de entrega. Un test del GET comprueba una
+lectura App y una Android por respuesta, sin adoptar ni escribir publicaciones.
+Los consumidores de efectos conservan `observeDelivery` y vuelven a comprobar
+el estado; un test cambia health entre lectura y acción para impedir autorizar
+desde una proyección anterior. No cambia ningún DTO público ni hay migraciones.
+
+El workflow activo es el único propietario de inspeccionar sus validaciones.
+El recolector residual selecciona únicamente operaciones sin workflow RUNNING
+y vuelve a comprobarlo bajo los locks de admisión y sesión. Las pruebas cubren
+la carrera entre selección y nueva admisión y la recogida del mismo resultado
+cuando su propietario ya es terminal, sin iniciar otra comprobación.
+
+Platform agrupa únicamente lecturas en vuelo de los tres destinos fijos. Los
+destinos locales esperan de forma acotada antes del lock de efectos; el peer
+AX42 tiene un coordinador independiente para no bloquear lecturas locales del
+VPS. No conserva éxitos ni fallos completados. Timeout, publicación real y
+evidencia ambigua siguen devolviendo los códigos BUSY existentes; no autorizan
+ni repiten PLAN o EXECUTE. La espera máxima añadida es 12 segundos. No elimina
+la necesidad de la admisión durable de S4 si una preparación encuentra BUSY.
+
+Validación focal App: `./scripts/test.sh` en el runtime aislado Maven 3.9.11 /
+Java 21 y PostgreSQL 16 efímero con credenciales sintéticas. 191 tests PASS:
+`MobileDeliveryServiceTest`, `MobileDeliveryApiIntegrationTest`,
+`MobileChangeCompletionServiceTest`, `MobileChangeCompletionApiIntegrationTest`,
+`ChangeHelpContextServiceTest`, `ValidationResultReconcilerTest`,
+`ChangeValidationWorkflowIntegrationTest` y `ReleaseControlTransportTest`.
+El fixture del relevo residual usa `store.finish` y respeta las restricciones
+terminales de PostgreSQL; no deshabilita constraints para simular el estado.
+
+Platform prueba concurrencia real de hilos sobre recibos efímeros, sin acceder
+a servicios. Cubre agrupación, espera entre destinos, copias independientes,
+ausencia de escrituras y efectos, fallo sin caché, timeout sin cancelar otro
+lector y reenvío fijo. La prueba nueva se incorpora al CI obligatorio del
+publicador; las suites vecinas de control, observación, retención, rescate,
+admisión e installer siguen siendo obligatorias.
+
+Pendiente de integración: commits, UFD App postcommit sin sustituir su plan,
+PRs, CI y merge. El rollout posterior requiere actualizar ambos publicadores
+con su installer existente y App PROD; no se despliega un worker por este diff.
+No hay rollout, nueva APK ni acciones sobre el Cambio real en este subtrabajo.
+
+Siguiente acción ejecutable: terminar la integración de S3 y registrar sus
+referencias y gates. Después empezar S4 conservando una intención durable antes
+de una observación que pueda devolver BUSY. El diff previo S5 permanece intacto
+y no se copia completo. No probar contención contra PROD.
 
 Al retomar: leer este documento y `AGENTS.md`, comprobar status de ambos repos y
 el bloque activo, revisar el diff y el último resultado de prueba. Actualizar

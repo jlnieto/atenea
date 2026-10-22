@@ -565,11 +565,14 @@ class MobileDeliveryApiIntegrationTest {
                 .put("imageSha256","5".repeat(64)).put("healthy",true).put("observedAt",Instant.now().getEpochSecond())
                 .put("planId",plan.toString()).put("operationId",execution.toString()).put("receiptSha256","6".repeat(64)).put("finishedAt",1L));
         when(github.extractPullRequestNumber(anyString())).thenReturn(42L);
+        when(github.changedFiles(any(),eq(42L),anyString(),anyString())).thenReturn(List.of("src/main/java/Server.java"));
         for (int i=0;i<2;i++) mvc.perform(get("/api/mobile/sessions/{id}/delivery",sessionId).with(auth(admin)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.deployment.status").value("DEPLOYED"))
                 .andExpect(jsonPath("$.deployment.origin").value("OPERATOR"))
                 .andExpect(jsonPath("$.deployment.planId").value(plan.toString()))
+                .andExpect(jsonPath("$.readiness.backend.planId").value(plan.toString()))
                 .andExpect(jsonPath("$.operations[0].kind").value("INTEGRATE"));
+        verify(executor,times(2)).observeApp();verify(executor,times(2)).observeAndroid();
         assertEquals(integrated,store.get(integrated.id(),false));
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM mobile_delivery_operation WHERE kind='RELEASE'",Integer.class));
         verify(executor,never()).execute(any(),any(),any()); verify(executor,never()).plan(any(),any(),any());
