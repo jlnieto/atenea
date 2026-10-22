@@ -3,6 +3,8 @@ package com.atenea.android.coreconsole
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
@@ -16,6 +18,8 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.Lifecycle
 import com.atenea.android.api.AteneaApiClient
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -76,7 +80,9 @@ class NotificationNavigationJourneyTest {
             openChange()
             compose.runOnIdle { notifications.onOpened(AteneaNotificationRoute(30, event(3))) }
             waitFor("Otro cambio")
-            compose.onNodeWithTag("conversation-input").assertTextEquals("")
+            // Empty input still exposes its placeholder as Text; only EditableText is the draft.
+            compose.onNodeWithTag("conversation-input").assert(
+                SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
             compose.onNodeWithTag("conversation-input").performTextReplacement("Sólo para 30")
             compose.runOnIdle { notifications.onOpened(AteneaNotificationRoute(29, event(4))) }
             assertChange(29)

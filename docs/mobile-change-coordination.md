@@ -25,11 +25,13 @@ pretende eliminar.
 - Worktree manual: `/home/jose/projects/atenea-mobile-stabilization`.
 - Base App: `6e3912d0e41b0408a1847eeb738361f963c31257`.
 - Bloque activo: S1, navegación y conservación del contexto.
-- Implementación S1 terminada; 197 tests unitarios PASS y APK de tests compilada.
-  La ejecución instrumentada sigue pendiente, por lo que S1 no está cerrado.
-- Siguiente acción: completar la validación S1 con `./scripts/validate-change`
-  sobre el commit limpio antes de PR y ejecutar las siete regresiones en el
-  runner CI existente con KVM. No modificar permisos del dedicado para forzarlo.
+- Implementación S1 terminada; UFD postcommit T3 y 312 tests Android PASS.
+  La PR 92 ejecutó las siete regresiones: seis PASS y una aserción de fixture
+  incorrecta al comprobar un campo vacío con placeholder; corregida en revisión.
+  S1 no está cerrado hasta obtener las siete regresiones PASS.
+- Siguiente acción: validar y actualizar la misma PR 92, comprobar las siete
+  regresiones en su runner CI con KVM y conservar sus cuatro casos originales.
+  No modificar permisos del dedicado para forzarlo.
 - Despliegues, APK, cambios de configuración y operaciones reales sobre el
   Cambio no están incluidos en este paso de implementación. Requieren su
   autorización y preflight correspondientes.
@@ -284,11 +286,28 @@ el corredor conserva su requisito KVM y la limpieza de su AVD/ADB privados.
 No presentar ninguno de estos stops de herramientas como un test funcional
 fallido ni como un PASS de pantalla.
 
-Pendiente: UFD postcommit, PR/CI con las siete regresiones y revisión S1. No
-hay push, PR, integración, cambios Platform ni despliegue de esta estabilización.
-S2 a S6 no están implementados por este checkpoint. Después de cerrar las
+La PR 92 conserva este bloque; no hay integración, cambios Platform ni
+despliegue de esta estabilización. S2 a S6 no están implementados por este
+checkpoint. Después de cerrar las
 pruebas S1, continuar por la exclusión/agrupación de lecturas y su ciclo de vida
 en S2, no por nuevos cambios visuales ni reintentos sobre WS29.
+
+### 22 de octubre de 2026 Primera validación de PR 92
+
+UFD postcommit del head `718565f` PASS: T3, `ufd-policy` y suite
+`android-unit-full`, 312 tests. CI UFD y backend combinado con la base
+`6e3912d0e41b0408a1847eeb738361f963c31257` PASS. No se redujo su selección.
+
+El run de journeys `39781847316` arrancó en KVM y ejecutó siete casos. Seis
+pasaron. El caso de separación de sesiones se detuvo en una aserción que
+comparaba Text más EditableText con vacío: el informe contiene EditableText
+vacío y el placeholder como Text. Se corrige para comprobar explícitamente la
+propiedad EditableText; no se elimina el caso ni sus comprobaciones posteriores
+de conservación de borradores. El siguiente run debe completar los siete.
+
+PR: <https://github.com/jlnieto/atenea/pull/92>. La rama local
+`stabilize/mobile-change-reads` sólo se preparó desde S1; aún no contiene cambios
+S2. No abrir otro Cambio ni otra PR para este ajuste de fixture.
 
 Al retomar: leer este documento y `AGENTS.md`, comprobar status de ambos repos y
 el bloque activo, revisar el diff y el último resultado de prueba. Actualizar
