@@ -17,9 +17,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -40,6 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -59,6 +61,7 @@ internal fun WorkSessionConversationScreen(
     val historyUriHandler = LocalUriHandler.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
+    val conversationReads = remember(apiClient, sessionId) { CoalescingRead<Boolean, Unit>(scope) }
     val promptRecorder = remember(context) { ConversationPromptRecorder(context.applicationContext) }
     val remoteCloseCoordinator = remember(apiClient, sessionId) {
         sessionId?.let { RemoteCloseOperatorCoordinator(apiClient, it) }
@@ -93,7 +96,6 @@ internal fun WorkSessionConversationScreen(
     var validationRequestFailure by rememberSaveable(sessionId, stateSaver = ValidationRequestFailure.Saver) {
         mutableStateOf<ValidationRequestFailure?>(null)
     }
-    var wasBackgrounded by remember { mutableStateOf(false) }
     var attachmentDraft by remember(sessionId) { mutableStateOf(WorkSessionAttachmentDraft()) }
     var openingAttachmentId by remember { mutableStateOf<UUID?>(null) }
 
@@ -105,6 +107,8 @@ internal fun WorkSessionConversationScreen(
                 capabilityLoading = false,
                 capabilityFailure = null
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (capabilityError: Throwable) {
             attachmentDraft.copy(
                 capability = null,
@@ -126,6 +130,8 @@ internal fun WorkSessionConversationScreen(
                 draftModelId = resolved.model.modelId
                 draftEffort = resolved.reasoningEffort
                 profileError = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (profileLoadError: AteneaApiException) {
                 if (profileLoadError.status == 404) {
                     profileUnavailable = true
@@ -150,6 +156,8 @@ internal fun WorkSessionConversationScreen(
         if (runDetail?.runId != runId) {
             runDetail = null; runProgress = null; progressRunId = null; progressCursor = 0
         }
+        if (runDetail?.runId == runId && runDetail?.status in setOf("SUCCEEDED", "FAILED", "CANCELLED")
+            && progressRunId == runId && runProgress?.terminalOutcome != null) return
         try {
             val loadedDetail = apiClient.fetchCodexRunDetail(runId)
             if (conversation?.latestRun?.id != runId) return
@@ -165,6 +173,8 @@ internal fun WorkSessionConversationScreen(
             runProgress = mergeCodexProgressReplay(runProgress, replay)
             progressCursor = runProgress?.latestObservedSequence() ?: progressCursor
             operationError = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (runLoadError: AteneaApiException) {
             operationError = "No se pudo confirmar el detalle de la tarea $runId. No se muestra otra ejecución en su lugar."
         } catch (runLoadError: Exception) {
@@ -172,15 +182,15 @@ internal fun WorkSessionConversationScreen(
         }
     }
 
-    fun refresh(silent: Boolean = false, includeProfile: Boolean = true) {
+    suspend fun observeConversation(silent: Boolean = false, includeProfile: Boolean = true) {
         val id = sessionId ?: return
-        scope.launch {
+        conversationReads.read(includeProfile) {
             if (!silent) pending = true
             error = null
             try {
                 val summary = apiClient.fetchMobileWorkSessionSummary(id)
                 val retainedRunId = listOfNotNull(expectedRunId, conversation?.latestRun?.id).maxOrNull()
-                if (!acceptsRunObservation(summary.conversation.latestRun?.id, retainedRunId)) return@launch
+                if (!acceptsRunObservation(summary.conversation.latestRun?.id, retainedRunId)) return@read
                 expectedRunId = summary.conversation.latestRun?.id ?: expectedRunId
                 operatorState = summary.operatorState
                 remoteCloseCoordinator?.accept(summary.operatorState)
@@ -209,6 +219,10 @@ internal fun WorkSessionConversationScreen(
                 if (!silent) pending = false
             }
         }
+    }
+
+    fun refresh(silent: Boolean = false, includeProfile: Boolean = true) {
+        scope.launch { observeConversation(silent, includeProfile) }
     }
 
     fun startVoicePrompt() {
@@ -483,12 +497,18 @@ internal fun WorkSessionConversationScreen(
         }
     }
 
-    LaunchedEffect(sessionId) { refresh() }
-
-    LaunchedEffect(conversation?.latestRun?.id, conversation?.runInProgress, expectedRunId) {
-        while (conversation?.runInProgress == true || (expectedRunId != null && conversation?.latestRun?.id != expectedRunId)) {
-            delay(3_000)
-            refresh(silent = true, includeProfile = false)
+    LaunchedEffect(apiClient, sessionId, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            observeConversation(silent = conversation != null)
+            while (true) {
+                snapshotFlow { conversation?.runInProgress == true ||
+                    (expectedRunId != null && conversation?.latestRun?.id != expectedRunId) }.first { it }
+                delay(3_000)
+                if (conversation?.runInProgress == true || (expectedRunId != null && conversation?.latestRun?.id != expectedRunId)) {
+                    // Await completion: a slow read never spawns another periodic request behind it.
+                    observeConversation(silent = true, includeProfile = false)
+                }
+            }
         }
     }
 
@@ -504,21 +524,6 @@ internal fun WorkSessionConversationScreen(
         onDispose {
             promptRecorder.release()
         }
-    }
-
-    DisposableEffect(lifecycleOwner, sessionId) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_STOP -> wasBackgrounded = true
-                Lifecycle.Event.ON_RESUME -> if (wasBackgrounded) {
-                    wasBackgrounded = false
-                    refresh(silent = true, includeProfile = true)
-                }
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     if (sessionId == null) {

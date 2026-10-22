@@ -8,15 +8,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.atenea.android.api.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 @Composable
 internal fun ValidationRecoveryScreen(api: AteneaApiClient, sessionId: Long, changeKey: String?,
     onBack: () -> Unit, onNavigate: (ChangeHelpDestination) -> Unit, onRunChanged: (Long) -> Unit = {}) {
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val reads = remember(api, sessionId) { CoalescingRead<Long, Unit>(scope) }
+    var generation by remember(sessionId) { mutableStateOf(0L) }
     var state by remember(sessionId) { mutableStateOf<ValidationRecovery?>(null) }
     var pending by remember(sessionId) { mutableStateOf(false) }
     var error by remember(sessionId) { mutableStateOf<String?>(null) }
@@ -24,64 +31,73 @@ internal fun ValidationRecoveryScreen(api: AteneaApiClient, sessionId: Long, cha
     var detail by remember(sessionId) { mutableStateOf<CodexRunDetail?>(null) }
     var progress by remember(sessionId) { mutableStateOf<CodexProgressReplay?>(null) }
     var answer by remember(sessionId) { mutableStateOf<String?>(null) }
-    suspend fun read() {
-        val value = api.fetchValidationRecovery(sessionId)
-        require(value.workSessionId == sessionId && (changeKey == null || value.changeKey.toString() == changeKey))
-        val previous = state?.investigation
-        state = value
-        val investigation = value.investigation
-        val runId = investigation?.runId
-        if (detail?.runId != runId) { detail = null; progress = null; answer = null }
-        if (runId != null) {
-            if (previous?.runId != runId || previous?.runStatus != investigation?.runStatus) onRunChanged(runId)
-            val loaded = api.fetchCodexRunDetail(runId)
-            require(loaded.runId == runId && loaded.workSessionId == sessionId)
-            detail = loaded
-            progress = api.fetchCodexRunProgress(runId, 0)
-            if (loaded.status in setOf("SUCCEEDED", "FAILED", "CANCELLED")) {
-                val conversation = api.fetchMobileWorkSessionConversation(sessionId)
-                answer = conversation.recentTurns.lastOrNull {
-                    it.actor == "CODEX" && it.executionProfile?.runId == runId
-                }?.messageText
+    var cursor by remember(sessionId) { mutableStateOf(0L) }
+    suspend fun read(afterAction: Boolean = false) {
+        if (pending && !afterAction) return
+        val epoch = generation
+        reads.read(epoch) {
+            val value = api.fetchValidationRecovery(sessionId)
+            if (epoch != generation) return@read
+            require(value.workSessionId == sessionId && (changeKey == null || value.changeKey.toString() == changeKey))
+            val previous = state?.investigation
+            state = value
+            val investigation = value.investigation
+            val runId = investigation?.runId
+            if (detail?.runId != runId) { detail = null; progress = null; answer = null; cursor = 0 }
+            if (runId != null) {
+                if (previous?.runId != runId || previous?.runStatus != investigation?.runStatus) onRunChanged(runId)
+                val terminal = detail?.takeIf { it.runId == runId && it.status in setOf("SUCCEEDED", "FAILED", "CANCELLED") }
+                val loaded = if (terminal != null && progress?.terminalOutcome != null) terminal else api.fetchCodexRunDetail(runId)
+                if (epoch != generation) return@read
+                require(loaded.runId == runId && loaded.workSessionId == sessionId)
+                detail = loaded
+                if (terminal == null || progress?.terminalOutcome == null) {
+                    val replay = api.fetchCodexRunProgress(runId, cursor)
+                    if (epoch != generation) return@read
+                    progress = mergeCodexProgressReplay(progress, replay)
+                    cursor = progress?.latestObservedSequence() ?: cursor
+                }
+                if (loaded.status in setOf("SUCCEEDED", "FAILED", "CANCELLED") && answer == null) {
+                    val conversation = api.fetchMobileWorkSessionConversation(sessionId)
+                    if (epoch != generation) return@read
+                    answer = conversation.recentTurns.lastOrNull {
+                        it.actor == "CODEX" && it.executionProfile?.runId == runId
+                    }?.messageText
+                }
             }
         }
     }
-    fun action(block: suspend () -> Unit) {
+    fun action(mutates: Boolean = true, block: suspend () -> Unit) {
         if (pending) return
+        pending = true; error = null
+        if (mutates) generation++
         scope.launch {
-            pending = true; error = null
-            try { block(); read() }
+            try { block(); read(afterAction = true) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { error = "No se pudo confirmar el resultado. Consulta la misma operación; no se ha creado otro cambio." }
             finally { pending = false }
         }
     }
-    LaunchedEffect(sessionId) {
-        try { read() }
-        catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { error = "No se pudo consultar la recuperación. Tu cambio se conserva." }
-    }
-    LaunchedEffect(state?.repair?.id, state?.repair?.state) {
-        while (state?.repair?.working == true) {
-            delay(1500)
+    LaunchedEffect(api, sessionId, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             try { read() }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) {
-                error = "La operación conserva su estado. Pulsa Consultar resultado cuando vuelva la conexión."
-                break
+            catch (_: Exception) { error = "No se pudo consultar la recuperación. Tu cambio se conserva." }
+            while (true) {
+                snapshotFlow { state?.repair?.working == true || state?.investigation?.let {
+                    it.runId != null && it.runStatus !in setOf("SUCCEEDED", "FAILED", "CANCELLED")
+                } == true }.first { it }
+                delay(1500)
+                if (!pending) {
+                    try { read(); error = null }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { error = "No se pudo actualizar esta recuperación. Se conserva el último estado confirmado; no la repitas." }
+                }
             }
         }
     }
-    LaunchedEffect(state?.investigation?.runId) {
-        while (state?.investigation?.runId != null && state?.investigation?.runStatus !in setOf("SUCCEEDED", "FAILED", "CANCELLED")) {
-            delay(1500)
-            try { read(); error = null }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { error = "No se pudo actualizar esta investigación. Se conserva el último estado confirmado; no la repitas." }
-        }
-    }
     ValidationRecoveryPanel(state, pending, error, onBack,
-        onRefresh = { action { } }, onPrepare = { action { api.prepareValidationRepair(sessionId) } },
+        onRefresh = { action(mutates = false) { } }, onPrepare = { action { api.prepareValidationRepair(sessionId) } },
         onApply = { confirm = true },
         onRecover = { state?.repair?.let { entry -> action { api.recoverValidationRepair(sessionId, entry.id) } } },
         onCancel = { state?.repair?.let { entry -> action { api.cancelValidationRepair(sessionId, entry.id) } } },

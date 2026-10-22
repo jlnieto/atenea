@@ -124,16 +124,21 @@ class ChangeWorkflowCoherenceTest {
         } finally { scope.cancel() }
     }
 
-    @Test fun `late failure cannot overwrite a newer successful read`() = runBlocking {
+    @Test fun `concurrent readers share failure and require a fresh successful observation`() = runBlocking {
         val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
         try {
             val delayed = CompletableDeferred<MobileDeliveryState>()
             var delayRead = false
-            val state = MobileDeliveryUiState(26, scope) { if (delayRead) delayed.await() else snapshot() }
+            var reads = 0
+            val state = MobileDeliveryUiState(26, scope) { reads++; if (delayRead) delayed.await() else snapshot() }
             state.refresh(); delayRead = true
             val first = scope.launch { state.refresh() }
-            delayRead = false; state.refresh()
-            delayed.completeExceptionally(IOException("old response")); first.join()
+            delayRead = false
+            val second = scope.launch { state.refresh() }
+            assertEquals(2, reads)
+            delayed.completeExceptionally(IOException("shared response")); first.join(); second.join()
+            assertFalse(state.available); assertFalse(state.validationCurrent)
+            state.refresh(); assertEquals(3, reads)
             assertTrue(state.available); assertTrue(state.validationCurrent)
         } finally { scope.cancel() }
     }

@@ -21,17 +21,17 @@ pretende eliminar.
 
 ## Punto de reanudación
 
-- Rama de implementación: `stabilize/mobile-change-coordination`.
-- Worktree manual: `/home/jose/projects/atenea-mobile-stabilization`.
-- Base App: `6e3912d0e41b0408a1847eeb738361f963c31257`.
-- Bloque activo: S1, navegación y conservación del contexto.
-- Implementación S1 terminada; UFD postcommit T3 y 312 tests Android PASS.
-  La PR 92 ejecutó las siete regresiones: seis PASS y una aserción de fixture
-  incorrecta al comprobar un campo vacío con placeholder; corregida en revisión.
-  S1 no está cerrado hasta obtener las siete regresiones PASS.
-- Siguiente acción: validar y actualizar la misma PR 92, comprobar las siete
-  regresiones en su runner CI con KVM y conservar sus cuatro casos originales.
-  No modificar permisos del dedicado para forzarlo.
+- Rama de implementación: `stabilize/mobile-change-reads`.
+- Worktree manual: `/home/jose/projects/atenea-mobile-observation`.
+- Base App: `8bc9cc35f53c51effc186ce428c4bc6cd76aa3d2`.
+- S1 integrado en PR 92, con UFD, backend de merge y siete journeys PASS.
+  No está desplegado ni publicado en una APK.
+- Bloque activo: S2, consultas coordinadas y ciclo de vida.
+- S2 tiene 196 tests core-console PASS y APK instrumentada compilada; falta
+  demostrar sus ocho journeys en CI y revisar los lectores entre vistas.
+- Siguiente acción: ejecutar UFD postcommit y PR/CI S2; conservar las siete
+  regresiones previas y exigir también el nuevo contador HTTP/lifecycle.
+  No modificar permisos del dedicado para forzar instrumentación local.
 - Despliegues, APK, cambios de configuración y operaciones reales sobre el
   Cambio no están incluidos en este paso de implementación. Requieren su
   autorización y preflight correspondientes.
@@ -136,10 +136,10 @@ Estados permitidos en este seguimiento: PENDIENTE, EN CURSO, PROBADO LOCAL,
 INTEGRADO, DESPLEGADO y ACEPTADO. No son intercambiables. Cada bloque registra
 su commit, comandos/resultados y siguiente acción al terminar una sesión.
 
-| Bloque | Repositorio | Estado inicial | Dependencia |
+| Bloque | Repositorio | Estado vigente | Dependencia |
 | --- | --- | --- | --- |
-| S1 Navegación estable | App Android | EN CURSO; unitarios PASS, instrumentación pendiente | A1 |
-| S2 Consultas coordinadas del móvil | App Android | PENDIENTE | S1 |
+| S1 Navegación estable | App Android | INTEGRADO; PR 92, siete journeys PASS; sin despliegue | A1 |
+| S2 Consultas coordinadas del móvil | App Android | EN CURSO; unitarios PASS, nueva instrumentación pendiente | S1 |
 | S3 Observación coherente del servidor | App y Platform | PENDIENTE | A2 y A3; protocolo antes de consumidor si cambia |
 | S4 Admisión y recuperación durables | App y Platform si el contrato lo requiere | PENDIENTE | S3 |
 | S5 CI y progreso completo | App | PENDIENTE; diff previo preservado | Revisar contra S1 a S4 |
@@ -286,11 +286,9 @@ el corredor conserva su requisito KVM y la limpieza de su AVD/ADB privados.
 No presentar ninguno de estos stops de herramientas como un test funcional
 fallido ni como un PASS de pantalla.
 
-La PR 92 conserva este bloque; no hay integración, cambios Platform ni
-despliegue de esta estabilización. S2 a S6 no están implementados por este
-checkpoint. Después de cerrar las
-pruebas S1, continuar por la exclusión/agrupación de lecturas y su ciclo de vida
-en S2, no por nuevos cambios visuales ni reintentos sobre WS29.
+La integración posterior de S1 y el avance S2 se registran a continuación.
+No hay cambios Platform ni despliegue de esta estabilización. No reintentar
+WS29 para comprobar estos cambios locales.
 
 ### 22 de octubre de 2026 Primera validación de PR 92
 
@@ -305,9 +303,74 @@ vacío y el placeholder como Text. Se corrige para comprobar explícitamente la
 propiedad EditableText; no se elimina el caso ni sus comprobaciones posteriores
 de conservación de borradores. El siguiente run debe completar los siete.
 
-PR: <https://github.com/jlnieto/atenea/pull/92>. La rama local
-`stabilize/mobile-change-reads` sólo se preparó desde S1; aún no contiene cambios
-S2. No abrir otro Cambio ni otra PR para este ajuste de fixture.
+PR: <https://github.com/jlnieto/atenea/pull/92>. El ajuste se mantuvo en esa misma
+PR, sin crear otro Cambio.
+
+### 22 de octubre de 2026 Integración S1 y comienzo S2
+
+S1 integrado con merge `8bc9cc35f53c51effc186ce428c4bc6cd76aa3d2` tras validar el
+head `756c25da1e542c03f72f680213a18c7456f92721`. UFD local postcommit T3 y suite
+Android completa PASS, 312 tests; CI UFD y backend combinado PASS. El run
+`39783629382` pasó los siete journeys, incluido el caso completo de separación
+de sesiones tras corregir la aserción del placeholder. Informe descargado en
+`target/s1-ci-39783629382/target/mobile-journeys/instrumentation.log` del worktree
+S1. CI PASS e integración no acreditan despliegue ni aceptación Samsung.
+
+S2 se desarrolla en su rama/worktree separado y avanzó por fast-forward hasta
+ese merge. Cambios preparados:
+
+- `CoalescingRead` comparte solicitudes simultáneas de la misma generación y
+  serializa generaciones diferentes. No almacena resultados terminados. La
+  cancelación de un observador no cancela a otro; destruir el propietario sí
+  cancela sus lecturas. Una excepción de lectura no cancela todo el Job de UI.
+- `MobileDeliveryUiState` usa esa exclusión conservando ownership, revisión,
+  fingerprint y barrera de efectos pendientes. La consulta manual se une a la
+  automática; ya no multiplica GETs ni depende de descartar respuestas tardías.
+- Cambio espera la respuesta antes del siguiente intervalo: cinco segundos con
+  trabajo o evidencia por confirmar, treinta en espera del usuario y quince
+  tras fallo de lectura. El historial completado no mantiene polling; una
+  reapertura o consulta explícita puede volver a leerlo. STARTED sigue siendo
+  requisito del polling visual.
+- Conversación espera sus lecturas y unifica arranque, vuelta y seguimiento
+  activo bajo STARTED. Los refrescos equivalentes se agrupan y los de distinto
+  alcance de perfil se serializan. Los detalles terminales con progreso final
+  ya confirmado no se vuelven a descargar en cada refresco.
+- Recuperación tiene un solo bucle STARTED, exclusión por generación y cursor
+  incremental. Una respuesta anterior a una acción no sustituye la revisión
+  posterior; consultar no se trata como una nueva mutación. Se propaga la
+  cancelación en las lecturas en lugar de presentarla como error funcional.
+
+Pruebas preparadas y comprobadas localmente:
+
+```bash
+./scripts/android-build.sh :core-console:testDebugUnitTest \
+  :core-console:assembleDebugAndroidTest
+bash -n scripts/test-mobile-journeys.sh
+git diff --check
+```
+
+Resultado: 196 tests core-console PASS, cero omitidos/fallos, y compilación
+instrumentada PASS. La suite incluye seis regresiones de concurrencia,
+cancelación, error y generaciones, más agrupación de diez lectores y política
+de frecuencia. Las pruebas anteriores de fuente, propiedad y respuesta perdida
+siguen pasando. Un test que suponía inicio síncrono de la lectura ahora espera
+su señal de comienzo, antes de verificar la misma estabilidad del botón.
+
+`ReadCoordinationJourneyTest` añade HTTP loopback real al ensayo de pantalla:
+una consulta manual se une al GET lento de regreso, máximo uno simultáneo,
+ningún efecto, ninguna consulta periódica durante STOP y lectura fresca al
+volver. Está compilado pero pendiente de ejecución; el corredor exige ocho
+casos, sin omitir los siete ya aprobados.
+
+Antes de cerrar S2 quedan pendientes los ocho journeys, las regresiones
+instrumentadas específicas de recuperación/cursor y la coordinación compartida
+del detalle de ejecución entre Conversación y Recuperación. La vista retenida
+`WorkSessionScreen` también tiene un repositorio periódico propio: revisar su
+propietario/ciclo de vida antes de afirmar que todas las vistas están cubiertas.
+No extender un PASS de componente a esos escenarios aún no demostrados.
+
+S3 a S6 siguen pendientes. No hay cambio de backend, Platform, versión/firma APK,
+datos PROD, permisos del host ni operaciones sobre el Cambio real.
 
 Al retomar: leer este documento y `AGENTS.md`, comprobar status de ambos repos y
 el bloque activo, revisar el diff y el último resultado de prueba. Actualizar

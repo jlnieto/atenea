@@ -43,7 +43,8 @@ internal fun rememberMobileDeliveryUiState(api: AteneaApiClient, sessionId: Long
         if (enabled) owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 state.refresh()
-                delay(5_000)
+                val wait = state.pollDelayMillis ?: break
+                delay(wait)
             }
         }
     }
