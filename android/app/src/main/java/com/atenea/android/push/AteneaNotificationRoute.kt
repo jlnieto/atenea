@@ -101,7 +101,8 @@ object AteneaNotificationRouteParser {
     }
 }
 
-object AteneaForegroundNotificationRouter {
+/** A received notification is a refresh hint, never a request to open its destination. */
+object AteneaForegroundNotificationObserver {
     private val consumer = AtomicReference<((AteneaNotificationRoute) -> Unit)?>(null)
 
     fun attach(routeConsumer: (AteneaNotificationRoute) -> Unit) {

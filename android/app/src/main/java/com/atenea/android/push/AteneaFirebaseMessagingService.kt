@@ -50,9 +50,7 @@ class AteneaFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
         val route = AteneaNotificationRouteParser.parse(message.data["deepLink"], message.data)
-        if (route != null && AteneaForegroundNotificationRouter.deliver(route)) {
-            return
-        }
+        route?.let { AteneaForegroundNotificationObserver.deliver(it) }
         val title = message.notification?.title
             ?: message.data["title"]
             ?: "Atenea"

@@ -43,7 +43,8 @@ fun CoreConsoleApp(
     currentVersionCode: Int,
     currentVersionName: String,
     pushRegistration: AteneaPushRegistration? = null,
-    requestedConversation: AteneaNotificationRoute? = null
+    requestedConversation: AteneaNotificationRoute? = null,
+    receivedNotificationKey: String? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -100,6 +101,7 @@ fun CoreConsoleApp(
                 }
             },
             requestedConversation = requestedConversation,
+            receivedNotificationKey = receivedNotificationKey,
             loadNewsSnapshot = { sessionStore.loadProductNews() },
             saveNewsSnapshot = { raw -> session?.operator?.id?.let { sessionStore.saveProductNews(it,raw) } }
         )

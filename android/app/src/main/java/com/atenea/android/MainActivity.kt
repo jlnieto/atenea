@@ -8,21 +8,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
-import androidx.compose.runtime.mutableStateOf
 import com.atenea.android.api.AteneaApiClient
 import com.atenea.android.coreconsole.CoreConsoleApp
 import com.atenea.android.coreconsole.AteneaNotificationRoute
+import com.atenea.android.coreconsole.AteneaNotificationState
 import com.atenea.android.coreconsole.AteneaOperatorTheme
 import com.atenea.android.push.AteneaPushRegistrar
-import com.atenea.android.push.AteneaForegroundNotificationRouter
+import com.atenea.android.push.AteneaForegroundNotificationObserver
 import com.atenea.android.push.AteneaNotificationRouteParser
 import com.atenea.android.secure.AteneaSessionStore
 import com.atenea.android.voiceruntime.AteneaDiagnostics
 
 class MainActivity : ComponentActivity() {
-    private val requestedConversation = mutableStateOf<AteneaNotificationRoute?>(null)
+    private val notifications = AteneaNotificationState()
     private val foregroundRouteConsumer: (AteneaNotificationRoute) -> Unit = { route ->
-        runOnUiThread { requestedConversation.value = route }
+        runOnUiThread { notifications.onReceived(route) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,7 +60,8 @@ class MainActivity : ComponentActivity() {
                     currentVersionCode = BuildConfig.VERSION_CODE,
                     currentVersionName = BuildConfig.VERSION_NAME,
                     pushRegistration = pushRegistrar,
-                    requestedConversation = requestedConversation.value
+                    requestedConversation = notifications.openedRoute,
+                    receivedNotificationKey = notifications.receivedKey
                 )
             }
         }
@@ -68,11 +69,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        AteneaForegroundNotificationRouter.attach(foregroundRouteConsumer)
+        AteneaForegroundNotificationObserver.attach(foregroundRouteConsumer)
     }
 
     override fun onStop() {
-        AteneaForegroundNotificationRouter.detach(foregroundRouteConsumer)
+        AteneaForegroundNotificationObserver.detach(foregroundRouteConsumer)
         super.onStop()
     }
 
@@ -91,7 +92,7 @@ class MainActivity : ComponentActivity() {
         }
         val deepLink = intent.dataString ?: values["deepLink"]
         AteneaNotificationRouteParser.parseIntent(deepLink, values)?.let { route ->
-            requestedConversation.value = route
+            notifications.onOpened(route)
         }
     }
 }
