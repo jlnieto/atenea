@@ -389,6 +389,14 @@ actividad, espera antes de cada lectura y sigue respetando STARTED y la
 exclusión de transporte. El timeout y las aserciones del journey se conservan.
 S2 permanece sin integrar hasta validar las ocho regresiones del head corregido.
 
+El run `39787587315` del head `2530506` confirmó el recorrido completo de
+actualización de PR y el nuevo contador HTTP. Falló una prueba anterior de
+rechazo de admisión: esperaba polling en quince segundos después de volver al
+reposo, que ahora usa treinta. Esa prueba avanza treinta segundos en el reloj
+de coroutines de Compose antes de esperar el GET real. Conserva el timeout de
+HTTP, el rechazo visible, restauración/segundo plano y la aserción de una sola
+solicitud; no acorta el intervalo de producción ni omite la regresión.
+
 Al retomar: leer este documento y `AGENTS.md`, comprobar status de ambos repos y
 el bloque activo, revisar el diff y el último resultado de prueba. Actualizar
 estado, comandos, límites y siguiente acción aquí antes de terminar el turno.
